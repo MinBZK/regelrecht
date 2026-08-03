@@ -34,13 +34,22 @@ vi.mock('./composables/useAuth.js', () => ({
   useAuth: () => ({ authenticated: ref(true), login: vi.fn() }),
 }));
 
-vi.mock('./composables/useTrajects.js', () => ({
-  useTrajects: () => ({
-    activeTrajectRef: ref('traject-abcd1234'),
-    activeTraject: ref({ name: 'Afgeschermde test Kandidaatstellingsprocedure Kieswet' }),
-  }),
-  refreshTrajects: vi.fn(),
-}));
+// Held in a hoisted box so a test can switch traject in-place: the traject
+// switcher leaves LibraryView mounted and only swaps the route param, which is
+// what LibraryView's `watch(activeTrajectRef)` reacts to. (`vi.mock` factories
+// are hoisted above module-level consts, hence `vi.hoisted`.)
+const { trajectScope } = vi.hoisted(() => ({ trajectScope: {} }));
+
+vi.mock('./composables/useTrajects.js', () => {
+  trajectScope.activeTrajectRef = ref('traject-abcd1234');
+  return {
+    useTrajects: () => ({
+      activeTrajectRef: trajectScope.activeTrajectRef,
+      activeTraject: ref({ name: 'Afgeschermde test Kandidaatstellingsprocedure Kieswet' }),
+    }),
+    refreshTrajects: vi.fn(),
+  };
+});
 
 // The 502 body below is the backend's own text for a traject whose
 // writable-own (private) repo could not be scanned - see
@@ -159,6 +168,7 @@ beforeEach(() => {
   routeState.name = 'taken-traject';
   routeState.params = { trajectRef: 'traject-abcd1234', categorie: 'alle' };
   routeState.query = {};
+  trajectScope.activeTrajectRef.value = 'traject-abcd1234';
 });
 
 // The warning banner LibraryView now raises over the non-library modes.
@@ -221,6 +231,55 @@ describe('LibraryView index-error scoping', () => {
     const wrapper = await mountAfterFailedIndex();
     expect(wrapper.findComponent({ name: 'TrajectDetailsPane' }).exists()).toBe(true);
     expect(wrapper.html()).toContain(BANNER_TEXT);
+    routeState.name = 'taken-traject';
+    routeState.params = { trajectRef: 'traject-abcd1234', categorie: 'alle' };
+  });
+
+  it('keeps the WERKDOCUMENTEN route standing under a corpus 502', async () => {
+    routeState.name = 'werkdocumenten-traject';
+    routeState.params = { trajectRef: 'traject-abcd1234' };
+    const wrapper = await mountAfterFailedIndex();
+    // Werkdocumenten live in the traject repo's docs tree, not in the
+    // wettenindex, so the document list has to survive the corpus 502 too.
+    expect(wrapper.find('nldd-navigation-split-view').exists()).toBe(true);
+    expect(wrapper.html()).not.toContain(FULLSCREEN_TEXT);
+    expect(wrapper.html()).toContain(BANNER_TEXT);
+    routeState.name = 'taken-traject';
+    routeState.params = { trajectRef: 'traject-abcd1234', categorie: 'alle' };
+  });
+
+  // The banner/takeover must track the scope it belongs to. `retryLoadCorpus`
+  // clears the error itself, but the traject switcher reaches `loadIndex()`
+  // through `watch(activeTrajectRef)` - if only the retry path cleared the
+  // error, switching away from a broken traject would carry its error onto a
+  // perfectly healthy one.
+  it('drops the error when switching to a healthy traject (banner does not stick)', async () => {
+    const wrapper = await mountAfterFailedIndex();
+    expect(wrapper.html()).toContain(BANNER_TEXT);
+
+    // Same view, other traject - and this one indexes fine.
+    apiFetch.mockImplementation(async () => ({ ok: true, status: 200, json: async () => [] }));
+    routeState.params = { trajectRef: 'traject-99998888', categorie: 'alle' };
+    trajectScope.activeTrajectRef.value = 'traject-99998888';
+    for (let i = 0; i < 6; i++) await nextTick();
+
+    expect(wrapper.html()).not.toContain(BANNER_TEXT);
+    expect(wrapper.find('nldd-banner.corpus-warning').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'TasksCategoriesPane' }).exists()).toBe(true);
+  });
+
+  it('drops the fullscreen takeover when switching to a healthy traject', async () => {
+    routeState.name = 'library-traject';
+    routeState.params = { trajectRef: 'traject-abcd1234' };
+    const wrapper = await mountAfterFailedIndex();
+    expect(wrapper.html()).toContain(FULLSCREEN_TEXT);
+
+    apiFetch.mockImplementation(async () => ({ ok: true, status: 200, json: async () => [] }));
+    routeState.params = { trajectRef: 'traject-99998888' };
+    trajectScope.activeTrajectRef.value = 'traject-99998888';
+    for (let i = 0; i < 6; i++) await nextTick();
+
+    expect(wrapper.html()).not.toContain(FULLSCREEN_TEXT);
     routeState.name = 'taken-traject';
     routeState.params = { trajectRef: 'traject-abcd1234', categorie: 'alle' };
   });

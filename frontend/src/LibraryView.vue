@@ -1257,6 +1257,14 @@ const claimLoadIndex = useLatest();
 
 async function loadIndex() {
   const isCurrent = claimLoadIndex();
+  // Drop any previous scope's failure before we start. The error describes one
+  // specific index load, so it must not outlive the run that produced it:
+  // besides `retryLoadCorpus`, `loadIndex` is also reached from the
+  // `activeTrajectRef` watcher, and without this a broken traject's error would
+  // ride along to the next traject the user switches to - warning about (or,
+  // on the library routes, blocking) a traject whose wetten loaded fine. The
+  // `catch` below re-raises it for this run if this load fails too.
+  indexError.value = null;
   // Snapshot the traject so the changed-laws fetch and its assignment below
   // both refer to the scope this run started in.
   const trajectRef = activeTrajectRef.value;
@@ -1358,11 +1366,11 @@ function retryLoadLaw() {
 }
 
 function retryLoadCorpus() {
-  indexError.value = null;
-  // loadIndex only flips loading back to false in its finally block -
-  // it never sets it to true. So after the first failure (loading is
-  // false, indexError is truthy) we have to flip the spinner back on
-  // here, otherwise the retry shows the error pane until the next
+  // Clearing indexError is loadIndex's job (it does so for every caller, not
+  // just this one). loading is not: loadIndex only flips it back to false in
+  // its finally block, it never sets it to true. So after the first failure
+  // (loading is false, indexError is truthy) we have to flip the spinner back
+  // on here, otherwise the retry shows the error pane until the next
   // round-trip resolves.
   loading.value = true;
   loadIndex();
@@ -1799,8 +1807,9 @@ watch(activeTrajectRef, () => {
              Rendered as a sibling above the split-view so it spans all panes
              rather than sitting in the narrow sidebar; the .corpus-warning rule
              keeps it auto-height (the app main pane slots its children flex:1).
-             It clears itself the moment a retry repopulates the index
-             (retryLoadCorpus → indexError becomes null). -->
+             It clears itself the moment any index load starts over - a retry
+             here, or a switch to another traject - and stays gone unless that
+             load fails too (loadIndex resets indexError up front). -->
         <nldd-banner
           v-if="indexError && !isLibraryMode"
           class="corpus-warning"
@@ -2534,11 +2543,13 @@ nldd-navigation-split-view:not(.full-stack) .article-not-found__back-button {
 }
 
 /* The corpus-warning banner is a light-DOM sibling of the navigation-split-view,
-   so it lands in AppShell's main split-view-pane, whose `::slotted(*)` sets
-   `flex: 1`. Left as-is the banner would grow to eat half the pane; pin it to
-   its content height so it reads as a thin bar above the panes and the
-   split-view keeps the remaining space. Unscoped for the same reason as the
-   rule above (the class is reflected from light-DOM space). */
+   so it is slotted straight into AppShell's main split-view-pane, whose
+   `::slotted(*)` sets `flex: 1` on every slotted child. Left as-is the banner
+   would grow to eat half the pane; pin it to its content height so it reads as
+   a thin bar above the panes and the split-view keeps the remaining space.
+   (Unlike the rules above this one would also work scoped - it targets an
+   element in this component's own template - but this whole block is global,
+   so it is stated plainly rather than singled out.) */
 nldd-banner.corpus-warning {
   flex: 0 0 auto;
 }

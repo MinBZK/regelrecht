@@ -58,13 +58,23 @@ const searchFailed = ref(false);
 // The search is traject-scoped whenever a traject is active (see `runSearch`:
 // it hits `/api/trajects/{ref}/corpus/laws`), so a failure is about *this
 // traject's* library - its own repo could not be scanned - not the central
-// corpus. Name the traject so the user knows where to look; fall back to the
-// central-corpus wording only when there's no active traject.
-const searchFailedText = computed(() =>
-  activeTraject.value?.name
-    ? `De bibliotheek van ${activeTraject.value.name} kon niet worden doorzocht. Probeer het opnieuw.`
-    : 'Het centrale corpus kon niet worden doorzocht. Probeer het opnieuw.',
-);
+// corpus. What decides the scope is `activeTrajectRef` (read straight from the
+// route, so it is there from the first render), NOT `activeTraject`: that one
+// is looked up in the asynchronously loaded trajects list and is still null
+// while the list is in flight, or when the list request itself failed. Keying
+// the wording on the name alone would point the user at the central corpus for
+// a request that never went there. So: name the traject when we know it, say
+// "dit traject" when we only know there is one, and keep the central-corpus
+// wording strictly for the no-traject search.
+const searchFailedText = computed(() => {
+  if (!activeTrajectRef.value) {
+    return 'Het centrale corpus kon niet worden doorzocht. Probeer het opnieuw.';
+  }
+  const scope = activeTraject.value?.name
+    ? `van ${activeTraject.value.name}`
+    : 'van dit traject';
+  return `De bibliotheek ${scope} kon niet worden doorzocht. Probeer het opnieuw.`;
+});
 
 // Gedeelde promote-logica (ook gebruikt door de gewone zoekresultaten in
 // SearchPopover): per-wet busy-state, al-in-traject-set, 409-afhandeling.
