@@ -750,6 +750,7 @@ async fn resolve_writable_target(
     req: &CreateTrajectRequest,
     account_id: Uuid,
     headers: &axum::http::HeaderMap,
+    traject_id: Uuid,
 ) -> Result<WritableTarget, (StatusCode, String)> {
     let owner = req
         .repo_owner
@@ -907,6 +908,54 @@ async fn resolve_writable_target(
                 "validated user-supplied repo for new traject"
             );
 
+            // Mint the traject branch eagerly, right here where we still
+            // hold the token that just proved push access. Without this a
+            // freshly created traject is dead-on-arrival: the index scan
+            // reads `traject/{slug}-{short}`, which does not exist yet, so
+            // the Trees API 404s and every traject-scoped corpus endpoint
+            // 502s — including the very write UI you'd use to trigger the
+            // lazy branch-bootstrap on the write path. A closed loop.
+            //
+            // In user-token write mode the backend has no service token to
+            // bootstrap the branch at `ensure_ready`, so this is the only
+            // moment a token is guaranteed in hand. Reuse `ensure_branch`
+            // rather than calling `create_branch` directly: it already
+            // absorbs the "branch already exists" race (a repeated create,
+            // or two members racing), keeping this idempotent (criterion 4).
+            // The lazy bootstrap on the write path stays as the safety net
+            // for trajects that predate this and sit branch-less in the DB.
+            let writable_branch = derive_branch_name(req.name.trim(), traject_id);
+            regelrecht_corpus::GitHubApiBackend::ensure_branch(
+                &client,
+                &format!("{owner}/{repo}"),
+                &writable_branch,
+                Some(base_branch),
+                Some(&token),
+            )
+            .await
+            .map_err(|e| {
+                // Push access was just confirmed by the preflight, so a
+                // failure here is genuinely exceptional (an upstream GitHub
+                // hiccup or a permission revoked mid-flight). Fail loud so no
+                // good-looking-but-broken traject is created — nothing has
+                // been written to the DB yet at this point.
+                tracing::error!(
+                    error = %e,
+                    owner = %owner,
+                    repo = %repo,
+                    branch = %writable_branch,
+                    "failed to create traject branch during create preflight"
+                );
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!(
+                        "kon de traject-branch '{writable_branch}' niet aanmaken op \
+                         {owner}/{repo}; het traject is niet aangemaakt. Probeer het \
+                         opnieuw of controleer je GitHub-toegang."
+                    ),
+                )
+            })?;
+
             Ok(WritableTarget {
                 owner: owner.to_string(),
                 repo: repo.to_string(),
@@ -1007,24 +1056,33 @@ pub async fn create(
         return Err((StatusCode::BAD_REQUEST, "name is required".to_string()));
     }
 
+    // Mint the traject id client-side so the writable-branch name (derived
+    // from it) is known *before* we touch GitHub or the database. The
+    // preflight below uses it to create the branch while it still holds the
+    // proving token, and the INSERT reuses the same id — one identity across
+    // GitHub, URL ref and DB row.
+    let traject_id = Uuid::new_v4();
+
     // Resolve the writable-own GitHub target up-front. Validation may need
-    // to talk to GitHub (which can fail with a helpful 4xx); we do that
-    // *before* opening the DB transaction so a network blip doesn't leak a
-    // half-rolled row.
-    let target = resolve_writable_target(&state, &req, account.id, &headers).await?;
+    // to talk to GitHub (which can fail with a helpful 4xx) and — for a
+    // user-supplied repo — mints the traject branch there; we do that
+    // *before* opening the DB transaction so a network blip or a failed
+    // branch-create leaves no half-rolled row behind.
+    let target = resolve_writable_target(&state, &req, account.id, &headers, traject_id).await?;
 
     let pool = get_pool_msg(&state)?;
     let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;
 
-    let traject_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO trajects (name, description, scope, created_by)
-         VALUES ($1, $2, $3, $4) RETURNING id",
+    sqlx::query(
+        "INSERT INTO trajects (id, name, description, scope, created_by)
+         VALUES ($1, $2, $3, $4, $5)",
     )
+    .bind(traject_id)
     .bind(name)
     .bind(&req.description)
     .bind(&req.scope)
     .bind(account.id)
-    .fetch_one(&mut *tx)
+    .execute(&mut *tx)
     .await
     .map_err(db_err_msg("insert traject"))?;
 

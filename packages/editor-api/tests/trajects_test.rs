@@ -265,6 +265,11 @@ async fn create_custom_repo_preflights_with_the_linked_user_token() {
     // user (their sealed-cookie token), not the operator token. Matching on
     // the Authorization header pins that — an operator-token request would
     // not match the mocks and the preflight would fail on the 404.
+    //
+    // It also mints the traject branch as part of create (see
+    // `create_custom_repo_mints_the_traject_branch` for the dedicated
+    // regression assertion); the branch-bootstrap mocks below are needed
+    // for the create to succeed at all now that branch creation is eager.
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -304,6 +309,7 @@ async fn create_custom_repo_preflights_with_the_linked_user_token() {
         .expect(1)
         .mount(&server)
         .await;
+    mount_branch_bootstrap_mocks(&server).await;
 
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(
@@ -326,6 +332,146 @@ async fn create_custom_repo_preflights_with_the_linked_user_token() {
     .expect("create with a linked token must pass the preflight");
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(summary.name, "Repo traject");
+}
+
+/// Mount the three GitHub Refs API mocks that `ensure_branch` hits when the
+/// traject branch does not yet exist: `branch_exists` (404 → "create it"),
+/// resolve the base ref's sha, then POST the new ref. The traject branch name
+/// carries a per-create random 8-hex suffix, so the branch paths are matched
+/// by regex rather than a literal.
+async fn mount_branch_bootstrap_mocks(server: &wiremock::MockServer) {
+    use wiremock::matchers::{header, method, path, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    // 1) branch_exists on the traject branch → 404 (does not exist yet).
+    Mock::given(method("GET"))
+        .and(path_regex(
+            r"^/repos/example-org/regelrecht-corpus-example/git/ref/heads/traject/.+$",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found",
+        })))
+        .mount(server)
+        .await;
+    // 2) resolve the base branch ref → its tip sha.
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/example-org/regelrecht-corpus-example/git/ref/heads/main",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ref": "refs/heads/main",
+            "object": { "sha": "abc123def456", "type": "commit" },
+        })))
+        .mount(server)
+        .await;
+    // 3) create the traject ref from that sha.
+    Mock::given(method("POST"))
+        .and(path(
+            "/repos/example-org/regelrecht-corpus-example/git/refs",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "ref": "refs/heads/traject/repo-traject",
+            "object": { "sha": "abc123def456", "type": "commit" },
+        })))
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn create_custom_repo_mints_the_traject_branch() {
+    // Regression for the "fresh traject is dead-on-arrival" bug: in
+    // user-token write mode nothing minted the traject branch at create
+    // time, so the very first index scan 404'd on a non-existent branch and
+    // every corpus endpoint 502'd — a deadlock, because the write UI that
+    // would lazily mint the branch was itself behind that 502.
+    //
+    // `create` must now POST a new ref for `traject/{slug}-{short}` off the
+    // base branch during the preflight. The `.expect(1)` on the POST-refs
+    // mock (in `mount_branch_bootstrap_mocks`) is what fails on current main,
+    // where no such request is ever made.
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let db = TestDb::new().await;
+    let server = MockServer::start().await;
+
+    let mut oauth = GithubOAuth::for_tests(true);
+    oauth.api_base = server.uri();
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(oauth.clone()),
+        task_enrich_provider: "claude".to_string(),
+    });
+    let owner = seed_account(&db.pool, "owner-branch@example.com", "Owner").await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/example-org/regelrecht-corpus-example"))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_branch": "main",
+            "private": true,
+            "permissions": { "push": true, "pull": true },
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/example-org/regelrecht-corpus-example/branches/main",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "name": "main" })),
+        )
+        .mount(&server)
+        .await;
+    mount_branch_bootstrap_mocks(&server).await;
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::COOKIE,
+        axum::http::HeaderValue::from_str(&github_oauth::seal_token_cookie_for_tests(
+            &oauth,
+            owner.id,
+            "user-token",
+        ))
+        .unwrap(),
+    );
+
+    let (status, Json(summary)) = trajects::create(
+        State(state.clone()),
+        Extension(owner.clone()),
+        headers,
+        Json(custom_repo_req("Repo traject")),
+    )
+    .await
+    .expect("create with a linked token must mint the branch and succeed");
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(summary.name, "Repo traject");
+
+    // The traject row exists, and its writable-own source carries the
+    // branch we just minted on the repo.
+    let branch: String = sqlx::query_scalar(
+        "SELECT gh_branch FROM traject_corpus_sources
+         WHERE traject_id = $1 AND is_writable_own = TRUE",
+    )
+    .bind(summary.id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert!(
+        branch.starts_with("traject/repo-traject-"),
+        "writable-own source should carry the minted traject branch, got {branch}"
+    );
+
+    // The POST that created the ref is asserted by the `.expect(1)` on the
+    // mock, verified when the server drops at end of test.
+    drop(server);
 }
 
 // ---------------------------------------------------------------------------
