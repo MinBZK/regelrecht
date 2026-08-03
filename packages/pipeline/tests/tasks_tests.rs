@@ -1,6 +1,8 @@
 use serde_json::json;
 
-use regelrecht_pipeline::document_convert::DocumentConvertPayload;
+use regelrecht_pipeline::document_convert::{
+    ConversionRoute, ConvertedDocument, DocumentConvertPayload,
+};
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::models::JobType;
 use regelrecht_pipeline::tasks::{self, BlobKind, NewTask, TaskStatus, TaskType};
@@ -306,6 +308,7 @@ async fn test_finish_document_convert_task_job_creates_task_and_result_blob() {
         provider: None,
         requested_by: Some(account_id),
         deliver: Some("task".to_string()),
+        allow_llm: false,
     };
     let _created = job_queue::create_job(
         &db.pool,
@@ -325,9 +328,17 @@ async fn test_finish_document_convert_task_job_creates_task_and_result_blob() {
         .unwrap()
         .unwrap();
 
-    finish_document_convert_task_job(&db.pool, &job, &payload, "# Report\n\nBody.\n")
-        .await
-        .unwrap();
+    finish_document_convert_task_job(
+        &db.pool,
+        &job,
+        &payload,
+        &ConvertedDocument {
+            markdown: "# Report\n\nBody.\n".to_string(),
+            route: ConversionRoute::Pandoc,
+        },
+    )
+    .await
+    .unwrap();
 
     // Job completed, result-blob met target_path + markdown.
     let done = job_queue::get_job(&db.pool, job.id).await.unwrap();
@@ -376,6 +387,7 @@ async fn test_open_document_task_target_paths_reserves_names_until_resolved() {
         provider: None,
         requested_by: Some(account_id),
         deliver: Some("task".to_string()),
+        allow_llm: false,
     };
     let _created = job_queue::create_job(
         &db.pool,
@@ -403,9 +415,17 @@ async fn test_open_document_task_target_paths_reserves_names_until_resolved() {
     // Task-delivered conversie: de job is 'completed' (dus buiten
     // `pending_target_paths`), maar de review is nog open - de naam moet nu
     // gereserveerd zijn.
-    finish_document_convert_task_job(&db.pool, &job, &payload, "# Report\n\nBody.\n")
-        .await
-        .unwrap();
+    finish_document_convert_task_job(
+        &db.pool,
+        &job,
+        &payload,
+        &ConvertedDocument {
+            markdown: "# Report\n\nBody.\n".to_string(),
+            route: ConversionRoute::Pandoc,
+        },
+    )
+    .await
+    .unwrap();
 
     let reserved = tasks::open_document_task_target_paths(&db.pool, traject_id)
         .await

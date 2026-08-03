@@ -183,6 +183,14 @@ async fn main() {
             get(corpus_handlers::get_annotations),
         )
         .route("/api/feature-flags", get(feature_flags::list_feature_flags))
+        // Welke uploadformaten zonder taalmodel omgezet kunnen worden. De
+        // upload-bevestiging in de editor leest dit zodat er geen tweede
+        // formaatlijst in de frontend ontstaat; de inhoud is statisch en
+        // niet-gevoelig, vandaar publiek.
+        .route(
+            "/api/document-upload-formats",
+            get(corpus_handlers::list_document_upload_formats),
+        )
         // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
         // safe to expose unauthenticated. (The search endpoint lives behind
         // auth because it triggers outbound requests to zoekservice.overheid.nl
