@@ -1588,12 +1588,14 @@ function applyProposedContent(proposedYaml) {
 // the parts the article-scoped editor can't show. A bar has no room for
 // paragraphs, so copy stays to a heading line + one short supporting line.
 const REVIEW_HIDDEN_CHANGES_NOTE = 'Zie ook het YAML-paneel voor wijzigingen buiten dit artikel.';
+// Accent, not neutral: a generated proposal is the one thing on screen that
+// asks for a decision, and a neutral bar reads as background chrome.
 const reviewBannerVariant = computed(() => {
   if (reviewLoadError.value) return 'critical';
-  if (reviewIsLawCreate.value) return 'neutral';
+  if (reviewIsLawCreate.value) return 'accent';
   if (reviewStale.value) return 'warning';
   if (reviewActive.value && !reviewSeeded.value) return 'warning';
-  return 'neutral';
+  return 'accent';
 });
 const reviewBannerText = computed(() =>
   reviewIsLawCreate.value ? 'Nieuwe wet uit documentconversie' : 'Voorstel uit verrijking',
@@ -1616,6 +1618,30 @@ const reviewBannerSupportingText = computed(() => {
     'Opslaan keurt het volledige voorstel goed (eigen aanpassingen gaan niet mee), Verwerpen wijst af.' +
     (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
   );
+});
+
+// Which panes carry the proposal, for the review status bar. The proposal is
+// always a full law YAML, so the YAML pane always shows all of it; the
+// article-scoped panes only carry something when seeding succeeded. Scenario's
+// is deliberately absent: the worker does stage `features/*.feature` files, but
+// useTaskReview only ever picks the law YAML out of the result blobs, so no
+// scenario ever reaches these panes (see useTaskReview.js).
+const reviewChangedPanes = computed(() => {
+  const panes = [];
+  if (reviewSeeded.value) panes.push('Tekst', 'Machine');
+  panes.push('YAML');
+  return panes;
+});
+const reviewStatusText = computed(() => {
+  if (reviewLoadError.value) return reviewLoadError.value;
+  const what = reviewIsLawCreate.value
+    ? 'Dit is een nieuwe wet uit documentconversie'
+    : 'Dit is een gegenereerd voorstel';
+  const panes = reviewChangedPanes.value;
+  const list =
+    panes.length > 1 ? `${panes.slice(0, -1).join(', ')} en ${panes.at(-1)}` : panes[0];
+  const stale = reviewStale.value ? ' De wet is intussen gewijzigd, controleer extra goed.' : '';
+  return `${what}. Beoordeel ${list}.${stale}`;
 });
 
 // Fires once the law + its first article have finished loading (whether
@@ -1861,6 +1887,7 @@ registerEditorActions({
   discard: discardArticle,
   undo: undoText,
   redo: redoText,
+  reject: rejectReview,
 });
 watchEffect(() => {
   setEditorChanges({
@@ -1868,6 +1895,9 @@ watchEffect(() => {
     saving: lawSaving.value,
     canUndo: canUndoText.value,
     canRedo: canRedoText.value,
+    review: reviewActive.value,
+    reviewStatus: reviewActive.value || reviewLoadError.value ? reviewStatusText.value : null,
+    reviewVariant: reviewBannerVariant.value,
   });
 });
 
@@ -2260,43 +2290,12 @@ async function handleActionSave() {
              stay in the DOM so state is preserved when the viewport
              widens. -->
         <template v-else>
-          <!-- Review-modus (job_review-taak): a full-width, low bar above
-               the editor panes rather than a page-height dialog (PR #935 UX
-               feedback - the old nldd-page/nldd-simple-section wrapper made
-               it "too tall and too narrow", pushing real content down). A
-               bare nldd-container + nldd-banner sits directly in the flex
-               column here, outside the narrow-column nldd-simple-section
-               the pane/error states below use, the same way the
-               Wijzigingenbalk (AppShell.vue) is a bare nldd-container
-               outside its page-section too. nldd-banner natively supports
-               a variant colour + an actions slot (nldd-button, wrapped in
-               nldd-button-group), so it carries "Verwerpen"/"Voorstel
-               opslaan en goedkeuren" without any custom CSS. -->
-          <nldd-container v-if="reviewActive || reviewLoadError" padding="8">
-            <nldd-banner :variant="reviewBannerVariant" :text="reviewBannerText" :supporting-text="reviewBannerSupportingText">
-              <!-- Wijzigingenbalk only appears when a pane is dirty, which
-                   `!reviewSeeded` never is (nothing was seeded into the
-                   panes) - give the banner its own primary action so
-                   approving a proposal that touches nothing visible here
-                   is still reachable. -->
-              <nldd-button
-                v-if="reviewActive && !reviewSeeded"
-                slot="actions"
-                variant="primary"
-                text="Voorstel opslaan en goedkeuren"
-                :loading="lawSaving || undefined"
-                :disabled="lawSaving || undefined"
-                @click="handleLawSave"
-              ></nldd-button>
-              <nldd-button
-                v-if="reviewActive"
-                slot="actions"
-                variant="secondary"
-                text="Verwerpen"
-                @click="rejectReview"
-              ></nldd-button>
-            </nldd-banner>
-          </nldd-container>
+          <!-- Review-modus (job_review-taak) heeft geen eigen blok meer in de
+               content. De melding gaat als `slot="review-notice"` naar de
+               bar-split-view in AppShell (onder de document-tab-bar, boven
+               `main`) en de beslissing staat in de Wijzigingenbalk eronder.
+               Allebei via useAppChrome, net als de rest van de shell-chrome,
+               zodat geen van beide met de panes meescrollt. -->
 
           <!-- Feedback from "Verrijk deze wet" (see the pane toolbar below):
                same page-wide banner-in-container pattern as the review notice
