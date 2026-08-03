@@ -23,11 +23,15 @@ use regelrecht_corpus::source_map::{
 };
 use regelrecht_corpus::timing;
 use regelrecht_corpus::CorpusError;
+use regelrecht_github::GithubClient;
 
 use crate::accounts::AccountRecord;
 use crate::credentials::{self, TrajectCredentials};
 use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{ScenarioListEntry, TrajectCorpus, TrajectCorpusError};
+use crate::traject_index_diagnosis::{
+    classify_index_failure, index_failure_to_status, IndexFailureKind, TokenOrigin,
+};
 use crate::trajects::resolve_traject_ref;
 use crate::user_notes;
 
@@ -137,6 +141,11 @@ pub(crate) enum ReadScope {
 pub(crate) struct TrajectScope {
     traject: Arc<TrajectCorpus>,
     own_read_token: Result<Option<String>, (StatusCode, String)>,
+    /// The caller's editor account. Only used for logging on the
+    /// index-failure path: reading the logs back, an operator needs to know
+    /// *whose* access path broke, and an account id says that without
+    /// putting a name or e-mail address in the log.
+    account_id: Uuid,
 }
 
 impl TrajectScope {
@@ -208,6 +217,7 @@ impl ReadScope {
         ReadScope::Traject(TrajectScope {
             traject,
             own_read_token,
+            account_id,
         })
     }
 
@@ -237,7 +247,7 @@ impl ReadScope {
                 t.traject
                     .law_yaml_with_read_token(law_id, token)
                     .await
-                    .map_err(law_read_error(law_id))
+                    .map_err(law_read_error(t.traject.traject_id, law_id))
             }
             // The global corpus is fully loaded up front, so there's no lazy
             // fetch that could fail — a miss is always a genuine miss.
@@ -259,7 +269,12 @@ impl ReadScope {
                     .law_yaml_versions_with_read_token(law_id, token)
                     .await
                     .map_err(|e| {
-                        tracing::warn!(law_id = %law_id, error = %e, "failed to load law versions");
+                        tracing::warn!(
+                            traject = %t.traject.traject_id,
+                            law_id = %law_id,
+                            error = %e,
+                            "failed to load law versions"
+                        );
                         (
                             StatusCode::BAD_GATEWAY,
                             format!("Kon versies van wet '{law_id}' niet laden"),
@@ -290,12 +305,14 @@ impl ReadScope {
 }
 
 /// Map a law-body backend failure to the client-facing 502; the raw error
-/// is logged for operators.
+/// is logged for operators, tagged with the traject so it can be correlated
+/// with the rest of that traject's read path.
 fn law_read_error(
+    traject_id: Uuid,
     law_id: &str,
 ) -> impl FnOnce(regelrecht_corpus::error::CorpusError) -> (StatusCode, String) + '_ {
     move |e| {
-        tracing::warn!(law_id = %law_id, error = %e, "failed to load law body");
+        tracing::warn!(traject = %traject_id, law_id = %law_id, error = %e, "failed to load law body");
         (
             StatusCode::BAD_GATEWAY,
             format!("Kon wet '{law_id}' niet laden"),
@@ -397,32 +414,95 @@ async fn require_traject_scope(
 /// Criterion "luid falen": when the traject's writable-own source failed
 /// to index, the traject-scoped law index must refuse to serve instead of
 /// presenting a normal-looking list in which every law silently resolved
-/// from the central seed corpus. A missing/expired GitHub link is the one
-/// *actionable* cause, so that surfaces as the deferred 428 (the connect
-/// flow); any other scan failure maps to an explicit 502 carrying the
-/// scan error. `/sources` deliberately stays outside this gate — the
-/// per-source `index_error` there is how the failure is diagnosed.
-fn require_traject_index(scope: &ReadScope) -> Result<(), (StatusCode, String)> {
+/// from the central seed corpus. `/sources` deliberately stays outside
+/// this gate — the per-source `index_error` there is how the failure is
+/// diagnosed.
+///
+/// Refusing is not the same as being useless about it. A failed scan has
+/// half a dozen wildly different causes — a traject that was never
+/// initialised, a branch someone deleted, a repo that moved, a link that
+/// GitHub no longer accepts — each with its own remedy, and one blanket
+/// 502 tells the member none of them. So the failure path classifies the
+/// cause in-band, with the very token the scan used (see
+/// [`crate::traject_index_diagnosis`]), and answers with the matching
+/// status and a Dutch sentence that names both the problem and the fix.
+///
+/// The extra GitHub calls that costs land **only here**, on a request
+/// that has already failed; the happy path returns on the first line
+/// without touching the network.
+async fn require_traject_index(scope: &ReadScope) -> Result<(), (StatusCode, String)> {
     let ReadScope::Traject(t) = scope else {
         return Ok(());
     };
-    let Some(err) = t.traject.own_index_error() else {
+    let Some(scan_error) = t.traject.own_index_error() else {
         return Ok(());
     };
     // Deferred read-token outcome first: unlinked (or expired) in
-    // user-token mode → 428 into the koppel-flow.
-    t.own_read_token()?;
+    // user-token mode → 428 into the koppel-flow. That is the one
+    // situation the server can already name without asking GitHub.
+    let user_token = t.own_read_token()?;
+
+    // Same token the scan authenticated with, so the probe walks the same
+    // access path: the caller's personal one when there is one, otherwise
+    // the source's server-side token.
+    let server_token = if user_token.is_none() {
+        t.traject.own_server_token()
+    } else {
+        None
+    };
+    let (token, origin) = match (user_token, server_token.as_deref()) {
+        (Some(tok), _) => (Some(tok), TokenOrigin::User),
+        (None, Some(tok)) => (Some(tok), TokenOrigin::Server),
+        (None, None) => (None, TokenOrigin::Absent),
+    };
+
+    let (kind, status, message) = match t.traject.own_source_target() {
+        Some(target) => {
+            // Plain `new()`: it honours the same `GITHUB_API_BASE` seam the
+            // scan's own client did, so the probe reaches the same host that
+            // just refused it.
+            let kind = match GithubClient::new() {
+                Ok(client) => classify_index_failure(&client, &target, token).await,
+                // No client, nothing to probe with — an infrastructure
+                // fault of our own, not a diagnosis.
+                Err(e) => {
+                    tracing::error!(
+                        traject = %target.traject_id,
+                        error = %e,
+                        "failed to build GitHub client for traject index diagnosis"
+                    );
+                    IndexFailureKind::Unknown
+                }
+            };
+            let (status, message) = index_failure_to_status(kind, &target, origin);
+            (kind, status, message)
+        }
+        // A writable-own source that isn't GitHub-backed (local dev /
+        // preview stack): there is no repo to interrogate.
+        None => (
+            IndexFailureKind::Unknown,
+            StatusCode::BAD_GATEWAY,
+            "De bibliotheek van dit traject kon niet worden gelezen. Probeer het opnieuw en \
+             meld het als het blijft misgaan."
+                .to_string(),
+        ),
+    };
+
+    // The one place this path logs its outcome, with a fixed field set so an
+    // incident is findable both by traject and by kind. `error` carries the
+    // raw scan failure; `account` says whose access path broke without naming
+    // the person behind it.
     tracing::warn!(
-        error = %err,
+        traject = %t.traject.traject_id,
+        source_id = %t.traject.writable_own_source_id,
+        account = %t.account_id,
+        kind = %kind,
+        token_origin = %origin.as_str(),
+        status = status.as_u16(),
+        error = %scan_error,
         "traject library refused: writable-own source failed to index"
     );
-    Err((
-        StatusCode::BAD_GATEWAY,
-        format!(
-            "De bibliotheek van dit traject is niet beschikbaar: de traject-repo kon niet \
-             worden gescand ({err})"
-        ),
-    ))
+    Err((status, message))
 }
 
 /// GET /api/sources — list all registered corpus sources (global).
@@ -475,8 +555,9 @@ pub async fn list_traject_corpus_laws(
 ) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
     let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     // No silent central-only fallback: a traject whose own repo couldn't
-    // be scanned fails this listing loudly (428 koppel-flow / 502).
-    require_traject_index(&scope)?;
+    // be scanned fails this listing loudly, with the cause classified and
+    // the status that fits it.
+    require_traject_index(&scope).await?;
     Ok(Json(list_corpus_laws_in_scope(&scope, params)))
 }
 

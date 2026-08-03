@@ -40,11 +40,22 @@ use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::state::{BackendEntry, CorpusState};
+use crate::traject_index_diagnosis::OwnSourceTarget;
 
 /// Resolved corpus state for a single traject, plus per-source write
 /// routing.
 pub struct TrajectCorpus {
     pub corpus: CorpusState,
+    /// The traject this snapshot belongs to. Carried on the snapshot so
+    /// every log line written from a read path can be tied back to one
+    /// traject — a warning without it cannot be correlated with anything.
+    pub traject_id: Uuid,
+    /// The branch the writable-own source branches from (the
+    /// `gh_base_branch` column), when that source is GitHub-backed.
+    /// Kept outside the registry's [`Source`] because it is
+    /// traject-flow-specific; the diagnosis of a failed index scan needs
+    /// it to tell "the base branch is gone" apart from the other causes.
+    pub own_base_branch: Option<String>,
     /// Maps the `source_id` a law was loaded from to the `source_id`
     /// whose backend should receive the write. When the read source is
     /// itself writable (local source, or a GitHub source that doesn't
@@ -373,6 +384,57 @@ impl TrajectCorpus {
             .index_failures
             .get(&self.writable_own_source_id)
             .map(String::as_str)
+    }
+
+    /// The GitHub coordinates of the writable-own source, for the in-band
+    /// diagnosis of a failed index scan (see
+    /// [`crate::traject_index_diagnosis`]). `None` when that source isn't
+    /// GitHub-backed (a local dev/preview stack), which leaves nothing to
+    /// ask GitHub about.
+    ///
+    /// The branch comes straight from the stored source config rather than
+    /// being re-derived from the traject name, so the probe asks about the
+    /// branch the scan actually read.
+    pub fn own_source_target(&self) -> Option<OwnSourceTarget> {
+        let source = self
+            .corpus
+            .registry
+            .get_source(&self.writable_own_source_id)?;
+        let SourceType::GitHub { github } = &source.source_type else {
+            return None;
+        };
+        Some(OwnSourceTarget {
+            traject_id: self.traject_id,
+            source_id: self.writable_own_source_id.clone(),
+            owner: github.owner.clone(),
+            repo: github.repo.clone(),
+            branch: github.branch.clone(),
+            // Mirrors `build_traject_github_backend`'s default: a NULL
+            // `gh_base_branch` means "main".
+            base_branch: self
+                .own_base_branch
+                .clone()
+                .unwrap_or_else(|| "main".to_string()),
+        })
+    }
+
+    /// Re-resolve the server-side token configured for the writable-own
+    /// source, if any.
+    ///
+    /// Only for the error path: when a request carries no personal token
+    /// the failed scan authenticated with this one, so the diagnosis has to
+    /// use it too or it would probe a different access path than the one
+    /// that broke. Resolved on demand and dropped by the caller — no token
+    /// is ever stored on this shared, cross-user snapshot.
+    pub fn own_server_token(&self) -> Option<String> {
+        let source = self
+            .corpus
+            .registry
+            .get_source(&self.writable_own_source_id)?;
+        regelrecht_corpus::auth::CredentialResolver::new(self.corpus.auth_file.as_deref())
+            .resolve_source(source)
+            .ok()
+            .and_then(regelrecht_corpus::auth::TokenDecision::into_token)
     }
 
     /// Resolve the YAML content for a law in this traject, preferring the
@@ -1514,6 +1576,14 @@ async fn build_traject_corpus(
         .map(|r| r.source_id.clone())
         .ok_or(TrajectCorpusError::NoWritableOwn)?;
 
+    // Traject-flow-specific, so it never made it into `Source`: the branch
+    // the traject branch is cut from. Kept on the snapshot so a failed
+    // index scan can be diagnosed without a second DB round trip.
+    let own_base_branch = rows
+        .iter()
+        .find(|r| r.is_writable_own)
+        .and_then(|r| r.gh_base_branch.clone());
+
     // Build the read-source → write-target-source map. Every non-
     // writable_own source (local seed, GitHub seed, …) is routed to the
     // writable_own's backend so a save on any read-only seed-loaded law
@@ -1737,6 +1807,8 @@ async fn build_traject_corpus(
             auth_file: auth_file.map(|p| p.to_path_buf()),
             index_failures,
         },
+        traject_id,
+        own_base_branch,
         write_target_for_source,
         writable_own_source_id,
         overlay: Arc::new(RwLock::new(HashMap::new())),
@@ -1846,6 +1918,8 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
             // scan failures to report.
             index_failures: HashMap::new(),
         },
+        traject_id: old.traject_id,
+        own_base_branch: old.own_base_branch.clone(),
         write_target_for_source: old.write_target_for_source.clone(),
         writable_own_source_id: old.writable_own_source_id.clone(),
         overlay: old.overlay.clone(),
@@ -2149,6 +2223,8 @@ mod tests {
                 auth_file: None,
                 index_failures: HashMap::new(),
             },
+            traject_id: Uuid::nil(),
+            own_base_branch: None,
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
             overlay: Arc::new(RwLock::new(HashMap::new())),
@@ -2612,6 +2688,8 @@ mod tests {
                 auth_file: None,
                 index_failures: HashMap::new(),
             },
+            traject_id: Uuid::nil(),
+            own_base_branch: None,
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
             overlay: Arc::new(RwLock::new(HashMap::new())),
