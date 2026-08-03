@@ -736,6 +736,15 @@ struct WritableTarget {
     /// `MinBZK/regelrecht-corpus` for the default, `<owner>/<repo>` for
     /// user-supplied repos.
     display_name: String,
+    /// True when resolving this target minted the traject branch on
+    /// GitHub. Only the user-supplied-repo arm does that; the MinBZK
+    /// default leaves it `false` because its service-token backend
+    /// bootstraps its own branch in `ensure_ready`.
+    ///
+    /// The handler uses this to tell an operator about a branch that was
+    /// created but whose traject never made it into the database — see
+    /// the failure log in `create`.
+    minted_branch: bool,
 }
 
 /// Decide whether the create-request asks for the MinBZK default or a
@@ -780,6 +789,7 @@ async fn resolve_writable_target(
             path: Some(CENTRAL_WRITABLE_PATH.to_string()),
             auth_ref: CENTRAL_WRITABLE_AUTH_REF.to_string(),
             display_name: CENTRAL_WRITABLE_NAME.to_string(),
+            minted_branch: false,
         }),
         // All three filled → user-supplied repo path. Validate.
         (Some(owner), Some(repo), Some(base_branch)) => {
@@ -978,6 +988,7 @@ async fn resolve_writable_target(
                 path: repo_path,
                 auth_ref,
                 display_name: format!("{owner}/{repo}"),
+                minted_branch: true,
             })
         }
         // Partial → caller error, refuse rather than guess.
@@ -1086,105 +1097,130 @@ pub async fn create(
     let target =
         resolve_writable_target(&state, &req, account.id, &headers, &writable_branch).await?;
 
-    let pool = get_pool_msg(&state)?;
-    let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;
+    // Everything below is database work, and GitHub is not part of that
+    // transaction. If any of it fails after the branch was minted, the ref
+    // stays behind on the user's repo with no traject pointing at it — and a
+    // retry derives a fresh uuid-suffixed name rather than reusing the stray.
+    // Deleting someone else's ref from an error path is worse than leaving
+    // it, so make it findable instead: one error log with the exact
+    // coordinates. Grouping the DB work in a block puts that log on *every*
+    // failure path (begin, each insert, commit), not just the first one.
+    let persisted: Result<(), (StatusCode, String)> = async {
+        let pool = get_pool_msg(&state)?;
+        let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;
 
-    sqlx::query(
-        "INSERT INTO trajects (id, name, description, scope, created_by)
-         VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(traject_id)
-    .bind(name)
-    .bind(&req.description)
-    .bind(&req.scope)
-    .bind(account.id)
-    .execute(&mut *tx)
-    .await
-    .map_err(db_err_msg("insert traject"))?;
+        sqlx::query(
+            "INSERT INTO trajects (id, name, description, scope, created_by)
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(traject_id)
+        .bind(name)
+        .bind(&req.description)
+        .bind(&req.scope)
+        .bind(account.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err_msg("insert traject"))?;
 
-    sqlx::query(
-        "INSERT INTO traject_members (traject_id, account_id, role)
-         VALUES ($1, $2, 'owner')",
-    )
-    .bind(traject_id)
-    .bind(account.id)
-    .execute(&mut *tx)
-    .await
-    .map_err(db_err_msg("insert member"))?;
+        sqlx::query(
+            "INSERT INTO traject_members (traject_id, account_id, role)
+             VALUES ($1, $2, 'owner')",
+        )
+        .bind(traject_id)
+        .bind(account.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err_msg("insert member"))?;
 
-    // Seed federated read-config from the global registry. The global
-    // corpus read guard is dropped before the next await so we don't hold
-    // it across the database transaction.
-    let seeded: Vec<SeedSource> = {
-        let corpus = state.corpus.read().await;
-        corpus
-            .registry
-            .sources()
-            .iter()
-            .map(SeedSource::from_source)
-            .collect()
-    };
+        // Seed federated read-config from the global registry. The global
+        // corpus read guard is dropped before the next await so we don't hold
+        // it across the database transaction.
+        let seeded: Vec<SeedSource> = {
+            let corpus = state.corpus.read().await;
+            corpus
+                .registry
+                .sources()
+                .iter()
+                .map(SeedSource::from_source)
+                .collect()
+        };
 
-    for seed in seeded {
+        for seed in seeded {
+            sqlx::query(
+                "INSERT INTO traject_corpus_sources
+                 (traject_id, source_id, name, source_type,
+                  gh_owner, gh_repo, gh_branch, gh_path, gh_ref,
+                  local_path, priority, auth_ref, scopes, is_writable_own)
+                 VALUES ($1, $2, $3, $4::corpus_source_type,
+                         $5, $6, $7, $8, $9,
+                         $10, $11, $12, $13, FALSE)",
+            )
+            .bind(traject_id)
+            .bind(&seed.source_id)
+            .bind(&seed.name)
+            .bind(&seed.source_type)
+            .bind(seed.gh_owner)
+            .bind(seed.gh_repo)
+            .bind(seed.gh_branch)
+            .bind(seed.gh_path)
+            .bind(seed.gh_ref)
+            .bind(seed.local_path)
+            .bind(seed.priority as i32)
+            .bind(seed.auth_ref)
+            .bind(seed.scopes)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err_msg("seed traject source"))?;
+        }
+
+        // Writable-own source: the phase-1 MinBZK default or the user-supplied
+        // repo (already validated up-front for push access). `writable_branch` is
+        // the name derived at the top of this handler — for a user-supplied repo
+        // that branch now exists on GitHub, minted during the preflight. Auth
+        // flows through `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the `auth_ref`
+        // stored on this row.
+        let writable_source_id = format!("traject-own-{}", traject_id.simple());
         sqlx::query(
             "INSERT INTO traject_corpus_sources
              (traject_id, source_id, name, source_type,
-              gh_owner, gh_repo, gh_branch, gh_path, gh_ref,
-              local_path, priority, auth_ref, scopes, is_writable_own)
-             VALUES ($1, $2, $3, $4::corpus_source_type,
-                     $5, $6, $7, $8, $9,
-                     $10, $11, $12, $13, FALSE)",
+              gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path,
+              priority, auth_ref, is_writable_own)
+             VALUES ($1, $2, $3, 'github',
+                     $4, $5, $6, $7, $8,
+                     0, $9, TRUE)",
         )
         .bind(traject_id)
-        .bind(&seed.source_id)
-        .bind(&seed.name)
-        .bind(&seed.source_type)
-        .bind(seed.gh_owner)
-        .bind(seed.gh_repo)
-        .bind(seed.gh_branch)
-        .bind(seed.gh_path)
-        .bind(seed.gh_ref)
-        .bind(seed.local_path)
-        .bind(seed.priority as i32)
-        .bind(seed.auth_ref)
-        .bind(seed.scopes)
+        .bind(&writable_source_id)
+        .bind(&target.display_name)
+        .bind(&target.owner)
+        .bind(&target.repo)
+        .bind(&writable_branch)
+        .bind(&target.base_branch)
+        .bind(&target.path)
+        .bind(&target.auth_ref)
         .execute(&mut *tx)
         .await
-        .map_err(db_err_msg("seed traject source"))?;
+        .map_err(db_err_msg("insert writable source"))?;
+
+        tx.commit()
+            .await
+            .map_err(db_err_msg("commit traject create"))?;
+        Ok(())
     }
-
-    // Writable-own source: the phase-1 MinBZK default or the user-supplied
-    // repo (already validated up-front for push access). `writable_branch` is
-    // the name derived at the top of this handler — for a user-supplied repo
-    // that branch now exists on GitHub, minted during the preflight. Auth
-    // flows through `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the `auth_ref`
-    // stored on this row.
-    let writable_source_id = format!("traject-own-{}", traject_id.simple());
-    sqlx::query(
-        "INSERT INTO traject_corpus_sources
-         (traject_id, source_id, name, source_type,
-          gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path,
-          priority, auth_ref, is_writable_own)
-         VALUES ($1, $2, $3, 'github',
-                 $4, $5, $6, $7, $8,
-                 0, $9, TRUE)",
-    )
-    .bind(traject_id)
-    .bind(&writable_source_id)
-    .bind(&target.display_name)
-    .bind(&target.owner)
-    .bind(&target.repo)
-    .bind(&writable_branch)
-    .bind(&target.base_branch)
-    .bind(&target.path)
-    .bind(&target.auth_ref)
-    .execute(&mut *tx)
-    .await
-    .map_err(db_err_msg("insert writable source"))?;
-
-    tx.commit()
-        .await
-        .map_err(db_err_msg("commit traject create"))?;
+    .await;
+    if let Err(e) = persisted {
+        if target.minted_branch {
+            tracing::error!(
+                traject_id = %traject_id,
+                owner = %target.owner,
+                repo = %target.repo,
+                branch = %writable_branch,
+                "orphaned traject branch: it was created on GitHub but persisting \
+                 the traject failed, so nothing references it; remove it by hand"
+            );
+        }
+        return Err(e);
+    }
 
     state.trajects.invalidate(traject_id).await;
 
