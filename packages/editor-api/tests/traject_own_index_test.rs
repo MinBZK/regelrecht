@@ -12,9 +12,10 @@
 //!    unauthenticated Trees-API geeft 404, en hier faalt ook het
 //!    user-token (ongemockt trees-pad). Sinds de user-token-fallback op de
 //!    scan valt de bibliotheek dan niet langer stil terug op de seed: de
-//!    listing faalt luid (428 zonder gekoppeld token, 502 mét token dat
-//!    de repo alsnog niet kan lezen). `GET .../sources` blijft de diagnose
-//!    dragen: de writable-own toont `law_count: 0` mét een `index_error`.
+//!    listing faalt luid (428 zonder gekoppeld token; mét token dat de repo
+//!    alsnog niet kan lezen een geclassificeerde 404 die het repo-adres
+//!    noemt). `GET .../sources` blijft de diagnose dragen: de writable-own
+//!    toont `law_count: 0` mét een `index_error`.
 //!    (De volledige user-token-scanflow — succes via het token, heling na
 //!    een kapotte snapshot — staat in `traject_index_user_token_test.rs`.)
 //! 2. **Happy path van #952.** Zodra de scan de traject-repo wél kan lezen
@@ -349,7 +350,9 @@ async fn traject_index_shows_promoted_law_and_surfaces_failed_own_scans() {
 
     // …en een request mét gekoppeld token (dat deze repo alsnog niet kan
     // lezen — het trees-pad is ongemockt, dus ook met token 404) faalt
-    // expliciet met een 502 die de scan-fout draagt.
+    // luid én geclassificeerd: de diagnose vraagt de repo-lookup na met
+    // hetzelfde token, krijgt óók 404, en meldt dat de repo niet op dit
+    // adres staat.
     let err = list_traject_corpus_laws(
         State(state.clone()),
         Extension(account.clone()),
@@ -362,9 +365,14 @@ async fn traject_index_shows_promoted_law_and_surfaces_failed_own_scans() {
     .expect_err("scan-fout mét token → expliciete fout, geen stille fallback");
     assert_eq!(
         err.0,
-        axum::http::StatusCode::BAD_GATEWAY,
+        axum::http::StatusCode::NOT_FOUND,
         "got: {}: {}",
         err.0,
+        err.1
+    );
+    assert!(
+        err.1.contains(repo_a),
+        "de melding moet het adres noemen waar de repo niet (meer) staat, got: {}",
         err.1
     );
 

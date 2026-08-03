@@ -30,6 +30,7 @@ mod state;
 mod task_requests;
 mod tasks_api;
 mod traject_corpus;
+mod traject_index_diagnosis;
 mod trajects;
 mod user_notes;
 mod user_settings;

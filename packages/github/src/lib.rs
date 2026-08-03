@@ -35,6 +35,7 @@
 //! `std::sync::Mutex` so every method takes `&self`. The lock is never held
 //! across a `.await`.
 
+mod activity;
 mod archive;
 mod client;
 mod compare;
