@@ -579,3 +579,111 @@ body,
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* --- Comparison rig: view switcher + canvas prototypes ------------------- *
+ * Temporary chrome for the schema comparison (Map / Radiaal / Matrix next to
+ * the original view). Goes away with the rig; see ui/EVALUATIE.md.
+ */
+.arch-modes {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.arch-mode {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 11px;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.arch-mode:last-child {
+  border-right: none;
+}
+.arch-mode:hover {
+  color: var(--text);
+}
+.arch-mode--on {
+  background: var(--accent);
+  color: #fff;
+}
+.arch-toolbar__perf {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* The canvas stage the three prototypes draw on. */
+.arch-stage {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  overflow: hidden;
+}
+.arch-stage__canvas {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+.arch-stage__canvas.is-dragging {
+  cursor: grabbing;
+}
+.arch-stage__canvas.is-hovering {
+  cursor: pointer;
+}
+
+.arch-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  margin: 0;
+  max-width: 46ch;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  pointer-events: none;
+}
+
+.arch-hovercard {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.arch-hovercard__kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.arch-hovercard__deg {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Alles inklappen" floats over the reference view, since the shared toolbar
+   is now owned by the switcher. */
+.arch-flow-collapse {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 5;
+}

@@ -66,6 +66,40 @@ cargo run -p regelrecht-arch-extract -- serve      # terminal 1 (API on :7180)
 npm --prefix packages/arch-extract/ui run dev        # terminal 2 (UI on :7181)
 ```
 
+### Four views, one switch (temporary comparison rig)
+
+The explorer's toolbar currently has a **view switcher** with four entries. This
+is a deliberate, temporary state: the original view gave detail but no overview,
+and rather than guessing which schema technique fixes that, three candidates were
+built side by side on the full model so the choice could be made on what they
+actually look like.
+
+| view | what it is |
+|---|---|
+| **Map** | Blocks and lines placed by a real layout engine (dagre, `rankdir: LR`), so horizontal position is rank in the dependency order. Below the container level it runs in two stages: each container gets its own layout (a *district*), then the districts are laid out against each other. |
+| **Radiaal** | Every node on one ring, ordered by containment so each container owns a contiguous arc, with **hierarchical edge bundling** over the tree — relations that share a route bundle into a rope. |
+| **Matrix** | An adjacency matrix (DSM). Rows/columns start in containment order and are then reordered globally by iterated barycentre sorting, so clusters settle into blocks on the diagonal. |
+| **Huidig** | The original click-driven expand/collapse view on Vue Flow, kept purely as the reference to compare against. |
+
+The three prototypes have **no expand/collapse**: the detail level
+(`container` → `component` → `code`) follows the zoom factor and nothing else,
+cross-fading between two levels around each threshold. The thresholds are named
+constants in `ui/src/composables/useSemanticZoom.js`. They draw on a canvas
+rather than through Vue Flow, because 2422 DOM nodes do not stay responsive
+while you scroll and 2422 `fillRect` calls do.
+
+All four share the same rollup (`ui/src/lib/archRollup.js` — the edge-lifting
+described below) and the same edge-kind filters, so any difference you see
+between them is the schema technique and not a different graph. Each prototype's
+layout is a pure function of `(model, level)` with its own vitest coverage
+(`ui/src/layouts/`).
+
+**This rig is not the end state.** `ui/EVALUATIE.md` walks each prototype past
+the four questions the diagram has to answer — who is a hub, where do the
+connections go, is direction/layering readable, where are the cluster
+boundaries — with screenshots and timings, and ends in a recommendation. A
+follow-up develops the winner and removes the rest, including `Huidig`.
+
 ### Relations in the explorer (rolled-up edges)
 
 The model holds ~1500 relations over ~2400 nodes, but only a handful of nodes
@@ -410,6 +444,20 @@ aggregation logic in `useArchGraph.js` is a pure function of
 covers lifting to the nearest visible ancestor, internal relations becoming a
 counter, containment pairs being skipped, aggregation weight/pairs, refinement
 on expand, a disabled kind counting nowhere, and the reveal policy (including the
-one-level fallback above the limit) without a DOM. `just arch-test` runs both the
-Rust tests and `npm --prefix packages/arch-extract/ui test`, so `just check`
-gates them together.
+one-level fallback above the limit) without a DOM.
+
+The three prototype views are covered the same way, and deliberately by *one*
+shared suite (`ui/src/layouts/layouts.test.js`) that asserts the same properties
+for all three — that is what makes them comparable. Per prototype and per level:
+every unit of the level is placed, every enabled relation is accounted for as a
+line or an internal counter (the totals must add up to the model's edge count),
+no relation references a node outside the level, the geometry lands in the shared
+world box, and the layout is deterministic. The level itself is a pure function
+of the zoom factor (`ui/src/composables/useSemanticZoom.test.js`), and the
+pointer-anchored transform is pinned by
+`ui/src/composables/usePanZoom.test.js` — including the invariant that the world
+point under the cursor survives a level change.
+
+`just arch-test` runs both the Rust tests and
+`npm --prefix packages/arch-extract/ui test`, so `just check` gates them
+together.
