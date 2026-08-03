@@ -3,8 +3,8 @@
  * ArchCanvas — the canvas stage the three prototypes draw on.
  *
  * Why canvas and not Vue Flow / DOM: at the `code` level a prototype has to put
- * 2422 nodes and 1541 relations on screen and stay responsive while you scroll
- * (criterion 10). 2422 DOM nodes with transforms do not; a canvas redraw of the
+ * 2432 nodes and 1548 relations on screen and stay responsive while you scroll
+ * (criterion 10). 2432 DOM nodes with transforms do not; a canvas redraw of the
  * same scene is a couple of milliseconds. It also makes the cross-fade between
  * two levels (criterion 8) a matter of one `globalAlpha`, instead of animating
  * two DOM trees at once.

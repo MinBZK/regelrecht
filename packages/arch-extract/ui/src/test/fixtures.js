@@ -48,5 +48,36 @@ export function makeModel() {
   };
 }
 
+/**
+ * A model with enough units that fitting it into the shared world box shrinks
+ * the geometry hard — the regime the real model is in, and the one `makeModel`
+ * is far too small to reach.
+ *
+ * One container, `units` modules inside it, and one of them a hub that a tenth
+ * of the others point at. Used to check that a layout still tells the hub apart
+ * from a module with no relations *after* the fit.
+ */
+export function makeWideModel(units = 300) {
+  const nodes = [
+    { id: 'crate:w', kind: 'crate', level: 'container', lang: 'rust', name: 'w', path: 'x' },
+  ];
+  const edges = [];
+  for (let i = 0; i < units; i += 1) {
+    nodes.push({
+      id: `mod:w::m${i}`,
+      kind: 'module',
+      level: 'component',
+      lang: 'rust',
+      name: `m${i}`,
+      path: 'x',
+      parent: 'crate:w',
+    });
+  }
+  for (let i = 1; i <= Math.floor(units / 10); i += 1) {
+    edges.push({ from: `mod:w::m${i}`, to: 'mod:w::m0', kind: 'uses' });
+  }
+  return { schemaVersion: '1', nodes, edges };
+}
+
 /** Every relation kind the model produces. */
 export const ALL_KINDS = new Set(['depends-on', 'impl', 'uses']);

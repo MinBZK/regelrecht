@@ -85,8 +85,8 @@ The three prototypes have **no expand/collapse**: the detail level
 (`container` → `component` → `code`) follows the zoom factor and nothing else,
 cross-fading between two levels around each threshold. The thresholds are named
 constants in `ui/src/composables/useSemanticZoom.js`. They draw on a canvas
-rather than through Vue Flow, because 2422 DOM nodes do not stay responsive
-while you scroll and 2422 `fillRect` calls do.
+rather than through Vue Flow, because 2432 DOM nodes do not stay responsive
+while you scroll and 2432 `fillRect` calls do.
 
 All four share the same rollup (`ui/src/lib/archRollup.js` — the edge-lifting
 described below) and the same edge-kind filters, so any difference you see

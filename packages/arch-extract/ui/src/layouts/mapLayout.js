@@ -8,7 +8,7 @@
  * current view places by containment and therefore cannot show you that two
  * heavily-coupled types are neighbours.
  *
- * **Two stages below the container level.** A single flat dagre run over 823
+ * **Two stages below the container level.** A single flat dagre run over 827
  * components produces a correct but useless picture: the dependency graph is
  * shallow, so nearly everything lands in a handful of ranks and the drawing
  * becomes a ribbon hundreds of times taller than it is wide. So each container
@@ -35,6 +35,13 @@ export function nodeBoxSize(degree) {
   const g = Math.sqrt(Math.max(0, degree)) * BOX_GROWTH;
   return { w: BOX_MIN_W + g * 1.6, h: BOX_MIN_H + g * 0.55 };
 }
+
+/**
+ * How many times a relation-less block the busiest block may become. On the
+ * real model `nodeBoxSize` never asks for more than ~5×, so this only bites on
+ * a graph small enough that one node would otherwise fill the world box.
+ */
+const HUB_BOX_CEILING = 6;
 
 /** How far apart dagre keeps ranks / siblings, inside a district. */
 const INNER_SPACING = { ranksep: 70, nodesep: 18, edgesep: 6 };
@@ -67,19 +74,33 @@ export function layoutMap(model, level, opts = {}) {
   // the drawing outside the box the other prototypes also live in.
   const { scale } = fitToWorld([...nodes, ...edges.flatMap((e) => e.points)]);
 
-  // Box sizes shrink with the same factor, but never below what one node's
-  // share of the world box can carry — otherwise a zero-degree unit collapses
-  // into an invisible sliver and "everything is here" stops being true. The
-  // upper bound keeps a tiny graph from producing blocks that burst out of the
-  // world box.
+  // The fit factor alone leaves the boxes too small to see at the finer levels,
+  // so they are lifted back up until a relation-less unit is at least the floor
+  // below — otherwise it collapses into an invisible sliver and "everything is
+  // here" stops being true.
+  //
+  // The lift is **one factor shared by every box**, not a per-box minimum. A
+  // per-box minimum puts every box that falls short on exactly the same size,
+  // and at the `code` level that is *every* box: block size is the Map's only
+  // "who is a hub" answer (criterion 11), and it would be gone precisely where
+  // the model is busiest. One shared factor keeps the ratios from
+  // `nodeBoxSize()` intact, and it is also the factor dagre already reserved
+  // room by, so the hubs grow into space that is theirs.
   const pitch = WORLD_SIZE / Math.sqrt(Math.max(1, nodes.length));
-  const minW = Math.min(pitch * 0.42, WORLD_SIZE * 0.08);
-  const minH = Math.min(pitch * 0.12, WORLD_SIZE * 0.022);
-  const maxW = WORLD_SIZE * 0.16;
-  const maxH = WORLD_SIZE * 0.06;
+  const floorW = Math.min(pitch * 0.42, WORLD_SIZE * 0.05);
+  const floorH = Math.min(pitch * 0.12, WORLD_SIZE * 0.018);
+  const zero = nodeBoxSize(0);
+  const lift = Math.max(1, floorW / (zero.w * scale), floorH / (zero.h * scale));
+  // The ceiling is expressed against that same floor — no block is ever more
+  // than `HUB_BOX_CEILING` times a relation-less one — so it scales with the
+  // level instead of flattening the busy end. The second term is the backstop
+  // for a graph small enough that a single block would otherwise fill the
+  // world box.
+  const maxW = Math.min(floorW * HUB_BOX_CEILING, WORLD_SIZE * 0.2);
+  const maxH = Math.min(floorH * HUB_BOX_CEILING, WORLD_SIZE * 0.08);
   for (const n of nodes) {
-    n.w = Math.min(maxW, Math.max(n.w * scale, minW));
-    n.h = Math.min(maxH, Math.max(n.h * scale, minH));
+    n.w = Math.min(maxW, n.w * scale * lift);
+    n.h = Math.min(maxH, n.h * scale * lift);
   }
 
   return {

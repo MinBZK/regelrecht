@@ -16,12 +16,12 @@
  * What it deliberately does **not** show: direction. In a DSM ordered
  * *topologically*, everything below the diagonal is a back-edge and cycles jump
  * out. This one is ordered for **clustering** instead (barycentre), and the two
- * goals conflict — on the real model 571 of 1175 relations sit below the
- * diagonal at the component level, which is noise, not 571 cycles. Reading
+ * goals conflict — on the real model 565 of 1180 relations sit below the
+ * diagonal at the component level, which is noise, not 565 cycles. Reading
  * direction off this matrix would be wrong; see EVALUATIE.md.
  *
  * Only the ~1500 non-empty cells are drawn, never the n² grid, which is what
- * makes the `code` level (2422 × 2422 ≈ 5.9M cells) cost the same as the others.
+ * makes the `code` level (2432 × 2432 ≈ 5.9M cells) cost the same as the others.
  */
 import { ref, shallowRef } from 'vue';
 import ArchCanvas from './ArchCanvas.vue';
@@ -83,7 +83,7 @@ function drawLayout(ctx, env, layout, alpha) {
 
   // 3. Cells. Never smaller than a couple of screen pixels: a sub-pixel cell
   //    gets antialiased across two pixels at half the opacity each and the
-  //    whole matrix washes out. At 823 or 2422 rows that is the normal case.
+  //    whole matrix washes out. At 827 or 2432 rows that is the normal case.
   const size = Math.max(cell, 2.2 / env.scale);
   for (const c of layout.cells) {
     const inFocus = hovered ? c.row === hovered.row || c.col === hovered.row : true;

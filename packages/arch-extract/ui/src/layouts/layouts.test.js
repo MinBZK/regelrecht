@@ -12,14 +12,14 @@
  *    under the cursor still while the level changes.
  */
 import { describe, it, expect } from 'vitest';
-import { layoutMap } from './mapLayout.js';
+import { layoutMap, nodeBoxSize } from './mapLayout.js';
 import { layoutRadial } from './radialLayout.js';
 import { layoutMatrix } from './matrixLayout.js';
 import { buildScene } from './scene.js';
 import { buildIndex, unitsAtLevel } from '../lib/archIndex.js';
 import { WORLD_SIZE } from '../lib/normalize.js';
 import { levelForZoom, LEVEL_ZOOM_THRESHOLDS } from '../composables/useSemanticZoom.js';
-import { ALL_KINDS, makeModel } from '../test/fixtures.js';
+import { ALL_KINDS, makeModel, makeWideModel } from '../test/fixtures.js';
 
 const PROTOTYPES = [
   ['map', layoutMap],
@@ -141,6 +141,41 @@ describe('buildScene', () => {
   });
 });
 
+describe('map block size', () => {
+  // Block size is the Map's whole answer to "who is a hub" (criterion 11), so
+  // the size differences have to come out of the layout at the ratio
+  // `nodeBoxSize()` asked for — a hub must be readable as a relation *count*,
+  // not merely as "big".
+  const expectDegreeIsReadable = (nodes) => {
+    const byDegree = nodes.slice().sort((a, b) => a.degree - b.degree);
+    const quiet = byDegree[0];
+    const busiest = byDegree[byDegree.length - 1];
+
+    expect(busiest.degree).toBeGreaterThan(quiet.degree);
+    expect(busiest.w).toBeGreaterThan(quiet.w);
+    expect(busiest.h).toBeGreaterThan(quiet.h);
+    expect(busiest.w / quiet.w).toBeCloseTo(
+      nodeBoxSize(busiest.degree).w / nodeBoxSize(quiet.degree).w,
+      6,
+    );
+  };
+
+  it.each(['component', 'code'])('follows the degree at the %s level', (level) => {
+    expectDegreeIsReadable(layoutMap(makeModel(), level, { enabledKinds: ALL_KINDS }).nodes);
+  });
+
+  it('still follows the degree once the model is big enough to shrink the blocks', () => {
+    // The regression this guards: fitting a real-sized model into the world box
+    // makes every block smaller than it can be seen at, and lifting each block
+    // to a minimum *individually* then puts them all on that same minimum. The
+    // hub and a module with no relations at all come out identical, at the very
+    // level where the picture is busiest.
+    expectDegreeIsReadable(
+      layoutMap(makeWideModel(), 'component', { enabledKinds: ALL_KINDS }).nodes,
+    );
+  });
+});
+
 describe('matrix ordering', () => {
   it('puts connected units near each other on the diagonal', () => {
     const { order } = layoutMatrix(makeModel(), 'container', { enabledKinds: ALL_KINDS });
@@ -170,6 +205,20 @@ describe('radial bundling', () => {
       const to = byId.get(e.to);
       expect(Math.hypot(first.x - from.x, first.y - from.y)).toBeLessThan(1);
       expect(Math.hypot(last.x - to.x, last.y - to.y)).toBeLessThan(1);
+    }
+  });
+
+  it('keeps a relation to its own container near the rim, not through the centre', () => {
+    // E5 (T1 → crate:a) lifts to mod:a::m1 → crate:a at the component level:
+    // the target *is* the source's container, so the tree route meets at the
+    // container and the curve should hug the ring. A route that misses that
+    // meeting point dives through the middle, which on this prototype reads as
+    // "crosses a container boundary" — the opposite of what it is.
+    const result = layoutRadial(makeModel(), 'component', { enabledKinds: ALL_KINDS });
+    const edge = result.edges.find((e) => e.from === 'mod:a::m1' && e.to === 'crate:a');
+    const ringR = Math.hypot(result.nodes[0].x, result.nodes[0].y);
+    for (const p of edge.points) {
+      expect(Math.hypot(p.x, p.y)).toBeGreaterThan(ringR * 0.8);
     }
   });
 

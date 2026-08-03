@@ -85,8 +85,9 @@ export function withAlpha(color, alpha) {
 
 /**
  * A stable colour per container, so the same crate keeps the same hue in all
- * three prototypes. Derived from the container's own kind colour where there is
- * one, else spread over the hue circle by index.
+ * three prototypes. Spread over the hue circle by index rather than taken from
+ * the kind palette: containers have to be told apart from *each other*, and the
+ * kind colours only distinguish crate from app from binary.
  */
 export function containerColorFactory(containerIds) {
   const ids = [...containerIds].sort();

@@ -33,7 +33,7 @@ const CURVE_SAMPLES = 24;
 
 /**
  * Dot radius grows with the rolled-up degree, so hubs stand out on the ring —
- * but it is capped by the slot pitch, otherwise the 2422 dots of the `code`
+ * but it is capped by the slot pitch, otherwise the 2432 dots of the `code`
  * level merge into one fat sausage and nothing stands out at all.
  */
 export function dotRadius(degree, pitch = Infinity) {
@@ -144,26 +144,35 @@ export function layoutRadial(model, level, opts = {}) {
   };
 }
 
-/** The tree route source → lowest common ancestor → target, as control points. */
+/**
+ * The tree route source → lowest common ancestor → target, as control points.
+ *
+ * Both endpoints are searched *including themselves*: a relation from a unit to
+ * its own container meets the tree at the container, so it is the shortest
+ * route there is. Treating only the strict ancestors as candidates would leave
+ * it without a meeting point and send it through the centre of the ring —
+ * drawing the most local relation in the model exactly like the most global
+ * one, and breaking the reading rule the whole prototype rests on ("a rope
+ * diving toward the centre crosses a container boundary").
+ */
 function treeRoute(from, to, ancestorsOf) {
-  const up = ancestorsOf(from);
-  const downAll = ancestorsOf(to);
-  const upSet = new Set([from, ...up]);
-  let lcaIndex = downAll.findIndex((id) => upSet.has(id));
-  const lca = lcaIndex >= 0 ? downAll[lcaIndex] : null;
+  const upChain = [from, ...ancestorsOf(from)]; // source → root
+  const downChain = [to, ...ancestorsOf(to)]; // target → root
+  const upSet = new Set(upChain);
+  const lcaIndex = downChain.findIndex((id) => upSet.has(id));
+  const lca = lcaIndex >= 0 ? downChain[lcaIndex] : null;
 
-  const head = [from];
-  for (const id of up) {
+  const head = [];
+  for (const id of upChain) {
     head.push(id);
     if (id === lca) break;
   }
+  // Back down the target's chain, from just below the meeting point to the
+  // target itself.
   const tail = [];
-  for (const id of downAll) {
-    if (id === lca) break;
-    tail.push(id);
+  for (let i = (lcaIndex >= 0 ? lcaIndex : downChain.length) - 1; i >= 0; i -= 1) {
+    tail.push(downChain[i]);
   }
-  tail.reverse();
-  tail.push(to);
   // Two different roots (no common ancestor): route through the centre so the
   // curve still dips inward instead of cutting straight across the ring.
   return { path: [...head, ...tail], throughCentre: lca === null };
