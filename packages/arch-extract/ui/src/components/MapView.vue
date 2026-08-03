@@ -75,14 +75,21 @@ function drawLayout(ctx, env, layout, alpha, grow) {
     const dim = focus ? (focus.edges.has(i) ? 1 : 0.1) : 1;
     if (dim < 0.15 && alpha < 0.6) continue;
     const pts = e.points;
-    let visible = false;
+    // Cull on the line's bounding box, not on whether one of its points is in
+    // view: a cross-district relation is a single chord, so a line that runs
+    // clean across the viewport has both its endpoints outside it and would
+    // otherwise vanish exactly when you zoom in to look at it.
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
     for (const pt of pts) {
-      if (pt.x >= rect.minX && pt.x <= rect.maxX && pt.y >= rect.minY && pt.y <= rect.maxY) {
-        visible = true;
-        break;
-      }
+      if (pt.x < minX) minX = pt.x;
+      if (pt.y < minY) minY = pt.y;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.y > maxY) maxY = pt.y;
     }
-    if (!visible) continue;
+    if (maxX < rect.minX || minX > rect.maxX || maxY < rect.minY || minY > rect.maxY) continue;
     ctx.strokeStyle = withAlpha(edgeColor(e.kind), 0.42 * alpha * dim);
     ctx.lineWidth = (relationWidth(e.weight, 1.1) * (dim > 0.5 ? 1.6 : 1)) / env.scale;
     ctx.beginPath();
