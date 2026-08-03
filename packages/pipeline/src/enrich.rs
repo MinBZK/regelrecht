@@ -3567,11 +3567,21 @@ fn copy_tree<'a>(
 /// # Waarom dit niets kan verslechteren
 ///
 /// De wet is hier al door elke poort gegaan, dus alles wat deze pass toevoegt
-/// is achteruitgang. Daarom telt de pass zichzelf na: het aantal
-/// deterministische bevindingen vóór en ná de schrijfactie. Blijft dat gelijk
-/// of loopt het op, of wordt het bestand onleesbaar, dan gaat de tekst terug
-/// naar wat er stond. Het is een telling en geen bedoeling: een pass die
-/// niets goedmaakt, verdwijnt.
+/// is achteruitgang. Daarom meet de pass zichzelf na, en beide helften doen
+/// dat: twee tellingen vóór en ná de schrijfactie, de schemafouten en de
+/// deterministische bevindingen. Het is een meting en geen bedoeling: een pass
+/// die niets goedmaakt, verdwijnt. Zie [`Rewrite`] voor de twee drempels.
+///
+/// De drempels verschillen omdat de opdrachten verschillen. De
+/// deterministische helft schrijft alleen bindingen waarvan de naam woordelijk
+/// klopt, dus die moet iets verbeteren en niets verslechteren; gelijk op beide
+/// tellingen gaat terug. De agent-helft krijgt de aanwijzingen die de eerste
+/// heeft laten liggen, en of die goed beantwoord zijn valt uit geen van beide
+/// tellingen af te lezen: een correct beantwoorde aanwijzing hoeft geen
+/// bevinding weg te nemen. Daar is de regel daarom "niets slechter". Loopt een
+/// telling op of wordt het bestand onleesbaar, dan gaat de tekst terug naar wat
+/// er vóór de agent stond. Zonder die terugdraaiing was dit de enige schrijver
+/// in de hele keten zonder net, en de laatste bovendien.
 async fn run_closing_reconcile(
     yaml_abs: &Path,
     corpus_root: &Path,
@@ -3587,20 +3597,15 @@ async fn run_closing_reconcile(
     let plan = crate::enrich_v2::reconcile::plan(&doc);
 
     if !plan.links.is_empty() {
-        let findings_before = crate::enrich_v2::checks::run(&before_text, Some(corpus_root))
-            .findings
-            .len();
         let (after_text, written) = crate::enrich_v2::reconcile::apply(&before_text, &plan.links);
-        let after = crate::enrich_v2::checks::run(&after_text, Some(corpus_root));
-        let findings_after = after.findings.len();
-        let readable = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&after_text).is_ok();
-        if readable && after.schema.is_empty() && findings_after <= findings_before {
+        let rewrite = Rewrite::measure(&before_text, &after_text, corpus_root);
+        if rewrite.is_progress() {
             tokio::fs::write(yaml_abs, &after_text).await?;
             tracing::info!(
                 law = %yaml_abs.display(),
                 bound = written.len(),
-                findings_before,
-                findings_after,
+                findings_before = rewrite.findings_before,
+                findings_after = rewrite.findings_after,
                 links = %written
                     .iter()
                     .map(crate::enrich_v2::reconcile::Link::describe)
@@ -3612,10 +3617,11 @@ async fn run_closing_reconcile(
             tracing::warn!(
                 law = %yaml_abs.display(),
                 planned = plan.links.len(),
-                findings_before,
-                findings_after,
-                readable,
-                schema_errors = after.schema.len(),
+                findings_before = rewrite.findings_before,
+                findings_after = rewrite.findings_after,
+                readable = rewrite.readable,
+                schema_before = rewrite.schema_before,
+                schema_after = rewrite.schema_after,
                 "closing pass reverted: it did not improve the count"
             );
         }
@@ -3624,6 +3630,7 @@ async fn run_closing_reconcile(
     // The leads go to an agent only when there are any; the gate evaluates
     // them again itself, so a lead the deterministic write just resolved
     // never reaches a prompt.
+    let before_agent = tokio::fs::read_to_string(yaml_abs).await?;
     let progress = run_feedback_rounds(
         Gate::Reconcile,
         yaml_abs,
@@ -3634,7 +3641,114 @@ async fn run_closing_reconcile(
         runner,
     )
     .await?;
+    revert_agent_half_if_worse(yaml_abs, corpus_root, &before_agent).await?;
     Ok(vec![progress])
+}
+
+/// What one rewrite of a whole law did to the deterministic measurements.
+///
+/// Both halves of the closing pass decide on the same three numbers, and both
+/// used to compute them in place. Naming them makes the decision itself a
+/// thing that can be handed a before and an after and asked what it would do,
+/// which is the only way the refusing branch gets covered: the accepting
+/// branch is easy to reach through the real planner and the refusing one is
+/// not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Rewrite {
+    findings_before: usize,
+    findings_after: usize,
+    schema_before: usize,
+    schema_after: usize,
+    readable: bool,
+}
+
+impl Rewrite {
+    fn measure(before: &str, after: &str, corpus_root: &Path) -> Self {
+        let report_before = crate::enrich_v2::checks::run(before, Some(corpus_root));
+        let report_after = crate::enrich_v2::checks::run(after, Some(corpus_root));
+        Self {
+            findings_before: report_before.findings.len(),
+            findings_after: report_after.findings.len(),
+            schema_before: report_before.schema.len(),
+            schema_after: report_after.schema.len(),
+            readable: serde_yaml_ng::from_str::<serde_yaml_ng::Value>(after).is_ok(),
+        }
+    }
+
+    /// Nothing the pass measures got worse.
+    ///
+    /// `readable` is asked separately and not read off `schema_after`, because
+    /// an unreadable file is reported as exactly one schema error — the parse
+    /// diagnosis — and on a law that already carried three that would count as
+    /// an improvement.
+    fn is_not_worse(self) -> bool {
+        self.readable
+            && self.schema_after <= self.schema_before
+            && self.findings_after <= self.findings_before
+    }
+
+    /// The threshold of the deterministic half: nothing worse, and at least
+    /// one of the two measurements better.
+    ///
+    /// Equal on both is a refusal, and not out of strictness. An equal count
+    /// is not an equal set — one finding that disappears beside one that
+    /// appears counts the same — so a write that traded one defect for another
+    /// would go through under the log line saying it connected what already
+    /// existed.
+    ///
+    /// The schema count is in the rule because that is where this half's work
+    /// actually lands. An input without `source` is a schema error and not a
+    /// checks finding, so binding it repairs the schema while the finding
+    /// count stands still. Measured on the finding count alone the pass never
+    /// improves anything and would refuse its own only effect — which is what
+    /// a rule of "the count has to fall" does here, and what the fixture in
+    /// [`tests::the_closing_pass_binds_what_the_window_could_not_see`] shows:
+    /// zero findings before and after, one schema error repaired.
+    fn is_progress(self) -> bool {
+        self.is_not_worse()
+            && (self.findings_after < self.findings_before
+                || self.schema_after < self.schema_before)
+    }
+}
+
+/// Put the law back the way the agent found it when its edit made things
+/// worse.
+///
+/// [`run_feedback_rounds`] is a stopping rule and not a rollback:
+/// [`RoundStop::NoDecrease`] ends the loop and leaves standing whatever the
+/// agent wrote. For every other gate that is survivable, because a hard schema
+/// gate runs after them over the same file. This gate is the last writer of
+/// the run, so what it leaves is what gets committed, and the guarantee
+/// RFC-033 states over "de pass" has to hold over this half too.
+///
+/// Worse means one of three things, in the order they cost: the file no longer
+/// parses, the schema refuses it, or the deterministic checks have more to say
+/// than before. Equal is not worse here — see the doc of
+/// [`run_closing_reconcile`] for why the two halves differ on that.
+async fn revert_agent_half_if_worse(
+    yaml_abs: &Path,
+    corpus_root: &Path,
+    before_agent: &str,
+) -> Result<()> {
+    let after_text = tokio::fs::read_to_string(yaml_abs).await?;
+    if after_text == before_agent {
+        return Ok(());
+    }
+    let rewrite = Rewrite::measure(before_agent, &after_text, corpus_root);
+    if rewrite.is_not_worse() {
+        return Ok(());
+    }
+    tokio::fs::write(yaml_abs, before_agent).await?;
+    tracing::warn!(
+        law = %yaml_abs.display(),
+        findings_before = rewrite.findings_before,
+        findings_after = rewrite.findings_after,
+        readable = rewrite.readable,
+        schema_before = rewrite.schema_before,
+        schema_after = rewrite.schema_after,
+        "closing pass reverted the agent's edit: it left the law worse than it found it"
+    );
+    Ok(())
 }
 
 /// Markings recorded in the law as it stands, or `None` when the file is not
@@ -3754,15 +3868,25 @@ async fn evaluate_gate(
         Gate::Schema => reading.answerable = crate::enrich_v2::checks::schema_errors(&raw),
         // The closing gate reads the whole law and never the window: the
         // whole point is that it looks at what every earlier window left.
-        Gate::Reconcile => {
-            if let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw) {
+        //
+        // Parsing comes first here too, and when it fails it comes alone. An
+        // empty finding list is what this loop reads as a clean gate, so a
+        // file the agent made unreadable used to report itself as "nothing
+        // left to do" — the same silence [`crate::enrich_v2::checks::run`] was
+        // given a `parses` finding for. The other three arms of this match
+        // already say it out loud; this one was the exception.
+        Gate::Reconcile => match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw) {
+            Ok(doc) => {
                 reading.answerable = crate::enrich_v2::reconcile::plan(&doc)
                     .leads
                     .iter()
                     .map(crate::enrich_v2::reconcile::Lead::describe)
                     .collect();
             }
-        }
+            Err(e) => {
+                reading.answerable = vec![crate::enrich_v2::checks::parse_diagnosis(&raw, &e)];
+            }
+        },
         Gate::Marking | Gate::Checks => {
             for finding in crate::enrich_v2::checks::run_with_companions(
                 &raw,
@@ -4109,15 +4233,40 @@ pub async fn execute_enrich_with_runner(
                 .await?,
             );
         }
-        // The hard gate again, last, because the two soft gates write.
-        //
-        // Round 5 measured the cost of not doing this. The schema gate passed,
-        // the marking round then added an `overrides` entry without its `law`
-        // key, and nothing looked at the file again until `load_law` below,
-        // by which time the session was gone. The one agent that could have
-        // fixed it in a sentence — the one that had just written it, with the
-        // article still in front of it — was never asked. On a clean file this
-        // costs one evaluation and no agent call at all.
+    }
+
+    // The closing pass, once the walk has reached the end of the document.
+    //
+    // Not conditional on this run having changed anything: what it looks for
+    // was left by the windows before it, and a last window that added nothing
+    // does not make those earlier bindings any less connectable.
+    let digest_before_closing = file_digest(&yaml_abs).await;
+    if (law_complete || !config.steps.window) && config.steps.reconcile {
+        feedback
+            .extend(run_closing_reconcile(&yaml_abs, repo_path, payload, config, runner).await?);
+    }
+    let closing_pass_wrote = file_digest(&yaml_abs).await != digest_before_closing;
+
+    // The hard gate again, after every writer of the run and not just after
+    // the two soft gates.
+    //
+    // Round 5 measured the cost of not doing this. The schema gate passed,
+    // the marking round then added an `overrides` entry without its `law`
+    // key, and nothing looked at the file again until `load_law` below,
+    // by which time the session was gone. The one agent that could have
+    // fixed it in a sentence — the one that had just written it, with the
+    // article still in front of it — was never asked. On a clean file this
+    // costs one evaluation and no agent call at all.
+    //
+    // That repair used to sit one writer too early: it ran before the closing
+    // pass, so the reconcile agent — the last hand on the file — wrote behind
+    // the last schema gate. What stood after it was `load_law`, and the model
+    // is on documented points wider than the schema (see `KNOWN_GAPS`): a
+    // marking without `resolved_by` is refused by the schema and accepted by
+    // the model, so a schema-invalid law could be committed off a run that
+    // reported success. The gate belongs after the last writer, which is what
+    // it now is.
+    if file_changed_this_run || closing_pass_wrote {
         let mut closing = run_feedback_rounds(
             Gate::Schema,
             &yaml_abs,
@@ -4132,16 +4281,6 @@ pub async fn execute_enrich_with_runner(
         // which of the two found what.
         closing.gate = "schema-final".to_string();
         feedback.push(closing);
-    }
-
-    // The closing pass, once the walk has reached the end of the document.
-    //
-    // Not conditional on this run having changed anything: what it looks for
-    // was left by the windows before it, and a last window that added nothing
-    // does not make those earlier bindings any less connectable.
-    if (law_complete || !config.steps.window) && config.steps.reconcile {
-        feedback
-            .extend(run_closing_reconcile(&yaml_abs, repo_path, payload, config, runner).await?);
     }
 
     // Count articles with machine_readable after enrichment.
@@ -5236,7 +5375,7 @@ articles:
     /// A law in the state a chunked walk leaves behind: entry 1 reads
     /// `standaardpremie` as a bare input because entry 2, which produces it,
     /// had no model yet when entry 1 was written.
-    const TOO_EARLY_LAW: &str = r"---
+    pub(super) const TOO_EARLY_LAW: &str = r"---
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
@@ -5404,6 +5543,238 @@ articles:
         let after = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(after, law, "bij twijfel blijft het bestand zoals het stond");
         assert_eq!(progress[0].findings_initial, 1, "de agent krijgt de vraag");
+    }
+
+    /// The threshold of the deterministic half, on the branch the planner
+    /// cannot be talked into producing.
+    ///
+    /// The refusing branch had no coverage at all: the test named after it
+    /// hands the pass a plan without links, so `if !plan.links.is_empty()`
+    /// is false and the whole counting block is skipped. This measures the
+    /// decision itself, over two real laws.
+    #[test]
+    fn de_deterministische_helft_schrijft_niet_als_er_niets_verbetert() {
+        let root = tempfile::tempdir().unwrap();
+        // The same law twice: nothing got worse and nothing got better, which
+        // is the case the pass used to write on.
+        let equal = Rewrite::measure(TOO_EARLY_LAW, TOO_EARLY_LAW, root.path());
+        assert_eq!(equal.findings_before, equal.findings_after);
+        assert_eq!(equal.schema_before, equal.schema_after);
+        assert!(
+            !equal.is_progress(),
+            "gelijk is geen vooruitgang: een verdwenen plus een nieuwe \
+             bevinding telt ook gelijk"
+        );
+        assert!(
+            equal.is_not_worse(),
+            "voor de agent-helft is gelijk wél goed genoeg"
+        );
+
+        // One finding traded for another: equal on both counts, so refused,
+        // and this is the case a count alone cannot tell from a clean run.
+        let swap = Rewrite {
+            findings_before: 3,
+            findings_after: 3,
+            schema_before: 0,
+            schema_after: 0,
+            readable: true,
+        };
+        assert!(!swap.is_progress());
+
+        // Both accepting sides, so the guard is not simply closed: a finding
+        // fewer, or a schema error repaired while the findings stand still —
+        // which is what binding an input without `source` actually does.
+        assert!(Rewrite {
+            findings_after: 2,
+            ..swap
+        }
+        .is_progress());
+        assert!(Rewrite {
+            schema_before: 1,
+            ..swap
+        }
+        .is_progress());
+    }
+
+    /// Whatever the counts say, a law the parser cannot read never replaces
+    /// the one that stood — and it may not pass as an improvement either,
+    /// which it would if unreadability were read off the schema count.
+    #[test]
+    fn geen_van_beide_helften_schrijft_een_onleesbare_wet_weg() {
+        let base = Rewrite {
+            findings_before: 5,
+            findings_after: 0,
+            schema_before: 3,
+            schema_after: 0,
+            readable: true,
+        };
+        assert!(base.is_progress() && base.is_not_worse());
+        let broken_schema = Rewrite {
+            schema_before: 0,
+            schema_after: 1,
+            ..base
+        };
+        assert!(!broken_schema.is_progress() && !broken_schema.is_not_worse());
+        let unreadable = Rewrite {
+            readable: false,
+            schema_after: 1,
+            ..base
+        };
+        assert!(!unreadable.is_progress() && !unreadable.is_not_worse());
+    }
+
+    /// Answers every feedback round by writing a marking without
+    /// `resolved_by`: schema v0.6.0 requires the field and the law model does
+    /// not, so this is exactly the edit that used to reach the commit.
+    struct SchemaBreakingRunner;
+
+    #[async_trait::async_trait]
+    impl LlmRunner for SchemaBreakingRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let text = tokio::fs::read_to_string(yaml_abs).await?;
+            let broken = text.replace(
+                "    machine_readable:\n      endpoint: hoogte\n",
+                "    machine_readable:\n      endpoint: hoogte\n      markings:\n        \
+                 - about: de standaardpremie\n          reason: het model kent hier geen vorm voor\n          \
+                 resolution: model\n          target: []\n          legal_text_excerpt: de standaardpremie\n",
+            );
+            assert_ne!(broken, text, "de testrunner moet iets veranderen");
+            tokio::fs::write(yaml_abs, broken).await?;
+            Ok(())
+        }
+    }
+
+    /// The agent half had no rollback at all: `run_feedback_rounds` stops and
+    /// leaves standing whatever was written. This is the last writer of the
+    /// run, so what it leaves is what gets committed.
+    #[tokio::test]
+    async fn de_afrondende_pass_draait_een_agent_terug_die_het_schema_breekt() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // Two producers of `standaardpremie`, so the plan holds a lead, no
+        // link, and the agent is asked.
+        let second = TOO_EARLY_LAW
+            .split("  - number: '2'\n")
+            .nth(1)
+            .unwrap()
+            .to_string();
+        let law = format!(
+            "{TOO_EARLY_LAW}  - number: '3'\n{}",
+            second
+                .replace("article: '2'", "article: '3'")
+                .replace("#Artikel2", "#Artikel3")
+        );
+        tokio::fs::write(&path, &law).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        run_closing_reconcile(&path, dir.path(), &payload, &config, &SchemaBreakingRunner)
+            .await
+            .unwrap();
+
+        let after = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(
+            after, law,
+            "de agent-helft van de afrondende pass moet terugdraaien wat zij verslechtert"
+        );
+        assert!(
+            !after.contains("markings:"),
+            "de markering zonder resolved_by — die het schema afwijst en het \
+             model accepteert — staat niet in het bestand dat gecommit wordt"
+        );
+    }
+
+    /// Answers a round with an edit that costs nothing: a comment line.
+    struct HarmlessRunner;
+
+    #[async_trait::async_trait]
+    impl LlmRunner for HarmlessRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let text = tokio::fs::read_to_string(yaml_abs).await?;
+            tokio::fs::write(yaml_abs, format!("{text}# nagelezen\n")).await?;
+            Ok(())
+        }
+    }
+
+    /// The other direction of the same guard: an edit that leaves the counts
+    /// where they were stands. A rollback that fires on everything would
+    /// silently turn the agent half off.
+    #[tokio::test]
+    async fn de_afrondende_pass_laat_een_agent_staan_die_niets_verslechtert() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        let second = TOO_EARLY_LAW
+            .split("  - number: '2'\n")
+            .nth(1)
+            .unwrap()
+            .to_string();
+        let law = format!(
+            "{TOO_EARLY_LAW}  - number: '3'\n{}",
+            second
+                .replace("article: '2'", "article: '3'")
+                .replace("#Artikel2", "#Artikel3")
+        );
+        tokio::fs::write(&path, &law).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        run_closing_reconcile(&path, dir.path(), &payload, &config, &HarmlessRunner)
+            .await
+            .unwrap();
+
+        let after = tokio::fs::read_to_string(&path).await.unwrap();
+        assert!(
+            after.contains("# nagelezen"),
+            "wat niets verslechtert blijft staan"
+        );
+    }
+
+    /// A file the agent made unreadable used to report itself as a clean gate:
+    /// `Gate::Reconcile` was the one arm of the match that swallowed the parse
+    /// error, and an empty finding list is what the round loop reads as
+    /// "nothing left to do".
+    #[tokio::test]
+    async fn de_reconcile_poort_meldt_een_onleesbaar_bestand_in_plaats_van_te_zwijgen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("2025-01-01.yaml");
+        tokio::fs::write(
+            &path,
+            "articles:\n  - number: '1'\n    explanation: Eerste lid: de wet.\n",
+        )
+        .await
+        .unwrap();
+
+        let reading = evaluate_gate(Gate::Reconcile, &path, dir.path(), None)
+            .await
+            .unwrap();
+        assert_eq!(reading.answerable.len(), 1, "{:?}", reading.answerable);
+        assert!(
+            reading.answerable[0].contains("YAML parse error"),
+            "de poort noemt de parsefout: {}",
+            reading.answerable[0]
+        );
     }
 
     // ---- feedback rounds ------------------------------------------------
@@ -7797,6 +8168,17 @@ articles:
         assert!(result.law_complete);
         assert_eq!(result.enrich_cursor, 4);
         assert_eq!(result.articles_with_machine_readable, 4);
+
+        // The last window brings the closing pass with it, and the hard gate
+        // has to come after it. It used to come before: the reconcile agent
+        // then wrote behind the last schema gate, with only `load_law` left,
+        // and the model is on documented points wider than the schema.
+        let gates: Vec<&str> = result.feedback.iter().map(|g| g.gate.as_str()).collect();
+        assert_eq!(
+            gates,
+            vec!["schema", "checks", "marking", "reconcile", "schema-final"],
+            "de harde poort staat achter elke schrijver, ook achter de afrondende pass"
+        );
 
         let calls = runner.calls.lock().unwrap();
         assert_eq!(
