@@ -15,7 +15,7 @@ use serde::Deserialize;
 use crate::client::GithubClient;
 use crate::error::{GithubError, Result};
 
-/// The one field of an activity entry we care about. GitHub also returns
+/// The two fields of an activity entry we care about. GitHub also returns
 /// the actor, the before/after shas and a timestamp — deliberately not
 /// deserialised: the actor is a person, and this crate's callers log the
 /// classification, not who caused it.
@@ -23,6 +23,12 @@ use crate::error::{GithubError, Result};
 struct ActivityEntry {
     #[serde(default)]
     activity_type: String,
+    /// The full ref the entry is about (`refs/heads/…`). Absent on a host
+    /// that does not send it, which then matches nothing — the safe
+    /// direction: a missed deletion degrades to "never created", whereas a
+    /// wrongly claimed one warns about work loss that never happened.
+    #[serde(rename = "ref", default)]
+    git_ref: String,
 }
 
 /// The `activity_type` value that marks a branch deletion.
@@ -48,6 +54,7 @@ impl GithubClient {
         branch: &str,
         token: Option<&str>,
     ) -> Result<bool> {
+        let wanted_ref = format!("refs/heads/{branch}");
         // The branch is percent-encoded, so the `/` in a `traject/<slug>`
         // name reaches GitHub as part of the ref rather than splitting the
         // query. One entry is enough: the question is "any deletion at all".
@@ -55,7 +62,7 @@ impl GithubClient {
             "{}/repos/{}/activity?ref={}&activity_type={}&per_page=1",
             self.api_base,
             repo,
-            crate::repo_access::percent_encode_path_segment(&format!("refs/heads/{branch}")),
+            crate::repo_access::percent_encode_path_segment(&wanted_ref),
             BRANCH_DELETION,
         );
         let headers = self.default_headers(token)?;
@@ -83,10 +90,13 @@ impl GithubClient {
             .json()
             .await
             .map_err(|e| GithubError::Decode(format!("parse activity response: {e}")))?;
-        // Filter rather than trust the server-side `activity_type` filter:
-        // an enterprise host that ignores the parameter would otherwise turn
-        // "this branch was pushed to" into "this branch was deleted".
-        Ok(entries.iter().any(|e| e.activity_type == BRANCH_DELETION))
+        // Filter rather than trust the server-side `activity_type` and `ref`
+        // filters: a host that ignores either parameter would otherwise turn
+        // "this branch was pushed to" — or "some other branch was deleted" —
+        // into "this branch was deleted".
+        Ok(entries
+            .iter()
+            .any(|e| e.activity_type == BRANCH_DELETION && e.git_ref == wanted_ref))
     }
 }
 
@@ -153,6 +163,27 @@ mod tests {
 
         assert!(!client_for(&server)
             .branch_deletion_recorded("acme/foo", "main", Some("t"))
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_deletion_of_another_branch_is_not_ours() {
+        // Same defence as the `activity_type` filter, and this one matters
+        // more: a host that ignores `ref` would answer with whatever branch
+        // was deleted last, and the caller would tell a member their work
+        // may be lost over someone else's branch.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/foo/activity"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "activity_type": "branch_deletion", "ref": "refs/heads/een-andere-branch" }
+            ])))
+            .mount(&server)
+            .await;
+
+        assert!(!client_for(&server)
+            .branch_deletion_recorded("acme/foo", "traject/tarief-1a2b", Some("t"))
             .await
             .unwrap());
     }

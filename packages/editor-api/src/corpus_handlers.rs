@@ -1797,7 +1797,11 @@ async fn require_traject_corpus_from_ref_with_scan_token(
         .get(SESSION_KEY_SUB)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "session read sub in require_traject_corpus_from_ref");
+            tracing::error!(
+                traject = %traject_id,
+                error = %e,
+                "session read sub in require_traject_corpus_from_ref"
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "session read failed".to_string(),
@@ -1819,7 +1823,7 @@ async fn require_traject_corpus_from_ref_with_scan_token(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "membership re-check query failed");
+        tracing::error!(traject = %traject_id, error = %e, "membership re-check query failed");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "membership check failed".to_string(),
@@ -1840,10 +1844,13 @@ async fn require_traject_corpus_from_ref_with_scan_token(
         .trajects
         .get_or_build(pool, traject_id, auth_file, own_scan_token)
         .await
-        .map_err(traject_corpus_error)
+        .map_err(|e| traject_corpus_error(traject_id, e))
 }
 
-fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
+/// `traject_id` is carried in purely so the one log line here names the
+/// traject: every warning on this read path has to be correlatable with the
+/// rest of that traject's trail.
+fn traject_corpus_error(traject_id: Uuid, e: TrajectCorpusError) -> (StatusCode, String) {
     match e {
         TrajectCorpusError::NotFound => (
             StatusCode::NOT_FOUND,
@@ -1854,7 +1861,7 @@ fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
             "Traject heeft geen eigen schrijfbare source".to_string(),
         ),
         other => {
-            tracing::error!(error = %other, "traject corpus build failed");
+            tracing::error!(traject = %traject_id, error = %other, "traject corpus build failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Traject corpus init failed".to_string(),

@@ -100,7 +100,12 @@ async fn mock_trajectbranch(server: &MockServer, status: u16) {
 /// `GET /repos/{owner}/{repo}/activity` — het verwijderlogboek.
 async fn mock_activity(server: &MockServer, deletions: usize) {
     let body: Vec<serde_json::Value> = (0..deletions)
-        .map(|_| serde_json::json!({ "activity_type": "branch_deletion" }))
+        .map(|_| {
+            serde_json::json!({
+                "activity_type": "branch_deletion",
+                "ref": format!("refs/heads/{BRANCH}"),
+            })
+        })
         .collect();
     Mock::given(method("GET"))
         .and(path(format!("/repos/{OWNER}/{REPO}/activity")))
@@ -194,16 +199,16 @@ async fn verdwenen_basisbranch_noemt_de_basisbranch() {
     assert!(melding.contains(BASE), "{melding}");
 }
 
-/// Situatie 5: GitHub weigert het token. Met het eigen token van de
-/// gebruiker is de koppel-flow (428) het antwoord — dat is de enige
-/// situatie op dit pad die 428 mag geven. Hetzelfde oordeel over het token
-/// van de beheerder stuurt de gebruiker níet die flow in: daar valt voor
-/// hem niets te koppelen.
+/// Situatie 5: GitHub weigert het token. Een ingetrokken token wordt op
+/// élke call geweigerd — vandaar de 401 op de hele mock. Met het eigen
+/// token van de gebruiker is de koppel-flow (428) het antwoord; dat is de
+/// enige situatie op dit pad die 428 mag geven. Hetzelfde oordeel over het
+/// token van de beheerder stuurt de gebruiker níet die flow in: daar valt
+/// voor hem niets te koppelen.
 #[tokio::test]
 async fn geweigerd_token_stuurt_alleen_de_eigen_koppeling_naar_de_koppel_flow() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path(format!("/repos/{OWNER}/{REPO}")))
         .respond_with(ResponseTemplate::new(401))
         .mount(&server)
         .await;
@@ -238,6 +243,64 @@ async fn te_smalle_toegang_meldt_rechten_en_vermijdt_de_koppel_flow() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_ne!(status, StatusCode::PRECONDITION_REQUIRED);
     assert!(melding.contains("niet toereikend"), "{melding}");
+}
+
+/// GitHub gebruikt 403 óók voor een uitgeputte rate limit, een organisatie
+/// die SSO afdwingt en een IP-allowlist die de call blokkeert. Geen van die
+/// drie is een ontbrekende of verlopen koppeling, en opnieuw koppelen lost
+/// er geen één op — een 428 zou de gebruiker via `apiAuthGuard.js` telkens
+/// opnieuw de koppel-flow in sturen, met exact dezelfde 403 als resultaat.
+#[tokio::test]
+async fn geweigerde_repo_met_403_stuurt_de_gebruiker_niet_de_koppel_flow_in() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{OWNER}/{REPO}")))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+    // De bevestigingslezing krijgt hetzelfde antwoord: het token wordt niet
+    // geweigerd, deze repo blijft dicht.
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{OWNER}/{REPO}/git/ref/heads/{BASE}")))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+
+    let (kind, status, melding) = classificeer(&server, TokenOrigin::User).await;
+
+    assert_eq!(kind, IndexFailureKind::InsufficientScope);
+    assert_ne!(
+        status,
+        StatusCode::PRECONDITION_REQUIRED,
+        "een 403 van GitHub mag de koppel-flow niet triggeren, got: {melding}"
+    );
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+/// Een opgebruikte rate limit komt als 403 binnen en is noch een rechten-
+/// noch een koppelprobleem: hij lost zichzelf op. De melding moet dus
+/// "probeer het straks nog eens" zijn, niet "vraag om toegang".
+#[tokio::test]
+async fn opgebruikte_rate_limit_meldt_probeer_het_later() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{OWNER}/{REPO}")))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{OWNER}/{REPO}/git/ref/heads/{BASE}")))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "message": "API rate limit exceeded for user ID 1.",
+        })))
+        .mount(&server)
+        .await;
+
+    let (kind, status, melding) = classificeer(&server, TokenOrigin::User).await;
+
+    assert_eq!(kind, IndexFailureKind::GithubUnreachable);
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(melding.contains("paar minuten"), "{melding}");
 }
 
 /// Restcategorie: repo, basisbranch én traject-branch zijn alle drie in
@@ -301,20 +364,22 @@ async fn onbereikbaar_github_meldt_probeer_het_later() {
 /// kapt alles boven de 300 tekens weg en negeert alles wat op HTML of JSON
 /// lijkt. Geldt voor élke classificatie, en geen enkele valt terug op de
 /// generieke tekst of lijkt op een andere.
+const ALLE_SITUATIES: [IndexFailureKind; 9] = [
+    IndexFailureKind::TrajectBranchMissing,
+    IndexFailureKind::TrajectBranchGone,
+    IndexFailureKind::RepoUnavailable,
+    IndexFailureKind::BaseBranchMissing,
+    IndexFailureKind::LinkRevoked,
+    IndexFailureKind::InsufficientScope,
+    IndexFailureKind::GithubUnreachable,
+    IndexFailureKind::NoCredential,
+    IndexFailureKind::Unknown,
+];
+
 #[test]
 fn elke_melding_overleeft_de_grens_van_de_bibliotheek() {
     let target = target();
-    let alle = [
-        IndexFailureKind::TrajectBranchMissing,
-        IndexFailureKind::TrajectBranchGone,
-        IndexFailureKind::RepoUnavailable,
-        IndexFailureKind::BaseBranchMissing,
-        IndexFailureKind::LinkRevoked,
-        IndexFailureKind::InsufficientScope,
-        IndexFailureKind::GithubUnreachable,
-        IndexFailureKind::NoCredential,
-        IndexFailureKind::Unknown,
-    ];
+    let alle = ALLE_SITUATIES;
 
     let mut meldingen = Vec::new();
     let mut namen = Vec::new();
@@ -355,4 +420,35 @@ fn elke_melding_overleeft_de_grens_van_de_bibliotheek() {
         namen.len(),
         "twee situaties delen een logwaarde"
     );
+}
+
+/// Dezelfde grens, maar met de langste namen die GitHub toestaat: een
+/// eigenaar van 39 tekens, een repo van 100 en een basisbranch die (anders
+/// dan de traject-branch) door een mens is ingetypt. Een lange repo-naam mag
+/// de melding niet over de 300 duwen — dan kapt de bibliotheek hem niet af
+/// maar vervangt hem integraal door precies de generieke tekst die deze
+/// classificatie moest wegnemen.
+#[test]
+fn zelfs_de_langst_mogelijke_repo_naam_kapt_de_melding_niet_weg() {
+    let target = OwnSourceTarget {
+        traject_id: Uuid::nil(),
+        source_id: "traject-eigen".to_string(),
+        owner: "o".repeat(39),
+        repo: "r".repeat(100),
+        // De traject-branch is afgeleid (slug van 32 + korte id), de
+        // basisbranch komt uit een invoerveld; beide ruim genomen.
+        branch: format!("traject/{}-1a2b3c4d", "s".repeat(32)),
+        base_branch: "b".repeat(120),
+    };
+
+    for kind in ALLE_SITUATIES {
+        for origin in [TokenOrigin::User, TokenOrigin::Server, TokenOrigin::Absent] {
+            let (_, melding) = index_failure_to_status(kind, &target, origin);
+            assert!(
+                melding.chars().count() <= MELDING_MAX,
+                "{kind} is {} tekens en valt daarmee terug op '{GENERIEKE_TERUGVAL}': {melding}",
+                melding.chars().count()
+            );
+        }
+    }
 }

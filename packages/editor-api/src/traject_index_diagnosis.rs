@@ -32,9 +32,10 @@
 //! # Cost
 //!
 //! Nothing here runs on the happy path. The probe costs two GitHub calls
-//! (repo + base branch), a third when the traject branch has to be checked,
-//! and a fourth only when that branch turns out to be absent — and all of
-//! that exclusively after a scan has already failed.
+//! (repo + base branch), a third when the traject branch has to be checked
+//! or when a refused credential has to be confirmed, and a fourth only when
+//! the traject branch turns out to be absent — and all of that exclusively
+//! after a scan has already failed.
 
 use axum::http::StatusCode;
 use regelrecht_github::{GithubClient, GithubError, RepoAccessError};
@@ -177,7 +178,10 @@ pub async fn classify_index_failure(
         .await
     {
         Ok(_) => classify_traject_branch(client, target, token).await,
-        Err(RepoAccessError::Unauthorized) => IndexFailureKind::LinkRevoked,
+        // Not taken at face value — see [`confirm_link_revoked`]: this is the
+        // one verdict that ends in the connect flow, and the preflight folds
+        // more than a refused credential into it.
+        Err(RepoAccessError::Unauthorized) => confirm_link_revoked(client, target, token).await,
         Err(RepoAccessError::RepoNotFound) => IndexFailureKind::RepoUnavailable,
         Err(RepoAccessError::BranchNotFound) => IndexFailureKind::BaseBranchMissing,
         // The preflight raises this both for `permissions.push == false` and
@@ -189,6 +193,63 @@ pub async fn classify_index_failure(
         Err(RepoAccessError::Transport(_)) => IndexFailureKind::GithubUnreachable,
         Err(RepoAccessError::Other(_)) => IndexFailureKind::Unknown,
     }
+}
+
+/// Confirm — with an actual 401 — that GitHub is refusing the credential,
+/// before the answer becomes the one status on this path that re-enters the
+/// connect flow.
+///
+/// `validate_repo_access` answers [`RepoAccessError::Unauthorized`] for a 401
+/// *and* for a 403 on the repo lookup. On the write path that conflation is
+/// harmless (both end in the same 502), but here 401 means
+/// [`IndexFailureKind::LinkRevoked`] → 428 → `apiAuthGuard.js` → connect
+/// flow, and GitHub also answers 403 when the token's rate limit is spent,
+/// when an organisation's SAML/SSO authorisation has not been granted, or
+/// when an IP allow list blocks the call. Re-linking fixes none of those, so
+/// a 428 would bounce the member round the connect flow and land on the same
+/// 403 every time.
+///
+/// One extra read settles it, because [`GithubClient::branch_exists`] keeps
+/// the raw status instead of folding it. Strictly on the error path, and only
+/// for the single outcome that can reach the connect flow.
+async fn confirm_link_revoked(
+    client: &GithubClient,
+    target: &OwnSourceTarget,
+    token: &str,
+) -> IndexFailureKind {
+    match client
+        .branch_exists(&target.full_repo(), &target.base_branch, Some(token))
+        .await
+    {
+        // GitHub refuses the credential itself. Re-linking is the fix, so
+        // this — and only this — earns the connect flow.
+        Err(GithubError::Api { status: 401, .. }) => IndexFailureKind::LinkRevoked,
+        // Authenticated fine, just throttled. Neither a permission problem
+        // nor a link problem: it passes by itself, so it reads as the
+        // temporary GitHub outage it effectively is.
+        Err(GithubError::Api { status, message })
+            if status == 429 || (status == 403 && is_rate_limited(&message)) =>
+        {
+            IndexFailureKind::GithubUnreachable
+        }
+        // Authenticated, but this repository stays shut for this token.
+        Err(GithubError::Api { status: 403, .. }) => IndexFailureKind::InsufficientScope,
+        Err(GithubError::Transport(_)) => IndexFailureKind::GithubUnreachable,
+        // Anything else — including a read that suddenly succeeds — leaves
+        // the refusal unexplained. Say so rather than send the member off to
+        // re-link something that may be perfectly fine.
+        _ => IndexFailureKind::Unknown,
+    }
+}
+
+/// Whether a GitHub error body is the rate limiter talking.
+///
+/// Both documented wordings — "API rate limit exceeded for …" (primary) and
+/// "You have exceeded a secondary rate limit …" — carry this phrase. A miss
+/// only costs precision: the answer lands on the neighbouring classification,
+/// never on the connect flow.
+fn is_rate_limited(message: &str) -> bool {
+    message.to_ascii_lowercase().contains("rate limit")
 }
 
 /// Repo, base branch and access all check out — so the remaining question is
@@ -240,7 +301,8 @@ async fn classify_traject_branch(
 /// Every message says what is wrong *and* what to do about it, and none of
 /// them falls back on "de gegevens konden niet worden opgehaald". They stay
 /// short and carry no raw GitHub payload, so the frontend's length cap on
-/// the index-error pane can never truncate one.
+/// the index-error pane can never replace one — see `ID_BUDGET` for the one
+/// part of a message whose length is not ours to choose.
 ///
 /// On the statuses: **428 is reserved editor-wide for the GitHub connect
 /// flow** (`apiAuthGuard.js` redirects every 428 on `/api/*` into it), so it
@@ -253,41 +315,45 @@ pub fn index_failure_to_status(
     target: &OwnSourceTarget,
     origin: TokenOrigin,
 ) -> (StatusCode, String) {
-    let repo = target.full_repo();
+    let repo = clamp_identifier(&target.full_repo());
+    let branch = clamp_identifier(&target.branch);
+    let base_branch = clamp_identifier(&target.base_branch);
     match kind {
         IndexFailureKind::TrajectBranchMissing => (
             StatusCode::CONFLICT,
             format!(
-                "Dit traject is nog niet geïnitialiseerd: de branch '{}' bestaat nog niet in \
-                 {repo}. Sla één wijziging op, dan wordt de branch aangemaakt en vult de \
-                 bibliotheek zich.",
-                target.branch
+                "Dit traject is nog niet geïnitialiseerd: de branch '{branch}' bestaat nog niet \
+                 in {repo}. Sla één wijziging op, dan wordt de branch aangemaakt en vult de \
+                 bibliotheek zich."
             ),
         ),
         IndexFailureKind::TrajectBranchGone => (
             StatusCode::GONE,
             format!(
-                "De branch '{}' van dit traject is verwijderd uit {repo}. Werk dat alleen daar \
-                 stond, is mogelijk verloren. Laat een beheerder de branch herstellen voordat \
-                 je verder werkt.",
-                target.branch
+                "De branch '{branch}' van dit traject is verwijderd uit {repo}. Werk dat alleen \
+                 daar stond, is mogelijk verloren. Laat een beheerder de branch herstellen \
+                 voordat je verder werkt."
             ),
         ),
+        // GitHub answers 404 for a repo that is not there *and* for one this
+        // token may not see, and nothing in-band separates the two — so the
+        // message names both, with the remedy for each. Claiming only the
+        // rename would send a member who was quietly removed from the repo
+        // to an administrator to fix an address that is perfectly correct.
         IndexFailureKind::RepoUnavailable => (
             StatusCode::NOT_FOUND,
             format!(
-                "De repo {repo} staat niet meer op het adres dat in dit traject is vastgelegd: \
-                 hernoemd, overgedragen of verwijderd. Laat een beheerder het traject naar het \
-                 juiste adres verwijzen."
+                "GitHub kent {repo} niet op het adres uit dit traject: hernoemd, overgedragen of \
+                 verwijderd — of je hebt er geen toegang meer toe. Vraag toegang tot de repo, of \
+                 laat een beheerder het adres nakijken."
             ),
         ),
         IndexFailureKind::BaseBranchMissing => (
             StatusCode::CONFLICT,
             format!(
-                "De basisbranch '{}' van dit traject bestaat niet meer in {repo}. Laat een \
-                 beheerder die branch herstellen of het traject op een bestaande basisbranch \
-                 zetten.",
-                target.base_branch
+                "De basisbranch '{base_branch}' van dit traject bestaat niet meer in {repo}. \
+                 Laat een beheerder die branch herstellen of het traject op een bestaande \
+                 basisbranch zetten."
             ),
         ),
         // The only 428 on this path, and only when the rejected token is the
@@ -338,5 +404,70 @@ pub fn index_failure_to_status(
                  meld het als het blijft misgaan."
             ),
         ),
+    }
+}
+
+/// How many characters a repo address or branch name may take up in a
+/// message.
+///
+/// The library pane (`indexErrorSupportingText`) does not shorten a message
+/// it finds too long — it *replaces* it with "De gegevens konden niet worden
+/// opgehaald.", the very sentence this module exists to retire. The prose is
+/// ours to keep short; the identifiers are not. GitHub allows an owner of 39
+/// characters and a repo of 100, and a base branch is typed in by hand, so
+/// two long ones spliced into the longest sentence here would push it past
+/// the 300-character cap and silently undo the whole diagnosis.
+///
+/// 64 keeps the worst case (two identifiers in the longest message) under
+/// 300 with room to spare, while leaving every realistic `owner/repo` and
+/// every generated `traject/<slug>-<id>` branch untouched.
+const ID_BUDGET: usize = 64;
+
+/// Shorten `id` to [`ID_BUDGET`] characters, eliding the middle so the parts
+/// that identify it best — the owner at the front, the distinguishing tail at
+/// the back — both survive.
+fn clamp_identifier(id: &str) -> String {
+    if id.chars().count() <= ID_BUDGET {
+        return id.to_string();
+    }
+    // One character goes to the ellipsis; the remainder splits head-heavy.
+    let keep = ID_BUDGET - 1;
+    let tail = keep / 3;
+    let head = keep - tail;
+    let chars: Vec<char> = id.chars().collect();
+    let front: String = chars[..head].iter().collect();
+    let back: String = chars[chars.len() - tail..].iter().collect();
+    format!("{front}…{back}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_identifiers_are_left_alone() {
+        assert_eq!(clamp_identifier("example-org/corpus"), "example-org/corpus");
+        assert_eq!(
+            clamp_identifier(&"a".repeat(ID_BUDGET)),
+            "a".repeat(ID_BUDGET)
+        );
+    }
+
+    #[test]
+    fn long_identifiers_keep_both_ends() {
+        let long = format!("{}/{}", "o".repeat(39), "r".repeat(100));
+        let short = clamp_identifier(&long);
+        assert_eq!(short.chars().count(), ID_BUDGET);
+        assert!(short.starts_with("oooo"), "{short}");
+        assert!(short.ends_with("rrrr"), "{short}");
+        assert!(short.contains('…'), "{short}");
+    }
+
+    #[test]
+    fn multibyte_identifiers_do_not_split_a_character() {
+        // Char-wise, not byte-wise: slicing a multi-byte name by bytes would
+        // panic instead of shortening.
+        let long = "é".repeat(ID_BUDGET * 2);
+        assert_eq!(clamp_identifier(&long).chars().count(), ID_BUDGET);
     }
 }
