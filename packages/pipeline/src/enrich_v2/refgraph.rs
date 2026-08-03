@@ -6,7 +6,7 @@
 //! the same two indexes over one file: which entry references which other
 //! entry, and which entry produces which value. Building them twice would let
 //! them drift, so they are built once here and used by both callers —
-//! [`crate::enrich::plan_chunk`] for the window boundary and
+//! `crate::enrich::plan_chunk` for the window boundary and
 //! [`super::reconcile`] for the closing pass.
 //!
 //! No model, no shell, no network: everything below is derivable from the file.

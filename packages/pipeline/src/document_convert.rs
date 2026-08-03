@@ -6,7 +6,7 @@
 //! untrusted document away from the Bash-enabled LLM. Any other format (the
 //! upload boundary no longer gates on an allow-list) falls back to the LLM
 //! agent subprocess that enrich uses (see
-//! [`crate::enrich::run_llm_subprocess`]), which decides for itself how to
+//! `crate::enrich::run_llm_subprocess`), which decides for itself how to
 //! convert (pick a tool, or read it directly). This module owns the payload
 //! type, the transient upload storage helpers, the status-list query for the
 //! editor, and the conversion orchestration. The worker (see `worker.rs`) drives

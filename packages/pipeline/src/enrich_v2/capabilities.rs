@@ -230,10 +230,16 @@ pub const CHAIN: &[StepSpec] = &[
         needs: &["Read", "Edit", "Write"],
         required: true,
     },
+    // `Write` is not in here and it is in the step above, which is the whole
+    // difference between the two: generating puts a `machine_readable` section
+    // into a law that has none, reverse validation corrects one that is
+    // already there. The skill declares `Read, Edit, Bash, Grep, Glob` and no
+    // `Write`, and `needs` used to say otherwise — a step's minimum asked for
+    // a tool its own instructions never use, and nothing compared the two.
     StepSpec {
         name: "Reverse validation",
         skill: ".claude/skills/law-reverse-validate/SKILL.md",
-        needs: &["Read", "Edit", "Write"],
+        needs: &["Read", "Edit"],
         required: true,
     },
 ];
@@ -352,7 +358,15 @@ mod tests {
     fn generate_step_runs_degraded_rather_than_blocked() {
         // Writing YAML needs no shell; the validate loop in the skill does.
         // The step must still run, with the loop named as unavailable.
-        let spec = &CHAIN[1];
+        //
+        // `CHAIN[0]`, and the index is the point. This asserted on `CHAIN[1]`
+        // with the frontmatter of `law-generate` — left over from the removed
+        // MvT step, which used to be first — and it passed because the two
+        // steps declare the same `needs` and therefore plan identically. The
+        // one required step that actually writes YAML had no statement about
+        // its own degradation.
+        let spec = &CHAIN[0];
+        assert_eq!(spec.name, "Generate machine_readable");
         let plan = plan_step(
             spec,
             &enrich_grant(),
@@ -369,7 +383,7 @@ mod tests {
 
     #[test]
     fn required_step_without_its_minimum_blocks() {
-        let spec = &CHAIN[1];
+        let spec = &CHAIN[0];
         let plan = plan_step(spec, &grant(&["Read"]), None);
         assert_eq!(
             plan,
@@ -378,6 +392,44 @@ mod tests {
             }
         );
         assert!(!plan.is_in_prompt());
+    }
+
+    /// Every step planned against its own skill file, which is the comparison
+    /// the two tests above cannot make: they hand one frontmatter to whichever
+    /// step they name, so a step planned with a neighbour's declarations reads
+    /// exactly like a step planned with its own.
+    ///
+    /// Two things have to hold, and the second is the one that was untrue. A
+    /// step's `needs` is its minimum, so a tool in it that the skill never
+    /// declares is a minimum nobody asked for; and this lane grants no shell,
+    /// so a skill that names `Bash` degrades and one that does not, runs.
+    #[test]
+    fn elke_stap_plant_tegen_zijn_eigen_skillbestand() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for spec in CHAIN {
+            let markdown = std::fs::read_to_string(root.join(spec.skill))
+                .unwrap_or_else(|e| panic!("{} is niet te lezen: {e}", spec.skill));
+            let declared = skill_tools(&markdown);
+            for needed in spec.needs {
+                assert!(
+                    declared.contains(*needed),
+                    "{} eist {needed} als minimum, maar {} noemt dat gereedschap niet",
+                    spec.name,
+                    spec.skill
+                );
+            }
+
+            let plan = plan_step(spec, &enrich_grant(), Some(&markdown));
+            let expected = if declared.contains("Bash") {
+                StepPlan::Degraded {
+                    missing: vec!["Bash".to_owned()],
+                }
+            } else {
+                StepPlan::Run
+            };
+            assert_eq!(plan, expected, "{}", spec.name);
+            assert!(plan.is_in_prompt(), "{}", spec.name);
+        }
     }
 
     #[test]

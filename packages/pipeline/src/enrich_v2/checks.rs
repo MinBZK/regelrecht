@@ -376,7 +376,6 @@ pub fn coverage(doc: &Value) -> Vec<Finding> {
         // raised its score and a correct and a wrong model were
         // indistinguishable. The check must reward the work, not the silence.
         let mr = mr.unwrap_or(&Value::Null);
-        let model_text = render(mr).to_lowercase();
         let branches = branch_count(mr);
         let connectives_in_text: usize = leden
             .iter()
@@ -440,7 +439,6 @@ pub fn coverage(doc: &Value) -> Vec<Finding> {
                 }
             }
         }
-        let _ = model_text;
     }
     findings
 }
@@ -941,7 +939,8 @@ pub fn marking_discipline(doc: &Value, text_corpus: &str) -> Vec<Finding> {
                     "citation",
                     Some(&number),
                     format!(
-                        "cites \"{signal}\", which appears in no text that was provided;                          a source that was not read may be named as a lead but not as a citation"
+                        "cites \"{signal}\", which appears in no text that was provided; \
+                         a source that was not read may be named as a lead but not as a citation"
                     ),
                 ));
                 break;
@@ -2337,7 +2336,7 @@ pub fn open_terms_name_a_filler(doc: &Value) -> Vec<Finding> {
 /// nothing said what a name in it has to refer to. `blocked_values_are_absent`
 /// only checks that the name is *not* computed, which a fabricated name
 /// satisfies by construction, and the exception in
-/// [`markings_leave_something_standing`] then reads a non-empty `target` as
+/// [`flags_leave_something_standing`] then reads a non-empty `target` as
 /// proof that nothing was left to write down. One invented word bought an
 /// empty article — the largest failure class of round 4, with the escape
 /// spelled out in the instructions.
@@ -4817,9 +4816,27 @@ articles:
 "#;
         let doc: Value = serde_yaml_ng::from_str(yaml).unwrap();
         let findings = marking_discipline(&doc, "De normpremie bedraagt een percentage.");
+        let citation = findings
+            .iter()
+            .find(|f| f.check == "citation")
+            .unwrap_or_else(|| {
+                panic!("a source that was not provided may be a lead, not a citation: {findings:?}")
+            });
+        // The operator reads this line. A missing `\` at the end of a source
+        // line put twenty-six spaces in the middle of it, and `rustfmt` does
+        // not touch the inside of a literal — in the very gate built to catch
+        // an invented kamerstuk.
         assert!(
-            findings.iter().any(|f| f.check == "citation"),
-            "a source that was not provided may be a lead, not a citation: {findings:?}"
+            !citation.detail.contains("  "),
+            "de melding draagt geen ingesprongen brontekst mee: {:?}",
+            citation.detail
+        );
+        assert!(
+            citation
+                .detail
+                .contains("provided; a source that was not read"),
+            "de zin loopt door zonder gat: {:?}",
+            citation.detail
         );
     }
 

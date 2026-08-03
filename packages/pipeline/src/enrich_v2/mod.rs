@@ -1,10 +1,12 @@
-//! A second enrichment flow, built beside the existing one rather than
-//! replacing it.
+//! The parts of the enrichment flow that need no model: the checks, the
+//! capability plan, the closure, the reference graph, the closing pass.
 //!
-//! `enrich.rs` stays untouched: it drives the `enrich/claude` and
-//! `enrich/opencode` lanes that are running today. This module carries a
-//! separate chain with its own skills and its own checks, so the two can be
-//! compared over the same laws instead of over different sweeps.
+//! It began as a second flow beside the existing one, so that two chains
+//! could be compared over the same laws. That is not what it is any more and
+//! the name is the only thing left of it. `enrich.rs` drives one chain and
+//! calls into this module at some twenty places; there is no second chain to
+//! hold it against. A reader who takes that first paragraph at face value
+//! goes looking for a lane that does not exist.
 //!
 //! The design constraint that shapes everything here is what the current
 //! flow ran into: the agent is spawned without `Bash`, `WebFetch` and

@@ -526,7 +526,7 @@ pub enum SessionReuse {
     /// Every call in the window continues the same session. The default: the
     /// budget is going on the rounds, and withholding reuse from the rounds
     /// keeps almost none of it. What guards the fresh look here is the
-    /// [`REREAD_INSTRUCTION`] each resumed feedback prompt opens with.
+    /// `REREAD_INSTRUCTION` each resumed feedback prompt opens with.
     #[default]
     Window,
 }
@@ -2715,7 +2715,7 @@ Write the result back to the same file. Do not ask questions."#
 
 /// Build the prompt for one enrichment chunk: an explicit article subset.
 ///
-/// Differences from [`build_prompt`] (which stays byte-identical for whole-law
+/// Differences from `build_prompt` (which stays byte-identical for whole-law
 /// runs): the agent must process ONLY the listed articles; the MvT-research
 /// step is skipped on continuation chunks (`skip_mvt`, cursor > 0 — the
 /// feature file already exists on the branch); reverse validation is limited

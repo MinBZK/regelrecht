@@ -2925,7 +2925,7 @@ async fn execute_harvest_job(
 /// voor het succespad, en die de frontend sinds de poll-cap-exemptie voor
 /// `enriching` niet meer met een (vals) timeout-signaal afdekt. Spiegel daarom
 /// het synchrone pad: markeer de wet `enrich_failed` en laat
-/// [`handle_enrich_exhausted_or_retry`] óf een retry-job met backoff plannen
+/// `handle_enrich_exhausted_or_retry` óf een retry-job met backoff plannen
 /// (de lus hervat bij de cursor op de branch) óf de wet `enrich_exhausted`
 /// maken. Taak-flow-jobs (`deliver=task`) volgen het bestaande
 /// task-notificatiepad (`tasks::notify_reaped_task_jobs`) en raken
