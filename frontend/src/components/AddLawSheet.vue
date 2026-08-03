@@ -33,7 +33,7 @@ import { useLatest } from '../lib/useLatest.js';
 
 const emit = defineEmits(['promoted', 'harvest-requested', 'upload-requested']);
 
-const { activeTrajectRef } = useTrajects();
+const { activeTrajectRef, activeTraject } = useTrajects();
 const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
 
 const search = ref('');
@@ -54,6 +54,27 @@ function onModeChange(e) {
 const centralLaws = ref([]);
 const searching = ref(false);
 const searchFailed = ref(false);
+
+// The search is traject-scoped whenever a traject is active (see `runSearch`:
+// it hits `/api/trajects/{ref}/corpus/laws`), so a failure is about *this
+// traject's* library - its own repo could not be scanned - not the central
+// corpus. What decides the scope is `activeTrajectRef` (read straight from the
+// route, so it is there from the first render), NOT `activeTraject`: that one
+// is looked up in the asynchronously loaded trajects list and is still null
+// while the list is in flight, or when the list request itself failed. Keying
+// the wording on the name alone would point the user at the central corpus for
+// a request that never went there. So: name the traject when we know it, say
+// "dit traject" when we only know there is one, and keep the central-corpus
+// wording strictly for the no-traject search.
+const searchFailedText = computed(() => {
+  if (!activeTrajectRef.value) {
+    return 'Het centrale corpus kon niet worden doorzocht. Probeer het opnieuw.';
+  }
+  const scope = activeTraject.value?.name
+    ? `van ${activeTraject.value.name}`
+    : 'van dit traject';
+  return `De bibliotheek ${scope} kon niet worden doorzocht. Probeer het opnieuw.`;
+});
 
 // Gedeelde promote-logica (ook gebruikt door de gewone zoekresultaten in
 // SearchPopover): per-wet busy-state, al-in-traject-set, 409-afhandeling.
@@ -378,7 +399,7 @@ defineExpose({ show });
               v-else-if="searchFailed"
               variant="alert"
               text="Zoeken is mislukt"
-              supporting-text="Het centrale corpus kon niet worden doorzocht. Probeer het opnieuw."
+              :supporting-text="searchFailedText"
             ></nldd-inline-dialog>
             <nldd-inline-dialog
               v-else-if="bwbLoading"

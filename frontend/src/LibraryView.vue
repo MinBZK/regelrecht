@@ -436,6 +436,16 @@ const takenTitle = computed(() => {
 // --- Instellingen (traject details + leden, folded into Home) ---------------
 const isInstellingenMode = computed(() => route.name === 'instellingen-traject');
 const instellingenTab = computed(() => route.params.tab || null);
+
+// True on the library routes proper (/trajecten/{ref} and /corpus/…) - i.e.
+// none of the sibling non-corpus modes that LibraryView also hosts. Kept as one
+// computed so the "no usable content" states below (initial-loading,
+// empty-library and, crucially, the index-error takeover) can't drift apart:
+// a failed corpus index must only take over the library itself, never /taken,
+// /instellingen or /werkdocumenten, which don't read the wettenindex at all.
+const isLibraryMode = computed(
+  () => !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+);
 function goToInstellingen(tab) {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
@@ -918,23 +928,35 @@ const sidebarSections = computed(() => {
 // width rather than the narrow sidebar. isInitialLoading covers the first load
 // before anything resolves; indexError is handled at the same top level.
 const isInitialLoading = computed(
-  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && isLibraryMode.value,
 );
 const isEmptyLibrary = computed(
-  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && isLibraryMode.value,
 );
 
-// Supporting text for the index-error pane: prefer the backend's own
-// (Dutch) explanation — e.g. "De bibliotheek van dit traject is niet
-// beschikbaar: de traject-repo kon niet worden gescand (…)" — over the
-// generic fallback. Length-capped so an unexpected HTML/stack body from
-// an intermediary never floods the dialog.
+// Longest backend explanation we'll surface verbatim before clamping. The real
+// 502 body is the backend's own Dutch sentence ("De bibliotheek van dit traject
+// is niet beschikbaar: de traject-repo kon niet worden gescand (…)") with
+// GitHub's Trees error interpolated, which comfortably exceeds a few hundred
+// chars; the old 300 cap silently dropped the whole thing to the useless
+// generic fallback. Clamp-with-ellipsis instead so the reason still reaches the
+// user while a runaway body can't flood the dialog.
+const INDEX_ERROR_MAX_CHARS = 600;
+
+// Supporting text for the index-error surfaces (fullscreen pane + non-library
+// warning banner): prefer the backend's own (Dutch) explanation over the
+// generic fallback. The `<`/`{` guard still rejects an HTML/JSON body from an
+// intermediary proxy (those start with those chars) so a raw proxy dump never
+// leaks; a human-readable sentence with JSON interpolated *inside* it does not
+// start with either and comes through, clamped to a clean length.
 const indexErrorSupportingText = computed(() => {
   const body = indexError.value?.body;
   if (typeof body === 'string') {
     const text = body.trim();
-    if (text && text.length <= 300 && !text.startsWith('<') && !text.startsWith('{')) {
-      return text;
+    if (text && !text.startsWith('<') && !text.startsWith('{')) {
+      return text.length <= INDEX_ERROR_MAX_CHARS
+        ? text
+        : `${text.slice(0, INDEX_ERROR_MAX_CHARS).trimEnd()}…`;
     }
   }
   return 'De gegevens konden niet worden opgehaald.';
@@ -1235,6 +1257,14 @@ const claimLoadIndex = useLatest();
 
 async function loadIndex() {
   const isCurrent = claimLoadIndex();
+  // Drop any previous scope's failure before we start. The error describes one
+  // specific index load, so it must not outlive the run that produced it:
+  // besides `retryLoadCorpus`, `loadIndex` is also reached from the
+  // `activeTrajectRef` watcher, and without this a broken traject's error would
+  // ride along to the next traject the user switches to - warning about (or,
+  // on the library routes, blocking) a traject whose wetten loaded fine. The
+  // `catch` below re-raises it for this run if this load fails too.
+  indexError.value = null;
   // Snapshot the traject so the changed-laws fetch and its assignment below
   // both refer to the scope this run started in.
   const trajectRef = activeTrajectRef.value;
@@ -1336,11 +1366,11 @@ function retryLoadLaw() {
 }
 
 function retryLoadCorpus() {
-  indexError.value = null;
-  // loadIndex only flips loading back to false in its finally block -
-  // it never sets it to true. So after the first failure (loading is
-  // false, indexError is truthy) we have to flip the spinner back on
-  // here, otherwise the retry shows the error pane until the next
+  // Clearing indexError is loadIndex's job (it does so for every caller, not
+  // just this one). loading is not: loadIndex only flips it back to false in
+  // its finally block, it never sets it to true. So after the first failure
+  // (loading is false, indexError is truthy) we have to flip the spinner back
+  // on here, otherwise the retry shows the error pane until the next
   // round-trip resolves.
   loading.value = true;
   loadIndex();
@@ -1770,10 +1800,33 @@ watch(activeTrajectRef, () => {
              back as a reviewable markdown werkdocument. -->
         <input ref="docFileInput" type="file" hidden @change="onDocFileChange" />
 
+        <!-- Non-blocking corpus warning for the non-library modes (/taken,
+             /instellingen, /werkdocumenten): those don't read the wettenindex,
+             so a corpus 502 leaves their panes standing (the fullscreen page
+             below is gated to library mode) and they get this banner instead.
+             Rendered as a sibling above the split-view so it spans all panes
+             rather than sitting in the narrow sidebar; the .corpus-warning rule
+             keeps it auto-height (the app main pane slots its children flex:1).
+             It clears itself the moment any index load starts over - a retry
+             here, or a switch to another traject - and stays gone unless that
+             load fails too (loadIndex resets indexError up front). -->
+        <nldd-banner
+          v-if="indexError && !isLibraryMode"
+          class="corpus-warning"
+          variant="warning"
+          text="Wetten en regels van dit traject zijn niet geladen"
+          :supporting-text="indexErrorSupportingText"
+        >
+          <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
+        </nldd-banner>
+
         <!-- Full-page "no usable content" states (matching EditorView): shown
              instead of the split-view so the error / CTA spans the full width,
-             not the narrow sidebar. -->
-        <nldd-page v-if="indexError">
+             not the narrow sidebar. The index-error takeover is gated to
+             library mode: /taken, /instellingen and /werkdocumenten don't read
+             the wettenindex, so a corpus 502 must leave them standing (they get
+             the non-blocking warning banner above instead). -->
+        <nldd-page v-if="indexError && isLibraryMode">
           <nldd-simple-section width="full">
             <nldd-inline-dialog
               variant="alert"
@@ -2487,5 +2540,17 @@ nldd-navigation-split-view:not(.full-stack) .article-not-found__back-button {
    :not([hidden]) yields to the toolbar's own overflow hiding. */
 .job-back:not([hidden]) {
   display: var(--context-back-button-display, inline-flex);
+}
+
+/* The corpus-warning banner is a light-DOM sibling of the navigation-split-view,
+   so it is slotted straight into AppShell's main split-view-pane, whose
+   `::slotted(*)` sets `flex: 1` on every slotted child. Left as-is the banner
+   would grow to eat half the pane; pin it to its content height so it reads as
+   a thin bar above the panes and the split-view keeps the remaining space.
+   (Unlike the rules above this one would also work scoped - it targets an
+   element in this component's own template - but this whole block is global,
+   so it is stated plainly rather than singled out.) */
+nldd-banner.corpus-warning {
+  flex: 0 0 auto;
 }
 </style>
