@@ -33,9 +33,9 @@
 //!
 //! Nothing here runs on the happy path. The probe costs two GitHub calls
 //! (repo + base branch), a third when the traject branch has to be checked
-//! or when a refused credential has to be confirmed, and a fourth only when
-//! the traject branch turns out to be absent — and all of that exclusively
-//! after a scan has already failed.
+//! or when a refusal has to be pinned down, and a fourth only when the
+//! traject branch turns out to be absent — and all of that exclusively after
+//! a scan has already failed.
 
 use axum::http::StatusCode;
 use regelrecht_github::{GithubClient, GithubError, RepoAccessError};
@@ -178,10 +178,20 @@ pub async fn classify_index_failure(
         .await
     {
         Ok(_) => classify_traject_branch(client, target, token).await,
-        // Not taken at face value — see [`confirm_link_revoked`]: this is the
-        // one verdict that ends in the connect flow, and the preflight folds
-        // more than a refused credential into it.
-        Err(RepoAccessError::Unauthorized) => confirm_link_revoked(client, target, token).await,
+        // Neither refusal is taken at face value — see [`Refusal`]: the
+        // preflight answers in write-path terms and folds statuses that mean
+        // very different things to a reader.
+        Err(RepoAccessError::Unauthorized) => match probe_refusal(client, target, token).await {
+            // GitHub refuses the credential itself. Re-linking is the fix, so
+            // this — and only this — earns the connect flow.
+            Refusal::Credential => IndexFailureKind::LinkRevoked,
+            Refusal::Throttled | Refusal::Unreachable => IndexFailureKind::GithubUnreachable,
+            Refusal::Access => IndexFailureKind::InsufficientScope,
+            // The read went through, or failed on something unrelated: the
+            // refusal is unexplained. Say so, rather than send the member off
+            // to re-link a credential that may be perfectly fine.
+            Refusal::Unclear => IndexFailureKind::Unknown,
+        },
         Err(RepoAccessError::RepoNotFound) => IndexFailureKind::RepoUnavailable,
         Err(RepoAccessError::BranchNotFound) => IndexFailureKind::BaseBranchMissing,
         // The preflight raises this both for `permissions.push == false` and
@@ -189,56 +199,67 @@ pub async fn classify_index_failure(
         // same thing to the user: this account does not have enough access
         // to this repo. Kept apart from `LinkRevoked` because the remedy
         // differs — re-linking the same account changes nothing here.
-        Err(RepoAccessError::NoPushAccess) => IndexFailureKind::InsufficientScope,
+        Err(RepoAccessError::NoPushAccess) => match probe_refusal(client, target, token).await {
+            Refusal::Throttled | Refusal::Unreachable => IndexFailureKind::GithubUnreachable,
+            // `push == false` (the read itself goes through), a genuine 403
+            // on the branch read, or a credential that fell over between the
+            // two calls: for a reader they all say the same thing, and none
+            // of them is the connect-flow case — the repo lookup that just
+            // succeeded rules that out.
+            Refusal::Credential | Refusal::Access | Refusal::Unclear => {
+                IndexFailureKind::InsufficientScope
+            }
+        },
         Err(RepoAccessError::Transport(_)) => IndexFailureKind::GithubUnreachable,
         Err(RepoAccessError::Other(_)) => IndexFailureKind::Unknown,
     }
 }
 
-/// Confirm — with an actual 401 — that GitHub is refusing the credential,
-/// before the answer becomes the one status on this path that re-enters the
-/// connect flow.
+/// What GitHub says when the repository is read once more, with the raw
+/// status kept instead of folded.
 ///
-/// `validate_repo_access` answers [`RepoAccessError::Unauthorized`] for a 401
-/// *and* for a 403 on the repo lookup. On the write path that conflation is
-/// harmless (both end in the same 502), but here 401 means
+/// `validate_repo_access` is the create-traject preflight, and it answers in
+/// write-path terms: [`RepoAccessError::Unauthorized`] covers a 401 *and* a
+/// 403 on the repo lookup, [`RepoAccessError::NoPushAccess`] covers both
+/// `permissions.push == false` and a 403 on the branch read. Harmless there —
+/// each pair ends in one status. Not here: 401 means
 /// [`IndexFailureKind::LinkRevoked`] → 428 → `apiAuthGuard.js` → connect
-/// flow, and GitHub also answers 403 when the token's rate limit is spent,
-/// when an organisation's SAML/SSO authorisation has not been granted, or
-/// when an IP allow list blocks the call. Re-linking fixes none of those, so
-/// a 428 would bounce the member round the connect flow and land on the same
-/// 403 every time.
+/// flow, while a 403 is also how GitHub reports a spent rate limit, an
+/// ungranted SAML/SSO authorisation and an IP-allow-list block. Re-linking
+/// fixes none of those, and a rate limit is not a permission problem at all —
+/// it passes on its own.
 ///
-/// One extra read settles it, because [`GithubClient::branch_exists`] keeps
-/// the raw status instead of folding it. Strictly on the error path, and only
-/// for the single outcome that can reach the connect flow.
-async fn confirm_link_revoked(
-    client: &GithubClient,
-    target: &OwnSourceTarget,
-    token: &str,
-) -> IndexFailureKind {
+/// So both refusals are re-asked through [`GithubClient::branch_exists`],
+/// which preserves the status. Strictly on the error path, and only for the
+/// two outcomes whose folding actually costs the member a wrong remedy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Refusal {
+    /// 401 — GitHub refuses the credential itself.
+    Credential,
+    /// A rate limit, primary or secondary. Temporary, and nobody's fault.
+    Throttled,
+    /// 403 — authenticated, but this repository stays shut for this token.
+    Access,
+    /// GitHub could not be reached at all.
+    Unreachable,
+    /// The read went through, or failed on something else entirely.
+    Unclear,
+}
+
+async fn probe_refusal(client: &GithubClient, target: &OwnSourceTarget, token: &str) -> Refusal {
     match client
         .branch_exists(&target.full_repo(), &target.base_branch, Some(token))
         .await
     {
-        // GitHub refuses the credential itself. Re-linking is the fix, so
-        // this — and only this — earns the connect flow.
-        Err(GithubError::Api { status: 401, .. }) => IndexFailureKind::LinkRevoked,
-        // Authenticated fine, just throttled. Neither a permission problem
-        // nor a link problem: it passes by itself, so it reads as the
-        // temporary GitHub outage it effectively is.
+        Err(GithubError::Api { status: 401, .. }) => Refusal::Credential,
         Err(GithubError::Api { status, message })
             if status == 429 || (status == 403 && is_rate_limited(&message)) =>
         {
-            IndexFailureKind::GithubUnreachable
+            Refusal::Throttled
         }
-        // Authenticated, but this repository stays shut for this token.
-        Err(GithubError::Api { status: 403, .. }) => IndexFailureKind::InsufficientScope,
-        Err(GithubError::Transport(_)) => IndexFailureKind::GithubUnreachable,
-        // Anything else — including a read that suddenly succeeds — leaves
-        // the refusal unexplained. Say so rather than send the member off to
-        // re-link something that may be perfectly fine.
-        _ => IndexFailureKind::Unknown,
+        Err(GithubError::Api { status: 403, .. }) => Refusal::Access,
+        Err(GithubError::Transport(_)) => Refusal::Unreachable,
+        _ => Refusal::Unclear,
     }
 }
 

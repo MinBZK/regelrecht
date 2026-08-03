@@ -314,6 +314,35 @@ async fn opgebruikte_rate_limit_meldt_probeer_het_later() {
     assert!(melding.contains("paar minuten"), "{melding}");
 }
 
+/// Dezelfde rate limit kan ook één call later toeslaan: de repo-lookup gaat
+/// nog goed, de lezing van de basisbranch krijgt de 403. De preflight noemt
+/// dat "geen schrijftoegang" — als dat blindelings zou worden overgenomen,
+/// kreeg het lid "vraag toegang tot de repo" voor iets wat vanzelf overgaat.
+#[tokio::test]
+async fn rate_limit_op_de_basisbranch_meldt_ook_probeer_het_later() {
+    let server = MockServer::start().await;
+    mock_repo_gezond(&server).await;
+    let throttled = ResponseTemplate::new(403).set_body_json(serde_json::json!({
+        "message": "You have exceeded a secondary rate limit.",
+    }));
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{OWNER}/{REPO}/branches/{BASE}")))
+        .respond_with(throttled.clone())
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{OWNER}/{REPO}/git/ref/heads/{BASE}")))
+        .respond_with(throttled)
+        .mount(&server)
+        .await;
+
+    let (kind, status, melding) = classificeer(&server, TokenOrigin::User).await;
+
+    assert_eq!(kind, IndexFailureKind::GithubUnreachable);
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(melding.contains("paar minuten"), "{melding}");
+}
+
 /// Restcategorie: repo, basisbranch én traject-branch zijn alle drie in
 /// orde, dus de scan viel om op iets wat deze classificatie niet dekt. Dat
 /// wordt expliciet "onbekend" genoemd — met een eigen melding, niet met de
