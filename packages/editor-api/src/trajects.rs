@@ -750,7 +750,10 @@ async fn resolve_writable_target(
     req: &CreateTrajectRequest,
     account_id: Uuid,
     headers: &axum::http::HeaderMap,
-    traject_id: Uuid,
+    // The branch this traject will write to, derived once by the caller
+    // and reused verbatim for both the GitHub ref-create below and the
+    // `gh_branch` column.
+    writable_branch: &str,
 ) -> Result<WritableTarget, (StatusCode, String)> {
     let owner = req
         .repo_owner
@@ -924,11 +927,16 @@ async fn resolve_writable_target(
             // or two members racing), keeping this idempotent (criterion 4).
             // The lazy bootstrap on the write path stays as the safety net
             // for trajects that predate this and sit branch-less in the DB.
-            let writable_branch = derive_branch_name(req.name.trim(), traject_id);
+            //
+            // `writable_branch` is the caller's single derivation, the very
+            // same string the INSERT persists as `gh_branch`. Deriving it a
+            // second time here would reintroduce the failure mode this fix
+            // exists to close: mint branch A, store branch B, traject still
+            // dead-on-arrival.
             regelrecht_corpus::GitHubApiBackend::ensure_branch(
                 &client,
                 &format!("{owner}/{repo}"),
-                &writable_branch,
+                writable_branch,
                 Some(base_branch),
                 Some(&token),
             )
@@ -1036,9 +1044,13 @@ fn repo_access_error_to_status(
 ///
 /// Seeds the federated config by copying the global registry's sources
 /// (with their original priorities) and then attaching the writable own
-/// source at priority 0. Branch creation on the writable source is
-/// handled by `GitBackend` on first use, which falls back to the
-/// configured base branch when the traject branch doesn't yet exist.
+/// source at priority 0. For a user-supplied repo the traject branch is
+/// minted here, during the preflight — a traject whose branch does not
+/// exist yet cannot be indexed, so creating it lazily on first write left
+/// every fresh traject dead-on-arrival. The lazy bootstrap on the write
+/// path (`GitHubApiBackend::persist`) remains as the safety net for
+/// trajects created before that, and for the MinBZK default, whose
+/// service-token backend bootstraps its branch in `ensure_ready`.
 ///
 /// When the request supplies `repo_owner`/`repo_name`/`base_branch`,
 /// the writable-own source points to that user repo and the
@@ -1057,18 +1069,22 @@ pub async fn create(
     }
 
     // Mint the traject id client-side so the writable-branch name (derived
-    // from it) is known *before* we touch GitHub or the database. The
-    // preflight below uses it to create the branch while it still holds the
-    // proving token, and the INSERT reuses the same id — one identity across
-    // GitHub, URL ref and DB row.
+    // from it) is known *before* we touch GitHub or the database, and derive
+    // that name exactly once. Both consumers — the ref-create in the
+    // preflight and the `gh_branch` column on the writable-own source — read
+    // this one string, so the branch that gets minted on GitHub and the
+    // branch the index scan later reads cannot drift apart. One identity
+    // across GitHub, URL ref and DB row.
     let traject_id = Uuid::new_v4();
+    let writable_branch = derive_branch_name(name, traject_id);
 
     // Resolve the writable-own GitHub target up-front. Validation may need
     // to talk to GitHub (which can fail with a helpful 4xx) and — for a
     // user-supplied repo — mints the traject branch there; we do that
     // *before* opening the DB transaction so a network blip or a failed
     // branch-create leaves no half-rolled row behind.
-    let target = resolve_writable_target(&state, &req, account.id, &headers, traject_id).await?;
+    let target =
+        resolve_writable_target(&state, &req, account.id, &headers, &writable_branch).await?;
 
     let pool = get_pool_msg(&state)?;
     let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;
@@ -1138,12 +1154,12 @@ pub async fn create(
     }
 
     // Writable-own source: the phase-1 MinBZK default or the user-supplied
-    // repo (already validated up-front for push access). The branch name is
-    // derived from the traject name + id; auth flows through
-    // `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the `auth_ref` stored on this
-    // row.
+    // repo (already validated up-front for push access). `writable_branch` is
+    // the name derived at the top of this handler — for a user-supplied repo
+    // that branch now exists on GitHub, minted during the preflight. Auth
+    // flows through `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the `auth_ref`
+    // stored on this row.
     let writable_source_id = format!("traject-own-{}", traject_id.simple());
-    let writable_branch = derive_branch_name(name, traject_id);
     sqlx::query(
         "INSERT INTO traject_corpus_sources
          (traject_id, source_id, name, source_type,

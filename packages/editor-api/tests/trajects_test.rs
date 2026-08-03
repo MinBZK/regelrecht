@@ -469,9 +469,146 @@ async fn create_custom_repo_mints_the_traject_branch() {
         "writable-own source should carry the minted traject branch, got {branch}"
     );
 
-    // The POST that created the ref is asserted by the `.expect(1)` on the
-    // mock, verified when the server drops at end of test.
-    drop(server);
+    // The load-bearing assertion: the ref actually POSTed to GitHub is the
+    // SAME branch the writable-own source stores. `gh_branch` is what the
+    // index scan reads (`effective_ref()`), so minting *a* branch is not
+    // enough — mint `traject/x` while persisting `traject/y` and the traject
+    // is still dead-on-arrival, now with a stray branch alongside it. Reading
+    // the request body pins the two together; a `.expect(1)` on the mock
+    // alone would not catch that drift.
+    let requests = server
+        .received_requests()
+        .await
+        .expect("mock server records requests");
+    let created_refs: Vec<String> = requests
+        .iter()
+        .filter(|r| r.method == wiremock::http::Method::POST && r.url.path().ends_with("/git/refs"))
+        .map(|r| {
+            let body: serde_json::Value =
+                serde_json::from_slice(&r.body).expect("ref-create body is JSON");
+            body["ref"].as_str().unwrap_or_default().to_string()
+        })
+        .collect();
+    assert_eq!(
+        created_refs,
+        vec![format!("refs/heads/{branch}")],
+        "create must POST exactly the ref it persists as gh_branch"
+    );
+}
+
+#[tokio::test]
+async fn create_fails_loudly_and_persists_nothing_when_the_branch_cannot_be_minted() {
+    // Criterion: a traject that cannot get its branch must not come into
+    // existence at all. The mint happens before the DB transaction opens, so
+    // a failing ref-create has to surface as an error *and* leave zero rows
+    // behind — no traject that looks fine in the list but 502s on every
+    // corpus call. Move the mint after the INSERT and this test goes red.
+    use wiremock::matchers::{header, method, path, path_regex};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let db = TestDb::new().await;
+    let server = MockServer::start().await;
+
+    let mut oauth = GithubOAuth::for_tests(true);
+    oauth.api_base = server.uri();
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(oauth.clone()),
+        task_enrich_provider: "claude".to_string(),
+    });
+    let owner = seed_account(&db.pool, "owner-branchfail@example.com", "Owner").await;
+
+    // Preflight passes: repo readable, push allowed, base branch present.
+    Mock::given(method("GET"))
+        .and(path("/repos/example-org/regelrecht-corpus-example"))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_branch": "main",
+            "private": true,
+            "permissions": { "push": true, "pull": true },
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/example-org/regelrecht-corpus-example/branches/main",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "name": "main" })),
+        )
+        .mount(&server)
+        .await;
+    // The traject branch does not exist...
+    Mock::given(method("GET"))
+        .and(path_regex(
+            r"^/repos/example-org/regelrecht-corpus-example/git/ref/heads/traject/.+$",
+        ))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found",
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/example-org/regelrecht-corpus-example/git/ref/heads/main",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ref": "refs/heads/main",
+            "object": { "sha": "abc123def456", "type": "commit" },
+        })))
+        .mount(&server)
+        .await;
+    // ...and creating it fails (GitHub hiccup / access revoked mid-flight).
+    Mock::given(method("POST"))
+        .and(path(
+            "/repos/example-org/regelrecht-corpus-example/git/refs",
+        ))
+        .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "message": "Internal Server Error",
+        })))
+        .mount(&server)
+        .await;
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::COOKIE,
+        axum::http::HeaderValue::from_str(&github_oauth::seal_token_cookie_for_tests(
+            &oauth,
+            owner.id,
+            "user-token",
+        ))
+        .unwrap(),
+    );
+
+    let err = trajects::create(
+        State(state.clone()),
+        Extension(owner.clone()),
+        headers,
+        Json(custom_repo_req("Repo traject")),
+    )
+    .await
+    .expect_err("a failed branch-create must fail the whole create");
+    assert_eq!(err.0, StatusCode::BAD_GATEWAY);
+    // Dutch, names the branch, and says the traject was not created — an
+    // operator must not have to read the logs to understand this.
+    assert!(
+        err.1.contains("traject-branch") && err.1.contains("niet aangemaakt"),
+        "expected a Dutch branch-create failure message, got: {}",
+        err.1
+    );
+
+    // Nothing was persisted: no traject row, so no half-broken traject.
+    let trajects_left: i64 = sqlx::query_scalar("SELECT count(*) FROM trajects")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        trajects_left, 0,
+        "a failed branch-create must leave no traject behind"
+    );
 }
 
 // ---------------------------------------------------------------------------
