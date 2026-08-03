@@ -273,6 +273,10 @@ const {
   onFileChange: onDocFileChange,
 } = useDocumentUpload(docsMgr.uploadDocument, (result) => {
   docJobs.refresh();
+  // De conversie is ook een wacht-taak. Zonder deze refresh wacht de takenlijst
+  // op zijn eigen 30s-poll en staat de taak die je zojuist in gang zette er nog
+  // niet in als je er meteen naartoe navigeert.
+  refreshTasks();
   if (!result?.targetPath) return;
   // Vanuit de takenlijst ("Probeer opnieuw") staan we niet in werkdoc-modus, en
   // `showUploadedJob` zet alleen state die dáár rendert - de gebruiker zou dan
@@ -354,6 +358,7 @@ const {
   onFileChange: onLawFileChange,
 } = useDocumentUpload(uploadLawDocument, () => {
   lawUploadStarted.value = true;
+  refreshTasks();
 });
 // Zelfde modal-behandeling als de werkdocument-upload, met een eigen modal
 // zodat de retry-actie de juiste picker heropent.
