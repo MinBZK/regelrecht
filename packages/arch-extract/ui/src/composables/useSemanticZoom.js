@@ -3,8 +3,8 @@
  *
  * The three prototypes have no expand/collapse. Scrolling is the only way to
  * change what you see: zoom out far enough and you look at the 20 containers,
- * zoom in and the 799 components fade in on top of them, zoom in further and
- * the 1603 code nodes appear.
+ * zoom in and the 803 components fade in on top of them, zoom in further and
+ * the 1605 code nodes appear.
  *
  * The zoom factor `k` is expressed **relative to "the whole model fits the
  * viewport"** (k = 1). That keeps the thresholds meaningful on any screen size:
@@ -23,7 +23,7 @@ import { LEVELS } from '../lib/archIndex.js';
  * multiples of "fits the viewport". `container` needs no entry: it is what you
  * see below the first threshold.
  *
- * The ratio 20 / 799 / 1603 is why `code` sits so far out: it has ~20× the node
+ * The ratio 20 / 803 / 1605 is why `code` sits so far out: it has ~20× the node
  * count of the level above it, so it must only appear once you are properly
  * zoomed in on one corner of the model.
  */

@@ -9,8 +9,10 @@
  *    so every subsystem is one contiguous arc;
  *  - a rope that dives deep toward the centre crosses containers; a rope that
  *    hugs the rim stays inside one;
- *  - a relation is drawn from its source colour to a neutral end, so the
- *    direction is readable without arrowheads at this density.
+ *  - colour is the relation *kind*, not its direction. Direction is the one
+ *    thing this prototype cannot show: arrowheads on 1180 bundled curves are
+ *    noise, and a ring has no up or down to read a layering off. See
+ *    EVALUATIE.md — it is Radiaal's clearest weakness against Map.
  */
 import { ref, shallowRef } from 'vue';
 import ArchCanvas from './ArchCanvas.vue';

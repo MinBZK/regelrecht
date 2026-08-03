@@ -128,8 +128,8 @@ export function buildIndex(model) {
  * The nodes that make up one detail level — the "units" a prototype draws.
  *
  * A unit is every node at or above the requested level (`container` shows the
- * 20 crates/apps/binaries; `component` adds the 799 modules/types/components;
- * `code` adds the 1603 methods/fns). Deeper nodes are not dropped: they roll
+ * 20 crates/apps/binaries; `component` adds the 803 modules/types/components;
+ * `code` adds the 1605 methods/fns). Deeper nodes are not dropped: they roll
  * up into their nearest unit ancestor (see `archRollup.js`).
  *
  * Coverage is total by construction. A node that is *deeper* than the level

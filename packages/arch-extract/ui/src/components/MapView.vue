@@ -23,6 +23,9 @@ const props = defineProps({
 });
 const emit = defineEmits(['select', 'hover']);
 
+/** How many blocks may print their own name at once. See the label pass. */
+const IN_BOX_LABEL_BUDGET = 30;
+
 const hoverId = ref(null);
 const colorOf = shallowRef(null);
 
@@ -114,19 +117,36 @@ function drawLayout(ctx, env, layout, alpha, grow) {
   ctx.setTransform(env.dpr, 0, 0, env.dpr, 0, 0);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const labelled = new Set();
+  // Deeper down the ten biggest hubs are named whatever their block does: a
+  // hub is precisely the node whose name has to be readable, and inside its own
+  // block the name would be cut to fit. At the container level nothing needs
+  // that help — everything is on screen and gets a name below.
+  const hubs = layout.nodes.length > 40 ? topHubs(layout, 10) : [];
+  const labelled = new Set(hubs.map((n) => n.id));
+  // Blocks that are big enough to carry their own name do, but only the
+  // biggest IN_BOX_LABEL_BUDGET of the ones actually on screen. Block size
+  // grows with the relation count, so at the `code` level a screenful holds
+  // hundreds of blocks over the size threshold and the drawing would vanish
+  // under its own text.
+  const onScreen = [];
   for (const n of layout.nodes) {
+    if (labelled.has(n.id)) continue;
     const wpx = n.w * grow * env.scale;
     const hpx = n.h * grow * env.scale;
     if (wpx < 44 || hpx < 11) continue;
+    const sx = n.x * env.scale + env.tx;
+    const sy = n.y * env.scale + env.ty;
+    if (sx < 0 || sy < 0 || sx > env.width || sy > env.height) continue;
+    onScreen.push({ n, hpx, wpx });
+  }
+  onScreen.sort((a, b) => b.wpx - a.wpx);
+  for (const { n, hpx } of onScreen.slice(0, IN_BOX_LABEL_BUDGET)) {
     drawLabel(ctx, env, n, alpha, p, Math.min(13, Math.max(9, hpx * 0.6)), false);
     labelled.add(n.id);
   }
-  // At the container level everything fits, so nothing stays anonymous; deeper
-  // down only the biggest hubs get a label they did not earn by box size.
-  const extra = layout.nodes.length <= 40 ? layout.nodes : topHubs(layout, 10);
-  for (const n of extra) {
-    if (labelled.has(n.id)) continue;
+  // At the container level everything fits, so nothing stays anonymous.
+  const rest = layout.nodes.length <= 40 ? layout.nodes.filter((n) => !labelled.has(n.id)) : [];
+  for (const n of [...hubs, ...rest]) {
     drawLabel(ctx, env, n, alpha, p, 12, true);
   }
   ctx.restore();
