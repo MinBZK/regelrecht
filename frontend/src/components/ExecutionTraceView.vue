@@ -36,6 +36,57 @@ const overallStatus = computed(() => {
   }
   return 'passed';
 });
+
+/* The trace is a box-drawing tree, so every line's meaning sits in its column:
+ * wrapping restarts a continuation at column 0 and it reads as if it lives at
+ * depth 0, cutting straight through the tree gutters. So no `wrap` — the long
+ * lines have to scroll sideways instead.
+ *
+ * But `nldd-code-viewer` grows to its full content height (3167px on
+ * wet_op_de_zorgtoeslag art. 2), which parks its horizontal scrollbar thousands
+ * of pixels below the fold, inside the sheet's own scroller. Unfindable — the
+ * reason the `wrap` went on in the first place (#1101).
+ *
+ * The component owns no height API, so we bound it from here. CodeMirror won't
+ * take a height through the host (it lays the scroller out itself), so the rule
+ * has to land inside the shadow root: `.cm-editor` needs a definite height and
+ * `.cm-scroller` an overflow, per CodeMirror's own fixed-height recipe. That
+ * gives the block its own two scrollbars at the edges of a visible box, with
+ * the column alignment intact.
+ *
+ * Remove this once `nldd-code-viewer` grows a height/rows property of its own
+ * (nldd-code-editor already has `rows`); then this becomes an attribute.
+ */
+const TRACE_SCROLL_BOX_CSS = `
+  .code-viewer { display: flex; flex-direction: column; min-height: 0; }
+  .cm-editor { height: 100%; min-height: 0; }
+  .cm-scroller { overflow: auto; }
+`;
+
+function applyTraceScrollBox(el) {
+  const root = el?.shadowRoot;
+  if (!root) return false;
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(TRACE_SCROLL_BOX_CSS);
+  // Appended last so it wins over the component's own styles at equal
+  // specificity. Lit keeps its static styles in the same list, so replacing the
+  // array wholesale would strip them.
+  root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+  return true;
+}
+
+const vTraceScrollBox = {
+  async mounted(el) {
+    // The element only has a shadow root once its definition is registered and
+    // it has upgraded. It normally is by now (the design system is imported at
+    // startup), so this awaits nothing; but under a lazy registration the block
+    // would silently stay unbounded, and a 3000px trace is the exact failure
+    // we're fixing.
+    if (applyTraceScrollBox(el)) return;
+    await customElements.whenDefined('nldd-code-viewer');
+    applyTraceScrollBox(el);
+  },
+};
 </script>
 
 <template>
@@ -110,22 +161,16 @@ const overallStatus = computed(() => {
       <nldd-spacer size="16"></nldd-spacer>
     </template>
 
-    <!-- `wrap` because the code-viewer only ever owns a *horizontal* scroller
-         and grows to its full content height. Inside the trace sheet that puts
-         its horizontal scrollbar thousands of pixels below the fold, so long
-         lines (a DEFINITION with a dozen enum values) read as truncated with no
-         hint that there is more to the right. Wrapping keeps every value
-         visible; the sheet's own scroller handles the vertical axis. -->
     <template v-if="result && traceText">
       <nldd-title size="5" class="etv-section-title"><span>Execution trace</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-code-viewer wrap>{{ traceText }}</nldd-code-viewer>
+      <nldd-code-viewer v-trace-scroll-box class="etv-trace">{{ traceText }}</nldd-code-viewer>
     </template>
 
     <template v-if="error && traceText && !result">
       <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-code-viewer wrap>{{ traceText }}</nldd-code-viewer>
+      <nldd-code-viewer v-trace-scroll-box class="etv-trace">{{ traceText }}</nldd-code-viewer>
       <template v-if="canReload">
         <nldd-spacer size="12"></nldd-spacer>
         <nldd-button size="md" text="Opnieuw uitvoeren" @click="emit('reload')"></nldd-button>
@@ -133,3 +178,12 @@ const overallStatus = computed(() => {
     </template>
   </template>
 </template>
+
+<style scoped>
+/* The ceiling the shadow-root rules in v-trace-scroll-box scroll against. A
+   short trace still renders at its own height; only a long one gets capped,
+   and then its scrollbars sit at the edges of a box that fits on screen. */
+.etv-trace {
+  max-height: 60vh;
+}
+</style>
