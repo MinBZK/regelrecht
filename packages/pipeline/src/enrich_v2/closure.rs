@@ -255,6 +255,13 @@ fn read_head(path: &Path, root: &Path) -> Option<LawEntry> {
 /// Read from `<corpus>/kaderwetten.yaml`. An absent file means none are
 /// designated, which is the honest reading: this is a hand-written list and
 /// RFC-026 already names it as the one place a silent gap can arise.
+///
+/// Absent and broken are two different things and only the first is an honest
+/// empty list. A list with a YAML error used to fall back to no designations
+/// at all, and the caller then reported the file as *absent* — the silent gap
+/// requirement 5 calls the one failure form that may not occur, arrived at
+/// through the very line meant to prevent it. Both readers therefore return a
+/// `Result` and say which of the two happened.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Kaderwetten {
     /// BWB identifiers, in the order the file lists them.
@@ -263,22 +270,35 @@ pub struct Kaderwetten {
 
 impl Kaderwetten {
     /// Read the list beside the corpus.
-    #[must_use]
-    pub fn load(root: &Path) -> Self {
-        let Ok(raw) = std::fs::read_to_string(root.join("kaderwetten.yaml")) else {
-            return Self::default();
+    ///
+    /// `Ok(None)` when the file is not there, which is a corpus that
+    /// designates no framework laws. An `Err` is a file that is there and
+    /// cannot be read as a list.
+    ///
+    /// # Errors
+    ///
+    /// When `kaderwetten.yaml` exists but is not readable as YAML.
+    pub fn load(root: &Path) -> Result<Option<Self>, String> {
+        let path = root.join("kaderwetten.yaml");
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            return Ok(None);
         };
         Self::parse(&raw)
+            .map(Some)
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// Parse the list. Accepts a bare sequence of BWB numbers and a sequence of
     /// mappings with a `bwb_id`, because both shapes read as the same list and
     /// refusing one of them would be pedantry over a hand-written file.
-    #[must_use]
-    pub fn parse(raw: &str) -> Self {
-        let Ok(doc) = serde_yaml_ng::from_str::<Value>(raw) else {
-            return Self::default();
-        };
+    ///
+    /// # Errors
+    ///
+    /// When the text is not YAML at all. A list that parses and designates
+    /// nothing is not an error: an empty file says the same as an absent one.
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        let doc = serde_yaml_ng::from_str::<Value>(raw)
+            .map_err(|e| format!("de kaderwetlijst is geen YAML: {e}"))?;
         let seq = doc
             .get("kaderwetten")
             .and_then(Value::as_sequence)
@@ -295,7 +315,7 @@ impl Kaderwetten {
                     .map(str::to_string),
             })
             .collect();
-        Self { bwb_ids }
+        Ok(Self { bwb_ids })
     }
 
     /// Whether this law is designated.
@@ -1011,17 +1031,56 @@ articles:
     #[test]
     fn kaderwetten_parse_both_shapes_and_an_absent_file() {
         assert_eq!(
-            Kaderwetten::parse("- BWBR0005537\n- BWBR0016770\n").bwb_ids,
+            Kaderwetten::parse("- BWBR0005537\n- BWBR0016770\n")
+                .unwrap()
+                .bwb_ids,
             vec!["BWBR0005537".to_string(), "BWBR0016770".to_string()]
         );
         assert_eq!(
             Kaderwetten::parse(
                 "kaderwetten:\n  - bwb_id: BWBR0005537\n    naam: Awb\n  - bwb_id: BWBR0016770\n"
             )
+            .unwrap()
             .bwb_ids,
             vec!["BWBR0005537".to_string(), "BWBR0016770".to_string()]
         );
         let dir = tempfile::tempdir().unwrap();
-        assert!(Kaderwetten::load(dir.path()).bwb_ids.is_empty());
+        assert_eq!(
+            Kaderwetten::load(dir.path()),
+            Ok(None),
+            "afwezig is afwezig"
+        );
+    }
+
+    /// Absent and broken are not the same list. A YAML error used to read as
+    /// "no framework laws are designated", which the caller then reported as
+    /// an *absent* file: the silent gap RFC-026 requirement 5 calls the one
+    /// unacceptable failure form, arrived at through the line that exists to
+    /// prevent it.
+    #[test]
+    fn een_stukke_kaderwetlijst_is_geen_lege_kaderwetlijst() {
+        assert!(
+            Kaderwetten::parse("kaderwetten: [BWBR0005537\n").is_err(),
+            "een YAML-fout mag niet als lege lijst doorgaan"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("kaderwetten.yaml"),
+            "kaderwetten: [BWBR0005537\n",
+        )
+        .unwrap();
+        let error = Kaderwetten::load(dir.path()).unwrap_err();
+        assert!(
+            error.contains("kaderwetten.yaml"),
+            "de melding noemt het bestand dat gelezen is: {error}"
+        );
+
+        // A list that parses and designates nothing is still an honest empty
+        // list, so the two cases stay apart in both directions.
+        assert_eq!(
+            Kaderwetten::parse("kaderwetten: []\n"),
+            Ok(Kaderwetten::default())
+        );
     }
 }

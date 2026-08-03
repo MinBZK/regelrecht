@@ -197,23 +197,45 @@ fn plan_from_args(args: &Args) -> Result<Option<Plan>, String> {
 
     let index = LawIndex::scan(&args.corpus)
         .map_err(|e| format!("cannot read the corpus at {}: {e}", args.corpus.display()))?;
+    // Three outcomes, and they may not read as one. A list that is not there
+    // designates nothing and says so; a list that is there and broken fails
+    // the run, because falling back to "no framework laws" is the silent gap
+    // RFC-026 requirement 5 names as the one form that may not occur. The
+    // message names the file that was actually read, which under
+    // `--kaderwetten` is not the one beside the corpus.
+    let kaderwetten_path = args
+        .kaderwetten
+        .clone()
+        .unwrap_or_else(|| args.corpus.join("kaderwetten.yaml"));
     let kaderwetten = match &args.kaderwetten {
-        Some(path) => Kaderwetten::parse(
-            &std::fs::read_to_string(path)
-                .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
+        Some(path) => Some(
+            Kaderwetten::parse(
+                &std::fs::read_to_string(path)
+                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
+            )
+            .map_err(|e| format!("{}: {e}", path.display()))?,
         ),
-        None => Kaderwetten::load(&args.corpus),
+        None => Kaderwetten::load(&args.corpus)?,
     };
-    if kaderwetten.bwb_ids.is_empty() {
-        // Not fatal, and not silent either. RFC-026 names the hand-written list
-        // as the one place a silent gap can arise, so an absent list is said
-        // out loud rather than read as "there are none".
-        eprintln!(
-            "note: {}/kaderwetten.yaml is absent, so no framework law is designated. A law that \
-             declares itself applicable without being referenced will not be found",
-            args.corpus.display()
-        );
-    }
+    let unfound =
+        "A law that declares itself applicable without being referenced will not be found";
+    let kaderwetten = match kaderwetten {
+        None => {
+            eprintln!(
+                "note: {} is absent, so no framework law is designated. {unfound}",
+                kaderwetten_path.display()
+            );
+            Kaderwetten::default()
+        }
+        Some(list) if list.bwb_ids.is_empty() => {
+            eprintln!(
+                "note: {} designates no framework law. {unfound}",
+                kaderwetten_path.display()
+            );
+            list
+        }
+        Some(list) => list,
+    };
 
     let plan = plan_closure(
         &args.corpus,
@@ -473,10 +495,21 @@ async fn main() -> ExitCode {
 
     let after = report(&args, "after");
     println!("\n=== deterministic checks");
-    println!("  schema errors {} → {}", before.0, after.0);
-    println!("  findings      {} → {}", before.1, after.1);
+    let shown = |counts: Option<(usize, usize)>, pick: fn((usize, usize)) -> usize| {
+        counts.map_or_else(|| "unreadable".to_string(), |c| pick(c).to_string())
+    };
+    println!(
+        "  schema errors {} → {}",
+        shown(before, |c| c.0),
+        shown(after, |c| c.0)
+    );
+    println!(
+        "  findings      {} → {}",
+        shown(before, |c| c.1),
+        shown(after, |c| c.1)
+    );
 
-    verdict(after.0)
+    verdict(after.map(|c| c.0))
 }
 
 /// The verdict of a finished run: the schema errors that are left over.
@@ -486,11 +519,10 @@ async fn main() -> ExitCode {
 /// it — those are the work the run is for — but a law the schema refuses is
 /// a law the engine will not load, and a run that ends on one has not
 /// finished.
-fn verdict(schema_errors_after: usize) -> ExitCode {
-    if schema_errors_after > 0 {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
+fn verdict(schema_errors_after: Option<usize>) -> ExitCode {
+    match schema_errors_after {
+        Some(0) => ExitCode::SUCCESS,
+        _ => ExitCode::FAILURE,
     }
 }
 
@@ -543,12 +575,19 @@ fn print_feedback(feedback: &[regelrecht_pipeline::enrich::GateFeedback]) {
 }
 
 /// Run the deterministic checks and print a one-line summary. Returns
-/// `(schema errors, findings)` so the two runs can be compared.
-fn report(args: &Args, when: &str) -> (usize, usize) {
+/// `(schema errors, findings)` so the two runs can be compared, and `None`
+/// when there was nothing to check.
+///
+/// `None` rather than a pair of zeros, and that is the whole reason this
+/// returns an `Option`. A file that cannot be read produces no schema errors
+/// for the same reason it produces no findings — nobody looked — and
+/// [`verdict`] used to read that as a clean law and hand the caller a success.
+/// That is the exit code a loop over a list of laws steers on.
+fn report(args: &Args, when: &str) -> Option<(usize, usize)> {
     let path = args.corpus.join(&args.law);
     let Ok(yaml) = std::fs::read_to_string(&path) else {
         println!("=== {when}: cannot read {}", path.display());
-        return (0, 0);
+        return None;
     };
     let report = checks::run(&yaml, Some(&args.corpus));
     let counts = report.by_check();
@@ -569,7 +608,7 @@ fn report(args: &Args, when: &str) -> (usize, usize) {
     for e in report.schema.iter().take(5) {
         println!("    schema: {e}");
     }
-    (report.schema.len(), report.findings.len())
+    Some((report.schema.len(), report.findings.len()))
 }
 
 /// Print what the window cost: one line per call, then the total.
@@ -896,16 +935,17 @@ articles:
         args.law = "regulation/nl/wet/wet_stuk/2026-01-01.yaml".to_string();
         let refused = report(&args, "before");
 
+        let (accepted, refused) = (accepted.unwrap(), refused.unwrap());
         assert!(
             refused.0 > accepted.0,
             "a law the schema refuses must count more errors than one it accepts: \
              {refused:?} against {accepted:?}"
         );
 
-        // A file that is not there is not a clean law: the counts are zero and
-        // the run says so on the line above them.
+        // A file that is not there is not a clean law: there are no counts at
+        // all, and the run says so on the line above them.
         args.law = "regulation/nl/wet/bestaat_niet/2026-01-01.yaml".to_string();
-        assert_eq!(report(&args, "before"), (0, 0));
+        assert_eq!(report(&args, "before"), None);
     }
 
     /// A corpus without agent instructions produces a plausible law and an
@@ -939,9 +979,33 @@ articles:
     /// Anything looser makes the exit code say the same thing either way.
     #[test]
     fn test_the_verdict_turns_on_a_single_leftover_schema_error() {
-        assert_eq!(verdict(0), ExitCode::SUCCESS);
-        assert_eq!(verdict(1), ExitCode::FAILURE);
-        assert_eq!(verdict(7), ExitCode::FAILURE);
+        assert_eq!(verdict(Some(0)), ExitCode::SUCCESS);
+        assert_eq!(verdict(Some(1)), ExitCode::FAILURE);
+        assert_eq!(verdict(Some(7)), ExitCode::FAILURE);
+    }
+
+    /// A law nobody could read is not a law with nothing wrong with it.
+    ///
+    /// The unreadable case produced no schema errors for the same reason it
+    /// produced no findings — nobody looked — and the verdict read that as a
+    /// clean corpus. This is the exit code a loop over a list of laws steers
+    /// on, so the silence came out as a success.
+    #[test]
+    fn test_an_unreadable_law_is_not_a_clean_one() {
+        let dir = corpus();
+        let mut args = args(&dir);
+        assert!(
+            report(&args, "before").is_some(),
+            "de wet die er staat wordt wel gemeten"
+        );
+
+        args.law = "regulation/nl/wet/bestaat_niet/2026-01-01.yaml".to_string();
+        assert_eq!(report(&args, "before"), None);
+        assert_eq!(
+            verdict(report(&args, "before").map(|c| c.0)),
+            ExitCode::FAILURE,
+            "een onleesbare wet mag geen geslaagde run opleveren"
+        );
     }
 
     /// The provider reports money in tenths of a cent, and an integer is the
