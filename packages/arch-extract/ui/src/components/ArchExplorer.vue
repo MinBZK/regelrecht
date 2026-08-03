@@ -160,6 +160,12 @@ const zoomHint = `Scrollen wisselt het detailniveau: component vanaf ${LEVEL_ZOO
       <span v-if="isPrototype && coverage" class="arch-toolbar__stat" title="Zichtbaar op dit niveau: eigen knopen, en relaties als lijn of als interne teller op een knoop.">
         {{ coverage.units }} knopen · {{ coverage.visible }}/{{ coverage.total }} relaties
         <template v-if="coverage.internal">({{ coverage.internal }} intern)</template>
+        <!-- Zero on the current model. A relation whose endpoint is not in the
+             model at all cannot be lifted onto anything, so it is the one thing
+             the rollup drops — and it may not do that quietly. -->
+        <strong v-if="coverage.unplaced" class="arch-toolbar__warn">
+          · {{ coverage.unplaced }} met een onbekend eindpunt
+        </strong>
       </span>
 
       <div class="arch-toolbar__spacer"></div>

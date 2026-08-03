@@ -615,6 +615,10 @@ body,
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
+/* Only rendered when the rollup had to drop a relation — see ArchExplorer. */
+.arch-toolbar__warn {
+  color: var(--kind-enum);
+}
 
 /* The canvas stage the three prototypes draw on. */
 .arch-stage {
