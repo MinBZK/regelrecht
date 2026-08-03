@@ -72,6 +72,25 @@ fn outcome_for_error(err: &str) -> JobOutcome {
     }
 }
 
+/// [`outcome_for_error`] voor een mislukte document-convert-job, met één
+/// uitzondering die het verschil maakt.
+///
+/// `is_resource_exhaustion` herkent echte fork/EAGAIN/OOM-uitputting aan
+/// tekstmarkers ("cannot fork", "os error 11", …) in de foutmelding. Dat werkt
+/// alleen zolang die foutmelding niet door een buitenstaander te kiezen is: de
+/// weigering-zonder-toestemming noemt de geüploade bestandsnaam, dus een
+/// document dat `cannot fork.pdf` heet zou anders als resource-uitputting tellen
+/// en — na `WORKER_MAX_CONSECUTIVE_RESOURCE_FAILURES` van zulke uploads op rij —
+/// de breaker laten afgaan die de worker afsluit. Die mislukking is per
+/// definitie een gewoon, afgehandeld geval: we classificeren 'm op het
+/// fouttype in plaats van op de tekst.
+fn document_convert_outcome(err: &PipelineError, msg: &str) -> JobOutcome {
+    match err {
+        PipelineError::LlmNotPermitted(_) => JobOutcome::Processed,
+        _ => outcome_for_error(msg),
+    }
+}
+
 /// Returns true when an error indicates the container has exhausted the OS
 /// resources needed to spawn processes or threads — `fork()` returning EAGAIN
 /// ("cannot fork() ... Resource temporarily unavailable"), thread-create
@@ -1486,7 +1505,7 @@ async fn process_next_document_convert_job(
             }
             fail_result?;
 
-            Ok(outcome_for_error(&msg))
+            Ok(document_convert_outcome(&e, &msg))
         }
     }
 }
@@ -3232,6 +3251,50 @@ mod tests {
         assert_eq!(counter, 1);
         handle_resource_exhaustion(&mut counter, 3, "test");
         assert_eq!(counter, 2);
+    }
+
+    /// De uitputtings-breaker sluit de worker af, dus mag een gebruiker hem niet
+    /// kunnen laten afgaan. De weigering-zonder-toestemming noemt de geüploade
+    /// bestandsnaam; heet die `cannot fork.pdf`, dan matcht de tekst-classificatie
+    /// een fork-marker. Het fouttype moet daar dwars doorheen gaan.
+    #[test]
+    fn document_convert_refusal_never_counts_as_resource_exhaustion() {
+        let err = PipelineError::LlmNotPermitted(
+            "Conversie van cannot fork.pdf gestopt: de omzetting zonder AI leverde geen \
+             bruikbare tekst op. Er is geen taalmodel gebruikt."
+                .to_string(),
+        );
+        let msg = err.to_string();
+        // De tekst zou de breaker wél laten aanslaan — daarom classificeren we
+        // deze mislukking op type.
+        assert!(is_resource_exhaustion(&msg));
+        assert_eq!(outcome_for_error(&msg), JobOutcome::ResourceExhausted);
+        assert_eq!(
+            document_convert_outcome(&err, &msg),
+            JobOutcome::Processed,
+            "een geweigerde conversie is een gewone mislukking, geen resource-uitputting"
+        );
+    }
+
+    /// De tegenproef: echte fork/OOM-uitputting op deze zelfde job moet de
+    /// breaker nog steeds voeden.
+    #[test]
+    fn document_convert_real_exhaustion_still_trips_the_breaker() {
+        let err =
+            PipelineError::Enrich("cannot fork: Resource temporarily unavailable".to_string());
+        let msg = err.to_string();
+        assert_eq!(
+            document_convert_outcome(&err, &msg),
+            JobOutcome::ResourceExhausted
+        );
+    }
+
+    /// De uitleg gaat ongewijzigd naar de gebruiker (taak-payload, `jobs.result`),
+    /// dus zonder `enrichment error:`-voorvoegsel voor iets dat niet verrijkt is.
+    #[test]
+    fn llm_not_permitted_displays_without_prefix() {
+        let err = PipelineError::LlmNotPermitted("Conversie van brief.doc gestopt.".to_string());
+        assert_eq!(err.to_string(), "Conversie van brief.doc gestopt.");
     }
 
     #[test]

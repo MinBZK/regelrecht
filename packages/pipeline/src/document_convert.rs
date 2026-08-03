@@ -582,6 +582,12 @@ pub(crate) async fn try_deterministic_convert(
 /// Why a conversion cannot continue without LLM permission. Ends up verbatim in
 /// the "Conversie mislukt: …"-taak, so it is Dutch, concrete about which of the
 /// two cases applies, and says out loud that no language model saw the document.
+///
+/// Bewust [`PipelineError::LlmNotPermitted`] en niet `Enrich`: de boodschap gaat
+/// ongewijzigd naar de gebruiker (geen `enrichment error:`-prefix voor iets dat
+/// juist niet verrijkt is), en ze bevat de bestandsnaam van de gebruiker — het
+/// type houdt die tekst weg bij de tekst-matchende foutclassificatie in de
+/// worker.
 fn no_llm_permission_error(ext: &str, filename: &str) -> PipelineError {
     let format = if ext.is_empty() {
         "dit bestand".to_string()
@@ -595,7 +601,7 @@ fn no_llm_permission_error(ext: &str, filename: &str) -> PipelineError {
     } else {
         format!("voor {format} bestaat geen omzetting zonder AI")
     };
-    PipelineError::Enrich(format!(
+    PipelineError::LlmNotPermitted(format!(
         "Conversie van {filename} gestopt: {reason}. Er is geen taalmodel gebruikt en de inhoud \
          is nergens naartoe gestuurd. Upload het bestand opnieuw met 'Omzetten met AI toestaan' \
          aan, of lever een versie met een tekstlaag aan."
