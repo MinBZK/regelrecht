@@ -243,6 +243,17 @@ async fn te_smalle_toegang_meldt_rechten_en_vermijdt_de_koppel_flow() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_ne!(status, StatusCode::PRECONDITION_REQUIRED);
     assert!(melding.contains("niet toereikend"), "{melding}");
+
+    // Is het het token van de beheerder dat te smal is, dan valt er voor het
+    // lid niets te koppelen — een leesbron met een eigen servertoken kijkt
+    // sowieso nooit naar een persoonlijke koppeling.
+    let (status, melding) = index_failure_to_status(kind, &target(), TokenOrigin::Server);
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(melding.contains("beheerder"), "{melding}");
+    assert!(
+        !melding.contains("Koppel je GitHub-account"),
+        "een servertoken-probleem mag niet naar de koppel-flow wijzen: {melding}"
+    );
 }
 
 /// GitHub gebruikt 403 óók voor een uitgeputte rate limit, een organisatie

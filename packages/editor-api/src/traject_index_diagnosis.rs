@@ -375,14 +375,29 @@ pub fn index_failure_to_status(
                 ),
             ),
         },
-        IndexFailureKind::InsufficientScope => (
-            StatusCode::FORBIDDEN,
-            format!(
-                "Je GitHub-toegang tot {repo} is niet toereikend voor dit traject. Vraag de \
-                 eigenaar van de repo om toegang, of koppel het GitHub-account dat die toegang \
-                 wel heeft."
+        // Split for the same reason as `LinkRevoked`, one step further: a
+        // server token that is too narrow is not something the member can
+        // re-link away either — a writable-at-rest source never consults a
+        // personal link for reads, so pointing at the connect flow would be a
+        // dead end. Same 403 either way; only the remedy differs.
+        IndexFailureKind::InsufficientScope => match origin {
+            TokenOrigin::User => (
+                StatusCode::FORBIDDEN,
+                format!(
+                    "Je GitHub-toegang tot {repo} is niet toereikend voor dit traject. Vraag de \
+                     eigenaar van de repo om toegang, of koppel het GitHub-account dat die \
+                     toegang wel heeft."
+                ),
             ),
-        ),
+            TokenOrigin::Server | TokenOrigin::Absent => (
+                StatusCode::FORBIDDEN,
+                format!(
+                    "Het GitHub-token van de beheerder heeft niet genoeg toegang tot {repo} voor \
+                     dit traject. Meld dit bij je beheerder; zelf opnieuw koppelen helpt hier \
+                     niet."
+                ),
+            ),
+        },
         IndexFailureKind::GithubUnreachable => (
             StatusCode::SERVICE_UNAVAILABLE,
             "GitHub is nu niet bereikbaar, waardoor de bibliotheek van dit traject niet geladen \
