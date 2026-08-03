@@ -1853,6 +1853,38 @@ pub async fn materialize_task_workdir(
     Ok(dir)
 }
 
+/// Reden waarmee een geslaagde run die niets beoordeelbaars opleverde alsnog
+/// als mislukking bij de aanvrager landt. Zonder deze stap zou de review-taak
+/// gewoon worden aangemaakt en zou de gebruiker een taak openen die per
+/// definitie niet af te maken is.
+pub(crate) const NO_REVIEWABLE_LAW: &str =
+    "de verrijking leverde geen wet-YAML op om te beoordelen";
+
+/// Whether an enrich run wrote something the review UI can actually open.
+///
+/// Mirrors how `useTaskReview` picks the law out of the result blobs: the
+/// exact `yaml_path` from the payload, else a file whose basename is neither
+/// dot-prefixed nor a sidecar. The worker stages `features/*.feature` files
+/// alongside the law, and those are not a proposal on their own — a run that
+/// produced only those has nothing to review.
+///
+/// Pure so the contract can be pinned without a live database or workdir.
+pub(crate) fn produced_reviewable_law(
+    workdir: &Path,
+    written_files: &[std::path::PathBuf],
+    yaml_path: &str,
+) -> bool {
+    written_files.iter().any(|abs| {
+        let rel = abs.strip_prefix(workdir).unwrap_or(abs);
+        if rel.to_string_lossy() == yaml_path {
+            return true;
+        }
+        rel.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| !name.starts_with('.') && name.ends_with(".yaml"))
+    })
+}
+
 /// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
 /// result-blobs, verwijder de input-blobs, complete de job en maak de
 /// review-taak aan — alles in één transactie.
@@ -2146,6 +2178,21 @@ async fn process_enrich_task_job(
             }
         }
         Ok(Ok((result, written_files))) => {
+            // De run meldde succes, maar zonder wet-YAML valt er niets te
+            // beoordelen. Een review-taak aanmaken zou de aanvrager een
+            // onmogelijke taak geven; met retry-semantiek krijgt hij in plaats
+            // daarvan een nieuwe poging, en pas na de laatste een
+            // `job_failed`-taak met deze reden erin.
+            if !produced_reviewable_law(workdir.path(), &written_files, &payload.yaml_path) {
+                tracing::warn!(
+                    job_id = %job.id,
+                    law_id = %job.law_id,
+                    files = written_files.len(),
+                    "enrich-run zonder beoordeelbare wet-YAML"
+                );
+                fail_enrich_task_job_with_retry(pool, job, NO_REVIEWABLE_LAW).await?;
+                return Ok(JobOutcome::Processed);
+            }
             let result_json = match serde_json::to_value(&result) {
                 Ok(v) => Some(v),
                 Err(e) => {
@@ -3049,6 +3096,7 @@ async fn handle_enrich_exhausted_or_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn hourly_cap_day_vs_night() {
@@ -3128,6 +3176,62 @@ mod tests {
         assert!(!is_resource_exhaustion(
             "YAML error: did not find expected key at line 5 column 3"
         ));
+    }
+
+    #[test]
+    fn accepts_a_run_that_wrote_the_law_yaml() {
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![
+            PathBuf::from("/tmp/wd/features/zorgtoeslag.feature"),
+            PathBuf::from("/tmp/wd/laws/wet_op_de_zorgtoeslag/law.yaml"),
+        ];
+        assert!(produced_reviewable_law(
+            workdir,
+            &files,
+            "laws/wet_op_de_zorgtoeslag/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_run_that_only_wrote_feature_files() {
+        // De worker staged features naast de wet. Alleen features betekent dat
+        // er niets te beoordelen is, ook al meldde de run succes.
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![
+            PathBuf::from("/tmp/wd/features/zorgtoeslag.feature"),
+            PathBuf::from("/tmp/wd/features/premie.feature"),
+        ];
+        assert!(!produced_reviewable_law(
+            workdir,
+            &files,
+            "laws/wet_op_de_zorgtoeslag/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_run_that_only_wrote_sidecars() {
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![PathBuf::from("/tmp/wd/laws/x/.enrichment.yaml")];
+        assert!(!produced_reviewable_law(workdir, &files, "laws/x/law.yaml"));
+    }
+
+    #[test]
+    fn rejects_a_run_that_wrote_nothing() {
+        assert!(!produced_reviewable_law(
+            Path::new("/tmp/wd"),
+            &[],
+            "laws/x/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn accepts_a_law_yaml_on_a_path_other_than_the_payload_one() {
+        // Fallback, gelijk aan die van useTaskReview: schrijft het model de wet
+        // ergens anders neer, dan is er nog steeds iets te beoordelen. Alleen
+        // een run zonder énige wet-YAML faalt.
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![PathBuf::from("/tmp/wd/regulation/nl/wet/anders.yaml")];
+        assert!(produced_reviewable_law(workdir, &files, "laws/x/law.yaml"));
     }
 
     #[test]
