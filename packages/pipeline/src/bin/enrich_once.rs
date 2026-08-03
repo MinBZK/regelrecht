@@ -67,7 +67,7 @@ use regelrecht_pipeline::enrich::{
 };
 use regelrecht_pipeline::enrich_v2::checks;
 use regelrecht_pipeline::enrich_v2::closure::{
-    plan_closure, Kaderwetten, LawIndex, Plan, StopRules,
+    plan_closure, Kaderwetten, LawIndex, Plan, StopRules, Task,
 };
 
 struct Args {
@@ -277,18 +277,29 @@ fn plan_report(plan: &Plan, depth: usize, articles: &[String]) -> Vec<String> {
 
 /// The payload the local run hands the worker.
 ///
-/// `law_id` is empty on purpose: locally there is no database row to name, and
-/// the worker keys on the path. Everything else has to arrive, and the two
-/// fields below are the ones with nothing to catch them — an absent
-/// `yaml_path` enriches nothing at all, and an absent `provider` silently falls
-/// back to the worker's environment, so `--provider opencode` would run
+/// `law_id` is left at its default, which is the empty string: locally there
+/// is no database row to name and the worker keys on the path. The two fields
+/// that are set have nothing to catch them if they go missing — an absent
+/// `yaml_path` enriches nothing at all, and an absent `provider` silently
+/// falls back to the worker's environment, so `--provider opencode` would run
 /// against Claude and the output would look like an ordinary result.
 fn payload_from_args(args: &Args) -> EnrichPayload {
     EnrichPayload {
-        law_id: String::new(),
         yaml_path: args.law.clone(),
         provider: Some(args.provider.clone()),
         ..Default::default()
+    }
+}
+
+/// The payload for one law of a plan: the same run, pointed at another file.
+///
+/// The path is the whole difference between the tasks, so dropping it would
+/// enrich the law the caller named once per task and report a finished plan.
+/// Every other field is the run's own configuration and carries over.
+fn task_payload(payload: &EnrichPayload, task: &Task) -> EnrichPayload {
+    EnrichPayload {
+        yaml_path: task.path.clone(),
+        ..payload.clone()
     }
 }
 
@@ -402,10 +413,7 @@ async fn main() -> ExitCode {
             );
             let mut task_config = config.clone();
             task_config.target_articles = task.articles.clone();
-            let task_payload = EnrichPayload {
-                yaml_path: task.path.clone(),
-                ..payload.clone()
-            };
+            let task_payload = task_payload(&payload, task);
             match execute_enrich_with_runner(
                 &task_payload,
                 &args.corpus,
@@ -468,7 +476,18 @@ async fn main() -> ExitCode {
     println!("  schema errors {} → {}", before.0, after.0);
     println!("  findings      {} → {}", before.1, after.1);
 
-    if after.0 > 0 {
+    verdict(after.0)
+}
+
+/// The verdict of a finished run: the schema errors that are left over.
+///
+/// Read from a script and from a loop over a list of laws, so it has to be
+/// the answer to "is this corpus in a state I can use". Findings are not in
+/// it — those are the work the run is for — but a law the schema refuses is
+/// a law the engine will not load, and a run that ends on one has not
+/// finished.
+fn verdict(schema_errors_after: usize) -> ExitCode {
+    if schema_errors_after > 0 {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
@@ -628,7 +647,7 @@ fn skills_present(corpus: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use regelrecht_pipeline::enrich_v2::closure::{Gap, GapKind, Task};
+    use regelrecht_pipeline::enrich_v2::closure::{Gap, GapKind};
 
     /// Three laws, the same shape the closure tests use: A reads B and C
     /// straight, B reads C. The paths are what `--law` and the plan's tasks
@@ -845,6 +864,112 @@ articles:
         assert!(
             report.contains("bekende gaten: Delegated 2, OutsideCorpus 7"),
             "seven edges point outside the corpus, not four and not three: {report}"
+        );
+    }
+
+    /// The counts the run compares before and after, and the first of them is
+    /// what the process exits on. A law the schema refuses has to count for
+    /// more than a law it accepts: a report that answers the same either way
+    /// lets the run exit successfully on a corpus it just broke.
+    ///
+    /// Compared rather than pinned to a number, because the number belongs to
+    /// the checks and may move; what may not move is that the broken law
+    /// scores worse.
+    #[test]
+    fn test_the_report_counts_a_refused_law_worse_than_an_accepted_one() {
+        let dir = corpus();
+        let mut args = args(&dir);
+        let accepted = report(&args, "before");
+
+        // `articles` as a mapping where the schema wants a list.
+        write(
+            &dir,
+            "regulation/nl/wet/wet_stuk/2026-01-01.yaml",
+            r"$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: wet_stuk
+regulatory_layer: WET
+bwb_id: BWBR0000009
+articles:
+  number: '1'
+",
+        );
+        args.law = "regulation/nl/wet/wet_stuk/2026-01-01.yaml".to_string();
+        let refused = report(&args, "before");
+
+        assert!(
+            refused.0 > accepted.0,
+            "a law the schema refuses must count more errors than one it accepts: \
+             {refused:?} against {accepted:?}"
+        );
+
+        // A file that is not there is not a clean law: the counts are zero and
+        // the run says so on the line above them.
+        args.law = "regulation/nl/wet/bestaat_niet/2026-01-01.yaml".to_string();
+        assert_eq!(report(&args, "before"), (0, 0));
+    }
+
+    /// A corpus without agent instructions produces a plausible law and an
+    /// unusable measurement, and afterwards the two are indistinguishable. The
+    /// check is by path, so it has to answer both ways: present is not a
+    /// finding, and absent names the file that is missing.
+    #[test]
+    fn test_skills_are_looked_for_by_path_and_reported_by_name() {
+        let dir = corpus();
+        let missing = skills_present(dir.path()).unwrap_err();
+        assert!(
+            missing.contains("law-generate"),
+            "the refusal must name the file it did not find: {missing}"
+        );
+
+        write(&dir, ".claude/skills/law-generate/SKILL.md", "# skill\n");
+        assert!(
+            skills_present(dir.path()).is_err(),
+            "one of the two files is not the pair the agent reads"
+        );
+
+        write(
+            &dir,
+            ".claude/skills/law-generate/reference.md",
+            "# reference\n",
+        );
+        assert_eq!(skills_present(dir.path()), Ok(()));
+    }
+
+    /// One schema error left is a failed run, and none is a finished one.
+    /// Anything looser makes the exit code say the same thing either way.
+    #[test]
+    fn test_the_verdict_turns_on_a_single_leftover_schema_error() {
+        assert_eq!(verdict(0), ExitCode::SUCCESS);
+        assert_eq!(verdict(1), ExitCode::FAILURE);
+        assert_eq!(verdict(7), ExitCode::FAILURE);
+    }
+
+    /// The provider reports money in tenths of a cent, and an integer is the
+    /// only honest way to carry it. The formatting is where it can still go
+    /// wrong, and a cost line that is off by a factor is worse than no line.
+    #[test]
+    fn test_money_reads_tenths_of_a_cent_as_dollars() {
+        assert_eq!(money(0), "$0.0000");
+        assert_eq!(money(123_456), "$1.2345");
+        assert_eq!(money(100_000), "$1.0000");
+    }
+
+    /// Every task of a plan enriches its own law. The path is the only thing
+    /// that differs between them, so a task payload that keeps the caller's
+    /// path would enrich that one law once per task and report a plan it never
+    /// walked.
+    #[test]
+    fn test_a_task_payload_points_at_the_law_of_that_task() {
+        let dir = corpus();
+        let base = payload_from_args(&args(&dir));
+        let task = task("wet_c", 1);
+
+        let payload = task_payload(&base, &task);
+        assert_eq!(payload.yaml_path, task.path);
+        assert_ne!(payload.yaml_path, base.yaml_path);
+        assert_eq!(
+            payload.provider, base.provider,
+            "the rest of the run's configuration carries over"
         );
     }
 

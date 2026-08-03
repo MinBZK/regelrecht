@@ -149,4 +149,34 @@ exclude_re = [
     'engine/src/wasm\.rs.*WasmEngine::resolve_note\b',
     'engine/src/wasm\.rs.*WasmEngine::resolve_notes',
     'engine/src/wasm\.rs.*WasmEngine::register_data_source',
+
+    # --- resolver.rs -------------------------------------------------------
+
+    # select_in: de guard en de arm eronder komen op hetzelfde antwoord uit.
+    # Een `#`-verwijzing haalt parse_date nooit door — de eerste positie is
+    # geen cijfer — dus zonder guard valt dezelfde waarde door naar de
+    # terugval, en die geeft óók UndeterminedStart(raw). Er bestaat geen
+    # `valid_from` die wél een verwijzing is en wél als datum parseert, dus
+    # geen assertie kan het verschil zien. De guard staat er om de toegestane
+    # vorm te scheiden van de typefout-terugval, niet om een andere uitkomst te
+    # maken; de variant met `true` verandert wel gedrag en wordt gedood.
+    'resolver\.rs.*replace match guard is_internal_reference\(raw\) with false in RuleResolver::select_in',
+
+    # --- pipeline/bin/enrich_once.rs ---------------------------------------
+
+    # print_feedback en print_cost printen en niets anders: één regel per ronde
+    # en per aanroep, met de tellingen die de aanroeper al terugkreeg. Er is
+    # geen terugwaarde en geen zijeffect, dus een assertie zou het letterlijke
+    # kolomformaat vastleggen. Wat de regels betekenen (het optellen van de
+    # gaten, het bedrag uit tienden van centen) wordt wél gedood, in
+    # plan_report en money.
+    'enrich_once\.rs.*replace print_feedback with \(\)',
+    'enrich_once\.rs.*replace print_cost with \(\)',
+
+    # `if !result.untranslatables.is_empty()` bewaakt één printregel in de
+    # samenvatting ná een geslaagde verrijking. Die tak is alleen te bereiken
+    # met een draaiende agent en een model; de verrijking zelf wordt getest in
+    # de pipeline-crate, niet via dit binary. De afloopcode van dezelfde main
+    # wordt wel gedood (verdict, en de weigeringen in enrich_once_cli.rs).
+    'enrich_once\.rs.*delete ! in main',
 ]
