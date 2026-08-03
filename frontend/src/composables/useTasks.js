@@ -131,13 +131,14 @@ export function usePollWhile(active, intervalMs = 10000) {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
   };
-  watch(
-    active,
-    (on) => {
-      stop();
-      if (on) pollTimer = setInterval(refresh, intervalMs);
-    },
-    { immediate: true },
-  );
+  // Bewust NIET immediate: dat evalueert `active` tijdens setup, en een
+  // caller die zijn computed bovenaan definieert leest dan state die verderop
+  // in het bestand pas gedeclareerd wordt (temporal dead zone). Setup gooit
+  // dan en de hele view rendert niets. Kost ook niets: `running` is bij setup
+  // nog leeg, dus er valt op dat moment nooit iets te starten.
+  watch(active, (on) => {
+    stop();
+    if (on) pollTimer = setInterval(refresh, intervalMs);
+  });
   if (getCurrentInstance()) onUnmounted(stop);
 }

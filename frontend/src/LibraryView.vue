@@ -111,7 +111,6 @@ const isEnriching = computed(() =>
   ),
 );
 // Alleen pollen zolang je naar de bezig-staat kijkt; zie usePollWhile.
-usePollWhile(isEnriching);
 
 // Staat er al een beoordeelbaar voorstel klaar voor deze wet?
 const pendingReviewTask = computed(() =>
@@ -885,6 +884,12 @@ const selectedSection = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
+
+// Hier en niet bij isEnriching hierboven: watch() leest zijn bron meteen om de
+// dependency te leggen, en die computed gebruikt selectedLawId - dat staat een
+// paar regels hierboven pas. Eerder aanroepen gooit een ReferenceError in setup
+// en dan rendert de hele view niets.
+usePollWhile(isEnriching);
 const selectedArticleNumber = ref(null);
 
 // Recently-viewed laws (most-recent-first), persisted across sessions. Stored
