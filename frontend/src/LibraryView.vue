@@ -112,13 +112,23 @@ const isEnriching = computed(() =>
 );
 // Alleen pollen zolang je naar de bezig-staat kijkt; zie usePollWhile.
 
-// Staat er al een beoordeelbaar voorstel klaar voor deze wet?
-const pendingReviewTask = computed(() =>
-  openTasks.value.find(
+// Staat er al een beoordeelbaar voorstel klaar voor deze wet? Een verrijking
+// levert een taak per gewijzigd artikel, dus die van het geopende artikel gaat
+// voor; anders de eerste van de wet.
+const pendingReviewTask = computed(() => {
+  const forLaw = openTasks.value.filter(
     (t) => t.task_type === 'job_review' && t.payload?.law_id === selectedLawId.value,
-  ) ?? null,
-);
+  );
+  if (!forLaw.length) return null;
+  const here = String(selectedArticleNumber.value ?? '');
+  return forLaw.find((t) => String(t.payload?.article ?? '') === here) ?? forLaw[0];
+});
 const reviewReady = computed(() => !!pendingReviewTask.value);
+const reviewArticleForPane = computed(() =>
+  pendingReviewTask.value?.payload?.article == null
+    ? ''
+    : String(pendingReviewTask.value.payload.article),
+);
 function openReviewForLaw() {
   const target = reviewTarget(pendingReviewTask.value);
   if (target) router.push(target);
@@ -2540,8 +2550,8 @@ watch(activeTrajectRef, () => {
                   <nldd-spacer size="24"></nldd-spacer>
                   <KeepAlive>
                     <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" centered />
-                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" @open-action="activeAction = $event" />
-                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" />
+                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :review-article="reviewArticleForPane" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" @open-action="activeAction = $event" />
+                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :review-article="reviewArticleForPane" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" />
                   </KeepAlive>
                 </nldd-simple-section>
               </template>

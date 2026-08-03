@@ -14,6 +14,23 @@ describe('taskTitle', () => {
     expect(taskTitle(task, lawName)).toBe('Beoordeel verrijking van Wet op de zorgtoeslag');
   });
 
+  it('noemt het artikel als de taak er een aanwijst', () => {
+    const task = {
+      task_type: 'job_review',
+      title: 'Verrijking beoordelen: wet_op_de_zorgtoeslag artikel 2',
+      payload: { law_id: 'wet_op_de_zorgtoeslag', traject_ref: 't-1', article: '2' },
+    };
+    expect(taskTitle(task, lawName)).toBe('Beoordeel artikel 2 van Wet op de zorgtoeslag');
+  });
+
+  it('noemt geen artikel bij een mislukte verrijking - die geldt de hele wet', () => {
+    const task = {
+      task_type: 'job_failed',
+      payload: { law_id: 'wet_op_de_zorgtoeslag', traject_ref: 't-1', article: '2' },
+    };
+    expect(taskTitle(task, lawName)).toBe('Verrijking van Wet op de zorgtoeslag is mislukt');
+  });
+
   it('schrijft een document-review in de gebiedende wijs', () => {
     const task = {
       task_type: 'job_review',

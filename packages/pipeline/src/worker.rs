@@ -1885,6 +1885,51 @@ pub(crate) fn produced_reviewable_law(
     })
 }
 
+/// Article numbers whose content differs between the source snapshot and the
+/// proposal, in the proposal's own order.
+///
+/// The enrichment writes `machine_readable` per article, so a run typically
+/// touches a handful of them while leaving the rest byte-identical. Splitting
+/// the review per article means a reviewer decides on what actually changed
+/// instead of on the whole law at once.
+///
+/// Compared as untyped YAML rather than through the law model on purpose: the
+/// only question here is "did this article change", and an untyped compare
+/// keeps answering that when the schema grows a field this crate does not know
+/// about yet. An article the source does not have at all counts as changed.
+///
+/// A parse failure yields None, and the caller then falls back to one task for
+/// the whole law — a proposal we cannot read is still reviewable by hand.
+pub(crate) fn changed_articles(source_yaml: &str, proposal_yaml: &str) -> Option<Vec<String>> {
+    fn articles(yaml: &str) -> Option<Vec<(String, serde_yaml_ng::Value)>> {
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).ok()?;
+        let list = doc.get("articles")?.as_sequence()?;
+        Some(
+            list.iter()
+                .filter_map(|a| {
+                    let number = a.get("number")?.as_str()?.to_string();
+                    Some((number, a.clone()))
+                })
+                .collect(),
+        )
+    }
+
+    let source = articles(source_yaml)?;
+    let proposal = articles(proposal_yaml)?;
+    Some(
+        proposal
+            .into_iter()
+            .filter(|(number, article)| {
+                source
+                    .iter()
+                    .find(|(n, _)| n == number)
+                    .is_none_or(|(_, before)| before != article)
+            })
+            .map(|(number, _)| number)
+            .collect(),
+    )
+}
+
 /// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
 /// result-blobs, verwijder de input-blobs, complete de job en maak de
 /// review-taak aan — alles in één transactie.
@@ -1898,8 +1943,17 @@ pub async fn finish_enrich_task_job(
     let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
         .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
 
+    // Vóór de transactie, want delete_blobs_for_job hieronder gooit de
+    // input-blobs weg: dit is de bronsnapshot waartegen we de proposal diffen.
+    let source_yaml = crate::tasks::load_blobs(pool, job.id, crate::tasks::BlobKind::Input)
+        .await?
+        .into_iter()
+        .find(|b| b.path == payload.yaml_path)
+        .map(|b| b.content);
+
     let mut tx = pool.begin().await?;
     crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    let mut proposal_yaml: Option<String> = None;
     for abs in written_files {
         let rel = abs
             .strip_prefix(workdir)
@@ -1912,6 +1966,9 @@ pub async fn finish_enrich_task_job(
             .to_string_lossy()
             .to_string();
         let content = tokio::fs::read_to_string(abs).await?;
+        if rel == payload.yaml_path {
+            proposal_yaml = Some(content.clone());
+        }
         crate::tasks::insert_blob(
             &mut *tx,
             job.id,
@@ -1936,23 +1993,81 @@ pub async fn finish_enrich_task_job(
     if new_law {
         task_payload["kind"] = serde_json::json!("law_create");
     }
-    let title = if new_law {
-        format!("Nieuwe wet beoordelen: {}", payload.law_id)
+
+    // Eén taak per gewijzigd artikel. Een verrijking raakt doorgaans een
+    // handvol artikelen en laat de rest ongemoeid; per artikel beslissen laat de
+    // beoordelaar zich uitspreken over wat er werkelijk veranderd is.
+    //
+    // Terug naar één taak voor de hele wet wanneer we niet kunnen diffen: bij
+    // een nieuwe wet is er geen bron om tegen af te zetten, en bij een
+    // onleesbare YAML weten we het simpelweg niet. Beide zijn met de hand nog
+    // prima te beoordelen, dus dat is een terugval en geen fout.
+    let per_article = if new_law {
+        None
     } else {
-        format!("Verrijking beoordelen: {}", payload.law_id)
+        match (source_yaml.as_deref(), proposal_yaml.as_deref()) {
+            (Some(before), Some(after)) => changed_articles(before, after),
+            _ => None,
+        }
     };
-    crate::tasks::create_task(
-        &mut *tx,
-        crate::tasks::NewTask {
-            task_type: crate::tasks::TaskType::JobReview,
-            assignee_account_id: payload.requested_by,
-            traject_id: payload.traject_id,
-            job_id: Some(job.id),
-            title,
-            payload: Some(task_payload),
-        },
-    )
-    .await?;
+
+    match per_article {
+        Some(articles) if !articles.is_empty() => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %payload.law_id,
+                articles = articles.len(),
+                "review-taken per artikel aangemaakt"
+            );
+            for number in articles {
+                let mut article_payload = task_payload.clone();
+                article_payload["article"] = serde_json::json!(number);
+                crate::tasks::create_task(
+                    &mut *tx,
+                    crate::tasks::NewTask {
+                        task_type: crate::tasks::TaskType::JobReview,
+                        assignee_account_id: payload.requested_by,
+                        traject_id: payload.traject_id,
+                        job_id: Some(job.id),
+                        title: format!(
+                            "Verrijking beoordelen: {} artikel {}",
+                            payload.law_id, number
+                        ),
+                        payload: Some(article_payload),
+                    },
+                )
+                .await?;
+            }
+        }
+        // Leeg betekent: de proposal verschilt nergens van de bron. Dan valt er
+        // niets te beoordelen en hoort er geen taak te komen; de job is klaar.
+        Some(_) => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %payload.law_id,
+                "verrijking leverde geen wijziging op, geen review-taak"
+            );
+        }
+        None => {
+            let title = if new_law {
+                format!("Nieuwe wet beoordelen: {}", payload.law_id)
+            } else {
+                format!("Verrijking beoordelen: {}", payload.law_id)
+            };
+            crate::tasks::create_task(
+                &mut *tx,
+                crate::tasks::NewTask {
+                    task_type: crate::tasks::TaskType::JobReview,
+                    assignee_account_id: payload.requested_by,
+                    traject_id: payload.traject_id,
+                    job_id: Some(job.id),
+                    title,
+                    payload: Some(task_payload),
+                },
+            )
+            .await?;
+        }
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -3176,6 +3291,75 @@ mod tests {
         assert!(!is_resource_exhaustion(
             "YAML error: did not find expected key at line 5 column 3"
         ));
+    }
+
+    const SOURCE: &str = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output: []
+"#;
+
+    #[test]
+    fn reports_only_the_articles_that_differ() {
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+"#;
+        assert_eq!(
+            changed_articles(SOURCE, proposal),
+            Some(vec!["2".to_string()])
+        );
+    }
+
+    #[test]
+    fn reports_nothing_when_the_proposal_matches_the_source() {
+        assert_eq!(changed_articles(SOURCE, SOURCE), Some(Vec::new()));
+    }
+
+    #[test]
+    fn counts_an_article_the_source_does_not_have_as_changed() {
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output: []
+  - number: "3"
+    text: Nieuw artikel
+"#;
+        assert_eq!(
+            changed_articles(SOURCE, proposal),
+            Some(vec!["3".to_string()])
+        );
+    }
+
+    #[test]
+    fn yields_none_on_unreadable_yaml_so_the_caller_falls_back() {
+        // Geen paniek en geen lege lijst: "ik weet het niet" is iets anders dan
+        // "er is niets veranderd", en de caller maakt er één taak van.
+        assert_eq!(
+            changed_articles(SOURCE, "dit is: [geen: geldige yaml"),
+            None
+        );
+        assert_eq!(changed_articles("zonder articles-sleutel: 1", SOURCE), None);
     }
 
     #[test]

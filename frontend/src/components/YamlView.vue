@@ -19,6 +19,7 @@ const props = defineProps({
   enrichError: { type: String, default: '' },
   /** Er staat een openstaande review-taak klaar voor deze wet. */
   reviewReady: { type: Boolean, default: false },
+  reviewArticle: { type: String, default: '' },
   /** Anchor target for that button. Leave unset when the user isn't logged
    *  in, so the click gates on the login popover instead of the href. */
   createHref: { type: String, default: undefined },
@@ -53,6 +54,7 @@ const yamlText = computed(() => {
   <MachineEmptyState
     v-if="!yamlText"
     :review-ready="reviewReady"
+    :review-article="reviewArticle"
     :enriching="enriching"
     :can-enrich="canEnrich"
     :can-create="canCreate"

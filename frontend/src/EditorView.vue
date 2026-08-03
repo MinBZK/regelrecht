@@ -1497,11 +1497,10 @@ const lastSaveTouchedMachine = ref(false);
 // the same pane-local "current" refs a manual edit would touch), so the
 // existing dirty-tracking and Wijzigingenbalk (Opslaan/Wijzigingen-
 // ongedaan) drive the review UI the same way they drive a manual edit.
-// The SEEDING is single-article-scoped like `currentLawYaml` below (a
-// proposal touching several articles only seeds the first one that
-// differs into the panes), but the SAVE is not: `handleLawSave` sends the
-// full `reviewProposedContent` when a review is active, so approving
-// always commits the entire proposal - never just the seeded article.
+// Seeding en opslaan zijn allebei artikel-scoped: de taak wijst het artikel
+// aan (`payload.article`), de editor seedt dat en Opslaan bewaart de splice.
+// Alleen een taak zónder artikelnummer valt terug op de hele wet, zie
+// `reviewSavesWholeLaw`.
 const {
   reviewTask,
   proposedContent: reviewProposedContent,
@@ -1518,6 +1517,22 @@ const reviewActive = computed(() => !!reviewTask.value);
 const reviewIsLawCreate = computed(
   () => reviewTask.value?.payload?.kind === 'law_create',
 );
+// Het artikel waar deze taak over gaat. De worker maakt sinds de opsplitsing
+// één review-taak per gewijzigd artikel en zet het nummer in de payload, zodat
+// een beoordelaar zich uitspreekt over wat er werkelijk veranderd is.
+//
+// Zonder nummer gaat de taak over de hele wet. Dat blijft bestaan voor een
+// `law_create` (de wet ís het voorstel), voor een voorstel dat de worker niet
+// kon opsplitsen, en voor taken van vóór deze wijziging.
+const reviewArticleNumber = computed(() => {
+  const number = reviewTask.value?.payload?.article;
+  return number == null ? null : String(number);
+});
+// Een taak die één artikel aanwijst, slaat op als elke andere artikel-save: de
+// splice van de zichtbare pane, inclusief wat de beoordelaar er zelf nog aan
+// veranderde. Alleen een taak zonder artikelnummer committeert het voorstel in
+// zijn geheel, want daar is geen kleinere eenheid om over te beslissen.
+const reviewSavesWholeLaw = computed(() => reviewActive.value && !reviewArticleNumber.value);
 const reviewTaskIdParam = computed(() =>
   typeof route.query.task === 'string' ? route.query.task : null,
 );
@@ -1565,7 +1580,11 @@ function applyProposedContent(proposedYaml) {
   // which has no way to splice in an article the saved law doesn't have),
   // and can't show a removed article either - proposalDivergence folds both
   // into `hiddenChanges` so the banner points at the YAML panel for them.
-  const { target, hiddenChanges } = proposalDivergence(articles.value, proposedArticles);
+  const { target, hiddenChanges } = proposalDivergence(
+    articles.value,
+    proposedArticles,
+    reviewArticleNumber.value,
+  );
   reviewHasHiddenChanges.value = hiddenChanges;
   if (!target) return; // nothing seedable differs - nothing to seed
   reviewSeeded.value = true;
@@ -1608,13 +1627,21 @@ const reviewBannerSupportingText = computed(() => {
     return 'Controleer de wet; Opslaan voegt de wet toe aan het traject, Verwerpen wijst af.';
   }
   if (!reviewSeeded.value) {
-    return 'Voorstel raakt alleen inhoud die hier niet zichtbaar is - bekijk het YAML-paneel.';
+    return reviewArticleNumber.value
+      ? `Artikel ${reviewArticleNumber.value} wijkt niet af van het voorstel; er valt niets te wijzigen.`
+      : 'Voorstel raakt alleen inhoud die hier niet zichtbaar is - bekijk het YAML-paneel.';
   }
   if (reviewStale.value) {
     return (
       'Let op: de wet is intussen gewijzigd; controleer extra goed.' +
       (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
     );
+  }
+  // Artikel-scoped: Opslaan is de gewone artikel-save, dus eigen aanpassingen
+  // gaan wél mee. Bij een voorstel voor de hele wet niet, en dat moet er dan
+  // ook staan - het is precies wat een beoordelaar niet verwacht.
+  if (!reviewSavesWholeLaw.value) {
+    return `Opslaan bewaart artikel ${reviewArticleNumber.value} zoals het hier staat, Verwerpen wijst het voorstel af.`;
   }
   return (
     'Opslaan keurt het volledige voorstel goed (eigen aanpassingen gaan niet mee), Verwerpen wijst af.' +
@@ -1724,13 +1751,25 @@ async function rejectReview() {
 const { requestEnrich, running: runningJobs, tasks: openTasks } = useTaskActions();
 // Staat er al een beoordeelbaar voorstel klaar voor deze wet? Dan meldt de lege
 // pane dat, in plaats van opnieuw te laten genereren.
-const pendingReviewTask = computed(() =>
-  openTasks.value.find(
+// Eén verrijking levert een taak per gewijzigd artikel, dus meestal staan er
+// meerdere open voor deze wet. Je kijkt naar één artikel, dus de taak van dát
+// artikel gaat voor; is die er niet, dan de eerste van de wet - beter naar een
+// naburig voorstel wijzen dan naar niets.
+const pendingReviewTask = computed(() => {
+  const forLaw = openTasks.value.filter(
     (t) => t.task_type === 'job_review' && t.payload?.law_id === lawId.value,
-  ) ?? null,
-);
+  );
+  if (!forLaw.length) return null;
+  const here = String(selectedArticleNumber.value ?? '');
+  return forLaw.find((t) => String(t.payload?.article ?? '') === here) ?? forLaw[0];
+});
 // Niet melden terwijl je die taak al aan het beoordelen bent.
 const reviewReady = computed(() => !!pendingReviewTask.value && !reviewActive.value);
+const reviewArticleForPane = computed(() =>
+  pendingReviewTask.value?.payload?.article == null
+    ? ''
+    : String(pendingReviewTask.value.payload.article),
+);
 function openReviewForLaw() {
   const target = reviewTarget(pendingReviewTask.value);
   if (target) router.push(target);
@@ -1795,15 +1834,19 @@ function dismissEnrichFeedback() {
 // the whole law YAML, so one click persists every in-memory edit for the
 // selected article regardless of which pane surfaced the button.
 //
-// Review-modus: Opslaan approves the task, and approval must commit the
-// FULL proposal (spec §5.3/§6), not just the splice `currentLawYaml` makes
-// into the single selected article - a proposal touching several articles
-// would otherwise lose every article besides the one shown in the editor.
-// `saveLaw` already accepts arbitrary full-law YAML text (see its PUT body
-// in useLaw.js), so reusing it with `reviewProposedContent` instead of
-// `currentLawYaml` is the whole fix; no second save path is introduced.
+// Review-modus: Opslaan approves the task. Een taak die één artikel aanwijst
+// loopt langs het gewone pad - `currentLawYaml` splicet dat artikel in de
+// opgeslagen wet, en dat is precies de eenheid waarover de taak gaat. Wat de
+// verrijking elders voorstelde, blijft aan de eigen taak van dát artikel
+// hangen en gaat hier niet ongezien mee.
+//
+// Een taak zonder artikelnummer (law_create, of een voorstel dat de worker
+// niet kon opsplitsen) heeft die kleinere eenheid niet, en committeert het
+// voorstel integraal. `saveLaw` accepteert willekeurige volledige-wet-YAML
+// (zie de PUT-body in useLaw.js), dus dat is dezelfde aanroep met andere
+// inhoud; er komt geen tweede save-pad bij.
 async function handleLawSave() {
-  const lawYaml = reviewActive.value ? reviewProposedContent.value : currentLawYaml.value;
+  const lawYaml = reviewSavesWholeLaw.value ? reviewProposedContent.value : currentLawYaml.value;
   if (!lawYaml) return;
   // Snapshot the law id before the await. saveLaw itself guards its own
   // reactive writes with the same check, but the post-save cleanup below
@@ -1815,8 +1858,8 @@ async function handleLawSave() {
   // the visible pane's edits - always treat it as touching text (notes
   // re-anchor safely; skipping would risk leaving a note's positions stale
   // against text the proposal actually changed elsewhere in the law).
-  lastSaveTouchedText.value = reviewActive.value ? true : isArticleTextDirty.value;
-  lastSaveTouchedMachine.value = reviewActive.value ? true : isMachineReadableDirty.value;
+  lastSaveTouchedText.value = reviewSavesWholeLaw.value ? true : isArticleTextDirty.value;
+  lastSaveTouchedMachine.value = reviewSavesWholeLaw.value ? true : isMachineReadableDirty.value;
   try {
     // law_create: de wet bestaat nog niet in het traject, dus het voorstel
     // gaat door het create-pad (POST, pad server-side afgeleid) - daarna
@@ -2817,6 +2860,7 @@ async function handleActionSave() {
                   :can-enrich="canEnrichLaw"
                   :enriching="isEnriching"
                   :review-ready="reviewReady"
+                  :review-article="reviewArticleForPane"
                   :dirty="isMachineReadableDirty"
                   :saving="lawSaving"
                   :traject-ref="activeTrajectRef"
@@ -2860,6 +2904,7 @@ async function handleActionSave() {
                 <MachineEmptyState
                   v-if="!hasMachineReadable"
                   :review-ready="reviewReady"
+                  :review-article="reviewArticleForPane"
                   :enriching="isEnriching"
                   :can-enrich="canEnrichLaw"
                   :can-write-here="canEdit"

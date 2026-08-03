@@ -16,6 +16,10 @@ import { inject } from 'vue';
 const props = defineProps({
   /** Er staat een openstaande review-taak klaar voor deze wet. */
   reviewReady: { type: Boolean, default: false },
+  /** Het artikel waar die taak over gaat. Leeg bij een voorstel voor de hele
+   *  wet. Staat in de tekst omdat de knop naar dat artikel navigeert, en dat
+   *  hoeft niet het artikel te zijn dat je nu open hebt. */
+  reviewArticle: { type: String, default: '' },
   /** Er loopt een verrijking voor deze wet (pending of processing). */
   enriching: { type: Boolean, default: false },
   /** Verrijken is hier aan te vragen (of routeert naar login/traject). */
@@ -51,7 +55,9 @@ const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
     data-testid="review-ready"
     icon="ai"
     text="Er ligt een voorstel klaar"
-    supporting-text="Beoordeel de wijzigingen en sla ze op, of verwerp ze."
+    :supporting-text="reviewArticle
+      ? `Beoordeel het voorstel voor artikel ${reviewArticle} en sla het op, of verwerp het.`
+      : 'Beoordeel de wijzigingen en sla ze op, of verwerp ze.'"
   >
     <nldd-button
       slot="actions"
