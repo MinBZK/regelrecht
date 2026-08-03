@@ -72,14 +72,22 @@ export function layoutMatrix(model, level, opts = {}) {
     };
   });
 
-  const cells = scene.links.map((link) => ({
-    from: link.from,
-    to: link.to,
-    kind: link.kind,
-    weight: link.weight,
-    row: rowOf.get(link.from) ?? 0,
-    col: rowOf.get(link.to) ?? 0,
-  }));
+  // Both ends of a link are units of this level — `buildScene` guarantees it —
+  // so a missing row means that guarantee broke, not that the model has such a
+  // case. Drawing the cell at (0, 0) anyway would put a wrong mark on the
+  // diagonal and say nothing; it is counted as unplaced instead, which is where
+  // the toolbar reads "nothing disappears quietly" from.
+  let lost = 0;
+  const cells = [];
+  for (const link of scene.links) {
+    const row = rowOf.get(link.from);
+    const col = rowOf.get(link.to);
+    if (row === undefined || col === undefined) {
+      lost += link.weight;
+      continue;
+    }
+    cells.push({ from: link.from, to: link.to, kind: link.kind, weight: link.weight, row, col });
+  }
 
   return {
     kind: 'matrix',
@@ -98,7 +106,9 @@ export function layoutMatrix(model, level, opts = {}) {
       maxX: -origin + WORLD_SIZE * 0.01,
       maxY: -origin + WORLD_SIZE * 0.01,
     },
-    stats: scene.stats,
+    stats: lost
+      ? { ...scene.stats, visible: scene.stats.visible - lost, unplaced: scene.stats.unplaced + lost }
+      : scene.stats,
   };
 }
 
