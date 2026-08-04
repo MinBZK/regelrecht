@@ -33,6 +33,7 @@ pub mod context;
 pub mod data_source;
 pub mod engine;
 pub mod error;
+pub mod metrics;
 pub mod operations;
 pub mod priority;
 pub mod receipt;
