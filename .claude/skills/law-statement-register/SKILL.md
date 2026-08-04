@@ -80,10 +80,19 @@ geen pagina-markers — zodat een citaat dat over een paginagrens loopt nog stee
 
 Twee takken, één contract (zelfde bytes in → zelfde tekst uit, geen oordeel):
 
-| Bron | Extractor | Furniture-regel | Pagina's |
+| Bron | Extractor | Furniture-regel | Zijsporen |
 |---|---|---|---|
 | `.pdf` | `pdftotext -layout` | regels die op de meeste pagina's boven-/onderaan terugkomen | `pages.tsv` |
-| `.html` | `scripts/html_canonical.py` (stdlib) | `nav`/`header`/`footer`/`aside`/`script`, en versmallen tot `<main>`/`<article>` | n.v.t. |
+| `.html` | `scripts/html_canonical.py` (stdlib) | `nav`/`header`/`footer`/`aside`/`script`, icoon- en schermlezerlabels (`sr-only`, `visually-hidden`, `icon-label`), en versmallen tot `<main>`/`<article>` | `links.tsv` |
+
+Twee dingen die de HTML-tak expliciet goed doet omdat ze anders stil misgaan:
+
+- **`colspan` telt mee.** Een cel die twee kolommen beslaat moet twee kolomposities
+  opschuiven, anders landt elke waarde erna onder de verkeerde kop — een fout antwoord,
+  geen opmaakdetail. Hetzelfde geldt voor een lege begincel: die blijft als tab staan.
+- **Links gaan naar `links.tsv`, niet de tekst in.** Een hyperlink op *"artikel 8 van de
+  Awir"* is het document dat zélf zegt welke norm het bedoelt — precies wat fase 5
+  reconstrueert. Weggooien is bewijs weggooien; inline zetten sloopt het verbatim citeren.
 
 Bij HTML wijst `--root '#content'` het inhoudsblok aan als de pagina geen `<main>` heeft, en
 laat `--keep-nav` zien wát er anders wegvalt. De HTML-tak bewaart structuur die de tiler nodig

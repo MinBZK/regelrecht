@@ -49,9 +49,11 @@ if [[ "$EXT" == "html" || "$EXT" == "htm" ]]; then
     # -- HTML branch: no pages, no layout reconstruction, own furniture rule.
     EXTRACTOR="html_canonical.py (stdlib)"
     if [[ -n "$ROOT" ]]; then
-        python3 "$HERE/html_canonical.py" "$SRC" --root "$ROOT" > "$OUTDIR/canonical.md"
+        python3 "$HERE/html_canonical.py" "$SRC" --root "$ROOT" \
+                --links "$OUTDIR/links.tsv" > "$OUTDIR/canonical.md"
     else
-        python3 "$HERE/html_canonical.py" "$SRC" > "$OUTDIR/canonical.md"
+        python3 "$HERE/html_canonical.py" "$SRC" \
+                --links "$OUTDIR/links.tsv" > "$OUTDIR/canonical.md"
     fi
     rm -f "$OUTDIR/pages.tsv"
     NORMALIZATION="  - unicode-NFC

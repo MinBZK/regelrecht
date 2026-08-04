@@ -42,6 +42,14 @@ formulering). Als de secundaire tekst een eis toevoegt die de norm niet stelt, i
      - '!regulation/**/uitvoeringsbeleid/**'   # de geanalyseerde tekst zelf
    ```
 
+   **Bij een HTML-bron: begin bij `links.tsv`.** Uitvoeringsteksten linken hun eigen
+   verwijzingen vaak rechtstreeks naar `wetten.overheid.nl`, mét BWB-ID en artikelanker. Dat
+   is de auteur die zegt welke norm hij bedoelt — je hoeft het niet te raden. Maar het is een
+   *claim*, geen bewijs: een link kan naar een kapstok-artikel wijzen terwijl de operatieve
+   norm elders staat, of naar een inmiddels gewijzigde versie. Gebruik hem als eerste spoor
+   en verifieer alsnog in de normtekst; noteer de link als `norm_ref`-kandidaat, niet als
+   uitkomst.
+
 2. **Zoek op meerdere formuleringen, niet op één.** Een norm gebruikt zelden het woord van de
    toelichting. Werk minstens drie sporen af:
    - de **kernterm** uit het statement (*"vrijlating"*)
