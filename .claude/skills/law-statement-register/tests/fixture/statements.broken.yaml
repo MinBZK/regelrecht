@@ -1,0 +1,193 @@
+---
+# Same fixture, with five deliberate defects - one per failure mode the gates
+# exist to catch. tests/run.sh asserts that each gate reports its own defect.
+#
+#   A  VERBATIM   S4 quote is paraphrased ("twintig procent" for "20%")
+#   B  COVERAGE   segment s006 (colofon) is missing entirely -> gap at the end
+#   C  ANCHOR     S5 anchors on the bare word "vrijgelaten" -> two matches
+#   D  SIGNAALNET S8 is missing -> the "Indien ..." sentence is passed over
+#   E  VERBATIM   S3 records a niet-gevonden anchoring without search terms
+document:
+  id: toelichting_fictieve_tegemoetkoming
+  title: Toelichting fictieve tegemoetkoming
+  source_url: https://example.org/fictief/toelichting.pdf
+  source_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+  retrieved_at: '2026-01-01'
+  status: toelichting
+  canonical: canonical.md
+
+segments:
+  - id: s001
+    path: []
+    disposition: navigational
+    reason: Titelregel, geen normatieve inhoud.
+    text: Toelichting fictieve tegemoetkoming
+
+  - id: s002
+    number: '1'
+    path: [1 Inleiding]
+    disposition: normative
+    text: |-
+      1 Inleiding
+
+      Deze toelichting legt uit hoe de fictieve tegemoetkoming wordt vastgesteld. Aan deze
+      toelichting kunnen geen rechten worden ontleend.
+
+  - id: s003
+    number: '2'
+    path: [2 Wie komt in aanmerking]
+    disposition: normative
+    text: |-
+      2 Wie komt in aanmerking
+
+      De aanvrager moet op de peildatum ingezetene zijn van het werkgebied. Een aanvrager die
+      in het buitenland woont komt niet in aanmerking.
+
+  - id: s004
+    number: '3'
+    path: [3 Berekening]
+    disposition: normative
+    text: |-
+      3 Berekening
+
+      Van het besteedbaar inkomen wordt 20% vrijgelaten. Omdat er ook andere heffingen worden
+      opgelegd, wordt van het bedrag dat overblijft nog eens 50% vrijgelaten. De tegemoetkoming
+      bedraagt in de regel ten hoogste 1.200 euro per jaar.
+
+  - id: s005
+    number: '4'
+    path: [4 Aanvraag]
+    disposition: normative
+    text: |-
+      4 Aanvraag
+
+      Het verzoek wordt binnen 6 weken na dagtekening ingediend. Indien het verzoek te laat
+      wordt ingediend, wordt het niet in behandeling genomen.
+
+  # DEFECT B: segment s006 (colofon) ontbreekt.
+
+statements:
+  - id: S1
+    slug: documentstatus-geen-rechten
+    segment: s002
+    quote: Aan deze toelichting kunnen geen rechten worden ontleend.
+    anchor:
+      exact: geen rechten worden ontleend
+      prefix: 'Aan deze toelichting kunnen '
+      suffix: . 2 Wie komt
+    type: informatief
+    bindingness: informative
+    anchoring:
+      status: niet-gevonden
+      search_terms: [rechten ontlenen, geen rechten]
+      searched_in: [regulation/**/*.yaml]
+    bucket: letter-getrouw
+    action: Geen actie.
+
+  - id: S2
+    slug: ingezetene-op-peildatum
+    segment: s003
+    quote: De aanvrager moet op de peildatum ingezetene zijn van het werkgebied.
+    anchor:
+      exact: moet op de peildatum ingezetene zijn
+      prefix: 'De aanvrager '
+      suffix: ' van het werkgebied.'
+    type: normatief
+    bindingness: hard
+    anchoring:
+      status: verankerd
+      norm_ref: fictieve_verordening art 2 lid 1
+      norm_quote: ingezetene van het werkgebied op de peildatum
+    bucket: letter-getrouw
+    action: Geen wijziging.
+
+  - id: S3
+    slug: uitsluiting-buitenland
+    segment: s003
+    quote: Een aanvrager die in het buitenland woont komt niet in aanmerking.
+    anchor:
+      exact: komt niet in aanmerking
+      prefix: 'in het buitenland woont '
+      suffix: . 3 Berekening
+    type: uitzondering
+    bindingness: hard
+    anchoring:
+      # DEFECT E: negatieve bevinding zonder zoektermen - niet overdoenbaar.
+      status: niet-gevonden
+      searched_in: [regulation/**/*.yaml]
+    bucket: LETTER-vs-TOELICHTING
+    action: Jurist-vraag.
+
+  - id: S4
+    slug: eerste-vrijlating-20pct
+    segment: s004
+    # DEFECT A: geparafraseerd citaat, niet verbatim.
+    quote: Van het besteedbaar inkomen wordt twintig procent vrijgelaten.
+    anchor:
+      exact: wordt 20% vrijgelaten
+      prefix: 'Van het besteedbaar inkomen '
+      suffix: . Omdat er ook
+    type: kwantitatief
+    bindingness: hard
+    anchoring:
+      status: verankerd
+      norm_ref: fictieve_verordening art 3 lid 1
+      norm_quote: ten minste 80 percent van het besteedbaar inkomen is aangewend
+    bucket: letter-getrouw
+    action: Geen wijziging.
+
+  - id: S5
+    slug: tweede-vrijlating-50pct
+    segment: s004
+    quote: >-
+      Omdat er ook andere heffingen worden opgelegd, wordt van het bedrag dat overblijft
+      nog eens 50% vrijgelaten.
+    anchor:
+      # DEFECT C: geen context, "vrijgelaten" komt twee keer voor.
+      exact: vrijgelaten
+      prefix: ''
+      suffix: ''
+    type: kwantitatief
+    bindingness: hard
+    anchoring:
+      status: niet-gevonden
+      search_terms: [50%, vrijlating]
+      searched_in: [regulation/**/*.yaml]
+    bucket: LETTER-vs-TOELICHTING
+    action: Jurist-vraag.
+
+  - id: S6
+    slug: maximum-per-jaar
+    segment: s004
+    quote: De tegemoetkoming bedraagt in de regel ten hoogste 1.200 euro per jaar.
+    anchor:
+      exact: in de regel ten hoogste 1.200 euro per jaar
+      prefix: 'De tegemoetkoming bedraagt '
+      suffix: . 4 Aanvraag
+    type: kwantitatief
+    bindingness: soft-default
+    anchoring:
+      status: niet-gevonden
+      search_terms: ['1.200', ten hoogste]
+      searched_in: [regulation/**/*.yaml]
+    bucket: LETTER-vs-TOELICHTING
+    action: Jurist-vraag.
+
+  - id: S7
+    slug: indieningstermijn-6-weken
+    segment: s005
+    quote: Het verzoek wordt binnen 6 weken na dagtekening ingediend.
+    anchor:
+      exact: binnen 6 weken na dagtekening
+      prefix: 'Het verzoek wordt '
+      suffix: ' ingediend.'
+    type: procedureel
+    bindingness: hard
+    anchoring:
+      status: verankerd
+      norm_ref: fictieve_verordening art 5 lid 1
+      norm_quote: binnen zes weken na de dagtekening van de beschikking
+    bucket: letter-getrouw
+    action: Geen wijziging.
+
+# DEFECT D: S8 (gevolg te late indiening) ontbreekt.
