@@ -425,10 +425,9 @@ jobs:
       # op, dus de PR is onschuldig; het venster zit hier, in de eerste install
       # op die branch.
       #
-      # Eén dependency heeft zijn install-hook wél nodig: puppeteer (via pa11y
-      # in docs/) haalde daarmee zijn Chrome binnen. Die download staat nu als
-      # expliciete stap in de docs-a11y-baan. De rest van de workspace heeft
-      # geen install-hooks nodig.
+      # Geen enkele install-hook in deze workspace levert iets op wat de build
+      # nodig heeft. De uitzondering zit in docs/ (puppeteer voor pa11y) en
+      # wordt daar in een eigen stap opgevangen.
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
 
@@ -746,15 +745,27 @@ jobs:
         working-directory: docs
         run: npx playwright install --with-deps chromium
 
-      # pa11y draait niet op Playwright maar op puppeteer, met een eigen
+      # pa11y draait niet op playwright maar op puppeteer, met een eigen
       # browsercache (~/.cache/puppeteer). Die download zat in puppeteers
       # postinstall en verdween met --ignore-scripts hierboven; hij hoort
       # daarom expliciet te staan. Zonder deze stap faalt de gate met
       # "Could not find Chrome".
+      #
+      # Deze stap haalt alleen de browser zelf binnen. De gedeelde libraries
+      # (libnss3, libgbm, libasound2, …) die pa11y straks nodig heeft om deze
+      # Chrome te starten komen van `playwright install --with-deps` hierboven;
+      # die stap moet dus blijven staan. `browsers install` heeft daar zelf wel
+      # een --install-deps voor, maar dat vereist root en dat is de runner niet.
+      #
+      # `--no` houdt npx bij de puppeteer uit docs/package-lock.json. Zonder
+      # die vlag zou npx bij een resolutiewijziging stilletjes puppeteer@latest
+      # van de registry halen — inclusief de postinstall die we hierboven net
+      # hebben uitgezet. De playwright-regel hierboven staat nog zonder --no;
+      # playwright heeft geen install-hook, dus daar valt niets uit te voeren.
       - name: Install Puppeteer Chrome
         if: needs.changes.outputs.docs == 'true'
         working-directory: docs
-        run: npx puppeteer browsers install chrome
+        run: npx --no puppeteer browsers install chrome
 
       # Alleen op een pull request: de lijst gewijzigde bestanden, waarmee
       # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de PR
