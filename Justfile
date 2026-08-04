@@ -80,6 +80,14 @@ conformance:
 deploy-filters-test:
     node --test script/deploy-filters.test.mjs
 
+# Pins the GHCR cleaner against its safety rules. It deletes manifests from a
+# production registry and there is no undo, so every rule that decides "delete"
+# versus "keep" is covered here. Same reasoning as deploy-filters-test: node's
+# built-in runner, no dependency.
+[doc("Check the GHCR cleanup safety rules")]
+ghcr-cleanup-test:
+    node --test script/ghcr-cleanup.test.mjs
+
 # Pins the build-time asset precompression the editor image relies on. Same
 # reasoning as deploy-filters-test: node's built-in runner, no dependency.
 [doc("Check the editor's build-time asset precompression")]
@@ -136,7 +144,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 

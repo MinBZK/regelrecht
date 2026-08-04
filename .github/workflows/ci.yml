@@ -334,6 +334,13 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         run: just deploy-filters-test
 
+      # De GHCR-opruimer verwijdert onomkeerbaar manifesten uit de registry,
+      # dus zijn veiligheidsregels horen in een required check en niet alleen
+      # in een pre-commit hook.
+      - name: Check GHCR cleanup
+        if: needs.changes.outputs.ci == 'true'
+        run: just ghcr-cleanup-test
+
       - name: Check asset precompression
         if: needs.changes.outputs.ci == 'true'
         run: just precompress-test
