@@ -26,7 +26,6 @@ export interface LandingContent {
     docs: string
   }
   hero: { title: string; intro: string; cta: string }
-  partners: { label: string; items: NavLink[] }
   whatIsIt: { title: string; lede: string; cards: { h: string; p: string }[] }
   whyImportant: {
     title: string
@@ -156,17 +155,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       intro:
         'RegelRecht verkent of wetgeving als uitvoerbare code geschreven kan worden, zodat verschillende organisaties dezelfde wet ook hetzelfde toepassen en burgers kunnen volgen hoe een besluit tot stand komt.',
       cta: 'Verken de mogelijkheden',
-    },
-    partners: {
-      label: 'Een initiatief van',
-      items: [
-        {
-          label: 'Ministerie van BZK',
-          href: 'https://www.rijksoverheid.nl/ministeries/ministerie-van-binnenlandse-zaken-en-koninkrijksrelaties',
-        },
-        { label: 'Bureau Architectuur', href: 'https://minbzk.github.io/BASE/' },
-        { label: 'Digilab', href: 'https://digilab.overheid.nl/' },
-      ],
     },
     whatIsIt: {
       title: 'Wetten uitvoeren zonder te programmeren',
@@ -537,12 +525,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'Een verkenning van Bureau Architectuur van het Ministerie van Binnenlandse Zaken naar de mogelijkheden van transparante, uitvoerbare wetgeving.',
+        'Een verkenning van Bureau Architectuur van het Ministerie van Economische Zaken en Klimaat naar de mogelijkheden van transparante, uitvoerbare wetgeving.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Onderdeel van',
       copyright:
-        '© 2026 Ministerie van Binnenlandse Zaken en Koninkrijksrelaties. Alle rechten voorbehouden.',
+        '© 2026 Ministerie van Economische Zaken en Klimaat. Alle rechten voorbehouden.',
       links: [
         { label: 'GitHub-repository', href: GITHUB },
         { label: 'Hoe het werkt', href: '/#how-it-works' },
@@ -551,7 +539,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
       partOf: [
         'Bureau Architectuur',
-        'Ministerie van Binnenlandse Zaken en Koninkrijksrelaties',
+        'Ministerie van Economische Zaken en Klimaat',
       ],
     },
     signup: {
@@ -610,17 +598,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       intro:
         'RegelRecht explores whether legislation can be written as executable code, so that different organisations apply the same law the same way and citizens can follow how a decision is reached.',
       cta: 'Explore the possibilities',
-    },
-    partners: {
-      label: 'An initiative of',
-      items: [
-        {
-          label: 'Ministry of the Interior and Kingdom Relations',
-          href: 'https://www.rijksoverheid.nl/ministeries/ministerie-van-binnenlandse-zaken-en-koninkrijksrelaties',
-        },
-        { label: 'Bureau Architectuur', href: 'https://minbzk.github.io/BASE/' },
-        { label: 'Digilab', href: 'https://digilab.overheid.nl/' },
-      ],
     },
     whatIsIt: {
       title: 'Running laws without programming',
@@ -990,12 +967,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'An exploration by Bureau Architectuur of the Dutch Ministry of the Interior into the possibilities of transparent, executable legislation.',
+        'An exploration by Bureau Architectuur of the Dutch Ministry of Economic Affairs and Climate Policy into the possibilities of transparent, executable legislation.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Part of',
       copyright:
-        '© 2026 Ministry of the Interior and Kingdom Relations. All rights reserved.',
+        '© 2026 Ministry of Economic Affairs and Climate Policy. All rights reserved.',
       links: [
         { label: 'GitHub repository', href: GITHUB },
         { label: 'How it works', href: '/en/#how-it-works' },
@@ -1004,7 +981,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
       partOf: [
         'Bureau Architectuur',
-        'Ministry of the Interior and Kingdom Relations',
+        'Ministry of Economic Affairs and Climate Policy',
       ],
     },
     signup: {
