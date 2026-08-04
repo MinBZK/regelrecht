@@ -23,7 +23,7 @@ expect_pass() {  # gate
         echo "$out" | sed 's/^/      /'
         fails=$((fails + 1))
     else
-        echo "ok    $gate  clean   -> $(echo "$out" | head -1)"
+        echo "ok    $gate  clean   -> $(grep -i -m1 "$gate" <<<"$out" || echo "$out" | head -1)"
     fi
 }
 
@@ -44,7 +44,7 @@ expect_fail() {  # gate, marker
 }
 
 echo "== schone ledger: alle gates slagen =="
-for g in verbatim coverage anchor signaalnet; do expect_pass "$g"; done
+for g in ledger verbatim coverage anchor signaalnet; do expect_pass "$g"; done
 
 echo
 echo "== kapotte ledger: elke gate pakt zijn eigen defect =="
@@ -53,6 +53,23 @@ expect_fail verbatim   "zonder search_terms"              # E: negatieve bevindi
 expect_fail coverage   "GAP aan het eind"                 # B: colofon-segment ontbreekt
 expect_fail anchor     "AMBIGUOUS"                        # C: anker zonder context
 expect_fail signaalnet "Indien het verzoek te laat"       # D: normzin stil overgeslagen
+expect_fail ledger     "staat niet in het vocabulaire"    # F: vocabulaire-afwijking
+
+# De ledger-gate draait bij élke aanroep, ook bij een losse gate. Anders zou een
+# ledger met een typefout in het vocabulaire drie groene gates opleveren terwijl
+# de regel die had moeten vuren nergens naar keek.
+echo
+echo "== ledger-gate draait ook bij een losse gate-aanroep =="
+# Let op: geen pipe naar grep hier - met `pipefail` zou de exit-code van de gate
+# (1, want er zijn bevindingen) de uitkomst van de grep overschrijven.
+solo_out="$(python3 "$GATES" anchor --canonical "$CANON" \
+            --ledger "$FIX/statements.broken.yaml" 2>&1)"
+if grep -q "LEDGER" <<<"$solo_out"; then
+    echo "ok    ledger-gate meldt zich ook bij 'anchor'"
+else
+    echo "FAIL  ledger-gate ontbreekt bij een losse gate-aanroep"
+    fails=$((fails + 1))
+fi
 
 echo
 if [[ $fails -eq 0 ]]; then

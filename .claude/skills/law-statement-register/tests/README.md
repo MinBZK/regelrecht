@@ -41,10 +41,17 @@ met anker, verankering, bindendheid en bucket.
 | C | S5 ankert op het kale woord "vrijgelaten" (twee treffers) | `anchor` |
 | D | S8 ontbreekt, de "Indien ..."-zin is stil overgeslagen | `signaalnet` |
 | E | S3 noteert `niet-gevonden` zonder zoektermen | `verbatim` |
+| F | S6 draagt een `bindingness` buiten het vocabulaire | `ledger` |
 
 A en E zitten allebei op de verbatim-gate omdat ze dezelfde belofte breken: wat het register
-beweert over de tekst is niet na te lopen. D is de belangrijkste van de vijf — het is de enige
+beweert over de tekst is niet na te lopen. D is de belangrijkste van de zes — het is de enige
 die niemand opmerkt zonder gate, want het register ziet er volledig uit.
+
+F is er bijgekomen nadat bleek dat een ledger met vier verzonnen vocabulaire-waarden schoon
+door alle gates kwam. De ernstigste variant is een typefout in `anchoring.status`: de
+zoektermen-eis kijkt naar de string `niet-gevonden`, dus `nietgevonden` schakelt hem uit
+zonder een woord. Daarom draait de ledger-gate bij élke aanroep, en test `run.sh` dat ook
+apart — een losse `anchor`-aanroep moet nog steeds de LEDGER-regel tonen.
 
 ## Bij het aanpassen van de fixture
 

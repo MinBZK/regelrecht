@@ -70,3 +70,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^\.claude/skills/
+
+      # De vier gates zijn de hele waardepropositie van deze skill: ze horen te
+      # falen op een register dat iets stil overslaat. Zonder deze hook zou een
+      # kapotte gate er precies zo uitzien als een werkende - groen, en blind.
+      - id: statement-register-gates
+        name: Statement-register gates doen wat ze beloven
+        entry: .claude/skills/law-statement-register/tests/run.sh
+        language: system
+        pass_filenames: false
+        files: ^\.claude/skills/law-statement-register/

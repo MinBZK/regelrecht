@@ -136,13 +136,22 @@ python3 scripts/statement_gates.py explain      # toont de enige toegestane norm
 
 | Gate | Toetst | Vangt |
 |---|---|---|
+| `ledger` | het vocabulaire: `disposition`, `anchoring.status`, `type`, `bindingness`, `bucket`, `deviation_class` | een waarde buiten de lijst — inclusief een typefout die een regel stil uitschakelt |
 | `verbatim` | elk citaat is letterlijk een substring van `canonical.md` | parafrase, opgeschoonde weglating, overgetypt citaat, negatieve bevinding zonder zoektermen |
 | `coverage` | de segmenten betegelen `canonical.md` volledig | ongedekt fragment (met de eerste 80 tekens), disposition zonder reden |
 | `anchor` | elk `{prefix, exact, suffix}` resolvet uniek | ORPHANED (0 treffers) en AMBIGUOUS (>1) — beide onbruikbaar voor de diff |
 | `signaalnet` | elke normzin in een `normative` segment is gedekt | stil overgeslagen norm |
 
-Exit-code is het contract: 0 = schoon, 1 = bevindingen. `tests/run.sh` bewijst op een
-synthetische fixture dat elke gate zijn eigen defect pakt.
+**`ledger` draait bij élke aanroep**, ook bij een losse gate. De andere gates sleutelen op
+exact deze strings — het is `status == "niet-gevonden"` dat de zoektermen eist — dus een
+ledger die `nietgevonden` schrijft zet die regel uit en houdt drie groene gates over. Een
+vocabulaire dat alleen door spelling wordt gehandhaafd, wordt niet gehandhaafd.
+
+Exit-code is het contract: 0 = schoon, 1 = bevindingen. `canonicalize.sh` en `tile.py`
+gebruiken daarnaast **3** voor "buiten het getoetste bereik": een PDF zonder tekstlaag, of
+een betegeling die op één groot blok uitkomt. Die weigeren liever dan een leeg of
+misleidend-groen resultaat af te leveren. `tests/run.sh` bewijst op een synthetische fixture
+dat elke gate zijn eigen defect pakt.
 
 Het signaalnet-lexicon staat in `references/signaalnet.md` en is te vervangen met
 `--lexicon`. Het is bewust ruw: liever een inhoudsopgave-regel als treffer (die je

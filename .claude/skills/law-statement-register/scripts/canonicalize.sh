@@ -70,6 +70,18 @@ else
 RAW="$OUTDIR/.raw.txt"
 pdftotext -layout -enc UTF-8 "$SRC" "$RAW"
 
+    # A scanned PDF has no text layer: pdftotext succeeds and returns almost
+    # nothing. Writing that out as canonical.md would give a register with 100%
+    # coverage over an empty document - green, and worthless. Refuse instead.
+    CHARS="$(wc -c < "$RAW" | tr -d ' ')"
+    if [[ "$CHARS" -lt 200 ]]; then
+        rm -f "$RAW"
+        echo "FOUT: pdftotext haalde slechts $CHARS tekens uit deze PDF." >&2
+        echo "Waarschijnlijk een scan zonder tekstlaag. OCR de bron eerst, of" >&2
+        echo "lever een tekstversie aan - een lege canonical.md is geen bron." >&2
+        exit 3
+    fi
+
 python3 - "$RAW" "$OUTDIR" <<'PY'
 import re, sys, unicodedata
 from collections import Counter

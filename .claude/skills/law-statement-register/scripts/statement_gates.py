@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Statement-register gates (dossier-agnostic).
 
-Four gates prove that a statement register is a faithful, complete reading of a
+Gates prove that a statement register is a faithful, complete reading of a
 secondary text (toelichting, beleidsregel, werkinstructie). Each is a mechanical
 check on the ledger against the canonical text; none of them takes the author's
 word for anything.
 
+  LEDGER     - the controlled vocabulary. Runs on EVERY invocation, before the
+               rest, because the other gates key on these exact strings: it is
+               `status == "niet-gevonden"` that demands the search terms, so a
+               ledger spelling it "nietgevonden" turns that rule off silently
+               and the remaining three keep reporting green.
   VERBATIM   - every quote in the ledger is a literal substring of canonical.md
                under the one documented normalization (see normalize()). A
                paraphrase, a "cleaned up" ellipsis or a re-typed quote fails
@@ -31,6 +36,7 @@ Exit code != 0 if any gate finds anything (usable as a CI gate).
 
 Usage:
   python3 statement_gates.py all        --canonical canonical.md --ledger statements.yaml
+  python3 statement_gates.py ledger     --canonical canonical.md --ledger statements.yaml
   python3 statement_gates.py verbatim   --canonical canonical.md --ledger statements.yaml
   python3 statement_gates.py coverage   --canonical canonical.md --ledger statements.yaml
   python3 statement_gates.py anchor     --canonical canonical.md --ledger statements.yaml
@@ -143,6 +149,62 @@ def statements(ledger):
 NON_NORMATIVE = {"informative", "navigational", "duplicate", "non-textual"}
 VALID_DISPOSITIONS = {"normative"} | NON_NORMATIVE
 
+# The controlled vocabulary. Every value the method reasons with lives here,
+# because the gates key on these strings: `status == "niet-gevonden"` is what
+# demands the search terms, and a ledger that writes "nietgevonden" switches
+# that rule off without a word. A vocabulary that is only enforced by spelling
+# is not enforced.
+VOCABULARY = {
+    "anchoring.status": {"verankerd", "geparafraseerd", "niet-gevonden"},
+    "type": {"normatief", "kwantitatief", "definitie", "procedureel", "bewijs",
+             "discretie", "uitzondering", "voorbeeld", "verwijzing", "informatief"},
+    "bindingness": {"hard", "soft-default", "guidance", "informative"},
+    "bucket": {"MODELFOUT", "WETTEKST-GEVOLG", "LETTER-vs-TOELICHTING",
+               "letter-getrouw", "scope"},
+    "deviation_class": {"toelichting-bleed", "ontbrekend-bestanddeel",
+                        "verkeerde-verankering", "herformulering",
+                        "bindendheid-vervlakking", "buitenwettelijk", "geen"},
+}
+REQUIRED_ON_STATEMENT = ["type", "bindingness", "bucket"]
+
+
+# --------------------------------------------------------------------------
+# Gate 0 - LEDGER (always runs)
+# --------------------------------------------------------------------------
+def gate_ledger(ledger) -> list:
+    """Validate the ledger's vocabulary before any other gate reports anything.
+
+    Runs on every invocation, including a single-gate one. A green gate over a
+    ledger whose vocabulary is wrong is worse than a red one: the other three
+    gates keep checking text and keep passing, so the report reads clean while
+    the rule that was supposed to fire never looked at anything.
+    """
+    findings = []
+    for st in statements(ledger):
+        stid = st.get("id", "?")
+        for field in REQUIRED_ON_STATEMENT:
+            if not st.get(field):
+                findings.append(f"{stid}: {field} ontbreekt")
+        for field, allowed in VOCABULARY.items():
+            if field.startswith("anchoring."):
+                value = (st.get("anchoring") or {}).get(field.split(".", 1)[1])
+                if value is None:
+                    findings.append(f"{stid}: anchoring.status ontbreekt")
+                    continue
+            else:
+                value = st.get(field)
+                if value is None:
+                    continue  # optional; absence is handled above where required
+            if value not in allowed:
+                findings.append(f"{stid}: {field}={value!r} staat niet in het "
+                                f"vocabulaire ({', '.join(sorted(allowed))})")
+    for seg in segments(ledger):
+        disp = seg.get("disposition")
+        if disp not in VALID_DISPOSITIONS:
+            findings.append(f"segment {seg.get('id', '?')}: disposition={disp!r} staat niet "
+                            f"in het vocabulaire ({', '.join(sorted(VALID_DISPOSITIONS))})")
+    return findings
+
 
 # --------------------------------------------------------------------------
 # Gate 1 - VERBATIM
@@ -198,10 +260,7 @@ def gate_coverage(canonical: Norm, ledger) -> tuple:
 
     for seg in segments(ledger):
         sid = seg.get("id", "?")
-        disp = seg.get("disposition")
-        if disp not in VALID_DISPOSITIONS:
-            findings.append(f"segment {sid}: disposition {disp!r} onbekend "
-                            f"(kies uit {sorted(VALID_DISPOSITIONS)})")
+        disp = seg.get("disposition")   # validity is the ledger gate's job
         if disp in NON_NORMATIVE and not seg.get("reason"):
             findings.append(f"segment {sid}: disposition {disp} zonder reason "
                             "(overslaan mag, stil overslaan niet)")
@@ -371,7 +430,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command",
-                    choices=["all", "verbatim", "coverage", "anchor", "signaalnet", "explain"])
+                    choices=["all", "ledger", "verbatim", "coverage", "anchor",
+                             "signaalnet", "explain"])
     ap.add_argument("--canonical", required=False)
     ap.add_argument("--ledger", required=False)
     ap.add_argument("--lexicon", help="YAML mapping name -> regex, replaces the default net")
@@ -395,7 +455,13 @@ def main() -> int:
         with open(args.lexicon, encoding="utf-8") as fh:
             lexicon = yaml.safe_load(fh)
 
-    rc = 0
+    # The ledger gate always runs: the other three key on these exact strings,
+    # so a wrong vocabulary makes their green meaningless rather than merely
+    # incomplete.
+    rc = report("LEDGER", gate_ledger(ledger))
+    if args.command == "ledger":
+        return rc
+
     if args.command in ("all", "verbatim"):
         rc |= report("VERBATIM", gate_verbatim(canonical, ledger))
     if args.command in ("all", "coverage"):

@@ -7,6 +7,7 @@
 #   C  ANCHOR     S5 anchors on the bare word "vrijgelaten" -> two matches
 #   D  SIGNAALNET S8 is missing -> the "Indien ..." sentence is passed over
 #   E  VERBATIM   S3 records a niet-gevonden anchoring without search terms
+#   F  LEDGER     S6 carries a bindingness outside the controlled vocabulary
 document:
   id: toelichting_fictieve_tegemoetkoming
   title: Toelichting fictieve tegemoetkoming
@@ -165,7 +166,8 @@ statements:
       prefix: 'De tegemoetkoming bedraagt '
       suffix: . 4 Aanvraag
     type: kwantitatief
-    bindingness: soft-default
+    # DEFECT F: buiten het vocabulaire - de bindendheid-as wordt hiermee zinloos.
+    bindingness: heel-hard
     anchoring:
       status: niet-gevonden
       search_terms: ['1.200', ten hoogste]

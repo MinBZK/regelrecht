@@ -107,6 +107,21 @@ def main() -> int:
     segments = build_segments(text, re.compile(args.heading_regex),
                               merge_empty=not args.no_merge_empty)
 
+    # Degrading silently is the failure mode that matters here. A document
+    # without numbered headings produces one segment of 40.000 characters, the
+    # coverage gate reports a cheerful 100%, and nothing looks wrong until
+    # someone notices the whole document is a single tile. Say so, in the file
+    # as well as on stderr - a stderr line disappears into a `>` redirect.
+    warning = None
+    if segments and len(text) > 4000:
+        biggest = max(len(s["text"]) for s in segments)
+        if len(segments) == 1:
+            warning = (f"1 segment voor {len(text)} tekens: dit document heeft waarschijnlijk "
+                       f"geen genummerde koppen. Geef --heading-regex mee.")
+        elif biggest > len(text) * 0.6:
+            warning = (f"één segment beslaat {biggest * 100 // len(text)}% van de tekst: de "
+                       f"koppenherkenning pakt waarschijnlijk niet de echte structuur.")
+
     ledger = {
         "document": {
             "id": args.doc_id,
@@ -120,14 +135,22 @@ def main() -> int:
         "segments": segments,
         "statements": [],
     }
+    if warning:
+        ledger["document"]["_waarschuwing_betegeling"] = warning
+
     print("---")
     print("# Concept-ledger uit tile.py. Nog te doen per segment: disposition zetten")
     print("# (met reason als hij niet normative is) en de statements schrijven.")
+    if warning:
+        print(f"# WAARSCHUWING: {warning}")
     print(yaml.safe_dump(ledger, allow_unicode=True, sort_keys=False, width=100), end="")
 
     covered = sum(len(s["text"]) for s in segments)
     sys.stderr.write(f"segmenten={len(segments)} tekens_in_segmenten={covered} "
                      f"tekens_in_canonical={len(text)}\n")
+    if warning:
+        sys.stderr.write(f"WAARSCHUWING: {warning}\n")
+        return 3
     return 0
 
 
