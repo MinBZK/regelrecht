@@ -28,6 +28,7 @@ import {
   nextLink,
   parseArgs,
   planPackage,
+  rateLimitOf,
   tagsOf,
 } from './ghcr-cleanup.mjs';
 
@@ -433,6 +434,26 @@ test('parseArgs leest de vlaggen en weigert onzin', () => {
   assert.throws(() => parseArgs(['--onzin']), /onbekend argument/);
   assert.throws(() => parseArgs(['--grace-hours', '-1']), /niet-negatief/);
   assert.throws(() => parseArgs(['--concurrency', '0']), /positief/);
+});
+
+test('rateLimitOf herkent ook de secondary rate limit', () => {
+  const res = (status, headers = {}) => ({ status, headers: new Map(Object.entries(headers)) });
+
+  // De variant die dit script het hardst raakt: duizenden lookups achter elkaar
+  // leveren een 403 + Retry-After op, terwijl het primaire quotum niet op is en
+  // `x-ratelimit-remaining` dus gewoon hoog staat.
+  assert.deepEqual(
+    rateLimitOf(res(403, { 'retry-after': '30', 'x-ratelimit-remaining': '4231' })),
+    { retryAfterSeconds: 30 },
+  );
+  // Primair quotum op.
+  assert.deepEqual(rateLimitOf(res(403, { 'x-ratelimit-remaining': '0' })), { retryAfterSeconds: 0 });
+  // 429 is altijd een limiet, met of zonder headers.
+  assert.deepEqual(rateLimitOf(res(429, {})), { retryAfterSeconds: 0 });
+  // Een gewone 403 (token mist een scope) blijft een harde fout, geen limiet.
+  assert.equal(rateLimitOf(res(403, { 'x-ratelimit-remaining': '4231' })), null);
+  assert.equal(rateLimitOf(res(404, {})), null);
+  assert.equal(rateLimitOf(res(200, {})), null);
 });
 
 test('nextLink pakt alleen de next-relatie', () => {
