@@ -34,6 +34,37 @@ Het product is een **statement-register**: per statement een verbatim citaat, ee
 vastgelegde verankeringszoektocht, een afwijkingsklasse, een bucket, en een actie of
 jurist-vraag.
 
+## Wanneer je dit pakt, en wat het kost
+
+**Pak het** als er een document naast de wet ligt dat de uitvoering feitelijk stuurt, en je
+wilt weten wat erin staat dat de norm *niet* zegt. Dat is de vraag waar deze skill voor
+bestaat; de dekkingsgaranties zijn er alleen om het antwoord betrouwbaar te maken.
+
+**Pak het niet** als het document zelf een regeling is (verordening, ministeriële regeling,
+beleidsregel met artikelen). Dan is het een norm en loopt het via de gewone harvest-route —
+`law-download` plus `law-generate`.
+
+**Wat je nodig hebt:** het document als lokaal bestand (PDF of HTML), en een corpus met de
+bijbehorende **normteksten**. Zonder dat tweede werkt fase 0–4 wel, maar fase 5 en 6 niet:
+je kunt statements ontginnen en ankeren, maar niet vaststellen of ze in een norm staan — en
+dat is nu juist de bevinding. Een register zonder normcorpus is een nette samenvatting.
+
+**Wat het kost.** De machinerie is minuten; het leeswerk is het werk. Twee gemeten
+voorbeelden:
+
+| Document | Segmenten | Zinnen die het signaalnet raakt |
+|---|---|---|
+| toelichting van 17 pagina's | 34 | 93 |
+| één hoofdstuk uit een uitvoeringshandboek | 59 | 402 |
+
+Elk van die zinnen moet óf een statement worden óf een `disposition` met reden krijgen. Reken
+op een dagdeel voor het eerste soort document en ruim een dag voor het tweede. Dat is de
+prijs van "niets stil overslaan"; er is geen goedkopere variant die dezelfde garantie geeft.
+
+**Wat je krijgt:** een register per statement met bucket en actie, een dekkingscijfer dat een
+lezer kan narekenen, en bij een tweede versie van hetzelfde document een diff die laat zien
+wat er aan beleid veranderde zonder dat een norm veranderde.
+
 ## Kernprincipes
 
 > **De norm is leidend, de secundaire tekst is uitleg.** Een toelichting legt de bedoeling
