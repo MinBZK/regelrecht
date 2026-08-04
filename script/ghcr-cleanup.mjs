@@ -392,6 +392,33 @@ export async function mapLimit(items, limit, worker) {
 // en draait onbewaakt in een nachtelijke pipeline.
 const REQUEST_TIMEOUT_MS = 30_000;
 
+// Bovengrens op één enkele `Retry-After`-pauze.
+export const MAX_RETRY_AFTER_SECONDS = 60;
+
+/**
+ * Herkent of een antwoord een rate limit is, en zo ja hoe lang we moeten
+ * wachten. Geeft `null` als het er geen is.
+ *
+ * Drie signalen, en het derde is het makkelijkst te missen:
+ *
+ *   * `429` — altijd een limiet.
+ *   * `403` met `x-ratelimit-remaining: 0` — het primaire quotum is op.
+ *   * `403` met een `Retry-After` — GitHub's *secondary* (abuse) limit. Die
+ *     laat `x-ratelimit-remaining` juist met rust, want het primaire quotum is
+ *     niet op. Het is bovendien precies de limiet die toeslaat op wat dit
+ *     script doet: duizenden lookups achter elkaar. Alleen op
+ *     `x-ratelimit-remaining` afgaan slaat dan de backoff over en negeert de
+ *     `Retry-After` op het moment dat je hem nodig hebt.
+ */
+export function rateLimitOf({ status, headers }) {
+  if (status !== 429 && status !== 403) return null;
+  const retryAfter = Number(headers.get('retry-after'));
+  const hasRetryAfter = Number.isFinite(retryAfter) && retryAfter > 0;
+  const exhausted = headers.get('x-ratelimit-remaining') === '0';
+  if (status !== 429 && !exhausted && !hasRetryAfter) return null;
+  return { retryAfterSeconds: hasRetryAfter ? retryAfter : 0 };
+}
+
 // Haalt een URL op met backoff op 429 en 5xx. Een 429 die na alle pogingen
 // blijft staan is geen incident maar een muur: dan stopt de run liever dan dat
 // hij met een halve graaf verder rekent.
@@ -408,17 +435,16 @@ async function request(url, { method = 'GET', headers = {}, attempts = 5 } = {})
       continue;
     }
 
-    if (response.status === 429 || response.status === 403) {
-      const remaining = response.headers.get('x-ratelimit-remaining');
-      const isRateLimited = response.status === 429 || remaining === '0';
-      if (isRateLimited) {
-        if (attempt === attempts - 1) {
-          throw new RateLimitError(`rate limit bereikt op ${url} (status ${response.status})`);
-        }
-        const retryAfter = Number(response.headers.get('retry-after'));
-        await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0);
-        continue;
+    const limit = rateLimitOf(response);
+    if (limit) {
+      if (attempt === attempts - 1) {
+        throw new RateLimitError(`rate limit bereikt op ${url} (status ${response.status})`);
       }
+      // Wachten wat GitHub vraagt, maar niet ongelimiteerd: de stap heeft een
+      // eigen tijdslimiet en de run stopt liever netjes met een RateLimitError
+      // dan dat hij zijn budget in één sleep opmaakt.
+      await sleep(Math.min(limit.retryAfterSeconds, MAX_RETRY_AFTER_SECONDS) * 1000);
+      continue;
     }
 
     if (response.status >= 500) {
