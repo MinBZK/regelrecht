@@ -31,7 +31,9 @@ COPY package.json package-lock.json .npmrc ./
 COPY packages/frontend-shared/package.json packages/frontend-shared/
 COPY frontend/package.json frontend/
 COPY frontend-lawmaking/package.json frontend-lawmaking/
-RUN npm ci
+# --ignore-scripts: een gekaapte release mag zijn install-hooks hier niet
+# draaien; de build eronder heeft ze niet nodig.
+RUN npm ci --ignore-scripts
 # Source: the shared package + the editor frontend, plus the WASM module.
 COPY packages/frontend-shared/ packages/frontend-shared/
 COPY frontend/ frontend/

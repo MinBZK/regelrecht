@@ -8,7 +8,12 @@
 FROM node:24-bookworm-slim@sha256:24dc26ef1e3c3690f27ebc4136c9c186c3133b25563ae4d7f0692e4d1fe5db0e AS builder
 WORKDIR /app
 COPY docs/package.json docs/package-lock.json* docs/.npmrc ./
-RUN npm ci
+# --ignore-scripts: een gekaapte release mag zijn install-hooks hier niet
+# draaien. Deze stage draait alleen `astro build`; de enige browser die daarbij
+# nodig is komt van de expliciete `playwright install` hieronder. Puppeteer
+# (dat zijn Chrome wél in een postinstall haalt) wordt hier niet gebruikt —
+# pa11y draait in de CI-baan, niet in dit image.
+RUN npm ci --ignore-scripts
 COPY docs/ .
 RUN npx playwright install --with-deps chromium
 RUN npm run build
