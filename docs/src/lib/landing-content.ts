@@ -99,12 +99,11 @@ export interface LandingContent {
   }
   signup: {
     pageTitle: string
-    lede: string
+    metaDescription: string
     noscript: string
     legend: string
     radioYes: string
     radioNo: string
-    updates: string
     emailLabel: string
     nameLabel: string
     orgLabel: string
@@ -556,14 +555,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     signup: {
-      pageTitle: 'Op de hoogte blijven of bijdragen aan RegelRecht?',
-      lede: 'Laat je gegevens achter als je updates wilt ontvangen of wilt meedenken over de (juridische) validatie van RegelRecht.',
+      pageTitle: 'Op de hoogte blijven of meedenken',
+      metaDescription: 'Laat je gegevens achter als je updates wilt ontvangen of wilt meedenken over de juridische validatie van RegelRecht.',
       noscript:
         'Dit formulier heeft JavaScript nodig. Stuur in plaats daarvan een e-mail naar regelrecht@minbzk.nl.',
-      legend: 'Wil je bijdragen?',
-      radioYes: 'Ja, ik wil bijdragen aan de validatie van RegelRecht',
-      radioNo: 'Nee, ik wil niet bijdragen',
-      updates: 'Updates ontvangen over de ontwikkelingen van RegelRecht',
+      legend: 'Wil je meedenken over de juridische validatie?',
+      radioYes: 'Ja, ik wil meedenken en updates ontvangen',
+      radioNo: 'Nee, alleen updates ontvangen',
       emailLabel: 'E-mailadres',
       nameLabel: 'Volledige naam',
       orgLabel: 'Organisatie',
@@ -575,9 +573,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       submit: 'Meld me aan',
       submitting: 'Bezig met versturen…',
       companyHoneypot: 'Bedrijf (niet invullen)',
-      errEmailEmpty: 'Vul je e-mailadres in.',
-      errEmailInvalid: 'Vul een geldig e-mailadres in.',
-      errName: 'Vul je volledige naam in.',
+      errEmailEmpty: 'Vul je e-mailadres in. Hiermee sturen we je updates en kunnen we contact opnemen.',
+      errEmailInvalid: 'Controleer je e-mailadres, er lijkt een @ of een punt te ontbreken.',
+      errName: 'Vul je volledige naam in. Zodat we weten wie zich aanmeldt.',
       successTitle: 'Bedankt voor je aanmelding!',
       successBody:
         'We hebben je gegevens verstuurd. Je ontvangt bevestiging per e-mail zodra je aanmelding is verwerkt. Klopt er iets niet? Mail ons.',
@@ -1010,14 +1008,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
     },
     signup: {
-      pageTitle: 'Stay informed or contribute to RegelRecht?',
-      lede: 'Leave your details if you want to receive updates or help think about the (legal) validation of RegelRecht.',
+      pageTitle: 'Stay informed or help think along',
+      metaDescription: 'Leave your details to receive updates, or to help think about the legal validation of RegelRecht.',
       noscript:
         'This form needs JavaScript. Please send an email to regelrecht@minbzk.nl instead.',
-      legend: 'Want to contribute?',
-      radioYes: 'Yes, I want to contribute to the validation of RegelRecht',
-      radioNo: 'No, I do not want to contribute',
-      updates: 'Receive updates about the development of RegelRecht',
+      legend: 'Want to help think about the legal validation?',
+      radioYes: 'Yes, I want to help think along and receive updates',
+      radioNo: 'No, only receive updates',
       emailLabel: 'Email address',
       nameLabel: 'Full name',
       orgLabel: 'Organisation',
@@ -1029,9 +1026,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       submit: 'Sign me up',
       submitting: 'Sending…',
       companyHoneypot: 'Company (do not fill in)',
-      errEmailEmpty: 'Enter your email address.',
-      errEmailInvalid: 'Enter a valid email address.',
-      errName: 'Enter your full name.',
+      errEmailEmpty: 'Enter your email address. We use this to send you updates and to get in touch.',
+      errEmailInvalid: 'Check your email address, an @ or a dot seems to be missing.',
+      errName: 'Enter your full name. So we know who is signing up.',
       successTitle: 'Thank you for signing up!',
       successBody:
         'We have sent your details. You will receive confirmation by email once your registration is processed. Something not right? Email us.',

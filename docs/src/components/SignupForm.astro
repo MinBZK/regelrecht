@@ -12,7 +12,6 @@
  *  - bijdragen: nldd-form-field (group label) > nldd-radio-button-group >
  *    nldd-radio-button-field. The group renders role=radiogroup with the label
  *    forwarded as aria-label.
- *  - opDeHoogte: nldd-checkbox-field (self-labelled).
  *
  * The <form> is wrapped in <nldd-form> in user-provided-form mode: nldd-form
  * is a shadow-less plain element that renders a real light-DOM <form>, and when
@@ -94,15 +93,6 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
         <nldd-radio-button-field value="Ja" label={s.radioYes} checked />
         <nldd-radio-button-field value="Nee" label={s.radioNo} />
       </nldd-radio-button-group>
-    </nldd-form-field>
-
-    <nldd-form-field>
-      <nldd-checkbox-field
-        name="opDeHoogte"
-        label={s.updates}
-        data-field="opDeHoogte"
-        checked
-      ></nldd-checkbox-field>
     </nldd-form-field>
 
     <nldd-form-field label={s.emailLabel}>
@@ -248,9 +238,6 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
     const radioFields = Array.from(
       bijdragenGroup.querySelectorAll('nldd-radio-button-field')
     ) as NlddCheckedField[];
-    const opDeHoogte = form.querySelector(
-      '[data-field="opDeHoogte"]'
-    ) as NlddCheckedField;
     const emailErr = form.querySelector('#rr-email-error') as HTMLElement;
     const naamErr = form.querySelector('#rr-naam-error') as HTMLElement;
     const submitting = form.querySelector(
@@ -349,8 +336,7 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
         `| **E-mail** | ${emailField.value} |\n` +
         `| **Organisatie** | ${orgField.value || '-'} |\n` +
         `| **Functie** | ${functieField.value || '-'} |\n` +
-        `| **Bijdragen aan validatie** | ${bijdragen} |\n` +
-        `| **Op de hoogte blijven** | ${opDeHoogte.checked ? 'Ja' : 'Nee'} |`;
+        `| **Meedenken over validatie** | ${bijdragen} |`;
 
       try {
         await fetch(WEBHOOK, {
