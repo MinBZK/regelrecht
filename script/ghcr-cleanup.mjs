@@ -256,20 +256,38 @@ export function assertNoReferencedDeletions(deletions, referenced) {
 export function formatSummary(results, { dryRun }) {
   const lines = [];
   lines.push(`## GHCR-opruiming${dryRun ? ' (dry-run)' : ''}`, '');
-  lines.push('| package | versies | getagd | untagged | gerefereerd | wees | te vers | stale pr-* | verwijderd | fouten |');
-  lines.push('|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|');
+  lines.push(
+    '| package | versies | getagd | untagged | gerefereerd | wees | te vers | stale pr-* | te verwijderen | verwijderd | fouten |',
+  );
+  lines.push('|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|');
   for (const result of results) {
     if (result.error) {
-      lines.push(`| ${result.packageName} | overgeslagen: ${result.error} | | | | | | | | |`);
+      lines.push(`| ${result.packageName} | overgeslagen: ${result.error} | | | | | | | | | |`);
       continue;
     }
     const c = result.counts;
     lines.push(
       `| ${result.packageName} | ${c.total} | ${c.tagged} | ${c.untagged} | ${c.referencedUntagged} | ` +
-        `${c.orphaned} | ${c.skippedTooRecent} | ${c.stalePr} | ${result.deleted ?? 0} | ${result.failures?.length ?? 0} |`,
+        `${c.orphaned} | ${c.skippedTooRecent} | ${c.stalePr} | ${result.deletions?.length ?? 0} | ` +
+        `${dryRun ? '—' : (result.deleted ?? 0)} | ${result.failures?.length ?? 0} |`,
     );
   }
   lines.push('');
+
+  // Het bewijs dat de opruimer de referentiegraaf respecteert hoort in de
+  // samenvatting zelf te staan, niet alleen in de exitcode: per package het
+  // aantal gerefereerde digests naast de belofte dat er geen enkele in de
+  // deletelijst zit.
+  const planned = results.filter((r) => !r.error);
+  if (planned.length > 0) {
+    const totalReferenced = planned.reduce((sum, r) => sum + r.counts.referencedDigests, 0);
+    const totalDeletions = planned.reduce((sum, r) => sum + (r.deletions?.length ?? 0), 0);
+    lines.push(
+      `${totalReferenced} gerefereerde digest(s) in kaart gebracht; ` +
+        `daarvan staat er **0** in de ${totalDeletions} geplande verwijdering(en).`,
+      '',
+    );
+  }
 
   const blocked = results.filter((r) => r.blocked);
   if (blocked.length > 0) {
@@ -313,6 +331,10 @@ export async function mapLimit(items, limit, worker) {
   return results;
 }
 
+// Een enkele call mag nooit oneindig blijven hangen: deze run doet er duizenden
+// en draait onbewaakt in een nachtelijke pipeline.
+const REQUEST_TIMEOUT_MS = 30_000;
+
 // Haalt een URL op met backoff op 429 en 5xx. Een 429 die na alle pogingen
 // blijft staan is geen incident maar een muur: dan stopt de run liever dan dat
 // hij met een halve graaf verder rekent.
@@ -323,7 +345,7 @@ async function request(url, { method = 'GET', headers = {}, attempts = 5 } = {})
 
     let response;
     try {
-      response = await fetch(url, { method, headers });
+      response = await fetch(url, { method, headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     } catch (err) {
       lastError = err;
       continue;
@@ -473,82 +495,97 @@ async function main() {
   let sawDeleteFailure = false;
   let sawPackageError = false;
 
-  for (const packageName of options.packages) {
-    log(`\n--- ${packageName}`);
-    let versions;
-    let graph;
-    try {
-      versions = await client.listPackageVersions(packageName);
-      const roots = versions.filter((v) => tagsOf(v).length > 0).map((v) => v.name);
-      log(`  ${versions.length} versies, ${roots.length} getagd — manifesten ophalen...`);
-      graph = await collectReferencedDigests({
-        roots,
-        concurrency: options.concurrency,
-        fetchManifest: (digest) => client.fetchManifest(packageName, digest),
-      });
-    } catch (err) {
-      if (err instanceof RateLimitError) {
-        annotate('error', `Rate limit tijdens ${packageName}; run gestopt zonder verder op te ruimen: ${err.message}`);
+  // Wat er ook misgaat, de samenvatting van wat er tot dat moment is gebeurd
+  // moet eruit komen: bij destructief werk is "welke DELETE's zijn al gedaan"
+  // precies wat je wilt weten als een run halverwege stopt.
+  try {
+    packages: for (const packageName of options.packages) {
+      log(`\n--- ${packageName}`);
+      let versions;
+      let graph;
+      try {
+        versions = await client.listPackageVersions(packageName);
+        const roots = versions.filter((v) => tagsOf(v).length > 0).map((v) => v.name);
+        log(`  ${versions.length} versies, ${roots.length} getagd — manifesten ophalen...`);
+        graph = await collectReferencedDigests({
+          roots,
+          concurrency: options.concurrency,
+          fetchManifest: (digest) => client.fetchManifest(packageName, digest),
+        });
+      } catch (err) {
         results.push({ packageName, error: err.message });
-        writeSummary(results, { dryRun });
-        process.exitCode = 1;
-        return;
-      }
-      annotate('error', `${packageName} overgeslagen: ${err.message}`);
-      results.push({ packageName, error: err.message });
-      sawPackageError = true;
-      continue;
-    }
-
-    const plan = planPackage({
-      packageName,
-      versions,
-      openPrs,
-      referenced: graph.referenced,
-      unresolvedCount: graph.unresolved.length,
-      graceMs,
-    });
-    const result = { ...plan, unresolved: graph.unresolved, missing: graph.missing, deleted: 0, failures: [] };
-    results.push(result);
-
-    const c = plan.counts;
-    log(
-      `  totaal ${c.total} | getagd ${c.tagged} | untagged ${c.untagged} | ` +
-        `gerefereerd ${c.referencedUntagged} | wees ${c.orphaned} | te vers ${c.skippedTooRecent} | stale pr-* ${c.stalePr}`,
-    );
-    if (graph.missing.length > 0) log(`  ${graph.missing.length} getagde versie(s) waren al verdwenen (404)`);
-    if (plan.blocked) {
-      annotate(
-        'warning',
-        `${packageName}: ${graph.unresolved.length} manifest-lookup(s) mislukt, referentiegraaf onvolledig — ` +
-          'geen wezen verwijderd deze ronde',
-      );
-      for (const item of graph.unresolved.slice(0, 5)) log(`    onopgelost: ${item.digest} — ${item.error}`);
-    }
-
-    assertNoReferencedDeletions(plan.deletions, graph.referenced);
-
-    for (const deletion of plan.deletions) {
-      const label = `${packageName} ${deletion.digest}${deletion.tags.length ? ` [${deletion.tags.join(', ')}]` : ''} (${deletion.reason})`;
-      if (dryRun) {
-        log(`  [dry-run] zou verwijderen: ${label}`);
+        sawPackageError = true;
+        if (err instanceof RateLimitError) {
+          annotate('error', `Rate limit tijdens ${packageName}; run gestopt zonder verder op te ruimen: ${err.message}`);
+          break packages;
+        }
+        annotate('error', `${packageName} overgeslagen: ${err.message}`);
         continue;
       }
-      try {
-        await client.deleteVersion(packageName, deletion.id);
-        result.deleted++;
-        log(`  verwijderd: ${label}`);
-      } catch (err) {
-        sawDeleteFailure = true;
-        result.failures.push({ id: deletion.id, digest: deletion.digest, error: err.message });
-        annotate('warning', `DELETE mislukt voor ${label}: ${err.message}`);
+
+      const plan = planPackage({
+        packageName,
+        versions,
+        openPrs,
+        referenced: graph.referenced,
+        unresolvedCount: graph.unresolved.length,
+        graceMs,
+      });
+      const result = { ...plan, unresolved: graph.unresolved, missing: graph.missing, deleted: 0, failures: [] };
+      results.push(result);
+
+      const c = plan.counts;
+      log(
+        `  totaal ${c.total} | getagd ${c.tagged} | untagged ${c.untagged} | ` +
+          `gerefereerd ${c.referencedUntagged} | wees ${c.orphaned} | te vers ${c.skippedTooRecent} | ` +
+          `stale pr-* ${c.stalePr} | te verwijderen ${plan.deletions.length}`,
+      );
+      if (graph.missing.length > 0) log(`  ${graph.missing.length} getagde versie(s) waren al verdwenen (404)`);
+      if (plan.blocked) {
+        annotate(
+          'warning',
+          `${packageName}: ${graph.unresolved.length} manifest-lookup(s) mislukt, referentiegraaf onvolledig — ` +
+            'geen wezen verwijderd deze ronde',
+        );
+        for (const item of graph.unresolved.slice(0, 5)) log(`    onopgelost: ${item.digest} — ${item.error}`);
+      }
+
+      assertNoReferencedDeletions(plan.deletions, graph.referenced);
+
+      for (const deletion of plan.deletions) {
+        const label = `${packageName} ${deletion.digest}${deletion.tags.length ? ` [${deletion.tags.join(', ')}]` : ''} (${deletion.reason})`;
+        if (dryRun) {
+          log(`  [dry-run] zou verwijderen: ${label}`);
+          continue;
+        }
+        try {
+          await client.deleteVersion(packageName, deletion.id);
+          result.deleted++;
+          log(`  verwijderd: ${label}`);
+        } catch (err) {
+          // Een losse mislukte DELETE mag de run niet laten falen — die wordt
+          // gerapporteerd en volgende ronde opnieuw geprobeerd. Een rate limit
+          // is iets anders: dan is elke volgende call ook kansloos en stoppen
+          // we liever dan half opgeruimd door te denderen.
+          sawDeleteFailure = true;
+          result.failures.push({ id: deletion.id, digest: deletion.digest, error: err.message });
+          annotate('warning', `DELETE mislukt voor ${label}: ${err.message}`);
+          if (err instanceof RateLimitError) {
+            annotate('error', `Rate limit tijdens het verwijderen in ${packageName}; run gestopt: ${err.message}`);
+            sawPackageError = true;
+            break packages;
+          }
+        }
       }
     }
+  } finally {
+    // Wat er ook misgaat, de samenvatting van wat er tot dat moment gebeurd is
+    // moet eruit komen: bij destructief werk is "welke DELETE's zijn al
+    // gedaan" precies wat je wilt weten als een run halverwege stopt.
+    log('');
+    log(formatSummary(results, { dryRun }));
+    writeSummary(results, { dryRun });
   }
-
-  log('');
-  log(formatSummary(results, { dryRun }));
-  writeSummary(results, { dryRun });
 
   if (sawPackageError) process.exitCode = 1;
   if (sawDeleteFailure) log('Er waren mislukte verwijderingen; zie de samenvatting hierboven.');

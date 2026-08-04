@@ -283,26 +283,35 @@ test('een realistisch package levert precies de losgeraakte children op', async 
   assert.ok(assertNoReferencedDeletions(result.deletions, referenced));
 });
 
+const summaryResult = (overrides = {}) => ({
+  packageName: 'regelrecht-docs',
+  counts: {
+    total: 10,
+    tagged: 4,
+    untagged: 6,
+    referencedDigests: 8,
+    referencedUntagged: 5,
+    orphaned: 1,
+    skippedTooRecent: 0,
+    stalePr: 2,
+  },
+  blocked: false,
+  unresolved: [],
+  deletions: [{ digest: 'sha256:wees' }, { digest: 'sha256:oud' }, { digest: 'sha256:dicht' }],
+  deleted: 0,
+  failures: [],
+  ...overrides,
+});
+
 test('formatSummary noemt geblokkeerde packages en mislukte verwijderingen', () => {
   const summary = formatSummary(
     [
-      {
-        packageName: 'regelrecht-docs',
-        counts: {
-          total: 10,
-          tagged: 4,
-          untagged: 6,
-          referencedDigests: 8,
-          referencedUntagged: 5,
-          orphaned: 1,
-          skippedTooRecent: 0,
-          stalePr: 2,
-        },
+      summaryResult({
         blocked: true,
         unresolved: [{ digest: 'sha256:x', error: 'HTTP 500' }],
         deleted: 1,
         failures: [{ id: 42, digest: 'sha256:y', error: 'HTTP 403' }],
-      },
+      }),
       { packageName: 'regelrecht-admin', error: 'HTTP 502' },
     ],
     { dryRun: false },
@@ -314,6 +323,29 @@ test('formatSummary noemt geblokkeerde packages en mislukte verwijderingen', () 
   assert.match(summary, /Mislukte verwijderingen/);
   assert.match(summary, /sha256:y/);
   assert.match(summary, /overgeslagen: HTTP 502/);
+});
+
+test('formatSummary rapporteert in dry-run wat er te verwijderen valt', () => {
+  // Criterium van het ticket: een dry-run moet per package zeggen hoeveel er
+  // gerefereerd, verweesd en te verwijderen is. Zonder dit stond er in de
+  // kolom "verwijderd" een 0 die niets zei over de omvang van het plan.
+  const summary = formatSummary([summaryResult()], { dryRun: true });
+
+  assert.match(summary, /dry-run/);
+  assert.match(summary, /te verwijderen/);
+  // 3 geplande verwijderingen, en geen verwarrend aantal daadwerkelijk gewiste
+  // versies: dat is in een dry-run niet van toepassing.
+  assert.match(summary, /\| 3 \| — \| 0 \|/);
+  assert.match(summary, /8 gerefereerde digest\(s\).*\*\*0\*\*.*3 geplande verwijdering/s);
+});
+
+test('formatSummary telt de gerefereerde digests over alle packages op', () => {
+  const summary = formatSummary(
+    [summaryResult(), summaryResult({ packageName: 'regelrecht-admin' }), { packageName: 'x', error: 'stuk' }],
+    { dryRun: true },
+  );
+  assert.match(summary, /16 gerefereerde digest\(s\)/);
+  assert.match(summary, /6 geplande verwijdering/);
 });
 
 test('parseArgs leest de vlaggen en weigert onzin', () => {

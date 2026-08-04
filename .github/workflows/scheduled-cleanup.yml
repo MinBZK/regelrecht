@@ -49,7 +49,11 @@ jobs:
         with:
           node-version: '22'
 
+      # De opruimer doet duizenden manifest-lookups; een vastgelopen call mag
+      # geen runner-uren opeten. Hij stopt zelf netjes bij een rate limit, dus
+      # deze grens is het vangnet daaronder, niet de normale afloop.
       - name: Cleanup stale container images
+        timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           ORG: ${{ github.repository_owner }}
