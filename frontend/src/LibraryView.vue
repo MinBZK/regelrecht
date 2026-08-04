@@ -17,6 +17,7 @@ import TasksCategoriesPane from './components/TasksCategoriesPane.vue';
 import TasksListPane from './components/TasksListPane.vue';
 import TasksSidebarItem from './components/TasksSidebarItem.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useCorpusLaws } from './composables/useCorpusLaws.js';
 // useTaskActions, niet useTasks: LibraryView heeft alleen de refresh nodig na
 // een geannuleerde job en mag daarvoor niet de 30s-poll aanzetten (die hoort
@@ -450,6 +451,18 @@ function goToInstellingen(tab) {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
 }
+// --- Corpusstand (eigen pagina, achter panel.corpusstand) -------------------
+// Bewust géén sectie-modus van deze view zoals Instellingen/Taken hierboven:
+// Corpusstand is een top-level route met eigen chrome, dus deze view hoeft
+// alleen de ingang te leveren. Vandaar een `href` in plaats van een
+// `goTo…()` + `isXMode` — er is hier niets aan modus-toestand bij te houden.
+const { isEnabled } = useFeatureFlags();
+const corpusstandHref = computed(() =>
+  activeTrajectRef.value
+    ? router.resolve({ name: 'corpusstand', params: { trajectRef: activeTrajectRef.value } }).href
+    : undefined,
+);
+
 // Deleting or leaving the traject drops your access - go to the public Home
 // (Corpus juris) and refresh the traject list.
 function onTrajectGone() {
@@ -1881,6 +1894,18 @@ watch(activeTrajectRef, () => {
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>
                       <TasksSidebarItem :selected="isTakenMode" @click="goToTaken" />
+                      <nldd-list-item
+                        v-if="isEnabled('panel.corpusstand')"
+                        size="md"
+                        button
+                        :href="corpusstandHref"
+                      >
+                        <nldd-icon-cell size="20"><nldd-icon name="analytics"></nldd-icon></nldd-icon-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-text-cell text="Corpusstand"></nldd-text-cell>
+                        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                      </nldd-list-item>
                     </nldd-list>
                     <nldd-spacer size="24"></nldd-spacer>
                   </template>

@@ -260,6 +260,22 @@ const router = createRouter({
       ],
     },
     {
+      // Corpusstand — het traject-dashboard (bouwplan §3.2 voor nu: de
+      // verklaarde laag uit de notitie-sidecars). Top-level route met eigen
+      // chrome, zoals /harvesting en /trajecten, en NADRUKKELIJK geen child
+      // van AppShell/LibraryView: als de pagina in LibraryView's `main` zou
+      // renderen moesten daar de leeg/laden-guards, de titelopbouw en de
+      // terugknop alle drie een vierde sectie leren kennen. Zo blijft de
+      // wijziging aan bestaande bestanden additief.
+      //
+      // De ref is op `{slug}-{8hex}` gepind, net als de traject-routes in de
+      // shell, zodat een wet-id deze route nooit kan matchen.
+      path: '/corpusstand/:trajectRef([a-z0-9-]+-[0-9a-f]{8})',
+      name: 'corpusstand',
+      component: () => import('./CorpusstandView.vue'),
+      meta: { title: 'Corpusstand', requiresAuth: true },
+    },
+    {
       // Account aanvragen - publieke uitlegpagina (geen requiresAuth),
       // bereikbaar vanaf de login-warning-popover. Top-level route met een
       // eigen top-title-bar, geen app-chrome (net als de trajecten-pagina's).

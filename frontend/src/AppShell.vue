@@ -94,6 +94,10 @@ const editorPanelFlags = [
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
   ['panel.notes', 'Notities'],
+  // Geen editor-paneel maar een eigen pagina; staat hier omdat dit de enige
+  // plek is waar een vlag omgezet kan worden. Verhuist mee als er ooit een
+  // aparte "Functies in ontwikkeling"-groep komt.
+  ['panel.corpusstand', 'Corpusstand'],
 ];
 
 // The "Functies" menu group: the panel flags, plus the GitHub-koppeling
