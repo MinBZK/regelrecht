@@ -21,7 +21,9 @@ import {
   assertNoReferencedDeletions,
   collectReferencedDigests,
   formatSummary,
+  graphGaps,
   isIndexMediaType,
+  isManifestLike,
   mapLimit,
   nextLink,
   parseArgs,
@@ -57,6 +59,7 @@ const plan = (overrides) =>
     versions: [],
     openPrs: [],
     referenced: new Set(),
+    gaps: [],
     now: NOW,
     graceMs: DEFAULT_GRACE_HOURS * HOUR,
     ...overrides,
@@ -140,15 +143,83 @@ test('collectReferencedDigests meldt een mislukte lookup in plaats van hem te ne
   assert.match(unresolved[0].error, /connectie verbroken/);
 });
 
-test('collectReferencedDigests telt een 404 als verdwenen, niet als onzeker', async () => {
-  const { unresolved, missing } = await collectReferencedDigests({
+test('collectReferencedDigests telt een 404 apart, maar wel als gat in de graaf', async () => {
+  const graph = await collectReferencedDigests({
     roots: ['sha256:weg'],
     fetchManifest: async () => {
       throw new HttpError(404, 'ghcr', 'MANIFEST_UNKNOWN');
     },
   });
-  assert.deepEqual(unresolved, []);
-  assert.deepEqual(missing, ['sha256:weg']);
+  assert.deepEqual(graph.unresolved, []);
+  assert.deepEqual(graph.missing, ['sha256:weg']);
+  // Een 404 betekent iets anders dan een mislukte lookup en wordt daarom apart
+  // gerapporteerd, maar hij blokkeert net zo hard. Zie de test hieronder.
+  assert.match(graphGaps(graph).join(' '), /404/);
+});
+
+test('een registry die overal 404 geeft blokkeert de wezen-tak', async () => {
+  // Het gevaarlijkste scenario van dit script, en de reden dat een 404 niet als
+  // "die versie is weg, dus die beschermt niets meer" mag worden afgedaan: GHCR
+  // antwoordt op een repo die niet bestaat met exact dezelfde
+  // `404 MANIFEST_UNKNOWN` als op een digest die niet bestaat. Eén verkeerd
+  // registry-pad — hernoemd package, andere org — laat dus élke lookup 404
+  // geven. Zonder dit hek blijft er een lege referentieverzameling over,
+  // belanden alle nog levende children als "wees" in de deletelijst, en laat de
+  // eindcontrole ze door omdat die tegen precies die lege verzameling toetst.
+  const versions = [
+    version('sha256:idxProd', ['latest']),
+    version('sha256:amdProd'),
+    version('sha256:attProd'),
+    version('sha256:echteWees'),
+  ];
+  const graph = await collectReferencedDigests({
+    roots: ['sha256:idxProd'],
+    fetchManifest: async () => {
+      throw new HttpError(404, 'ghcr.io/v2/minbzk/typo/manifests/…', 'MANIFEST_UNKNOWN');
+    },
+  });
+  const result = plan({ versions, referenced: graph.referenced, gaps: graphGaps(graph) });
+
+  assert.equal(result.blocked, true);
+  assert.deepEqual(result.deletions, []);
+});
+
+test('collectReferencedDigests vertrouwt een 200 die geen manifest is niet', async () => {
+  // Een foutobject of loginpagina die toevallig als JSON binnenkomt levert
+  // anders stilletjes "nul children" op, en dan zijn de echte children van deze
+  // getagde versie ineens wezen.
+  const graph = await collectReferencedDigests({
+    roots: ['sha256:raar'],
+    fetchManifest: async () => ({ errors: [{ code: 'DENIED' }] }),
+  });
+
+  assert.equal(graph.referenced.size, 0);
+  assert.equal(graph.unresolved.length, 1);
+  assert.match(graph.unresolved[0].error, /geen manifest/);
+  assert.ok(graphGaps(graph).length > 0);
+});
+
+test('graphGaps slaat alarm als geen enkele getagde versie een child oplevert', () => {
+  // Zonder dit hek is de eindcontrole vleugellam: die toetst de deletelijst
+  // tegen een lege verzameling en laat dus alles door.
+  assert.deepEqual(graphGaps({ rootCount: 0, referenced: new Set(), unresolved: [], missing: [] }), []);
+  assert.equal(
+    graphGaps({ rootCount: 1875, referenced: new Set(), unresolved: [], missing: [] }).length,
+    1,
+  );
+  assert.deepEqual(
+    graphGaps({ rootCount: 2, referenced: new Set(['sha256:child']), unresolved: [], missing: [] }),
+    [],
+  );
+});
+
+test('isManifestLike accepteert een lege index maar geen willekeurig object', () => {
+  assert.equal(isManifestLike({ manifests: [] }), true);
+  assert.equal(isManifestLike({ layers: [], config: {} }), true);
+  assert.equal(isManifestLike({ fsLayers: [] }), true);
+  assert.equal(isManifestLike({ errors: [] }), false);
+  assert.equal(isManifestLike(null), false);
+  assert.equal(isManifestLike('sha256:x'), false);
 });
 
 test('collectReferencedDigests laat een rate limit doorslaan naar de aanroeper', async () => {
@@ -233,7 +304,7 @@ test('planPackage behandelt een onleesbare datum als te vers', () => {
 test('planPackage verwijdert geen wezen bij een onvolledige referentiegraaf', () => {
   const result = plan({
     versions: [version('sha256:wees'), version('sha256:dicht', ['pr-999'])],
-    unresolvedCount: 1,
+    gaps: ['1 manifest-lookup(s) mislukt'],
   });
 
   assert.equal(result.blocked, true);
@@ -271,11 +342,9 @@ test('een realistisch package levert precies de losgeraakte children op', async 
   };
 
   const roots = versions.filter((v) => tagsOf(v).length > 0).map((v) => v.name);
-  const { referenced, unresolved } = await collectReferencedDigests({
-    roots,
-    fetchManifest: async (digest) => manifests[digest],
-  });
-  const result = plan({ versions, referenced, unresolvedCount: unresolved.length });
+  const graph = await collectReferencedDigests({ roots, fetchManifest: async (digest) => manifests[digest] });
+  const { referenced } = graph;
+  const result = plan({ versions, referenced, gaps: graphGaps(graph) });
 
   // `sha-1111111` blijft getagd, dus zijn children blijven staan: retentie
   // voor oude sha-tags valt buiten deze opruimer.
@@ -296,7 +365,8 @@ const summaryResult = (overrides = {}) => ({
     stalePr: 2,
   },
   blocked: false,
-  unresolved: [],
+  gaps: [],
+  referencedInDeletions: 0,
   deletions: [{ digest: 'sha256:wees' }, { digest: 'sha256:oud' }, { digest: 'sha256:dicht' }],
   deleted: 0,
   failures: [],
@@ -308,7 +378,7 @@ test('formatSummary noemt geblokkeerde packages en mislukte verwijderingen', () 
     [
       summaryResult({
         blocked: true,
-        unresolved: [{ digest: 'sha256:x', error: 'HTTP 500' }],
+        gaps: ['1 manifest-lookup(s) mislukt (bv. sha256:x — HTTP 500)'],
         deleted: 1,
         failures: [{ id: 42, digest: 'sha256:y', error: 'HTTP 403' }],
       }),
@@ -337,6 +407,14 @@ test('formatSummary rapporteert in dry-run wat er te verwijderen valt', () => {
   // versies: dat is in een dry-run niet van toepassing.
   assert.match(summary, /\| 3 \| — \| 0 \|/);
   assert.match(summary, /8 gerefereerde digest\(s\).*\*\*0\*\*.*3 geplande verwijdering/s);
+});
+
+test('formatSummary meldt een gerefereerde digest in de deletelijst in plaats van 0 te beloven', () => {
+  // De samenvatting is het bewijs waarmee criterium 4 wordt afgevinkt. Zou dat
+  // getal vastgeschroefd op 0 staan, dan zou juist de run die je had willen
+  // zien — de veiligheidscontrole slaat aan — netjes "0" blijven melden.
+  const summary = formatSummary([summaryResult({ referencedInDeletions: 2 })], { dryRun: true });
+  assert.match(summary, /daarvan staan er \*\*2\*\* in de 3 geplande verwijdering/);
 });
 
 test('formatSummary telt de gerefereerde digests over alle packages op', () => {
