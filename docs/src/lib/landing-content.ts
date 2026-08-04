@@ -14,7 +14,7 @@ export interface NavLink {
 export interface LandingContent {
   meta: { title: string; description: string }
   nav: {
-    brandTagline: string
+    brandMinistry: string
     home: string
     what: string
     how: string
@@ -141,7 +141,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'Een verkenning van het Ministerie van BZK naar transparante, machine-uitvoerbare wetgeving.',
     },
     nav: {
-      brandTagline: 'Verkenning van Ministerie van BZK',
+      brandMinistry: 'Ministerie van Economische Zaken en Klimaat',
       home: 'Home',
       what: 'Wat',
       how: 'Hoe',
@@ -596,7 +596,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.',
     },
     nav: {
-      brandTagline: 'Exploration by the Dutch Ministry of the Interior',
+      brandMinistry: 'Ministry of Economic Affairs and Climate Policy',
       home: 'Home',
       what: 'What',
       how: 'How',
