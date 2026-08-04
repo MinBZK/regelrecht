@@ -71,6 +71,26 @@ else
     fails=$((fails + 1))
 fi
 
+# Gevonden op een echt handboek: een tabelkopregel ("2025<tab>2026") matcht de
+# koppenregex en wordt dan een sectiekop die dwars door de tabel snijdt. De
+# dekking blijft 100%, dus geen enkele gate ziet het - alleen de structuur klopt
+# niet meer.
+echo
+echo "== tabelkoppen worden niet voor sectiekoppen aangezien =="
+tile_out="$(python3 "$HERE/../scripts/tile.py" "$FIX/tabelkop.md" 2>/dev/null)"
+if grep -qE "^\s+- 2025 2026$|number: '2025'" <<<"$tile_out"; then
+    echo "FAIL  tabelkopregel werd een sectiekop"
+    fails=$((fails + 1))
+else
+    n_seg="$(grep -cE '^- id: s[0-9]+' <<<"$tile_out")"
+    if [[ "$n_seg" -ne 2 ]]; then
+        echo "FAIL  verwacht 2 segmenten (de twee echte koppen), kreeg $n_seg"
+        fails=$((fails + 1))
+    else
+        echo "ok    tabelkopregel blijft inhoud; 2 segmenten, de twee echte koppen"
+    fi
+fi
+
 echo
 if [[ $fails -eq 0 ]]; then
     echo "ALLE TESTS OK"

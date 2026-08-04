@@ -34,12 +34,26 @@ except ImportError:
 DEFAULT_HEADING = r"^(\d+(?:\.\d+)*)\s+(\S.*)$"
 
 
+# A numbered heading needs a title. A table's header row ("2019 2020 2021 …")
+# matches the same pattern and, left alone, becomes a section heading that cuts
+# the table in half - coverage stays at 100% and the structure is quietly wrong.
+# Two cheap rejections catch it: a tab means table cells (that is what the HTML
+# reader emits), and a "title" without a single three-letter word is not a title.
+WORD = re.compile(r"[A-Za-zÀ-ÿ]{3}")
+
+
+def looks_like_heading(number: str, title: str) -> bool:
+    if "\t" in title:
+        return False
+    return bool(WORD.search(title))
+
+
 def find_headings(lines, pattern):
     """Return [(line_index, number, title)] for every line that looks like a heading."""
     out = []
     for i, line in enumerate(lines):
         m = pattern.match(line.strip())
-        if m:
+        if m and looks_like_heading(m.group(1), m.group(2).strip()):
             out.append((i, m.group(1), m.group(2).strip()))
     return out
 
