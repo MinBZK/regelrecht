@@ -407,6 +407,33 @@ mod tests {
     }
 
     #[test]
+    fn test_overlong_plain_word_overflows_only_beside_a_reference_link() {
+        // Turning word breaking off applies to the whole paragraph, not just to
+        // the placeholders: an unrelated word wider than the wrap width now
+        // overflows its line instead of being hard-broken, but only in a
+        // paragraph that also holds a reference link. Harvested law text has no
+        // such words today, and hard-breaking one mid-word is no better than
+        // letting it overflow -- pin the difference so it stays a decision.
+        let overlong = "a".repeat(90);
+        let sentence = "Zie {} en verder in deze bepaling.";
+
+        let beside_link = wrap_text(
+            &sentence.replace("{}", &format!("[artikel 4][ref1] en {overlong}")),
+            60,
+        );
+        let on_its_own = wrap_text(&sentence.replace("{}", &overlong), 60);
+
+        assert!(
+            beside_link.contains(&overlong),
+            "overlong word was broken next to a reference link:\n{beside_link}"
+        );
+        assert!(
+            !on_its_own.contains(&overlong),
+            "overlong word should still be hard-broken without a reference link:\n{on_its_own}"
+        );
+    }
+
+    #[test]
     fn test_normalize_text_missing_space_after_comma() {
         // Real example from Wet op de zorgtoeslag source XML
         assert_eq!(normalize_text("lid,van"), "lid, van");
