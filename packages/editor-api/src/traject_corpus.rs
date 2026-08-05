@@ -2512,6 +2512,9 @@ mod tests {
     struct TokenGatedBackend {
         files: HashMap<String, String>,
         required_token: Option<String>,
+        /// Laat de Compare-call falen (haperende upstream: rate limit, 5xx)
+        /// terwijl het token gewoon klopt; de leespaden blijven werken.
+        compare_fails: bool,
     }
 
     #[async_trait]
@@ -2553,6 +2556,7 @@ mod tests {
         async fn changed_files_with_token(&self, token: Option<&str>) -> CorpusResult<Vec<String>> {
             match &self.required_token {
                 Some(required) if token != Some(required.as_str()) => Ok(Vec::new()),
+                _ if self.compare_fails => Err(CorpusError::Git("simulated throttle".to_string())),
                 _ => Ok(self.files.keys().cloned().collect()),
             }
         }
@@ -2585,6 +2589,7 @@ mod tests {
                             "$id: wet_eigen\n".to_string(),
                         )]),
                         required_token: Some("user-token".to_string()),
+                        compare_fails: false,
                     }) as Box<dyn RepoBackend>)),
                     writable: false,
                 },
@@ -2598,6 +2603,7 @@ mod tests {
                             "$id: wet_seed\n".to_string(),
                         )]),
                         required_token: None,
+                        compare_fails: false,
                     }) as Box<dyn RepoBackend>)),
                     writable: false,
                 },
@@ -3276,6 +3282,12 @@ mod tests {
     /// heeft er geen eigen token voor, dus alleen het persoonlijke token van
     /// de handelende gebruiker komt binnen.
     fn private_own_corpus() -> Arc<TrajectCorpus> {
+        private_own_corpus_with(false)
+    }
+
+    /// Als [`private_own_corpus`], maar `compare_fails` bepaalt of de
+    /// Compare-call van een correct getokende beller alsnog stukloopt.
+    fn private_own_corpus_with(compare_fails: bool) -> Arc<TrajectCorpus> {
         let mut map = SourceMap::new();
         metadata_entry(&mut map, "wet_eigen", "own");
         Arc::new(test_corpus(
@@ -3289,6 +3301,7 @@ mod tests {
                             "$id: wet_eigen\n".to_string(),
                         )]),
                         required_token: Some("user-token".to_string()),
+                        compare_fails,
                     }) as Box<dyn RepoBackend>)),
                     writable: false,
                 },
@@ -3376,6 +3389,40 @@ mod tests {
         let cached = cache.as_ref().unwrap();
         assert_eq!(cached.law_ids, vec!["wet_eigen".to_string()]);
         assert!(cached.computed_at > expired);
+    }
+
+    #[tokio::test]
+    async fn failed_private_request_refresh_serves_stale_instead_of_erroring() {
+        // Op een privé-bron ververst een gekoppelde beller de verlopen entry
+        // op het request-pad. Loopt die Compare-call stuk, dan geldt dezelfde
+        // degradeer-naar-stale-houding als in de achtergrond-leg: geen 502 die
+        // "Bewerkt" laat verdwijnen, en de TTL-klok wordt opnieuw opgespannen
+        // zodat niet elk volgend verzoek tegen een haperende upstream aanloopt.
+        let corpus = private_own_corpus_with(true);
+        let expired = Instant::now() - Duration::from_secs(3600);
+        *corpus.changed_cache.write().await = Some(ChangedLawsCache {
+            computed_at: expired,
+            law_ids: vec!["wet_oud".to_string()],
+        });
+
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_oud".to_string()]
+        );
+        let cache = corpus.changed_cache.read().await;
+        let cached = cache.as_ref().unwrap();
+        assert_eq!(cached.law_ids, vec!["wet_oud".to_string()]);
+        assert!(cached.computed_at > expired, "TTL-klok opnieuw opgespannen");
+    }
+
+    #[tokio::test]
+    async fn failed_private_first_compute_still_errors() {
+        // Zonder iets in de cache is er niets om op terug te vallen: de fout
+        // hoort dan wél door te komen (de handler maakt er een 502 van), in
+        // plaats van stil als "niets bewerkt" te worden gepresenteerd.
+        let corpus = private_own_corpus_with(true);
+        assert!(corpus.changed_law_ids(Some("user-token")).await.is_err());
+        assert!(corpus.changed_cache.read().await.is_none());
     }
 
     #[tokio::test]
