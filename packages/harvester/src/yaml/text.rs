@@ -202,6 +202,15 @@ pub fn wrap_text(text: &str, width: usize) -> String {
 /// Replaces `[text][refN]` tokens with single-word placeholders before wrapping,
 /// then restores them after. This allows textwrap to break lines around the links
 /// without breaking inside them.
+///
+/// The placeholder is deliberately as wide as the link it replaces, so textwrap
+/// computes the same line breaks it would for the real text. A link can therefore
+/// be wider than the wrap width — long law titles regularly are — and textwrap's
+/// default `break_words` would then split the placeholder across two lines, after
+/// which it can no longer be matched back and the marker leaks into the published
+/// law text. Word breaking is disabled for this pass to keep every placeholder in
+/// one piece; such a link simply overflows its line, exactly as it does after
+/// restoration anyway.
 fn wrap_with_protected_refs(text: &str, options: &Options<'_>) -> String {
     let mut replacements: Vec<(String, String)> = Vec::new();
     let mut protected = text.to_string();
@@ -220,7 +229,10 @@ fn wrap_with_protected_refs(text: &str, options: &Options<'_>) -> String {
         protected = protected.replacen(original, &placeholder, 1);
     }
 
-    let wrapped = fill(&protected, options);
+    // Keep placeholders intact: a placeholder wider than the wrap width must
+    // stay one word, otherwise it cannot be restored below.
+    let protect_options = options.clone().break_words(false);
+    let wrapped = fill(&protected, &protect_options);
 
     // Restore original reference links
     let mut result = wrapped;
@@ -317,6 +329,57 @@ mod tests {
                 line
             );
         }
+    }
+
+    #[test]
+    fn test_wrap_text_restores_reference_link_longer_than_width() {
+        // A reference link can be longer than the wrap width on its own (long
+        // law titles are common). The placeholder that protects it must not be
+        // broken across lines, otherwise it can no longer be restored and a
+        // `__REF000___` marker ends up in the published law text.
+        let link = "[artikel 1 van de Wet zorg en dwang psychogeriatrische en verstandelijk gehandicapte clienten, zoals dat luidde op 1 januari 2025][ref1]";
+        assert!(
+            link.len() > TEXT_WRAP_WIDTH,
+            "test premise: link ({} chars) must exceed the wrap width ({})",
+            link.len(),
+            TEXT_WRAP_WIDTH
+        );
+
+        let text = format!(
+            "De zorgaanbieder verleent zorg als bedoeld in {link} aan de verzekerde die daarop is aangewezen.\n\n[ref1]: https://example.com/wzd"
+        );
+        let wrapped = wrap_text_default(&text);
+
+        assert!(
+            !wrapped.contains("__REF"),
+            "placeholder left behind in output:\n{wrapped}"
+        );
+        assert!(
+            wrapped.contains(link),
+            "reference link not restored intact:\n{wrapped}"
+        );
+        assert!(
+            wrapped.contains("[ref1]: https://example.com/wzd"),
+            "reference definition lost:\n{wrapped}"
+        );
+    }
+
+    #[test]
+    fn test_wrap_text_restores_multiple_overlong_reference_links() {
+        // Several overlong links in one paragraph: every one of them must come
+        // back, in its own place.
+        let first = "[artikel 3.2.1, eerste lid, onderdeel a, van de Wet langdurige zorg zoals die gold voor de wijziging][ref1]";
+        let second = "[artikel 1 van de Wet zorg en dwang psychogeriatrische en verstandelijk gehandicapte clienten][ref2]";
+        let text = format!("Zie {first} en daarnaast ook {second} voor de nadere invulling van dit begrip in de praktijk.");
+
+        let wrapped = wrap_text(&text, 60);
+
+        assert!(
+            !wrapped.contains("__REF"),
+            "placeholder left behind in output:\n{wrapped}"
+        );
+        assert!(wrapped.contains(first), "first link lost:\n{wrapped}");
+        assert!(wrapped.contains(second), "second link lost:\n{wrapped}");
     }
 
     #[test]
