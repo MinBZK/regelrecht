@@ -1,11 +1,11 @@
-//! Corpus metrics — the numbers behind the Corpusstand dashboard.
+//! Corpus metrics: the numbers behind the editor's Analyse page.
 //!
 //! # Why this lives in the engine
 //!
 //! Every figure here could be produced by walking the YAML again in the frontend
 //! or in a script. That is exactly what must not happen: a second reader
 //! eventually disagrees with the engine, and a metric that disagrees is worse
-//! than no metric — it grants confidence that something is covered while the
+//! than no metric: it grants confidence that something is covered while the
 //! engine loads something else. The clearest case is a `source:` block placed
 //! under `parameters:` instead of `input:`. [`Parameter`] has no `source` field,
 //! so serde drops it at parse time and the value silently becomes a plain
@@ -17,15 +17,15 @@
 //!
 //! # Selections, not scalars
 //!
-//! The report is a set of **indexes** — one row per regulation, per article, per
-//! binding — and every headline number is the length of a filter over them. A
+//! The report is a set of **indexes** (one row per regulation, per article, per
+//! binding), and every headline number is the length of a filter over them. A
 //! count can therefore never disagree with the list behind it, because it *is*
 //! that list, and a dashboard tile can drill down without a second query.
 //!
 //! # Provenance
 //!
 //! Everything in [`CorpusMetrics`] is engine-derived: it comes from laws loaded
-//! into the resolver. Scenario coverage is deliberately absent — scenarios are
+//! into the resolver. Scenario coverage is deliberately absent: scenarios are
 //! files living beside a law, not part of the model, so they belong to a
 //! corpus-derived report that a caller merges in. Mixing the two here would
 //! hide which figures the engine actually vouches for.
@@ -37,12 +37,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 // Re-exported by the engine so the historical `crate::article::*` paths keep
 // working; the document model itself lives in `regelrecht_law_model`.
 use crate::article::ArticleBasedLaw;
-use crate::resolver::RuleResolver;
+use crate::resolver::{RuleResolver, SelectionReason};
 use crate::types::RegulatoryLayer;
 
 /// Description markers that say "this ought to be a cross-law binding but is not".
@@ -68,9 +69,9 @@ pub enum BindingIntegrity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BindingKind {
-    /// `input.source` — the engine fetches a value.
+    /// `input.source`: the engine fetches a value.
     Source,
-    /// `implements` — a lower regulation fills an open term (RFC-003).
+    /// `implements`: a lower regulation fills an open term (RFC-003).
     Implements,
 }
 
@@ -79,14 +80,14 @@ pub enum BindingKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FindingClass {
-    /// `source:` under `parameters:` — dropped at parse time, cross-law never fires.
+    /// `source:` under `parameters:`. Dropped at parse time, so cross-law never fires.
     ///
     /// **This module can never produce this variant, and that is the point.**
     /// [`crate::article::Execution`]'s `Parameter` has no `source` field, so
     /// serde discards the block before any engine code sees it. A defect that
     /// consists of the engine being blind cannot be found by asking the engine.
     /// Detecting it requires reading the raw document, which is what
-    /// `script/cross-law-integriteit.py` does — that script therefore is not a
+    /// `script/cross-law-integriteit.py` does. That script is therefore not a
     /// redundant second implementation but the only place this check can live.
     /// The variant exists so a caller can merge those document-level findings
     /// into one report.
@@ -105,7 +106,7 @@ pub enum FindingClass {
     ///
     /// Unlike the five above this has no counterpart in
     /// `script/cross-law-integriteit.py`, which only checks that an `implements`
-    /// points somewhere real — not that every open term is reached. Kept separate
+    /// points somewhere real, not that every open term is reached. Kept separate
     /// so the differential test against that script stays a like-for-like
     /// comparison.
     OpenTermUnfilled,
@@ -169,8 +170,8 @@ pub struct ArticleRow {
     pub findings: Vec<Finding>,
 }
 
-/// One loaded regulation version. A law with three versions yields three rows —
-/// "regulations" and "versions" are different counts and the dashboard shows both.
+/// One loaded regulation version. A law with three versions yields three rows.
+/// "regulations" and "versions" are different counts, and the dashboard shows both.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegulationRow {
     pub law_id: String,
@@ -198,6 +199,22 @@ pub struct RegulationRow {
     pub loaded: bool,
 }
 
+/// A law that exists in the corpus but has no version in force on the reference
+/// date, with the engine's own reason.
+///
+/// Reported rather than silently dropped: "this law is not counted" and "this
+/// law is fine" must never look the same. The reasons come from the resolver so
+/// the dashboard states what the engine concluded instead of inventing a legal
+/// verdict of its own (RFC-019 §3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NotInForceRow {
+    pub law_id: String,
+    /// `not-yet-in-force`, `ended`, or `not-found`.
+    pub reason: String,
+    /// The `valid_to` that was last in force, when the reason is `ended`.
+    pub ended_on: Option<String>,
+}
+
 /// Headline numbers. Derived from the indexes in one place so a tile can never
 /// contradict the list it opens.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -213,10 +230,14 @@ pub struct Totals {
     pub open_terms: usize,
     pub untranslatables: usize,
     pub untranslatables_accepted: usize,
+    /// Every version the resolver holds, in force or not. Context for
+    /// `regulations`: a corpus with history has more versions than regulations.
+    pub versions_loaded: usize,
     pub bindings: usize,
     pub bindings_clean: usize,
-    /// Loaded regulations nothing points at: modelled but outside every
-    /// calculation path. Not a defect, but a signal.
+    /// Loaded regulations nothing points at: modelled, yet outside every
+    /// calculation path. A regulation may legitimately sit there, so the count
+    /// is informational and never fails a check.
     pub uncalled_regulations: usize,
     pub findings_by_class: BTreeMap<FindingClass, usize>,
 }
@@ -229,6 +250,8 @@ pub struct CorpusMetrics {
     pub as_of: Option<String>,
     pub totals: Totals,
     pub regulations: Vec<RegulationRow>,
+    /// Laws with no version in force on `as_of`. Empty when no date was given.
+    pub not_in_force: Vec<NotInForceRow>,
     pub articles: Vec<ArticleRow>,
     pub bindings: Vec<BindingRow>,
     pub findings: Vec<Finding>,
@@ -289,15 +312,66 @@ fn law_open_terms(law: &ArticleBasedLaw) -> BTreeMap<String, BTreeSet<String>> {
     idx
 }
 
-/// Build the report over every law version the resolver holds.
+/// Pick the versions the report is computed over.
 ///
-/// Note on versions: a law loaded in several versions is walked once per
-/// version, because a binding can be sound in one version and dangling in the
-/// next. That differs from `script/cross-law-integriteit.py`, which keeps one
-/// document per `$id`; the differential test between them therefore runs on a
-/// corpus with a single version per law.
+/// With a reference date this is the version of each law in force on that date,
+/// chosen by the resolver's own selection so the dashboard and an execution
+/// agree about which text applies. A law with no version in force is not
+/// silently dropped: it comes back as a [`NotInForceRow`] carrying the reason
+/// the resolver gave, because "not counted" and "fine" must not look the same.
+///
+/// Without a date every loaded version is walked. That is the right default for
+/// a corpus-wide inventory ("what do we have"), where a version that has ended
+/// is still part of the corpus.
+fn select_versions<'a>(
+    resolver: &'a RuleResolver,
+    on: Option<NaiveDate>,
+) -> (Vec<&'a ArticleBasedLaw>, Vec<NotInForceRow>) {
+    let all: Vec<&ArticleBasedLaw> = resolver.all_law_versions().collect();
+    let Some(date) = on else {
+        return (all, Vec::new());
+    };
+
+    let ids: BTreeSet<&str> = all.iter().map(|l| l.id.as_str()).collect();
+    let mut in_force = Vec::new();
+    let mut absent = Vec::new();
+    for id in ids {
+        match resolver.get_law_for_date_result(id, date) {
+            Ok(law) => in_force.push(law),
+            Err(reason) => absent.push(NotInForceRow {
+                law_id: id.to_string(),
+                reason: match reason {
+                    SelectionReason::NotFound => "not-found",
+                    SelectionReason::NotYetInForce => "not-yet-in-force",
+                    SelectionReason::EndedOn(_) => "ended",
+                }
+                .to_string(),
+                ended_on: match reason {
+                    SelectionReason::EndedOn(d) => Some(d.to_string()),
+                    _ => None,
+                },
+            }),
+        }
+    }
+    (in_force, absent)
+}
+
+/// Build the report over the law versions that apply.
+///
+/// `as_of` is a `YYYY-MM-DD` date. It selects which version of each law counts;
+/// see [`select_versions`]. An unparseable date is treated as no date rather
+/// than as an error: an inventory without a reference date is still a useful
+/// answer, and failing the whole report over a malformed string would hide it.
+///
+/// Note on versions without a date: a law loaded in several versions is then
+/// walked once per version, because a binding can be sound in one version and
+/// dangling in the next. That differs from `script/cross-law-integriteit.py`,
+/// which keeps one document per `$id`; the differential test between them
+/// therefore runs on a corpus with a single version per law.
 pub fn corpus_metrics(resolver: &RuleResolver, as_of: Option<&str>) -> CorpusMetrics {
-    let laws: Vec<&ArticleBasedLaw> = resolver.all_law_versions().collect();
+    let on = as_of.and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
+    let (laws, not_in_force) = select_versions(resolver, on);
+    let versions_loaded = resolver.version_count();
 
     let outputs_by_law: BTreeMap<&str, BTreeSet<String>> = laws
         .iter()
@@ -372,7 +446,7 @@ pub fn corpus_metrics(resolver: &RuleResolver, as_of: Option<&str>) -> CorpusMet
             // No early `continue` past this point: the tail of this loop body
             // is what moves an article's findings into the corpus-wide list and
             // folds its counts into the regulation row. Skipping it once left
-            // `totals` disagreeing with the per-article rows — exactly the
+            // `totals` disagreeing with the per-article rows, exactly the
             // count-versus-list divergence this module exists to prevent.
             if let Some(mr) = article.machine_readable.as_ref() {
                 reg.articles_with_logic += 1;
@@ -388,7 +462,7 @@ pub fn corpus_metrics(resolver: &RuleResolver, as_of: Option<&str>) -> CorpusMet
                     });
                 }
 
-                // implements — the IoC binding must land on a declared open term.
+                // implements: the IoC binding must land on a declared open term.
                 for decl in mr.implements.iter().flatten() {
                     row.implements_count += 1;
                     let declared = open_terms_by_law
@@ -438,7 +512,7 @@ pub fn corpus_metrics(resolver: &RuleResolver, as_of: Option<&str>) -> CorpusMet
                         row.outputs.push(output.name.clone());
                     }
 
-                    // parameters — neither branch yields a binding: the engine sees nothing here.
+                    // parameters. Neither branch yields a binding: the engine sees nothing here.
                     for param in exec.parameters.iter().flatten() {
                         row.parameter_count += 1;
                         let description = param.description.as_deref().unwrap_or("").to_lowercase();
@@ -528,7 +602,7 @@ pub fn corpus_metrics(resolver: &RuleResolver, as_of: Option<&str>) -> CorpusMet
 
     // A `source` under `parameters:` is only reachable through the raw document,
     // because serde has already dropped it. The engine cannot see it, so neither
-    // can we — the check lives in `script/cross-law-integriteit.py`, which reads
+    // can we. The check lives in `script/cross-law-integriteit.py`, which reads
     // the YAML directly. Recording the gap here rather than pretending coverage.
 
     // Open terms nobody implements: delegation declared but never completed.
@@ -628,11 +702,12 @@ pub fn corpus_metrics(resolver: &RuleResolver, as_of: Option<&str>) -> CorpusMet
             .then_with(|| a.detail.cmp(&b.detail))
     });
 
-    let totals = totals(&regulations, &articles, &bindings, &findings);
+    let totals = totals(&regulations, &articles, &bindings, &findings, versions_loaded);
     CorpusMetrics {
         as_of: as_of.map(str::to_string),
         totals,
         regulations,
+        not_in_force,
         articles,
         bindings,
         findings,
@@ -656,6 +731,7 @@ fn totals(
     articles: &[ArticleRow],
     bindings: &[BindingRow],
     findings: &[Finding],
+    versions_loaded: usize,
 ) -> Totals {
     let loaded: Vec<&RegulationRow> = regulations.iter().filter(|r| r.loaded).collect();
     let distinct: BTreeSet<&str> = loaded.iter().map(|r| r.law_id.as_str()).collect();
@@ -688,6 +764,7 @@ fn totals(
             .flat_map(|a| a.untranslatables.iter())
             .filter(|u| u.accepted)
             .count(),
+        versions_loaded,
         bindings: bindings.len(),
         bindings_clean: bindings
             .iter()
@@ -701,7 +778,7 @@ fn totals(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resolver::RuleResolver;
+    use crate::resolver::{RuleResolver, SelectionReason};
 
     const SCHEMA: &str =
         "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json";
@@ -1057,6 +1134,73 @@ mod tests {
         let m = corpus_metrics(&resolver_with(&[]), Some("2026-08-04"));
         assert_eq!(m.as_of.as_deref(), Some("2026-08-04"));
         assert_eq!(m.totals.regulations, 0);
+    }
+
+    // --- peildatum ---------------------------------------------------------
+
+    /// Zonder datum is het rapport een inventaris: elke geladen versie telt mee.
+    #[test]
+    fn without_a_date_every_loaded_version_counts() {
+        let m = corpus_metrics(
+            &resolver_with(&[
+                law("law_a", Some("2024-01-01"), &produces("1", "a")),
+                law("law_a", Some("2026-01-01"), &produces("1", "a")),
+            ]),
+            None,
+        );
+        assert_eq!(m.totals.versions, 2);
+        assert_eq!(m.totals.regulations, 1);
+        assert!(m.not_in_force.is_empty());
+    }
+
+    /// Met een datum telt alleen de versie die dan geldt. De oudere versie is
+    /// geen kolom minder maar een rij minder, en dat is het hele punt.
+    #[test]
+    fn a_date_selects_the_version_in_force() {
+        let mut vroeg = produces("1", "a");
+        vroeg.push_str(&produces("2", "b"));
+        let laat = produces("1", "a");
+        let resolver = resolver_with(&[
+            law("law_a", Some("2024-01-01"), &vroeg),
+            law("law_a", Some("2026-01-01"), &laat),
+        ]);
+
+        let op_2025 = corpus_metrics(&resolver, Some("2025-06-01"));
+        assert_eq!(op_2025.totals.articles, 2, "in 2025 geldt de versie met twee artikelen");
+
+        let op_2026 = corpus_metrics(&resolver, Some("2026-06-01"));
+        assert_eq!(op_2026.totals.articles, 1, "in 2026 geldt de versie met een artikel");
+
+        // Het aantal geladen versies verandert niet mee: dat is de context.
+        assert_eq!(op_2026.totals.versions_loaded, 2);
+    }
+
+    /// Een wet die op de peildatum nog niet gold verdwijnt niet stil. "Niet
+    /// geteld" en "in orde" mogen er nooit hetzelfde uitzien.
+    #[test]
+    fn a_law_not_yet_in_force_is_reported_with_its_reason() {
+        let m = corpus_metrics(
+            &resolver_with(&[law("law_toekomst", Some("2030-01-01"), &produces("1", "a"))]),
+            Some("2026-01-01"),
+        );
+        assert_eq!(m.totals.regulations, 0);
+        assert_eq!(m.not_in_force.len(), 1);
+        assert_eq!(m.not_in_force[0].law_id, "law_toekomst");
+        assert_eq!(m.not_in_force[0].reason, "not-yet-in-force");
+    }
+
+    /// Een onleesbare datum maakt er een inventaris van in plaats van een fout.
+    /// Het hele rapport laten vallen op een verkeerd getypte string zou het
+    /// antwoord verbergen dat er wel is.
+    #[test]
+    fn an_unparseable_date_falls_back_to_the_inventory() {
+        let m = corpus_metrics(
+            &resolver_with(&[law("law_a", Some("2025-01-01"), &produces("1", "a"))]),
+            Some("gisteren"),
+        );
+        assert_eq!(m.totals.regulations, 1);
+        assert_eq!(m.as_of.as_deref(), Some("gisteren"), "de invoer blijft zichtbaar");
+        assert!(m.not_in_force.is_empty());
     }
 
     #[test]

@@ -483,6 +483,35 @@ impl WasmEngine {
     }
 
     /// Get metadata about a loaded law.
+    /// Corpus-wide metrics over every law currently loaded (see [`crate::metrics`]).
+    ///
+    /// Returns indexes (one row per regulation, per article, per binding) plus
+    /// headline totals derived from them. A dashboard tile is therefore a filter
+    /// over a list it can also open, instead of a number with nothing behind it.
+    ///
+    /// The caller decides what "the corpus" is by loading laws first; this reads
+    /// only what the resolver holds. Loading nothing yields an empty report
+    /// rather than an error, because an empty traject is a legitimate state.
+    ///
+    /// `as_of` is carried through untouched into the report. Pass the date the
+    /// figures are meant to describe; without it a report cannot be compared
+    /// with an earlier one.
+    ///
+    /// # Example (JavaScript)
+    /// ```javascript
+    /// laws.forEach((yaml) => engine.loadLaw(yaml));
+    /// const report = engine.corpusMetrics('2026-08-04');
+    /// report.totals.articles_with_logic;      // the headline figure
+    /// report.articles.filter((a) => a.has_logic);  // and the rows behind it
+    /// ```
+    #[wasm_bindgen(js_name = corpusMetrics)]
+    pub fn corpus_metrics(&self, as_of: Option<String>) -> Result<JsValue, JsValue> {
+        let report = crate::metrics::corpus_metrics(self.service.resolver(), as_of.as_deref());
+        report
+            .serialize(&js_serializer())
+            .map_err(|e| wasm_error(&format!("Failed to serialize corpus metrics: {e}")))
+    }
+
     #[wasm_bindgen(js_name = getLawInfo)]
     pub fn get_law_info(&self, law_id: &str) -> Result<JsValue, JsValue> {
         let law_info = self
