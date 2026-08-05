@@ -23,7 +23,7 @@ use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
-use crate::resolver::{DeclarationsFromOtherVersion, DelegationRefusal};
+use crate::resolver::{DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
@@ -92,6 +92,11 @@ pub struct ArticleResult {
     /// other than the one in force on the reference date. An empty list is a
     /// statement: every such answer came from the right version.
     pub declaration_version_notes: Vec<DeclarationsFromOtherVersion>,
+    /// Hooks, overrides and implementations the indexes offered but that had no
+    /// version in force on the reference date, so they did not run. Populated
+    /// by the service layer, independently of tracing, so the skip reaches the
+    /// receipt.
+    pub declarations_not_in_force: Vec<DeclarationNotInForce>,
 }
 
 /// Executes a single article's machine_readable.execution section.
@@ -251,6 +256,7 @@ impl<'a> ArticleEngine<'a> {
             regulation_valid_from: self.law.valid_from.clone(),
             delegation_refusals: Vec::new(),
             declaration_version_notes: Vec::new(),
+            declarations_not_in_force: Vec::new(),
         };
 
         tracing::debug!(

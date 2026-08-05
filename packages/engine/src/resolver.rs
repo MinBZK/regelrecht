@@ -63,6 +63,111 @@ pub enum SelectionReason {
     UnreadableStart(String),
 }
 
+impl SelectionReason {
+    /// The data fact behind the failure, as one clause that reads after a law
+    /// name: "…: no version of it is in force yet on this date".
+    ///
+    /// Deliberately never a legal verdict, for the reason on the enum itself.
+    /// [`crate::LawExecutionService`] renders the same facts as errors where a
+    /// failed selection aborts the execution; this renders them where the
+    /// execution goes on without what could not be selected.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::NotFound => "no law with this id is loaded".to_string(),
+            Self::NotYetInForce => "no version of it is in force yet on this date".to_string(),
+            Self::EndedOn(valid_to) => format!(
+                "its last applicable version ended on {}",
+                valid_to.format("%Y-%m-%d")
+            ),
+            Self::UndeterminedStart(reference) => format!(
+                "its valid_from is the internal reference '{reference}', so whether it was in \
+                 force on this date cannot be determined from the regulation"
+            ),
+            Self::UnreadableStart(raw) => format!(
+                "its valid_from is '{raw}', which is neither a date nor an internal reference, \
+                 so this version cannot be placed in time at all"
+            ),
+        }
+    }
+}
+
+/// What kind of declaration an index offered.
+///
+/// The three share a shape: the indexes are built from the newest version of
+/// each law, while execution selects the version in force on the reference
+/// date. What the index offers can therefore be a law that has no version to
+/// select for this date.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeclarationKind {
+    /// A hook article that would have fired at a hook point.
+    Hook,
+    /// A lex specialis that would have replaced or voided an output.
+    Override,
+    /// A regulation that would have filled an open term.
+    Implementation,
+}
+
+impl DeclarationKind {
+    /// The word this kind is called by in the trace and on the receipt.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hook => "hook",
+            Self::Override => "override",
+            Self::Implementation => "implementation",
+        }
+    }
+}
+
+/// A hook, override or implementation the indexes offered, whose law has no
+/// version the engine could select for the reference date.
+///
+/// Skipping it is right: a regulation that is not in force does not apply. But
+/// the skip is invisible in the outcome — the general rule computes a value,
+/// the hook does not fire, the open term falls through to its default — and
+/// then "no lex specialis" reads as a finding while it is an answer about a
+/// date. Recorded so an absence with a ground stays distinguishable from an
+/// absence nobody asked about, the same reason [`DelegationRefusal`] is
+/// recorded rather than dropped.
+///
+/// Deliberately not a [`DelegationRefusal`]: that one is a defect in the
+/// corpus, where someone wrote a regulation that arrogates what the law does
+/// not delegate. This one is usually no defect at all but the calendar doing
+/// its work, so it must not read as an accusation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DeclarationNotInForce {
+    /// What the declaration would have done.
+    pub kind: DeclarationKind,
+    /// The law that declares it.
+    pub law_id: String,
+    /// The article of that law that carries the declaration.
+    pub article: String,
+    /// What it would have applied to, in the terms of this execution: the open
+    /// term it fills, the output it overrides, the hook point it fires on.
+    pub subject: String,
+    /// Why no version could be selected, as a data fact
+    /// ([`SelectionReason::describe`]).
+    pub reason: String,
+}
+
+impl DeclarationNotInForce {
+    /// One sentence naming the declaration, what it would have applied to, and
+    /// why it did not. Used verbatim in the trace, so the receipt reads as prose.
+    #[must_use]
+    pub fn message(&self) -> String {
+        format!(
+            "Not applied: {} {} article {} would have applied to {}, but {}",
+            self.kind.as_str(),
+            self.law_id,
+            self.article,
+            self.subject,
+            self.reason,
+        )
+    }
+}
+
 /// A regulation that declared it fills an open term, but was refused because
 /// its regulatory layer is not the layer the declaring article delegates to.
 ///
@@ -114,6 +219,9 @@ pub struct ImplementationLookup<'a> {
     pub implementations: Vec<(&'a ArticleBasedLaw, &'a Article)>,
     /// Candidates refused by the delegation gate, in index order.
     pub refusals: Vec<DelegationRefusal>,
+    /// Candidates whose law has no version in force on the reference date, in
+    /// index order. Not competent for this date, and not silent about it.
+    pub not_in_force: Vec<DeclarationNotInForce>,
 }
 
 /// Why no procedure definition was found (RFC-008).
@@ -726,7 +834,8 @@ impl RuleResolver {
     /// the given open term. Optionally filters by temporal validity.
     ///
     /// Returns the competent candidates sorted by priority (winner first),
-    /// together with every candidate refused by the delegation gate.
+    /// together with every candidate refused by the delegation gate and every
+    /// candidate that has no version in force on the reference date.
     ///
     /// The open term is passed in by the caller rather than looked up again
     /// here. A second, independent lookup of the declaring law, article and
@@ -776,8 +885,32 @@ impl RuleResolver {
         let mut lookup = ImplementationLookup::default();
 
         for entry in candidate_entries {
-            let Some(law) = self.get_law_for_date(&entry.law_id, reference_date) else {
-                continue;
+            // Version filter. A regulation that is not in force on this date
+            // cannot fill the term, but its disappearance would be silent: the
+            // caller sees zero candidates and reports "no implementation, using
+            // the default" — the same sentence it prints when nobody ever wrote
+            // one. The two filters below say why they drop a candidate, and
+            // this one now does too, through the same lookup so the record
+            // reaches trace and receipt rather than the log alone.
+            let law = match self.get_law_for_date_reported(&entry.law_id, reference_date) {
+                Ok(law) => law,
+                Err(reason) => {
+                    tracing::debug!(
+                        candidate = %entry.law_id,
+                        reason = %reason.describe(),
+                        "Skipping: no version of this candidate is in force on the reference date"
+                    );
+                    lookup.not_in_force.push(DeclarationNotInForce {
+                        kind: DeclarationKind::Implementation,
+                        law_id: entry.law_id.clone(),
+                        article: entry.article_number.clone(),
+                        subject: format!(
+                            "open term '{open_term_id}' of {law_id} article {article}"
+                        ),
+                        reason: reason.describe(),
+                    });
+                    continue;
+                }
             };
 
             // Scope filtering: check all scope fields on the candidate law against

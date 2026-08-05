@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::engine::OutputProvenance;
-use crate::resolver::{DeclarationsFromOtherVersion, DelegationRefusal};
+use crate::resolver::{DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal};
 use crate::trace::PathNode;
 use crate::types::{Connectivity, LegalStatus, UntranslatableMode, Value};
 
@@ -128,6 +128,12 @@ pub struct ReceiptResults {
     /// on this receipt is not read as "none exist".
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub declaration_version_notes: Vec<DeclarationsFromOtherVersion>,
+    /// Hooks, overrides and implementations that were offered for this
+    /// execution but had no version in force on the reference date. They did
+    /// not run; the receipt says so, rather than letting the outcome read as
+    /// though nothing was ever declared.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub declarations_not_in_force: Vec<DeclarationNotInForce>,
 }
 
 /// A value accepted from another organisation's engine (RFC-009).
