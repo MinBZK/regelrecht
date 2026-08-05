@@ -20,6 +20,23 @@ describe('reviewTarget', () => {
     );
   });
 
+  it('neemt het artikel uit de payload op in de editor-route', () => {
+    const task = {
+      id: 't1a',
+      task_type: 'job_review',
+      payload: {
+        traject_ref: 'mijn-traject-1a2b3c4d',
+        law_id: 'wet_op_de_zorgtoeslag',
+        article: '2',
+      },
+    };
+    const resolved = router.resolve(reviewTarget(task));
+    expect(resolved.params.articleNumber).toBe('2');
+    expect(resolved.fullPath).toBe(
+      '/trajecten/mijn-traject-1a2b3c4d/editor/wet_op_de_zorgtoeslag/2?task=t1a',
+    );
+  });
+
   it('geeft null voor een taak zonder traject_ref in de payload', () => {
     expect(reviewTarget({ id: 't2', payload: { law_id: 'wet_op_de_zorgtoeslag' } })).toBeNull();
   });
@@ -148,5 +165,49 @@ describe('proposalDivergence', () => {
       hiddenChanges: false,
     });
     expect(proposalDivergence([], [])).toEqual({ target: null, hiddenChanges: false });
+  });
+
+  it('pakt het aangewezen artikel, ook als een eerder artikel ook afwijkt', () => {
+    const current = [
+      { number: '1', text: 'oud-1' },
+      { number: '2', text: 'oud-2' },
+    ];
+    const proposed = [
+      { number: '1', text: 'nieuw-1' },
+      { number: '2', text: 'nieuw-2' },
+    ];
+    const result = proposalDivergence(current, proposed, '2');
+    expect(result.target).toEqual(proposed[1]);
+    // Artikel 1 hangt aan zijn eigen taak, dus het is hier geen verborgen
+    // wijziging waar de banner naar hoeft te verwijzen.
+    expect(result.hiddenChanges).toBe(false);
+  });
+
+  it('geeft geen target als het aangewezen artikel niet afwijkt', () => {
+    const current = [{ number: '1', text: 'zelfde' }];
+    const proposed = [{ number: '1', text: 'zelfde' }];
+    expect(proposalDivergence(current, proposed, '1')).toEqual({
+      target: null,
+      hiddenChanges: false,
+    });
+  });
+
+  it('geeft geen target als het aangewezen artikel in de wet of het voorstel ontbreekt', () => {
+    const current = [{ number: '1', text: 'oud' }];
+    const proposed = [{ number: '1', text: 'nieuw' }];
+    expect(proposalDivergence(current, proposed, '9')).toEqual({
+      target: null,
+      hiddenChanges: false,
+    });
+    expect(proposalDivergence([], proposed, '1')).toEqual({
+      target: null,
+      hiddenChanges: false,
+    });
+  });
+
+  it('vergelijkt het nummer als tekst, zodat een numeriek payload-artikel raak is', () => {
+    const current = [{ number: '2', text: 'oud' }];
+    const proposed = [{ number: 2, text: 'nieuw' }];
+    expect(proposalDivergence(current, proposed, 2).target).toEqual(proposed[0]);
   });
 });

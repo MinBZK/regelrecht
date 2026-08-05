@@ -7,7 +7,7 @@
  * zijn laagfrequent; na eigen acties (enrich-aanvraag, resolve) wordt direct
  * ge-refreshed.
  */
-import { ref, computed, onUnmounted, getCurrentInstance } from 'vue';
+import { ref, computed, watch, onUnmounted, getCurrentInstance } from 'vue';
 import { apiFetch } from '@regelrecht/frontend-shared';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -109,5 +109,36 @@ export function useTasks() {
 // that DO want the shared, polled task list (the taken-lijst in Home:
 // TasksSidebarItem/TasksListPane) keep using useTasks().
 export function useTaskActions() {
-  return { fetchTask, resolveTask, requestEnrich, refresh };
+  // `running` is een module-level ref, gedeeld met useTasks(). Meegeven kost
+  // niets en start geen poll: een view die alleen wil weten of er iets loopt,
+  // leest hem en ververst zelf na een actie of bij mount.
+  return { fetchTask, resolveTask, requestEnrich, refresh, running, tasks };
+}
+
+/**
+ * Ververs de takenlijst zolang `active` waar is, en stop zodra hij omslaat of
+ * de component verdwijnt.
+ *
+ * Voor de bezig-staat van een verrijking: die kan minuten duren, dus een
+ * permanente poll is verspilling, maar wie er op dat moment naar kijkt wil het
+ * zien omslaan zonder zelf te verversen. De kosten hangen zo aan kijktijd in
+ * plaats van aan looptijd. Bewust korter dan de 30s van useTasks: dit is een
+ * gerichte poll die je zelf in gang hebt gezet.
+ */
+export function usePollWhile(active, intervalMs = 10000) {
+  let pollTimer = null;
+  const stop = () => {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+  };
+  // Bewust NIET immediate: dat evalueert `active` tijdens setup, en een
+  // caller die zijn computed bovenaan definieert leest dan state die verderop
+  // in het bestand pas gedeclareerd wordt (temporal dead zone). Setup gooit
+  // dan en de hele view rendert niets. Kost ook niets: `running` is bij setup
+  // nog leeg, dus er valt op dat moment nooit iets te starten.
+  watch(active, (on) => {
+    stop();
+    if (on) pollTimer = setInterval(refresh, intervalMs);
+  });
+  if (getCurrentInstance()) onUnmounted(stop);
 }

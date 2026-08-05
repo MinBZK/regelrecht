@@ -4,6 +4,7 @@ import { humanize } from '../utils/outputFormat.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
 import BreakableName from './BreakableName.vue';
 import RowActionsMenu from './RowActionsMenu.vue';
+import MachineEmptyState from './MachineEmptyState.vue';
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -20,6 +21,18 @@ const props = defineProps({
    *  machine-readable version can be created there. Ignored when `editable`,
    *  which seeds it in place instead. */
   canCreate: { type: Boolean, default: false },
+  /** Whether an enrichment can be requested here. The run covers the whole
+   *  law, not just this article, so the empty state says so. */
+  canEnrich: { type: Boolean, default: false },
+  /** An enrichment for this law is already pending or processing. The empty
+   *  state then reports that instead of offering the buttons again. */
+  enriching: { type: Boolean, default: false },
+  /** Message from the most recent failed enrich request, shown in place of
+   *  the supporting text. */
+  enrichError: { type: String, default: '' },
+  /** Er staat een openstaande review-taak klaar voor deze wet. */
+  reviewReady: { type: Boolean, default: false },
+  reviewArticle: { type: String, default: '' },
   /** Anchor target for that button. Leave unset when the user isn't logged
    *  in, so the click gates on the login popover instead of the href. */
   createHref: { type: String, default: undefined },
@@ -34,6 +47,12 @@ const emit = defineEmits([
   'open-action',
   'open-edit',
   'init-mr',
+  /** Ask for a generated proposal instead of writing one by hand. */
+  'enrich',
+  /** Open the task list filtered to this law, while a run is pending. */
+  'view-tasks',
+  /** Open review-modus voor de klaarstaande taak. */
+  'review',
   /**
    * Read-only empty state: the user wants the machine-readable version
    * created, which only the editor can do. Payload is the button element, so
@@ -269,20 +288,25 @@ function addOutput() {
 </script>
 
 <template>
-  <nldd-inline-dialog v-if="!mr" data-testid="no-machine-readable" text="Geen machine-leesbare gegevens voor dit artikel">
-    <nldd-button v-if="editable" slot="actions" variant="secondary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Maak machine versie aan"></nldd-button>
-    <nldd-button
-      v-else-if="canCreate"
-      slot="actions"
-      variant="secondary"
-      size="md"
-      data-testid="create-mr-btn"
-      text="Machine versie aanmaken"
-      :href="createHref"
-      @click.prevent="emit('create-mr', $event.currentTarget)"
-      @pointerdown.capture="onLoginTriggerPointerdown"
-    ></nldd-button>
-  </nldd-inline-dialog>
+  <!-- De verrijking schrijft machine_readable en scenario's, dus dit is de
+       plek waar je erom vraagt. De supporting-text benoemt de scope: de run
+       gaat over de hele wet, terwijl deze pane één artikel toont. -->
+  <MachineEmptyState
+    v-if="!mr"
+    :review-ready="reviewReady"
+    :review-article="reviewArticle"
+    :enriching="enriching"
+    :can-enrich="canEnrich"
+    :can-write-here="editable"
+    :can-create="canCreate"
+    :create-href="createHref"
+    :enrich-error="enrichError"
+    @enrich="emit('enrich', $event)"
+    @write="emit('init-mr')"
+    @create="emit('create-mr', $event)"
+    @view-tasks="emit('view-tasks')"
+    @review="emit('review')"
+  ></MachineEmptyState>
 
   <div v-else data-testid="machine-readable">
     <!-- Metadata: produces -->

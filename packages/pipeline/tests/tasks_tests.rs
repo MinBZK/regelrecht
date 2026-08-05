@@ -184,6 +184,73 @@ async fn test_blob_roundtrip_and_delete() {
 }
 
 #[tokio::test]
+async fn test_blobs_survive_until_the_last_per_article_task_is_resolved() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let job = job_queue::create_job(&db.pool, CreateJobRequest::new(JobType::Enrich, "wet_a"))
+        .await
+        .unwrap();
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Result,
+        "laws/wet_a.yaml",
+        "a: 2",
+    )
+    .await
+    .unwrap();
+    // Eén verrijking, twee gewijzigde artikelen, dus twee taken op dezelfde
+    // resultaat-blob.
+    let mut task_ids = Vec::new();
+    for article in ["1", "2"] {
+        let task = tasks::create_task(
+            &db.pool,
+            NewTask {
+                task_type: TaskType::JobReview,
+                assignee_account_id: Some(account_id),
+                traject_id: Some(traject_id),
+                job_id: Some(job.id),
+                title: format!("artikel {article}"),
+                payload: None,
+            },
+        )
+        .await
+        .unwrap();
+        task_ids.push(task.id);
+    }
+
+    tasks::resolve_task(&db.pool, task_ids[0], account_id, TaskStatus::Approved)
+        .await
+        .unwrap();
+    let removed = tasks::delete_blobs_for_finished_job(&db.pool, job.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        removed, 0,
+        "de tweede taak moet zijn voorstel nog kunnen laden"
+    );
+    assert_eq!(
+        tasks::load_blobs(&db.pool, job.id, BlobKind::Result)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    tasks::resolve_task(&db.pool, task_ids[1], account_id, TaskStatus::Rejected)
+        .await
+        .unwrap();
+    let removed = tasks::delete_blobs_for_finished_job(&db.pool, job.id)
+        .await
+        .unwrap();
+    assert_eq!(removed, 1);
+    assert!(tasks::load_blobs(&db.pool, job.id, BlobKind::Result)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
 async fn test_cleanup_orphaned_blobs_keeps_open_task_blobs() {
     let db = TestDb::new().await;
     let (account_id, traject_id) = seed_account_and_traject(&db).await;
@@ -292,6 +359,74 @@ async fn test_finish_enrich_task_job_creates_task_and_result_blobs() {
     assert_eq!(open.len(), 1);
     assert_eq!(open[0].task_type, "job_review");
     assert_eq!(open[0].job_id, Some(job.id));
+    // Zonder bronsnapshot valt de worker terug op één taak voor de hele wet,
+    // en die draagt dan ook geen artikelnummer.
+    assert!(open[0].payload.as_ref().unwrap().get("article").is_none());
+}
+
+#[tokio::test]
+async fn test_finish_enrich_task_job_creates_one_task_per_changed_article() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet").with_payload(json!({
+            "law_id": "test_wet",
+            "yaml_path": "laws/test_wet/law.yaml",
+            "provider": "claude",
+            "requested_by": account_id,
+            "deliver": "task",
+            "traject_id": traject_id,
+            "traject_ref": "testtraject-abcd1234",
+            "source_etag": "\"etag-1\""
+        })),
+    )
+    .await
+    .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // De bronsnapshot zoals de worker die bij het starten wegschrijft.
+    let source = "articles:\n  - number: '1'\n    text: een\n  - number: '2'\n    text: twee\n";
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Input,
+        "laws/test_wet/law.yaml",
+        source,
+    )
+    .await
+    .unwrap();
+
+    // Het voorstel raakt alleen artikel 2.
+    let proposal =
+        "articles:\n  - number: '1'\n    text: een\n  - number: '2'\n    text: twee bis\n";
+    let dir = tempfile::tempdir().unwrap();
+    let law_abs = dir.path().join("laws/test_wet/law.yaml");
+    tokio::fs::create_dir_all(law_abs.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&law_abs, proposal).await.unwrap();
+
+    finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs.clone()], None)
+        .await
+        .unwrap();
+
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        open.len(),
+        1,
+        "alleen het gewijzigde artikel krijgt een taak"
+    );
+    assert_eq!(
+        open[0].payload.as_ref().unwrap().get("article").unwrap(),
+        "2"
+    );
+    assert_eq!(open[0].title, "Verrijking beoordelen: test_wet artikel 2");
 }
 
 #[tokio::test]

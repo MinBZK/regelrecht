@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { interceptLaw, gotoEditor, selectArticle, readYamlPane, waitForSheet, fillSheetTextField, selectSheetDropdown, saveSheet } from './helpers.js';
+import { interceptLaw, gotoEditor, selectArticle, readYamlPane, waitForSheet, fillSheetTextField, selectSheetDropdown, saveSheet, pane } from './helpers.js';
 
 test.describe('Parameters and Outputs', () => {
   test.beforeEach(async ({ page }) => {
@@ -11,7 +11,7 @@ test.describe('Parameters and Outputs', () => {
     await selectArticle(page, '2');
 
     // Init machine_readable
-    await page.locator('[data-testid="init-mr-btn"]').click();
+    await pane(page, 'machine').locator('[data-testid="init-mr-btn"]').click();
     await page.waitForTimeout(300);
 
     // --- Add parameter: bsn (string, required) ---
