@@ -146,6 +146,7 @@ exclude_re = [
     'engine/src/wasm\.rs.*WasmEngine::execute_multiple',
     'engine/src/wasm\.rs.*WasmEngine::execute_multiple_with_trace',
     'engine/src/wasm\.rs.*WasmEngine::get_law_info',
+    'engine/src/wasm\.rs.*WasmEngine::corpus_metrics',
     'engine/src/wasm\.rs.*WasmEngine::resolve_note\b',
     'engine/src/wasm\.rs.*WasmEngine::resolve_notes',
     'engine/src/wasm\.rs.*WasmEngine::register_data_source',

@@ -702,7 +702,13 @@ pub fn corpus_metrics(resolver: &RuleResolver, as_of: Option<&str>) -> CorpusMet
             .then_with(|| a.detail.cmp(&b.detail))
     });
 
-    let totals = totals(&regulations, &articles, &bindings, &findings, versions_loaded);
+    let totals = totals(
+        &regulations,
+        &articles,
+        &bindings,
+        &findings,
+        versions_loaded,
+    );
     CorpusMetrics {
         as_of: as_of.map(str::to_string),
         totals,
@@ -1166,10 +1172,16 @@ mod tests {
         ]);
 
         let op_2025 = corpus_metrics(&resolver, Some("2025-06-01"));
-        assert_eq!(op_2025.totals.articles, 2, "in 2025 geldt de versie met twee artikelen");
+        assert_eq!(
+            op_2025.totals.articles, 2,
+            "in 2025 geldt de versie met twee artikelen"
+        );
 
         let op_2026 = corpus_metrics(&resolver, Some("2026-06-01"));
-        assert_eq!(op_2026.totals.articles, 1, "in 2026 geldt de versie met een artikel");
+        assert_eq!(
+            op_2026.totals.articles, 1,
+            "in 2026 geldt de versie met een artikel"
+        );
 
         // Het aantal geladen versies verandert niet mee: dat is de context.
         assert_eq!(op_2026.totals.versions_loaded, 2);
@@ -1199,7 +1211,11 @@ mod tests {
             Some("gisteren"),
         );
         assert_eq!(m.totals.regulations, 1);
-        assert_eq!(m.as_of.as_deref(), Some("gisteren"), "de invoer blijft zichtbaar");
+        assert_eq!(
+            m.as_of.as_deref(),
+            Some("gisteren"),
+            "de invoer blijft zichtbaar"
+        );
         assert!(m.not_in_force.is_empty());
     }
 
@@ -1215,5 +1231,105 @@ mod tests {
         );
         assert_eq!(schema_version("…/schema/latest/schema.json"), None);
         assert_eq!(schema_version("…/vNOPE/schema.json"), None);
+        // Drie delen en allemaal cijfers: beide voorwaarden moeten gelden, niet
+        // een van beide. `v1.2` heeft cijfers maar te weinig delen, `v1..2`
+        // heeft drie delen waarvan er een leeg is.
+        assert_eq!(schema_version("…/schema/v1.2/schema.json"), None);
+        assert_eq!(schema_version("…/schema/v1..2/schema.json"), None);
+        assert_eq!(schema_version("…/schema/v1.2.3.4/schema.json"), None);
+    }
+
+    /// De aggregaten per regeling. Zonder deze test ligt alleen het corpustotaal
+    /// vast, en zou een regeling die haar eigen cijfers verkeerd optelt
+    /// onopgemerkt blijven zolang het totaal toevallig klopt.
+    #[test]
+    fn per_regulation_counts_add_up_from_its_articles() {
+        let derde = "  - number: '3'\n    text: text\n    machine_readable:\n      open_terms:\n        - id: rate\n          type: number\n      untranslatables:\n        - construct: open norm\n          reason: judgement\n          accepted: true\n        - construct: discretion\n          reason: none\n          accepted: false\n      execution:\n        parameters:\n          - name: p\n            type: number\n            description: plain\n";
+        let articles = format!(
+            "{}{}{}",
+            produces("1", "amount"),
+            binds("2", Some("law_b"), "other"),
+            derde
+        );
+        let m = corpus_metrics(
+            &resolver_with(&[
+                law("law_a", Some("2025-01-01"), &articles),
+                law("law_b", Some("2025-01-01"), &produces("1", "other")),
+            ]),
+            None,
+        );
+        let a = m.regulations.iter().find(|r| r.law_id == "law_a").unwrap();
+        assert_eq!(a.output_count, 1);
+        assert_eq!(a.parameter_count, 1);
+        assert_eq!(a.input_count, 1);
+        assert_eq!(a.bound_input_count, 1);
+        assert_eq!(a.open_term_count, 1);
+        assert_eq!(a.untranslatable_count, 2);
+        assert_eq!(a.untranslatables_accepted, 1);
+    }
+
+    /// Een artikel telt zijn eigen implements en gebonden inputs.
+    #[test]
+    fn an_article_counts_its_own_implements_and_bound_inputs() {
+        let impl_article = "  - number: '1'\n    text: text\n    machine_readable:\n      implements:\n        - law: law_b\n          article: '2'\n          open_term: rate\n        - law: law_b\n          article: '2'\n          open_term: cap\n";
+        let term_article = "  - number: '2'\n    text: text\n    machine_readable:\n      open_terms:\n        - id: rate\n          type: number\n        - id: cap\n          type: number\n";
+        let m = corpus_metrics(
+            &resolver_with(&[
+                law("regulation_a", Some("2025-01-01"), impl_article),
+                law("law_b", Some("2025-01-01"), term_article),
+            ]),
+            None,
+        );
+        let art = m
+            .articles
+            .iter()
+            .find(|a| a.law_id == "regulation_a")
+            .unwrap();
+        assert_eq!(art.implements_count, 2);
+
+        let bound = corpus_metrics(
+            &resolver_with(&[
+                law(
+                    "law_a",
+                    Some("2025-01-01"),
+                    &binds("1", Some("law_b"), "amount"),
+                ),
+                law("law_b", Some("2025-01-01"), &produces("1", "amount")),
+            ]),
+            None,
+        );
+        let met_binding = bound.articles.iter().find(|a| a.law_id == "law_a").unwrap();
+        assert_eq!(met_binding.bound_input_count, 1);
+    }
+
+    /// Een regeling die vervalt voor de peildatum komt terug met de datum waarop
+    /// zij ophield te gelden, niet met een kaal "niet gevonden".
+    #[test]
+    fn a_law_that_ended_reports_when_it_ended() {
+        let yaml = format!(
+            "$schema: {SCHEMA}\n$id: law_oud\nregulatory_layer: WET\npublication_date: '2019-01-01'\nvalid_from: '2020-01-01'\nvalid_to: '2022-12-31'\nname: Example regulation\narticles:\n{}",
+            produces("1", "amount")
+        );
+        let m = corpus_metrics(&resolver_with(&[yaml]), Some("2026-01-01"));
+        assert_eq!(m.not_in_force.len(), 1);
+        assert_eq!(m.not_in_force[0].reason, "ended");
+        assert_eq!(m.not_in_force[0].ended_on.as_deref(), Some("2022-12-31"));
+    }
+
+    /// De datumloze-implements-bevinding vraagt beide voorwaarden: een
+    /// implements-blok en een ontbrekende valid_from. Een gedateerde invullende
+    /// regeling is in orde.
+    #[test]
+    fn a_dated_implements_is_not_flagged() {
+        let impl_article = "  - number: '1'\n    text: text\n    machine_readable:\n      implements:\n        - law: law_b\n          article: '2'\n          open_term: rate\n";
+        let term_article = "  - number: '2'\n    text: text\n    machine_readable:\n      open_terms:\n        - id: rate\n          type: number\n";
+        let m = corpus_metrics(
+            &resolver_with(&[
+                law("regulation_a", Some("2025-01-01"), impl_article),
+                law("law_b", Some("2025-01-01"), term_article),
+            ]),
+            None,
+        );
+        assert_eq!(count(&m, FindingClass::ImplNoDate), 0);
     }
 }
