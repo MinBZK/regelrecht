@@ -332,6 +332,30 @@ mod tests {
     }
 
     #[test]
+    fn test_reference_link_placeholder_keeps_line_breaks_of_plain_text() {
+        // The placeholder that protects a reference link is deliberately as wide
+        // as the link itself, so the lines break where they would for plain
+        // prose of the same length. A narrower or wider placeholder would
+        // silently reflow every harvested law, so pin the invariant here.
+        let link = "[artikel 4 van de Zorgverzekeringswet][ref1]";
+        let same_width_word = "x".repeat(link.chars().count());
+        let sentence = "De verzekerde die op grond van {} recht heeft op zorg, meldt dit onverwijld aan de zorgverzekeraar.";
+
+        let line_widths = |text: &str| -> Vec<usize> {
+            wrap_text(text, 60)
+                .lines()
+                .map(|l| l.chars().count())
+                .collect()
+        };
+
+        assert_eq!(
+            line_widths(&sentence.replace("{}", link)),
+            line_widths(&sentence.replace("{}", &same_width_word)),
+            "protecting a reference link changed the line breaks"
+        );
+    }
+
+    #[test]
     fn test_wrap_text_restores_reference_link_longer_than_width() {
         // A reference link can be longer than the wrap width on its own (long
         // law titles are common). The placeholder that protects it must not be
