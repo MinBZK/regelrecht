@@ -3914,7 +3914,12 @@ async fn evaluate_gate(
                     }
                     None => format!("[{}] {}", finding.check, finding.detail),
                 };
-                if finding.check == "outside-corpus" {
+                // `corpus-defect` joins `outside-corpus` here for the same
+                // reason and not for the same fact: both are about another
+                // file, so nothing in this one answers them. They stay apart
+                // in the record because the work differs — the one is
+                // harvested or interpreted, the other repaired.
+                if matches!(finding.check, "outside-corpus" | "corpus-defect") {
                     reading.outside_corpus.push(line);
                 } else {
                     reading.answerable.push(line);

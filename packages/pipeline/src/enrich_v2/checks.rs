@@ -1117,7 +1117,8 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                     ),
                 )),
                 Some(path) if !output.is_empty() => match target_output(&path, &output) {
-                    TargetOutput::Produced => {}
+                    Err(why) => findings.push(corpus_defect(Some(&number), &regulation, &why)),
+                    Ok(TargetOutput::Produced) => {}
                     // Harvested but not yet interpreted. The binding may be
                     // exactly right and there is nothing in this file to
                     // change: the target law carries no model at all yet, so
@@ -1125,7 +1126,7 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                     // straight: 12 of 19 checks findings were of this shape,
                     // they survived both feedback rounds untouched, and they
                     // could not have done otherwise.
-                    TargetOutput::NotYetInterpreted => findings.push(Finding::new(
+                    Ok(TargetOutput::NotYetInterpreted) => findings.push(Finding::new(
                         "outside-corpus",
                         Some(&number),
                         format!(
@@ -1134,7 +1135,7 @@ pub fn binding_integrity(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding
                              nothing. Interpreting that law is what resolves this"
                         ),
                     )),
-                    TargetOutput::Absent => findings.push(Finding::new(
+                    Ok(TargetOutput::Absent) => findings.push(Finding::new(
                         "binding",
                         Some(&number),
                         format!("\"{regulation}\" does not produce output \"{output}\""),
@@ -1907,8 +1908,20 @@ pub fn cross_law_references(doc: &Value, corpus_root: Option<&Path>) -> Vec<Find
     let Some(root) = corpus_root else {
         return Vec::new();
     };
-    let index = bwb_index(root);
-    let mut findings = Vec::new();
+    let (index, unreadable) = bwb_index(root);
+    let mut findings: Vec<Finding> = unreadable
+        .iter()
+        .map(|what| {
+            Finding::new(
+                "corpus-defect",
+                None,
+                format!(
+                    "the corpus index skipped a law file: {what}. Every citation of that law \
+                     now reads as a law the corpus does not have"
+                ),
+            )
+        })
+        .collect();
 
     for entry in articles {
         let (Some(number), Some(text)) = (
@@ -2043,9 +2056,49 @@ fn bound_regulations(mr: Option<&Value>) -> BTreeSet<String> {
     out
 }
 
-/// Map from BWB identifier to law id, built by walking the corpus once.
-fn bwb_index(root: &Path) -> BTreeMap<String, String> {
+/// A law file of the corpus this file's bindings point at, read as an untyped
+/// tree.
+///
+/// # Errors
+///
+/// When the file cannot be read or is not YAML. Both used to end in a `None`
+/// that every caller turned into a `continue`, and the check then had nothing
+/// to say about the binding — the answer "no problem here" for a binding
+/// nobody looked at. It is the same silence [`run`] was given a `parses`
+/// finding for, three call sites further on.
+fn read_corpus_law(path: &Path) -> Result<Value, String> {
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("cannot be read ({e})"))?;
+    serde_yaml_ng::from_str::<Value>(&raw).map_err(|e| format!("is not YAML ({e})"))
+}
+
+/// A defect in another file of the corpus, found while reading this one.
+///
+/// Its own check name, and deliberately not `outside-corpus`. That class says
+/// the corpus does not have the law yet, or has it and has not interpreted it,
+/// and both of those resolve by doing the work that is already queued. A law
+/// that is *there* and broken resolves by repairing it, and reporting it as
+/// one of the other two says something untrue about a file somebody has to go
+/// and look at.
+fn corpus_defect(article: Option<&str>, law: &str, why: &str) -> Finding {
+    Finding::new(
+        "corpus-defect",
+        article,
+        format!(
+            "reads \"{law}\", and that file {why}. Nothing in this law resolves it: the check \
+             over this binding could not run at all until the other file is repaired"
+        ),
+    )
+}
+
+/// Map from BWB identifier to law id, built by walking the corpus once, plus
+/// the files that could not be read at all.
+///
+/// A file that is skipped drops out of the index, and the law that cites it
+/// then reads as a law the corpus does not have. That is the wrong answer
+/// about the wrong file, so the skipped ones come back with the map.
+fn bwb_index(root: &Path) -> (BTreeMap<String, String>, Vec<String>) {
     let mut index = BTreeMap::new();
+    let mut unreadable: Vec<String> = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -2061,13 +2114,26 @@ fn bwb_index(root: &Path) -> BTreeMap<String, String> {
                 continue;
             }
             let Ok(raw) = std::fs::read_to_string(&path) else {
+                unreadable.push(format!("{} cannot be read", path.display()));
                 continue;
             };
             // Read the header only: these files run to hundreds of kilobytes
             // and both fields sit at the top.
+            //
+            // A head that does not parse is not yet a broken file: forty lines
+            // can cut a block in half. So the whole file decides, and only
+            // then is it reported — the cut is an optimisation and may not
+            // become a verdict.
             let head: String = raw.lines().take(40).collect::<Vec<_>>().join("\n");
-            let Ok(doc) = serde_yaml_ng::from_str::<Value>(&head) else {
-                continue;
+            let doc = match serde_yaml_ng::from_str::<Value>(&head) {
+                Ok(doc) => doc,
+                Err(_) => match serde_yaml_ng::from_str::<Value>(&raw) {
+                    Ok(doc) => doc,
+                    Err(e) => {
+                        unreadable.push(format!("{} is not YAML ({e})", path.display()));
+                        continue;
+                    }
+                },
             };
             if let (Some(bwb), Some(id)) = (
                 doc.get("bwb_id").and_then(Value::as_str),
@@ -2077,7 +2143,8 @@ fn bwb_index(root: &Path) -> BTreeMap<String, String> {
             }
         }
     }
-    index
+    unreadable.sort();
+    (index, unreadable)
 }
 
 /// Articles that carry no outcome at all.
@@ -2625,21 +2692,26 @@ pub fn override_targets(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding>
 
             // Same file: resolve against the document in hand.
             let target_doc = if law == own_id || law.is_empty() {
-                Some(std::borrow::Cow::Borrowed(doc))
+                std::borrow::Cow::Borrowed(doc)
             } else {
                 match corpus_root.and_then(|root| find_law_file(root, law)) {
-                    Some(path) => std::fs::read_to_string(&path)
-                        .ok()
-                        .and_then(|raw| serde_yaml_ng::from_str::<Value>(&raw).ok())
-                        .map(std::borrow::Cow::Owned),
+                    Some(path) => match read_corpus_law(&path) {
+                        Ok(doc) => std::borrow::Cow::Owned(doc),
+                        // Not a `continue`. The article number of an override
+                        // is unchecked either way, but a check that ran and
+                        // found nothing and a check that could not run read
+                        // the same from the outside, and only one of them is
+                        // about this file.
+                        Err(why) => {
+                            findings.push(corpus_defect(Some(&article), law, &why));
+                            continue;
+                        }
+                    },
                     // A law outside the corpus is not this file's problem, and
                     // `binding_integrity` already reports the unresolvable
                     // regulation itself. Saying it twice trains people to skim.
                     None => continue,
                 }
-            };
-            let Some(target_doc) = target_doc else {
-                continue;
             };
 
             let numbers = article_numbers(&target_doc);
@@ -2743,7 +2815,12 @@ pub fn binding_units(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding> {
         return Vec::new();
     };
     let mut findings = Vec::new();
-    let mut cache: BTreeMap<String, Option<Value>> = BTreeMap::new();
+    // `None` is a law the corpus does not have — that is `binding_integrity`'s
+    // business and saying it twice trains people to skim. `Some(Err)` is a law
+    // it does have and nobody could read, and that is nobody else's business:
+    // this check then compares no units at all, which reads exactly like a
+    // binding whose units agree.
+    let mut cache: BTreeMap<String, Option<Result<Value, String>>> = BTreeMap::new();
 
     for (article, mr) in articles_with_models(doc) {
         for (name, input) in declared_inputs(mr) {
@@ -2761,13 +2838,16 @@ pub fn binding_units(doc: &Value, corpus_root: Option<&Path>) -> Vec<Finding> {
             };
             let Some(here) = unit_of(input) else { continue };
 
-            let target = cache.entry(law.to_owned()).or_insert_with(|| {
-                find_law_file(corpus_root, law)
-                    .and_then(|p| std::fs::read_to_string(p).ok())
-                    .and_then(|raw| serde_yaml_ng::from_str::<Value>(&raw).ok())
-            });
-            let Some(target) = target.as_ref() else {
-                continue;
+            let target = cache
+                .entry(law.to_owned())
+                .or_insert_with(|| find_law_file(corpus_root, law).map(|p| read_corpus_law(&p)));
+            let target = match target.as_ref() {
+                None => continue,
+                Some(Err(why)) => {
+                    findings.push(corpus_defect(Some(&article), law, why));
+                    continue;
+                }
+                Some(Ok(target)) => target,
             };
             let Some(there) = output_unit(target, output) else {
                 continue;
@@ -2942,11 +3022,27 @@ fn unit_of(node: &Value) -> Option<&str> {
 }
 
 /// The unit declared on one named output of a document.
+/// Two things this must not do, both of which it did.
+///
+/// It must not stop at the first article without a `machine_readable` section.
+/// Article 1 is a definitions article in ten of the corpus laws, so a `?` here
+/// answered "no unit" for every output of those laws — including the Awir, which
+/// half the corpus binds to.
+///
+/// And it must read `execution.output`, where the schema puts outputs, not
+/// `output` directly under `machine_readable`. Reading the wrong level makes the
+/// unit check silent for the whole corpus, which is indistinguishable from a
+/// corpus in which every unit agrees.
 fn output_unit<'a>(doc: &'a Value, output: &str) -> Option<&'a str> {
     let arts = doc.get("articles").and_then(Value::as_sequence)?;
     for entry in arts {
-        let mr = entry.get("machine_readable")?;
-        let outputs = mr.get("output").and_then(Value::as_sequence);
+        let Some(mr) = entry.get("machine_readable") else {
+            continue;
+        };
+        let outputs = mr
+            .get("execution")
+            .and_then(|e| e.get("output"))
+            .and_then(Value::as_sequence);
         if let Some(seq) = outputs {
             for item in seq {
                 if item.get("name").and_then(Value::as_str) == Some(output) {
@@ -2959,8 +3055,14 @@ fn output_unit<'a>(doc: &'a Value, output: &str) -> Option<&'a str> {
 }
 
 /// The declared inputs of a model, by name.
+///
+/// The schema puts these under `execution`, the same level `refgraph` and
+/// `reconcile` read. Reading `input` directly off `machine_readable` finds
+/// nothing in any corpus file, and a check that iterates an empty list reports
+/// no findings, which is what a corpus with no problems looks like.
 fn declared_inputs(mr: &Value) -> Vec<(String, &Value)> {
-    mr.get("input")
+    mr.get("execution")
+        .and_then(|e| e.get("input"))
         .and_then(Value::as_sequence)
         .map(|seq| {
             seq.iter()
@@ -3034,23 +3136,25 @@ enum TargetOutput {
     NotYetInterpreted,
 }
 
-fn target_output(path: &Path, output: &str) -> TargetOutput {
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return TargetOutput::NotYetInterpreted;
-    };
-    let Ok(doc) = serde_yaml_ng::from_str::<Value>(&raw) else {
-        return TargetOutput::NotYetInterpreted;
-    };
+/// # Errors
+///
+/// When the target law cannot be read. It used to answer
+/// [`TargetOutput::NotYetInterpreted`] to that, which the caller then reports
+/// as "the corpus has it but has not yet interpreted it" — a sentence about a
+/// file nobody managed to open, in the one finding class that is recorded and
+/// never put to anybody.
+fn target_output(path: &Path, output: &str) -> Result<TargetOutput, String> {
+    let doc = read_corpus_law(path)?;
     if law_defines_output_in(&doc, output) {
-        return TargetOutput::Produced;
+        return Ok(TargetOutput::Produced);
     }
     let interpreted = articles(&doc)
         .iter()
         .any(|a| a.get("machine_readable").is_some_and(is_substantive));
     if interpreted {
-        TargetOutput::Absent
+        Ok(TargetOutput::Absent)
     } else {
-        TargetOutput::NotYetInterpreted
+        Ok(TargetOutput::NotYetInterpreted)
     }
 }
 
@@ -3443,6 +3547,153 @@ articles:
         let findings = binding_integrity(&doc, Some(corpus.path()));
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].check, "binding");
+    }
+
+    /// A target law the corpus has and nobody can read used to answer
+    /// [`TargetOutput::NotYetInterpreted`], and the caller then reported that
+    /// as "the corpus has it but has not yet interpreted it". Untrue about a
+    /// file nobody opened, and in the one class that is recorded and never put
+    /// to anybody, so the broken file stayed invisible behind a sentence about
+    /// the work queue.
+    #[test]
+    fn een_onleesbare_doelwet_is_geen_onvertaalde_doelwet() {
+        let corpus = tempfile::tempdir().expect("tempdir");
+        let dir = corpus.path().join("nl/wet/awir");
+        std::fs::create_dir_all(&dir).unwrap();
+        // Readable enough for `find_law_file` to match on `$id`, and not YAML.
+        std::fs::write(
+            dir.join("2025-01-01.yaml"),
+            "$id: awir\nbwb_id: BWBR0018472\narticles:\n  - number: '1'\n    text: Eerste lid: de tekst.\n",
+        )
+        .unwrap();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: x
+            source: {regulation: awir, output: toetsingsinkomen}
+"#,
+        )
+        .unwrap();
+        let findings = binding_integrity(&doc, Some(corpus.path()));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(
+            findings[0].check, "corpus-defect",
+            "een stuk bestand is geen onvertaald bestand: {findings:?}"
+        );
+        assert!(
+            !findings[0].detail.contains("not yet interpreted")
+                && !findings[0].detail.contains("nog niet"),
+            "de melding beweert niets over de vertaalstatus: {}",
+            findings[0].detail
+        );
+    }
+
+    /// The unit check compared no units at all on an unreadable target, which
+    /// reads exactly like a binding whose units agree — on the check whose
+    /// whole reason for existing is that the silence costs € 700 on one
+    /// zorgtoeslag.
+    #[test]
+    fn de_eenheidscontrole_zwijgt_niet_over_een_onleesbare_doelwet() {
+        let corpus = tempfile::tempdir().expect("tempdir");
+        let dir = corpus.path().join("nl/wet/awir");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("2025-01-01.yaml"),
+            "$id: awir\nbwb_id: BWBR0018472\narticles:\n  - number: '1'\n    text: Eerste lid: de tekst.\n",
+        )
+        .unwrap();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      execution:
+        input:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: awir
+              output: toetsingsinkomen
+"#,
+        )
+        .unwrap();
+        let findings = binding_units(&doc, Some(corpus.path()));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].check, "corpus-defect");
+    }
+
+    /// The override target check skipped the article number entirely on an
+    /// unreadable target law. Same shape: the answer became "nothing to report
+    /// about this override".
+    #[test]
+    fn de_verdringingscontrole_zwijgt_niet_over_een_onleesbare_doelwet() {
+        let corpus = tempfile::tempdir().expect("tempdir");
+        let dir = corpus.path().join("nl/wet/awir");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("2025-01-01.yaml"),
+            "$id: awir\nbwb_id: BWBR0018472\narticles:\n  - number: '1'\n    text: Eerste lid: de tekst.\n",
+        )
+        .unwrap();
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: zorgtoeslag
+articles:
+  - number: '2'
+    text: tekst
+    machine_readable:
+      overrides:
+        - regulation: awir
+          article: '1'
+          output: toetsingsinkomen
+"#,
+        )
+        .unwrap();
+        let findings = override_targets(&doc, Some(corpus.path()));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].check, "corpus-defect");
+    }
+
+    /// A law file the corpus index could not read drops out of the index, and
+    /// every citation of it then reads as a law the corpus does not have — the
+    /// wrong answer about the wrong file. The head is only read for speed, so
+    /// a head that is cut in half by the forty-line window is retried whole
+    /// before anything is reported.
+    #[test]
+    fn de_corpusindex_meldt_het_bestand_dat_hij_oversloeg() {
+        let corpus = tempfile::tempdir().expect("tempdir");
+        let dir = corpus.path().join("nl/wet/awir");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("2025-01-01.yaml"),
+            "$id: awir\nbwb_id: BWBR0018472\narticles:\n  - number: '1'\n    text: Eerste lid: de tekst.\n",
+        )
+        .unwrap();
+
+        let (index, unreadable) = bwb_index(corpus.path());
+        assert!(index.is_empty());
+        assert_eq!(unreadable.len(), 1, "{unreadable:?}");
+        assert!(unreadable[0].contains("2025-01-01.yaml"), "{unreadable:?}");
+
+        // A head cut in half by the forty-line window is not a broken file:
+        // the cut is an optimisation and may not become a verdict.
+        let long = corpus.path().join("nl/wet/lang");
+        std::fs::create_dir_all(&long).unwrap();
+        let filler = "  - number: '1'\n    text: tekst\n".repeat(30);
+        std::fs::write(
+            long.join("2025-01-01.yaml"),
+            format!("$id: lang\nbwb_id: BWBR0000001\narticles:\n{filler}  - number: '2'\n    text: >-\n      een blok dat de kop doorsnijdt\n"),
+        )
+        .unwrap();
+        let (index, _) = bwb_index(corpus.path());
+        assert_eq!(index.get("BWBR0000001").map(String::as_str), Some("lang"));
     }
 
     /// Round 5 stripped every model from the corpus before it started, so
@@ -4516,6 +4767,14 @@ articles:
     fn a_binding_across_a_unit_boundary_is_flagged() {
         // The measured silence: eurocent on one side, euro on the other, and
         // the same person comes out at 827,63 or 1550,46 with no warning.
+        //
+        // Both fixtures carry the shape the corpus actually has, and that is
+        // load-bearing here. Inputs and outputs live under `execution`, and the
+        // first article of ten corpus laws — the Awir among them — is a
+        // definitions article with no execution at all. An earlier version of
+        // this test put both one level too high and skipped the definitions
+        // article, so it passed against a reader that found nothing in any real
+        // file.
         let dir = tempfile::tempdir().expect("tempdir");
         let awir = dir.path().join("regulation/nl/wet/awir");
         std::fs::create_dir_all(&awir).expect("mkdir");
@@ -4524,12 +4783,17 @@ articles:
             r#"
 $id: awir
 articles:
+  - number: "1"
+    machine_readable:
+      definitions:
+        bevoegd_gezag: Belastingdienst/Toeslagen
   - number: "8.1"
     machine_readable:
-      output:
-        - name: toetsingsinkomen
-          type_spec:
-            unit: euro
+      execution:
+        output:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: euro
 "#,
         )
         .expect("write");
@@ -4537,15 +4801,20 @@ articles:
             r#"
 $id: wet_op_de_zorgtoeslag
 articles:
+  - number: "1"
+    machine_readable:
+      definitions:
+        standaardpremie: 179700
   - number: "2.2"
     machine_readable:
-      input:
-        - name: toetsingsinkomen
-          type_spec:
-            unit: eurocent
-          source:
-            regulation: awir
-            output: toetsingsinkomen
+      execution:
+        input:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: awir
+              output: toetsingsinkomen
 "#,
         )
         .expect("yaml");
@@ -4553,6 +4822,37 @@ articles:
         assert_eq!(f.len(), 1, "{f:?}");
         assert_eq!(f[0].check, "unit");
         assert!(f[0].detail.contains("eurocent") && f[0].detail.contains("euro"));
+    }
+
+    /// Ten of the twenty-five corpus laws open with a definitions article that
+    /// carries no `execution`. `output_unit` used `?` there, which returns from
+    /// the whole function rather than skipping the article, so every output of
+    /// those laws answered "no unit declared" — the same answer as a law whose
+    /// units agree.
+    #[test]
+    fn a_definitions_article_does_not_end_the_search_for_a_unit() {
+        let doc: Value = serde_yaml_ng::from_str(
+            r#"
+$id: awir
+articles:
+  - number: "1"
+    machine_readable:
+      definitions:
+        bevoegd_gezag: Belastingdienst/Toeslagen
+  - number: "8"
+    text: geen model
+  - number: "8.1"
+    machine_readable:
+      execution:
+        output:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: eurocent
+"#,
+        )
+        .expect("yaml");
+        assert_eq!(output_unit(&doc, "toetsingsinkomen"), Some("eurocent"));
+        assert_eq!(output_unit(&doc, "bestaat_niet"), None);
     }
 
     #[test]
@@ -4567,11 +4867,12 @@ $id: awir
 articles:
   - number: "8.1"
     machine_readable:
-      output:
-        - name: toetsingsinkomen
-          type_spec:
-            unit: euro
-        - name: berekeningsjaar
+      execution:
+        output:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: euro
+          - name: berekeningsjaar
 "#,
         )
         .expect("write");
@@ -4582,11 +4883,12 @@ $id: wzt
 articles:
   - number: "1"
     machine_readable:
-      input:
-        - name: toetsingsinkomen
-          type_spec:
-            unit: euro
-          source: {regulation: awir, output: toetsingsinkomen}
+      execution:
+        input:
+          - name: toetsingsinkomen
+            type_spec:
+              unit: euro
+            source: {regulation: awir, output: toetsingsinkomen}
 "#,
         )
         .expect("yaml");
@@ -4600,9 +4902,10 @@ $id: wzt
 articles:
   - number: "1"
     machine_readable:
-      input:
-        - name: berekeningsjaar
-          source: {regulation: awir, output: berekeningsjaar}
+      execution:
+        input:
+          - name: berekeningsjaar
+            source: {regulation: awir, output: berekeningsjaar}
 "#,
         )
         .expect("yaml");
