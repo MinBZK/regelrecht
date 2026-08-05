@@ -72,11 +72,17 @@ conformance:
 deploy-filters-test:
     node --test script/deploy-filters.test.mjs
 
+# Pins the build-time asset precompression the editor image relies on. Same
+# reasoning as deploy-filters-test: node's built-in runner, no dependency.
+[doc("Check the editor's build-time asset precompression")]
+precompress-test:
+    node --test frontend/scripts/precompress.test.mjs
+
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test test
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test test
 
 # --- Tests ---
 

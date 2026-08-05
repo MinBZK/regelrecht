@@ -307,6 +307,10 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         run: just deploy-filters-test
 
+      - name: Check asset precompression
+        if: needs.changes.outputs.ci == 'true'
+        run: just precompress-test
+
       # Leak-guard laag 2: voorzie het git-ignored aanvulbestand met de casus-/
       # sector-specifieke patronen uit een secret, zodat de skills-no-casus hook in
       # CI op volle sterkte draait zonder die patronen in de publieke repo te zetten.
