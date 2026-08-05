@@ -5983,8 +5983,9 @@ articles:
             .expect("a traced run has a trace")
             .render_box_drawing();
         assert!(
-            rendered.contains("bijzondere_regeling") && rendered.contains("Not applied"),
-            "the trace must carry the skipped override:\n{rendered}"
+            rendered.contains("bijzondere_regeling") && rendered.contains("Not applied: override"),
+            "the trace must carry the skipped override, and say it was an \
+             override rather than a hook or an implementation:\n{rendered}"
         );
 
         // Once it commences, the same call applies it — which shows the note

@@ -3973,4 +3973,35 @@ articles:
         );
         assert!(errors[0].contains("doelwet:1"));
     }
+
+    /// The word is the whole point of the sentence. Blank it out and the
+    /// receipt reads "Not applied:  regeling_x article 1 would have applied
+    /// to ...", which no longer says whether a hook, a lex specialis or an
+    /// implementation was passed over — the distinction the note exists to
+    /// carry. Asserting on the enum alone leaves the word unpinned.
+    #[test]
+    fn every_declaration_kind_names_itself_in_the_sentence() {
+        for (kind, word) in [
+            (DeclarationKind::Hook, "hook"),
+            (DeclarationKind::Override, "override"),
+            (DeclarationKind::Implementation, "implementation"),
+        ] {
+            assert_eq!(kind.as_str(), word);
+            let note = DeclarationNotInForce {
+                kind,
+                law_id: "regeling_x".to_string(),
+                article: "1".to_string(),
+                subject: "output 'bedrag' of wet_y".to_string(),
+                reason: "no version of it is in force yet on this date".to_string(),
+            };
+            assert_eq!(
+                note.message(),
+                format!(
+                    "Not applied: {word} regeling_x article 1 would have applied to \
+                     output 'bedrag' of wet_y, but no version of it is in force yet on \
+                     this date"
+                )
+            );
+        }
+    }
 }
