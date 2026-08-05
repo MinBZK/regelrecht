@@ -772,10 +772,13 @@ impl MarkingResolution {
 /// is the opposite of an [`OpenTerm`], which says the language expresses this
 /// fine and the content is filled elsewhere.
 ///
-/// The engine parses markings but does not act on them: what execution should do
-/// with a marked article is a separate decision. Until it is taken, the RFC-012
-/// taint machinery keeps running off [`UntranslatableEntry`], which markings
-/// replace from v0.6.0 onwards.
+/// The engine acts on markings, and it acts on them the way it acts on an
+/// [`UntranslatableEntry`]. The four RFC-012 modes read both channels: an
+/// unaccepted marking stops execution, an accepted one runs the partial logic.
+/// That has to be so, because the laws migrated to v0.6.0 carry markings where
+/// they used to carry untranslatables, and reading only the old channel would
+/// let a flagged article execute as if nothing were flagged. See
+/// `flagged_constructs` in the engine's service layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Marking {
     /// The construct that cannot be expressed, in the words the article uses.
@@ -1064,7 +1067,8 @@ impl Article {
 
     /// Get the markings declared by this article (schema v0.6.0).
     ///
-    /// Read-only: the engine parses markings but does not yet act on them.
+    /// The engine reads these beside `untranslatables`: a marking drives the
+    /// four RFC-012 modes exactly as an untranslatable entry does.
     pub fn get_markings(&self) -> Option<&Vec<Marking>> {
         self.machine_readable
             .as_ref()
