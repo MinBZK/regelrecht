@@ -39,6 +39,27 @@ pub struct PaginationParams {
     /// `q` is ignored (they're not combined). Callers pick one or the other.
     #[serde(default)]
     pub ids: Option<String>,
+    /// Optional exact source id. When present, only laws provided by that
+    /// source are returned — so the library sidebar can list the laws of a
+    /// traject's own repo without also pulling in the federated central
+    /// corpus.
+    ///
+    /// **Precedence.** `ids` and `q` both answer "*which* laws"; `source`
+    /// answers "*whose* laws", which is orthogonal — so it does not compete
+    /// with them, it narrows whichever of the two applies (logical AND):
+    ///
+    /// | sent | result |
+    /// |---|---|
+    /// | `source` | every law of that source |
+    /// | `source` + `ids` | the `ids` that live in that source |
+    /// | `source` + `q` | the `q` matches that live in that source |
+    /// | `source` + `ids` + `q` | `ids` still beats `q`, then narrowed by source |
+    ///
+    /// An unknown source id matches nothing (empty list); an absent `source`
+    /// filters nothing, leaving the pre-existing behaviour of every route
+    /// that inherits this struct untouched.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 impl PaginationParams {

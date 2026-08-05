@@ -19,7 +19,7 @@ use regelrecht_corpus::annotation_schema::{
 use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
-    collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw,
+    collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw, SourceMap,
 };
 use regelrecht_corpus::timing;
 use regelrecht_corpus::CorpusError;
@@ -567,7 +567,12 @@ pub async fn list_traject_corpus_laws(
 }
 
 fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec<CorpusLawEntry> {
-    let corpus = scope.corpus();
+    filter_corpus_laws(&scope.corpus().source_map, &params)
+}
+
+/// The pure body of [`list_corpus_laws_in_scope`], split out so the filter
+/// precedence can be tested without an axum/session/DB harness.
+fn filter_corpus_laws(source_map: &SourceMap, params: &PaginationParams) -> Vec<CorpusLawEntry> {
     let limit = params.effective_limit();
 
     // Exact-id filter (highest precedence). The library sidebar sends the
@@ -596,10 +601,25 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty());
 
-    let mut entries: Vec<CorpusLawEntry> = corpus
-        .source_map
+    // Provenance filter. Orthogonal to `ids`/`q` — those say *which* laws,
+    // this says *whose* — so it narrows (AND) whichever of the two applies
+    // instead of competing with them (see `PaginationParams::source`). The
+    // library sidebar sends it alone to list the laws of the traject's own
+    // repo (`source_priority` 0) without the federated central corpus.
+    let source_filter = params
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    let mut entries: Vec<CorpusLawEntry> = source_map
         .laws()
         .filter(|law| {
+            if let Some(source_id) = source_filter {
+                if law.source_id != source_id {
+                    return false;
+                }
+            }
             if let Some(ids) = &id_filter {
                 return ids.contains(law.law_id.as_str());
             }
@@ -627,11 +647,11 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         })
         .collect();
 
-    if id_filter.is_some() || needle.is_some() {
-        // Filtered (by ids or search): order so the grouped UI gets the
-        // highest-priority sources first (the traject's own repo before the
-        // central corpus), and the result cap can't starve a high-priority
-        // source. No offset paging — return the matching set.
+    if id_filter.is_some() || needle.is_some() || source_filter.is_some() {
+        // Filtered (by ids, search or source): order so the grouped UI gets
+        // the highest-priority sources first (the traject's own repo before
+        // the central corpus), and the result cap can't starve a
+        // high-priority source. No offset paging — return the matching set.
         entries.sort_by(|a, b| {
             a.source_priority
                 .cmp(&b.source_priority)
@@ -659,22 +679,39 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
 /// Goes through `require_traject_corpus_from_ref` (not `require_traject_scope`)
 /// because it needs the `TrajectCorpus` directly to reach the writable-own
 /// backend; the membership re-check is identical either way.
+///
+/// The diff is a *read* on that backend, so it resolves the same per-request
+/// token every other writable-own read does ([`resolve_own_read_token`]).
+/// Without it a traject on a private, user-supplied repo — where the server
+/// holds no token by design — could never fill this list, not even after real
+/// edits. A caller who has no GitHub link resolves to no token: the deferred
+/// 428 is swallowed here rather than raised, keeping this endpoint's "empty
+/// array, not an error" contract (the frontend then simply hides the section,
+/// and the 428 connect-flow is raised by the reads that truly need it).
 pub async fn list_traject_changed_laws(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let ids = traject.changed_law_ids().await.map_err(|e| {
-        // A GitHub round-trip failure (token, transport, unexpected status)
-        // is upstream — surface it as 502 with a generic message; details
-        // are logged for operators.
-        tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
-        (
-            StatusCode::BAD_GATEWAY,
-            "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
-        )
-    })?;
+    let own_read_token = resolve_own_read_token(&state, account.id, &headers, &traject)
+        .await
+        .unwrap_or(None);
+    let ids = traject
+        .changed_law_ids(own_read_token.as_deref())
+        .await
+        .map_err(|e| {
+            // A GitHub round-trip failure (token, transport, unexpected status)
+            // is upstream — surface it as 502 with a generic message; details
+            // are logged for operators.
+            tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
+            (
+                StatusCode::BAD_GATEWAY,
+                "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
+            )
+        })?;
     Ok(Json(ids))
 }
 
@@ -5031,5 +5068,144 @@ mod tests {
     When something else entirely
 "#;
         assert_eq!(extract_target_law_ids(content), Vec::<String>::new());
+    }
+
+    // ---- filter_corpus_laws: source / ids / q precedence ----
+
+    /// Index met twee bronnen: de eigen traject-repo (prioriteit 0) en het
+    /// gefedereerde centrale corpus. Bewust geanonimiseerde ids — dit is een
+    /// publieke repo.
+    fn two_source_map() -> SourceMap {
+        let mut map = SourceMap::new();
+        for (law_id, source_id, priority) in [
+            ("wet_alpha", "own", 0),
+            ("wet_beta", "own", 0),
+            ("wet_gamma", "central", 1),
+            ("wet_delta", "central", 1),
+        ] {
+            map.load_metadata_entry(
+                law_id,
+                &format!("wet/{law_id}/2025-01-01.yaml"),
+                None,
+                source_id,
+                source_id,
+                priority,
+                None,
+            )
+            .unwrap();
+        }
+        map
+    }
+
+    fn params(source: Option<&str>, ids: Option<&str>, q: Option<&str>) -> PaginationParams {
+        PaginationParams {
+            offset: 0,
+            limit: None,
+            q: q.map(str::to_string),
+            ids: ids.map(str::to_string),
+            source: source.map(str::to_string),
+        }
+    }
+
+    fn law_ids(entries: Vec<CorpusLawEntry>) -> Vec<String> {
+        let mut ids: Vec<String> = entries.into_iter().map(|e| e.law_id).collect();
+        ids.sort();
+        ids
+    }
+
+    #[test]
+    fn source_filter_returns_only_that_sources_laws() {
+        // Wat de bibliotheek-sidebar stuurt voor "Overige wetten in dit
+        // traject": alleen de eigen bron, niet het gefedereerde corpus.
+        let map = two_source_map();
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(Some("own"), None, None))),
+            vec!["wet_alpha".to_string(), "wet_beta".to_string()]
+        );
+    }
+
+    #[test]
+    fn unknown_source_matches_nothing() {
+        // Een bron-id dat niet in deze index bestaat filtert alles weg —
+        // geen stille terugval op de volledige lijst.
+        let map = two_source_map();
+        assert!(filter_corpus_laws(&map, &params(Some("bestaat-niet"), None, None)).is_empty());
+    }
+
+    #[test]
+    fn absent_source_leaves_the_existing_listing_untouched() {
+        // Regressie op de globale route: elke route erft dit veld, dus een
+        // afwezige `source` mag niets veranderen aan wat er vandaag uitkomt.
+        let map = two_source_map();
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(None, None, None))),
+            vec![
+                "wet_alpha".to_string(),
+                "wet_beta".to_string(),
+                "wet_delta".to_string(),
+                "wet_gamma".to_string(),
+            ]
+        );
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(None, Some("wet_gamma"), None)
+            )),
+            vec!["wet_gamma".to_string()]
+        );
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(None, None, Some("alpha")))),
+            vec!["wet_alpha".to_string()]
+        );
+    }
+
+    #[test]
+    fn source_narrows_ids_and_q_instead_of_replacing_them() {
+        // Vastgelegde precedentie (zie `PaginationParams::source`): `source`
+        // zegt *wiens* wetten en combineert daarom met `ids`/`q`, die zeggen
+        // *welke* wetten.
+        let map = two_source_map();
+
+        // source + ids: alleen de gevraagde ids die in die bron zitten.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), Some("wet_alpha,wet_gamma"), None)
+            )),
+            vec!["wet_alpha".to_string()]
+        );
+
+        // source + q: alleen de treffers in die bron.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), None, Some("wet"))
+            )),
+            vec!["wet_alpha".to_string(), "wet_beta".to_string()]
+        );
+
+        // source + ids + q: `ids` wint nog steeds van `q` (bestaande
+        // precedentie), en het resultaat wordt daarna op bron versmald.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), Some("wet_beta"), Some("alpha"))
+            )),
+            vec!["wet_beta".to_string()]
+        );
+    }
+
+    #[test]
+    fn source_filtered_listing_is_ordered_by_priority_then_law_id() {
+        // De gefilterde tak sorteert op bronprioriteit, dan law_id — met één
+        // bron komt dat neer op alfabetisch op law_id. De frontend leunt daar
+        // niet op (die sorteert op weergavenaam), maar de volgorde moet
+        // deterministisch zijn.
+        let map = two_source_map();
+        let ids: Vec<String> = filter_corpus_laws(&map, &params(Some("own"), None, None))
+            .into_iter()
+            .map(|e| e.law_id)
+            .collect();
+        assert_eq!(ids, vec!["wet_alpha".to_string(), "wet_beta".to_string()]);
     }
 }

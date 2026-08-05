@@ -270,6 +270,25 @@ pub trait RepoBackend: Send + Sync {
     async fn changed_files(&self) -> Result<Vec<String>> {
         Ok(Vec::new())
     }
+
+    /// [`changed_files`] with a per-call token override — same contract as
+    /// [`RepoBackend::read_file_with_token`].
+    ///
+    /// The diff is the last read path that used to be service-token-only.
+    /// On a private, user-supplied traject repo the server has no token of
+    /// its own by design (that is the whole point of the private-token
+    /// route), so without this the branch-vs-base diff — and with it the
+    /// sidebar's "Bewerkt" section — could never be computed, not even
+    /// after real edits.
+    ///
+    /// The default implementation delegates, so backends with no "base vs
+    /// head" notion keep reporting "nothing changed" unchanged.
+    ///
+    /// [`changed_files`]: RepoBackend::changed_files
+    async fn changed_files_with_token(&self, token_override: Option<&str>) -> Result<Vec<String>> {
+        let _ = token_override;
+        self.changed_files().await
+    }
 }
 
 /// The checkout-scan fallback for [`GitBackend::read_all_implements`],

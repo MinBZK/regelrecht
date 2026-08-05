@@ -287,6 +287,7 @@ fn all_query() -> Query<PaginationParams> {
         limit: None,
         q: None,
         ids: None,
+        source: None,
     })
 }
 
