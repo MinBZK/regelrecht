@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { interceptLaw, gotoEditor, selectArticle, readYamlPane, setYamlPane, openSheet, openActionEditor, loadFixture } from './helpers.js';
+import { interceptLaw, gotoEditor, selectArticle, readYamlPane, setYamlPane, openSheet, openActionEditor, loadFixture, pane } from './helpers.js';
 import * as yaml from 'js-yaml';
 
 /**
@@ -91,7 +91,7 @@ test.describe('Full round-trip', () => {
     await selectArticle(page, '2');
 
     // Init machine_readable
-    await page.locator('[data-testid="init-mr-btn"]').click();
+    await pane(page, 'machine').locator('[data-testid="init-mr-btn"]').click();
     await page.waitForTimeout(300);
 
     // Edit YAML directly to add complete machine_readable

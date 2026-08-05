@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { interceptLaw, gotoEditor, selectArticle, readYamlPane } from './helpers.js';
+import { interceptLaw, gotoEditor, selectArticle, readYamlPane, pane } from './helpers.js';
 
 test.describe('Init machine_readable', () => {
   test.beforeEach(async ({ page }) => {
@@ -12,11 +12,11 @@ test.describe('Init machine_readable', () => {
     await selectArticle(page, '1a');
 
     // Should show the "no data" message with init button
-    const noMr = page.locator('[data-testid="no-machine-readable"]');
+    const noMr = pane(page, 'machine').locator('[data-testid="no-machine-readable"]');
     await expect(noMr).toBeVisible();
     await expect(noMr).toContainText('Geen machine-leesbare gegevens');
 
-    const initBtn = page.locator('[data-testid="init-mr-btn"]');
+    const initBtn = pane(page, 'machine').locator('[data-testid="init-mr-btn"]');
     await expect(initBtn).toBeVisible();
   });
 
@@ -24,7 +24,7 @@ test.describe('Init machine_readable', () => {
     await selectArticle(page, '1a');
 
     // Click init button
-    await page.locator('[data-testid="init-mr-btn"]').click();
+    await pane(page, 'machine').locator('[data-testid="init-mr-btn"]').click();
     await page.waitForTimeout(300);
 
     // The machine-readable section should now be visible

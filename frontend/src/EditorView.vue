@@ -2401,10 +2401,14 @@ async function handleActionSave() {
                results into a different view. Re-keying on the view id
                forces an unmount + remount on identity change, at the
                (acceptable) cost of losing pane scroll position. -->
+          <!-- data-testid names the view, not the index: the empty states and
+               their buttons live in more than one pane, so an e2e locator has to
+               be able to say which pane it means. -->
           <nldd-split-view-pane
             v-for="(view, idx) in paneViews"
             :key="`${view}-${idx}`"
             :slot="`pane-${idx + 1}`"
+            :data-testid="`pane-${view}`"
           >
             <nldd-page
               sticky-header
