@@ -778,7 +778,7 @@ fn totals(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resolver::{RuleResolver, SelectionReason};
+    use crate::resolver::RuleResolver;
 
     const SCHEMA: &str =
         "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json";
