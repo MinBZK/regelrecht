@@ -910,23 +910,39 @@ const selectedArticleNumber = ref(null);
 // Recently-viewed laws (most-recent-first), persisted across sessions. Stored
 // as { law_id, name } so a law that fails to load in the active traject - and
 // therefore never enters the corpus index - still stays reachable + labelled.
+//
+// One list per traject, plus one for the global corpus. Two trajects hold
+// different laws, so a law you opened in the one has no business turning up
+// under "Recent bekeken" in the other - it would point at something that
+// corpus may not even have.
 const RECENT_LAWS_KEY = 'regelrecht-recent-laws';
 const MAX_RECENT_LAWS = 12;
-function loadRecentLaws() {
+function recentLawsKey(trajectRef) {
+  return `${RECENT_LAWS_KEY}:${trajectRef || 'corpus'}`;
+}
+function loadRecentLaws(trajectRef) {
   try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_LAWS_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(recentLawsKey(trajectRef)) || '[]');
     return Array.isArray(raw) ? raw.filter(r => r && r.law_id) : [];
   } catch {
     return [];
   }
 }
-const recentLaws = ref(loadRecentLaws());
+// The list from before this was scoped mixed every traject together, so there
+// is nothing to migrate it into. Drop it instead of leaving it behind forever.
+try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+const recentLaws = ref(loadRecentLaws(activeTrajectRef.value));
+// Switching traject keeps this view mounted (same route, other param), so the
+// list has to follow the switch itself; there is no remount to reload it.
+watch(activeTrajectRef, (trajectRef) => {
+  recentLaws.value = loadRecentLaws(trajectRef);
+});
 function recordRecentLaw(lawId, name) {
   if (!lawId) return;
   const entry = { law_id: lawId, name: name || humanizeLawId(lawId) };
   recentLaws.value = [entry, ...recentLaws.value.filter(r => r.law_id !== lawId)].slice(0, MAX_RECENT_LAWS);
   try {
-    localStorage.setItem(RECENT_LAWS_KEY, JSON.stringify(recentLaws.value));
+    localStorage.setItem(recentLawsKey(activeTrajectRef.value), JSON.stringify(recentLaws.value));
   } catch { /* storage unavailable - keep the in-memory list */ }
 }
 // Detail view (tekst/machine/yaml) is reflected in the URL hash so the
@@ -1120,10 +1136,20 @@ const lawTitle = computed(() =>
 // so the sidebar reflects what the user is looking at even when nothing is
 // curated yet. Re-runs as the name resolves to upgrade the label from the
 // humanized id to the real name.
+//
+// Switching traject keeps the open law on screen and re-resolves its name, so
+// this watch fires again. That is a switch and not a visit: without the guard
+// below, every switch prepends the law you were already looking at to the list
+// of the corpus you just moved into, and the two lists converge again.
+let lastRecorded = { trajectRef: null, lawId: null };
 watch([selectedLawId, lawName, indexedLawName], () => {
-  if (selectedLawId.value) {
-    recordRecentLaw(selectedLawId.value, lawName.value || indexedLawName.value);
-  }
+  const lawId = selectedLawId.value;
+  if (!lawId) return;
+  const trajectRef = activeTrajectRef.value ?? null;
+  const switchedContext = lawId === lastRecorded.lawId && trajectRef !== lastRecorded.trajectRef;
+  lastRecorded = { trajectRef, lawId };
+  if (switchedContext) return;
+  recordRecentLaw(lawId, lawName.value || indexedLawName.value);
 }, { immediate: true });
 
 const selectedArticle = computed(() => {
@@ -1755,7 +1781,7 @@ function clearRecent() {
               (changedLawIds.value && changedLawIds.value.has(sel)));
   const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
   recentLaws.value = [];
-  try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(recentLawsKey(activeTrajectRef.value)); } catch { /* ignore */ }
   if (deselect) {
     // Clear the open law up front so the article sidebar + main reflow to the
     // empty state now. `selectedLawId` is a manual ref, not route-derived; a
