@@ -1,9 +1,9 @@
 /**
- * corpusstand.js — aggregatie over de notitie-sidecars van een traject
+ * notenanalyse.js: aggregatie over de notitie-sidecars van een traject
  * (bouwplan §3.2, "verklaarde bevindingen").
  *
  * Pure functies zonder Vue/DOM/fetch, zodat het rekenwerk zonder draaiende
- * stack te testen is. De composable eromheen (`useCorpusstand.js`) doet het
+ * stack te testen is. De composable eromheen (`useAnalyse.js`) doet het
  * netwerkwerk en voedt deze functies.
  *
  * ## Waarom hier wél uit de sidecar gelezen wordt
@@ -17,7 +17,7 @@
  *   tellen uit de sidecar kan geen divergentie opleveren.
  * - `resolution` (found/orphaned/ambiguous) *is* een engine-uitspraak: hij
  *   komt uit `resolveNotes()`, dat de TextQuoteSelector tegen de wettekst
- *   houdt. Die waarde nemen we daarom nooit uit de sidecar over — het veld
+ *   houdt. Die waarde nemen we daarom nooit uit de sidecar over. Het veld
  *   staat er wel in, maar het is een gecachete mening die verouderd kan zijn
  *   zodra de wettekst wijzigt. Precies dat verschil is de bevinding.
  *
@@ -38,8 +38,8 @@
  * **Uitlijning is een contract van de aanroeper.** `resolveNotes()` slaat noten
  * over die een andere wet targeten (een sidecar mag noten voor meerdere wetten
  * dragen), dus zijn uitvoer is korter dan de `annotations`-lijst in het bestand.
- * `useCorpusstand.js` lost dat op door bij een geslaagde resolve *beide* velden
- * uit de resolver-uitvoer op te bouwen — dan zijn ze per constructie uitgelijnd
+ * `useAnalyse.js` lost dat op door bij een geslaagde resolve *beide* velden
+ * uit de resolver-uitvoer op te bouwen, want dan zijn ze per constructie uitgelijnd
  * én correct afgebakend tot de noten die bij deze wet horen. Alleen als de
  * resolver niet kon draaien komt `notes` uit het bestand, met `ankers: null`.
  */
@@ -48,7 +48,7 @@
  * Alle `TextualBody`-waarden met `purpose: tagging`.
  *
  * Spiegelt `tagging_values()` in `packages/engine/src/bin/validate_annotations.rs`
- * — inclusief het gegeven dat `body` zowel een enkel object als een array mag
+ * inclusief het gegeven dat `body` zowel een enkel object als een array mag
  * zijn. Wijkt dit af, dan telt het dashboard andere tags dan CI valideert.
  *
  * @param {object} note
@@ -66,7 +66,7 @@ export function tagWaarden(note) {
 
 /**
  * Staat deze noot nog open? Het schema geeft `workflow` de default `open`, dus
- * een ontbrekend veld telt als open — niet als onbekend.
+ * een ontbrekend veld telt als open, niet als onbekend.
  */
 export function isOpen(note) {
   return (note?.workflow ?? 'open') === 'open';
@@ -75,6 +75,33 @@ export function isOpen(note) {
 /** Het artikelnummer waar een noot aan hangt, als de selector-hint het draagt. */
 export function artikelVanNoot(note) {
   return note?.target?.selector?.hint?.article_number ?? null;
+}
+
+/**
+ * Wat de notitie zelf zegt.
+ *
+ * Een notitie draagt haar inhoud op twee manieren. Een `TextualBody` heeft een
+ * `value` met de tekst; een `SpecificResource` wijst naar een ander element in
+ * plaats van iets te zeggen, en dat is bij een koppeling precies de bedoeling.
+ * Tagging-bodies vallen af: die zijn de tags, niet de inhoud.
+ */
+export function inhoudVanNoot(note) {
+  const body = note?.body;
+  const bodies = Array.isArray(body) ? body : body ? [body] : [];
+  for (const b of bodies) {
+    if (b?.purpose === 'tagging') continue;
+    if (typeof b?.value === 'string' && b.value.trim()) return { soort: 'tekst', waarde: b.value.trim() };
+    if (typeof b?.source === 'string') return { soort: 'verwijzing', waarde: b.source };
+  }
+  return null;
+}
+
+/** Wie de notitie schreef. Het schema staat een string of een object toe. */
+export function auteurVanNoot(note) {
+  const c = note?.creator;
+  if (typeof c === 'string') return c;
+  if (c && typeof c === 'object') return c.name ?? null;
+  return null;
 }
 
 /** De aangehaalde tekst, voor het herkennen van een losgeraakte noot. */
@@ -111,13 +138,17 @@ export function aggregeer(perWet, vocabulaire = [], { wettenInCorpus = null } = 
 
   let totaal = 0;
   let open = 0;
+  // Elke notitie als eigen rij. Zonder deze lijst is "18 vragen" een getal met
+  // niets erachter, en dan kun je er niet op doorklikken naar de bepaling waar
+  // de vraag over gaat.
+  const noten = [];
   const soorten = [];
   const tags = [];
   const ankerfouten = [];
   const wetRijen = [];
 
   // `perWet` op lawId sorteren maakt de uitvoer onafhankelijk van de volgorde
-  // waarin de fetches terugkwamen — zonder dit verschilt het rapport per run.
+  // waarin de fetches terugkwamen; zonder dit verschilt het rapport per run.
   const gesorteerd = [...perWet].sort((a, b) => a.lawId.localeCompare(b.lawId, 'nl'));
 
   for (const wet of gesorteerd) {
@@ -134,8 +165,22 @@ export function aggregeer(perWet, vocabulaire = [], { wettenInCorpus = null } = 
       tags.push(...tagWaarden(note));
 
       // Ankerstatus komt uitsluitend van de engine. Geen resolver-uitslag
-      // betekent "niet gemeten", niet "in orde" — anders leest een traject
+      // betekent "niet gemeten", niet "in orde". Anders leest een traject
       // waar de engine niet kon laden als een gezond traject.
+      noten.push({
+        lawId: wet.lawId,
+        artikel: artikelVanNoot(note),
+        exact: exactVanNoot(note),
+        soort: typeof note?.motivation === 'string' ? note.motivation : null,
+        tags: tagWaarden(note),
+        open: isOpen(note),
+        auteur: auteurVanNoot(note),
+        inhoud: inhoudVanNoot(note),
+        // De ankerstatus komt van de engine; `null` betekent niet gemeten en
+        // is nadrukkelijk iets anders dan gevonden.
+        anker: wet.ankers?.[i]?.status ?? null,
+      });
+
       const status = wet.ankers?.[i]?.status;
       if (status === 'orphaned' || status === 'ambiguous') {
         ankerfouten.push({
@@ -165,6 +210,15 @@ export function aggregeer(perWet, vocabulaire = [], { wettenInCorpus = null } = 
     wettenMetSidecar: gesorteerd.length,
     wettenMetNoten: wetRijen.length,
     wettenInCorpus,
+    // Wet, dan artikel (numeriek-bewust), dan de aangehaalde tekst. Dezelfde
+    // ordening als de ankerfouten, zodat een lezer die van de ene lijst naar de
+    // andere springt niet hoeft te herorienteren.
+    noten: noten.sort(
+      (a, b) =>
+        a.lawId.localeCompare(b.lawId, 'nl') ||
+        String(a.artikel ?? '').localeCompare(String(b.artikel ?? ''), 'nl', { numeric: true }) ||
+        String(a.exact ?? '').localeCompare(String(b.exact ?? ''), 'nl'),
+    ),
     naarSoort: telEnSorteer(soorten),
     naarTag,
     buitenVocabulaire: naarTag.filter((t) => !t.inVocabulaire).reduce((s, t) => s + t.n, 0),

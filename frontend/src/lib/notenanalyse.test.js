@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { aggregeer, tagWaarden, isOpen, artikelVanNoot } from './corpusstand.js';
+import { aggregeer, tagWaarden, isOpen, artikelVanNoot } from './notenanalyse.js';
 
 // Minimale noot die aan het schema voldoet (required: type, motivation,
 // target, body). De helpers eromheen houden de cases leesbaar.
@@ -47,7 +47,7 @@ describe('tagWaarden', () => {
 
 describe('isOpen', () => {
   // Het schema geeft workflow de default `open`, dus een ontbrekend veld is
-  // open — niet onbekend, en zeker niet afgehandeld.
+  // open, niet onbekend, en zeker niet afgehandeld.
   it('telt een ontbrekende workflow als open', () => {
     expect(isOpen(noot())).toBe(true);
   });

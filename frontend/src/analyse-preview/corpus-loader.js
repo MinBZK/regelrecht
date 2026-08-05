@@ -1,11 +1,11 @@
 /**
- * corpus-loader — draait de Corpusstand op het échte corpus van deze repo,
+ * corpus-loader: draait de Analyse op het échte corpus van deze repo,
  * zonder backend, DB of auth.
  *
  * Dit is preview-gereedschap, maar het pad is geen imitatie: dezelfde
  * WASM-engine, dezelfde `resolveNotes()`, dezelfde sidecars en hetzelfde
  * vocabulaire als in de editor. Wat ontbreekt is uitsluitend de laag
- * eromheen — editor-api, traject-scope en de auth. De YAML komt via een eager
+ * eromheen: editor-api, traject-scope en de auth. De YAML komt via een eager
  * `?raw`-glob binnen (Vite lijnt de inhoud in bij het bouwen), zoals
  * `werkbank-preview/corpus-loader.js` het ook doet.
  *
@@ -50,7 +50,7 @@ export function laadVocabulaire() {
  * Meerdere versies van dezelfde wet staan naast elkaar in het corpus. De
  * editor kiest date-aware; de preview neemt de laatste `valid_from`, wat
  * neerkomt op een peildatum "nu". Dat is een vereenvoudiging en geen
- * modellering — als er ooit een toestandsdatum op deze pagina komt, hoort
+ * modellering. Als er ooit een toestandsdatum op deze pagina komt, hoort
  * die hier binnen te komen in plaats van hier bedacht te worden.
  */
 function wettenPerId() {
@@ -60,7 +60,7 @@ function wettenPerId() {
     try {
       doc = yaml.load(raw);
     } catch (e) {
-      console.warn(`Corpusstand-preview: ${pad} is geen leesbare YAML:`, e.message);
+      console.warn(`Analyse-preview: ${pad} is geen leesbare YAML:`, e.message);
       continue;
     }
     const id = doc?.$id;
@@ -74,20 +74,65 @@ function wettenPerId() {
 }
 
 /**
- * De geparste wetten, klaar voor `bouwGraaf()`.
+ * Laad élke wet in de engine en vraag het metriekenrapport op.
  *
- * Let op: dit is een tweede parser naast de engine, en bouwplan §2 verbiedt
- * die in het product. Hier mag het omdat dit preview-gereedschap is en het
- * alternatief — de graaf helemaal niet kunnen zien tot de WASM-rekenkern er is
- * — slechter is. In de editor hoort deze graaf uit `corpusMetrics()` te komen.
+ * Dit is het pad dat telt: de cijfers komen uit `corpusMetrics()` in de
+ * WASM-engine, over precies het model dat de engine zelf resolvet. Geen tweede
+ * parser, dus geen kans dat een tegel iets anders beweert dan wat er bij
+ * uitvoering gebeurt.
+ *
+ * Een wet die de engine weigert is zelf een bevinding en wordt geteld in plaats
+ * van stil overgeslagen; anders leest een corpus waarvan een deel niet laadt
+ * als een compleet corpus.
+ *
+ * @param {string} peildatum ISO-datum die bepaalt welke versie van elke wet
+ *   meetelt. De aanroeper kiest hem, net als in het product, zodat de preview
+ *   hetzelfde gedrag toont en niet een vereenvoudiging ervan.
+ * @returns {Promise<{rapport: object|null, geweigerd: Array<{lawId: string, pad: string, fout: string}>, fout: string|null}>}
  */
-export function laadWettenVoorGraaf() {
-  return [...wettenPerId().entries()]
-    .map(([lawId, w]) => ({ lawId, doc: yaml.load(w.raw) }))
-    .sort((a, b) => a.lawId.localeCompare(b.lawId, 'nl'));
+export async function laadMetrieken(peildatum) {
+  const geweigerd = [];
+  let engine;
+  try {
+    const { initEngine } = useEngine();
+    engine = await initEngine();
+  } catch (e) {
+    return { rapport: null, geweigerd, fout: `engine niet geladen: ${e.message}` };
+  }
+
+  // Alle versies laden, niet alleen de nieuwste: het rapport telt regelingen en
+  // versies apart, en dat onderscheid verdwijnt als de preview er hier al één
+  // uitkiest.
+  for (const [pad, raw] of Object.entries(wettenRaw).sort(([a], [b]) => a.localeCompare(b, 'nl'))) {
+    try {
+      engine.loadLaw(raw);
+    } catch (e) {
+      const id = pad.split('/').slice(-2, -1)[0] ?? pad;
+      geweigerd.push({ lawId: id, pad, fout: String(e.message ?? e) });
+    }
+  }
+
+  try {
+    return { rapport: engine.corpusMetrics(peildatum), geweigerd, fout: null };
+  } catch (e) {
+    return { rapport: null, geweigerd, fout: String(e.message ?? e) };
+  }
 }
 
-/** Sidecars per lawId — de mapnaam onder `corpus/annotations/` ís het id. */
+/**
+ * Herbereken op een andere peildatum zonder opnieuw te laden.
+ *
+ * De wetten zitten al in de engine, dus dit is dezelfde directe herberekening
+ * als in het product. Zonder deze functie zou de preview bij elke datumwissel
+ * het hele corpus opnieuw inlezen en anders aanvoelen dan de echte pagina.
+ */
+export async function hermeet(peildatum) {
+  const { initEngine } = useEngine();
+  const engine = await initEngine();
+  return engine.corpusMetrics(peildatum);
+}
+
+/** Sidecars per lawId: de mapnaam onder `corpus/annotations/` ís het id. */
 function sidecarsPerId() {
   const perId = new Map();
   for (const [pad, raw] of Object.entries(sidecarsRaw)) {

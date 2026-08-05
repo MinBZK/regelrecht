@@ -19,12 +19,12 @@ const DEFAULTS = {
   // spike stays invisible until a user opts in; the backend is independently
   // gated on GITHUB_OAUTH_* env vars (unconfigured deployments never show it).
   'github.user_oauth': false,
-  // Corpusstand: het traject-dashboard. Uit by default, zoals de
-  // GitHub-spike hierboven — zolang de vlag uit staat is de sidebar-ingang
+  // Analyse: het traject-dashboard. Uit by default, zoals de
+  // GitHub-spike hierboven. Zolang de vlag uit staat is de sidebar-ingang
   // weg en gedraagt de editor zich exact als voorheen, dus een reviewer kan
   // hem aanzetten om te kijken en uitzetten om te controleren dat er verder
   // niets veranderde.
-  'panel.corpusstand': false,
+  'panel.analyse': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).

@@ -451,15 +451,15 @@ function goToInstellingen(tab) {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
 }
-// --- Corpusstand (eigen pagina, achter panel.corpusstand) -------------------
+// --- Analyse (eigen pagina, achter panel.analyse) --------------------------
 // Bewust géén sectie-modus van deze view zoals Instellingen/Taken hierboven:
-// Corpusstand is een top-level route met eigen chrome, dus deze view hoeft
+// Analyse is een top-level route met eigen chrome, dus deze view hoeft
 // alleen de ingang te leveren. Vandaar een `href` in plaats van een
-// `goTo…()` + `isXMode` — er is hier niets aan modus-toestand bij te houden.
+// `goTo…()` + `isXMode`; er is hier niets aan modus-toestand bij te houden.
 const { isEnabled } = useFeatureFlags();
-const corpusstandHref = computed(() =>
+const analyseHref = computed(() =>
   activeTrajectRef.value
-    ? router.resolve({ name: 'corpusstand', params: { trajectRef: activeTrajectRef.value } }).href
+    ? router.resolve({ name: 'analyse', params: { trajectRef: activeTrajectRef.value } }).href
     : undefined,
 );
 
@@ -1895,14 +1895,14 @@ watch(activeTrajectRef, () => {
                       </nldd-list-item>
                       <TasksSidebarItem :selected="isTakenMode" @click="goToTaken" />
                       <nldd-list-item
-                        v-if="isEnabled('panel.corpusstand')"
+                        v-if="isEnabled('panel.analyse')"
                         size="md"
                         button
-                        :href="corpusstandHref"
+                        :href="analyseHref"
                       >
                         <nldd-icon-cell size="20"><nldd-icon name="analytics"></nldd-icon></nldd-icon-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                        <nldd-text-cell text="Corpusstand"></nldd-text-cell>
+                        <nldd-text-cell text="Analyse"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>

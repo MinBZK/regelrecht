@@ -1,19 +1,20 @@
 <script setup>
 /**
- * CorpusGraafView — de afhankelijkheidsgraaf van een héél corpus.
+ * CorpusGraafView: de afhankelijkheidsgraaf van een héél corpus.
  *
  * Onderscheidt zich van `LawGraphView`: die tekent één wortelwet met haar
  * transitieve afhankelijkheden op veld-niveau (inputs, outputs, concepten).
- * Deze tekent het corpus op wet-niveau — wie roept wie aan — omdat de vraag
+ * Deze tekent het corpus op wet-niveau (wie roept wie aan) omdat de vraag
  * hier "hoe hangt het stelsel samen" is en niet "hoe rekent deze wet".
  *
- * De data komt uit `lib/corpusgraaf.js`; dit component rekent niets uit. Wat
+ * De data komt uit `lib/graafUitMetrieken.js`, dat het rapport van de engine
+ * omzet naar knopen en randen. Dit component rekent niets uit. Wat
  * er niet in de graaf zit zit er bewust niet in: een `misplaced` binding
  * levert géén rand op, want de engine ziet 'm niet (zie de lib).
  *
  * Layout: rij per `regulatory_layer`, hoogste regeling boven. Bewust
  * deterministisch (alfabetisch binnen de rij) in plaats van een
- * force-simulatie — bouwplan §5 eist gelijke uitvoer bij gelijke invoer, en
+ * force-simulatie. Bouwplan §5 eist gelijke uitvoer bij gelijke invoer, en
  * een graaf die bij elke render anders ligt is niet te vergelijken met de
  * vorige snapshot.
  */
@@ -28,7 +29,7 @@ import '@vue-flow/controls/dist/style.css';
 import '@vue-flow/minimap/dist/style.css';
 
 const props = defineProps({
-  /** Uitvoer van `bouwGraaf()`. */
+  /** Uitvoer van `graafUitMetrieken()`. */
   graaf: { type: Object, required: true },
   naamVoor: { type: Function, default: (id) => id },
 });
