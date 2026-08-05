@@ -5208,4 +5208,28 @@ mod tests {
             .collect();
         assert_eq!(ids, vec!["wet_alpha".to_string(), "wet_beta".to_string()]);
     }
+
+    #[test]
+    fn source_and_limit_arrive_from_the_query_string() {
+        // De tests hierboven voeden `PaginationParams` rechtstreeks; deze legt
+        // de andere helft van de afspraak vast — dat de URL die de sidebar
+        // bouwt (`?source=…&limit=25`) ook echt in dat veld belandt. Zonder
+        // deze zou een hernoemd/verkeerd geserialiseerd veld stil doorglippen:
+        // de route blijft dan 200 geven, alleen ongefilterd.
+        let query: Query<PaginationParams> = Query::try_from_uri(
+            &"http://editor.test/api/trajects/t-1234abcd/corpus/laws?source=own&limit=25"
+                .parse()
+                .unwrap(),
+        )
+        .expect("query met source moet deserialiseren");
+        assert_eq!(query.source.as_deref(), Some("own"));
+        assert_eq!(query.effective_limit(), 25);
+
+        // En de bestaande vorm zonder `source` blijft een afwezig filter, niet
+        // een lege string (die zou alles wegfilteren).
+        let bare: Query<PaginationParams> =
+            Query::try_from_uri(&"http://editor.test/api/corpus/laws".parse().unwrap())
+                .expect("query zonder source moet deserialiseren");
+        assert_eq!(bare.source, None);
+    }
 }

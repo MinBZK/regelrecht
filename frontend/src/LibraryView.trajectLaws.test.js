@@ -66,6 +66,10 @@ const { server, ApiErrorStub, apiFetch, apiFetchJson } = vi.hoisted(() => {
     favorites: [],
     changed: [],
     sourcesFails: false,
+    // Een belofte die de bronnen-aanroep laat hangen, zodat een test kan zien
+    // wat het menu toont terwijl het antwoord van het nieuwe traject nog
+    // onderweg is. `null` = meteen antwoorden.
+    holdSources: null,
   };
   // Metadata voor `?ids=`: de sidebar resolvet favorieten + bewerkte wetten
   // via die route, dus die moeten uit dezelfde catalogus komen.
@@ -104,7 +108,10 @@ const { server, ApiErrorStub, apiFetch, apiFetchJson } = vi.hoisted(() => {
       status: 200,
       json: async () => answer(url),
     })),
-    apiFetchJson: vi.fn(async (url) => answer(url)),
+    apiFetchJson: vi.fn(async (url) => {
+      if (server.holdSources && String(url).endsWith('/sources')) await server.holdSources;
+      return answer(url);
+    }),
   };
 });
 
@@ -241,6 +248,7 @@ beforeEach(() => {
   server.favorites = [];
   server.changed = [];
   server.sourcesFails = false;
+  server.holdSources = null;
 });
 
 describe('LibraryView - wetten van het traject in het linkermenu', () => {
@@ -356,14 +364,33 @@ describe('LibraryView - wetten van het traject in het linkermenu', () => {
   });
 
   it('laat na een traject-wissel geen lijst van het vorige traject staan', async () => {
+    // Een favoriet houdt de split-view overeind terwijl het nieuwe traject
+    // laadt, zodat de assertie hieronder over een zichtbaar menu gaat en niet
+    // over een paginabrede lege staat.
+    server.favorites = ['wet_f'];
     const wrapper = await mountLibrary();
     expect(sectionLaws(wrapper, 'traject')).toHaveLength(7);
 
-    // Het volgende traject heeft een lege eigen bron.
+    // Het volgende traject heeft een lege eigen bron, en laat zijn
+    // bronnen-aanroep hangen. Het venster tussen de wissel en het antwoord is
+    // precies waar de reset voor is: zonder die reset staan de zeven wetten
+    // van het vorige traject hier nog in het menu van het nieuwe.
+    let releaseSources;
+    server.holdSources = new Promise((resolve) => {
+      releaseSources = resolve;
+    });
     server.sources = ownSource({ law_count: 0 });
     server.sourceLaws = [];
     routeState.params = { trajectRef: 'traject-99998888' };
     trajectScope.activeTrajectRef.value = 'traject-99998888';
+    for (let i = 0; i < 4; i++) await nextTick();
+
+    expect(sectionLaws(wrapper, 'favorites')).toEqual(['Kieswet']);
+    expect(sectionLaws(wrapper, 'traject')).toEqual([]);
+    expect(wrapper.html()).not.toContain(TRAJECT_SECTION_TITLE);
+
+    // En na het antwoord blijft het weg - de nieuwe bron is leeg.
+    releaseSources();
     for (let i = 0; i < 8; i++) await nextTick();
 
     expect(sectionLaws(wrapper, 'traject')).toEqual([]);
