@@ -10,7 +10,9 @@
 //!    (`corpus/annotations/_vocabulary/ambiguity.yaml`); unknown values are
 //!    **warnings** (RFC-018 Decision 9).
 //!
-//! Exit code is non-zero only on schema validation failures.
+//! Exit code is non-zero only on schema validation failures, or (exit 2)
+//! when the corpus or the embedded schema cannot be found at all — a run
+//! that never saw the corpus must not look like a clean one.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -23,9 +25,24 @@ use regelrecht_engine::article::{ArticleBasedLaw, LawLoad};
 const ANNOTATION_SCHEMA: &str = include_str!("../../../../schema/v0.5.3/annotation-schema.json");
 
 fn main() {
+    let root = match resolve_repo_root(
+        std::env::var("REGELRECHT_REPO_ROOT").ok().as_deref(),
+        std::env::current_dir().ok().as_deref(),
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+    ) {
+        Some(root) => root,
+        None => {
+            eprintln!(
+                "FATAL: repo root not found (no corpus/annotations directory); \
+                 run from inside the repo or set REGELRECHT_REPO_ROOT"
+            );
+            process::exit(2);
+        }
+    };
+
     let args: Vec<String> = std::env::args().skip(1).collect();
     let files: Vec<PathBuf> = if args.is_empty() {
-        discover_note_files()
+        discover_note_files(&root)
     } else {
         args.iter().map(PathBuf::from).collect()
     };
@@ -50,7 +67,7 @@ fn main() {
         }
     };
 
-    let vocabulary = load_vocabulary();
+    let vocabulary = load_vocabulary(&root);
     let mut failed = false;
     let mut warnings = 0usize;
 
@@ -83,7 +100,7 @@ fn main() {
         }
         eprintln!("OK: {} (annotation schema v0.5.3)", path.display());
 
-        warnings += check_notes(path, &doc, &vocabulary);
+        warnings += check_notes(path, &doc, &vocabulary, &root);
     }
 
     if warnings > 0 {
@@ -95,40 +112,65 @@ fn main() {
 }
 
 /// Resolve each note and check tag values; return the warning count.
-fn check_notes(path: &Path, doc: &serde_json::Value, vocabulary: &HashSet<String>) -> usize {
+fn check_notes(
+    path: &Path,
+    doc: &serde_json::Value,
+    vocabulary: &HashSet<String>,
+    root: &Path,
+) -> usize {
     let Some(notes) = doc.get("annotations").and_then(|v| v.as_array()) else {
         return 0;
     };
 
     let mut warnings = 0;
     for (i, note) in notes.iter().enumerate() {
-        // Resolve the selector against the target law, if we can find it.
-        if let Some(law) = note
+        // Resolve the selector against the target law. A law that cannot be
+        // loaded is a warning, not a silent skip: otherwise step 2 quietly
+        // never ran for this note and "OK" overstates what was checked.
+        if let Some(law_id) = note
             .get("target")
             .and_then(|t| t.get("source"))
             .and_then(|s| s.as_str())
             .and_then(law_id_from_source)
-            .and_then(load_law_by_id)
         {
-            if let Some(selector) = note
-                .get("target")
-                .and_then(|t| t.get("selector"))
-                .and_then(|s| serde_json::from_value::<TextQuoteSelector>(s.clone()).ok())
-            {
-                let result = resolve(&selector, &law.articles);
-                if result.is_orphaned() {
+            match load_law_by_id(root, law_id) {
+                Ok(law) => {
+                    if let Some(selector) = note
+                        .get("target")
+                        .and_then(|t| t.get("selector"))
+                        .and_then(|s| serde_json::from_value::<TextQuoteSelector>(s.clone()).ok())
+                    {
+                        let result = resolve(&selector, &law.articles);
+                        if result.is_orphaned() {
+                            eprintln!(
+                                "  WARN: {} note[{i}]: orphaned (selector {:?} not found in law)",
+                                path.display(),
+                                selector.exact
+                            );
+                            warnings += 1;
+                        } else if result.is_ambiguous() {
+                            eprintln!(
+                                "  WARN: {} note[{i}]: ambiguous ({} matches for {:?}; add prefix/suffix)",
+                                path.display(),
+                                result.matches.len(),
+                                selector.exact
+                            );
+                            warnings += 1;
+                        }
+                    }
+                }
+                Err(failure) => {
+                    let detail = match failure {
+                        LawLoadFailure::NotFound => {
+                            format!("law '{law_id}' not found in corpus")
+                        }
+                        LawLoadFailure::Unreadable(e) => {
+                            format!("law '{law_id}' cannot be loaded: {e}")
+                        }
+                    };
                     eprintln!(
-                        "  WARN: {} note[{i}]: orphaned (selector {:?} not found in law)",
-                        path.display(),
-                        selector.exact
-                    );
-                    warnings += 1;
-                } else if result.is_ambiguous() {
-                    eprintln!(
-                        "  WARN: {} note[{i}]: ambiguous ({} matches for {:?}; add prefix/suffix)",
-                        path.display(),
-                        result.matches.len(),
-                        selector.exact
+                        "  WARN: {} note[{i}]: selector not checked ({detail})",
+                        path.display()
                     );
                     warnings += 1;
                 }
@@ -168,19 +210,46 @@ fn tagging_values(note: &serde_json::Value) -> Vec<String> {
     out
 }
 
-/// Repo root: two levels up from this crate (`packages/engine`).
+/// Locate the repo root at runtime. A directory only counts as root when it
+/// actually holds `corpus/annotations`; a baked-in build-machine path would
+/// otherwise make a run elsewhere scan nothing and still report success.
 ///
-/// `CARGO_MANIFEST_DIR` is `<repo>/packages/engine`, so two `..` segments
-/// always yield the repo root; this never fails at runtime.
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+/// Order: an explicit override (`REGELRECHT_REPO_ROOT`), then walking up from
+/// the current directory, then the compile-time manifest dir (which only
+/// exists on the machine that built the binary). An override that does not
+/// hold a corpus is a misconfiguration and does not fall through.
+fn resolve_repo_root(
+    override_root: Option<&str>,
+    cwd: Option<&Path>,
+    manifest_dir: &Path,
+) -> Option<PathBuf> {
+    fn has_corpus(dir: &Path) -> bool {
+        dir.join("corpus").join("annotations").is_dir()
+    }
+
+    if let Some(root) = override_root {
+        let root = PathBuf::from(root);
+        return has_corpus(&root).then_some(root);
+    }
+    if let Some(start) = cwd {
+        let mut dir = start;
+        loop {
+            if has_corpus(dir) {
+                return Some(dir.to_path_buf());
+            }
+            match dir.parent() {
+                Some(parent) => dir = parent,
+                None => break,
+            }
+        }
+    }
+    let fallback = manifest_dir.join("..").join("..");
+    has_corpus(&fallback).then_some(fallback)
 }
 
 /// All `corpus/annotations/**/annotations.yaml` files (skips `_vocabulary`).
-fn discover_note_files() -> Vec<PathBuf> {
-    let dir = repo_root().join("corpus/annotations");
+fn discover_note_files(root: &Path) -> Vec<PathBuf> {
+    let dir = root.join("corpus/annotations");
     let mut out = Vec::new();
     collect_yaml(&dir, &mut out);
     out.sort();
@@ -204,20 +273,28 @@ fn collect_yaml(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Why a law referenced by a note could not be produced for selector checks.
+#[derive(Debug)]
+enum LawLoadFailure {
+    /// No corpus YAML carries this `$id`.
+    NotFound,
+    /// A matching YAML exists but does not load as a law. Distinct from
+    /// `NotFound`: the note is not orphaned, the law file itself is the
+    /// problem, and that must not be silenced.
+    Unreadable(String),
+}
+
 /// Load the latest version of a law identified by its `$id` from the corpus.
 ///
 /// Scans `corpus/regulation/` for a YAML whose `$id` matches, preferring the
 /// lexicographically last filename (latest `valid_from`).
-fn load_law_by_id(law_id: &str) -> Option<ArticleBasedLaw> {
+fn load_law_by_id(root: &Path, law_id: &str) -> Result<ArticleBasedLaw, LawLoadFailure> {
     let mut candidates: Vec<PathBuf> = Vec::new();
-    collect_law_yaml(
-        &repo_root().join("corpus/regulation"),
-        law_id,
-        &mut candidates,
-    );
+    collect_law_yaml(&root.join("corpus/regulation"), law_id, &mut candidates);
     candidates.sort();
-    let path = candidates.last()?;
-    ArticleBasedLaw::from_yaml_file(path).ok()
+    let path = candidates.last().ok_or(LawLoadFailure::NotFound)?;
+    ArticleBasedLaw::from_yaml_file(path)
+        .map_err(|e| LawLoadFailure::Unreadable(format!("{}: {e}", path.display())))
 }
 
 fn collect_law_yaml(dir: &Path, law_id: &str, out: &mut Vec<PathBuf>) {
@@ -245,8 +322,8 @@ fn collect_law_yaml(dir: &Path, law_id: &str, out: &mut Vec<PathBuf>) {
 
 /// Load the ambiguity vocabulary `id`s. Missing file means an empty set
 /// (every tag will warn), which surfaces the misconfiguration.
-fn load_vocabulary() -> HashSet<String> {
-    let path = repo_root().join("corpus/annotations/_vocabulary/ambiguity.yaml");
+fn load_vocabulary(root: &Path) -> HashSet<String> {
+    let path = root.join("corpus/annotations/_vocabulary/ambiguity.yaml");
     let Ok(content) = std::fs::read_to_string(&path) else {
         eprintln!("WARN: vocabulary not found at {}", path.display());
         return HashSet::new();
@@ -277,6 +354,43 @@ mod tests {
 
     fn vocabulary_of(ids: &[&str]) -> HashSet<String> {
         ids.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    /// The repo root as seen from the build tree, for tests that read the
+    /// real corpus.
+    fn repo() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+    }
+
+    /// A throwaway corpus root with empty `corpus/annotations` and
+    /// `corpus/regulation` directories, removed on drop.
+    struct TempRoot(PathBuf);
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn temp_root(name: &str) -> TempRoot {
+        let root = temp_dir_without_corpus(name);
+        std::fs::create_dir_all(root.0.join("corpus/annotations")).unwrap();
+        std::fs::create_dir_all(root.0.join("corpus/regulation")).unwrap();
+        root
+    }
+
+    /// A throwaway directory that holds no corpus at all (and, being under
+    /// the temp dir, has no ancestor holding one either).
+    fn temp_dir_without_corpus(name: &str) -> TempRoot {
+        let dir = std::env::temp_dir().join(format!(
+            "regelrecht-validate-annotations-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        TempRoot(dir)
     }
 
     fn tag_note(tag: &str) -> serde_json::Value {
@@ -336,7 +450,8 @@ mod tests {
             check_notes(
                 Path::new("notes.yaml"),
                 &doc,
-                &vocabulary_of(&["open-norm-partial"])
+                &vocabulary_of(&["open-norm-partial"]),
+                &repo()
             ),
             2
         );
@@ -349,7 +464,8 @@ mod tests {
             check_notes(
                 Path::new("notes.yaml"),
                 &doc,
-                &vocabulary_of(&["open-norm-partial"])
+                &vocabulary_of(&["open-norm-partial"]),
+                &repo()
             ),
             0
         );
@@ -358,7 +474,12 @@ mod tests {
     #[test]
     fn a_file_without_annotations_gives_no_warning() {
         assert_eq!(
-            check_notes(Path::new("notes.yaml"), &json!({}), &vocabulary_of(&[])),
+            check_notes(
+                Path::new("notes.yaml"),
+                &json!({}),
+                &vocabulary_of(&[]),
+                &repo()
+            ),
             0
         );
     }
@@ -370,7 +491,7 @@ mod tests {
     fn a_selector_that_no_longer_occurs_warns_as_orphaned() {
         let doc = json!({"annotations": [zorgtoeslag_note("motorrijtuigenbelasting")]});
         assert_eq!(
-            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[])),
+            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[]), &repo()),
             1
         );
     }
@@ -379,26 +500,89 @@ mod tests {
     fn a_selector_that_occurs_more_than_once_warns_as_ambiguous() {
         let doc = json!({"annotations": [zorgtoeslag_note("verzekerde")]});
         assert_eq!(
-            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[])),
+            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[]), &repo()),
             1
         );
     }
 
     #[test]
     fn a_law_is_found_by_its_id_in_the_corpus() {
-        let law = load_law_by_id("wet_op_de_zorgtoeslag").expect("law is in the corpus");
+        let law = load_law_by_id(&repo(), "wet_op_de_zorgtoeslag").expect("law is in the corpus");
         assert_eq!(law.id, "wet_op_de_zorgtoeslag");
         assert!(!law.articles.is_empty());
     }
 
     #[test]
-    fn an_unknown_law_id_resolves_to_no_law_at_all() {
-        assert!(load_law_by_id("wet_die_niet_bestaat").is_none());
+    fn an_unknown_law_id_reports_not_found() {
+        assert!(matches!(
+            load_law_by_id(&repo(), "wet_die_niet_bestaat"),
+            Err(LawLoadFailure::NotFound)
+        ));
+    }
+
+    /// A corpus YAML that carries the right `$id` but does not load as a law
+    /// (here: `articles` is not a list, as happens when the law format runs
+    /// ahead of the law model). The old code swallowed this with `.ok()`.
+    #[test]
+    fn a_law_that_fails_to_load_reports_unreadable_not_not_found() {
+        let root = temp_root("unreadable-law");
+        std::fs::write(
+            root.0.join("corpus/regulation/2025-01-01.yaml"),
+            "$id: broken_law\narticles: dit-is-geen-lijst\n",
+        )
+        .unwrap();
+
+        assert!(matches!(
+            load_law_by_id(&root.0, "broken_law"),
+            Err(LawLoadFailure::Unreadable(_))
+        ));
+    }
+
+    /// The premise of the silent-skip bug: the note points at a law whose
+    /// YAML is present and matched by `$id`, but the law model cannot load
+    /// it. Step 2 (selector resolution) then never runs, and that must be a
+    /// warning — not zero output followed by "OK".
+    #[test]
+    fn a_note_whose_law_cannot_be_loaded_warns_instead_of_passing_silently() {
+        let root = temp_root("silent-skip");
+        std::fs::write(
+            root.0.join("corpus/regulation/2025-01-01.yaml"),
+            "$id: broken_law\narticles: dit-is-geen-lijst\n",
+        )
+        .unwrap();
+
+        let doc = json!({"annotations": [{
+            "target": {
+                "source": "regelrecht://broken_law",
+                "selector": {"type": "TextQuoteSelector", "exact": "iets"}
+            }
+        }]});
+        assert_eq!(
+            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[]), &root.0),
+            1
+        );
+    }
+
+    /// A note pointing at a law that is nowhere in the corpus is equally a
+    /// skipped selector check, and warns.
+    #[test]
+    fn a_note_whose_law_is_absent_from_the_corpus_warns() {
+        let root = temp_root("absent-law");
+        let doc = json!({"annotations": [{
+            "target": {
+                "source": "regelrecht://wet_die_niet_bestaat",
+                "selector": {"type": "TextQuoteSelector", "exact": "iets"}
+            }
+        }]});
+        assert_eq!(
+            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[]), &root.0),
+            1
+        );
     }
 
     #[test]
     fn note_discovery_finds_the_sidecars_and_skips_the_vocabulary() {
-        let files = discover_note_files();
+        let files = discover_note_files(&repo());
         assert!(
             !files.is_empty(),
             "corpus/annotations holds at least one note file"
@@ -415,8 +599,68 @@ mod tests {
 
     #[test]
     fn the_vocabulary_holds_the_ambiguity_ids() {
-        let vocabulary = load_vocabulary();
+        let vocabulary = load_vocabulary(&repo());
         assert!(vocabulary.contains("open-norm-not-filled"));
         assert!(vocabulary.contains("needs-uitvoeringsbeleid"));
+    }
+
+    #[test]
+    fn the_repo_root_is_found_by_walking_up_from_a_subdirectory() {
+        let repo = repo().canonicalize().unwrap();
+        let start = repo.join("packages").join("engine").join("src");
+        let found = resolve_repo_root(None, Some(&start), Path::new("/nonexistent"))
+            .expect("walking up from packages/engine/src reaches the repo root");
+        assert_eq!(found.canonicalize().unwrap(), repo);
+    }
+
+    /// An explicit override wins, and must itself hold a corpus: a wrong
+    /// override must surface as "no root", not silently fall through to
+    /// whatever the current directory happens to contain.
+    #[test]
+    fn an_explicit_override_must_itself_hold_a_corpus() {
+        let repo = repo();
+        let found = resolve_repo_root(
+            Some(repo.to_str().unwrap()),
+            None,
+            Path::new("/nonexistent"),
+        );
+        assert!(found.is_some(), "a valid override is accepted as-is");
+
+        let root = temp_dir_without_corpus("no-corpus-override");
+        assert!(
+            resolve_repo_root(
+                Some(root.0.to_str().unwrap()),
+                Some(&repo),
+                &repo.join("packages").join("engine"),
+            )
+            .is_none(),
+            "an override without a corpus does not fall through to cwd or manifest"
+        );
+    }
+
+    /// Away from the repo, the compile-time manifest dir still works on the
+    /// build machine — and on any other machine, where that path does not
+    /// exist, the outcome is honestly "no root" instead of a clean-looking
+    /// run over zero files.
+    #[test]
+    fn away_from_the_repo_only_an_existing_manifest_fallback_helps() {
+        let root = temp_dir_without_corpus("far-away-cwd");
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let found = resolve_repo_root(None, Some(&root.0), &manifest)
+            .expect("the build machine still has the manifest dir");
+        assert_eq!(
+            found.canonicalize().unwrap(),
+            repo().canonicalize().unwrap()
+        );
+
+        assert!(
+            resolve_repo_root(
+                None,
+                Some(&root.0),
+                Path::new("/nonexistent/packages/engine")
+            )
+            .is_none(),
+            "elsewhere the binary must not pretend it saw a corpus"
+        );
     }
 }
