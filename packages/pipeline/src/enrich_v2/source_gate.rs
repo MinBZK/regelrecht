@@ -523,13 +523,48 @@ pub const CONTEXT_SIDECAR: &str = ".source-context.yaml";
 /// run afterwards are what decide whether the translation still holds
 /// against the corrected text.
 ///
-/// Returns the rewritten document and the sidecar.
+/// The rewrite refuses two situations instead of writing them out. An
+/// empty official set never means the law lost its articles; it means the
+/// fetch or the parse went wrong (a network error, a changed response, a
+/// wrong BWB id), and acting on it would erase the whole file. And a
+/// rewrite that keeps less than half of the file's entries is treated the
+/// same way: a rewrite corrects text and moves a handful of articles in or
+/// out, it does not legitimately remove the majority of a law. When it
+/// would, either the source set does not describe this law, or the corpus
+/// is fragmented per lid and this whole-article rewrite would flatten it,
+/// losing the leden, references and links. Both need a human, not a write.
+///
+/// Returns the rewritten document and the sidecar, or the reason the
+/// rewrite is refused.
 pub fn rewrite(
     corpus: &serde_yaml_ng::Value,
     official: &[SourceArticle],
     report: &GateReport,
-) -> (serde_yaml_ng::Value, ContextSidecar) {
+) -> Result<(serde_yaml_ng::Value, ContextSidecar), String> {
     use serde_yaml_ng::{Mapping, Value};
+
+    let existing = corpus
+        .get("articles")
+        .and_then(Value::as_sequence)
+        .map_or(0, Vec::len);
+    if official.is_empty() {
+        return Err(format!(
+            "the official toestand parsed to 0 articles while the file carries \
+             {existing} entr{}; an empty source set means the fetch or the parse \
+             failed (network error, changed response, wrong BWB id), not that the \
+             law has no articles — the file is left as it is",
+            if existing == 1 { "y" } else { "ies" }
+        ));
+    }
+    if official.len() * 2 < existing {
+        return Err(format!(
+            "the rewrite would shrink the file from {existing} entries to {} \
+             article(s); removing the majority of a law points at the wrong \
+             source or at a per-lid fragmented corpus this whole-article \
+             rewrite would flatten — the file is left as it is",
+            official.len()
+        ));
+    }
 
     let mut existing_mr: BTreeMap<String, Value> = BTreeMap::new();
     let mut existing_url: BTreeMap<String, Value> = BTreeMap::new();
@@ -607,7 +642,41 @@ pub fn rewrite(
     if let Value::Mapping(map) = &mut doc {
         map.insert(Value::from("articles"), Value::Sequence(articles));
     }
-    (doc, sidecar)
+    Ok((doc, sidecar))
+}
+
+/// Write `content` to `path` through a temp file in the same directory and
+/// an atomic rename, so an interruption never leaves a truncated file
+/// behind. The harvester writes its YAML the same way (`yaml/writer.rs`),
+/// for the same reason.
+pub fn write_atomic(path: &std::path::Path, content: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| format!("{} has no file name", path.display()))?;
+    let tmp = parent.join(format!(".{file_name}.tmp"));
+
+    let attempt = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(content.as_bytes())?;
+        file.sync_all()?;
+        // On Windows, rename refuses when the destination exists.
+        #[cfg(target_os = "windows")]
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        std::fs::rename(&tmp, path)
+    })();
+
+    attempt.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("writing {}: {e}", path.display())
+    })
 }
 
 /// Split a corpus article number into the source article it belongs to and
@@ -780,7 +849,7 @@ articles:
         )
         .unwrap();
         let report = verify(&corpus, &official);
-        let (doc, sidecar) = rewrite(&corpus, &official, &report);
+        let (doc, sidecar) = rewrite(&corpus, &official, &report).unwrap();
 
         let arts = doc.get("articles").unwrap().as_sequence().unwrap();
         let numbers: Vec<&str> = arts
@@ -808,6 +877,97 @@ articles:
             "Hoofdstuk 3 Besluiten > Afdeling 3.3 Advisering"
         );
         assert_eq!(sidecar.articles["1"].verdict, "text replaced (had drifted)");
+    }
+
+    #[test]
+    fn rewrite_refuses_an_empty_official_set() {
+        // A toestand that parses but holds no articles: what a changed
+        // response format or a wrong BWB id produces. Yesterday this shape
+        // erased a complete law from the corpus.
+        let official =
+            parse_toestand(r#"<toestand bwb-id="BWBR0000001"><wettekst/></toestand>"#).unwrap();
+        assert!(official.is_empty());
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            "articles:\n  - number: '1'\n    text: Eerste artikel.\n    machine_readable: {a: 1}\n  - number: '2'\n    text: Tweede artikel.\n",
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        let err = rewrite(&corpus, &official, &report).unwrap_err();
+        assert!(err.contains("0 articles"), "{err}");
+        assert!(err.contains("2 entries"), "{err}");
+        // The message must point at the real causes, not at the law.
+        assert!(err.contains("wrong BWB id"), "{err}");
+    }
+
+    #[test]
+    fn rewrite_refuses_to_remove_the_majority_of_a_law() {
+        // A per-lid fragmented corpus: six entries that all belong to the
+        // single official article. Writing the whole-article form would
+        // flatten the leden and drop every extra field, which is what
+        // happened to the Awir (329 entries became 87 bare articles).
+        let official = parse_toestand(
+            r#"<toestand bwb-id="BWBR0000001"><wettekst>
+              <artikel><kop><label>Artikel</label><nr>1</nr></kop>
+                <lid><lidnr>1</lidnr><al>Eerste lid.</al></lid>
+                <lid><lidnr>2</lidnr><al>Tweede lid.</al></lid>
+              </artikel>
+            </wettekst></toestand>"#,
+        )
+        .unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - {number: '1.1', text: Eerste lid.}
+  - {number: '1.2', text: Tweede lid.}
+  - {number: '1.2.a', text: onderdeel a}
+  - {number: '1.2.b', text: onderdeel b}
+  - {number: '1.2.c', text: onderdeel c}
+  - {number: '1.2.d', text: onderdeel d}
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        let err = rewrite(&corpus, &official, &report).unwrap_err();
+        assert!(err.contains("6 entries"), "{err}");
+        assert!(err.contains("1 article(s)"), "{err}");
+    }
+
+    #[test]
+    fn rewrite_still_accepts_keeping_exactly_half() {
+        // Two fabricated entries next to two real articles: dropping the
+        // fabrications keeps half of the file, and that is a correction,
+        // not a demolition.
+        let official = parse_toestand(XML).unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - {number: '1', text: 1. Eerste lid. 2. Tweede lid.}
+  - {number: '3:9', text: iets}
+  - {number: 1a, text: verzonnen}
+  - {number: 1b, text: ook verzonnen}
+  - {number: 1c, text: nog een}
+  - {number: 1d, text: en nog een}
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        // XML carries three official articles; 6 entries -> 3 is exactly
+        // half and passes the threshold.
+        assert!(rewrite(&corpus, &official, &report).is_ok());
+    }
+
+    #[test]
+    fn write_atomic_replaces_the_file_and_leaves_no_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("law.yaml");
+        std::fs::write(&path, "oud").unwrap();
+        // A stale temp file from an earlier interrupted run is harmless.
+        std::fs::write(dir.path().join(".law.yaml.tmp"), "afgekapt").unwrap();
+
+        write_atomic(&path, "nieuw").unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "nieuw");
+        assert!(!dir.path().join(".law.yaml.tmp").exists());
     }
 
     const FRAGMENTED_XML: &str = r#"<toestand bwb-id="BWBR0000002">
