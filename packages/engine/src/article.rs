@@ -155,6 +155,14 @@ impl LawLoad for ArticleBasedLaw {
 /// and returns an answer that looks complete. Refusing to load is the only
 /// honest response: a law that says something the engine cannot read must not
 /// run half of it.
+///
+/// The fallback happens per node, so the guard has to reach every node. An
+/// `AND` whose inner comparison lost its `value` deserializes fine: the outer
+/// operation is well-formed and the broken inner one lands in it as a literal
+/// object, which `to_bool()` reads as true. The walk therefore descends into
+/// every operand of a parsed operation, into the action fields beside `value`
+/// (`values`, `conditions`, `subject`), into `open_terms[].default.actions`,
+/// and into the preamble's machine_readable section.
 fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
     fn walk(v: &regelrecht_law_model::Value, where_: &str) -> Result<()> {
         match v {
@@ -184,29 +192,154 @@ fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
     fn walk_action_value(v: &ActionValue, where_: &str) -> Result<()> {
         match v {
             ActionValue::Literal(lit) => walk(lit, where_),
-            ActionValue::Operation(_) => Ok(()),
+            ActionValue::Operation(op) => walk_operation(op, where_),
         }
     }
 
-    for article in &law.articles {
-        let Some(mr) = &article.machine_readable else {
-            continue;
-        };
-        let Some(execution) = &mr.execution else {
-            continue;
-        };
-        let Some(actions) = &execution.actions else {
-            continue;
-        };
-        for action in actions {
-            let where_ = format!(
-                "article {}, output {}",
-                article.number,
-                action.output.as_deref().unwrap_or("(unnamed)")
-            );
-            if let Some(value) = &action.value {
-                walk_action_value(value, &where_)?;
+    /// Descend into every operand a parsed operation holds. Exhaustive on
+    /// purpose: a new variant must name its operands here or fail to compile.
+    fn walk_operation(op: &ActionOperation, where_: &str) -> Result<()> {
+        use ActionOperation as Op;
+        match op {
+            Op::Equals { subject, value }
+            | Op::NotEquals { subject, value }
+            | Op::GreaterThan { subject, value }
+            | Op::LessThan { subject, value }
+            | Op::GreaterThanOrEqual { subject, value }
+            | Op::LessThanOrEqual { subject, value } => {
+                walk_action_value(subject, where_)?;
+                walk_action_value(value, where_)
             }
+            Op::Add { values }
+            | Op::Subtract { values }
+            | Op::Multiply { values }
+            | Op::Divide { values }
+            | Op::Max { values }
+            | Op::Min { values } => values.iter().try_for_each(|v| walk_action_value(v, where_)),
+            Op::Round { value, .. }
+            | Op::Ceil { value, .. }
+            | Op::Floor { value, .. }
+            | Op::Not { value } => walk_action_value(value, where_),
+            Op::And { conditions } | Op::Or { conditions } => conditions
+                .iter()
+                .try_for_each(|v| walk_action_value(v, where_)),
+            Op::If { cases, default } => {
+                for case in cases {
+                    walk_action_value(&case.when, where_)?;
+                    walk_action_value(&case.then, where_)?;
+                }
+                default
+                    .iter()
+                    .try_for_each(|v| walk_action_value(v, where_))
+            }
+            Op::IsNull { subject } | Op::NotNull { subject } => walk_action_value(subject, where_),
+            Op::In {
+                subject,
+                value,
+                values,
+            }
+            | Op::NotIn {
+                subject,
+                value,
+                values,
+            } => {
+                walk_action_value(subject, where_)?;
+                value
+                    .iter()
+                    .try_for_each(|v| walk_action_value(v, where_))?;
+                values
+                    .iter()
+                    .flatten()
+                    .try_for_each(|v| walk_action_value(v, where_))
+            }
+            Op::List { items } => items.iter().try_for_each(|v| walk_action_value(v, where_)),
+            Op::Age {
+                date_of_birth,
+                reference_date,
+            } => {
+                walk_action_value(date_of_birth, where_)?;
+                walk_action_value(reference_date, where_)
+            }
+            Op::DateAdd {
+                date,
+                years,
+                months,
+                weeks,
+                days,
+            } => {
+                walk_action_value(date, where_)?;
+                [years, months, weeks, days]
+                    .into_iter()
+                    .flatten()
+                    .try_for_each(|v| walk_action_value(v, where_))
+            }
+            Op::Date { year, month, day } => {
+                walk_action_value(year, where_)?;
+                walk_action_value(month, where_)?;
+                walk_action_value(day, where_)
+            }
+            Op::DayOfWeek { date } | Op::DatePart { date, .. } | Op::StartOf { date, .. } => {
+                walk_action_value(date, where_)
+            }
+            Op::DateDiff { from, to, unit } => {
+                walk_action_value(from, where_)?;
+                walk_action_value(to, where_)?;
+                walk_action_value(unit, where_)
+            }
+        }
+    }
+
+    /// Walk every field of an action where an `ActionValue` can sit.
+    fn walk_action(action: &Action, where_: &str) -> Result<()> {
+        for v in [&action.value, &action.subject].into_iter().flatten() {
+            walk_action_value(v, where_)?;
+        }
+        for v in [&action.values, &action.conditions]
+            .into_iter()
+            .flatten()
+            .flat_map(|vec| vec.iter())
+        {
+            walk_action_value(v, where_)?;
+        }
+        Ok(())
+    }
+
+    /// Walk a machine_readable section: its execution actions and the default
+    /// actions of its open terms. `scope` names where it sits in the document.
+    fn walk_machine_readable(mr: &MachineReadable, scope: &str) -> Result<()> {
+        if let Some(actions) = mr.execution.as_ref().and_then(|e| e.actions.as_ref()) {
+            for action in actions {
+                let where_ = format!(
+                    "{scope}, output {}",
+                    action.output.as_deref().unwrap_or("(unnamed)")
+                );
+                walk_action(action, &where_)?;
+            }
+        }
+        for term in mr.open_terms.iter().flatten() {
+            let actions = term.default.iter().filter_map(|d| d.actions.as_ref());
+            for action in actions.flatten() {
+                let where_ = format!(
+                    "{scope}, open term {}, output {}",
+                    term.id,
+                    action.output.as_deref().unwrap_or("(unnamed)")
+                );
+                walk_action(action, &where_)?;
+            }
+        }
+        Ok(())
+    }
+
+    if let Some(mr) = law
+        .preamble
+        .as_ref()
+        .and_then(|p| p.machine_readable.as_ref())
+    {
+        walk_machine_readable(mr, "preamble")?;
+    }
+    for article in &law.articles {
+        if let Some(mr) = &article.machine_readable {
+            walk_machine_readable(mr, &format!("article {}", article.number))?;
         }
     }
     Ok(())
@@ -464,6 +597,329 @@ articles:
               - 66
 "#;
         ArticleBasedLaw::from_yaml_str(yaml).expect("a list of numbers carries no operation");
+    }
+
+    /// The guard descends into parsed operations and into every action field
+    /// where an `ActionValue` can sit. Each test here fails on a guard that
+    /// only looks at the top level of `action.value`.
+    mod nested_literal_operations {
+        use super::*;
+
+        /// A malformed comparison, written in flow style so it can be dropped
+        /// into any position of a larger expression.
+        const BROKEN: &str = "{operation: GREATER_THAN_OR_EQUAL, subject: $x}";
+
+        /// A law whose single action carries `action_body` (already indented
+        /// to sit under the action item).
+        fn law_with_action(action_body: &str) -> String {
+            format!(
+                r#"
+$id: wet_geneste_operatie
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De leeftijdstoets zit dieper in de expressie
+    machine_readable:
+      execution:
+        parameters:
+          - name: x
+            type: number
+        output:
+          - name: r
+            type: boolean
+        actions:
+          - output: r
+            {action_body}
+"#
+            )
+        }
+
+        /// The premise, constructed for real: the outer AND deserializes as an
+        /// operation while its broken inner comparison falls through the
+        /// untagged fallback and lands inside it as a literal object. This is
+        /// plain serde, before any guard — the exact document the old guard
+        /// waved through.
+        #[test]
+        fn test_premise_broken_comparison_inside_and_parses_as_literal_object() {
+            let yaml = law_with_action(&format!(
+                "value: {{operation: AND, conditions: [{BROKEN}]}}"
+            ));
+            let law: ArticleBasedLaw = serde_yaml_ng::from_str(&yaml).expect("plain serde parses");
+            let exec = law.articles[0].get_execution_spec().unwrap();
+            let value = exec.actions.as_ref().unwrap()[0].value.as_ref().unwrap();
+            let Some(ActionValue::Operation(op)) = Some(value) else {
+                panic!("outer AND should parse as an operation, got {value:?}");
+            };
+            let ActionOperation::And { conditions } = op.as_ref() else {
+                panic!("expected AND, got {op:?}");
+            };
+            match &conditions[0] {
+                ActionValue::Literal(Value::Object(map)) => {
+                    assert_eq!(
+                        map.get("operation"),
+                        Some(&Value::String("GREATER_THAN_OR_EQUAL".to_string())),
+                        "the broken comparison should sit inside the AND as a plain object"
+                    );
+                }
+                other => panic!("expected the broken comparison as Literal(Object), got {other:?}"),
+            }
+        }
+
+        /// Assert that the loader refuses the law and names the operation.
+        fn assert_refused(label: &str, yaml: &str) {
+            let err = ArticleBasedLaw::from_yaml_str(yaml)
+                .map(|_| ())
+                .expect_err(&format!(
+                    "{label}: a broken nested operation must be refused"
+                ));
+            let msg = err.to_string();
+            assert!(
+                msg.contains("GREATER_THAN_OR_EQUAL") && msg.contains("literal"),
+                "{label}: refusal must name the operation, got: {msg}"
+            );
+        }
+
+        /// One case per position an `ActionValue` can occupy inside a parsed
+        /// operation, plus the action-level fields beside `value`. Every case
+        /// deserializes cleanly (the outer operation is well-formed) and hides
+        /// the same broken comparison one level down.
+        #[test]
+        fn test_a_broken_operation_is_refused_in_every_nested_position() {
+            let cases: &[(&str, String)] = &[
+                (
+                    "AND condition",
+                    format!("value: {{operation: AND, conditions: [{BROKEN}]}}"),
+                ),
+                (
+                    "OR condition",
+                    format!("value: {{operation: OR, conditions: [true, {BROKEN}]}}"),
+                ),
+                ("NOT value", format!("value: {{operation: NOT, value: {BROKEN}}}")),
+                (
+                    "comparison subject",
+                    format!("value: {{operation: EQUALS, subject: {BROKEN}, value: true}}"),
+                ),
+                (
+                    "comparison value",
+                    format!("value: {{operation: EQUALS, subject: true, value: {BROKEN}}}"),
+                ),
+                (
+                    "ADD operand",
+                    format!("value: {{operation: ADD, values: [1, {BROKEN}]}}"),
+                ),
+                (
+                    "MAX operand",
+                    format!("value: {{operation: MAX, values: [{BROKEN}, 2]}}"),
+                ),
+                (
+                    "ROUND value",
+                    format!("value: {{operation: ROUND, value: {BROKEN}, precision: 0}}"),
+                ),
+                (
+                    "IF when",
+                    format!("value: {{operation: IF, cases: [{{when: {BROKEN}, then: 1}}]}}"),
+                ),
+                (
+                    "IF then",
+                    format!("value: {{operation: IF, cases: [{{when: true, then: {BROKEN}}}]}}"),
+                ),
+                (
+                    "IF default",
+                    format!(
+                        "value: {{operation: IF, cases: [{{when: true, then: 1}}], default: {BROKEN}}}"
+                    ),
+                ),
+                (
+                    "IS_NULL subject",
+                    format!("value: {{operation: IS_NULL, subject: {BROKEN}}}"),
+                ),
+                (
+                    "IN subject",
+                    format!("value: {{operation: IN, subject: {BROKEN}, values: [1]}}"),
+                ),
+                (
+                    "IN value",
+                    format!("value: {{operation: IN, subject: 1, value: {BROKEN}}}"),
+                ),
+                (
+                    "IN values",
+                    format!("value: {{operation: IN, subject: 1, values: [{BROKEN}]}}"),
+                ),
+                (
+                    "NOT_IN values",
+                    format!("value: {{operation: NOT_IN, subject: 1, values: [{BROKEN}]}}"),
+                ),
+                (
+                    "LIST item",
+                    format!("value: {{operation: LIST, items: [{BROKEN}]}}"),
+                ),
+                (
+                    "AGE date_of_birth",
+                    format!(
+                        "value: {{operation: AGE, date_of_birth: {BROKEN}, reference_date: '2025-01-01'}}"
+                    ),
+                ),
+                (
+                    "DATE_ADD days",
+                    format!("value: {{operation: DATE_ADD, date: '2025-01-01', days: {BROKEN}}}"),
+                ),
+                (
+                    "DATE year",
+                    format!("value: {{operation: DATE, year: {BROKEN}, month: 1, day: 1}}"),
+                ),
+                (
+                    "DAY_OF_WEEK date",
+                    format!("value: {{operation: DAY_OF_WEEK, date: {BROKEN}}}"),
+                ),
+                (
+                    "DATE_DIFF from",
+                    format!(
+                        "value: {{operation: DATE_DIFF, from: {BROKEN}, to: '2025-01-01', in: days}}"
+                    ),
+                ),
+                (
+                    "DATE_PART date",
+                    format!("value: {{operation: DATE_PART, date: {BROKEN}, in: year}}"),
+                ),
+                (
+                    "START_OF date",
+                    format!("value: {{operation: START_OF, date: {BROKEN}, in: year}}"),
+                ),
+                (
+                    "double nesting",
+                    format!(
+                        "value: {{operation: AND, conditions: [{{operation: OR, conditions: [{BROKEN}]}}]}}"
+                    ),
+                ),
+                (
+                    "action-level values",
+                    format!("operation: ADD\n            values: [1, {BROKEN}]"),
+                ),
+                (
+                    "action-level conditions",
+                    format!("operation: AND\n            conditions: [{BROKEN}]"),
+                ),
+                (
+                    "action-level subject",
+                    format!(
+                        "operation: EQUALS\n            subject: {BROKEN}\n            value: true"
+                    ),
+                ),
+            ];
+            for (label, action_body) in cases {
+                assert_refused(label, &law_with_action(action_body));
+            }
+        }
+
+        /// The same nesting positions with the comparison fully written must
+        /// keep loading — the guard refuses broken operations, not depth.
+        #[test]
+        fn test_valid_nested_operations_still_load() {
+            const WHOLE: &str = "{operation: GREATER_THAN_OR_EQUAL, subject: $x, value: 18}";
+            let bodies = [
+                format!("value: {{operation: AND, conditions: [{WHOLE}, true]}}"),
+                format!(
+                    "value: {{operation: IF, cases: [{{when: {WHOLE}, then: 1}}], default: 0}}"
+                ),
+                format!("operation: AND\n            conditions: [{WHOLE}]"),
+                format!("operation: EQUALS\n            subject: {WHOLE}\n            value: true"),
+            ];
+            for body in &bodies {
+                ArticleBasedLaw::from_yaml_str(&law_with_action(body))
+                    .unwrap_or_else(|e| panic!("a whole nested comparison must load: {e}\n{body}"));
+            }
+        }
+
+        /// An open term's default actions are actions like any other; a broken
+        /// operation hiding there must be refused, and the refusal must say
+        /// where it sits.
+        #[test]
+        fn test_a_broken_operation_in_an_open_term_default_is_refused() {
+            let yaml = format!(
+                r#"
+$id: wet_open_term_default
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bij gebreke van een regeling geldt de leeftijdstoets
+    machine_readable:
+      open_terms:
+        - id: leeftijdsgrens_gehaald
+          type: boolean
+          required: false
+          default:
+            actions:
+              - output: leeftijdsgrens_gehaald
+                value: {{operation: AND, conditions: [{BROKEN}]}}
+"#
+            );
+            let err = ArticleBasedLaw::from_yaml_str(&yaml)
+                .expect_err("a broken operation in an open-term default must be refused")
+                .to_string();
+            assert!(
+                err.contains("GREATER_THAN_OR_EQUAL") && err.contains("open term"),
+                "refusal must name the operation and the open term: {err}"
+            );
+        }
+
+        /// The preamble may carry a machine_readable section of its own; a
+        /// broken operation there must be refused like anywhere else.
+        #[test]
+        fn test_a_broken_operation_in_the_preamble_is_refused() {
+            let yaml = format!(
+                r#"
+$id: wet_aanhef
+regulatory_layer: WET
+publication_date: '2025-01-01'
+preamble:
+  text: Wij Testkoning, gelet op de leeftijdstoets
+  machine_readable:
+    execution:
+      output:
+        - name: aanhef_toets
+          type: boolean
+      actions:
+        - output: aanhef_toets
+          value: {{operation: NOT, value: {BROKEN}}}
+articles:
+  - number: '1'
+    text: Artikel
+"#
+            );
+            let err = ArticleBasedLaw::from_yaml_str(&yaml)
+                .expect_err("a broken operation in the preamble must be refused")
+                .to_string();
+            assert!(
+                err.contains("GREATER_THAN_OR_EQUAL") && err.contains("preamble"),
+                "refusal must name the operation and the preamble: {err}"
+            );
+        }
+
+        /// A valid open-term default keeps loading through the deeper walk.
+        #[test]
+        fn test_a_valid_open_term_default_still_loads() {
+            let yaml = r#"
+$id: wet_open_term_geldig
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Artikel
+    machine_readable:
+      open_terms:
+        - id: drempel
+          type: number
+          required: false
+          default:
+            actions:
+              - output: drempel
+                value: {operation: MAX, values: [0, $x]}
+"#;
+            ArticleBasedLaw::from_yaml_str(yaml)
+                .unwrap_or_else(|e| panic!("a valid open-term default must load: {e}"));
+        }
     }
 
     #[test]
