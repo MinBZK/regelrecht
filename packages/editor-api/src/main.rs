@@ -5,11 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
-use axum::routing::{get, MethodRouter};
+use axum::routing::get;
 use axum::Router;
 use tokio::sync::{Mutex, RwLock};
-use tower::ServiceExt;
-use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tower_sessions::ExpiredDeletion;
 use tower_sessions::Expiry;
@@ -29,6 +27,7 @@ mod harvest_proxy;
 mod middleware;
 mod state;
 mod static_cache;
+mod static_spa;
 mod task_requests;
 mod tasks_api;
 mod traject_corpus;
@@ -641,7 +640,7 @@ async fn main() {
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
             .layer(TraceLayer::new_for_http())
-            .fallback_service(static_service(&static_dir, &index_file));
+            .fallback_service(static_spa::static_service(&static_dir, &index_file));
 
         serve(app, Some(deletion_handle)).await;
     } else {
@@ -673,7 +672,7 @@ async fn main() {
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
             .layer(TraceLayer::new_for_http())
-            .fallback_service(static_service(&static_dir, index_file));
+            .fallback_service(static_spa::static_service(&static_dir, &index_file));
 
         serve(app, None).await;
     }
@@ -854,66 +853,6 @@ async fn init_backends(
     }
 
     backends
-}
-
-/// Static-file service for the built editor frontend.
-///
-/// The editor image has no nginx in front of it — this binary is the web
-/// server for `frontend/dist` as well as the API — so compression has to
-/// happen here or not at all.
-///
-/// `precompressed_br` / `precompressed_gzip` make `ServeDir` look for
-/// `foo.js.br` and `foo.js.gz` beside `foo.js` and serve one of those when
-/// the client's `Accept-Encoding` allows it. The variants are written at
-/// build time by `frontend/scripts/precompress.mjs`, so the container spends
-/// no CPU compressing per request, and a client that accepts neither still
-/// gets the plain file. `ServeDir` sets `Vary: accept-encoding` itself once a
-/// precompressed variant is configured, so shared caches stay correct.
-///
-/// Which encoding wins is the client's call, not ours: `ServeDir` picks the
-/// highest q-value from `Accept-Encoding` and breaks ties in favour of
-/// brotli. Builder order here is cosmetic. Note that a future
-/// `precompressed_zstd()` would outrank brotli in that tie-break — worth
-/// knowing before adding one.
-///
-/// Compression stops at the static files on purpose: the JSON API keeps
-/// serving uncompressed bodies. See the SPA fallback below for why the
-/// index gets the same treatment.
-///
-/// Compression makes the bytes smaller; the `Cache-Control` added on the
-/// way out ([`static_cache`]) stops most of them being sent a second time
-/// at all. That header has to be set per request, because the policy
-/// depends on the URL — hence the wrapping handler rather than a plain
-/// `SetResponseHeaderLayer`. `ServeDir` sets no `Cache-Control` of its
-/// own, and the ETag and `Vary` it does set are left untouched: they are
-/// what makes the `no-cache` half cheap.
-fn static_service(static_dir: &str, index_file: impl AsRef<std::path::Path>) -> MethodRouter {
-    // The SPA fallback (`/library/...`, `/editor/...` deep links) returns
-    // index.html, which is itself precompressed — hence the same flags on the
-    // not-found service.
-    let index = ServeFile::new(index_file)
-        .precompressed_br()
-        .precompressed_gzip();
-    let files = ServeDir::new(static_dir)
-        .precompressed_br()
-        .precompressed_gzip()
-        .not_found_service(index);
-
-    get(move |request: axum::extract::Request| {
-        let files = files.clone();
-        async move {
-            let uri = request.uri().clone();
-            // `ServeDir`'s error type is `Infallible` once a not-found
-            // service is set, so this cannot fail.
-            let mut response = files
-                .oneshot(request)
-                .await
-                .unwrap_or_else(|e| match e {})
-                .map(axum::body::Body::new);
-            static_cache::apply(&uri, &mut response);
-            response
-        }
-    })
 }
 
 /// Read favorites.json from the static directory.
@@ -1158,13 +1097,14 @@ mod http_localhost_tests {
 }
 
 /// The editor image serves its own static files, so the only place
-/// compression can happen is `static_service`. These tests pin that the
-/// precompressed variants written by `frontend/scripts/precompress.mjs` are
-/// actually picked up, and that a client which cannot decompress still gets
-/// the plain file.
+/// compression can happen is `static_spa::static_service`. These tests pin
+/// that the precompressed variants written by
+/// `frontend/scripts/precompress.mjs` are actually picked up, and that a
+/// client which cannot decompress still gets the plain file.
 #[cfg(test)]
 mod static_service_tests {
-    use super::{static_cache, static_service};
+    use super::static_cache;
+    use super::static_spa::static_service;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
@@ -1318,17 +1258,18 @@ mod static_service_tests {
     /// Deep links like `/library/foo` are SPA routes with no file behind
     /// them; they fall through to index.html, which is precompressed as well.
     ///
-    /// The 404 is pre-existing and deliberately left alone here:
-    /// `not_found_service` is `fallback` wrapped in `SetStatus(404)`, so the
-    /// editor has always answered deep links with the index body under a 404
-    /// status. The browser runs the SPA regardless. Changing that is a
-    /// separate decision from compressing the body.
+    /// The status assertion used to read `NOT_FOUND`, because
+    /// `not_found_service` is `fallback` wrapped in `SetStatus(404)`. That
+    /// wrapper is gone (see `static_spa`), so the deep link now answers
+    /// `200`. What this test is here for is unchanged: the index on the
+    /// fallback path must keep its precompressed variants, or the fallback
+    /// silently loses the compression the rest of the bundle has.
     #[tokio::test]
     async fn spa_fallback_serves_the_precompressed_index() {
         let dir = fixture();
         let response = get(&dir, "/library/some-law", Some("br")).await;
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()["content-encoding"], "br");
         assert_eq!(body(response).await, BROTLIED);
     }
@@ -1379,9 +1320,8 @@ mod static_service_tests {
         );
     }
 
-    /// A request for an asset that is not on disk is answered with the
-    /// index HTML. Marking that immutable would pin a broken page under
-    /// a bundle URL for a year.
+    /// A request for an asset that is not on disk stays a `404`. Marking
+    /// that immutable would pin the miss under a bundle URL for a year.
     #[tokio::test]
     async fn a_missing_asset_is_not_cached_as_one() {
         let dir = fixture();
