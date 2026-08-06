@@ -191,6 +191,117 @@ impl GitHubApiBackend {
         }
     }
 
+    /// Serve the corpus-wide implements map from the precomputed index at
+    /// the repo root ([`implements_index`]), or `Ok(None)` when this ref
+    /// has no index that provably describes it.
+    ///
+    /// The index is fetched with the **raw** representation: at 22k entries
+    /// it is comfortably past the Contents API's 1 MiB JSON ceiling, where
+    /// the JSON path returns no content at all.
+    ///
+    /// Freshness is verified the same way the checkout-based backend does
+    /// it, one layer up: the index records the git tree sha of the subtree
+    /// it scanned, and that is compared against the same subtree on this
+    /// backend's branch. Equal means the index describes exactly this
+    /// content — which makes the check branch-aware by construction, so a
+    /// preview corpus branch that moved past its last index regeneration is
+    /// caught. Anything else (no index, unparseable, rooted elsewhere,
+    /// unverifiable, or simply stale) returns `None` so the caller falls
+    /// back rather than serving a map that may be wrong.
+    ///
+    /// A read failure is an `Err`, never an empty map: the consumer uses
+    /// this map as a negative cache, so "I could not read the index" and
+    /// "these laws implement nothing" must not arrive as the same answer.
+    ///
+    /// [`implements_index`]: crate::implements_index
+    async fn implements_from_index(&self) -> Result<Option<Vec<(String, Vec<String>)>>> {
+        use crate::implements_index::{ImplementsIndex, IMPLEMENTS_INDEX_FILENAME};
+
+        let repo = self.full_repo();
+        let inner = self.inner.lock().await;
+
+        let raw = inner
+            .client
+            .fetch_file_raw_opt(
+                &repo,
+                &self.branch,
+                IMPLEMENTS_INDEX_FILENAME,
+                self.token.as_deref(),
+            )
+            .await?;
+        let Some(raw) = raw else {
+            tracing::warn!(
+                repo = %repo,
+                branch = %self.branch,
+                "no implements index on this corpus branch; falling back to the archive scan"
+            );
+            return Ok(None);
+        };
+
+        let index = match ImplementsIndex::parse(&raw) {
+            Ok(index) => index,
+            Err(e) => {
+                tracing::warn!(
+                    repo = %repo,
+                    error = %e,
+                    "implements index is unreadable; falling back to the archive scan"
+                );
+                return Ok(None);
+            }
+        };
+
+        // An index rooted elsewhere says nothing about this source. Serving
+        // its projection would yield an empty list, which the caller cannot
+        // tell apart from an authoritative "this corpus holds no laws".
+        if !index.covers(self.sub_path.as_deref()) {
+            tracing::warn!(
+                index_root = %index.root,
+                source_root = self.sub_path.as_deref().unwrap_or("<repo root>"),
+                "implements index does not cover this source's root; \
+                 falling back to the archive scan"
+            );
+            return Ok(None);
+        }
+
+        match inner
+            .client
+            .subtree_sha(&repo, &self.branch, &index.root, self.token.as_deref())
+            .await?
+        {
+            Some(remote_sha) if remote_sha == index.tree_sha => {
+                let entries = index.to_source_relative(self.sub_path.as_deref());
+                tracing::info!(
+                    entries = entries.len(),
+                    root = %index.root,
+                    tree = %index.tree_sha,
+                    branch = %self.branch,
+                    "served implements map from the precomputed index"
+                );
+                Ok(Some(entries))
+            }
+            Some(remote_sha) => {
+                tracing::warn!(
+                    index_tree = %index.tree_sha,
+                    remote_tree = %remote_sha,
+                    root = %index.root,
+                    branch = %self.branch,
+                    "implements index does not match this branch's content \
+                     (stale index on this corpus branch?); falling back to the archive scan"
+                );
+                Ok(None)
+            }
+            None => {
+                tracing::warn!(
+                    root = %index.root,
+                    branch = %self.branch,
+                    "implements index freshness could not be verified (root not found \
+                     on this branch); falling back to the archive scan"
+                );
+                Ok(None)
+            }
+        }
+    }
+
     /// Ensure `branch` exists on `repo`, creating it from `base_branch`
     /// when missing. Shared by `ensure_ready` (rest-token bootstrap at
     /// backend init) and `persist` (lazy bootstrap with the per-call
@@ -323,13 +434,23 @@ impl RepoBackend for GitHubApiBackend {
         }
     }
 
-    /// Bulk implements scan via the repo archive: one tarball download for
-    /// the whole source instead of a Contents call per file. Bodies are
-    /// parsed for `implements` and discarded during extraction (see
-    /// [`fetch_archive_implements`]), so this never materialises the whole
-    /// corpus in memory. Archive paths are repo-relative; map them back
-    /// through [`to_source_relative`] (drops files outside `sub_path`) so
-    /// they match the `SourceMap`.
+    /// The corpus-wide implements map, from the precomputed index at the
+    /// repo root when this branch has a verifiably matching one, and from
+    /// the repo archive otherwise.
+    ///
+    /// The index is what makes this backend usable for a whole central
+    /// corpus: it is two small requests, against a tarball of hundreds of
+    /// megabytes that has to be held in memory to be extracted. The archive
+    /// remains the fallback because being slow beats being wrong — a
+    /// missing or stale index must not turn into a map that reads as
+    /// authoritative.
+    ///
+    /// Archive path: one tarball download for the whole source instead of a
+    /// Contents call per file. Bodies are parsed for `implements` and
+    /// discarded during extraction (see [`fetch_archive_implements`]), so
+    /// the *parsed* result never holds the corpus. Archive paths are
+    /// repo-relative; map them back through [`to_source_relative`] (drops
+    /// files outside `sub_path`) so they match the `SourceMap`.
     ///
     /// Holds the `inner` lock for the whole archive download + extraction
     /// (seconds for a large corpus), same as [`read_file`] holds it for its
@@ -341,6 +462,19 @@ impl RepoBackend for GitHubApiBackend {
     /// [`to_source_relative`]: GitHubApiBackend::to_source_relative
     /// [`read_file`]: GitHubApiBackend::read_file
     async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
+        match self.implements_from_index().await {
+            Ok(Some(entries)) => return Ok(entries),
+            // Every "no usable index" case is already logged with its
+            // reason inside `implements_from_index`.
+            Ok(None) => {}
+            Err(e) => tracing::warn!(
+                repo = %self.full_repo(),
+                branch = %self.branch,
+                error = %e,
+                "implements index could not be read; falling back to the archive scan"
+            ),
+        }
+
         let files = {
             let inner = self.inner.lock().await;
             crate::github::fetch_archive_implements(
@@ -923,6 +1057,221 @@ mod tests {
         format!(
             "$id: {id}\narticles:\n  - number: '1'\n    machine_readable:\n      implements:\n        - law: {higher}\n"
         )
+    }
+
+    /// The `regulation/nl`-rooted source every implements test reads.
+    fn nl_source() -> GitHubSource {
+        GitHubSource {
+            owner: "acme".to_string(),
+            repo: "corpus".to_string(),
+            branch: "main".to_string(),
+            path: Some("regulation/nl".to_string()),
+            git_ref: None,
+        }
+    }
+
+    fn backend_at(server: &MockServer) -> GitHubApiBackend {
+        GitHubApiBackend::new(
+            &nl_source(),
+            Some("main".to_string()),
+            Some("tok".to_string()),
+        )
+        .unwrap()
+        .with_api_base(server.uri())
+    }
+
+    /// A committed index over `regulation`, recording `tree_sha` for that
+    /// subtree. One entry per file including the empty one, and one entry
+    /// outside the source root that projection must drop.
+    fn index_json(tree_sha: &str, root: &str) -> String {
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "regulation/nl/wet/foo/2025-01-01.yaml".to_string(),
+            vec!["wet_target".to_string()],
+        );
+        files.insert(
+            "regulation/nl/wet/bar/2025-01-01.yaml".to_string(),
+            Vec::new(),
+        );
+        files.insert(
+            "regulation/be/wet/b/2025-01-01.yaml".to_string(),
+            Vec::new(),
+        );
+        crate::implements_index::ImplementsIndex {
+            version: crate::implements_index::IMPLEMENTS_INDEX_VERSION,
+            root: root.to_string(),
+            tree_sha: tree_sha.to_string(),
+            files,
+        }
+        .to_json()
+    }
+
+    /// Serve the index file at the repo root for `main`.
+    async fn mount_index(server: &MockServer, body: String) {
+        Mock::given(method("GET"))
+            .and(path_matcher(
+                "/repos/acme/corpus/contents/implements-index.json",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(server)
+            .await;
+    }
+
+    /// Serve the root tree of `main`, where `regulation` has sha `reg_sha`.
+    async fn mount_root_tree(server: &MockServer, reg_sha: &str) {
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/git/trees/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "sha": "roottree",
+                "truncated": false,
+                "tree": [{"path": "regulation", "type": "tree", "sha": reg_sha}]
+            })))
+            .mount(server)
+            .await;
+    }
+
+    /// A tarball mock that must not be hit.
+    async fn forbid_archive(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/tarball/main"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(server)
+            .await;
+    }
+
+    /// A tarball mock holding one implementing and one non-implementing law.
+    async fn mount_archive(server: &MockServer, times: u64) {
+        let foo = law_with_implements("foo", "wet_target");
+        let tar_gz = make_repo_tar_gz(
+            "acme-corpus-deadbeef",
+            &[
+                ("regulation/nl/wet/foo/2025-01-01.yaml", foo.as_str()),
+                (
+                    "regulation/nl/wet/bar/2025-01-01.yaml",
+                    "$id: bar\narticles: []\n",
+                ),
+            ],
+        );
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/tarball/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(tar_gz, "application/gzip"))
+            .expect(times)
+            .mount(server)
+            .await;
+    }
+
+    /// The two source-relative entries both routes must produce.
+    fn expected_entries() -> Vec<(String, Vec<String>)> {
+        vec![
+            ("wet/bar/2025-01-01.yaml".to_string(), Vec::<String>::new()),
+            (
+                "wet/foo/2025-01-01.yaml".to_string(),
+                vec!["wet_target".to_string()],
+            ),
+        ]
+    }
+
+    /// The point of the whole exercise: a central corpus is served from the
+    /// committed index in two small requests, so nothing has to pull a
+    /// repo archive of hundreds of megabytes into memory to answer it.
+    #[tokio::test]
+    async fn read_all_implements_serves_the_index_without_touching_the_archive() {
+        let server = MockServer::start().await;
+        forbid_archive(&server).await;
+        mount_index(&server, index_json("regtree", "regulation")).await;
+        mount_root_tree(&server, "regtree").await;
+
+        let mut got = backend_at(&server).read_all_implements().await.unwrap();
+        got.sort();
+        assert_eq!(got, expected_entries());
+    }
+
+    /// The index records the tree it was generated from. A corpus branch
+    /// that moved on since — a preview branch that got commits after its
+    /// last index build — must not be answered from it.
+    #[tokio::test]
+    async fn a_stale_index_is_not_served_but_falls_back_to_the_archive() {
+        let server = MockServer::start().await;
+        mount_archive(&server, 1).await;
+        mount_index(&server, index_json("oldtree", "regulation")).await;
+        mount_root_tree(&server, "regtree").await;
+
+        let mut got = backend_at(&server).read_all_implements().await.unwrap();
+        got.sort();
+        assert_eq!(got, expected_entries());
+    }
+
+    /// An index scanned under a different root says nothing about this
+    /// source. Projecting it anyway would yield an empty list, which the
+    /// caller reads as an authoritative "this corpus holds no laws".
+    #[tokio::test]
+    async fn an_index_rooted_outside_the_source_is_not_served() {
+        let server = MockServer::start().await;
+        mount_archive(&server, 1).await;
+        mount_index(&server, index_json("regtree", "andere-root")).await;
+        mount_root_tree(&server, "regtree").await;
+
+        let mut got = backend_at(&server).read_all_implements().await.unwrap();
+        got.sort();
+        assert_eq!(got, expected_entries());
+    }
+
+    /// A freshness check that cannot be performed is not a freshness check
+    /// that passed: a rate-limited Trees call falls back instead of serving
+    /// an index whose currency is unknown.
+    #[tokio::test]
+    async fn an_unverifiable_index_is_not_served() {
+        let server = MockServer::start().await;
+        mount_archive(&server, 1).await;
+        mount_index(&server, index_json("regtree", "regulation")).await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/git/trees/main"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .insert_header("x-ratelimit-remaining", "0")
+                    .set_body_string("API rate limit exceeded"),
+            )
+            .mount(&server)
+            .await;
+
+        let mut got = backend_at(&server).read_all_implements().await.unwrap();
+        got.sort();
+        assert_eq!(got, expected_entries());
+    }
+
+    /// The map is a negative cache: a missing path means "fetch this law".
+    /// So a failed read must never surface as a successful empty map — if
+    /// neither route can answer, the call fails.
+    #[tokio::test]
+    async fn a_failed_read_is_an_error_and_never_an_empty_map() {
+        let server = MockServer::start().await;
+        // Index read: rate-limited, not absent.
+        Mock::given(method("GET"))
+            .and(path_matcher(
+                "/repos/acme/corpus/contents/implements-index.json",
+            ))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .insert_header("x-ratelimit-remaining", "0")
+                    .set_body_string("API rate limit exceeded"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/tarball/main"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("upstream unavailable"))
+            .mount(&server)
+            .await;
+
+        let err = backend_at(&server)
+            .read_all_implements()
+            .await
+            .expect_err("an unreadable corpus is not an empty corpus");
+        assert!(
+            err.to_string().contains("503"),
+            "the real cause must survive: {err}"
+        );
     }
 
     #[tokio::test]
