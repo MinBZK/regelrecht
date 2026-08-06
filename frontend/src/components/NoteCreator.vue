@@ -378,6 +378,14 @@ const statusInfo = computed(() => {
         title: 'Niet eenduidig',
         lead: 'Dit fragment is hier niet uniek. Breid de selectie uit met de omringende woorden.',
       };
+    case 'not-searched':
+      // status 'skipped': the resolver hit its scan budget and never
+      // searched. Saying "niet teruggevonden" here would be untrue (nothing
+      // was established) and the lidnummer advice would be misdirected.
+      return {
+        title: 'Niet naar gezocht',
+        lead: 'De selectie is te lang om terug te zoeken. Maak de selectie korter.',
+      };
     default: // 'not-found'
       return {
         title: 'Niet teruggevonden',

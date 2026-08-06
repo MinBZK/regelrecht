@@ -170,19 +170,21 @@ describe('buildSelector', () => {
     expect(calls).toBe(1);
   });
 
-  it('stops immediately when the resolver skipped the search', () => {
+  it('passes a skipped search through as its own status, not as orphaned', () => {
     // 'skipped' = the resolver's fuzzy budget refused the quote (RFC-018
     // scan bounds). Growing prefix/suffix cannot shorten the quote, so
     // retrying the two wider widths would just burn the same budget again.
+    // The status must survive to the caller: "not searched" and "not found"
+    // are different messages to the user, with different advice.
     const range = { start: 10, end: 20 };
     let calls = 0;
     const engine = engineReturning(() => {
       calls++;
-      return { status: 'skipped', matches: [] };
+      return { status: 'skipped', matches: [], skip_reason: 'quote_too_long' };
     });
     const out = buildSelector(raw, range, 'w', engine, '1');
-    expect(out.status).toBe('orphaned');
-    expect(out.reason).toBe('not-found');
+    expect(out.status).toBe('skipped');
+    expect(out.reason).toBe('not-searched');
     expect(calls).toBe(1);
   });
 });

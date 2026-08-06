@@ -95,10 +95,26 @@ pub enum MatchStatus {
     /// Multiple equally-good matches; the note is ambiguous.
     Ambiguous,
     /// The fuzzy search was skipped or cut short by a resource bound
-    /// (quote too long, or the scan/scoring budget ran out) before any match
-    /// was found. Unlike [`Orphaned`](Self::Orphaned) this does **not**
-    /// assert the text is absent — it says "this was not (fully) searched".
+    /// (see [`SkipReason`]). Unlike [`Orphaned`](Self::Orphaned) this does
+    /// **not** assert the text is absent, and unlike
+    /// [`Found`](Self::Found) it claims no uniqueness: any candidates found
+    /// before the cut-off ride along in `matches`, but text beyond the
+    /// cut-off was never searched.
     Skipped,
+}
+
+/// Why a fuzzy search was skipped or cut short (the bounds live in
+/// [`crate::config`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipReason {
+    /// The quote exceeds `MAX_FUZZY_QUOTE_CHARS`; the fuzzy scan never ran.
+    /// Shortening the quote is the fix.
+    QuoteTooLong,
+    /// The scan or scoring budget ran out partway through the law; the text
+    /// beyond the cut-off was not searched. The quote length is not the
+    /// cause, so "shorten the quote" would be misdirected advice here.
+    SearchBudget,
 }
 
 /// A single located span in the law text.
@@ -130,8 +146,13 @@ pub struct MatchResult {
     /// Overall resolution status.
     pub status: MatchStatus,
     /// Located spans. One element when `Found`, several when `Ambiguous`,
-    /// empty when `Orphaned`.
+    /// empty when `Orphaned`. When `Skipped`: any candidates found before
+    /// the search was cut short — never a claim of uniqueness.
     pub matches: Vec<TextMatch>,
+    /// Why the search was skipped; present exactly when `status` is
+    /// `Skipped`. On the wire: `"quote_too_long"` or `"search_budget"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skip_reason: Option<SkipReason>,
 }
 
 impl MatchResult {
@@ -139,6 +160,7 @@ impl MatchResult {
         Self {
             status: MatchStatus::Found,
             matches,
+            skip_reason: None,
         }
     }
 
@@ -146,6 +168,7 @@ impl MatchResult {
         Self {
             status: MatchStatus::Orphaned,
             matches: Vec::new(),
+            skip_reason: None,
         }
     }
 
@@ -153,13 +176,17 @@ impl MatchResult {
         Self {
             status: MatchStatus::Ambiguous,
             matches,
+            skip_reason: None,
         }
     }
 
-    pub(crate) fn skipped() -> Self {
+    /// A search cut short by `reason`; `matches` carries whatever candidates
+    /// were found before the cut-off (possibly none).
+    pub(crate) fn skipped(reason: SkipReason, matches: Vec<TextMatch>) -> Self {
         Self {
             status: MatchStatus::Skipped,
-            matches: Vec::new(),
+            matches,
+            skip_reason: Some(reason),
         }
     }
 
@@ -264,7 +291,7 @@ regelrecht:hint:
         assert!(!ambiguous.is_orphaned());
         assert!(!ambiguous.is_skipped());
 
-        let skipped = MatchResult::skipped();
+        let skipped = MatchResult::skipped(SkipReason::QuoteTooLong, Vec::new());
         assert!(skipped.is_skipped());
         assert!(!skipped.is_found());
         assert!(
@@ -272,14 +299,40 @@ regelrecht:hint:
             "a skipped search must not present itself as 'searched and absent'"
         );
         assert!(!skipped.is_ambiguous());
-        assert!(skipped.matches.is_empty());
     }
 
-    /// The wire value the frontend branches on: `status: 'skipped'`.
+    /// The wire values the frontend branches on: `status: 'skipped'` plus a
+    /// `skip_reason` naming the bound that was hit.
     #[test]
-    fn skipped_serialises_lowercase() {
-        let json = serde_json::to_string(&MatchStatus::Skipped).unwrap();
-        assert_eq!(json, "\"skipped\"");
+    fn skipped_serialises_status_and_reason() {
+        let json =
+            serde_json::to_string(&MatchResult::skipped(SkipReason::QuoteTooLong, Vec::new()))
+                .unwrap();
+        assert!(json.contains("\"status\":\"skipped\""), "{json}");
+        assert!(
+            json.contains("\"skip_reason\":\"quote_too_long\""),
+            "{json}"
+        );
+
+        let json =
+            serde_json::to_string(&MatchResult::skipped(SkipReason::SearchBudget, Vec::new()))
+                .unwrap();
+        assert!(json.contains("\"skip_reason\":\"search_budget\""), "{json}");
+
+        // Other statuses carry no reason field at all: absence must mean
+        // "was not skipped", not "reason unknown".
+        let json = serde_json::to_string(&MatchResult::orphaned()).unwrap();
+        assert!(!json.contains("skip_reason"), "{json}");
+    }
+
+    /// A skipped search may carry the candidates found before the cut-off,
+    /// but a consumer asking for "the single match" must not get one: a
+    /// candidate is not a claim of uniqueness over text never searched.
+    #[test]
+    fn a_skipped_result_hands_out_no_single_match() {
+        let skipped = MatchResult::skipped(SkipReason::SearchBudget, vec![a_match()]);
+        assert_eq!(skipped.matches.len(), 1);
+        assert!(skipped.single().is_none());
     }
 
     /// `single()` is only meaningful for a `Found` result; an ambiguous result

@@ -72,14 +72,17 @@ export function utf16ToCp(text, u16Offset) {
  * @returns {{
  *   selector: object,
  *   exact: string,
- *   status: 'found'|'ambiguous'|'orphaned',
- *   reason: 'ok'|'too-common'|'not-found'|'mis-anchor',
+ *   status: 'found'|'ambiguous'|'orphaned'|'skipped',
+ *   reason: 'ok'|'too-common'|'not-found'|'mis-anchor'|'not-searched',
  * }}
  *   `reason` is for the UI message only; it does not change accept/reject.
  *   'too-common' = the bare quote already matched several places (RFC-018
  *   §5.4 "common word without context") even if widening context later
  *   degrades to orphaned; 'not-found' = genuinely not locatable; 'mis-anchor'
- *   = a unique match landed off the selection.
+ *   = a unique match landed off the selection; 'not-searched' = the resolver
+ *   refused the scan (status 'skipped': the quote exceeds the fuzzy budget
+ *   in config.rs), which is a different message than "not found" — nothing
+ *   was established about the text at all.
  */
 export function buildSelector(rawText, range, lawId, engine, articleNumber, validFrom) {
   const chars = Array.from(rawText);
@@ -147,9 +150,12 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber, vali
     // 'skipped': the resolver refused the fuzzy scan (quote over the budget
     // in config.rs). Growing context cannot fix a too-long quote, and the
     // exact pass (which is unbudgeted) already failed, so stop here rather
-    // than looping two more widths to the same answer.
+    // than looping two more widths to the same answer. The status stays
+    // 'skipped': the UI must say "this was not searched", not "not found" —
+    // flattening it to orphaned here would hand the user the wrong message
+    // and the wrong advice.
     if (result?.status === 'skipped') {
-      return { selector, exact, status: 'orphaned', reason: 'not-found' };
+      return { selector, exact, status: 'skipped', reason: 'not-searched' };
     }
     if ((result?.matches?.length ?? 0) > 1) sawMultiple = true;
     // A unique `found` that is NOT our selection is a mis-anchor: treat it as

@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use jsonschema::Validator;
-use regelrecht_engine::annotation::{law_id_from_source, resolve, TextQuoteSelector};
+use regelrecht_engine::annotation::{law_id_from_source, resolve, SkipReason, TextQuoteSelector};
 use regelrecht_engine::article::{ArticleBasedLaw, LawLoad};
 
 const ANNOTATION_SCHEMA: &str = include_str!("../../../../schema/v0.5.3/annotation-schema.json");
@@ -175,12 +175,21 @@ fn check_notes(
                     warnings += 1;
                 } else if result.is_skipped() {
                     // Not the same as orphaned: the resolver never (fully)
-                    // searched, so absence was not established.
+                    // searched, so absence was not established. Name the
+                    // bound that was hit — "shorten the quote" is only the
+                    // fix when the quote length was the cause.
+                    let cause = match result.skip_reason {
+                        Some(SkipReason::QuoteTooLong) => format!(
+                            "quote of {} chars exceeds the fuzzy quote cap; shorten the quote",
+                            selector.exact.chars().count()
+                        ),
+                        _ => "the law exceeds the fuzzy scan budget; \
+                              the text was not fully searched"
+                            .to_string(),
+                    };
                     eprintln!(
-                        "  WARN: {} note[{i}]: not searched (quote of {} chars exceeds the \
-                         fuzzy scan budget; shorten the quote)",
-                        path.display(),
-                        selector.exact.chars().count()
+                        "  WARN: {} note[{i}]: not searched ({cause})",
+                        path.display()
                     );
                     warnings += 1;
                 }

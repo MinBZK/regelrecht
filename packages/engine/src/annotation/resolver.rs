@@ -46,7 +46,7 @@
 //! offsets. JS consumers indexing the law text must account for this; see the
 //! WASM binding docs.
 
-use crate::annotation::types::{MatchResult, TextMatch, TextQuoteSelector};
+use crate::annotation::types::{MatchResult, SkipReason, TextMatch, TextQuoteSelector};
 use crate::article::Article;
 use crate::config::{MAX_FUZZY_QUOTE_CHARS, MAX_FUZZY_SCAN_CHARS, MAX_FUZZY_SCORED_WINDOWS};
 use std::collections::HashSet;
@@ -79,10 +79,12 @@ struct FuzzyBudget {
     /// Candidate windows this resolve may still score (three Levenshtein
     /// computations each).
     scored_windows_left: usize,
-    /// Set when any part of the search was skipped for budget reasons; turns
-    /// an empty outcome into [`MatchResult::skipped`] instead of orphaned, so
-    /// "not searched" stays distinguishable from "searched and absent".
-    truncated: bool,
+    /// Set (with the bound that was hit) when any part of the search was
+    /// skipped; turns the outcome into [`MatchResult::skipped`] so "not
+    /// (fully) searched" stays distinguishable from "searched and absent".
+    /// The first cause wins: a later, different bound does not rewrite why
+    /// the search degraded.
+    skipped: Option<SkipReason>,
 }
 
 impl Default for FuzzyBudget {
@@ -91,8 +93,15 @@ impl Default for FuzzyBudget {
             max_quote_chars: MAX_FUZZY_QUOTE_CHARS,
             scan_chars_left: MAX_FUZZY_SCAN_CHARS,
             scored_windows_left: MAX_FUZZY_SCORED_WINDOWS,
-            truncated: false,
+            skipped: None,
         }
+    }
+}
+
+impl FuzzyBudget {
+    /// Record that a bound was hit, keeping the first cause.
+    fn mark_skipped(&mut self, reason: SkipReason) {
+        self.skipped.get_or_insert(reason);
     }
 }
 
@@ -136,7 +145,7 @@ pub fn resolve_with_threshold(
             fuzzy.push(m);
         }
     }
-    finalize_fuzzy(fuzzy, budget.truncated)
+    finalize_fuzzy(fuzzy, budget.skipped)
 }
 
 /// Resolve a selector against a single raw text body (no article context).
@@ -151,25 +160,25 @@ pub fn resolve_in_text(selector: &TextQuoteSelector, text: &str, threshold: f64)
     }
     let mut budget = FuzzyBudget::default();
     let fuzzy = find_fuzzy_matches(text, selector, threshold, &mut budget);
-    finalize_fuzzy(fuzzy, budget.truncated)
+    finalize_fuzzy(fuzzy, budget.skipped)
 }
 
 /// Collapse fuzzy candidates into a final [`MatchResult`].
 ///
-/// Overlapping spans are deduplicated keeping the highest confidence. A single
-/// surviving match, or a clear winner (more than [`TIEBREAK_MARGIN`] ahead of
-/// the runner-up), is `Found`; otherwise `Ambiguous`. Empty is `Orphaned` —
-/// unless the scan was `truncated`, because then "nothing found" was never
-/// established: the outcome is `Skipped`, so the caller can tell the user the
-/// text was not (fully) searched. Candidates found before truncation are
-/// genuine matches and are reported normally.
-fn finalize_fuzzy(matches: Vec<TextMatch>, truncated: bool) -> MatchResult {
+/// A cut-short search (`skipped` is set) is always `Skipped`, whatever was
+/// found by then: `Found` would claim uniqueness over text that was never
+/// searched, and an empty `Orphaned` would claim absence that was never
+/// established. Candidates found before the cut-off ride along in the
+/// result's `matches`. A complete search collapses as before: overlapping
+/// spans deduplicated keeping the highest confidence; a single survivor, or
+/// a clear winner (more than [`TIEBREAK_MARGIN`] ahead of the runner-up), is
+/// `Found`; several equally-good are `Ambiguous`; none is `Orphaned`.
+fn finalize_fuzzy(matches: Vec<TextMatch>, skipped: Option<SkipReason>) -> MatchResult {
+    if let Some(reason) = skipped {
+        return MatchResult::skipped(reason, deduplicate_overlapping(matches));
+    }
     if matches.is_empty() {
-        return if truncated {
-            MatchResult::skipped()
-        } else {
-            MatchResult::orphaned()
-        };
+        return MatchResult::orphaned();
     }
     let deduped = deduplicate_overlapping(matches);
     match clear_winner(&deduped) {
@@ -250,9 +259,9 @@ fn find_exact_matches(text: &str, selector: &TextQuoteSelector) -> Vec<TextMatch
 /// `len(exact) ± 30%` that share a significant word with `exact`, then score
 /// each by weighted Levenshtein similarity. The scan draws on `budget`: a
 /// quote over the length cap, an article that no longer fits the scan budget,
-/// or running out of scoring budget all mark the budget truncated (and the
-/// last one stops the scan), so the caller reports the search as skipped
-/// rather than silently incomplete.
+/// or running out of scoring budget all mark the budget skipped with the
+/// bound that was hit (and the last one stops the scan), so the caller
+/// reports the search as skipped rather than silently incomplete.
 fn find_fuzzy_matches(
     text: &str,
     selector: &TextQuoteSelector,
@@ -265,11 +274,11 @@ fn find_fuzzy_matches(
         return Vec::new();
     }
     if exact_len > budget.max_quote_chars {
-        budget.truncated = true;
+        budget.mark_skipped(SkipReason::QuoteTooLong);
         return Vec::new();
     }
     if chars.len() > budget.scan_chars_left {
-        budget.truncated = true;
+        budget.mark_skipped(SkipReason::SearchBudget);
         return Vec::new();
     }
     budget.scan_chars_left -= chars.len();
@@ -294,7 +303,7 @@ fn find_fuzzy_matches(
                 continue;
             }
             if budget.scored_windows_left == 0 {
-                budget.truncated = true;
+                budget.mark_skipped(SkipReason::SearchBudget);
                 break 'scan;
             }
             budget.scored_windows_left -= 1;
@@ -1020,6 +1029,7 @@ mod tests {
             "a quote too long to search must say so, not report 'not found': {:?}",
             r.status
         );
+        assert_eq!(r.skip_reason, Some(SkipReason::QuoteTooLong));
         assert!(r.matches.is_empty());
     }
 
@@ -1076,6 +1086,11 @@ mod tests {
         let arts = vec![article("1", &filler), article("2", &target)];
         let r = resolve(&sel, &arts);
         assert!(r.is_skipped(), "got {:?}", r.status);
+        assert_eq!(
+            r.skip_reason,
+            Some(SkipReason::SearchBudget),
+            "the quote is fine; the law was too large to finish searching"
+        );
     }
 
     #[test]
@@ -1108,17 +1123,22 @@ mod tests {
 
         let r = resolve(&sel, &[article("2", &text)]);
         assert!(r.is_skipped(), "got {:?}", r.status);
+        assert_eq!(r.skip_reason, Some(SkipReason::SearchBudget));
     }
 
     #[test]
-    fn truncation_only_turns_an_empty_result_into_skipped() {
-        assert!(finalize_fuzzy(Vec::new(), true).is_skipped());
-        assert!(finalize_fuzzy(Vec::new(), false).is_orphaned());
-        let r = finalize_fuzzy(vec![candidate("2", 0, 10, 0.9)], true);
-        assert!(
-            r.is_found(),
-            "a match found before the cut-off is still a match"
-        );
+    fn a_cut_short_search_never_claims_a_definitive_outcome() {
+        let cut = Some(SkipReason::SearchBudget);
+        assert!(finalize_fuzzy(Vec::new(), cut).is_skipped());
+        assert!(finalize_fuzzy(Vec::new(), None).is_orphaned());
+
+        // A candidate found before the cut-off must not become `Found`: that
+        // would claim uniqueness over text that was never searched. It rides
+        // along in the skipped result instead.
+        let r = finalize_fuzzy(vec![candidate("2", 0, 10, 0.9)], cut);
+        assert!(r.is_skipped(), "got {:?}", r.status);
+        assert_eq!(r.matches.len(), 1, "the candidate stays visible");
+        assert_eq!(r.skip_reason, Some(SkipReason::SearchBudget));
     }
 
     #[test]
@@ -1135,10 +1155,13 @@ mod tests {
         };
         let m1 = find_fuzzy_matches(first, &sel, DEFAULT_FUZZY_THRESHOLD, &mut budget);
         assert!(m1.is_empty());
-        assert!(!budget.truncated, "the first article fits the budget");
+        assert!(
+            budget.skipped.is_none(),
+            "the first article fits the budget"
+        );
         let m2 = find_fuzzy_matches(second, &sel, DEFAULT_FUZZY_THRESHOLD, &mut budget);
         assert!(m2.is_empty(), "the second article no longer fits");
-        assert!(budget.truncated);
+        assert_eq!(budget.skipped, Some(SkipReason::SearchBudget));
     }
 
     #[test]
@@ -1153,7 +1176,10 @@ mod tests {
             ..FuzzyBudget::default()
         };
         let matches = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut budget);
-        assert!(!budget.truncated, "an exact fit is within the budget");
+        assert!(
+            budget.skipped.is_none(),
+            "an exact fit is within the budget"
+        );
         assert!(!matches.is_empty(), "the exact-fit article was scanned");
         assert_eq!(budget.scan_chars_left, 0);
     }
@@ -1171,7 +1197,10 @@ mod tests {
             ..FuzzyBudget::default()
         };
         let matches = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut at_cap);
-        assert!(!at_cap.truncated, "exactly at the cap is still searched");
+        assert!(
+            at_cap.skipped.is_none(),
+            "exactly at the cap is still searched"
+        );
         assert!(!matches.is_empty());
 
         let mut over_cap = FuzzyBudget {
@@ -1180,7 +1209,7 @@ mod tests {
         };
         let m2 = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut over_cap);
         assert!(m2.is_empty(), "one char over the cap skips the scan");
-        assert!(over_cap.truncated);
+        assert_eq!(over_cap.skipped, Some(SkipReason::QuoteTooLong));
     }
 
     #[test]
@@ -1204,7 +1233,10 @@ mod tests {
         };
         let m2 = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut exact_fit);
         assert_eq!(m2.len(), matches.len());
-        assert!(!exact_fit.truncated, "exactly enough budget is enough");
+        assert!(
+            exact_fit.skipped.is_none(),
+            "exactly enough budget is enough"
+        );
         assert_eq!(exact_fit.scored_windows_left, 0);
 
         let mut one_short = FuzzyBudget {
@@ -1212,7 +1244,10 @@ mod tests {
             ..FuzzyBudget::default()
         };
         find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut one_short);
-        assert!(one_short.truncated, "one window short truncates the scan");
+        assert!(
+            one_short.skipped.is_some(),
+            "one window short truncates the scan"
+        );
     }
 
     // === Scoring and collapsing helpers ===

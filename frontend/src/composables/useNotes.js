@@ -194,10 +194,14 @@ export function useNotes(lawId, selectedArticle, trajectRef, lawValidFrom) {
           : e.match.status === 'orphaned'
             ? 'niet gevonden in de wettekst (orphaned)'
             : e.match.status === 'skipped'
-              ? // The resolver hit its scan budget (config.rs) before finding
-                // anything: the law was not (fully) searched. Distinct from
-                // orphaned, which asserts the text is absent.
-                'niet naar gezocht: citaat te lang voor de zoekbegrenzing - kort het citaat in'
+              ? // The resolver hit a scan bound (config.rs): the law was not
+                // (fully) searched. Distinct from orphaned, which asserts
+                // the text is absent. skip_reason names the bound that was
+                // hit, so the advice matches the cause instead of always
+                // blaming the quote length.
+                e.match.skip_reason === 'quote_too_long'
+                ? 'niet naar gezocht: citaat te lang voor de zoekbegrenzing - kort het citaat in'
+                : 'niet volledig doorzocht: de wettekst overschrijdt de zoekbegrenzing'
               : 'meerdere matches (ambigu) - voeg context toe',
       })),
   );
