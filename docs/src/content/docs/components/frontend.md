@@ -80,7 +80,7 @@ The app is split into two top-level shells, `LibraryApp.vue` (the law browser) a
 | `LawGraphView.vue` (+ `graph/`) | Cross-law dependency graph |
 | `ExecutionTraceView.vue` | Execution trace tree |
 | `ScenarioBuilder/Form/Gherkin/Visual/Panel.vue` | BDD scenario authoring |
-| `AnnotatedText.vue` / `NoteCreator.vue` | Stand-off notes (RFC-018) |
+| `NoteCreator.vue` / `NoteCard.vue` | Stand-off notes (RFC-018) |
 | `TrajectMenu.vue` / `TrajectMembersDialog.vue` | Traject collaboration |
 
 Composables hold the shared logic (`useLaw.js` for loading and article selection, plus others for settings and corpus URLs).
