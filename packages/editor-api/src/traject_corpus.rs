@@ -388,6 +388,20 @@ impl TrajectCorpus {
             .map(String::as_str)
     }
 
+    /// The registry entry of this traject's **writable-own** source — the
+    /// repo the editor commits to. `None` only when the traject's source
+    /// config no longer lists it (a shape the build path doesn't produce).
+    ///
+    /// Shared by every caller that needs the source's own coordinates
+    /// rather than a law's: the index-failure diagnosis
+    /// ([`Self::own_source_target`]) and the integrity scan, which reads
+    /// the repo's whole file tree instead of one law.
+    pub fn own_source(&self) -> Option<&Source> {
+        self.corpus
+            .registry
+            .get_source(&self.writable_own_source_id)
+    }
+
     /// The GitHub coordinates of the writable-own source, for the in-band
     /// diagnosis of a failed index scan (see
     /// [`crate::traject_index_diagnosis`]). `None` when that source isn't
@@ -398,10 +412,7 @@ impl TrajectCorpus {
     /// being re-derived from the traject name, so the probe asks about the
     /// branch the scan actually read.
     pub fn own_source_target(&self) -> Option<OwnSourceTarget> {
-        let source = self
-            .corpus
-            .registry
-            .get_source(&self.writable_own_source_id)?;
+        let source = self.own_source()?;
         let SourceType::GitHub { github } = &source.source_type else {
             return None;
         };

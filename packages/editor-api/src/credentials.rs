@@ -506,6 +506,7 @@ mod tests {
             pipeline_api_url: None,
             harvest_admin_url: None,
             reload_lock: Arc::new(Mutex::new(())),
+            integrity: Default::default(),
             trajects: Arc::new(TrajectCorpusCache::new()),
         }
     }
