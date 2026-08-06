@@ -5,11 +5,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
-use axum::routing::get;
+use axum::routing::{get, MethodRouter};
 use axum::Router;
 use tokio::sync::{Mutex, RwLock};
+use tower::ServiceExt;
 use tower_http::services::{ServeDir, ServeFile};
-use tower_http::set_status::SetStatus;
 use tower_http::trace::TraceLayer;
 use tower_sessions::ExpiredDeletion;
 use tower_sessions::Expiry;
@@ -28,6 +28,7 @@ mod github_oauth;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod static_cache;
 mod task_requests;
 mod tasks_api;
 mod traject_corpus;
@@ -877,20 +878,41 @@ async fn init_backends(
 /// Compression stops at the static files on purpose: the JSON API keeps
 /// serving uncompressed bodies. See the SPA fallback below for why the
 /// index gets the same treatment.
-fn static_service(
-    static_dir: &str,
-    index_file: impl AsRef<std::path::Path>,
-) -> ServeDir<SetStatus<ServeFile>> {
+///
+/// Compression makes the bytes smaller; the `Cache-Control` added on the
+/// way out ([`static_cache`]) stops most of them being sent a second time
+/// at all. That header has to be set per request, because the policy
+/// depends on the URL — hence the wrapping handler rather than a plain
+/// `SetResponseHeaderLayer`. `ServeDir` sets no `Cache-Control` of its
+/// own, and the ETag and `Vary` it does set are left untouched: they are
+/// what makes the `no-cache` half cheap.
+fn static_service(static_dir: &str, index_file: impl AsRef<std::path::Path>) -> MethodRouter {
     // The SPA fallback (`/library/...`, `/editor/...` deep links) returns
     // index.html, which is itself precompressed — hence the same flags on the
     // not-found service.
     let index = ServeFile::new(index_file)
         .precompressed_br()
         .precompressed_gzip();
-    ServeDir::new(static_dir)
+    let files = ServeDir::new(static_dir)
         .precompressed_br()
         .precompressed_gzip()
-        .not_found_service(index)
+        .not_found_service(index);
+
+    get(move |request: axum::extract::Request| {
+        let files = files.clone();
+        async move {
+            let uri = request.uri().clone();
+            // `ServeDir`'s error type is `Infallible` once a not-found
+            // service is set, so this cannot fail.
+            let mut response = files
+                .oneshot(request)
+                .await
+                .unwrap_or_else(|e| match e {})
+                .map(axum::body::Body::new);
+            static_cache::apply(&uri, &mut response);
+            response
+        }
+    })
 }
 
 /// Read favorites.json from the static directory.
@@ -1141,7 +1163,7 @@ mod http_localhost_tests {
 /// the plain file.
 #[cfg(test)]
 mod static_service_tests {
-    use super::static_service;
+    use super::{static_cache, static_service};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
@@ -1151,17 +1173,25 @@ mod static_service_tests {
     const GZIPPED: &[u8] = b"pretend gzip bytes";
     const BROTLIED: &[u8] = b"pretend brotli bytes";
 
-    /// A static dir shaped like a real build: `app.js` with both variants
-    /// beside it, plus an `index.html` for the SPA fallback.
+    /// A static dir shaped like a real build: a content-hashed
+    /// `assets/app-DkX9a2Bc.js` with both variants beside it, plus the
+    /// `index.html` that sits at a fixed name and doubles as the SPA
+    /// fallback. Both halves are present on purpose — the caching tests
+    /// below are only meaningful if the fixture can tell them apart.
     fn fixture() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(dir.path().join("app.js"), PLAIN).expect("write");
-        std::fs::write(dir.path().join("app.js.gz"), GZIPPED).expect("write");
-        std::fs::write(dir.path().join("app.js.br"), BROTLIED).expect("write");
+        std::fs::create_dir(dir.path().join("assets")).expect("mkdir");
+        let asset = dir.path().join("assets").join("app-DkX9a2Bc.js");
+        std::fs::write(&asset, PLAIN).expect("write");
+        std::fs::write(asset.with_extension("js.gz"), GZIPPED).expect("write");
+        std::fs::write(asset.with_extension("js.br"), BROTLIED).expect("write");
         std::fs::write(dir.path().join("index.html"), PLAIN).expect("write");
         std::fs::write(dir.path().join("index.html.br"), BROTLIED).expect("write");
         dir
     }
+
+    /// Path of the hashed asset in [`fixture`].
+    const ASSET: &str = "/assets/app-DkX9a2Bc.js";
 
     async fn get(dir: &tempfile::TempDir, path: &str, accept_encoding: Option<&str>) -> Response {
         let static_dir = dir.path().to_string_lossy().to_string();
@@ -1174,7 +1204,6 @@ mod static_service_tests {
             .oneshot(request.body(Body::empty()).expect("request"))
             .await
             .expect("response")
-            .map(Body::new)
     }
 
     type Response = axum::http::Response<Body>;
@@ -1194,7 +1223,7 @@ mod static_service_tests {
     #[tokio::test]
     async fn brotli_wins_when_the_client_accepts_both() {
         let dir = fixture();
-        let response = get(&dir, "/app.js", Some("gzip, deflate, br")).await;
+        let response = get(&dir, ASSET, Some("gzip, deflate, br")).await;
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()["content-encoding"], "br");
@@ -1207,7 +1236,7 @@ mod static_service_tests {
     #[tokio::test]
     async fn client_q_values_decide_over_our_preference() {
         let dir = fixture();
-        let response = get(&dir, "/app.js", Some("br;q=0.5, gzip;q=1.0")).await;
+        let response = get(&dir, ASSET, Some("br;q=0.5, gzip;q=1.0")).await;
 
         assert_eq!(response.headers()["content-encoding"], "gzip");
         assert_eq!(body(response).await, GZIPPED);
@@ -1216,7 +1245,7 @@ mod static_service_tests {
     #[tokio::test]
     async fn gzip_is_served_when_brotli_is_not_accepted() {
         let dir = fixture();
-        let response = get(&dir, "/app.js", Some("gzip")).await;
+        let response = get(&dir, ASSET, Some("gzip")).await;
 
         assert_eq!(response.headers()["content-encoding"], "gzip");
         assert_eq!(body(response).await, GZIPPED);
@@ -1228,8 +1257,8 @@ mod static_service_tests {
     #[tokio::test]
     async fn etag_differs_per_encoding() {
         let dir = fixture();
-        let br = get(&dir, "/app.js", Some("br")).await;
-        let gz = get(&dir, "/app.js", Some("gzip")).await;
+        let br = get(&dir, ASSET, Some("br")).await;
+        let gz = get(&dir, ASSET, Some("gzip")).await;
 
         assert_ne!(
             br.headers().get("etag").expect("etag on br"),
@@ -1246,7 +1275,7 @@ mod static_service_tests {
         let index = dir.path().join("index.html");
         let request = Request::builder()
             .method("HEAD")
-            .uri("/app.js")
+            .uri(ASSET)
             .header("accept-encoding", "br")
             .body(Body::empty())
             .expect("request");
@@ -1267,7 +1296,7 @@ mod static_service_tests {
     #[tokio::test]
     async fn plain_file_is_served_without_accept_encoding() {
         let dir = fixture();
-        let response = get(&dir, "/app.js", None).await;
+        let response = get(&dir, ASSET, None).await;
 
         assert_eq!(response.status(), StatusCode::OK);
         assert!(response.headers().get("content-encoding").is_none());
@@ -1280,7 +1309,7 @@ mod static_service_tests {
     #[tokio::test]
     async fn vary_is_set_on_the_uncompressed_answer_too() {
         let dir = fixture();
-        let response = get(&dir, "/app.js", None).await;
+        let response = get(&dir, ASSET, None).await;
 
         assert_eq!(response.headers()["vary"], "accept-encoding");
     }
@@ -1314,5 +1343,81 @@ mod static_service_tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert!(response.headers().get("content-encoding").is_none());
         assert_eq!(body(response).await, PLAIN);
+    }
+
+    /// The caching half of the story, end to end through the real service.
+    ///
+    /// Both cases are asserted together because either one alone proves
+    /// nothing: "assets get a year" is satisfied by a blanket header on
+    /// everything, and "the index revalidates" is satisfied by no header
+    /// at all. It is the *difference* between the two that is the policy.
+    #[tokio::test]
+    async fn hashed_assets_are_immutable_and_the_index_is_not() {
+        let dir = fixture();
+
+        let asset = get(&dir, ASSET, Some("br")).await;
+        assert_eq!(asset.status(), StatusCode::OK);
+        assert_eq!(asset.headers()["cache-control"], static_cache::IMMUTABLE);
+
+        let index = get(&dir, "/index.html", Some("br")).await;
+        assert_eq!(index.status(), StatusCode::OK);
+        assert_eq!(index.headers()["cache-control"], static_cache::REVALIDATE);
+    }
+
+    /// The SPA fallback is the index under another URL, so it must carry
+    /// the index's policy — otherwise a visitor caches a deep link with
+    /// yesterday's HTML in it.
+    #[tokio::test]
+    async fn the_spa_fallback_revalidates() {
+        let dir = fixture();
+        let response = get(&dir, "/library/some-law", Some("br")).await;
+
+        assert_eq!(
+            response.headers()["cache-control"],
+            static_cache::REVALIDATE
+        );
+    }
+
+    /// A request for an asset that is not on disk is answered with the
+    /// index HTML. Marking that immutable would pin a broken page under
+    /// a bundle URL for a year.
+    #[tokio::test]
+    async fn a_missing_asset_is_not_cached_as_one() {
+        let dir = fixture();
+        let response = get(&dir, "/assets/gone-Zz9YxW01.js", Some("br")).await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers()["cache-control"],
+            static_cache::REVALIDATE
+        );
+    }
+
+    /// Caching sits beside compression, it does not replace it: the ETag
+    /// and `Vary` that make the `no-cache` half cheap must survive.
+    #[tokio::test]
+    async fn caching_leaves_the_compression_headers_alone() {
+        let dir = fixture();
+        let response = get(&dir, ASSET, Some("br")).await;
+
+        assert_eq!(response.headers()["content-encoding"], "br");
+        assert_eq!(response.headers()["vary"], "accept-encoding");
+        assert!(response.headers().get("etag").is_some());
+        assert_eq!(response.headers()["cache-control"], static_cache::IMMUTABLE);
+    }
+
+    /// Files at the root of `dist` that are not the index — the icon,
+    /// `favorites.json` — sit at fixed names too and must revalidate.
+    #[tokio::test]
+    async fn fixed_name_root_files_revalidate() {
+        let dir = fixture();
+        std::fs::write(dir.path().join("favorites.json"), PLAIN).expect("write");
+        let response = get(&dir, "/favorites.json", None).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["cache-control"],
+            static_cache::REVALIDATE
+        );
     }
 }
