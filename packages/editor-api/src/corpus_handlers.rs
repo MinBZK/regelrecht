@@ -890,8 +890,14 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
 
 /// Law ids a scenario file evaluates, extracted from its execution steps.
 ///
-/// A target is the law named in an `I evaluate "<output>" of "<law_id>"`
-/// step. The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
+/// A target is the law named in an evaluation step: `I evaluate "<output>"
+/// of "<law_id>"` (`bdd/grammar.yaml`, step `evaluate`) and its multi-output
+/// twin `I evaluate outputs "<outputs>" of "<law_id>"` (step
+/// `evaluate_outputs`). Both name the law the scenario puts to work, so
+/// leaving the second out would hide a scenario from the law it tests — and
+/// make the integrity report call that law's own folder untargeted.
+///
+/// The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
 /// the frontend step matcher (`frontend/src/gherkin/steps.js`) matches step
 /// text without its keyword, so all of these run as execution steps.
 /// `Given law "…" is loaded` lines are dependencies, not targets.
@@ -910,7 +916,11 @@ pub(crate) fn extract_target_law_ids(content: &str) -> Vec<String> {
         else {
             continue;
         };
-        let Some(rest) = step.trim_start().strip_prefix("I evaluate \"") else {
+        let step = step.trim_start();
+        let Some(rest) = step
+            .strip_prefix("I evaluate outputs \"")
+            .or_else(|| step.strip_prefix("I evaluate \""))
+        else {
             continue;
         };
         // rest = `<output>" of "<law_id>"…`
@@ -4973,6 +4983,23 @@ mod tests {
         assert_eq!(
             extract_target_law_ids(content),
             vec!["law_a", "law_b", "law_c", "law_d", "law_e"]
+        );
+    }
+
+    #[test]
+    fn extract_targets_covers_the_multi_output_evaluation_step() {
+        // `evaluate_outputs` (bdd/grammar.yaml) names its law in the same
+        // place as `evaluate`. Missing it would hide the scenario from the
+        // law it tests — and make the integrity report claim the law's own
+        // scenario folder targets nothing.
+        let content = r#"
+    When I evaluate outputs "a, b" of "law_multi"
+    When I evaluate "c" of "law_single"
+    When I evaluate outputs "d" of "law_multi"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["law_multi", "law_single"]
         );
     }
 

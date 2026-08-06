@@ -85,7 +85,7 @@ function scopeSummary(r) {
       <nldd-inline-dialog
         v-if="!hasFindings"
         variant="success"
-        icon="seal-check-mark"
+        icon="certified"
         text="Geen problemen gevonden"
         :supporting-text="scopeSummary(report)"
       ></nldd-inline-dialog>

@@ -434,16 +434,17 @@ impl TrajectCorpus {
     /// Re-resolve the server-side token configured for the writable-own
     /// source, if any.
     ///
-    /// Only for the error path: when a request carries no personal token
-    /// the failed scan authenticated with this one, so the diagnosis has to
-    /// use it too or it would probe a different access path than the one
-    /// that broke. Resolved on demand and dropped by the caller — no token
-    /// is ever stored on this shared, cross-user snapshot.
+    /// For the callers that talk to GitHub directly instead of through the
+    /// backend: when a request carries no personal token, this is the
+    /// credential the backend itself would have used, so they have to
+    /// re-resolve it or they walk a different access path than the ordinary
+    /// reads. The index diagnosis needs that to probe the path that actually
+    /// broke ([`crate::traject_index_diagnosis`]); the integrity scan needs
+    /// it to enumerate the branch at all ([`crate::traject_integrity`]).
+    /// Resolved on demand and dropped by the caller — no token is ever
+    /// stored on this shared, cross-user snapshot.
     pub fn own_server_token(&self) -> Option<String> {
-        let source = self
-            .corpus
-            .registry
-            .get_source(&self.writable_own_source_id)?;
+        let source = self.own_source()?;
         regelrecht_corpus::auth::CredentialResolver::new(self.corpus.auth_file.as_deref())
             .resolve_source(source)
             .ok()

@@ -16,7 +16,10 @@
 //! This module is its counterpart: the repo reads fine — is what is *in* it
 //! internally consistent? Both run in-band, on the caller's own read token,
 //! for the same reason: the repo may be private and user-token-only, so the
-//! only credential that can see it is the one on the request.
+//! only credential that can see it is the one on the request. And both apply
+//! the same precedence when there is no personal token: the source's
+//! server-side one, which is what the traject's ordinary reads authenticate
+//! with.
 //!
 //! # Shape
 //!
@@ -1200,10 +1203,18 @@ pub async fn get_traject_integrity(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<IntegrityReport>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    // Same resolution (and same deferred 428 into the koppel-flow) as every
-    // other read of the writable-own source. Surfaced immediately here, since
-    // this endpoint reads nothing else.
     let token = resolve_own_read_token(&state, account.id, &headers, &traject).await?;
+    // No personal token means the backend reads this source with the
+    // server-side credential configured for it — and `resolve_own_read_token`
+    // answers `None` precisely because the backend carries that credential
+    // itself. This scan bypasses the backend and talks to GitHub directly, so
+    // it has to re-resolve that token or a private repo with a service token
+    // would be enumerated anonymously and 404 every time. Same fallback, in
+    // the same order, as the index diagnosis (`require_traject_index`).
+    let token = match token {
+        Some(tok) => Some(tok),
+        None => traject.own_server_token(),
+    };
 
     let scan = scan_own_source(&state, &traject, token.as_deref()).await?;
     let findings = run_checks(&scan);
@@ -1831,9 +1842,14 @@ articles:
 
   Scenario: Basis
     Then I evaluate "bedrag" of "wet_alpha"
+
+  Scenario: Meerdere uitkomsten
+    When I evaluate outputs "bedrag, recht" of "wet_omega"
 "#,
         );
-        assert_eq!(facts.evaluated_ids, vec!["wet_alpha"]);
+        // Both evaluation steps count as targets — a folder whose scenarios
+        // only use the multi-output form still tests its law.
+        assert_eq!(facts.evaluated_ids, vec!["wet_alpha", "wet_omega"]);
         assert_eq!(facts.loaded_ids, vec!["wet_beta"]);
     }
 
