@@ -771,16 +771,33 @@ async fn a_write_after_creating_the_branch_does_not_overwrite_base_content() {
         .respond_with(ResponseTemplate::new(404).set_body_string(
             r#"{"message":"No commit found for the ref traject/abc","status":"404"}"#,
         ))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    // Every later read of that path — the sha-refetch the 422 handler
+    // would do — finds the base sidecar with the notes already on it.
+    // That is what makes this test bite: without the fix the refetch
+    // succeeds and the second PUT replaces these notes with only the new.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/notes/x.yaml"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "name": "x.yaml", "path": "notes/x.yaml",
+            "sha": "base-file-sha", "type": "file",
+            "content": b64("notes: [old]\n"), "encoding": "base64",
+        })))
         .mount(&server)
         .await;
     // But after the branch is minted from base, the file IS there: GitHub
     // refuses a create-shaped PUT with the 422 that means "supply a sha".
+    // Exactly one PUT may go out — the point is that no second one follows
+    // carrying a refetched sha, because that one replaces the base notes.
     Mock::given(method("PUT"))
         .and(path("/repos/acme/corpus/contents/notes/x.yaml"))
         .respond_with(
             ResponseTemplate::new(422)
                 .set_body_string(r#"{"message":"Invalid request.\n\n\"sha\" wasn't supplied."}"#),
         )
+        .expect(1)
         .mount(&server)
         .await;
 

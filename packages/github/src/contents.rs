@@ -86,6 +86,20 @@ struct PutContent {
     sha: String,
 }
 
+/// What a repo lookup said about a credential's access. The distinction
+/// matters for how long the answer is worth remembering: absence and
+/// readability are settled, a refusal is something the user can go and
+/// change in the GitHub UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RepoAccess {
+    /// The repo answered — this credential can read it.
+    Readable,
+    /// 404: no repo at this address for anyone this credential is.
+    NoSuchRepo,
+    /// 401/403: the repo may well exist, this credential may not have it.
+    Denied,
+}
+
 /// What a conditional GET produced: a cache hit, a body to parse, or a
 /// 404 that is genuinely about the path.
 enum ConditionalOutcome {
@@ -215,31 +229,39 @@ impl GithubClient {
     /// with a different token identity, so it gets its own answer.
     async fn confirm_absence(&self, repo: &str, path: &str, token: Option<&str>) -> Result<()> {
         let key = Self::cache_key(repo, None, token);
-        let readable = match self.known_repo_readable(&key) {
-            Some(known) => known,
+        let access = match self.known_repo_readable(&key) {
+            Some(true) => RepoAccess::Readable,
+            Some(false) => RepoAccess::NoSuchRepo,
             None => {
-                let readable = self.repo_is_readable(repo, token).await?;
-                self.remember_repo_readable(&key, readable);
-                readable
+                let access = self.repo_access(repo, token).await?;
+                // Only a settled answer is worth remembering. "Readable"
+                // and "no such repo" don't change under us; a refusal can
+                // — an org OAuth-App restriction or SAML sign-in is
+                // authorised in the GitHub UI in seconds, with the same
+                // token — and pinning that for the client's lifetime would
+                // keep failing long after the user fixed it.
+                if !matches!(access, RepoAccess::Denied) {
+                    self.remember_repo_readable(&key, access == RepoAccess::Readable);
+                }
+                access
             }
         };
-        if readable {
+        if access == RepoAccess::Readable {
             return Ok(());
         }
         Err(GithubError::Api {
             status: 404,
             message: format!(
                 "Contents API for {path}: 404, and {repo} is not readable with this \
-                 credential — the answer is unknown, not absence"
+                 credential ({access:?}) — the answer is unknown, not absence"
             ),
         })
     }
 
-    /// Whether `GET /repos/{repo}` answers for this credential. `false`
-    /// for 401/403/404 (no access, or no such repo); a rate-limit 403 or
-    /// any other failure is an `Err`, because "I could not ask" is not
-    /// "the answer is no".
-    async fn repo_is_readable(&self, repo: &str, token: Option<&str>) -> Result<bool> {
+    /// What `GET /repos/{repo}` says about this credential's access. A
+    /// rate-limit 403 or any other failure is an `Err`, because "I could
+    /// not ask" is not "the answer is no".
+    async fn repo_access(&self, repo: &str, token: Option<&str>) -> Result<RepoAccess> {
         let url = format!("{}/repos/{}", self.api_base, repo);
         let response = self
             .client
@@ -252,7 +274,7 @@ impl GithubClient {
 
         let status = response.status();
         if status.is_success() {
-            return Ok(true);
+            return Ok(RepoAccess::Readable);
         }
         if status == reqwest::StatusCode::FORBIDDEN && Self::forbidden_is_rate_limit(&response) {
             let body = response.text().await.unwrap_or_default();
@@ -261,20 +283,19 @@ impl GithubClient {
                 message: format!("repo lookup for {repo} hit the rate limit: {body}"),
             });
         }
-        if matches!(
-            status,
-            reqwest::StatusCode::NOT_FOUND
-                | reqwest::StatusCode::UNAUTHORIZED
-                | reqwest::StatusCode::FORBIDDEN
-        ) {
-            return Ok(false);
+        match status {
+            reqwest::StatusCode::NOT_FOUND => Ok(RepoAccess::NoSuchRepo),
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+                Ok(RepoAccess::Denied)
+            }
+            other => {
+                let body = response.text().await.unwrap_or_default();
+                Err(GithubError::Api {
+                    status: other.as_u16(),
+                    message: format!("repo lookup for {repo}: {body}"),
+                })
+            }
         }
-        let code = status.as_u16();
-        let body = response.text().await.unwrap_or_default();
-        Err(GithubError::Api {
-            status: code,
-            message: format!("repo lookup for {repo}: {body}"),
-        })
     }
 
     /// Read the `ETag` header off a fresh response, if it has one.
@@ -802,6 +823,48 @@ mod tests {
             .await
             .expect_err("an unreadable repo never answers with absence");
         }
+    }
+
+    /// A refusal is not settled: an org OAuth-App restriction or a SAML
+    /// sign-in is authorised in the GitHub UI in seconds, with the same
+    /// token. Remembering it would keep the read failing long after the
+    /// user fixed it, so a 403 is re-asked.
+    #[tokio::test]
+    async fn a_refused_repo_is_re_probed_rather_than_written_off() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus"))
+            .respond_with(ResponseTemplate::new(403).set_body_string("must authorize the app"))
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        // Second probe: access has been granted in the meantime.
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "full_name": "acme/corpus"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/contents/wet/a.yaml"))
+            .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+            .mount(&server)
+            .await;
+
+        let c = client(&server);
+        c.fetch_file_with_sha("acme/corpus", "main", "wet/a.yaml", Some("tok"))
+            .await
+            .expect_err("while access is refused the read cannot answer");
+        assert!(
+            c.fetch_file_with_sha("acme/corpus", "main", "wet/a.yaml", Some("tok"))
+                .await
+                .unwrap()
+                .is_none(),
+            "once access is granted the same read answers absence"
+        );
     }
 
     /// The Contents API serves the same URL as JSON or as raw depending on

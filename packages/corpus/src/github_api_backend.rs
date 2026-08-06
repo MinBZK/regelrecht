@@ -47,6 +47,12 @@ use crate::timing;
 struct PendingWrite {
     op: PendingOp,
     base_sha: Option<String>,
+    /// Whether a read of this path in this backend answered "not there"
+    /// before the write was buffered. Only such a write can be misled by
+    /// a branch that gets minted from base in between — see `persist`.
+    /// A blind write (`save_law`) never read, so it keeps its
+    /// write-what-I-say semantics.
+    read_saw_absence: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +74,10 @@ struct Inner {
     /// written nor deleted may linger — the next write's 409/retry path
     /// covers that, so it stays correct.
     sha_cache: HashMap<PathBuf, String>,
+    /// Paths whose most recent read in this backend answered "not there".
+    /// Feeds [`PendingWrite::read_saw_absence`]; a read that does find the
+    /// file removes its entry again.
+    absent_reads: std::collections::HashSet<PathBuf>,
     /// Buffered writes/deletes, in insertion order.
     pending: Vec<(PathBuf, PendingWrite)>,
     /// Whether the target branch is known to exist. Set by a successful
@@ -114,6 +124,7 @@ impl GitHubApiBackend {
             inner: Mutex::new(Inner {
                 client: GithubClient::new()?,
                 sha_cache: HashMap::new(),
+                absent_reads: std::collections::HashSet::new(),
                 pending: Vec::new(),
                 branch_ready: false,
             }),
@@ -431,12 +442,14 @@ impl RepoBackend for GitHubApiBackend {
         match outcome {
             Some((content, sha)) => {
                 inner.sha_cache.insert(relative_path.to_path_buf(), sha);
+                inner.absent_reads.remove(relative_path);
                 Ok(Some(content))
             }
             None => {
                 // Remove any stale SHA from a previous existence — a
                 // later write will (correctly) be treated as a create.
                 inner.sha_cache.remove(relative_path);
+                inner.absent_reads.insert(relative_path.to_path_buf());
                 Ok(None)
             }
         }
@@ -510,11 +523,13 @@ impl RepoBackend for GitHubApiBackend {
         validate_relative(relative_path)?;
         let mut inner = self.inner.lock().await;
         let base_sha = inner.sha_cache.get(relative_path).cloned();
+        let read_saw_absence = inner.absent_reads.contains(relative_path);
         inner.pending.push((
             relative_path.to_path_buf(),
             PendingWrite {
                 op: PendingOp::Upsert(content.to_string()),
                 base_sha,
+                read_saw_absence,
             },
         ));
         Ok(())
@@ -530,6 +545,7 @@ impl RepoBackend for GitHubApiBackend {
             PendingWrite {
                 op: PendingOp::Delete,
                 base_sha,
+                read_saw_absence: false,
             },
         ));
         Ok(())
@@ -736,10 +752,12 @@ impl RepoBackend for GitHubApiBackend {
         // Take one lock guard for the whole loop so the shared-client calls
         // inside don't pay re-acquire cost per-write. The pending
         // buffer was already drained above; if any write fails we propagate
-        // via `?` and the remaining (still-untaken-from-buffer) entries are
-        // dropped — fine in practice because each handler only enqueues a
-        // single write before calling persist, so there is no partially-
-        // applied multi-write batch to recover here.
+        // via `?` and the remaining entries are dropped. The Contents API
+        // commits per file, so a multi-file persist (promote copies every
+        // version plus the scenarios) that fails halfway leaves the files
+        // before it committed on the branch — the caller sees the error
+        // and the branch holds a prefix. Single-file saves, which is every
+        // other handler, have nothing to recover.
         let mut inner = self.inner.lock().await;
 
         // Lazy branch bootstrap for the user-token write mode: a backend
@@ -748,12 +766,17 @@ impl RepoBackend for GitHubApiBackend {
         // mint the traject branch itself — with the same effective token
         // that authenticates the commit.
         // Whether this persist is the one that minted the branch. A
-        // branch seeded from base carries the base's files, which the
-        // reads that produced these pending writes never saw: they asked a
-        // ref that did not exist and were told "absent". Blindly upserting
-        // over that would silently replace base content — an append-only
-        // sidecar (notes) would come back holding only the new entry. So
-        // an upsert that carries no base sha is create-only here.
+        // branch seeded from base carries the base's files, which a read
+        // made before it existed could not see: it asked a ref that was
+        // not there and was told "absent". Upserting blindly over that
+        // would silently replace base content — an append-only sidecar
+        // (notes) would come back holding only the new entry. So a write
+        // whose own read saw absence is create-only here.
+        //
+        // Residual: this catches the branch *we* mint. Another replica
+        // minting it between our read and our persist leaves the same
+        // window open, which only a compare-and-set against the branch
+        // tip would close.
         let mut branch_just_created = false;
         if !inner.branch_ready {
             branch_just_created = Self::ensure_branch(
@@ -781,7 +804,7 @@ impl RepoBackend for GitHubApiBackend {
                         committer.as_ref(),
                         &ctx.message,
                         Some(token),
-                        !branch_just_created,
+                        !(branch_just_created && pw.read_saw_absence),
                     )
                     .await?;
                     new_shas.insert(path, new_sha);
