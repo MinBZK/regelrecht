@@ -34,6 +34,7 @@ import { proposalDivergence } from './lib/taskReview.js';
 import ArticleText from './components/ArticleText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import NoteCreator from './components/NoteCreator.vue';
+import NotesLoadError from './components/NotesLoadError.vue';
 import NoteCard from './components/NoteCard.vue';
 import QuotedFragment from './components/QuotedFragment.vue';
 import { cpToUtf16 } from './composables/useNotesHighlight.js';
@@ -351,6 +352,7 @@ const lawValidFrom = computed(() => {
 const {
   notesForArticle: committedNotesForArticle,
   issues: noteIssues,
+  error: notesLoadError,
   reload: reloadNotes,
 } = useNotes(lawId, selectedArticle, activeTrajectRef, lawValidFrom);
 
@@ -2946,6 +2948,11 @@ async function handleActionSave() {
                    plus the draft-management actions moved from the Tekst pane.
                    Deliberately minimal for now; to be fine-tuned later. -->
               <nldd-simple-section v-else-if="view === 'notes'" width="full">
+                <!-- Pane-level resolve failure (fetch/engine/resolver threw).
+                     Shown to every viewer, not only note authors: without it
+                     the pane falls through to "Geen notities", which reads as
+                     an empty sidecar instead of a failure. -->
+                <NotesLoadError :error="notesLoadError" />
                 <template v-if="canCreateNotes">
                   <nldd-inline-dialog
                     v-if="noteIssues.length"
@@ -2977,7 +2984,7 @@ async function handleActionSave() {
                 </template>
 
                 <nldd-inline-dialog
-                  v-if="notesForArticle.length === 0"
+                  v-if="notesForArticle.length === 0 && !notesLoadError"
                   text="Geen notities voor dit artikel"
                 ></nldd-inline-dialog>
                 <template v-else>
