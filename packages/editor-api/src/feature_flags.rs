@@ -42,6 +42,11 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         // 400s and the frontend silently reverts it, so the toggle would
         // never stick.
         (GITHUB_USER_OAUTH.into(), false),
+        // Analyse: het traject-dashboard (RFC-031). Default off zodat de
+        // editor zich ongewijzigd gedraagt tot een gebruiker opt-int. Same
+        // allow-list rule: without this key the toggle PUT 400s and the
+        // frontend silently reverts it.
+        ("panel.analyse".into(), false),
     ])
 });
 

@@ -323,10 +323,10 @@ fn law_open_terms(law: &ArticleBasedLaw) -> BTreeMap<String, BTreeSet<String>> {
 /// Without a date every loaded version is walked. That is the right default for
 /// a corpus-wide inventory ("what do we have"), where a version that has ended
 /// is still part of the corpus.
-fn select_versions<'a>(
-    resolver: &'a RuleResolver,
+fn select_versions(
+    resolver: &RuleResolver,
     on: Option<NaiveDate>,
-) -> (Vec<&'a ArticleBasedLaw>, Vec<NotInForceRow>) {
+) -> (Vec<&ArticleBasedLaw>, Vec<NotInForceRow>) {
     let all: Vec<&ArticleBasedLaw> = resolver.all_law_versions().collect();
     let Some(date) = on else {
         return (all, Vec::new());
