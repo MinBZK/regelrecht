@@ -35,7 +35,7 @@
 //! recently used entries are evicted first.
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -81,7 +81,25 @@ pub(crate) enum CachedPayload {
     Directory(Vec<DirectoryEntry>),
 }
 
+/// Which shape of payload a reader expects back. A cache entry of another
+/// shape is not a hit — the reader ignores it rather than guessing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CacheKind {
+    File,
+    Raw,
+    Directory,
+}
+
 impl CachedPayload {
+    /// The shape of this payload, for matching against what a reader wants.
+    pub(crate) fn kind(&self) -> CacheKind {
+        match self {
+            Self::File { .. } => CacheKind::File,
+            Self::Raw(_) => CacheKind::Raw,
+            Self::Directory(_) => CacheKind::Directory,
+        }
+    }
+
     /// Approximate heap footprint, for the cache budget. Exactness doesn't
     /// matter — the budget is a guard rail, not an accountant.
     fn size_bytes(&self) -> usize {
@@ -118,6 +136,11 @@ struct ClientState {
     response_order: VecDeque<String>,
     /// Summed [`CachedPayload::size_bytes`] of `response_cache`.
     response_bytes: usize,
+    /// Cache keys of `(repo, token identity)` pairs that have been proven
+    /// readable. A 404 only means "not there" once the repo it was asked
+    /// of is known to be readable with that credential; see
+    /// `GithubClient::confirm_absence`.
+    readable_repos: HashSet<String>,
     /// Most recent `x-ratelimit-remaining` seen on any response.
     rate_limit_remaining: Option<u32>,
 }
@@ -264,18 +287,39 @@ impl GithubClient {
         }
     }
 
-    /// Cache key for a conditional GET: the URL plus the identity of the
-    /// token it is made with. Two principals reading the same URL get two
-    /// entries, so a 304 can never hand one principal a body fetched under
-    /// another's credential. The token is hashed, never stored.
-    pub(crate) fn cache_key(url: &str, token: Option<&str>) -> String {
+    /// Cache key for a conditional GET: the URL, the representation asked
+    /// for, and the identity of the token it is made with.
+    ///
+    /// The token is part of the key so a 304 can never hand one principal a
+    /// body fetched under another's credential; it is hashed, never stored.
+    /// The representation is part of it because the Contents API serves the
+    /// same URL as JSON or raw depending on `Accept`, and those two bodies
+    /// must not share an entry.
+    pub(crate) fn cache_key(url: &str, accept: Option<&str>, token: Option<&str>) -> String {
+        let representation = accept.unwrap_or("default");
         match token {
             Some(token) => {
                 let mut hasher = DefaultHasher::new();
                 token.hash(&mut hasher);
-                format!("{url}#{:016x}", hasher.finish())
+                format!("{url}#{representation}#{:016x}", hasher.finish())
             }
-            None => format!("{url}#anon"),
+            None => format!("{url}#{representation}#anon"),
+        }
+    }
+
+    /// Whether this `(repo, token)` pair has already proven readable —
+    /// see `confirm_absence` in the contents module.
+    pub(crate) fn repo_is_confirmed_readable(&self, key: &str) -> bool {
+        self.state
+            .lock()
+            .map(|s| s.readable_repos.contains(key))
+            .unwrap_or(false)
+    }
+
+    /// Record that a `(repo, token)` pair was observed readable.
+    pub(crate) fn confirm_repo_readable(&self, key: &str) {
+        if let Ok(mut state) = self.state.lock() {
+            state.readable_repos.insert(key.to_string());
         }
     }
 

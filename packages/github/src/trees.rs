@@ -18,7 +18,7 @@ pub struct TreeEntryFile {
 }
 
 #[derive(Debug, Deserialize)]
-struct TreeResponse {
+pub(crate) struct TreeResponse {
     /// Sha of the tree object this response describes.
     #[serde(default)]
     sha: Option<String>,
@@ -27,7 +27,7 @@ struct TreeResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct TreeEntry {
+pub(crate) struct TreeEntry {
     path: String,
     #[serde(rename = "type")]
     entry_type: String,
@@ -57,7 +57,7 @@ impl GithubClient {
             self.api_base, repo, git_ref
         );
 
-        let cache_key = Self::cache_key(&url, token);
+        let cache_key = Self::cache_key(&url, None, token);
         let mut headers = self.default_headers(token)?;
         if let Some(etag) = self.cached_etag(&cache_key) {
             if let Ok(val) = reqwest::header::HeaderValue::from_str(&etag) {
@@ -180,8 +180,11 @@ impl GithubClient {
         Ok(Some(tree_ish))
     }
 
-    /// One non-recursive Trees call. `Ok(None)` on 404 (unknown ref or sha).
-    async fn fetch_tree(
+    /// One non-recursive Trees call. `Ok(None)` on 404, which here covers
+    /// both "no such ref" and "this credential cannot see this repo" — the
+    /// two are indistinguishable in GitHub's answer, and for every caller
+    /// they mean the same thing: no tree to read.
+    pub(crate) async fn fetch_tree(
         &self,
         repo: &str,
         tree_ish: &str,

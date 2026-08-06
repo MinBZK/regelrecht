@@ -8,10 +8,22 @@
 //! The reads here answer "not there" as `Ok(None)` / an empty listing, and
 //! callers act on that: a missing file is created, a missing directory has
 //! no colliding names in it. So a *failure* dressed up as absence is not a
-//! degraded read — it overwrites work. Only a 404 that GitHub attributes to
-//! the **path** is absence; a 404 for a ref that doesn't exist (a branch
-//! never created, a deleted preview branch) means the answer is unknown and
-//! comes back as an error. See [`not_found_is_missing_ref`].
+//! degraded read — it overwrites work.
+//!
+//! GitHub answers three different things with 404: a path that isn't in
+//! the ref, a ref that doesn't exist, and a repo this credential cannot
+//! see. The first two are absence — there is no content at that path
+//! either way, and a traject branch that does not exist yet is a supported
+//! state ("branch on first activation"). The third is a failure, and it is
+//! indistinguishable from the other two by body: a repo you cannot see
+//! answers the same `{"message":"Not Found"}` as a missing file, precisely
+//! so it doesn't confirm the repo exists.
+//!
+//! So a 404 is only reported as absence once the **repository** has proven
+//! readable with this credential — one repo lookup per (repo, token),
+//! remembered after that. See `confirm_absence`. That a *ref* exists is
+//! not this layer's question: the backends settle it in `ensure_ready`,
+//! which is where a mistyped corpus branch has to fail loudly.
 //!
 //! ## Conditional GETs
 //!
@@ -26,16 +38,8 @@ use base64::Engine;
 use reqwest::header::{HeaderValue, ACCEPT, CONTENT_TYPE, IF_NONE_MATCH};
 use serde::{Deserialize, Serialize};
 
-use crate::client::{CachedPayload, GithubClient};
+use crate::client::{CacheKind, CachedPayload, GithubClient};
 use crate::error::{GithubError, Result};
-
-/// Whether a 404 body says the **ref** is missing rather than the path.
-/// GitHub answers a read at a non-existent branch/sha with `"No commit
-/// found for the ref"`; a genuinely missing file inside a live ref answers
-/// the generic `"Not Found"`. Only the latter is absence.
-fn not_found_is_missing_ref(body: &str) -> bool {
-    body.contains("No commit found for the ref")
-}
 
 /// Commit identity for Contents / Git Data API writes. Both `committer` and
 /// `author` accept this shape; callers set them to the same value so the human
@@ -97,10 +101,10 @@ enum ConditionalOutcome {
 }
 
 impl GithubClient {
-    /// One conditional Contents GET: attaches `If-None-Match` when a cached
-    /// payload exists, resolves 304 against that cache, separates
-    /// path-absence from ref-absence, and turns every other non-success
-    /// status into an error.
+    /// One conditional Contents GET on `{repo}/contents/{path}?ref={git_ref}`:
+    /// attaches `If-None-Match` when a cached payload of the expected shape
+    /// exists, resolves 304 against that cache, separates absence from
+    /// failure, and turns every other non-success status into an error.
     ///
     /// A 304 without a cached payload cannot be answered (there is no body
     /// to return, and reporting absence would be a lie), so the request is
@@ -108,16 +112,26 @@ impl GithubClient {
     /// an unconditional request reaches the error at the end.
     async fn conditional_contents_get(
         &self,
-        url: &str,
+        repo: &str,
+        git_ref: &str,
+        path: &str,
         accept: Option<&'static str>,
+        kind: CacheKind,
         token: Option<&str>,
-        what: &str,
     ) -> Result<ConditionalOutcome> {
-        let cache_key = Self::cache_key(url, token);
+        let url = format!(
+            "{}/repos/{}/contents/{}?ref={}",
+            self.api_base, repo, path, git_ref
+        );
+        let cache_key = Self::cache_key(&url, accept, token);
 
         for attempt in 0..2 {
+            // A cached entry of another shape cannot answer this read, so
+            // it must not be revalidated either — revalidating it would
+            // trade a full body for a 304 we cannot use.
             let cached = if attempt == 0 {
                 self.cached_response(&cache_key)
+                    .filter(|hit| hit.payload.kind() == kind)
             } else {
                 None
             };
@@ -134,13 +148,13 @@ impl GithubClient {
 
             let response = self
                 .client
-                .get(url)
+                .get(&url)
                 .headers(headers)
                 .send()
                 .await
                 .map_err(|e| GithubError::Transport(format!("GitHub API request failed: {e}")))?;
             self.track_rate_limit(&response);
-            tracing::debug!(status = %response.status(), what, "gh contents GET response");
+            tracing::debug!(status = %response.status(), path, "gh contents GET response");
 
             if response.status() == reqwest::StatusCode::NOT_MODIFIED {
                 match cached {
@@ -151,15 +165,7 @@ impl GithubClient {
             }
 
             if response.status() == reqwest::StatusCode::NOT_FOUND {
-                let body = response.text().await.unwrap_or_default();
-                if not_found_is_missing_ref(&body) {
-                    return Err(GithubError::Api {
-                        status: 404,
-                        message: format!(
-                            "Contents API for {what}: the ref does not exist ({body})"
-                        ),
-                    });
-                }
+                self.confirm_absence(repo, path, token).await?;
                 return Ok(ConditionalOutcome::Absent);
             }
 
@@ -168,7 +174,7 @@ impl GithubClient {
                 let body = response.text().await.unwrap_or_default();
                 return Err(GithubError::Api {
                     status,
-                    message: format!("Contents API for {what}: {body}"),
+                    message: format!("Contents API for {path}: {body}"),
                 });
             }
 
@@ -181,9 +187,84 @@ impl GithubClient {
         Err(GithubError::Api {
             status: 304,
             message: format!(
-                "Contents API for {what}: answered 304 to a request that carried no \
+                "Contents API for {path}: answered 304 to a request that carried no \
                  If-None-Match, so there is no body to serve"
             ),
+        })
+    }
+
+    /// Establish that a 404 really is absence and not a read this
+    /// credential was never allowed to make.
+    ///
+    /// A repo you cannot see answers `{"message":"Not Found"}` —
+    /// deliberately the same body as a missing file, so the 404 alone
+    /// proves nothing. One repo lookup settles it: the repo answers, so
+    /// the credential can read it and the missing thing really is missing.
+    /// It doesn't, and the read failed; the caller must not treat that as
+    /// an empty folder or a free filename.
+    ///
+    /// The positive answer is remembered per (repo, token identity), so a
+    /// corpus full of legitimately absent sidecar files pays this once
+    /// rather than per read. It is a snapshot: access revoked mid-process
+    /// stays confirmed until the client is rebuilt, which is the price of
+    /// not doubling every miss.
+    async fn confirm_absence(&self, repo: &str, path: &str, token: Option<&str>) -> Result<()> {
+        let key = Self::cache_key(repo, None, token);
+        if self.repo_is_confirmed_readable(&key) {
+            return Ok(());
+        }
+        if self.repo_is_readable(repo, token).await? {
+            self.confirm_repo_readable(&key);
+            return Ok(());
+        }
+        Err(GithubError::Api {
+            status: 404,
+            message: format!(
+                "Contents API for {path}: 404, and {repo} is not readable with this \
+                 credential — the answer is unknown, not absence"
+            ),
+        })
+    }
+
+    /// Whether `GET /repos/{repo}` answers for this credential. `false`
+    /// for 401/403/404 (no access, or no such repo); a rate-limit 403 or
+    /// any other failure is an `Err`, because "I could not ask" is not
+    /// "the answer is no".
+    async fn repo_is_readable(&self, repo: &str, token: Option<&str>) -> Result<bool> {
+        let url = format!("{}/repos/{}", self.api_base, repo);
+        let response = self
+            .client
+            .get(&url)
+            .headers(self.default_headers(token)?)
+            .send()
+            .await
+            .map_err(|e| GithubError::Transport(format!("GitHub repo lookup failed: {e}")))?;
+        self.track_rate_limit(&response);
+
+        let status = response.status();
+        if status.is_success() {
+            return Ok(true);
+        }
+        if status == reqwest::StatusCode::FORBIDDEN && Self::forbidden_is_rate_limit(&response) {
+            let body = response.text().await.unwrap_or_default();
+            return Err(GithubError::Api {
+                status: 403,
+                message: format!("repo lookup for {repo} hit the rate limit: {body}"),
+            });
+        }
+        if matches!(
+            status,
+            reqwest::StatusCode::NOT_FOUND
+                | reqwest::StatusCode::UNAUTHORIZED
+                | reqwest::StatusCode::FORBIDDEN
+        ) {
+            return Ok(false);
+        }
+        let code = status.as_u16();
+        let body = response.text().await.unwrap_or_default();
+        Err(GithubError::Api {
+            status: code,
+            message: format!("repo lookup for {repo}: {body}"),
         })
     }
 
@@ -226,21 +307,23 @@ impl GithubClient {
         path: &str,
         token: Option<&str>,
     ) -> Result<Option<String>> {
-        let url = format!(
-            "{}/repos/{}/contents/{}?ref={}",
-            self.api_base, repo, path, git_ref
-        );
         let outcome = self
-            .conditional_contents_get(&url, Some("application/vnd.github.raw+json"), token, path)
+            .conditional_contents_get(
+                repo,
+                git_ref,
+                path,
+                Some("application/vnd.github.raw+json"),
+                CacheKind::Raw,
+                token,
+            )
             .await?;
         let (response, cache_key) = match outcome {
             ConditionalOutcome::Absent => return Ok(None),
             ConditionalOutcome::NotModified(CachedPayload::Raw(content)) => {
                 return Ok(Some(content))
             }
-            // A cached payload of another shape cannot answer this read.
-            // It can only happen if a URL served two representations; treat
-            // it as a miss rather than guessing.
+            // Unreachable: the conditional GET only revalidates an entry
+            // whose shape matches, so a 304 always carries a raw body here.
             ConditionalOutcome::NotModified(_) => {
                 return Err(GithubError::Decode(format!(
                     "cached response for {path} is not a raw file body"
@@ -273,18 +356,15 @@ impl GithubClient {
         path: &str,
         token: Option<&str>,
     ) -> Result<Option<(String, String)>> {
-        let url = format!(
-            "{}/repos/{}/contents/{}?ref={}",
-            self.api_base, repo, path, git_ref
-        );
         let outcome = self
-            .conditional_contents_get(&url, None, token, path)
+            .conditional_contents_get(repo, git_ref, path, None, CacheKind::File, token)
             .await?;
         let (response, cache_key) = match outcome {
             ConditionalOutcome::Absent => return Ok(None),
             ConditionalOutcome::NotModified(CachedPayload::File { content, sha }) => {
                 return Ok(Some((content, sha)))
             }
+            // Unreachable — see `fetch_file_raw_opt`.
             ConditionalOutcome::NotModified(_) => {
                 return Err(GithubError::Decode(format!(
                     "cached response for {path} is not a file body"
@@ -324,7 +404,8 @@ impl GithubClient {
     /// List a directory via the Contents API. Returns an empty list for a
     /// missing directory (404) — the "nothing here yet" path. Non-array
     /// responses (someone listed a file path) also yield an empty list.
-    /// A 404 for a missing **ref** is an error, not an empty directory.
+    /// A 404 that is not about the path — an unknown ref, an unreadable
+    /// repo — is an error, not an empty directory.
     #[tracing::instrument(name = "gh_http", skip_all, fields(method = "GET", kind = "contents_dir", repo = %repo))]
     pub async fn list_directory(
         &self,
@@ -333,18 +414,15 @@ impl GithubClient {
         dir: &str,
         token: Option<&str>,
     ) -> Result<Vec<DirectoryEntry>> {
-        let url = format!(
-            "{}/repos/{}/contents/{}?ref={}",
-            self.api_base, repo, dir, git_ref
-        );
         let outcome = self
-            .conditional_contents_get(&url, None, token, dir)
+            .conditional_contents_get(repo, git_ref, dir, None, CacheKind::Directory, token)
             .await?;
         let (response, cache_key) = match outcome {
             ConditionalOutcome::Absent => return Ok(Vec::new()),
             ConditionalOutcome::NotModified(CachedPayload::Directory(entries)) => {
                 return Ok(entries)
             }
+            // Unreachable — see `fetch_file_raw_opt`.
             ConditionalOutcome::NotModified(_) => {
                 return Err(GithubError::Decode(format!(
                     "cached response for {dir} is not a directory listing"
@@ -562,12 +640,26 @@ mod tests {
 
     /// GitHub's 404 body when the branch/sha in `?ref=` does not exist.
     const MISSING_REF_BODY: &str =
-        r#"{"message":"No commit found for the ref pr9999","status":"404"}"#;
+        r#"{"message":"No commit found for the ref traject/new","status":"404"}"#;
     /// GitHub's 404 body for a path that is simply not in the ref.
     const MISSING_PATH_BODY: &str = r#"{"message":"Not Found","status":"404"}"#;
 
     fn client(server: &MockServer) -> GithubClient {
         GithubClient::new().unwrap().with_base_url(server.uri())
+    }
+
+    /// The probe that turns a 404 into absence: the repo answers, so this
+    /// credential can read it. `times` pins how often it may be asked —
+    /// absence is confirmed once per (repo, token), not once per miss.
+    async fn mount_readable_repo(server: &MockServer, times: u64) {
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "full_name": "acme/corpus"
+            })))
+            .expect(times)
+            .mount(server)
+            .await;
     }
 
     /// A Contents API file response body carrying `content` for `path`.
@@ -598,33 +690,33 @@ mod tests {
         )
     }
 
-    /// A listing that 404s because the *ref* is gone must not read as "this
-    /// directory is empty": the caller derives collision-free filenames from
-    /// that list, so an empty answer silently authorises an overwrite.
+    /// A ref that does not exist yet holds no documents, so an empty
+    /// listing is the true answer — a traject branch is created on first
+    /// write, and the read before it must not fail.
     #[tokio::test]
-    async fn missing_ref_does_not_read_as_an_empty_directory() {
+    async fn a_ref_that_does_not_exist_yet_lists_empty() {
         let server = MockServer::start().await;
+        mount_readable_repo(&server, 1).await;
         Mock::given(method("GET"))
             .and(path_matcher("/repos/acme/corpus/contents/documents"))
             .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_REF_BODY))
             .mount(&server)
             .await;
 
-        let err = client(&server)
-            .list_directory("acme/corpus", "pr9999", "documents", None)
+        let entries = client(&server)
+            .list_directory("acme/corpus", "traject/new", "documents", None)
             .await
-            .expect_err("a missing ref must fail the listing");
-        assert!(
-            matches!(err, GithubError::Api { status: 404, .. }),
-            "unexpected error: {err}"
-        );
+            .unwrap();
+        assert!(entries.is_empty());
     }
 
     /// The other side of that coin: a directory that genuinely isn't there
-    /// yet is absence, and stays an empty listing.
+    /// yet is absence, and stays an empty listing — once the ref it was
+    /// asked at has proven readable.
     #[tokio::test]
     async fn missing_path_still_lists_empty() {
         let server = MockServer::start().await;
+        mount_readable_repo(&server, 1).await;
         Mock::given(method("GET"))
             .and(path_matcher("/repos/acme/corpus/contents/documents"))
             .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
@@ -638,30 +730,116 @@ mod tests {
         assert!(entries.is_empty());
     }
 
-    /// Same rule for a file read: "the branch is gone" must not arrive as
-    /// "the file does not exist", which a caller would answer by creating it.
+    /// The dangerous 404: a repo this credential cannot read answers the
+    /// same `{"message":"Not Found"}` as a missing path — deliberately, so
+    /// it doesn't confirm the repo exists. Reading that as an empty folder
+    /// hands the caller a free filename over an existing document, so it
+    /// must fail instead.
     #[tokio::test]
-    async fn missing_ref_does_not_read_as_a_missing_file() {
+    async fn an_unreadable_repo_does_not_read_as_an_empty_directory() {
         let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/contents/documents"))
+            .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+            .mount(&server)
+            .await;
+        // The probe 404s too: this credential cannot see the repo at all.
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus"))
+            .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+            .mount(&server)
+            .await;
+
+        let err = client(&server)
+            .list_directory("acme/corpus", "main", "documents", Some("tok"))
+            .await
+            .expect_err("an unreadable repo must not list as an empty folder");
+        assert!(
+            err.to_string().contains("not readable"),
+            "the message must name the real cause: {err}"
+        );
+    }
+
+    /// A corpus is full of legitimately absent sidecar files, so the probe
+    /// may not run per miss: the repo is confirmed once and remembered.
+    #[tokio::test]
+    async fn absence_is_confirmed_once_per_repo_not_once_per_miss() {
+        let server = MockServer::start().await;
+        mount_readable_repo(&server, 1).await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/contents/wet/a.yaml"))
+            .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/contents/wet/b.yaml"))
+            .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+            .mount(&server)
+            .await;
+
+        let c = client(&server);
+        for p in ["wet/a.yaml", "wet/b.yaml"] {
+            assert!(c
+                .fetch_file_with_sha("acme/corpus", "main", p, Some("tok"))
+                .await
+                .unwrap()
+                .is_none());
+        }
+    }
+
+    /// A probe that cannot answer (rate limit) leaves absence unproven, so
+    /// the read fails rather than guessing.
+    #[tokio::test]
+    async fn a_rate_limited_probe_leaves_the_read_failed() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/contents/wet/a.yaml"))
+            .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .insert_header("x-ratelimit-remaining", "0")
+                    .set_body_string("API rate limit exceeded"),
+            )
+            .mount(&server)
+            .await;
+
+        let err = client(&server)
+            .fetch_file_with_sha("acme/corpus", "main", "wet/a.yaml", Some("tok"))
+            .await
+            .expect_err("unproven absence is not absence");
+        assert!(
+            matches!(err, GithubError::Api { status: 403, .. }),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// Same for a file read on a not-yet-created branch: the law is not
+    /// there, which is what the promote flow asks before it writes.
+    #[tokio::test]
+    async fn a_read_on_a_ref_that_does_not_exist_yet_is_none() {
+        let server = MockServer::start().await;
+        mount_readable_repo(&server, 1).await;
         Mock::given(method("GET"))
             .and(path_matcher("/repos/acme/corpus/contents/wet/a.yaml"))
             .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_REF_BODY))
             .mount(&server)
             .await;
 
-        let err = client(&server)
-            .fetch_file_with_sha("acme/corpus", "pr9999", "wet/a.yaml", None)
+        assert!(client(&server)
+            .fetch_file_with_sha("acme/corpus", "traject/new", "wet/a.yaml", None)
             .await
-            .expect_err("a missing ref must fail the read");
-        assert!(
-            matches!(err, GithubError::Api { status: 404, .. }),
-            "unexpected error: {err}"
-        );
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
     async fn missing_file_is_still_none() {
         let server = MockServer::start().await;
+        mount_readable_repo(&server, 1).await;
         Mock::given(method("GET"))
             .and(path_matcher("/repos/acme/corpus/contents/wet/a.yaml"))
             .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
@@ -888,14 +1066,59 @@ mod tests {
             .unwrap();
     }
 
-    /// The cache is bounded: a body that no longer fits the budget is
-    /// evicted, and the next read goes out unconditionally (a full 200)
-    /// instead of revalidating an ETag whose body we threw away.
+    /// The cache is bounded, so an entry can be evicted while its ETag
+    /// would still validate. The re-read must then go out **without**
+    /// `If-None-Match`: revalidating an ETag whose body was thrown away
+    /// would trade a usable 200 for an unusable 304.
     #[tokio::test]
     async fn an_evicted_body_is_re_fetched_without_a_conditional_header() {
         let server = MockServer::start().await;
+        // Any conditional request is the bug this test is about.
         Mock::given(method("GET"))
-            .and(path_matcher("/repos/acme/corpus/contents/wet/a.yaml"))
+            .and(header_exists("if-none-match"))
+            .respond_with(ResponseTemplate::new(304))
+            .expect(0)
+            .mount(&server)
+            .await;
+        for (file, sha, etag) in [("a", "b1", "\"v1\""), ("b", "b2", "\"v2\"")] {
+            let body = format!("$id: {file}\n");
+            Mock::given(method("GET"))
+                .and(path_matcher(format!(
+                    "/repos/acme/corpus/contents/wet/{file}.yaml"
+                )))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .insert_header("etag", etag)
+                        .set_body_json(file_body(&format!("wet/{file}.yaml"), sha, &body)),
+                )
+                .mount(&server)
+                .await;
+        }
+
+        let mut c = client(&server);
+        // Room for exactly one body ("$id: a\n" plus its sha is 9 bytes).
+        c.set_cache_budget_bytes(12);
+
+        c.fetch_file_with_sha("acme/corpus", "main", "wet/a.yaml", None)
+            .await
+            .unwrap();
+        // Caching b evicts a — the budget fits only one.
+        c.fetch_file_with_sha("acme/corpus", "main", "wet/b.yaml", None)
+            .await
+            .unwrap();
+        let again = c
+            .fetch_file_with_sha("acme/corpus", "main", "wet/a.yaml", None)
+            .await
+            .unwrap();
+        assert_eq!(again, Some(("$id: a\n".to_string(), "b1".to_string())));
+    }
+
+    /// A body that cannot fit the budget at all is not cached, rather than
+    /// inserted and immediately evicted.
+    #[tokio::test]
+    async fn a_body_larger_than_the_budget_is_not_cached() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
             .and(header_exists("if-none-match"))
             .respond_with(ResponseTemplate::new(304))
             .expect(0)
@@ -913,7 +1136,6 @@ mod tests {
             .await;
 
         let mut c = client(&server);
-        // Budget smaller than the body: it is never worth caching.
         c.set_cache_budget_bytes(4);
         for _ in 0..2 {
             let got = c

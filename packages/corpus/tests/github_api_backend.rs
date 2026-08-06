@@ -41,6 +41,20 @@ fn backend(server: &MockServer) -> GitHubApiBackend {
     .with_api_base(server.uri())
 }
 
+/// A 404 only counts as absence once the repo has proven readable —
+/// GitHub answers a repo you cannot see with the same body as a missing
+/// path. Mount the repo lookup that settles it (asked once per
+/// repo+token, then remembered).
+async fn mount_readable_repo(server: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "full_name": "acme/corpus"
+        })))
+        .mount(server)
+        .await;
+}
+
 fn ctx() -> WriteContext {
     WriteContext::new("test commit".to_string(), None)
 }
@@ -406,6 +420,7 @@ async fn delete_path_resolves_sha_then_deletes() {
 async fn delete_already_gone_is_no_op() {
     let server = MockServer::start().await;
     mount_branch_exists(&server).await;
+    mount_readable_repo(&server).await;
 
     // GET 404 → file already gone → persist swallows the delete.
     Mock::given(method("GET"))
@@ -505,6 +520,7 @@ async fn list_files_filters_to_extension() {
 #[tokio::test]
 async fn list_files_missing_directory_returns_empty() {
     let server = MockServer::start().await;
+    mount_readable_repo(&server).await;
 
     Mock::given(method("GET"))
         .and(path("/repos/acme/corpus/contents/scenarios"))
@@ -612,27 +628,30 @@ async fn changed_files_without_token_is_empty_and_makes_no_request() {
 /// The collision check on document upload derives a free filename from the
 /// recursive listing of the traject's documents folder. An empty answer
 /// means "no name is taken", and the write that follows is unconditional —
-/// so a listing that failed must never come back empty. A branch that does
-/// not exist (deleted preview branch, branch never created) is exactly that
-/// case: GitHub answers 404 with "No commit found for the ref".
+/// so a listing that failed must never come back empty. A repo this
+/// credential cannot read is exactly that case, and GitHub dresses it up
+/// as the same 404 a missing folder gets.
 #[tokio::test]
-async fn recursive_listing_on_a_missing_branch_fails_instead_of_reading_empty() {
+async fn recursive_listing_on_an_unreadable_repo_fails_instead_of_reading_empty() {
     let server = MockServer::start().await;
 
     Mock::given(method("GET"))
         .and(path("/repos/acme/corpus/contents/documents"))
-        .respond_with(ResponseTemplate::new(404).set_body_string(
-            r#"{"message":"No commit found for the ref traject/abc","status":"404"}"#,
-        ))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found"}"#))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found"}"#))
         .mount(&server)
         .await;
 
     let err = backend(&server)
         .list_files_recursive(Path::new("documents"), None)
         .await
-        .expect_err("a dead branch must not list as an empty folder");
+        .expect_err("an unreadable repo must not list as an empty folder");
     assert!(
-        err.to_string().contains("404"),
+        err.to_string().contains("not readable"),
         "the cause must survive: {err}"
     );
 }
@@ -643,6 +662,7 @@ async fn recursive_listing_on_a_missing_branch_fails_instead_of_reading_empty() 
 #[tokio::test]
 async fn recursive_listing_of_an_empty_folder_is_still_empty() {
     let server = MockServer::start().await;
+    mount_readable_repo(&server).await;
 
     Mock::given(method("GET"))
         .and(path("/repos/acme/corpus/contents/documents"))
@@ -661,10 +681,39 @@ async fn recursive_listing_of_an_empty_folder_is_still_empty() {
 
 /// A save reads the law first (the If-Match precondition). If a failing
 /// read reported "no such file", the save would commit as a *create* over
-/// whatever is on the branch. A missing ref therefore errors here too.
+/// whatever is on the branch — so an unreadable repo errors here too.
 #[tokio::test]
-async fn read_on_a_missing_branch_fails_instead_of_reporting_no_such_file() {
+async fn read_on_an_unreadable_repo_fails_instead_of_reporting_no_such_file() {
     let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/wet/x.yaml"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found"}"#))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found"}"#))
+        .mount(&server)
+        .await;
+
+    let err = backend(&server)
+        .read_file(Path::new("wet/x.yaml"))
+        .await
+        .expect_err("an unreadable repo must not read as a missing file");
+    assert!(
+        err.to_string().contains("not readable"),
+        "the cause must survive: {err}"
+    );
+}
+
+/// The counterpart: a traject branch that has not been created yet is not
+/// a failure. The promote flow reads the target law before writing it, and
+/// that read happens before the first persist mints the branch.
+#[tokio::test]
+async fn read_on_a_branch_that_does_not_exist_yet_is_a_plain_miss() {
+    let server = MockServer::start().await;
+    mount_readable_repo(&server).await;
 
     Mock::given(method("GET"))
         .and(path("/repos/acme/corpus/contents/wet/x.yaml"))
@@ -674,12 +723,9 @@ async fn read_on_a_missing_branch_fails_instead_of_reporting_no_such_file() {
         .mount(&server)
         .await;
 
-    let err = backend(&server)
+    assert!(backend(&server)
         .read_file(Path::new("wet/x.yaml"))
         .await
-        .expect_err("a dead branch must not read as a missing file");
-    assert!(
-        err.to_string().contains("404"),
-        "the cause must survive: {err}"
-    );
+        .unwrap()
+        .is_none());
 }

@@ -198,6 +198,20 @@ fn write_central_law(central_dir: &std::path::Path) {
 /// Mocks voor de user-token-schrijfflow op één traject-repo: branch-check
 /// (bestaat al), en de Contents-PUT's van de promote.
 async fn mount_write_mocks(server: &MockServer, own_repo: &str) {
+    // De read waarmee promote controleert of de wet er al staat, 404't.
+    // Dat telt pas als afwezigheid zodra de repo zelf leesbaar blijkt —
+    // anders zou een repo die dit token niet mag zien als "leeg" lezen.
+    // Eenmalig, want daarna vertelt dit scenario juist het omgekeerde
+    // verhaal: de repo staat er ná de promote niet (meer), wat de
+    // diagnose van de mislukte indexscan hoort op te leveren.
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{own_repo}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "full_name": own_repo,
+        })))
+        .up_to_n_times(1)
+        .mount(server)
+        .await;
     Mock::given(method("GET"))
         .and(path(format!(
             "/repos/{own_repo}/git/ref/heads/{OWN_BRANCH}"
