@@ -67,6 +67,17 @@ scenario when the gap is about how a law evaluates end to end. A mutant in
 `operations.rs` that changes a comparison usually wants a unit test; one in
 `service.rs` that changes resolution order usually wants a scenario.
 
+Before writing a new test, check whether one already claims to cover this. Often
+a mutant survives next to a test that reads as though it pins the behaviour. Then
+the gap is that test, and the fix is to make its fixture construct the premise
+its own doc-comment describes. A survey of this repository found fourteen such
+tests: a longest-prefix test with no shorter competing article, a retain test
+whose only candidate was filtered out upstream, an assertion about a variable
+nothing references. Each one was a mutation survivor, and each read as coverage.
+
+Rewriting the existing test beats adding a second one beside it. A second test
+leaves the first as a decoy for the next reader.
+
 ### A mutant that says nothing
 
 Debug helpers, `Display` implementations, `bin/` targets such as
