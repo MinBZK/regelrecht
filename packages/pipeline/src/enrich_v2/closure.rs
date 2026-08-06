@@ -18,8 +18,10 @@
 //! ## De meting die de standaard bepaalt
 //!
 //! Gemeten met deze code op het corpus, vanaf `--article 69` van de
-//! Zorgverzekeringswet, met de stopregels hieronder aan en de Awb en de Awir
-//! aangewezen als kaderwet:
+//! Zorgverzekeringswet, met de stopregels hieronder aan. De meting is gedaan
+//! toen de Awb en de Awir nog als "kaderwet" naast de diepte stonden; zonder
+//! die uitzondering, die inmiddels geschrapt is, komt diepte 3 op 5 396 in
+//! plaats van 5 274 artikelen uit, ruim twee procent meer:
 //!
 //! | diepte | wetten | artikelen | entries |
 //! |-------:|-------:|----------:|--------:|
@@ -64,26 +66,22 @@
 //! - **Verwijzing zonder artikel.** "de Wet langdurige zorg" of "afdeling
 //!   3.3.1" noemt geen artikel, dus er is niets om naartoe te lopen. Op diepte 3
 //!   staan er ruim drieduizend van; ze volgen zou het wetboek oogsten.
-//! - **Kaderwetten.** Zie hieronder.
 //!
-//! ## Kaderwetten staan naast de diepte
+//! ## Algemene wetten zijn gewone wetten
 //!
-//! Een kaderwet is een probleem omdat je hem juist *niet* vindt door
-//! verwijzingen te volgen: de Awb verklaart zichzelf van toepassing op vrijwel
-//! elk besluit zonder dat de materiewet hem noemt. De kaart haalt hem er dus
-//! bij, buiten de graaf om, en de poort erna controleert dat de vermelde
-//! werking er echt in zit.
-//!
-//! Daarmee komt de vraag of die kaart een niveau kost. Hij kost er geen, en de
-//! meting zegt dat het cijfermatig nauwelijks uitmaakt: op diepte 3 scheelt het
-//! 5 274 tegen 5 396 artikelen, ruim twee procent. Omdat het zo weinig kost, is
-//! de keuze te maken op wat hij betekent, en dan is een niveau verbruiken aan
-//! iets dat overal geldt de verkeerde kant op. Elke wet zou meteen op diepte 1
-//! zitten zonder één materiële sprong te hebben gemaakt.
-//!
-//! Om dezelfde reden wordt er niet *vanuit* een kaderwet verder gelopen. Zou de
-//! Awb zijn eigen verwijzingen meelopen, dan is de sluiting de Awb en niet de
-//! wet waar je om vroeg.
+//! Er stond hier een vierde stopregel: een handgeschreven lijst "kaderwetten"
+//! (de Awb en de Awir) die als kaart naast de diepte meegingen en waar niet in
+//! of uit werd gelopen. Die uitzondering is geschrapt. Gemeten op het corpus
+//! komt de Awir vanaf de Wet op de zorgtoeslag op diepte 1 gewoon binnen met
+//! de artikelen die op de handgeschreven kaart stonden, dus daar berekende de
+//! graaf al wat de lijst wilde afdwingen, en "niet inlopen" hield nog wel de
+//! producent buiten het plan die deepest-first eerder vertaald moest worden dan
+//! zijn lezer. De Awb heeft het omgekeerde probleem, geen inkomende kanten,
+//! maar daarvoor deed de kaart niets: hij ontstond alleen op een kant die de
+//! traversal tegenkwam, en die kanten zijn er voor de Awb niet. Een wet die
+//! werkt zonder geciteerd te worden is een relatie met een bron in de wettekst
+//! (de reikwijdtebepaling, als `applies-to`-kant) en een trigger in het schema
+//! (`legal_character`), geen wetscategorie in de planner. Zie RFC-026.
 //!
 //! ## Definitie tegenover berekening
 //!
@@ -249,82 +247,6 @@ fn read_head(path: &Path, root: &Path) -> Option<LawEntry> {
     })
 }
 
-/// The designated framework laws: the ones a traversal never finds because
-/// they declare themselves applicable without being referenced.
-///
-/// Read from `<corpus>/kaderwetten.yaml`. An absent file means none are
-/// designated, which is the honest reading: this is a hand-written list and
-/// RFC-026 already names it as the one place a silent gap can arise.
-///
-/// Absent and broken are two different things and only the first is an honest
-/// empty list. A list with a YAML error used to fall back to no designations
-/// at all, and the caller then reported the file as *absent* — the silent gap
-/// requirement 5 calls the one failure form that may not occur, arrived at
-/// through the very line meant to prevent it. Both readers therefore return a
-/// `Result` and say which of the two happened.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Kaderwetten {
-    /// BWB identifiers, in the order the file lists them.
-    pub bwb_ids: Vec<String>,
-}
-
-impl Kaderwetten {
-    /// Read the list beside the corpus.
-    ///
-    /// `Ok(None)` when the file is not there, which is a corpus that
-    /// designates no framework laws. An `Err` is a file that is there and
-    /// cannot be read as a list.
-    ///
-    /// # Errors
-    ///
-    /// When `kaderwetten.yaml` exists but is not readable as YAML.
-    pub fn load(root: &Path) -> Result<Option<Self>, String> {
-        let path = root.join("kaderwetten.yaml");
-        let Ok(raw) = std::fs::read_to_string(&path) else {
-            return Ok(None);
-        };
-        Self::parse(&raw)
-            .map(Some)
-            .map_err(|e| format!("{}: {e}", path.display()))
-    }
-
-    /// Parse the list. Accepts a bare sequence of BWB numbers and a sequence of
-    /// mappings with a `bwb_id`, because both shapes read as the same list and
-    /// refusing one of them would be pedantry over a hand-written file.
-    ///
-    /// # Errors
-    ///
-    /// When the text is not YAML at all. A list that parses and designates
-    /// nothing is not an error: an empty file says the same as an absent one.
-    pub fn parse(raw: &str) -> Result<Self, String> {
-        let doc = serde_yaml_ng::from_str::<Value>(raw)
-            .map_err(|e| format!("de kaderwetlijst is geen YAML: {e}"))?;
-        let seq = doc
-            .get("kaderwetten")
-            .and_then(Value::as_sequence)
-            .or_else(|| doc.as_sequence())
-            .cloned()
-            .unwrap_or_default();
-        let bwb_ids = seq
-            .iter()
-            .filter_map(|item| match item {
-                Value::String(s) => Some(s.clone()),
-                other => other
-                    .get("bwb_id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-            })
-            .collect();
-        Ok(Self { bwb_ids })
-    }
-
-    /// Whether this law is designated.
-    #[must_use]
-    pub fn contains(&self, bwb_id: &str) -> bool {
-        self.bwb_ids.iter().any(|b| b == bwb_id)
-    }
-}
-
 /// The bounds the traversal applies before the depth number does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StopRules {
@@ -387,8 +309,6 @@ pub struct Plan {
     /// Laws to enrich, deepest first: a producer is translated before the law
     /// that reads it, which is what makes the binding real instead of a guess.
     pub tasks: Vec<Task>,
-    /// Framework laws that come along beside the depth.
-    pub cards: Vec<String>,
     /// Edges recorded rather than followed.
     pub gaps: Vec<Gap>,
 }
@@ -455,7 +375,6 @@ pub fn plan_closure(
     start_path: &str,
     start_articles: &[String],
     depth: usize,
-    kaderwetten: &Kaderwetten,
     index: &LawIndex,
     rules: StopRules,
 ) -> std::result::Result<Plan, String> {
@@ -490,7 +409,6 @@ pub fn plan_closure(
     law_depth.insert(start_bwb.clone(), 0);
     let mut taken: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut gaps: BTreeMap<(GapKind, String), usize> = BTreeMap::new();
-    let mut cards: BTreeSet<String> = BTreeSet::new();
 
     // The queue holds (law, article, is_entry_point). An entry point is an
     // article the closure came in through; a definition article is a leaf only
@@ -549,12 +467,6 @@ pub fn plan_closure(
         }
 
         for (target_law, target_article) in outward {
-            // A framework law comes along beside the depth: it is added to the
-            // plan as a card and never walked into or out of.
-            if kaderwetten.contains(&target_law) {
-                cards.insert(target_law);
-                continue;
-            }
             let Some(entry) = index.get(&target_law) else {
                 *gaps
                     .entry((GapKind::OutsideCorpus, target_law.clone()))
@@ -635,7 +547,6 @@ pub fn plan_closure(
 
     Ok(Plan {
         tasks,
-        cards: cards.into_iter().collect(),
         gaps: gaps
             .into_iter()
             .map(|((kind, bwb_id), occurrences)| Gap {
@@ -750,14 +661,13 @@ articles:
         std::fs::write(path, body).unwrap();
     }
 
-    fn plan_of(dir: &tempfile::TempDir, depth: usize, kaderwetten: &Kaderwetten) -> Plan {
+    fn plan_of(dir: &tempfile::TempDir, depth: usize) -> Plan {
         let index = LawIndex::scan(dir.path()).unwrap();
         plan_closure(
             dir.path(),
             "regulation/nl/wet/wet_a/2026-01-01.yaml",
             &["1".to_string()],
             depth,
-            kaderwetten,
             &index,
             StopRules::default(),
         )
@@ -778,7 +688,7 @@ articles:
 
     #[test]
     fn depth_zero_stays_inside_the_starting_law() {
-        let plan = plan_of(&corpus(), 0, &Kaderwetten::default());
+        let plan = plan_of(&corpus(), 0);
         assert_eq!(plan.tasks.len(), 1);
         assert_eq!(plan.tasks[0].law_id, "wet_a");
         assert_eq!(plan.tasks[0].articles, vec!["1".to_string()]);
@@ -794,7 +704,7 @@ articles:
     /// costs one point, whatever the longer route through B would cost.
     #[test]
     fn a_law_reached_straight_from_the_start_costs_one_jump() {
-        let plan = plan_of(&corpus(), 1, &Kaderwetten::default());
+        let plan = plan_of(&corpus(), 1);
         let depth_of = |id: &str| {
             plan.tasks
                 .iter()
@@ -811,7 +721,7 @@ articles:
     /// because article 5 names it; article 2 of A stays out.
     #[test]
     fn a_step_inside_a_law_is_free_but_only_along_the_hot_path() {
-        let plan = plan_of(&corpus(), 1, &Kaderwetten::default());
+        let plan = plan_of(&corpus(), 1);
         let b = plan.tasks.iter().find(|t| t.law_id == "wet_b").unwrap();
         assert_eq!(b.articles, vec!["5".to_string(), "6".to_string()]);
         let a = plan.tasks.iter().find(|t| t.law_id == "wet_a").unwrap();
@@ -822,15 +732,18 @@ articles:
     /// binds to names that already exist.
     #[test]
     fn the_plan_puts_producers_before_their_readers() {
-        let plan = plan_of(&corpus(), 1, &Kaderwetten::default());
+        let plan = plan_of(&corpus(), 1);
         let depths: Vec<usize> = plan.tasks.iter().map(|t| t.depth).collect();
         assert_eq!(depths, vec![1, 1, 0]);
     }
 
-    /// A framework law comes along as a card and never spends a level, and the
-    /// closure does not walk out of it either.
+    /// A law that declares itself applicable is an ordinary law in the plan.
+    /// There used to be a designated list ("kaderwetten") whose members came
+    /// along as a card beside the depth and were never walked into; a
+    /// referenced producer must instead land in the plan as a task, deepest
+    /// first, like any other law.
     #[test]
-    fn a_framework_law_is_a_card_beside_the_depth() {
+    fn a_self_declaring_law_is_an_ordinary_task_in_the_plan() {
         let dir = corpus();
         write(
             &dir,
@@ -840,7 +753,7 @@ regulatory_layer: WET
 bwb_id: BWBR0000001
 articles:
   - number: '1'
-    text: Zie artikel 3 van de kaderwet.
+    text: Zie artikel 3 van de algemene wet.
     references:
       - id: ref1
         bwb_id: BWBR0000009
@@ -849,8 +762,8 @@ articles:
         );
         write(
             &dir,
-            "regulation/nl/wet/kaderwet/2026-01-01.yaml",
-            r"$id: kaderwet
+            "regulation/nl/wet/algemene_wet/2026-01-01.yaml",
+            r"$id: algemene_wet
 regulatory_layer: WET
 bwb_id: BWBR0000009
 articles:
@@ -858,16 +771,14 @@ articles:
     text: Deze wet is van toepassing op elk besluit.
 ",
         );
-        let kaderwetten = Kaderwetten {
-            bwb_ids: vec!["BWBR0000009".to_string()],
-        };
-        let plan = plan_of(&dir, 1, &kaderwetten);
-        assert_eq!(plan.cards, vec!["BWBR0000009".to_string()]);
-        assert!(
-            plan.tasks.iter().all(|t| t.law_id != "kaderwet"),
-            "een kaart is geen taak in de sluiting"
-        );
-        assert_eq!(plan.tasks.len(), 1, "de kaderwet verbruikt geen niveau");
+        let plan = plan_of(&dir, 1);
+        let task = plan
+            .tasks
+            .iter()
+            .find(|t| t.law_id == "algemene_wet")
+            .expect("de aangehaalde wet staat als taak in het plan");
+        assert_eq!(task.depth, 1, "een wetssprong kost een punt, ook hier");
+        assert_eq!(task.articles, vec!["3".to_string()]);
     }
 
     #[test]
@@ -899,7 +810,7 @@ articles:
     text: Het percentage is drie.
 ",
         );
-        let plan = plan_of(&dir, 3, &Kaderwetten::default());
+        let plan = plan_of(&dir, 3);
         assert_eq!(plan.tasks.len(), 1);
         assert_eq!(plan.gaps.len(), 1);
         assert_eq!(plan.gaps[0].kind, GapKind::Delegated);
@@ -923,7 +834,7 @@ articles:
         artikel: '2'
 ",
         );
-        let plan = plan_of(&dir, 3, &Kaderwetten::default());
+        let plan = plan_of(&dir, 3);
         assert_eq!(plan.gaps[0].kind, GapKind::OutsideCorpus);
         assert_eq!(plan.gaps[0].bwb_id, "BWBR9999999");
     }
@@ -947,7 +858,7 @@ articles:
         bwb_id: BWBR0000002
 ",
         );
-        let plan = plan_of(&dir, 3, &Kaderwetten::default());
+        let plan = plan_of(&dir, 3);
         assert_eq!(plan.gaps.len(), 1);
         assert_eq!(plan.gaps[0].kind, GapKind::NoArticle);
         assert_eq!(plan.tasks.len(), 1);
@@ -978,7 +889,6 @@ articles:
                 "regulation/nl/wet/wet_a/2026-01-01.yaml",
                 &["2".to_string()],
                 1,
-                &Kaderwetten::default(),
                 &index,
                 rules,
             )
@@ -1012,7 +922,6 @@ articles:
             "regulation/nl/wet/wet_a/2026-01-01.yaml",
             &["99".to_string()],
             1,
-            &Kaderwetten::default(),
             &index,
             StopRules::default(),
         )
@@ -1022,65 +931,9 @@ articles:
 
     #[test]
     fn a_plan_over_the_limit_refuses_with_its_own_size() {
-        let plan = plan_of(&corpus(), 1, &Kaderwetten::default());
+        let plan = plan_of(&corpus(), 1);
         assert!(plan.refuse_above(100).is_none());
         let refusal = plan.refuse_above(1).unwrap();
         assert!(refusal.contains("articles"), "{refusal}");
-    }
-
-    #[test]
-    fn kaderwetten_parse_both_shapes_and_an_absent_file() {
-        assert_eq!(
-            Kaderwetten::parse("- BWBR0005537\n- BWBR0016770\n")
-                .unwrap()
-                .bwb_ids,
-            vec!["BWBR0005537".to_string(), "BWBR0016770".to_string()]
-        );
-        assert_eq!(
-            Kaderwetten::parse(
-                "kaderwetten:\n  - bwb_id: BWBR0005537\n    naam: Awb\n  - bwb_id: BWBR0016770\n"
-            )
-            .unwrap()
-            .bwb_ids,
-            vec!["BWBR0005537".to_string(), "BWBR0016770".to_string()]
-        );
-        let dir = tempfile::tempdir().unwrap();
-        assert_eq!(
-            Kaderwetten::load(dir.path()),
-            Ok(None),
-            "afwezig is afwezig"
-        );
-    }
-
-    /// Absent and broken are not the same list. A YAML error used to read as
-    /// "no framework laws are designated", which the caller then reported as
-    /// an *absent* file: the silent gap RFC-026 requirement 5 calls the one
-    /// unacceptable failure form, arrived at through the line that exists to
-    /// prevent it.
-    #[test]
-    fn een_stukke_kaderwetlijst_is_geen_lege_kaderwetlijst() {
-        assert!(
-            Kaderwetten::parse("kaderwetten: [BWBR0005537\n").is_err(),
-            "een YAML-fout mag niet als lege lijst doorgaan"
-        );
-
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("kaderwetten.yaml"),
-            "kaderwetten: [BWBR0005537\n",
-        )
-        .unwrap();
-        let error = Kaderwetten::load(dir.path()).unwrap_err();
-        assert!(
-            error.contains("kaderwetten.yaml"),
-            "de melding noemt het bestand dat gelezen is: {error}"
-        );
-
-        // A list that parses and designates nothing is still an honest empty
-        // list, so the two cases stay apart in both directions.
-        assert_eq!(
-            Kaderwetten::parse("kaderwetten: []\n"),
-            Ok(Kaderwetten::default())
-        );
     }
 }
