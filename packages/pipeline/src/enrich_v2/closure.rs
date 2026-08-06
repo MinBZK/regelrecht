@@ -76,9 +76,13 @@
 //! de artikelen die op de handgeschreven kaart stonden, dus daar berekende de
 //! graaf al wat de lijst wilde afdwingen, en "niet inlopen" hield nog wel de
 //! producent buiten het plan die deepest-first eerder vertaald moest worden dan
-//! zijn lezer. De Awb heeft het omgekeerde probleem, geen inkomende kanten,
-//! maar daarvoor deed de kaart niets: hij ontstond alleen op een kant die de
-//! traversal tegenkwam, en die kanten zijn er voor de Awb niet. Een wet die
+//! zijn lezer. De Awb heeft het omgekeerde probleem: de zorgtoeslag citeert hem
+//! zelf nergens, en de besluit-machinerie (beslistermijnen, bezwaar) komt op
+//! geen enkele diepte via verwijzingen binnen; op diepte 2 is het enige
+//! Awb-artikel 4:3, als bijvangst. Een kaart verscheen wel, maar alleen omdat
+//! meegetrokken Zvw-artikelen toevallig een Awb-kant hebben; hij ontstond op
+//! een kant die de traversal tegenkwam, hing dus af van toevallige citaten
+//! elders in de sluiting, en zei niets over toepasselijkheid. Een wet die
 //! werkt zonder geciteerd te worden is een relatie met een bron in de wettekst
 //! (de reikwijdtebepaling, als `applies-to`-kant) en een trigger in het schema
 //! (`legal_character`), geen wetscategorie in de planner. Zie RFC-026.
