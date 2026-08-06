@@ -117,6 +117,15 @@ fn git(repo_root: &Path, args: &[&str]) -> Result<String, String> {
 /// Generate or verify the index. `Err` is an operational failure (dirty
 /// tree, git error, unreadable index, systematic parse breakage); the
 /// caller maps it to exit code 2.
+/// Collapse a scan root to the form the consumer compares and strips
+/// with: no leading or trailing slash, no empty interior segment.
+fn normalise_root(root: &str) -> String {
+    root.split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 pub fn run(args: &Args) -> Result<Outcome, String> {
     // An index over the repo root contains its own file, so writing it
     // changes the tree sha it just recorded and no consumer would ever
@@ -175,7 +184,12 @@ pub fn run(args: &Args) -> Result<Outcome, String> {
     let declaring = outcome.files.values().filter(|v| !v.is_empty()).count();
     let index = ImplementsIndex {
         version: IMPLEMENTS_INDEX_VERSION,
-        root: args.scan_root.clone(),
+        // Normalised, because the consumer compares this root against a
+        // source root and strips it as a path prefix. A stored `foo//bar`
+        // or `/foo/bar` would pass the coverage check and then strip
+        // nothing, projecting to an empty map that reads as "this corpus
+        // holds no laws".
+        root: normalise_root(&args.scan_root),
         tree_sha,
         files: outcome.files,
     };
@@ -291,6 +305,13 @@ mod tests {
         }
         commit_all(root, "seed");
         dir
+    }
+
+    #[test]
+    fn the_recorded_root_is_normalised() {
+        assert_eq!(normalise_root("regulation"), "regulation");
+        assert_eq!(normalise_root("/regulation/nl/"), "regulation/nl");
+        assert_eq!(normalise_root("regulation//nl"), "regulation/nl");
     }
 
     #[test]

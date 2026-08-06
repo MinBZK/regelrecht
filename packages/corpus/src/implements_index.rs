@@ -101,6 +101,18 @@ impl ImplementsIndex {
                 index.version, IMPLEMENTS_INDEX_VERSION
             )));
         }
+        // An index over the repo root contains its own file, so the tree
+        // sha it records is invalidated by writing it and can never
+        // verify. Such a file can only be a mistake; refuse it here so a
+        // consumer falls back instead of reasoning about it. The generator
+        // refuses to produce one for the same reason.
+        if index.root.trim_matches('/').is_empty() {
+            return Err(CorpusError::Config(
+                "implements index is rooted at the repo root, where its own file \
+                 invalidates the tree sha it records"
+                    .to_string(),
+            ));
+        }
         Ok(index)
     }
 
@@ -388,6 +400,13 @@ articles:
         assert!(err.contains("version"), "unexpected error: {err}");
 
         assert!(ImplementsIndex::parse("not json").is_err());
+
+        // A repo-root index cannot verify against anything — see `parse`.
+        let rooted_at_repo = r#"{"version": 1, "root": "", "tree_sha": "x", "files": {}}"#;
+        let err = ImplementsIndex::parse(rooted_at_repo)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("repo root"), "unexpected error: {err}");
     }
 
     #[test]
