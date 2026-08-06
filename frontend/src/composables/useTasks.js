@@ -52,6 +52,12 @@ async function resolveTask(taskId, action) {
   await refresh();
 }
 
+// Kaal: vraagt de verrijking aan en raakt de gedeelde takenlijst niet. Zonder
+// een refresh erachteraan blijft `running` leeg, slaat de bezig-staat van de
+// lege Machine-/YAML-pane niet om en begint usePollWhile nooit te pollen. Een
+// view die een wet toont neemt daarom useEnrichState, dat die refresh eraan
+// vastknoopt; wie deze rechtstreeks aanroept (TasksListPane, dat zelf al pollt)
+// zet er zelf een refresh() achter.
 async function requestEnrich(trajectRef, lawId) {
   const res = await apiFetch(
     `/api/trajects/${encodeURIComponent(trajectRef)}/corpus/laws/${encodeURIComponent(lawId)}/enrich`,
@@ -131,11 +137,17 @@ export function usePollWhile(active, intervalMs = 10000) {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
   };
-  // Bewust NIET immediate: dat evalueert `active` tijdens setup, en een
-  // caller die zijn computed bovenaan definieert leest dan state die verderop
-  // in het bestand pas gedeclareerd wordt (temporal dead zone). Setup gooit
-  // dan en de hele view rendert niets. Kost ook niets: `running` is bij setup
-  // nog leeg, dus er valt op dat moment nooit iets te starten.
+  // Bewust NIET immediate: `running` is bij setup nog leeg, dus er valt op dat
+  // moment nooit iets te starten - de eerste refresh laat de watch alsnog
+  // afgaan.
+  //
+  // Wat het weglaten van immediate NIET wegneemt: een watch leest zijn bron
+  // hoe dan ook meteen bij aanmaak, om de dependency te leggen. Alles wat
+  // `active` aanraakt moet dus al gedeclareerd zijn - een computed die state
+  // leest die verderop in het bestand pas komt, gooit hier een ReferenceError
+  // (temporal dead zone) en dan rendert de hele view niets. useEnrichState
+  // ontloopt dat door zijn bronnen als argument binnen te krijgen: die bestaan
+  // per definitie al op de aanroepregel.
   watch(active, (on) => {
     stop();
     if (on) pollTimer = setInterval(refresh, intervalMs);
