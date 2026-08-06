@@ -232,12 +232,21 @@ impl RegelrechtUriBuilder {
     /// * `output` - Output name (e.g., "bereken_zorgtoeslag")
     ///
     /// # Panics
-    /// Panics if `law_id` or `output` is empty. Use `try_new()` for fallible construction.
+    /// Panics if `law_id` or `output` is empty, if either contains the `#`
+    /// fragment delimiter, or if `law_id` contains `/`. Those characters are
+    /// URI structure, not identifier content: a built string would reparse
+    /// into different components (or fail to parse at all). Use `try_new()`
+    /// for fallible construction.
     pub fn new(law_id: impl Into<String>, output: impl Into<String>) -> Self {
         let law_id = law_id.into();
         let output = output.into();
         assert!(!law_id.is_empty(), "law_id cannot be empty");
         assert!(!output.is_empty(), "output cannot be empty");
+        assert!(
+            !law_id.contains(['/', '#']),
+            "law_id cannot contain '/' or '#'"
+        );
+        assert!(!output.contains('#'), "output cannot contain '#'");
         Self {
             law_id,
             output,
@@ -247,7 +256,8 @@ impl RegelrechtUriBuilder {
 
     /// Create a new URI builder with validation
     ///
-    /// Returns an error if `law_id` or `output` is empty.
+    /// Returns an error if `law_id` or `output` is empty, if either contains
+    /// the `#` fragment delimiter, or if `law_id` contains `/`.
     pub fn try_new(law_id: impl Into<String>, output: impl Into<String>) -> Result<Self> {
         let law_id = law_id.into();
         let output = output.into();
@@ -261,6 +271,16 @@ impl RegelrechtUriBuilder {
                 "Cannot build URI: output is empty".to_string(),
             ));
         }
+        if law_id.contains(['/', '#']) {
+            return Err(EngineError::InvalidUri(format!(
+                "Cannot build URI: law_id {law_id:?} contains '/' or '#'"
+            )));
+        }
+        if output.contains('#') {
+            return Err(EngineError::InvalidUri(format!(
+                "Cannot build URI: output {output:?} contains '#'"
+            )));
+        }
         Ok(Self {
             law_id,
             output,
@@ -271,23 +291,31 @@ impl RegelrechtUriBuilder {
     /// Add a field to extract from the output
     ///
     /// # Panics
-    /// Panics if `field` is empty. Use `try_with_field()` for fallible construction.
+    /// Panics if `field` is empty or contains the `#` fragment delimiter.
+    /// Use `try_with_field()` for fallible construction.
     pub fn with_field(mut self, field: impl Into<String>) -> Self {
         let field = field.into();
         assert!(!field.is_empty(), "field cannot be empty");
+        assert!(!field.contains('#'), "field cannot contain '#'");
         self.field = Some(field);
         self
     }
 
     /// Add a field with validation
     ///
-    /// Returns an error if `field` is empty.
+    /// Returns an error if `field` is empty or contains the `#` fragment
+    /// delimiter.
     pub fn try_with_field(mut self, field: impl Into<String>) -> Result<Self> {
         let field = field.into();
         if field.is_empty() {
             return Err(EngineError::InvalidUri(
                 "Cannot build URI: field is empty".to_string(),
             ));
+        }
+        if field.contains('#') {
+            return Err(EngineError::InvalidUri(format!(
+                "Cannot build URI: field {field:?} contains '#'"
+            )));
         }
         self.field = Some(field);
         Ok(self)
@@ -308,10 +336,12 @@ impl RegelrechtUriBuilder {
     /// This method is guaranteed to succeed because the builder validates inputs.
     #[allow(clippy::unwrap_used)]
     pub fn build_parsed(&self) -> RegelrechtUri {
-        // Safe to unwrap because:
-        // 1. law_id and output are validated as non-empty in new()/try_new()
-        // 2. field is validated as non-empty in with_field()/try_with_field()
-        // 3. The format regelrecht://{law_id}/{output}#{field} is always valid
+        // Safe to unwrap because the constructors reject exactly the inputs
+        // that could make parsing fail or reparse differently:
+        // 1. law_id and output are non-empty (new()/try_new()), field is
+        //    non-empty (with_field()/try_with_field())
+        // 2. no component contains '#', and law_id contains no '/', so the
+        //    parser's delimiter splits recover the original components
         RegelrechtUri::parse(&self.build()).unwrap()
     }
 }
@@ -544,6 +574,74 @@ mod tests {
             if let Err(EngineError::InvalidUri(msg)) = result {
                 assert!(msg.contains("field"));
             }
+        }
+
+        /// The exact input that used to break the "guaranteed to succeed"
+        /// promise of `build_parsed`: an output starting with `#`. The parser
+        /// splits on the first `#`, leaving an empty output, so parse fails.
+        /// The builder must reject this at construction instead.
+        #[test]
+        fn test_try_new_output_with_fragment_delimiter_is_rejected() {
+            match RegelrechtUriBuilder::try_new("law", "#totaal") {
+                Err(EngineError::InvalidUri(msg)) => {
+                    assert!(msg.contains("output"), "message names the component: {msg}");
+                }
+                other => panic!("expected InvalidUri, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn test_try_new_law_id_with_delimiters_is_rejected() {
+            for law_id in ["wet#1", "nl/wet"] {
+                match RegelrechtUriBuilder::try_new(law_id, "output") {
+                    Err(EngineError::InvalidUri(msg)) => {
+                        assert!(msg.contains("law_id"), "message names the component: {msg}");
+                    }
+                    other => panic!("expected InvalidUri for {law_id:?}, got {other:?}"),
+                }
+            }
+        }
+
+        #[test]
+        fn test_try_with_field_with_fragment_delimiter_is_rejected() {
+            let builder = RegelrechtUriBuilder::try_new("law", "output").unwrap();
+            match builder.try_with_field("veld#sub") {
+                Err(EngineError::InvalidUri(msg)) => {
+                    assert!(msg.contains("field"), "message names the component: {msg}");
+                }
+                other => panic!("expected InvalidUri, got {other:?}"),
+            }
+        }
+
+        /// A slash in `output` is harmless: the parser splits `law_id` off at
+        /// the first slash and keeps the rest as output, so the components
+        /// survive the round trip. The builder must keep accepting it.
+        #[test]
+        fn test_build_parsed_round_trips_output_with_slash() {
+            let uri = RegelrechtUriBuilder::new("law", "hoofdstuk/onderdeel")
+                .with_field("veld")
+                .build_parsed();
+            assert_eq!(uri.law_id(), "law");
+            assert_eq!(uri.output(), "hoofdstuk/onderdeel");
+            assert_eq!(uri.field(), Some("veld"));
+        }
+
+        #[test]
+        #[should_panic(expected = "output cannot contain '#'")]
+        fn test_new_panics_on_output_with_fragment_delimiter() {
+            let _ = RegelrechtUriBuilder::new("law", "#totaal");
+        }
+
+        #[test]
+        #[should_panic(expected = "law_id cannot contain '/' or '#'")]
+        fn test_new_panics_on_law_id_with_slash() {
+            let _ = RegelrechtUriBuilder::new("nl/wet", "output");
+        }
+
+        #[test]
+        #[should_panic(expected = "field cannot contain '#'")]
+        fn test_with_field_panics_on_fragment_delimiter() {
+            let _ = RegelrechtUriBuilder::new("law", "output").with_field("veld#sub");
         }
 
         #[test]
