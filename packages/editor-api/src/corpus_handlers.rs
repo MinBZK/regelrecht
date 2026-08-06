@@ -5115,8 +5115,8 @@ mod tests {
 
     #[test]
     fn source_filter_returns_only_that_sources_laws() {
-        // Wat de bibliotheek-sidebar stuurt voor "Overige wetten in dit
-        // traject": alleen de eigen bron, niet het gefedereerde corpus.
+        // Wat de bibliotheek-sidebar stuurt voor de sectie "Traject":
+        // alleen de eigen bron, niet het gefedereerde corpus.
         let map = two_source_map();
         assert_eq!(
             law_ids(filter_corpus_laws(&map, &params(Some("own"), None, None))),

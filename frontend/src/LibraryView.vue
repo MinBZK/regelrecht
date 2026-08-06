@@ -966,9 +966,9 @@ const activeAction = ref(null);
 //   - "Bewerkt in dit traject" comes first: it's the small, high-signal,
 //     context-specific set, so it sits above favorites.
 //     Only present when a traject is active and the diff is non-empty.
-//   - "Overige wetten in dit traject": what's left of the traject's own
-//     repo. Without it a fresh traject - or someone else's - shows an empty
-//     menu: the diff is empty, and favorites/recent are personal.
+//   - "Traject": what's left of the traject's own repo after "Bewerkt".
+//     Without it a fresh traject - or someone else's - shows an empty menu:
+//     the diff is empty, and favorites/recent are personal.
 //   - "Favorieten": the user's personal favorites.
 //
 // There is deliberately NO full-corpus fallback: the central corpus is the
@@ -994,7 +994,7 @@ const sidebarSections = computed(() => {
   if (activeTrajectRef.value && trajectLaws.value?.length) {
     const rest = trajectLaws.value.filter(law => !changedLawIds.value?.has(law.law_id));
     if (rest.length > 0) {
-      sections.push({ key: 'traject', title: 'Overige wetten in dit traject', laws: rest });
+      sections.push({ key: 'traject', title: 'Traject', laws: rest });
     }
   }
 

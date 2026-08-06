@@ -1,4 +1,4 @@
-// De sectie "Overige wetten in dit traject" in het linkermenu.
+// De sectie "Traject" in het linkermenu.
 //
 // Zonder deze sectie is het linkermenu leeg zodra je een nieuw traject
 // aanmaakt of dat van iemand anders opent: "Bewerkt" is de branch-diff (leeg
@@ -234,7 +234,7 @@ function sectionLaws(wrapper, key) {
     .map((item) => item.find('nldd-text-cell').attributes('text'));
 }
 
-const TRAJECT_SECTION_TITLE = 'Overige wetten in dit traject';
+const TRAJECT_SECTION_TITLE = 'Traject';
 
 beforeEach(() => {
   apiFetch.mockClear();
