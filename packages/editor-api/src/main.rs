@@ -9,6 +9,7 @@ use axum::routing::get;
 use axum::Router;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_status::SetStatus;
 use tower_http::trace::TraceLayer;
 use tower_sessions::ExpiredDeletion;
 use tower_sessions::Expiry;
@@ -638,9 +639,7 @@ async fn main() {
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
             .layer(TraceLayer::new_for_http())
-            .fallback_service(
-                ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index_file)),
-            );
+            .fallback_service(static_service(&static_dir, &index_file));
 
         serve(app, Some(deletion_handle)).await;
     } else {
@@ -672,9 +671,7 @@ async fn main() {
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
             .layer(TraceLayer::new_for_http())
-            .fallback_service(
-                ServeDir::new(&static_dir).not_found_service(ServeFile::new(index_file)),
-            );
+            .fallback_service(static_service(&static_dir, index_file));
 
         serve(app, None).await;
     }
@@ -855,6 +852,45 @@ async fn init_backends(
     }
 
     backends
+}
+
+/// Static-file service for the built editor frontend.
+///
+/// The editor image has no nginx in front of it — this binary is the web
+/// server for `frontend/dist` as well as the API — so compression has to
+/// happen here or not at all.
+///
+/// `precompressed_br` / `precompressed_gzip` make `ServeDir` look for
+/// `foo.js.br` and `foo.js.gz` beside `foo.js` and serve one of those when
+/// the client's `Accept-Encoding` allows it. The variants are written at
+/// build time by `frontend/scripts/precompress.mjs`, so the container spends
+/// no CPU compressing per request, and a client that accepts neither still
+/// gets the plain file. `ServeDir` sets `Vary: accept-encoding` itself once a
+/// precompressed variant is configured, so shared caches stay correct.
+///
+/// Which encoding wins is the client's call, not ours: `ServeDir` picks the
+/// highest q-value from `Accept-Encoding` and breaks ties in favour of
+/// brotli. Builder order here is cosmetic. Note that a future
+/// `precompressed_zstd()` would outrank brotli in that tie-break — worth
+/// knowing before adding one.
+///
+/// Compression stops at the static files on purpose: the JSON API keeps
+/// serving uncompressed bodies. See the SPA fallback below for why the
+/// index gets the same treatment.
+fn static_service(
+    static_dir: &str,
+    index_file: impl AsRef<std::path::Path>,
+) -> ServeDir<SetStatus<ServeFile>> {
+    // The SPA fallback (`/library/...`, `/editor/...` deep links) returns
+    // index.html, which is itself precompressed — hence the same flags on the
+    // not-found service.
+    let index = ServeFile::new(index_file)
+        .precompressed_br()
+        .precompressed_gzip();
+    ServeDir::new(static_dir)
+        .precompressed_br()
+        .precompressed_gzip()
+        .not_found_service(index)
 }
 
 /// Read favorites.json from the static directory.
@@ -1095,5 +1131,188 @@ mod http_localhost_tests {
     #[test]
     fn unparseable_base_url_defaults_to_secure() {
         assert!(!is_http_localhost(Some("not a url")));
+    }
+}
+
+/// The editor image serves its own static files, so the only place
+/// compression can happen is `static_service`. These tests pin that the
+/// precompressed variants written by `frontend/scripts/precompress.mjs` are
+/// actually picked up, and that a client which cannot decompress still gets
+/// the plain file.
+#[cfg(test)]
+mod static_service_tests {
+    use super::static_service;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    const PLAIN: &[u8] = b"plain bytes";
+    const GZIPPED: &[u8] = b"pretend gzip bytes";
+    const BROTLIED: &[u8] = b"pretend brotli bytes";
+
+    /// A static dir shaped like a real build: `app.js` with both variants
+    /// beside it, plus an `index.html` for the SPA fallback.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("app.js"), PLAIN).expect("write");
+        std::fs::write(dir.path().join("app.js.gz"), GZIPPED).expect("write");
+        std::fs::write(dir.path().join("app.js.br"), BROTLIED).expect("write");
+        std::fs::write(dir.path().join("index.html"), PLAIN).expect("write");
+        std::fs::write(dir.path().join("index.html.br"), BROTLIED).expect("write");
+        dir
+    }
+
+    async fn get(dir: &tempfile::TempDir, path: &str, accept_encoding: Option<&str>) -> Response {
+        let static_dir = dir.path().to_string_lossy().to_string();
+        let index = dir.path().join("index.html");
+        let mut request = Request::builder().uri(path);
+        if let Some(encoding) = accept_encoding {
+            request = request.header("accept-encoding", encoding);
+        }
+        static_service(&static_dir, index)
+            .oneshot(request.body(Body::empty()).expect("request"))
+            .await
+            .expect("response")
+            .map(Body::new)
+    }
+
+    type Response = axum::http::Response<Body>;
+
+    async fn body(response: Response) -> Vec<u8> {
+        response
+            .into_body()
+            .collect()
+            .await
+            .expect("body")
+            .to_bytes()
+            .to_vec()
+    }
+
+    /// Browsers send a bare `gzip, deflate, br`, and brotli wins that tie —
+    /// the smaller encoding, which is what makes registering both worthwhile.
+    #[tokio::test]
+    async fn brotli_wins_when_the_client_accepts_both() {
+        let dir = fixture();
+        let response = get(&dir, "/app.js", Some("gzip, deflate, br")).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["content-encoding"], "br");
+        assert_eq!(response.headers()["vary"], "accept-encoding");
+        assert_eq!(body(response).await, BROTLIED);
+    }
+
+    /// q-values are the client's, not ours: a client that explicitly ranks
+    /// gzip above brotli gets gzip.
+    #[tokio::test]
+    async fn client_q_values_decide_over_our_preference() {
+        let dir = fixture();
+        let response = get(&dir, "/app.js", Some("br;q=0.5, gzip;q=1.0")).await;
+
+        assert_eq!(response.headers()["content-encoding"], "gzip");
+        assert_eq!(body(response).await, GZIPPED);
+    }
+
+    #[tokio::test]
+    async fn gzip_is_served_when_brotli_is_not_accepted() {
+        let dir = fixture();
+        let response = get(&dir, "/app.js", Some("gzip")).await;
+
+        assert_eq!(response.headers()["content-encoding"], "gzip");
+        assert_eq!(body(response).await, GZIPPED);
+    }
+
+    /// The ETag is taken from the variant actually opened, so it must differ
+    /// per encoding — otherwise a revalidation could swap a gzip body in
+    /// under a brotli client's cached entry.
+    #[tokio::test]
+    async fn etag_differs_per_encoding() {
+        let dir = fixture();
+        let br = get(&dir, "/app.js", Some("br")).await;
+        let gz = get(&dir, "/app.js", Some("gzip")).await;
+
+        assert_ne!(
+            br.headers().get("etag").expect("etag on br"),
+            gz.headers().get("etag").expect("etag on gzip"),
+        );
+    }
+
+    /// A HEAD must advertise the length of the body a GET would return, or a
+    /// client sizing the download gets the uncompressed number.
+    #[tokio::test]
+    async fn head_reports_the_compressed_length() {
+        let dir = fixture();
+        let static_dir = dir.path().to_string_lossy().to_string();
+        let index = dir.path().join("index.html");
+        let request = Request::builder()
+            .method("HEAD")
+            .uri("/app.js")
+            .header("accept-encoding", "br")
+            .body(Body::empty())
+            .expect("request");
+        let response = static_service(&static_dir, index)
+            .oneshot(request)
+            .await
+            .expect("response");
+
+        assert_eq!(response.headers()["content-encoding"], "br");
+        assert_eq!(
+            response.headers()["content-length"],
+            BROTLIED.len().to_string()
+        );
+    }
+
+    /// The uncompressed file stays on disk and stays reachable: a client
+    /// without `Accept-Encoding` must not be handed a body it cannot read.
+    #[tokio::test]
+    async fn plain_file_is_served_without_accept_encoding() {
+        let dir = fixture();
+        let response = get(&dir, "/app.js", None).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("content-encoding").is_none());
+        assert_eq!(body(response).await, PLAIN);
+    }
+
+    /// `Vary` must be present even on the uncompressed answer, or a shared
+    /// cache could hand the plain body to a client that asked for brotli
+    /// (and vice versa).
+    #[tokio::test]
+    async fn vary_is_set_on_the_uncompressed_answer_too() {
+        let dir = fixture();
+        let response = get(&dir, "/app.js", None).await;
+
+        assert_eq!(response.headers()["vary"], "accept-encoding");
+    }
+
+    /// Deep links like `/library/foo` are SPA routes with no file behind
+    /// them; they fall through to index.html, which is precompressed as well.
+    ///
+    /// The 404 is pre-existing and deliberately left alone here:
+    /// `not_found_service` is `fallback` wrapped in `SetStatus(404)`, so the
+    /// editor has always answered deep links with the index body under a 404
+    /// status. The browser runs the SPA regardless. Changing that is a
+    /// separate decision from compressing the body.
+    #[tokio::test]
+    async fn spa_fallback_serves_the_precompressed_index() {
+        let dir = fixture();
+        let response = get(&dir, "/library/some-law", Some("br")).await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.headers()["content-encoding"], "br");
+        assert_eq!(body(response).await, BROTLIED);
+    }
+
+    /// A file with no precompressed variant beside it (fonts, images —
+    /// deliberately skipped by the build step) is served as-is.
+    #[tokio::test]
+    async fn file_without_variants_is_served_as_is() {
+        let dir = fixture();
+        std::fs::write(dir.path().join("font.woff2"), PLAIN).expect("write");
+        let response = get(&dir, "/font.woff2", Some("gzip, br")).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("content-encoding").is_none());
+        assert_eq!(body(response).await, PLAIN);
     }
 }

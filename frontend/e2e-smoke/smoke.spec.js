@@ -60,6 +60,29 @@ test('1) /library toont de wettenlijst tegen de echte corpus', async ({ page }) 
   await expect(page.locator(`nldd-list-item[data-law-id="${LAW_ID}"]`).first()).toBeVisible();
 });
 
+// The deployed image serves its own static files, and the compressed variants
+// are written by the build (frontend/scripts/precompress.mjs), not by the
+// server. If that step ever silently drops out, ServeDir falls back to the
+// plain file and nothing breaks — the editor just gets ~4x heavier without a
+// single error. This is the only place that notices.
+test('1b) de gedeployede bundel wordt gecomprimeerd uitgeserveerd', async ({ page }) => {
+  await page.goto('/');
+  const bundle = await page.evaluate(
+    () => document.querySelector('script[type="module"][src^="/assets/"]')?.src,
+  );
+  expect(bundle, 'geen hoofdbundel in index.html gevonden').toBeTruthy();
+
+  const res = await page.request.get(bundle, {
+    headers: { 'accept-encoding': 'gzip, deflate, br' },
+  });
+  expect(res.ok()).toBeTruthy();
+  const headers = res.headers();
+  expect(headers['content-encoding']).toMatch(/^(br|gzip)$/);
+  // Without Vary a shared cache could hand the compressed body to a client
+  // that cannot decode it.
+  expect(headers['vary']).toContain('accept-encoding');
+});
+
 test('2) /trajecten rendert', async ({ page }) => {
   await page.goto('/trajecten');
   await expect(page.locator('#kies-traject-titel')).toBeVisible();
