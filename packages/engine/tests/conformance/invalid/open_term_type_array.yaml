@@ -1,0 +1,23 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_open_term_type_array
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      De open term belooft een waarde van het type `array`. Het schema staat
+      voor open terms vijf typen toe (string, number, boolean, amount, date);
+      het model leest hier de volledige `ParameterType`-enum van zeven en
+      accepteert dus meer dan het contract. Een implementerende regeling die
+      op deze belofte levert, schrijft iets dat het schema nooit had mogen
+      binnenlaten.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      open_terms:
+        - id: toegestane_categorieen
+          type: array
+          description: Lijst van categorieën die de minister aanwijst.

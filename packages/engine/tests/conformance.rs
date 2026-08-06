@@ -53,6 +53,36 @@ const KNOWN_GAPS: &[&str] = &[
     // than skipping it, so the leniency stops at the model boundary; see
     // `engine.rs`, `execute_actions_traced`.
     "action_without_output.yaml",
+    // Measured 2026-08-06, closing the undercount found in the schema↔model
+    // review: probing every schema constraint the fixtures did not touch found
+    // these fourteen additional shapes the model accepts. Grouped by family.
+    //
+    // -- Enums the model reads as a free string. The schema gate is the only
+    // validation; past it, the label reaches whatever consumer reads it, or
+    // no one. Two more enum gaps (`delegation_type`, `type_spec.unit`) are
+    // deliberately NOT listed here: behaviour hangs off those labels, so they
+    // should become model enums rather than documented leniency — tracked as a
+    // design decision, not as a gap to accept.
+    "open_term_type_array.yaml", // schema allows 5 open-term types; the model reads the full 7-wide ParameterType
+    "hook_without_legal_character.yaml", // schema requires + enums `applies_to.legal_character`; model has Option<String>
+    "produces_unknown_legal_character.yaml", // schema pins 5 legal characters; model reads any string
+    "produces_unknown_decision_type.yaml",   // schema pins 9 decision types; model reads any string
+    "temporal_unknown_type.yaml", // schema pins period|point_in_time; model reads any string
+    "start_of_week_unit.yaml", // schema pins START_OF `in` to year|month; model reads any string, engine errors at runtime (same family as date_part_plural_unit)
+    //
+    // -- Required fields the model does not enforce. Metadata-completeness
+    // errors the schema gate catches as long as the file passes CI; the model
+    // stays lenient because it must also read pre-v0.6.0 files.
+    "input_without_source.yaml", // schema requires `source` on inputs (`source: {}` = registry lookup, so absence is a real difference); model Option — the engine then computes with Null, which counts as zero/not-met
+    "wet_without_bwb_id.yaml", // schema's per-layer conditional requireds (WET→bwb_id etc.); model has all identifiers as Option
+    "document_without_articles.yaml", // schema requires `articles`; model defaults to an empty list
+    "article_without_url.yaml", // schema requires `url` per article; model Option (per-article twin of missing_required_url)
+    "operand_dollar_with_space.yaml", // schema forbids strings that start with `$` but are no valid variableReference; model reads any string
+    //
+    // -- Compat and migration leniency, deliberate on the model side.
+    "comparison_alias_not_equals.yaml", // NOT_EQUALS (with IS_NULL/NOT_NULL/NOT_IN/SWITCH) is a compat alias outside the schema enum; kept for pre-canonicalization files (`value.rs`, operation deserializer)
+    "inline_round_without_precision.yaml", // schema's allOf requires `precision` on inline ROUND/CEIL/FLOOR; model Option
+    "untranslatables_on_v0_6_0.yaml", // v0.6.0 dropped the old channel for `markings`; the model still parses it (it must read v0.5.x) and the engine honours the flag — flag-keeping, the safe side of wrong (see `Marking` rustdoc)
 ];
 
 /// Repo root, derived from this crate's manifest dir (`packages/engine`).
