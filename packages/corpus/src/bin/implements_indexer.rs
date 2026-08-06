@@ -46,6 +46,18 @@ fn parse_args() -> Result<Args, String> {
                 scan_root = args
                     .next()
                     .ok_or_else(|| "--root requires a value".to_string())?;
+                // A repo-root scan cannot be verified: the index records
+                // the tree sha of the subtree it scanned, and with the
+                // whole repo as that subtree the index file itself is
+                // inside it — writing the file changes the very sha it
+                // just recorded, so no consumer would ever accept it.
+                if scan_root.trim_matches('/').is_empty() {
+                    return Err(
+                        "--root must name a subtree: an index rooted at the repo root \
+                         invalidates its own tree sha and is never served"
+                            .to_string(),
+                    );
+                }
             }
             "--help" | "-h" => {
                 return Err(format!(

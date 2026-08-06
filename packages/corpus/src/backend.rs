@@ -272,6 +272,24 @@ pub trait RepoBackend: Send + Sync {
     }
 }
 
+/// The checkout-scan fallback for [`GitBackend::read_all_implements`],
+/// with the one case where scanning is not allowed to be a fallback.
+///
+/// A sparse working tree only materialises the configured cone, so a
+/// filesystem scan over it returns a silently *incomplete* implements map
+/// (missing entries read as "fetch this law per-request", or worse, as
+/// "law does not exist"). Refuse loudly instead.
+async fn scan_or_refuse(backend: &GitBackend) -> Result<Vec<(String, Vec<String>)>> {
+    if backend.client.is_sparse() {
+        return Err(CorpusError::Config(
+            "implements index unavailable and this is a sparse checkout: \
+             a filesystem scan would be silently incomplete"
+                .to_string(),
+        ));
+    }
+    scan_implements_via_listing(backend).await
+}
+
 /// Shared body of the default [`RepoBackend::read_all_implements`]: list
 /// every `.yaml` **and** `.yml` file under the source root and parse each
 /// body one at a time. Both extensions are law carriers (the corpus
@@ -834,6 +852,22 @@ impl RepoBackend for GitBackend {
                 Ok(index) => match self.client.subtree_sha(&index.root).await {
                     Ok(checkout_sha) if checkout_sha == index.tree_sha => {
                         let entries = index.to_source_relative(self.repo_subpath.as_deref());
+                        // `covers` and the projection normalise slashes
+                        // slightly differently, so a source root can pass
+                        // the first and still project to nothing. An index
+                        // with files in it that yields no entries describes
+                        // some other subtree, and an empty result would
+                        // read as "this corpus holds no laws".
+                        if entries.is_empty() && !index.files.is_empty() {
+                            tracing::warn!(
+                                index_root = %index.root,
+                                source_root = self.repo_subpath.as_deref().unwrap_or("<repo root>"),
+                                indexed = index.files.len(),
+                                "implements index projects to nothing for this source root; \
+                                 falling back to a scan"
+                            );
+                            return scan_or_refuse(self).await;
+                        }
                         tracing::info!(
                             entries = entries.len(),
                             root = %index.root,
@@ -876,20 +910,7 @@ impl RepoBackend for GitBackend {
             }
         }
 
-        // A sparse working tree only materialises the configured cone —
-        // a filesystem scan over it would return a silently *incomplete*
-        // implements map (missing entries read as "fetch this law
-        // per-request", or worse, as "law does not exist"). Refuse
-        // loudly instead.
-        if self.client.is_sparse() {
-            return Err(CorpusError::Config(
-                "implements index unavailable and this is a sparse checkout: \
-                 a filesystem scan would be silently incomplete"
-                    .to_string(),
-            ));
-        }
-
-        scan_implements_via_listing(self).await
+        scan_or_refuse(self).await
     }
 
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {

@@ -493,9 +493,16 @@ impl TrajectCorpus {
         };
 
         // The source is indexed but its backend was skipped at build time
-        // (already logged then) — the law isn't readable. Treat as a miss.
+        // — `ensure_ready` failed, which is as likely a GitHub hiccup as a
+        // misconfiguration. This law exists (the index enumerated it), so
+        // "no backend" is a failure to read it, not a law that isn't
+        // there; returning a miss would render the whole source as
+        // "leeg maar in orde" for a TTL window.
         let Some(entry) = self.corpus.backends.get(&source_id) else {
-            return Ok(None);
+            return Err(regelrecht_corpus::error::CorpusError::Config(format!(
+                "source '{source_id}' has no usable backend in this snapshot, \
+                 so law '{law_id}' cannot be read (backend init failed at build time)"
+            )));
         };
 
         // The personal token authenticates exclusively against the
@@ -1034,8 +1041,11 @@ impl TrajectCorpus {
                             }
                             implements
                         }
-                        // A genuine miss (no backend / file vanished) has
-                        // nothing to index and nothing to retry.
+                        // A genuine miss (the file vanished from the branch
+                        // between enumeration and now) has nothing to index
+                        // and nothing to retry. A source without a usable
+                        // backend is not this case — `law_yaml` errors for
+                        // that, so it lands in `failed_law_ids` below.
                         Ok(None) => continue,
                         Err(e) => {
                             tracing::debug!(law_id = %entry.law_id, error = %e, "implements scan: body fetch failed");
