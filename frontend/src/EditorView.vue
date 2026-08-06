@@ -337,11 +337,15 @@ watch(activeTrajectRef, async (next) => {
 });
 
 // Notes (RFC-005/RFC-018) for the current law, resolved against its text.
+// `lawValidFrom` names the version on screen: the engine holds every version
+// of the law (loadDependency), so the resolver needs to know which one the
+// user is looking at instead of defaulting to the newest.
+const lawValidFrom = computed(() => law.value?.valid_from ?? null);
 const {
   notesForArticle: committedNotesForArticle,
   issues: noteIssues,
   reload: reloadNotes,
-} = useNotes(lawId, selectedArticle, activeTrajectRef);
+} = useNotes(lawId, selectedArticle, activeTrajectRef, lawValidFrom);
 
 // Notes render as annotations inside the editable Tekst editor (they used to
 // live in a separate read-only "Tekst + notities" pane, now dropped). The
@@ -375,6 +379,7 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
   lawId,
   selectedArticle,
   activeTrajectRef,
+  lawValidFrom,
 );
 // Authoring is part of the notes pane (the old separate `notes.create` flag is
 // folded in): wherever the pane is available, you can create notes in it.
@@ -2816,6 +2821,7 @@ async function handleActionSave() {
                         :law-id="lawId"
                         :article="selectedArticle"
                         :engine="noteEngine"
+                        :valid-from="lawValidFrom || ''"
                         :traject-ref="activeTrajectRef || ''"
                         :initial-note="noteCreator.initialNote"
                         @create="onNoteCreated"

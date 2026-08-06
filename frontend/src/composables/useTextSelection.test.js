@@ -133,6 +133,29 @@ describe('buildSelector', () => {
     expect(out.selector.suffix).toBeUndefined();
   });
 
+  it('hands the viewed version (validFrom) to the resolver', () => {
+    // The engine holds every version of the law; without the valid_from of
+    // the version on screen the resolver would validate uniqueness against
+    // the newest version instead of the text being annotated.
+    const range = { start: 10, end: 20 };
+    const seen = [];
+    const engine = {
+      resolveNote(_lawId, _selector, validFrom) {
+        seen.push(validFrom);
+        return {
+          status: 'found',
+          matches: [{ article_number: '1', start: 10, end: 20 }],
+        };
+      },
+    };
+    const out = buildSelector(raw, range, 'w', engine, '1', '2024-01-01');
+    expect(out.status).toBe('found');
+    expect(seen).toEqual(['2024-01-01']);
+    // Without a version context the argument stays undefined (= latest).
+    buildSelector(raw, range, 'w', engine, '1');
+    expect(seen).toEqual(['2024-01-01', undefined]);
+  });
+
   it('rejects a unique match at the WRONG offsets as a mis-anchor', () => {
     // The resolver found a single match, but at offsets 56..66, not the
     // 10..20 the user selected (the trimmed prefix/suffix check matched the

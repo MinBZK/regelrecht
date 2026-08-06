@@ -2315,6 +2315,26 @@ impl LawExecutionService {
         &self.resolver
     }
 
+    /// Version-aware law lookup for annotation resolution (RFC-005/RFC-018).
+    ///
+    /// `valid_from` is the `valid_from` date of the version the caller is
+    /// looking at, so a note resolves against the text on screen instead of
+    /// whichever version happens to be newest — [`ServiceProvider::get_law`]
+    /// returns the newest loaded version, including one that is not yet in
+    /// force. `None` keeps the latest-version behaviour for callers without a
+    /// version context. A malformed date is an error: it must not silently
+    /// fall back to the newest version (RFC-019).
+    pub fn get_law_version(
+        &self,
+        law_id: &str,
+        valid_from: Option<&str>,
+    ) -> Result<&ArticleBasedLaw> {
+        let reference_date = valid_from.map(parse_calculation_date).transpose()?;
+        self.resolver
+            .get_law_for_date_reported(law_id, reference_date)
+            .map_err(|reason| selection_error(law_id, valid_from.unwrap_or(""), reason))
+    }
+
     /// Get metadata about a loaded law.
     ///
     /// # Arguments
@@ -4991,5 +5011,132 @@ articles:
             .expect("the referenced law must be executed");
 
         assert_eq!(value, Value::Int(100));
+    }
+
+    // -------------------------------------------------------------------------
+    // Version-aware law lookup for annotation resolution (get_law_version)
+    // -------------------------------------------------------------------------
+
+    /// Two versions of the same law whose *article text* genuinely differs, so
+    /// a quote from the old redaction does not occur in the new one. This is
+    /// the premise of the annotation-versioning bug: text-only laws are enough,
+    /// notes anchor on text, not on execution logic.
+    fn text_law_version(valid_from: &str, text: &str) -> String {
+        format!(
+            r#"
+$id: test_versioned_text_law
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '{valid_from}'
+articles:
+  - number: '2'
+    text: '{text}'
+"#
+        )
+    }
+
+    const OLD_TEXT: &str =
+        "heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil";
+    const NEW_TEXT: &str = "wordt de tegemoetkoming ambtshalve toegekend door de dienst";
+
+    fn service_with_two_text_versions() -> LawExecutionService {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&text_law_version("2024-01-01", OLD_TEXT))
+            .unwrap();
+        service
+            .load_law(&text_law_version("2025-01-01", NEW_TEXT))
+            .unwrap();
+        service
+    }
+
+    #[test]
+    fn get_law_version_selects_the_version_being_viewed() {
+        let service = service_with_two_text_versions();
+
+        let old = service
+            .get_law_version("test_versioned_text_law", Some("2024-01-01"))
+            .expect("the 2024 version is in force on its own valid_from");
+        assert_eq!(old.articles[0].text, OLD_TEXT);
+
+        let latest = service
+            .get_law_version("test_versioned_text_law", None)
+            .expect("without a date the latest version is the answer");
+        assert_eq!(latest.articles[0].text, NEW_TEXT);
+    }
+
+    #[test]
+    fn a_note_on_an_old_version_resolves_against_that_version() {
+        // The full annotation premise: the quoted text exists only in the old
+        // redaction. Resolving against the viewed (old) version anchors the
+        // note; the newest version — what `ServiceProvider::get_law` returns,
+        // and what the resolver used to be handed — orphans it.
+        let service = service_with_two_text_versions();
+        let selector = crate::annotation::TextQuoteSelector {
+            exact: "zorgtoeslag".to_string(),
+            prefix: "op een ".to_string(),
+            suffix: " ter grootte".to_string(),
+            hint: None,
+        };
+
+        let viewed = service
+            .get_law_version("test_versioned_text_law", Some("2024-01-01"))
+            .unwrap();
+        let r = crate::annotation::resolve(&selector, &viewed.articles);
+        assert!(r.is_found(), "got {:?}", r.status);
+        assert_eq!(r.single().unwrap().article_number, "2");
+
+        let newest = ServiceProvider::get_law(&service, "test_versioned_text_law").unwrap();
+        let r = crate::annotation::resolve(&selector, &newest.articles);
+        assert!(
+            r.is_orphaned(),
+            "premise check: the quote must be absent from the newest version, got {:?}",
+            r.status
+        );
+    }
+
+    #[test]
+    fn get_law_version_rejects_a_malformed_date() {
+        let service = service_with_two_text_versions();
+        let err = service
+            .get_law_version("test_versioned_text_law", Some("gisteren"))
+            .unwrap_err();
+        assert!(
+            matches!(err, EngineError::InvalidDate(_)),
+            "a malformed date must not silently fall back to the newest version: {err:?}"
+        );
+    }
+
+    #[test]
+    fn get_law_version_reports_an_unknown_law() {
+        let service = LawExecutionService::new();
+        let err = service
+            .get_law_version("nonexistent_law", None)
+            .unwrap_err();
+        assert!(matches!(err, EngineError::LawNotFound(id) if id == "nonexistent_law"));
+    }
+
+    #[test]
+    fn get_law_version_reports_a_not_yet_in_force_date() {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&text_law_version("2025-01-01", NEW_TEXT))
+            .unwrap();
+        let err = service
+            .get_law_version("test_versioned_text_law", Some("2024-06-01"))
+            .unwrap_err();
+        match err {
+            EngineError::LawNotYetInForce {
+                law_id,
+                reference_date,
+            } => {
+                assert_eq!(law_id, "test_versioned_text_law");
+                assert_eq!(
+                    reference_date, "2024-06-01",
+                    "the error must name the date the caller asked about"
+                );
+            }
+            other => panic!("expected LawNotYetInForce, got {other:?}"),
+        }
     }
 }
