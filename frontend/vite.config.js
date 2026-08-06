@@ -83,7 +83,11 @@ export default defineConfig({
         // (true) pulls the captured modules' dependencies (Vue's runtime-core,
         // reactivity, tslib) into the echarts chunk, which puts it right back
         // in the entry graph.
-        advancedChunks: {
+        //
+        // `scripts/check-first-load.mjs` (postbuild) guards this: if the
+        // option stops working the build fails instead of echarts silently
+        // rejoining the first load.
+        codeSplitting: {
           groups: [
             {
               name: 'echarts',
