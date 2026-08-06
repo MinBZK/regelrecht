@@ -70,6 +70,44 @@ For each changed line/block:
 - What happens if this external call fails?
 - Is this doing what the author thinks it's doing?
 
+## Step 3b: Does each new test pin what it claims?
+
+A green test is not evidence. Ask of every test in the diff: if the line this
+test covers were broken, would this test fail? Read the fixture against the
+assertion and answer it, rather than trusting the test name or its doc-comment.
+
+The failure is almost always the same: the test tells a scenario and the fixture
+does not construct the premise of that scenario, so the assertion is trivially
+true. A survey of this repository found fourteen of them — a longest-prefix test
+with no shorter competing article, a retain test whose only candidate was
+already filtered out upstream, an assertion about a variable nothing references,
+sixteen `test_files` entries naming files that do not exist and that nothing
+reads.
+
+Concrete forms to check:
+
+- **A fixture in a shape the schema or corpus never produces.** Check it against
+  `schema/latest/schema.json` and against a real file in `corpus/`. One unit
+  check here passed for months against a reader that found nothing in any real
+  document, because both the reader and the fixture had the field one level too
+  high.
+- **An assertion that survives mutating the line it covers.** Asserting on a
+  message prefix, on `is_empty()`, on an enum where a string carries the
+  behaviour, or `assert!(!format!("{x:?}").contains("…"))`, which also passes on
+  `Ok(..)`.
+- **An assertion behind an `if let` or a `match` arm** that is silently skipped
+  when the variant differs. Add a panic arm.
+- **A name that promises more than the body tests.** One test here asserted on
+  `CHAIN[1]` while its name and comment were about `CHAIN[0]`, and passed
+  because both steps declare the same requirements.
+- **Tautologies.** Passing an empty list through a function and asserting
+  nothing changed.
+
+When the diff fixes a bug, the review also asks: **why was the existing test
+green?** A bugfix without an answer to that question leaves the same blind spot
+for the next bug in the same place. The fix for the test is to construct the
+premise, not to add an assertion beside it.
+
 ## Step 4: Run Tests (if applicable)
 
 ```bash
@@ -115,3 +153,4 @@ Use the severity scale from REVIEW.md. Provide a structured report:
 - Empty catch/except blocks
 - Euro amounts as floats instead of eurocent integers
 - Broken `regelrecht://` URIs
+- A test whose fixture does not construct the premise its own name describes

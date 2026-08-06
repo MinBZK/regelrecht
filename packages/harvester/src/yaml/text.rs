@@ -202,6 +202,15 @@ pub fn wrap_text(text: &str, width: usize) -> String {
 /// Replaces `[text][refN]` tokens with single-word placeholders before wrapping,
 /// then restores them after. This allows textwrap to break lines around the links
 /// without breaking inside them.
+///
+/// The placeholder is deliberately as wide as the link it replaces, so textwrap
+/// computes the same line breaks it would for the real text. A link can therefore
+/// be wider than the wrap width — long law titles regularly are — and textwrap's
+/// default `break_words` would then split the placeholder across two lines, after
+/// which it can no longer be matched back and the marker leaks into the published
+/// law text. Word breaking is disabled for this pass to keep every placeholder in
+/// one piece; such a link simply overflows its line, exactly as it does after
+/// restoration anyway.
 fn wrap_with_protected_refs(text: &str, options: &Options<'_>) -> String {
     let mut replacements: Vec<(String, String)> = Vec::new();
     let mut protected = text.to_string();
@@ -220,7 +229,10 @@ fn wrap_with_protected_refs(text: &str, options: &Options<'_>) -> String {
         protected = protected.replacen(original, &placeholder, 1);
     }
 
-    let wrapped = fill(&protected, options);
+    // Keep placeholders intact: a placeholder wider than the wrap width must
+    // stay one word, otherwise it cannot be restored below.
+    let protect_options = options.clone().break_words(false);
+    let wrapped = fill(&protected, &protect_options);
 
     // Restore original reference links
     let mut result = wrapped;
@@ -317,6 +329,108 @@ mod tests {
                 line
             );
         }
+    }
+
+    #[test]
+    fn test_reference_link_placeholder_keeps_line_breaks_of_plain_text() {
+        // The placeholder that protects a reference link is deliberately as wide
+        // as the link itself, so the lines break where they would for plain
+        // prose of the same length. A narrower or wider placeholder would
+        // silently reflow every harvested law, so pin the invariant here.
+        let link = "[artikel 4 van de Zorgverzekeringswet][ref1]";
+        let same_width_word = "x".repeat(link.chars().count());
+        let sentence = "De verzekerde die op grond van {} recht heeft op zorg, meldt dit onverwijld aan de zorgverzekeraar.";
+
+        let line_widths = |text: &str| -> Vec<usize> {
+            wrap_text(text, 60)
+                .lines()
+                .map(|l| l.chars().count())
+                .collect()
+        };
+
+        assert_eq!(
+            line_widths(&sentence.replace("{}", link)),
+            line_widths(&sentence.replace("{}", &same_width_word)),
+            "protecting a reference link changed the line breaks"
+        );
+    }
+
+    #[test]
+    fn test_wrap_text_restores_reference_link_longer_than_width() {
+        // A reference link can be longer than the wrap width on its own (long
+        // law titles are common). The placeholder that protects it must not be
+        // broken across lines, otherwise it can no longer be restored and a
+        // `__REF000___` marker ends up in the published law text.
+        let link = "[artikel 1 van de Wet zorg en dwang psychogeriatrische en verstandelijk gehandicapte clienten, zoals dat luidde op 1 januari 2025][ref1]";
+        assert!(
+            link.len() > TEXT_WRAP_WIDTH,
+            "test premise: link ({} chars) must exceed the wrap width ({})",
+            link.len(),
+            TEXT_WRAP_WIDTH
+        );
+
+        let text = format!(
+            "De zorgaanbieder verleent zorg als bedoeld in {link} aan de verzekerde die daarop is aangewezen.\n\n[ref1]: https://example.com/wzd"
+        );
+        let wrapped = wrap_text_default(&text);
+
+        assert!(
+            !wrapped.contains("__REF"),
+            "placeholder left behind in output:\n{wrapped}"
+        );
+        assert!(
+            wrapped.contains(link),
+            "reference link not restored intact:\n{wrapped}"
+        );
+        assert!(
+            wrapped.contains("[ref1]: https://example.com/wzd"),
+            "reference definition lost:\n{wrapped}"
+        );
+    }
+
+    #[test]
+    fn test_wrap_text_restores_multiple_overlong_reference_links() {
+        // Several overlong links in one paragraph: every one of them must come
+        // back, in its own place.
+        let first = "[artikel 3.2.1, eerste lid, onderdeel a, van de Wet langdurige zorg zoals die gold voor de wijziging][ref1]";
+        let second = "[artikel 1 van de Wet zorg en dwang psychogeriatrische en verstandelijk gehandicapte clienten][ref2]";
+        let text = format!("Zie {first} en daarnaast ook {second} voor de nadere invulling van dit begrip in de praktijk.");
+
+        let wrapped = wrap_text(&text, 60);
+
+        assert!(
+            !wrapped.contains("__REF"),
+            "placeholder left behind in output:\n{wrapped}"
+        );
+        assert!(wrapped.contains(first), "first link lost:\n{wrapped}");
+        assert!(wrapped.contains(second), "second link lost:\n{wrapped}");
+    }
+
+    #[test]
+    fn test_overlong_plain_word_overflows_only_beside_a_reference_link() {
+        // Turning word breaking off applies to the whole paragraph, not just to
+        // the placeholders: an unrelated word wider than the wrap width now
+        // overflows its line instead of being hard-broken, but only in a
+        // paragraph that also holds a reference link. Harvested law text has no
+        // such words today, and hard-breaking one mid-word is no better than
+        // letting it overflow -- pin the difference so it stays a decision.
+        let overlong = "a".repeat(90);
+        let sentence = "Zie {} en verder in deze bepaling.";
+
+        let beside_link = wrap_text(
+            &sentence.replace("{}", &format!("[artikel 4][ref1] en {overlong}")),
+            60,
+        );
+        let on_its_own = wrap_text(&sentence.replace("{}", &overlong), 60);
+
+        assert!(
+            beside_link.contains(&overlong),
+            "overlong word was broken next to a reference link:\n{beside_link}"
+        );
+        assert!(
+            !on_its_own.contains(&overlong),
+            "overlong word should still be hard-broken without a reference link:\n{on_its_own}"
+        );
     }
 
     #[test]
