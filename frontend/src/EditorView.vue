@@ -34,6 +34,7 @@ import { proposalDivergence } from './lib/taskReview.js';
 import ArticleText from './components/ArticleText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import NoteCreator from './components/NoteCreator.vue';
+import NotesLoadError from './components/NotesLoadError.vue';
 import NoteCard from './components/NoteCard.vue';
 import QuotedFragment from './components/QuotedFragment.vue';
 import { cpToUtf16 } from './composables/useNotesHighlight.js';
@@ -337,11 +338,23 @@ watch(activeTrajectRef, async (next) => {
 });
 
 // Notes (RFC-005/RFC-018) for the current law, resolved against its text.
+// `lawValidFrom` names the version on screen: the engine holds every version
+// of the law (loadDependency), so the resolver needs to know which one the
+// user is looking at instead of defaulting to the newest. Corpus YAML quotes
+// the date ('2025-01-01' → string), but an unquoted date would reach us as a
+// JS Date via js-yaml, so coerce defensively.
+const lawValidFrom = computed(() => {
+  const v = law.value?.valid_from;
+  if (typeof v === 'string') return v;
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return null;
+});
 const {
   notesForArticle: committedNotesForArticle,
   issues: noteIssues,
+  error: notesLoadError,
   reload: reloadNotes,
-} = useNotes(lawId, selectedArticle, activeTrajectRef);
+} = useNotes(lawId, selectedArticle, activeTrajectRef, lawValidFrom);
 
 // Notes render as annotations inside the editable Tekst editor (they used to
 // live in a separate read-only "Tekst + notities" pane, now dropped). The
@@ -375,6 +388,7 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
   lawId,
   selectedArticle,
   activeTrajectRef,
+  lawValidFrom,
 );
 // Authoring is part of the notes pane (the old separate `notes.create` flag is
 // folded in): wherever the pane is available, you can create notes in it.
@@ -2816,6 +2830,7 @@ async function handleActionSave() {
                         :law-id="lawId"
                         :article="selectedArticle"
                         :engine="noteEngine"
+                        :valid-from="lawValidFrom || ''"
                         :traject-ref="activeTrajectRef || ''"
                         :initial-note="noteCreator.initialNote"
                         @create="onNoteCreated"
@@ -2933,6 +2948,11 @@ async function handleActionSave() {
                    plus the draft-management actions moved from the Tekst pane.
                    Deliberately minimal for now; to be fine-tuned later. -->
               <nldd-simple-section v-else-if="view === 'notes'" width="full">
+                <!-- Pane-level resolve failure (fetch/engine/resolver threw).
+                     Shown to every viewer, not only note authors: without it
+                     the pane falls through to "Geen notities", which reads as
+                     an empty sidecar instead of a failure. -->
+                <NotesLoadError :error="notesLoadError" />
                 <template v-if="canCreateNotes">
                   <nldd-inline-dialog
                     v-if="noteIssues.length"
@@ -2964,7 +2984,7 @@ async function handleActionSave() {
                 </template>
 
                 <nldd-inline-dialog
-                  v-if="notesForArticle.length === 0"
+                  v-if="notesForArticle.length === 0 && !notesLoadError"
                   text="Geen notities voor dit artikel"
                 ></nldd-inline-dialog>
                 <template v-else>

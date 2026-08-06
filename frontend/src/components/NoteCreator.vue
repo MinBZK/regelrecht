@@ -29,6 +29,10 @@ const props = defineProps({
   article: { type: Object, default: null },
   // Loaded WASM engine (resolveNote) for selector uniqueness validation.
   engine: { type: Object, default: null },
+  // `valid_from` of the law version on screen, so uniqueness is validated in
+  // the text being annotated instead of the newest loaded version. Empty
+  // means "latest" (a law without valid_from).
+  validFrom: { type: String, default: '' },
   // Active traject ref. Required to surface the "Document" link mode -
   // without a traject there is no documents folder to pick from.
   trajectRef: { type: String, default: '' },
@@ -155,6 +159,7 @@ const selectorResult = computed(() => {
     props.lawId,
     props.engine,
     props.article?.number,
+    props.validFrom || null,
   );
 });
 

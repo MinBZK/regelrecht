@@ -108,6 +108,21 @@ Feature: Note resolution (RFC-005, RFC-018)
     When the note is resolved
     Then the note resolves to article "2"
 
+  Scenario: A hint does not remove a genuine ambiguity
+    # The quote occurs verbatim in two articles. After a renumbering the
+    # recorded hint may point at the wrong article, so a hint that happens to
+    # match may not silently decide: the ambiguity goes to a human, exactly
+    # as it would without the hint (RFC-018: article numbers are
+    # non-authoritative, the note follows the text).
+    Given a law with the following articles:
+      | number | text                                         |
+      | 3      | Deze verplichting vloeit voort uit de wet.   |
+      | 7      | De inspecteur handelt overeenkomstig de wet. |
+    And a note selecting "de wet"
+    And the note hints article "3"
+    When the note is resolved
+    Then the note is ambiguous
+
   # === Ambiguity tracking (RFC-018 Decision 6) ===
   # A questioning note over an open norm still has to resolve to the text it
   # is about; the ambiguity state lives in a tagging body, the resolver only

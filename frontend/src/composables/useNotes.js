@@ -13,22 +13,22 @@ import { annotationsUrl } from './corpusUrls.js';
 import { apiFetch } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
 
-// Cache resolved notes per `${trajectRef}::${lawId}` for the session.
-// The resolver result only changes when the law text or the sidecar
-// changes; scoping by trajectRef prevents cross-traject leakage when
-// the user switches between trajects.
+// Cache resolved notes per `${trajectRef}::${lawId}::${validFrom}` for the
+// session. The resolver result only changes when the law text or the sidecar
+// changes; scoping by trajectRef prevents cross-traject leakage when the user
+// switches between trajects, and the version's `valid_from` keeps two
+// versions of the same law from sharing resolved offsets.
 //
 // Caveat (acceptable for the display-only, default-off MVP; revisit in
-// the note-editing phase): the lawId key part is `law.$id`, which does
-// not encode the law *version*. A save through the editor changes the
-// text without changing `$id`, so the cache is not invalidated on save
-// - editing a law in-session and reopening its Notities pane could show
-// offsets resolved against the pre-save text. Once notes become
-// editable, key by `$id` + version and invalidate on save.
+// the note-editing phase): a save through the editor changes the text
+// without changing `$id` or `valid_from`, so the cache is not invalidated
+// on save - editing a law in-session and reopening its Notities pane could
+// show offsets resolved against the pre-save text. Once notes become
+// editable, invalidate on save.
 const cache = new Map();
 
-function cacheKey(trajectRef, lawId) {
-  return `${trajectRef || ''}::${lawId}`;
+function cacheKey(trajectRef, lawId, validFrom) {
+  return `${trajectRef || ''}::${lawId}::${validFrom || ''}`;
 }
 
 /**
@@ -36,8 +36,12 @@ function cacheKey(trajectRef, lawId) {
  * @param {import('vue').Ref<object>} selectedArticle reactive current article
  * @param {import('vue').Ref<string|null>} trajectRef reactive traject ref
  *   (`null` for global / no-traject reads)
+ * @param {import('vue').Ref<string|null>=} lawValidFrom `valid_from` of the
+ *   law version on screen. Passed to the resolver so notes anchor in the
+ *   viewed version's text instead of the newest loaded version
+ *   (`loadDependency` loads every version).
  */
-export function useNotes(lawId, selectedArticle, trajectRef) {
+export function useNotes(lawId, selectedArticle, trajectRef, lawValidFrom) {
   const { initEngine, loadDependency } = useEngine();
   const resolved = ref([]); // [{ note, match, error }]
   const loading = ref(false);
@@ -54,6 +58,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
   async function load() {
     const id = lawId.value;
     const tr = trajectRef?.value ?? null;
+    const vf = lawValidFrom?.value ?? null;
     const isCurrent = claimLoad();
     const isStale = () => !isCurrent();
 
@@ -68,7 +73,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
       loading.value = false;
       return;
     }
-    const key = cacheKey(tr, id);
+    const key = cacheKey(tr, id, vf);
     if (cache.has(key)) {
       // Reset error too: a cached law (e.g. a 404 → []) must not keep showing
       // the previous law's "kon notities niet laden" alert.
@@ -106,7 +111,9 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
       // A bare `if (!engine.hasLaw(id))` gate here would skip that scope
       // check and resolve notes against stale-scope content.
       await loadDependency(id, tr);
-      const result = engine.resolveNotes(id, yamlText);
+      // `vf` selects the viewed version inside the engine's full version
+      // set; `undefined` (no valid_from on the law) means the latest.
+      const result = engine.resolveNotes(id, yamlText, vf ?? undefined);
       const list = Array.isArray(result) ? result : [];
       cache.set(key, list);
       if (!isStale()) resolved.value = list;
@@ -121,10 +128,11 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
     }
   }
 
-  // Re-load on either the law or the active-traject changing - the
-  // sidecar lives per traject branch, so a switch needs a fresh fetch
-  // even if the law id stayed put.
-  const trackers = trajectRef ? [lawId, trajectRef] : [lawId];
+  // Re-load on the law, the active traject or the viewed version changing -
+  // the sidecar lives per traject branch and the resolved offsets are
+  // version-specific, so any of the three needs a fresh resolve even if the
+  // law id stayed put.
+  const trackers = [lawId, trajectRef, lawValidFrom].filter(Boolean);
   watch(trackers, load, { immediate: true });
 
   /**
@@ -139,7 +147,11 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
    */
   async function reload() {
     const id = lawId.value;
-    if (id) cache.delete(cacheKey(trajectRef?.value ?? null, id));
+    if (id) {
+      cache.delete(
+        cacheKey(trajectRef?.value ?? null, id, lawValidFrom?.value ?? null),
+      );
+    }
     await load();
   }
 
@@ -200,8 +212,17 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
  * @param {import('vue').Ref<string|null>=} trajectRef Active traject ref.
  *   Routes the dependency load through the matching scope so a draft
  *   resolves against the same law copy the editor shows.
+ * @param {import('vue').Ref<string|null>=} lawValidFrom `valid_from` of the
+ *   viewed law version, so drafts anchor in the text on screen instead of
+ *   the newest loaded version (same contract as `useNotes`).
  */
-export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajectRef) {
+export function useResolvedDraftNotes(
+  draftNotes,
+  lawId,
+  selectedArticle,
+  trajectRef,
+  lawValidFrom,
+) {
   const { initEngine, loadDependency } = useEngine();
   const resolvedDrafts = ref([]); // [{ note, match }]
 
@@ -217,6 +238,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
     const id = lawId.value;
     const notes = draftNotes.value;
     const tr = trajectRef?.value ?? null;
+    const vf = lawValidFrom?.value ?? null;
     const isCurrent = claimResolve();
     const isStale = () => !isCurrent();
     if (!id || !notes || notes.length === 0) {
@@ -235,7 +257,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
         if (!selector) continue;
         let match;
         try {
-          match = engine.resolveNote(id, selector);
+          match = engine.resolveNote(id, selector, vf ?? undefined);
         } catch {
           continue; // a malformed draft selector simply does not highlight
         }
@@ -247,7 +269,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
     }
   }
 
-  const trackers = trajectRef ? [draftNotes, lawId, trajectRef] : [draftNotes, lawId];
+  const trackers = [draftNotes, lawId, trajectRef, lawValidFrom].filter(Boolean);
   watch(trackers, resolve, { immediate: true, deep: true });
 
   const draftNotesForArticle = computed(() => {

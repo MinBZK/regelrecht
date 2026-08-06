@@ -62,7 +62,7 @@ use crate::annotation::{self, law_id_from_source, TextQuoteSelector};
 use crate::config;
 use crate::engine::OutputProvenance;
 use crate::error::EngineError;
-use crate::service::{LawExecutionService, ServiceProvider};
+use crate::service::LawExecutionService;
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{RegulatoryLayer, Value};
 
@@ -532,24 +532,36 @@ impl WasmEngine {
     /// Resolve a single TextQuoteSelector against a loaded law (RFC-005).
     ///
     /// The law must already be loaded via `loadLaw()`. The selector is
-    /// content-addressed, so it resolves on whichever version is loaded.
+    /// content-addressed; `validFrom` names the *version* the caller is
+    /// viewing (that version's own `valid_from` date), so the note is looked
+    /// up in the text on screen rather than in whichever loaded version is
+    /// newest. Omit it to resolve against the latest version.
     ///
     /// # Arguments
     /// * `law_id` - ID of the loaded law
     /// * `selector` - JS object: `{ exact, prefix?, suffix?, "regelrecht:hint"? }`
+    /// * `valid_from` - Optional `YYYY-MM-DD` of the viewed version
     ///
     /// # Returns
     /// * `Ok(JsValue)` - `MatchResult`: `{ status, matches: [{ article_number,
     ///   start, end, confidence, matched_text }] }`. `start`/`end` are **`char`
     ///   offsets** (Unicode scalar values), not UTF-16 code units: JS code
     ///   slicing the article text must convert accordingly.
-    /// * `Err(JsValue)` - Error if the law is not loaded or the selector is invalid
+    /// * `Err(JsValue)` - Error if the law is not loaded, no version matches
+    ///   `valid_from`, or the selector/date is invalid
     #[wasm_bindgen(js_name = resolveNote)]
-    pub fn resolve_note(&self, law_id: &str, selector: JsValue) -> Result<JsValue, JsValue> {
+    pub fn resolve_note(
+        &self,
+        law_id: &str,
+        selector: JsValue,
+        valid_from: Option<String>,
+    ) -> Result<JsValue, JsValue> {
         let selector: TextQuoteSelector = serde_wasm_bindgen::from_value(selector)
             .map_err(|e| wasm_error(&format!("Invalid selector: {e}")))?;
-        let law = ServiceProvider::get_law(&self.service, law_id)
-            .ok_or_else(|| wasm_error(&format!("Law not loaded: {law_id}")))?;
+        let law = self
+            .service
+            .get_law_version(law_id, valid_from.as_deref())
+            .map_err(engine_error_to_wasm)?;
         let result = annotation::resolve(&selector, &law.articles);
         result
             .serialize(&js_serializer())
@@ -571,17 +583,27 @@ impl WasmEngine {
     /// # Arguments
     /// * `law_id` - ID of the loaded law to resolve against
     /// * `annotations_yaml` - Contents of an `annotations.yaml` sidecar file
+    /// * `valid_from` - Optional `YYYY-MM-DD` of the viewed version (see
+    ///   `resolveNote`); omit for the latest version
     ///
     /// # Returns
     /// * `Ok(JsValue)` - Array of `{ note, match, error }` objects. `match` is
     ///   the `MatchResult` (or `null` on error); `error` is `null` on success
     ///   or a message string. Match `start`/`end` are **`char` offsets**, not
     ///   UTF-16 code units.
-    /// * `Err(JsValue)` - Error if the law is not loaded or the YAML is invalid
+    /// * `Err(JsValue)` - Error if the law is not loaded, no version matches
+    ///   `valid_from`, or the YAML/date is invalid
     #[wasm_bindgen(js_name = resolveNotes)]
-    pub fn resolve_notes(&self, law_id: &str, annotations_yaml: &str) -> Result<JsValue, JsValue> {
-        let law = ServiceProvider::get_law(&self.service, law_id)
-            .ok_or_else(|| wasm_error(&format!("Law not loaded: {law_id}")))?;
+    pub fn resolve_notes(
+        &self,
+        law_id: &str,
+        annotations_yaml: &str,
+        valid_from: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let law = self
+            .service
+            .get_law_version(law_id, valid_from.as_deref())
+            .map_err(engine_error_to_wasm)?;
 
         let doc: serde_json::Value = serde_yaml_ng::from_str(annotations_yaml)
             .map_err(|e| wasm_error(&format!("Invalid annotations YAML: {e}")))?;

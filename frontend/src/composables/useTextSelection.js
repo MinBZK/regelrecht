@@ -235,7 +235,7 @@ export function selectionToRawRange(rawText, rootEl) {
  *
  * "Found" from the resolver is necessary but not sufficient: the resolver's
  * exact-match prefix/suffix check trims a one-char-slack window
- * (resolver.rs verify_at_position), so when the same `exact` repeats and a
+ * (resolver.rs find_exact_matches), so when the same `exact` repeats and a
  * grown context happens to satisfy the trimmed comparison at the *other*
  * occurrence, the resolver returns `found` pointing at the wrong span. For a
  * legal-text product that silent mis-anchor is unacceptable, so a `found`
@@ -252,6 +252,9 @@ export function selectionToRawRange(rawText, rootEl) {
  * @param {string|number} articleNumber  the article `range` is in; the
  *        resolver returns article-relative offsets + article_number, so the
  *        match is verified against this
+ * @param {string|null=} validFrom  `valid_from` of the law version on screen,
+ *        so uniqueness is checked in the text the user is annotating rather
+ *        than in the newest loaded version; omit for the latest version
  * @returns {{
  *   selector: object,
  *   exact: string,
@@ -264,7 +267,7 @@ export function selectionToRawRange(rawText, rootEl) {
  *   degrades to orphaned; 'not-found' = genuinely not locatable; 'mis-anchor'
  *   = a unique match landed off the selection.
  */
-export function buildSelector(rawText, range, lawId, engine, articleNumber) {
+export function buildSelector(rawText, range, lawId, engine, articleNumber, validFrom) {
   const chars = Array.from(rawText);
   const exact = chars.slice(range.start, range.end).join('');
   const wantArticle = String(articleNumber);
@@ -319,7 +322,7 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber) {
 
     let result;
     try {
-      result = engine.resolveNote(lawId, selector);
+      result = engine.resolveNote(lawId, selector, validFrom ?? undefined);
     } catch {
       // Resolver threw (law not loaded etc.) - caller surfaces it.
       return { selector, exact, status: 'orphaned', reason: 'not-found' };

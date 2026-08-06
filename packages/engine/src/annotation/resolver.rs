@@ -1,20 +1,27 @@
 //! TextQuoteSelector resolution algorithm (RFC-005, RFC-018).
 //!
 //! Resolution order:
-//! 1. If a hint is present, try the hinted article first; on failure fall
-//!    through to a full search (the hint is non-authoritative).
-//! 2. Exact match: locate `prefix + exact + suffix` as a substring, with
+//! 1. Exact match: locate `prefix + exact + suffix` as a substring, with
 //!    whitespace-tolerant prefix/suffix checks.
-//! 3. Fuzzy match: a sliding window over the text scored
+//! 2. Fuzzy match: a sliding window over the text scored
 //!    `exact*0.5 + prefix*0.25 + suffix*0.25`, keeping candidates at or above
 //!    the threshold (0.7).
-//! 4. One match (or a clear winner) is [`MatchStatus::Found`], several
+//! 3. One match (or a clear winner) is [`MatchStatus::Found`], several
 //!    equally-good are [`MatchStatus::Ambiguous`], none is
 //!    [`MatchStatus::Orphaned`].
 //!
+//! A `regelrecht:hint` on the selector does not participate in resolution.
+//! RFC-018 is explicit that article numbers are non-authoritative and that
+//! the note follows the *text*; any hint-driven shortcut can hide a competing
+//! occurrence elsewhere in the law, silently turning a genuine
+//! [`MatchStatus::Ambiguous`] (which the editor escalates to a human) into a
+//! confident [`MatchStatus::Found`] on a possibly renumbered article. Ruling
+//! out that competitor requires the full scan anyway, so the hint cannot
+//! shorten the search without being allowed to override it.
+//!
 //! Structurally ported from the Python proof-of-concept on the
-//! `feature/annotation-resolver` branch (resolution order, hint fallback,
-//! dedup, tiebreak margin). The scoring function differs deliberately: the
+//! `feature/annotation-resolver` branch (resolution order, dedup, tiebreak
+//! margin; the PoC's hint fast path was dropped, see above). The scoring function differs deliberately: the
 //! PoC used `difflib.SequenceMatcher.ratio()` (Ratcliff-Obershelp); this uses
 //! normalised Levenshtein per RFC-018, which is harsher on block moves. The
 //! two disagree near the 0.7 threshold, so a boundary BDD scenario guards the
@@ -26,7 +33,7 @@
 //! offsets. JS consumers indexing the law text must account for this; see the
 //! WASM binding docs.
 
-use crate::annotation::types::{MatchResult, SelectorHint, TextMatch, TextQuoteSelector};
+use crate::annotation::types::{MatchResult, TextMatch, TextQuoteSelector};
 use crate::article::Article;
 
 /// Default minimum weighted score for a fuzzy match to count.
@@ -43,7 +50,8 @@ const TIEBREAK_MARGIN: f64 = 0.1;
 /// Resolve `selector` against the articles of a law.
 ///
 /// Article numbers on the returned matches identify where the text was found.
-/// A present hint is tried first but never overrides a full-text search.
+/// A present hint never overrides the full-text search: the result is the
+/// same with or without it (see the module docs).
 pub fn resolve(selector: &TextQuoteSelector, articles: &[Article]) -> MatchResult {
     resolve_with_threshold(selector, articles, DEFAULT_FUZZY_THRESHOLD)
 }
@@ -54,14 +62,6 @@ pub fn resolve_with_threshold(
     articles: &[Article],
     threshold: f64,
 ) -> MatchResult {
-    if let Some(hint) = &selector.hint {
-        let hinted = resolve_hint(selector, articles, threshold, hint);
-        if hinted.is_found() {
-            return hinted;
-        }
-        // Hint failed: fall through to a full search.
-    }
-
     // Exact match across all articles.
     let mut exact: Vec<TextMatch> = Vec::new();
     for article in articles {
@@ -122,9 +122,8 @@ fn finalize_fuzzy(matches: Vec<TextMatch>) -> MatchResult {
 ///
 /// A lone candidate wins by default; with several, the best has to beat the
 /// runner-up by *more* than [`TIEBREAK_MARGIN`]. `None` means the field is
-/// tied, and what a tie means is up to the caller: ambiguous for a full
-/// search, a failed hint for [`resolve_hint`]. Candidates arrive sorted by
-/// confidence descending (both callers dedupe first, which sorts).
+/// tied, which the caller reports as ambiguous. Candidates arrive sorted by
+/// confidence descending (the caller dedupes first, which sorts).
 fn clear_winner(deduped: &[TextMatch]) -> Option<TextMatch> {
     match deduped {
         [only] => Some(only.clone()),
@@ -133,100 +132,6 @@ fn clear_winner(deduped: &[TextMatch]) -> Option<TextMatch> {
         }
         _ => None,
     }
-}
-
-/// Try the hinted article (optionally a hinted position) before any full
-/// search. Returns `Orphaned` on failure so the caller falls back.
-fn resolve_hint(
-    selector: &TextQuoteSelector,
-    articles: &[Article],
-    threshold: f64,
-    hint: &SelectorHint,
-) -> MatchResult {
-    let Some(article) = articles.iter().find(|a| a.number == hint.article_number) else {
-        return MatchResult::orphaned();
-    };
-
-    // Exact position hint: verify the exact text sits at the given offsets.
-    if let (Some(start), Some(end)) = (hint.start, hint.end) {
-        let chars: Vec<char> = article.text.chars().collect();
-        if start <= end && end <= chars.len() {
-            let at: String = chars[start..end].iter().collect();
-            if at == selector.exact {
-                if let Some(m) =
-                    verify_at_position(&article.text, selector, start, end, &article.number)
-                {
-                    return MatchResult::found(vec![m]);
-                }
-            }
-        }
-    }
-
-    // Search the whole hinted article (exact then fuzzy).
-    let mut exact = find_exact_matches(&article.text, selector);
-    for m in &mut exact {
-        m.article_number = article.number.clone();
-    }
-    if !exact.is_empty() {
-        return if exact.len() == 1 {
-            MatchResult::found(exact)
-        } else {
-            MatchResult::ambiguous(exact)
-        };
-    }
-
-    let mut fuzzy = find_fuzzy_matches(&article.text, selector, threshold);
-    for m in &mut fuzzy {
-        m.article_number = article.number.clone();
-    }
-    let deduped = deduplicate_overlapping(fuzzy);
-    match clear_winner(&deduped) {
-        Some(winner) => MatchResult::found(vec![winner]),
-        // A tie inside the hinted article is not an answer: the hint is
-        // non-authoritative, so the caller falls back to the full search.
-        None => MatchResult::orphaned(),
-    }
-}
-
-/// Confirm a candidate at a fixed position has the expected (whitespace-
-/// tolerant) prefix and suffix.
-fn verify_at_position(
-    text: &str,
-    selector: &TextQuoteSelector,
-    start: usize,
-    end: usize,
-    article_number: &str,
-) -> Option<TextMatch> {
-    let chars: Vec<char> = text.chars().collect();
-
-    // The window is exactly `len + 1` chars wide and sits flush against
-    // `exact`, so after trimming it must *equal* the prefix/suffix. Equality
-    // (not ends_with/starts_with) rejects word-internal false positives: with
-    // prefix "op een", the window before a wrong occurrence in "strop een"
-    // trims to "rop een", which `ends_with("op een")` would wrongly accept.
-    // The +1 char of slack absorbs a single whitespace difference.
-    if !selector.prefix.is_empty() {
-        let prefix_start = start.saturating_sub(selector.prefix.chars().count() + 1);
-        let actual: String = chars[prefix_start..start].iter().collect();
-        if actual.trim() != selector.prefix.trim() {
-            return None;
-        }
-    }
-    if !selector.suffix.is_empty() {
-        let suffix_end = (end + selector.suffix.chars().count() + 1).min(chars.len());
-        let actual: String = chars[end..suffix_end].iter().collect();
-        if actual.trim() != selector.suffix.trim() {
-            return None;
-        }
-    }
-
-    Some(TextMatch {
-        article_number: article_number.to_string(),
-        start,
-        end,
-        confidence: 1.0,
-        matched_text: chars[start..end].iter().collect(),
-    })
 }
 
 /// All exact occurrences of `exact` whose (whitespace-normalised) prefix and
@@ -416,6 +321,7 @@ fn find_subslice(haystack: &[char], needle: &[char]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::annotation::types::SelectorHint;
 
     fn article(number: &str, text: &str) -> Article {
         Article {
@@ -561,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn hint_optimisation_finds_match() {
+    fn a_hint_does_not_change_a_unique_match() {
         let arts = vec![
             article("1", "Onbelangrijke tekst."),
             article("2", "heeft de verzekerde aanspraak op een zorgtoeslag hier"),
@@ -642,31 +548,35 @@ mod tests {
         assert!(text[m.end..].starts_with(" van rechtswege"));
     }
 
-    // === Hints: which article, which position, and when to ignore them ===
+    // === Hints: recorded but never authoritative ===
 
     #[test]
-    fn a_hint_picks_the_article_when_the_same_text_occurs_twice() {
-        // Both articles carry the quote, so a full search is ambiguous; the
-        // hint records which article the note was written on. No word in the
-        // quote is longer than three characters, so fuzzy matching cannot
-        // rescue this: the exact search inside the hinted article answers it.
+    fn a_hint_does_not_remove_a_cross_article_ambiguity() {
+        // Both articles carry the quote verbatim. After a renumbering the
+        // recorded article number may point at the wrong one, so the hint may
+        // not decide: the ambiguity goes to a human, exactly as it would
+        // without a hint.
         let arts = vec![
             article("2", "Deze verplichting vloeit voort uit de wet."),
             article("3", "De inspecteur handelt overeenkomstig de wet."),
         ];
         let sel = hinted("de wet", "", "", "3", None);
         let r = resolve(&sel, &arts);
-        assert!(r.is_found(), "got {:?}", r.status);
-        assert_eq!(r.single().unwrap().article_number, "3");
+        assert!(r.is_ambiguous(), "got {:?}", r.status);
+        let articles_hit: Vec<&str> = r
+            .matches
+            .iter()
+            .map(|m| m.article_number.as_str())
+            .collect();
+        assert_eq!(articles_hit, vec!["2", "3"]);
     }
 
     #[test]
-    fn a_position_hint_picks_one_of_two_identical_occurrences() {
+    fn a_position_hint_does_not_pick_between_identical_occurrences() {
         // The same phrase occurs twice with identical context, so prefix and
-        // suffix cannot tell them apart and a plain search is ambiguous. The
-        // recorded position says the note sits on the second one. The sentence
-        // runs on after that second occurrence, so the suffix window has to be
-        // bounded by the suffix length instead of by the end of the article.
+        // suffix cannot tell them apart. The recorded position is as stale-
+        // prone as the article number (any edit above it shifts the offsets),
+        // so it may not silently pick one: both occurrences are reported.
         let text = "recht op een zorgtoeslag van rechtswege en recht op een zorgtoeslag van rechtswege, aldus de toelichting";
         let arts = vec![article("2", text)];
         let start = text.rfind("zorgtoeslag").unwrap();
@@ -678,8 +588,30 @@ mod tests {
             Some((start, start + "zorgtoeslag".len())),
         );
         let r = resolve(&sel, &arts);
-        assert!(r.is_found(), "the position must break the tie, got {:?}", r);
-        assert_eq!(r.single().unwrap().start, start);
+        assert!(r.is_ambiguous(), "got {:?}", r.status);
+        assert_eq!(r.matches.len(), 2);
+    }
+
+    #[test]
+    fn a_hinted_fuzzy_match_loses_to_an_exact_match_elsewhere() {
+        // The hinted article only fuzzily resembles the quote; another
+        // article carries it verbatim with the right context. The full
+        // search is authoritative, so the exact occurrence wins even though
+        // the hint points elsewhere.
+        let arts = vec![
+            // "groote" (sic): one letter off, a clear fuzzy hit but not exact.
+            article("2", "recht op een zorgtoeslag ter groote van dat verschil"),
+            article(
+                "7",
+                "heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil",
+            ),
+        ];
+        let sel = hinted("zorgtoeslag", "op een ", " ter grootte", "2", None);
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "got {:?}", r.status);
+        let m = r.single().unwrap();
+        assert_eq!(m.article_number, "7");
+        assert_eq!(m.confidence, 1.0);
     }
 
     #[test]
