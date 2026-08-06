@@ -1901,15 +1901,31 @@ pub(crate) fn produced_reviewable_law(
 /// A parse failure yields None, and the caller then falls back to one task for
 /// the whole law — a proposal we cannot read is still reviewable by hand.
 pub(crate) fn changed_articles(source_yaml: &str, proposal_yaml: &str) -> Option<Vec<String>> {
+    /// `number:` als string, of de YAML hem nu quootte of niet.
+    ///
+    /// Een ongequote `number: 2` parset als YAML-integer. Alleen `as_str()`
+    /// lezen liet zo'n artikel stil uit beide lijsten vallen: geen review-taak
+    /// voor een wél gewijzigd artikel, en ook geen parse-fout die de
+    /// hele-wet-fallback aanzet. De frontend normaliseert hetzelfde veld op
+    /// dezelfde manier (`String(a.number)` in `proposalDivergence`), en de
+    /// taak-payload draagt het nummer als string, dus dat is hier de eenheid.
+    fn article_number(article: &serde_yaml_ng::Value) -> Option<String> {
+        match article.get("number")? {
+            serde_yaml_ng::Value::String(s) => Some(s.clone()),
+            serde_yaml_ng::Value::Number(n) => Some(n.to_string()),
+            // Alles anders (ontbrekend, null, een lijst) is geen artikelnummer
+            // waar een reviewer iets aan heeft; die artikelen blijven buiten
+            // de diff.
+            _ => None,
+        }
+    }
+
     fn articles(yaml: &str) -> Option<Vec<(String, serde_yaml_ng::Value)>> {
         let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).ok()?;
         let list = doc.get("articles")?.as_sequence()?;
         Some(
             list.iter()
-                .filter_map(|a| {
-                    let number = a.get("number")?.as_str()?.to_string();
-                    Some((number, a.clone()))
-                })
+                .filter_map(|a| Some((article_number(a)?, a.clone())))
                 .collect(),
         )
     }
@@ -3349,6 +3365,39 @@ articles:
             changed_articles(SOURCE, proposal),
             Some(vec!["3".to_string()])
         );
+    }
+
+    // Een ongequote `number: 2` is geldige YAML en komt in de praktijk voor.
+    // Vroeger viel zo'n artikel stil uit de diff (as_str() op een integer), dus
+    // kreeg een wél gewijzigd artikel geen review-taak - en zonder parse-fout
+    // sloeg de hele-wet-fallback ook niet aan: het voorstel verdween geruisloos.
+    #[test]
+    fn reports_a_changed_article_with_an_unquoted_number() {
+        let source = r#"
+$id: wet_x
+articles:
+  - number: 1
+    text: Eerste artikel
+  - number: 2
+    text: Tweede artikel
+"#;
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: 1
+    text: Eerste artikel
+  - number: 2
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+"#;
+        assert_eq!(
+            changed_articles(source, proposal),
+            Some(vec!["2".to_string()])
+        );
+        assert_eq!(changed_articles(source, source), Some(Vec::new()));
     }
 
     #[test]
