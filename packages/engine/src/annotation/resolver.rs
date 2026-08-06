@@ -1132,6 +1132,80 @@ mod tests {
         assert!(budget.truncated);
     }
 
+    #[test]
+    fn an_article_that_exactly_fits_the_scan_budget_is_scanned() {
+        // The bound is "does not fit", strictly: an article of exactly the
+        // remaining budget is still scanned, and the scan spends the budget
+        // down to zero (not up, not divided — the budget is a countdown).
+        let sel = selector("aanspraak op een zorgtoeslag", "", "");
+        let text = "en dan recht op een zorgtoeslag";
+        let mut budget = FuzzyBudget {
+            scan_chars_left: text.chars().count(),
+            ..FuzzyBudget::default()
+        };
+        let matches = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut budget);
+        assert!(!budget.truncated, "an exact fit is within the budget");
+        assert!(!matches.is_empty(), "the exact-fit article was scanned");
+        assert_eq!(budget.scan_chars_left, 0);
+    }
+
+    #[test]
+    fn a_quote_exactly_at_the_length_cap_is_still_searched() {
+        // The cap is "longer than", strictly: a quote of exactly the maximum
+        // length still gets the fuzzy scan; one char less of headroom skips.
+        let sel = selector("aanspraak op een zorgtoeslag", "", "");
+        let quote_len = sel.exact.chars().count();
+        let text = "en dan recht op een zorgtoeslag";
+
+        let mut at_cap = FuzzyBudget {
+            max_quote_chars: quote_len,
+            ..FuzzyBudget::default()
+        };
+        let matches = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut at_cap);
+        assert!(!at_cap.truncated, "exactly at the cap is still searched");
+        assert!(!matches.is_empty());
+
+        let mut over_cap = FuzzyBudget {
+            max_quote_chars: quote_len - 1,
+            ..FuzzyBudget::default()
+        };
+        let m2 = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut over_cap);
+        assert!(m2.is_empty(), "one char over the cap skips the scan");
+        assert!(over_cap.truncated);
+    }
+
+    #[test]
+    fn the_scoring_budget_counts_each_scored_window_exactly_once() {
+        // Measure how many windows this scan scores, then rerun with a
+        // budget of exactly that number: it must complete untruncated with
+        // the budget spent to zero. One less must truncate. This pins the
+        // countdown itself (a budget that counts up or divides never hits
+        // zero at the right moment).
+        let sel = selector("aanspraak op een zorgtoeslag", "", "");
+        let text = "en dan recht op een zorgtoeslag";
+        let mut probe = FuzzyBudget::default();
+        let matches = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut probe);
+        assert!(!matches.is_empty());
+        let scored = MAX_FUZZY_SCORED_WINDOWS - probe.scored_windows_left;
+        assert!(scored >= 1, "at least the matching window was scored");
+
+        let mut exact_fit = FuzzyBudget {
+            scored_windows_left: scored,
+            ..FuzzyBudget::default()
+        };
+        let m2 = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut exact_fit);
+        assert_eq!(m2.len(), matches.len());
+        assert!(!exact_fit.truncated, "exactly enough budget is enough");
+        assert_eq!(exact_fit.scored_windows_left, 0);
+
+        let mut one_short = FuzzyBudget {
+            scored_windows_left: scored - 1,
+            ..FuzzyBudget::default()
+        };
+        find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut one_short);
+        assert!(one_short.truncated, "one window short truncates the scan");
+    }
+
     // === Scoring and collapsing helpers ===
 
     #[test]
