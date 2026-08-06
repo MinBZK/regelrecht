@@ -8,6 +8,7 @@ members = [
     "editor-api",
     "engine",
     "github",
+    "graph",
     "harvester",
     "law-model",
     "pipeline",

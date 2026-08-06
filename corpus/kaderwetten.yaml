@@ -1,0 +1,65 @@
+---
+# Kaderwetten worden aangewezen, niet opgespoord.
+#
+# Een wet staat hier omdat iemand met gezag zegt dat hij een kaderwet is, niet
+# omdat hij vaak wordt aangehaald. Dat onderscheid is de reden dat dit bestand
+# bestaat: een drempel over het aantal verwijzingen zet de Awb en het Wetboek
+# van Strafrecht in dezelfde categorie, verschuift stil zodra het corpus groeit,
+# en heeft geen juridische grond.
+#
+# De corpusgraaf (packages/graph) leest dit bestand. Wat er niet op staat, mist
+# hij, en dat is een aanvaarde beperking: liever een gat dat je ziet dan een
+# kwalificatie die uit een constante rolt.
+#
+# Een kaart hoort drie dingen te beantwoorden (RFC-026):
+#   toepassingsbereik    waar reikt deze wet naartoe
+#   herkenningspatroon   waaraan zie je in een andere wet dat hij aan de orde is
+#   meenemen             wat moet er dan mee
+#
+# De twee hieronder zijn de evidente gevallen. Ze zijn nog door niemand
+# vastgesteld: `aangewezen_door` staat daarom op "nog niet vastgesteld" en dat
+# is de eerlijke stand, geen invulveld dat vergeten is.
+
+version: 1
+beheerder: nog niet belegd
+
+kaderwetten:
+  - bwb_id: BWBR0005537
+    law_id: algemene_wet_bestuursrecht
+    naam: Algemene wet bestuursrecht
+    toepassingsbereik: >-
+      Vrijwel elk besluit van een bestuursorgaan. De wet regelt de algemene
+      begrippen (besluit, beschikking, belanghebbende), de zorgvuldigheid van
+      de voorbereiding, de motiveringsplicht en de rechtsgang van bezwaar en
+      beroep, en geldt tenzij een bijzondere wet er uitdrukkelijk van afwijkt.
+    herkenningspatroon: >-
+      De wet spreekt van een besluit, een beschikking, een aanvraag, een
+      belanghebbende, bezwaar of beroep, of wijst een bestuursorgaan aan dat op
+      aanvraag beslist.
+    meenemen:
+      - De begripsbepalingen van hoofdstuk 1, in het bijzonder wat een besluit is.
+      - De beslistermijn en de gevolgen van overschrijding.
+      - De bezwaar- en beroepsprocedure, ook als de bijzondere wet er niets
+        over regelt.
+      - De motiveringsplicht bij beslisruimte die de wet openlaat.
+    aangewezen_door: nog niet vastgesteld
+    datum: '2026-08-02'
+
+  - bwb_id: BWBR0018472
+    law_id: algemene_wet_inkomensafhankelijke_regelingen
+    naam: Algemene wet inkomensafhankelijke regelingen
+    toepassingsbereik: >-
+      Elke tegemoetkoming die van het inkomen afhangt en die de Belastingdienst
+      uitvoert. De wet regelt het toetsingsinkomen, het begrip partner, de
+      berekening per berekeningsjaar, het voorschot en de definitieve
+      toekenning, en geldt voor de regelingen die haar van toepassing
+      verklaren.
+    herkenningspatroon: >-
+      De wet noemt een tegemoetkoming, een toeslag, een toetsingsinkomen of een
+      berekeningsjaar, of verklaart de Awir uitdrukkelijk van toepassing.
+    meenemen:
+      - Het toetsingsinkomen en welk jaar daarvoor telt.
+      - Het partnerbegrip en de medebewoners die meetellen.
+      - Voorschot, herziening en terugvordering.
+    aangewezen_door: nog niet vastgesteld
+    datum: '2026-08-02'

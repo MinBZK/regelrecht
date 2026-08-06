@@ -1,0 +1,36 @@
+[package]
+name = "regelrecht-graph"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "RegelRecht corpusgraaf - corpus to nodes, edges and a precomputed layout"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+homepage = "https://github.com/MinBZK/regelrecht"
+keywords = ["law", "legal", "graph", "layout", "dutch"]
+categories = ["visualization"]
+
+[[bin]]
+name = "regelrecht-graph-build"
+path = "src/bin/graph_build.rs"
+
+# Deliberately no new third-party crates: no petgraph, no nalgebra, no rayon.
+# The spectral initialisation, the Barnes-Hut ForceAtlas2 and the community
+# detection are written here so every source of non-determinism (iteration
+# order, tie-breaks, eigenvector sign, thread scheduling) is under our own
+# control. That is the whole point of the stability requirement.
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+walkdir.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
