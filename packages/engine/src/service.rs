@@ -6218,6 +6218,303 @@ articles:
         assert!(after.declarations_not_in_force.is_empty());
     }
 
+    /// A wet with an open term whose default is 200, delegated to a
+    /// ministeriële regeling. The three tests below feed it two versions of
+    /// the same regeling and check that version selection governs the
+    /// `implements` declaration itself, not only the regeling's articles.
+    fn wet_met_afstand_default_200() -> &'static str {
+        r#"
+$id: wet_met_open_term
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bij ministeriele regeling kan een afwijkende afstand worden vastgesteld
+    machine_readable:
+      open_terms:
+        - id: afwijkende_afstand
+          type: number
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: afstand
+            type: number
+        actions:
+          - output: afstand
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT_NULL
+                    subject: $afwijkende_afstand
+                  then: $afwijkende_afstand
+              default: 200
+"#
+    }
+
+    /// One version of the regeling that fills the open term, with the
+    /// `implements` declaration on the given article number.
+    fn regeling_afstand_version(valid_from: &str, article_number: &str, value: i64) -> String {
+        format!(
+            r#"
+$id: regeling_afstand
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '{valid_from}'
+valid_from: '{valid_from}'
+articles:
+  - number: '{article_number}'
+    text: De afwijkende afstand
+    machine_readable:
+      implements:
+        - law: wet_met_open_term
+          article: '2'
+          open_term: afwijkende_afstand
+      execution:
+        output:
+          - name: afwijkende_afstand
+            type: number
+        actions:
+          - output: afwijkende_afstand
+            value: {value}
+"#
+        )
+    }
+
+    /// The same regeling and article number, without the declaration. The
+    /// article still produces the output, so executing it by mistake yields a
+    /// value instead of an error.
+    fn regeling_afstand_version_zonder_implements(
+        valid_from: &str,
+        article_number: &str,
+        value: i64,
+    ) -> String {
+        format!(
+            r#"
+$id: regeling_afstand
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '{valid_from}'
+valid_from: '{valid_from}'
+articles:
+  - number: '{article_number}'
+    text: Dit artikel stelt geen afwijkende afstand vast
+    machine_readable:
+      execution:
+        output:
+          - name: afwijkende_afstand
+            type: number
+        actions:
+          - output: afwijkende_afstand
+            value: {value}
+"#
+        )
+    }
+
+    /// The newest version of the regeling renumbered the declaring article.
+    /// A calculation over the older date must still get the older version's
+    /// invulling — before, the candidate vanished on the article-number
+    /// mismatch and the citizen got the statutory default with an empty
+    /// record.
+    #[test]
+    fn test_a_renumbered_declaring_article_still_fills_the_term_on_its_own_date() {
+        let mut service = LawExecutionService::new();
+        service.load_law(wet_met_afstand_default_200()).unwrap();
+        service
+            .load_law(&regeling_afstand_version("2025-01-01", "1", 50))
+            .unwrap();
+        service
+            .load_law(&regeling_afstand_version("2026-01-01", "3", 60))
+            .unwrap();
+
+        let old = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert_eq!(
+            old.outputs.get("afstand"),
+            Some(&Value::Int(50)),
+            "the invulling of the version in force in 2025 applies, not the default"
+        );
+        assert!(
+            old.declarations_not_in_force.is_empty(),
+            "a candidate that applies needs no note: {:?}",
+            old.declarations_not_in_force
+        );
+
+        let new = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2026-06-01",
+            )
+            .unwrap();
+        assert_eq!(new.outputs.get("afstand"), Some(&Value::Int(60)));
+        assert!(new.declarations_not_in_force.is_empty());
+    }
+
+    /// The newest version of the regeling retracted the invulling that the
+    /// version in force on the calculation date still prescribes. Before, the
+    /// index — built from the newest version alone — had no candidate at all,
+    /// so the citizen got the default of 200 where the geldende versie says
+    /// 50, with nothing in refusals, not-in-force or the trace.
+    #[test]
+    fn test_an_invulling_retracted_later_still_applies_on_the_date_it_governs() {
+        let mut service = LawExecutionService::new();
+        service.load_law(wet_met_afstand_default_200()).unwrap();
+        service
+            .load_law(&regeling_afstand_version("2025-01-01", "1", 50))
+            .unwrap();
+        service
+            .load_law(&regeling_afstand_version_zonder_implements(
+                "2026-01-01",
+                "1",
+                9999,
+            ))
+            .unwrap();
+
+        let old = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert_eq!(
+            old.outputs.get("afstand"),
+            Some(&Value::Int(50)),
+            "the version in force in 2025 declares the invulling, so it applies"
+        );
+        assert!(
+            old.declarations_not_in_force.is_empty(),
+            "{:?}",
+            old.declarations_not_in_force
+        );
+
+        // After the retraction the default holds again — with the retraction
+        // on the record, because the index still offers the older declaration.
+        let new = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2026-06-01",
+            )
+            .unwrap();
+        assert_eq!(new.outputs.get("afstand"), Some(&Value::Int(200)));
+        assert_eq!(
+            new.declarations_not_in_force.len(),
+            1,
+            "{:?}",
+            new.declarations_not_in_force
+        );
+        assert!(
+            new.declarations_not_in_force[0]
+                .reason
+                .contains("does not declare this implementation"),
+            "{}",
+            new.declarations_not_in_force[0].reason
+        );
+    }
+
+    /// The sharpest form: the newest version declares the implements, and the
+    /// version in force on the calculation date has an article with the same
+    /// number that does not. Before, that article was executed as the
+    /// invulling — 75 instead of the statutory default of 200, on the strength
+    /// of a declaration from a version that did not exist on that date, and
+    /// without a note.
+    #[test]
+    fn test_a_declaration_from_a_future_version_is_never_executed_silently() {
+        let mut service = LawExecutionService::new();
+        service.load_law(wet_met_afstand_default_200()).unwrap();
+        service
+            .load_law(&regeling_afstand_version_zonder_implements(
+                "2025-01-01",
+                "1",
+                75,
+            ))
+            .unwrap();
+        service
+            .load_law(&regeling_afstand_version("2026-01-01", "1", 50))
+            .unwrap();
+
+        let old = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert_eq!(
+            old.outputs.get("afstand"),
+            Some(&Value::Int(200)),
+            "the statutory default applies: no declaration was in force in 2025"
+        );
+        assert_eq!(
+            old.declarations_not_in_force.len(),
+            1,
+            "the skipped declaration must be on the record: {:?}",
+            old.declarations_not_in_force
+        );
+        let note = &old.declarations_not_in_force[0];
+        assert_eq!(note.kind, DeclarationKind::Implementation);
+        assert_eq!(note.law_id, "regeling_afstand");
+        assert!(
+            note.subject.contains("open term 'afwijkende_afstand'"),
+            "{}",
+            note.subject
+        );
+        assert!(
+            note.reason.contains("does not declare this implementation"),
+            "{}",
+            note.reason
+        );
+
+        let receipt = service.build_receipt(&old, &BTreeMap::new(), "2025-06-01");
+        assert_eq!(
+            receipt.results.declarations_not_in_force, old.declarations_not_in_force,
+            "the note must reach the receipt"
+        );
+
+        let traced = service
+            .evaluate_law_output_with_trace(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        let rendered = traced
+            .trace
+            .as_ref()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("regeling_afstand") && rendered.contains("Not applied"),
+            "the trace must show the declaration that was passed over:\n{rendered}"
+        );
+
+        // On a date the declaring version covers, it simply applies.
+        let new = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2026-06-01",
+            )
+            .unwrap();
+        assert_eq!(new.outputs.get("afstand"), Some(&Value::Int(50)));
+        assert!(new.declarations_not_in_force.is_empty());
+    }
+
     /// A default whose actions never produce the term itself yielded null under
     /// the message "using default value". Null is a signal downstream ("no
     /// verordening, fall back to the statutory rule"), so the citizen got the

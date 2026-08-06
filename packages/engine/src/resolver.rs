@@ -122,7 +122,9 @@ impl DeclarationKind {
 }
 
 /// A hook, override or implementation the indexes offered, whose law has no
-/// version the engine could select for the reference date.
+/// version the engine could select for the reference date — or, for an
+/// implementation, whose selected version does not carry the declaration the
+/// index offered.
 ///
 /// Skipping it is right: a regulation that is not in force does not apply. But
 /// the skip is invisible in the outcome — the general rule computes a value,
@@ -147,8 +149,9 @@ pub struct DeclarationNotInForce {
     /// What it would have applied to, in the terms of this execution: the open
     /// term it fills, the output it overrides, the hook point it fires on.
     pub subject: String,
-    /// Why no version could be selected, as a data fact
-    /// ([`SelectionReason::describe`]).
+    /// Why the declaration did not apply, as a data fact: either why no
+    /// version could be selected ([`SelectionReason::describe`]) or that the
+    /// selected version does not declare it.
     pub reason: String,
 }
 
@@ -219,8 +222,10 @@ pub struct ImplementationLookup<'a> {
     pub implementations: Vec<(&'a ArticleBasedLaw, &'a Article)>,
     /// Candidates refused by the delegation gate, in index order.
     pub refusals: Vec<DelegationRefusal>,
-    /// Candidates whose law has no version in force on the reference date, in
-    /// index order. Not competent for this date, and not silent about it.
+    /// Candidates that were passed over for a version reason, in index order:
+    /// either their law has no version in force on the reference date, or the
+    /// version that is in force does not carry the declaration the index
+    /// offered. Not competent for this date, and not silent about it.
     pub not_in_force: Vec<DeclarationNotInForce>,
 }
 
@@ -275,6 +280,14 @@ impl DeclarationsFromOtherVersion {
 /// What a version declares beyond its own articles' execution: the material the
 /// hooks, overrides and procedure indexes are built from. Two versions with the
 /// same fingerprint index identically, so which one was indexed cannot matter.
+///
+/// `implements` is deliberately not part of the fingerprint. The fingerprint
+/// exists to *flag* what the newest-version-only indexes cannot answer;
+/// implements does not need the flag, because its index is a union over every
+/// loaded version and [`RuleResolver::find_implementations`] re-reads the
+/// declaration from the version in force on the reference date. Adding it here
+/// would raise "absence is not established" notes about the one declaration
+/// whose absence *is* established.
 fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
     let mut parts = Vec::new();
     if let Some(procedures) = &law.procedure {
@@ -369,7 +382,13 @@ pub struct RuleResolver {
     /// Note: This index uses the most recent version of each law.
     /// Uses a flat string key (null-separated) to avoid two allocations per lookup.
     output_index: HashMap<String, String>,
-    /// IoC index: (law_id, article, open_term_id) -> list of implementing articles
+    /// IoC index: (law_id, article, open_term_id) -> list of implementing articles.
+    /// Unlike the other indexes this one is a union over *every* loaded version
+    /// of each implementor, because a version can retract or renumber a
+    /// declaration that an older, still-in-force version carries. An entry is a
+    /// routing hint, not a fact about any particular version:
+    /// [`Self::find_implementations`] verifies each candidate against what the
+    /// version in force on the reference date actually declares.
     implements_index: HashMap<(String, String, String), Vec<LawArticleRef>>,
     /// Hook index: (hook_point, legal_character) -> list of (law_id, article_number, filter)
     /// Enables O(1) lookup of hooks that should fire for a given lifecycle event.
@@ -833,9 +852,16 @@ impl RuleResolver {
     /// Looks up the implements index for regulations that declare they fill
     /// the given open term. Optionally filters by temporal validity.
     ///
+    /// The index is a union over every loaded version of each implementor and
+    /// only routes; what counts is what the version in force on the reference
+    /// date declares. The declaration is therefore re-read from that version,
+    /// which also follows an article that carries another number there.
+    ///
     /// Returns the competent candidates sorted by priority (winner first),
     /// together with every candidate refused by the delegation gate and every
-    /// candidate that has no version in force on the reference date.
+    /// candidate whose declaration is not in force on the reference date —
+    /// because no version of its law is, or because the version that is does
+    /// not declare it.
     ///
     /// The open term is passed in by the caller rather than looked up again
     /// here. A second, independent lookup of the declaring law, article and
@@ -883,15 +909,23 @@ impl RuleResolver {
         // Resolve each candidate to actual (law, article) references
         let mut candidates: Vec<Candidate> = Vec::new();
         let mut lookup = ImplementationLookup::default();
+        // The index is a union over every loaded version of each implementor,
+        // so a law that renumbered its declaring article appears once per
+        // number. Each law is judged once, on what its in-force version
+        // declares, not once per number it ever declared under.
+        let mut seen_laws: HashSet<&str> = HashSet::new();
 
         for entry in candidate_entries {
+            if !seen_laws.insert(entry.law_id.as_str()) {
+                continue;
+            }
             // Version filter. A regulation that is not in force on this date
             // cannot fill the term, but its disappearance would be silent: the
             // caller sees zero candidates and reports "no implementation, using
             // the default" — the same sentence it prints when nobody ever wrote
-            // one. The two filters below say why they drop a candidate, and
-            // this one now does too, through the same lookup so the record
-            // reaches trace and receipt rather than the log alone.
+            // one. The filters below say why they drop a candidate, and this
+            // one now does too, through the same lookup so the record reaches
+            // trace and receipt rather than the log alone.
             let law = match self.get_law_for_date_reported(&entry.law_id, reference_date) {
                 Ok(law) => law,
                 Err(reason) => {
@@ -912,6 +946,52 @@ impl RuleResolver {
                     continue;
                 }
             };
+
+            // What the version in force actually declares. An index entry only
+            // proves that *some* loaded version declares this implements: the
+            // newest version may have retracted it, an older one may declare it
+            // under another article number, and a same-numbered article of this
+            // version may not declare it at all. Executing on the entry alone
+            // would apply a declaration from a version that is not in force —
+            // so the declaration is re-read from the version that is.
+            let declaring: Vec<&Article> = law
+                .articles
+                .iter()
+                .filter(|a| {
+                    a.get_implements().is_some_and(|decls| {
+                        decls.iter().any(|d| {
+                            d.law == law_id && d.article == article && d.open_term == open_term_id
+                        })
+                    })
+                })
+                .collect();
+
+            if declaring.is_empty() {
+                // The declaration lives only in a version that is not in force
+                // on this date. Skipping is right — a declaration that did not
+                // exist on the reference date does not apply — but silence is
+                // not: without this note, "no implementation, using the
+                // default" reads the same as when nobody ever wrote one.
+                tracing::debug!(
+                    candidate = %entry.law_id,
+                    article = %entry.article_number,
+                    "Skipping: the version in force on the reference date does not declare this \
+                     implementation"
+                );
+                lookup.not_in_force.push(DeclarationNotInForce {
+                    kind: DeclarationKind::Implementation,
+                    law_id: entry.law_id.clone(),
+                    article: entry.article_number.clone(),
+                    subject: format!("open term '{open_term_id}' of {law_id} article {article}"),
+                    reason: format!(
+                        "the version of it in force on this date (valid_from {}) does not \
+                         declare this implementation; only a version that is not in force \
+                         on this date does",
+                        law.valid_from.as_deref().unwrap_or("not stated")
+                    ),
+                });
+                continue;
+            }
 
             // Scope filtering: check all scope fields on the candidate law against
             // the execution parameters. A scoped regulation (e.g., with gemeente_code
@@ -935,42 +1015,28 @@ impl RuleResolver {
                         delegation_type = %expected,
                         "Skipping: regulatory_layer is not the layer the open term delegates to"
                     );
-                    lookup.refusals.push(DelegationRefusal {
-                        declaring_law: law_id.to_string(),
-                        declaring_article: article.to_string(),
-                        open_term: open_term_id.to_string(),
-                        required_layer: expected.to_string(),
-                        refused_law: law.id.clone(),
-                        refused_article: entry.article_number.clone(),
-                        refused_layer: law.regulatory_layer.as_str().to_string(),
-                    });
+                    for art in &declaring {
+                        lookup.refusals.push(DelegationRefusal {
+                            declaring_law: law_id.to_string(),
+                            declaring_article: article.to_string(),
+                            open_term: open_term_id.to_string(),
+                            required_layer: expected.to_string(),
+                            refused_law: law.id.clone(),
+                            refused_article: art.number.clone(),
+                            refused_layer: law.regulatory_layer.as_str().to_string(),
+                        });
+                    }
                     continue;
                 }
             }
 
-            let Some(art) = law
-                .articles
-                .iter()
-                .find(|a| a.number == entry.article_number)
-            else {
-                // The index is built from the newest version of each law, but
-                // the candidate was resolved for the reference date. An article
-                // number that the newest version has and this one does not is a
-                // version mismatch, not an absent implementation — say so
-                // rather than letting the candidate disappear without a word.
-                tracing::warn!(
-                    candidate = %entry.law_id,
-                    article = %entry.article_number,
-                    "Skipping: the version in force on the reference date has no such article"
-                );
-                continue;
-            };
-
-            candidates.push(Candidate {
-                law,
-                article_number: entry.article_number.clone(),
-            });
-            lookup.implementations.push((law, art));
+            for art in declaring {
+                candidates.push(Candidate {
+                    law,
+                    article_number: art.number.clone(),
+                });
+                lookup.implementations.push((law, art));
+            }
         }
 
         if candidates.is_empty() {
@@ -1211,6 +1277,34 @@ impl RuleResolver {
         // Add new index entries from the most recent version
         // Access law_versions directly to avoid borrowing self through get_law()
         if let Some(versions) = self.law_versions.get(law_id) {
+            // Implements index (IoC): the union over every loaded version. A
+            // key that only an older version declares must stay findable —
+            // the newest version retracting an invulling does not erase it
+            // for dates on which the older version is in force. The entry
+            // only routes; `find_implementations` checks the version in
+            // force before executing anything.
+            for version in versions {
+                for article in &version.articles {
+                    if let Some(impl_decls) = article.get_implements() {
+                        for decl in impl_decls {
+                            let key = (
+                                decl.law.clone(),
+                                decl.article.clone(),
+                                decl.open_term.clone(),
+                            );
+                            let entry = LawArticleRef {
+                                law_id: law_id.to_string(),
+                                article_number: article.number.clone(),
+                            };
+                            let candidates = self.implements_index.entry(key).or_default();
+                            if !candidates.contains(&entry) {
+                                candidates.push(entry);
+                            }
+                        }
+                    }
+                }
+            }
+
             if let Some(law) = versions.first() {
                 // Procedure index (top-level)
                 if let Some(procedures) = &law.procedure {
@@ -1240,25 +1334,6 @@ impl RuleResolver {
                                     format!("{}\0{}", law_id, output.name),
                                     article.number.clone(),
                                 );
-                            }
-                        }
-                    }
-
-                    // Implements index (IoC)
-                    if let Some(impl_decls) = article.get_implements() {
-                        for decl in impl_decls {
-                            let key = (
-                                decl.law.clone(),
-                                decl.article.clone(),
-                                decl.open_term.clone(),
-                            );
-                            let entry = LawArticleRef {
-                                law_id: law_id.to_string(),
-                                article_number: article.number.clone(),
-                            };
-                            let candidates = self.implements_index.entry(key).or_default();
-                            if !candidates.contains(&entry) {
-                                candidates.push(entry);
                             }
                         }
                     }
@@ -2307,6 +2382,295 @@ articles:
         // Winner (newest) should be first
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
         assert_eq!(results[1].0.id, "regeling_standaardpremie_2024");
+    }
+
+    // -------------------------------------------------------------------------
+    // Implements under version guard: the index routes, the in-force version
+    // decides
+    // -------------------------------------------------------------------------
+
+    /// One version of the implementing regulation, declaring the implements on
+    /// the given article number.
+    fn make_regeling_version(valid_from: &str, article_number: &str, value: i64) -> String {
+        format!(
+            r#"
+$id: regeling_standaardpremie
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '{valid_from}'
+valid_from: '{valid_from}'
+articles:
+  - number: '{article_number}'
+    text: De standaardpremie
+    machine_readable:
+      implements:
+        - law: wet_op_de_zorgtoeslag
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: {value}
+"#
+        )
+    }
+
+    /// The same regulation and article, without the implements declaration.
+    /// The article still produces the output, so if the engine wrongly treats
+    /// it as an implementation it will execute without an error.
+    fn make_regeling_version_without_implements(
+        valid_from: &str,
+        article_number: &str,
+        value: i64,
+    ) -> String {
+        format!(
+            r#"
+$id: regeling_standaardpremie
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '{valid_from}'
+valid_from: '{valid_from}'
+articles:
+  - number: '{article_number}'
+    text: Dit artikel gaat niet over de standaardpremie van de wet
+    machine_readable:
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: {value}
+"#
+        )
+    }
+
+    /// Faalvorm a: the newest version renumbered the declaring article. The
+    /// old index (newest version only, looked up by article number) lost the
+    /// candidate with nothing but a log line; the union index plus the re-read
+    /// of the in-force version finds the article under the number it carries
+    /// on the reference date.
+    #[test]
+    fn test_find_implementations_follows_a_renumbered_declaring_article() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(&make_regeling_version("2025-01-01", "1", 1889))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_regeling_version("2026-01-01", "2", 1928))
+            .unwrap();
+
+        let term = open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie");
+        let old = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                term,
+                Some(NaiveDate::from_ymd_opt(2025, 6, 1).unwrap()),
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            old.implementations.len(),
+            1,
+            "exactly one candidate: the law is judged once, not once per number it \
+             ever declared under"
+        );
+        assert_eq!(old.implementations[0].0.id, "regeling_standaardpremie");
+        assert_eq!(
+            old.implementations[0].1.number, "1",
+            "the article as numbered in the version in force on the reference date"
+        );
+        assert!(old.not_in_force.is_empty(), "{:?}", old.not_in_force);
+        assert!(old.refusals.is_empty());
+
+        let new = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                term,
+                Some(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(new.implementations.len(), 1);
+        assert_eq!(new.implementations[0].1.number, "2");
+        assert!(new.not_in_force.is_empty(), "{:?}", new.not_in_force);
+    }
+
+    /// Faalvorm b: the newest version retracted the declaration that the
+    /// version in force on the reference date still carries. An index built
+    /// from the newest version alone has no entry at all, so the term fell
+    /// through to its default without a word; the union index keeps the older
+    /// declaration findable for the dates on which it is in force.
+    #[test]
+    fn test_a_declaration_retracted_by_the_newest_version_still_binds_its_own_date() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(&make_regeling_version("2025-01-01", "1", 1889))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_regeling_version_without_implements(
+                "2026-01-01",
+                "1",
+                9999,
+            ))
+            .unwrap();
+
+        let term = open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie");
+        let old = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                term,
+                Some(NaiveDate::from_ymd_opt(2025, 6, 1).unwrap()),
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(old.implementations.len(), 1);
+        assert_eq!(old.implementations[0].0.id, "regeling_standaardpremie");
+        assert_eq!(
+            old.implementations[0].0.valid_from.as_deref(),
+            Some("2025-01-01"),
+            "the version that declares it is the one handed out"
+        );
+        assert!(old.not_in_force.is_empty(), "{:?}", old.not_in_force);
+
+        // On a date the retracting version covers, the retraction holds — and
+        // is said, because the index still offers the older declaration.
+        let new = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                term,
+                Some(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert!(new.implementations.is_empty(), "the retraction holds");
+        assert_eq!(new.not_in_force.len(), 1, "{:?}", new.not_in_force);
+        assert_eq!(
+            new.not_in_force[0].reason,
+            "the version of it in force on this date (valid_from 2026-01-01) does not \
+             declare this implementation; only a version that is not in force on this \
+             date does"
+        );
+    }
+
+    /// Faalvorm c, the sharpest: the newest version declares the implements,
+    /// the version in force on the reference date has the same article number
+    /// without the declaration. The old lookup found that article by number
+    /// and executed it as the invulling — applying a declaration from a
+    /// version that did not exist on the reference date, without a note.
+    #[test]
+    fn test_a_declaration_only_in_a_version_not_in_force_is_not_executed() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(&make_regeling_version_without_implements(
+                "2025-01-01",
+                "1",
+                75,
+            ))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_regeling_version("2026-01-01", "1", 1928))
+            .unwrap();
+
+        let term = open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie");
+        let lookup = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                term,
+                Some(NaiveDate::from_ymd_opt(2025, 6, 1).unwrap()),
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert!(
+            lookup.implementations.is_empty(),
+            "an article must not be executed as invulling on the strength of a \
+             declaration another version makes: {:?}",
+            lookup
+                .implementations
+                .iter()
+                .map(|(l, a)| (l.id.as_str(), a.number.as_str()))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(lookup.not_in_force.len(), 1, "{:?}", lookup.not_in_force);
+        let note = &lookup.not_in_force[0];
+        assert_eq!(note.kind, DeclarationKind::Implementation);
+        assert_eq!(note.law_id, "regeling_standaardpremie");
+        assert_eq!(note.article, "1");
+        assert_eq!(
+            note.subject,
+            "open term 'standaardpremie' of wet_op_de_zorgtoeslag article 4"
+        );
+        assert_eq!(
+            note.reason,
+            "the version of it in force on this date (valid_from 2025-01-01) does not \
+             declare this implementation; only a version that is not in force on this \
+             date does"
+        );
+    }
+
+    /// The re-read of the in-force version matches on law, article and term —
+    /// all three. A declaration that misses on any one of them is another
+    /// declaration, not this one, however similar it looks.
+    #[test]
+    fn test_the_in_force_declaration_must_match_law_article_and_term() {
+        let near_misses = r#"
+$id: regeling_standaardpremie
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Drie declaraties die er net naast zitten
+    machine_readable:
+      implements:
+        - law: andere_wet
+          article: '4'
+          open_term: standaardpremie
+        - law: wet_op_de_zorgtoeslag
+          article: '5'
+          open_term: standaardpremie
+        - law: wet_op_de_zorgtoeslag
+          article: '4'
+          open_term: andere_term
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 75
+"#;
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver.load_from_yaml(near_misses).unwrap();
+        resolver
+            .load_from_yaml(&make_regeling_version("2026-01-01", "1", 1928))
+            .unwrap();
+
+        let term = open_term(&resolver, "wet_op_de_zorgtoeslag", "4", "standaardpremie");
+        let lookup = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                term,
+                Some(NaiveDate::from_ymd_opt(2025, 6, 1).unwrap()),
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert!(
+            lookup.implementations.is_empty(),
+            "no near-miss declaration may count as the declaration asked about"
+        );
+        assert_eq!(lookup.not_in_force.len(), 1, "{:?}", lookup.not_in_force);
     }
 
     // -------------------------------------------------------------------------
