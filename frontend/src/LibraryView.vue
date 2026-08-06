@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount, inject } from 'vue';
+import { ref, computed, shallowRef, nextTick, watch, watchEffect, onMounted, onBeforeUnmount, inject } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate, onBeforeRouteLeave } from 'vue-router';
 import * as yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -22,7 +22,8 @@ import { useCorpusLaws } from './composables/useCorpusLaws.js';
 // useTaskActions, niet useTasks: LibraryView heeft alleen de refresh nodig na
 // een geannuleerde job en mag daarvoor niet de 30s-poll aanzetten (die hoort
 // bij de taken-componenten, en anonieme bezoekers pollen nooit).
-import { useTaskActions } from './composables/useTasks.js';
+import { useTaskActions, usePollWhile } from './composables/useTasks.js';
+import { reviewTarget } from './lib/taskReview.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl } from './composables/corpusUrls.js';
@@ -101,7 +102,90 @@ function goToAccountRequest() {
 // so it can reserve converting target names against create/rename collisions.
 const docJobs = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs, cancelJob: cancelConversionJob } = docJobs;
-const { refresh: refreshTasks } = useTaskActions();
+const { refresh: refreshTasks, requestEnrich, running: runningJobs, tasks: openTasks } = useTaskActions();
+
+// Loopt er al een verrijking voor deze wet? Dan toont de lege pane dat in
+// plaats van de knoppen; een tweede aanvraag zou toch op een 409 stuiten.
+const isEnriching = computed(() =>
+  runningJobs.value.some(
+    (job) => job.job_type === 'enrich' && job.law_id === selectedLawId.value,
+  ),
+);
+// Alleen pollen zolang je naar de bezig-staat kijkt; zie usePollWhile.
+
+// Staat er al een beoordeelbaar voorstel klaar voor deze wet? Een verrijking
+// levert een taak per gewijzigd artikel, dus die van het geopende artikel gaat
+// voor; anders de eerste van de wet.
+const pendingReviewTask = computed(() => {
+  const forLaw = openTasks.value.filter(
+    (t) => t.task_type === 'job_review' && t.payload?.law_id === selectedLawId.value,
+  );
+  if (!forLaw.length) return null;
+  const here = String(selectedArticleNumber.value ?? '');
+  return forLaw.find((t) => String(t.payload?.article ?? '') === here) ?? forLaw[0];
+});
+const reviewReady = computed(() => !!pendingReviewTask.value);
+const reviewArticleForPane = computed(() =>
+  pendingReviewTask.value?.payload?.article == null
+    ? ''
+    : String(pendingReviewTask.value.payload.article),
+);
+function openReviewForLaw() {
+  const target = reviewTarget(pendingReviewTask.value);
+  if (target) router.push(target);
+}
+
+// Verrijken kan ook vanuit de corpusweergave, met dezelfde twee knoppen als in
+// een traject. De knop staat er dus altijd zodra er een wet is; ontbreekt de
+// login of het traject, dan routeert hij net als "Bewerken" ernaast in plaats
+// van te verdwijnen. Zonder traject is er namelijk niets om het voorstel ín te
+// landen: het endpoint hangt onder /api/trajects/{ref}/.
+const canEnrich = computed(() => !!selectedLawId.value);
+
+const enrichError = ref('');
+
+// `running` wordt alleen door een refresh gevuld; deze view pollt niet. Eén keer
+// bij mount is genoeg om na een herlaad te weten of er al iets loopt.
+onMounted(() => {
+  if (authenticated.value) refreshTasks();
+});
+// Naar de takenlijst, gefilterd op deze wet: dezelfde context waar de lopende
+// aanvraag als rij met activity-indicator staat.
+function openTasksForLaw() {
+  if (!activeTrajectRef.value || !selectedLawId.value) return;
+  router.push({
+    name: 'taken-traject',
+    params: {
+      trajectRef: activeTrajectRef.value,
+      categorie: 'wet',
+      contextLawId: selectedLawId.value,
+    },
+  });
+}
+
+async function enrichSelectedLaw(anchorEl) {
+  if (!selectedLawId.value) return;
+  if (!authenticated.value || !activeTrajectRef.value) {
+    // openEditor regelt beide: login-popover op deze knop, of de editor-route
+    // die de trajectkiezer toont.
+    openEditor(anchorEl);
+    return;
+  }
+  enrichError.value = '';
+  try {
+    const { alreadyRunning, tooMany } = await requestEnrich(
+      activeTrajectRef.value,
+      selectedLawId.value,
+    );
+    if (tooMany) enrichError.value = 'Je hebt te veel verrijkingen tegelijk lopen.';
+    // alreadyRunning heeft geen melding nodig: de refresh hieronder zet de pane
+    // in de bezig-staat, en dat is precies wat er aan de hand is.
+    else if (!alreadyRunning) enrichError.value = '';
+    await refreshTasks();
+  } catch {
+    enrichError.value = 'Verrijking aanvragen mislukt.';
+  }
+}
 
 const docsMgr = useDocumentsManager(
   activeTrajectRef,
@@ -200,6 +284,10 @@ const {
   onFileChange: onDocFileChange,
 } = useDocumentUpload(docsMgr.uploadDocument, (result) => {
   docJobs.refresh();
+  // De conversie is ook een wacht-taak. Zonder deze refresh wacht de takenlijst
+  // op zijn eigen 30s-poll en staat de taak die je zojuist in gang zette er nog
+  // niet in als je er meteen naartoe navigeert.
+  refreshTasks();
   if (!result?.targetPath) return;
   // Vanuit de takenlijst ("Probeer opnieuw") staan we niet in werkdoc-modus, en
   // `showUploadedJob` zet alleen state die dáár rendert - de gebruiker zou dan
@@ -281,6 +369,7 @@ const {
   onFileChange: onLawFileChange,
 } = useDocumentUpload(uploadLawDocument, () => {
   lawUploadStarted.value = true;
+  refreshTasks();
 });
 // Zelfde modal-behandeling als de werkdocument-upload, met een eigen modal
 // zodat de retry-actie de juiste picker heropent.
@@ -823,28 +912,50 @@ const selectedSection = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
+
+// Hier en niet bij isEnriching hierboven: watch() leest zijn bron meteen om de
+// dependency te leggen, en die computed gebruikt selectedLawId - dat staat een
+// paar regels hierboven pas. Eerder aanroepen gooit een ReferenceError in setup
+// en dan rendert de hele view niets.
+usePollWhile(isEnriching);
 const selectedArticleNumber = ref(null);
 
 // Recently-viewed laws (most-recent-first), persisted across sessions. Stored
 // as { law_id, name } so a law that fails to load in the active traject - and
 // therefore never enters the corpus index - still stays reachable + labelled.
+//
+// One list per traject, plus one for the global corpus. Two trajects hold
+// different laws, so a law you opened in the one has no business turning up
+// under "Recent bekeken" in the other - it would point at something that
+// corpus may not even have.
 const RECENT_LAWS_KEY = 'regelrecht-recent-laws';
 const MAX_RECENT_LAWS = 12;
-function loadRecentLaws() {
+function recentLawsKey(trajectRef) {
+  return `${RECENT_LAWS_KEY}:${trajectRef || 'corpus'}`;
+}
+function loadRecentLaws(trajectRef) {
   try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_LAWS_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(recentLawsKey(trajectRef)) || '[]');
     return Array.isArray(raw) ? raw.filter(r => r && r.law_id) : [];
   } catch {
     return [];
   }
 }
-const recentLaws = ref(loadRecentLaws());
+// The list from before this was scoped mixed every traject together, so there
+// is nothing to migrate it into. Drop it instead of leaving it behind forever.
+try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+const recentLaws = ref(loadRecentLaws(activeTrajectRef.value));
+// Switching traject keeps this view mounted (same route, other param), so the
+// list has to follow the switch itself; there is no remount to reload it.
+watch(activeTrajectRef, (trajectRef) => {
+  recentLaws.value = loadRecentLaws(trajectRef);
+});
 function recordRecentLaw(lawId, name) {
   if (!lawId) return;
   const entry = { law_id: lawId, name: name || humanizeLawId(lawId) };
   recentLaws.value = [entry, ...recentLaws.value.filter(r => r.law_id !== lawId)].slice(0, MAX_RECENT_LAWS);
   try {
-    localStorage.setItem(RECENT_LAWS_KEY, JSON.stringify(recentLaws.value));
+    localStorage.setItem(recentLawsKey(activeTrajectRef.value), JSON.stringify(recentLaws.value));
   } catch { /* storage unavailable - keep the in-memory list */ }
 }
 // Detail view (tekst/machine/yaml) is reflected in the URL hash so the
@@ -1038,10 +1149,20 @@ const lawTitle = computed(() =>
 // so the sidebar reflects what the user is looking at even when nothing is
 // curated yet. Re-runs as the name resolves to upgrade the label from the
 // humanized id to the real name.
+//
+// Switching traject keeps the open law on screen and re-resolves its name, so
+// this watch fires again. That is a switch and not a visit: without the guard
+// below, every switch prepends the law you were already looking at to the list
+// of the corpus you just moved into, and the two lists converge again.
+let lastRecorded = { trajectRef: null, lawId: null };
 watch([selectedLawId, lawName, indexedLawName], () => {
-  if (selectedLawId.value) {
-    recordRecentLaw(selectedLawId.value, lawName.value || indexedLawName.value);
-  }
+  const lawId = selectedLawId.value;
+  if (!lawId) return;
+  const trajectRef = activeTrajectRef.value ?? null;
+  const switchedContext = lawId === lastRecorded.lawId && trajectRef !== lastRecorded.trajectRef;
+  lastRecorded = { trajectRef, lawId };
+  if (switchedContext) return;
+  recordRecentLaw(lawId, lawName.value || indexedLawName.value);
 }, { immediate: true });
 
 const selectedArticle = computed(() => {
@@ -1673,7 +1794,7 @@ function clearRecent() {
               (changedLawIds.value && changedLawIds.value.has(sel)));
   const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
   recentLaws.value = [];
-  try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(recentLawsKey(activeTrajectRef.value)); } catch { /* ignore */ }
   if (deselect) {
     // Clear the open law up front so the article sidebar + main reflow to the
     // empty state now. `selectedLawId` is a manual ref, not route-derived; a
@@ -1741,14 +1862,34 @@ onBeforeRouteLeave(async (to) => {
 // (traject-home / corpus home) via the back button or a tab switch - a
 // different route record - leaves the ref set and the article list lingers
 // until refresh. Sync it reactively so the view reflows on any such navigation.
+// Symmetrisch: een wet die uit de route verdwijnt ruimt op, een wet die erin
+// verschijnt wordt geopend. Dat tweede stond alleen in de initiële load
+// hieronder, en die draait niet opnieuw wanneer je vanuit de takenlijst hierheen
+// navigeert: `taken-traject` en `library-traject` worden door dezelfde
+// LibraryView gerenderd, dus Vue hergebruikt de instantie. Zonder deze tak bleef
+// de view op "Geen selectie" staan terwijl de URL de wet wél noemde.
+//
+// Niet via selectLaw(): die doet een router.push naar de route waar we al zijn.
 watch(() => route.params.lawId, (lawId) => {
-  if (!lawId && selectedLawId.value) {
-    selectedLawId.value = null;
-    selectedLaw.value = null;
-    selectedArticleNumber.value = null;
-    activeAction.value = null;
-    lawError.value = null;
+  if (!lawId) {
+    if (selectedLawId.value) {
+      selectedLawId.value = null;
+      selectedLaw.value = null;
+      selectedArticleNumber.value = null;
+      activeAction.value = null;
+      lawError.value = null;
+    }
+    return;
   }
+  if (lawId === selectedLawId.value && !lawError.value) return;
+  selectedSection.value = null;
+  selectedLawId.value = lawId;
+  selectedArticleNumber.value = route.params.articleNumber
+    ? String(route.params.articleNumber)
+    : null;
+  activeAction.value = null;
+  lawError.value = null;
+  loadLaw(lawId);
 });
 
 // When a harvested law becomes available, reload the corpus and select it.
@@ -2460,8 +2601,8 @@ watch(activeTrajectRef, () => {
                   <nldd-spacer size="24"></nldd-spacer>
                   <KeepAlive>
                     <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" centered />
-                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @open-action="activeAction = $event" />
-                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" />
+                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :review-article="reviewArticleForPane" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" @open-action="activeAction = $event" />
+                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :review-article="reviewArticleForPane" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" />
                   </KeepAlive>
                 </nldd-simple-section>
               </template>

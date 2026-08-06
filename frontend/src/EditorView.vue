@@ -8,7 +8,8 @@ import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
-import { useTaskActions } from './composables/useTasks.js';
+import { useTaskActions, usePollWhile } from './composables/useTasks.js';
+import { reviewTarget } from './lib/taskReview.js';
 import { useTaskReview } from './composables/useTaskReview.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
@@ -41,6 +42,7 @@ import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import MachineReadable from './components/MachineReadable.vue';
+import MachineEmptyState from './components/MachineEmptyState.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
@@ -1495,11 +1497,10 @@ const lastSaveTouchedMachine = ref(false);
 // the same pane-local "current" refs a manual edit would touch), so the
 // existing dirty-tracking and Wijzigingenbalk (Opslaan/Wijzigingen-
 // ongedaan) drive the review UI the same way they drive a manual edit.
-// The SEEDING is single-article-scoped like `currentLawYaml` below (a
-// proposal touching several articles only seeds the first one that
-// differs into the panes), but the SAVE is not: `handleLawSave` sends the
-// full `reviewProposedContent` when a review is active, so approving
-// always commits the entire proposal - never just the seeded article.
+// Seeding en opslaan zijn allebei artikel-scoped: de taak wijst het artikel
+// aan (`payload.article`), de editor seedt dat en Opslaan bewaart de splice.
+// Alleen een taak zónder artikelnummer valt terug op de hele wet, zie
+// `reviewSavesWholeLaw`.
 const {
   reviewTask,
   proposedContent: reviewProposedContent,
@@ -1516,6 +1517,22 @@ const reviewActive = computed(() => !!reviewTask.value);
 const reviewIsLawCreate = computed(
   () => reviewTask.value?.payload?.kind === 'law_create',
 );
+// Het artikel waar deze taak over gaat. De worker maakt sinds de opsplitsing
+// één review-taak per gewijzigd artikel en zet het nummer in de payload, zodat
+// een beoordelaar zich uitspreekt over wat er werkelijk veranderd is.
+//
+// Zonder nummer gaat de taak over de hele wet. Dat blijft bestaan voor een
+// `law_create` (de wet ís het voorstel), voor een voorstel dat de worker niet
+// kon opsplitsen, en voor taken van vóór deze wijziging.
+const reviewArticleNumber = computed(() => {
+  const number = reviewTask.value?.payload?.article;
+  return number == null ? null : String(number);
+});
+// Een taak die één artikel aanwijst, slaat op als elke andere artikel-save: de
+// splice van de zichtbare pane, inclusief wat de beoordelaar er zelf nog aan
+// veranderde. Alleen een taak zonder artikelnummer committeert het voorstel in
+// zijn geheel, want daar is geen kleinere eenheid om over te beslissen.
+const reviewSavesWholeLaw = computed(() => reviewActive.value && !reviewArticleNumber.value);
 const reviewTaskIdParam = computed(() =>
   typeof route.query.task === 'string' ? route.query.task : null,
 );
@@ -1563,7 +1580,11 @@ function applyProposedContent(proposedYaml) {
   // which has no way to splice in an article the saved law doesn't have),
   // and can't show a removed article either - proposalDivergence folds both
   // into `hiddenChanges` so the banner points at the YAML panel for them.
-  const { target, hiddenChanges } = proposalDivergence(articles.value, proposedArticles);
+  const { target, hiddenChanges } = proposalDivergence(
+    articles.value,
+    proposedArticles,
+    reviewArticleNumber.value,
+  );
   reviewHasHiddenChanges.value = hiddenChanges;
   if (!target) return; // nothing seedable differs - nothing to seed
   reviewSeeded.value = true;
@@ -1588,12 +1609,14 @@ function applyProposedContent(proposedYaml) {
 // the parts the article-scoped editor can't show. A bar has no room for
 // paragraphs, so copy stays to a heading line + one short supporting line.
 const REVIEW_HIDDEN_CHANGES_NOTE = 'Zie ook het YAML-paneel voor wijzigingen buiten dit artikel.';
+// Accent, not neutral: a generated proposal is the one thing on screen that
+// asks for a decision, and a neutral bar reads as background chrome.
 const reviewBannerVariant = computed(() => {
   if (reviewLoadError.value) return 'critical';
-  if (reviewIsLawCreate.value) return 'neutral';
+  if (reviewIsLawCreate.value) return 'accent';
   if (reviewStale.value) return 'warning';
   if (reviewActive.value && !reviewSeeded.value) return 'warning';
-  return 'neutral';
+  return 'accent';
 });
 const reviewBannerText = computed(() =>
   reviewIsLawCreate.value ? 'Nieuwe wet uit documentconversie' : 'Voorstel uit verrijking',
@@ -1604,7 +1627,9 @@ const reviewBannerSupportingText = computed(() => {
     return 'Controleer de wet; Opslaan voegt de wet toe aan het traject, Verwerpen wijst af.';
   }
   if (!reviewSeeded.value) {
-    return 'Voorstel raakt alleen inhoud die hier niet zichtbaar is - bekijk het YAML-paneel.';
+    return reviewArticleNumber.value
+      ? `Artikel ${reviewArticleNumber.value} wijkt niet af van het voorstel; er valt niets te wijzigen.`
+      : 'Voorstel raakt alleen inhoud die hier niet zichtbaar is - bekijk het YAML-paneel.';
   }
   if (reviewStale.value) {
     return (
@@ -1612,10 +1637,40 @@ const reviewBannerSupportingText = computed(() => {
       (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
     );
   }
+  // Artikel-scoped: Opslaan is de gewone artikel-save, dus eigen aanpassingen
+  // gaan wél mee. Bij een voorstel voor de hele wet niet, en dat moet er dan
+  // ook staan - het is precies wat een beoordelaar niet verwacht.
+  if (!reviewSavesWholeLaw.value) {
+    return `Opslaan bewaart artikel ${reviewArticleNumber.value} zoals het hier staat, Verwerpen wijst het voorstel af.`;
+  }
   return (
     'Opslaan keurt het volledige voorstel goed (eigen aanpassingen gaan niet mee), Verwerpen wijst af.' +
     (reviewHasHiddenChanges.value ? ` ${REVIEW_HIDDEN_CHANGES_NOTE}` : '')
   );
+});
+
+// Which panes carry the proposal, for de review-melding. De verrijking schrijft
+// machine_readable en scenario's, niet de wettekst, dus Tekst hoort hier niet
+// in. YAML toont altijd de volledige proposal; Machine alleen als het seeden
+// lukte. Scenario's staat er bewust niet bij: de worker staged wel
+// `features/*.feature`, maar useTaskReview pakt alleen de wet-YAML uit de
+// resultaat-blobs, dus daar komt nooit een scenario aan.
+const reviewChangedPanes = computed(() => {
+  const panes = [];
+  if (reviewSeeded.value) panes.push('Machine');
+  panes.push('YAML');
+  return panes;
+});
+const reviewStatusText = computed(() => {
+  if (reviewLoadError.value) return reviewLoadError.value;
+  const what = reviewIsLawCreate.value
+    ? 'Dit is een nieuwe wet uit documentconversie'
+    : 'Dit is een gegenereerd voorstel';
+  const panes = reviewChangedPanes.value;
+  const list =
+    panes.length > 1 ? `${panes.slice(0, -1).join(', ')} en ${panes.at(-1)}` : panes[0];
+  const stale = reviewStale.value ? ' De wet is intussen gewijzigd, controleer extra goed.' : '';
+  return `${what}. Beoordeel ${list}.${stale}`;
 });
 
 // Fires once the law + its first article have finished loading (whether
@@ -1686,14 +1741,58 @@ async function rejectReview() {
   clearReviewQuery();
 }
 
-// --- "Verrijk deze wet" (request a job_review task) ---------------------
+// --- Verrijken aanvragen (levert een job_review-taak op) -----------------
 // Fire-and-forget request; the resulting job_review task shows up in the
 // taken-lijst in Home on its next poll (TasksSidebarItem/TasksListPane poll
 // via useTasks() every 30s). Use the non-polling useTaskActions() here -
 // EditorView doesn't need the shared task list/badge count, and joining
 // useTasks() unconditionally in setup() would start that poll for every
 // editor visitor, including anonymous ones.
-const { requestEnrich } = useTaskActions();
+const { requestEnrich, running: runningJobs, tasks: openTasks } = useTaskActions();
+// Staat er al een beoordeelbaar voorstel klaar voor deze wet? Dan meldt de lege
+// pane dat, in plaats van opnieuw te laten genereren.
+// Eén verrijking levert een taak per gewijzigd artikel, dus meestal staan er
+// meerdere open voor deze wet. Je kijkt naar één artikel, dus de taak van dát
+// artikel gaat voor; is die er niet, dan de eerste van de wet - beter naar een
+// naburig voorstel wijzen dan naar niets.
+const pendingReviewTask = computed(() => {
+  const forLaw = openTasks.value.filter(
+    (t) => t.task_type === 'job_review' && t.payload?.law_id === lawId.value,
+  );
+  if (!forLaw.length) return null;
+  const here = String(selectedArticleNumber.value ?? '');
+  return forLaw.find((t) => String(t.payload?.article ?? '') === here) ?? forLaw[0];
+});
+// Niet melden terwijl je die taak al aan het beoordelen bent.
+const reviewReady = computed(() => !!pendingReviewTask.value && !reviewActive.value);
+const reviewArticleForPane = computed(() =>
+  pendingReviewTask.value?.payload?.article == null
+    ? ''
+    : String(pendingReviewTask.value.payload.article),
+);
+function openReviewForLaw() {
+  const target = reviewTarget(pendingReviewTask.value);
+  if (target) router.push(target);
+}
+// Loopt er al een verrijking voor deze wet? Dan meldt de lege pane dat in
+// plaats van opnieuw de knoppen aan te bieden.
+// Naar de takenlijst, gefilterd op deze wet: daar staat de lopende aanvraag.
+function openTasksForLaw() {
+  if (!activeTrajectRef.value || !lawId.value) return;
+  router.push({
+    name: 'taken-traject',
+    params: {
+      trajectRef: activeTrajectRef.value,
+      categorie: 'wet',
+      contextLawId: lawId.value,
+    },
+  });
+}
+// Alleen pollen zolang je naar de bezig-staat kijkt; zie usePollWhile.
+const isEnriching = computed(() =>
+  runningJobs.value.some((job) => job.job_type === 'enrich' && job.law_id === lawId.value),
+);
+usePollWhile(isEnriching);
 const enrichFeedback = ref(null); // { variant, text } | null
 // An actual traject open (write access implies a traject, see `canEdit`
 // above) and a law loaded - mirrors the gates other write actions in this
@@ -1701,6 +1800,13 @@ const enrichFeedback = ref(null); // { variant, text } | null
 const canEnrichLaw = computed(
   () => canEdit.value && !!activeTrajectRef.value && !!lawId.value,
 );
+
+// De verrijking schrijft machine_readable en scenario's, niet de wettekst. De
+// knop hoort dus bij de panes waar dat resultaat landt, niet in de toolbar van
+// de tekstverwerker (waar hij stond omdat die toevallig pane 0 is). In elke
+// Machine- en YAML-pane, niet één keer: die twee staan niet altijd allebei
+// open, en de pane die je wél ziet moet je verder kunnen helpen.
+const isEnrichPane = (view) => view === 'machine' || view === 'yaml';
 
 async function enrichLaw() {
   if (!activeTrajectRef.value || !lawId.value) return;
@@ -1728,15 +1834,19 @@ function dismissEnrichFeedback() {
 // the whole law YAML, so one click persists every in-memory edit for the
 // selected article regardless of which pane surfaced the button.
 //
-// Review-modus: Opslaan approves the task, and approval must commit the
-// FULL proposal (spec §5.3/§6), not just the splice `currentLawYaml` makes
-// into the single selected article - a proposal touching several articles
-// would otherwise lose every article besides the one shown in the editor.
-// `saveLaw` already accepts arbitrary full-law YAML text (see its PUT body
-// in useLaw.js), so reusing it with `reviewProposedContent` instead of
-// `currentLawYaml` is the whole fix; no second save path is introduced.
+// Review-modus: Opslaan approves the task. Een taak die één artikel aanwijst
+// loopt langs het gewone pad - `currentLawYaml` splicet dat artikel in de
+// opgeslagen wet, en dat is precies de eenheid waarover de taak gaat. Wat de
+// verrijking elders voorstelde, blijft aan de eigen taak van dát artikel
+// hangen en gaat hier niet ongezien mee.
+//
+// Een taak zonder artikelnummer (law_create, of een voorstel dat de worker
+// niet kon opsplitsen) heeft die kleinere eenheid niet, en committeert het
+// voorstel integraal. `saveLaw` accepteert willekeurige volledige-wet-YAML
+// (zie de PUT-body in useLaw.js), dus dat is dezelfde aanroep met andere
+// inhoud; er komt geen tweede save-pad bij.
 async function handleLawSave() {
-  const lawYaml = reviewActive.value ? reviewProposedContent.value : currentLawYaml.value;
+  const lawYaml = reviewSavesWholeLaw.value ? reviewProposedContent.value : currentLawYaml.value;
   if (!lawYaml) return;
   // Snapshot the law id before the await. saveLaw itself guards its own
   // reactive writes with the same check, but the post-save cleanup below
@@ -1748,8 +1858,8 @@ async function handleLawSave() {
   // the visible pane's edits - always treat it as touching text (notes
   // re-anchor safely; skipping would risk leaving a note's positions stale
   // against text the proposal actually changed elsewhere in the law).
-  lastSaveTouchedText.value = reviewActive.value ? true : isArticleTextDirty.value;
-  lastSaveTouchedMachine.value = reviewActive.value ? true : isMachineReadableDirty.value;
+  lastSaveTouchedText.value = reviewSavesWholeLaw.value ? true : isArticleTextDirty.value;
+  lastSaveTouchedMachine.value = reviewSavesWholeLaw.value ? true : isMachineReadableDirty.value;
   try {
     // law_create: de wet bestaat nog niet in het traject, dus het voorstel
     // gaat door het create-pad (POST, pad server-side afgeleid) - daarna
@@ -1861,6 +1971,7 @@ registerEditorActions({
   discard: discardArticle,
   undo: undoText,
   redo: redoText,
+  reject: rejectReview,
 });
 watchEffect(() => {
   setEditorChanges({
@@ -1868,6 +1979,9 @@ watchEffect(() => {
     saving: lawSaving.value,
     canUndo: canUndoText.value,
     canRedo: canRedoText.value,
+    review: reviewActive.value,
+    reviewStatus: reviewActive.value || reviewLoadError.value ? reviewStatusText.value : null,
+    reviewVariant: reviewBannerVariant.value,
   });
 });
 
@@ -2260,45 +2374,14 @@ async function handleActionSave() {
              stay in the DOM so state is preserved when the viewport
              widens. -->
         <template v-else>
-          <!-- Review-modus (job_review-taak): a full-width, low bar above
-               the editor panes rather than a page-height dialog (PR #935 UX
-               feedback - the old nldd-page/nldd-simple-section wrapper made
-               it "too tall and too narrow", pushing real content down). A
-               bare nldd-container + nldd-banner sits directly in the flex
-               column here, outside the narrow-column nldd-simple-section
-               the pane/error states below use, the same way the
-               Wijzigingenbalk (AppShell.vue) is a bare nldd-container
-               outside its page-section too. nldd-banner natively supports
-               a variant colour + an actions slot (nldd-button, wrapped in
-               nldd-button-group), so it carries "Verwerpen"/"Voorstel
-               opslaan en goedkeuren" without any custom CSS. -->
-          <nldd-container v-if="reviewActive || reviewLoadError" padding="8">
-            <nldd-banner :variant="reviewBannerVariant" :text="reviewBannerText" :supporting-text="reviewBannerSupportingText">
-              <!-- Wijzigingenbalk only appears when a pane is dirty, which
-                   `!reviewSeeded` never is (nothing was seeded into the
-                   panes) - give the banner its own primary action so
-                   approving a proposal that touches nothing visible here
-                   is still reachable. -->
-              <nldd-button
-                v-if="reviewActive && !reviewSeeded"
-                slot="actions"
-                variant="primary"
-                text="Voorstel opslaan en goedkeuren"
-                :loading="lawSaving || undefined"
-                :disabled="lawSaving || undefined"
-                @click="handleLawSave"
-              ></nldd-button>
-              <nldd-button
-                v-if="reviewActive"
-                slot="actions"
-                variant="secondary"
-                text="Verwerpen"
-                @click="rejectReview"
-              ></nldd-button>
-            </nldd-banner>
-          </nldd-container>
+          <!-- Review-modus (job_review-taak) heeft geen eigen blok meer in de
+               content. De melding gaat als `slot="review-notice"` naar de
+               bar-split-view in AppShell (onder de document-tab-bar, boven
+               `main`) en de beslissing staat in de Wijzigingenbalk eronder.
+               Allebei via useAppChrome, net als de rest van de shell-chrome,
+               zodat geen van beide met de panes meescrollt. -->
 
-          <!-- Feedback from "Verrijk deze wet" (see the pane toolbar below):
+          <!-- Feedback op een aangevraagde verrijking (zie de Machine/YAML-pane):
                same page-wide banner-in-container pattern as the review notice
                above, so feedback never pushes the editor into a tall narrow
                column. -->
@@ -2318,10 +2401,14 @@ async function handleActionSave() {
                results into a different view. Re-keying on the view id
                forces an unmount + remount on identity change, at the
                (acceptable) cost of losing pane scroll position. -->
+          <!-- data-testid names the view, not the index: the empty states and
+               their buttons live in more than one pane, so an e2e locator has to
+               be able to say which pane it means. -->
           <nldd-split-view-pane
             v-for="(view, idx) in paneViews"
             :key="`${view}-${idx}`"
             :slot="`pane-${idx + 1}`"
+            :data-testid="`pane-${view}`"
           >
             <nldd-page
               sticky-header
@@ -2602,30 +2689,20 @@ async function handleActionSave() {
                       disabled
                     ></nldd-menu-item>
                   </nldd-toolbar-item>
-                  <!-- Wet-acties: only on the first pane - the action applies to
-                       the whole law, not this one pane, so showing it in every
-                       pane's own toolbar would just duplicate it. -->
-                  <nldd-toolbar-item
-                    v-if="idx === 0 && canEnrichLaw"
-                    slot="end"
-                    label="Wet acties"
-                    :priority="1"
-                  >
-                    <nldd-icon-button
-                      icon="ai"
-                      text="Wet acties"
-                      variant="secondary"
-                      size="md"
-                      expandable
-                    >
-                      <nldd-menu slot="popup">
-                        <nldd-menu-item icon="ai" text="Verrijk deze wet" @select="enrichLaw"></nldd-menu-item>
-                      </nldd-menu>
-                    </nldd-icon-button>
-                    <nldd-menu-group slot="overflow" text="Wet acties">
-                      <nldd-menu-item icon="ai" text="Verrijk deze wet" @select="enrichLaw"></nldd-menu-item>
-                    </nldd-menu-group>
-                  </nldd-toolbar-item>
+                  <!-- Verrijken hoort bij de panes die het resultaat tonen, maar
+                       het is geen actie die je vaak aanraakt en de pane-toolbar
+                       is smal. Als directe child van nldd-toolbar met
+                       slot="overflow" is dit een pinned overflow item: hij staat
+                       altijd achter de ...-knop en vecht dus nooit met de
+                       pane-switcher om breedte. Is de pane leeg, dan staat de
+                       ingang in de lege staat zelf. -->
+                  <nldd-menu-item
+                    v-if="canEnrichLaw && isEnrichPane(view) && hasMachineReadable"
+                    slot="overflow"
+                    icon="ai"
+                    text="Genereer nieuw voorstel"
+                    @select="enrichLaw"
+                  ></nldd-menu-item>
                 </nldd-toolbar>
               </nldd-container>
 
@@ -2784,12 +2861,19 @@ async function handleActionSave() {
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
+                  :can-enrich="canEnrichLaw"
+                  :enriching="isEnriching"
+                  :review-ready="reviewReady"
+                  :review-article="reviewArticleForPane"
                   :dirty="isMachineReadableDirty"
                   :saving="lawSaving"
                   :traject-ref="activeTrajectRef"
                   @open-action="handleOpenAction"
                   @open-edit="activeEditItem = $event"
                   @init-mr="handleInitMr"
+                  @enrich="enrichLaw"
+                  @view-tasks="openTasksForLaw"
+                  @review="openReviewForLaw"
                   @add-action="handleAddAction"
                   @save="handleMachineReadableSave"
                   @patch="handleSave"
@@ -2821,20 +2905,18 @@ async function handleActionSave() {
 
               <!-- YAML -->
               <nldd-simple-section v-else-if="view === 'yaml'" width="full">
-                <nldd-inline-dialog
+                <MachineEmptyState
                   v-if="!hasMachineReadable"
-                  text="Geen machine-leesbare gegevens voor dit artikel"
-                >
-                  <nldd-button
-                    v-if="canEdit"
-                    slot="actions"
-                    variant="secondary"
-                    size="md"
-                    data-testid="init-mr-btn-yaml"
-                    text="Maak machine versie aan"
-                    @click="handleInitMr"
-                  ></nldd-button>
-                </nldd-inline-dialog>
+                  :review-ready="reviewReady"
+                  :review-article="reviewArticleForPane"
+                  :enriching="isEnriching"
+                  :can-enrich="canEnrichLaw"
+                  :can-write-here="canEdit"
+                  @enrich="enrichLaw"
+                  @write="handleInitMr"
+                  @view-tasks="openTasksForLaw"
+                  @review="openReviewForLaw"
+                ></MachineEmptyState>
                 <template v-else>
                   <nldd-code-editor
                     resize="auto"

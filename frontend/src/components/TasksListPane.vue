@@ -21,7 +21,7 @@
  * Mounten start via `useTasks()` de gedeelde 30s-poll; de route erachter vereist
  * login, dus anonieme bezoekers pollen nooit.
  */
-import { computed, nextTick, ref, toRef, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, toRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useTasks } from '../composables/useTasks.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
@@ -54,6 +54,11 @@ const emit = defineEmits(['upload', 'cancel-job', 'view-job']);
 const router = useRouter();
 const { tasks, running, resolveTask, requestEnrich, refresh } = useTasks();
 const { displayName } = useCorpusLaws(toRef(props, 'trajectRef'));
+
+// De gedeelde lijst loopt al op zijn 30s-poll, maar die is elders gestart en zit
+// midden in een interval zodra jij hier binnenkomt. Wie een lijst opent, wil hem
+// actueel zien: het openen zelf is het moment om te verversen.
+onMounted(refresh);
 
 // Mislukt bovenaan, de rest op de servervolgorde (nieuwste eerst). Voorlopig:
 // een mislukte taak is de enige die echt vastzit, dus die hoort niet onder een

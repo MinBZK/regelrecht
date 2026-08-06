@@ -67,8 +67,15 @@ const documentTabsTrajectRef = shallowRef(null);
 // Article-level pending-changes bar (Wijzigingenbalk). The editor publishes
 // the dirty/saving/undo state reactively and registers the action callbacks;
 // the shell renders the bar while there are unsaved changes.
-const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo } | null
-const editorActions = shallowRef(null); // { save, discard, undo, redo } | null
+// `review` puts the bar in proposal-review mode: it then shows even when the
+// panes are not dirty (a proposal that seeded nothing visible is still a
+// decision waiting to be made) and it carries a Verwerp action next to Opslaan.
+// `reviewStatus`/`reviewVariant` feed the status bar the shell renders above
+// `main`: it belongs to the bar-split-view, not to the editor's own content
+// flow, so it lines up with the tab bar and the changes bar instead of
+// scrolling with the panes.
+const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo, review, reviewStatus, reviewVariant } | null
+const editorActions = shallowRef(null); // { save, discard, undo, redo, reject } | null
 
 // --- Library-only chrome ---
 // Whether the library has nothing curated yet (no favorites, no traject edits,

@@ -258,6 +258,23 @@ export async function readYamlPane(page) {
 }
 
 /**
+ * Get one of the editor's panes by its view id ('text', 'machine', 'scenario',
+ * 'yaml', 'notes').
+ *
+ * Without a stored preference the editor opens every pane at once, which is
+ * what a fresh CI browser gets. Components that appear in more than one pane -
+ * MachineEmptyState sits in both Machine and YAML - therefore put their
+ * test ids in the DOM twice. Scope through this helper rather than reaching for
+ * `.first()`: the ambiguity is real, and the test should say which pane it
+ * means.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} view
+ */
+export function pane(page, view) {
+  return page.locator(`[data-testid="pane-${view}"]`);
+}
+
+/**
  * Get the machine_readable pane element.
  * @param {import('@playwright/test').Page} page
  */

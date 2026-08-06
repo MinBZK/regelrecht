@@ -34,7 +34,15 @@ export function taskTitle(task, lawName = (id) => id) {
 
   if (context === WET) {
     const naam = lawName(task.payload.law_id);
-    return failed ? `Verrijking van ${naam} is mislukt` : `Beoordeel verrijking van ${naam}`;
+    // Een mislukking geldt de hele verrijking, dus die noemt nooit een artikel.
+    if (failed) return `Verrijking van ${naam} is mislukt`;
+    // De worker maakt één taak per gewijzigd artikel en zet het nummer in de
+    // payload. Zonder nummer gaat de taak over de hele wet: een nieuwe wet uit
+    // documentconversie, of een voorstel dat de worker niet kon opsplitsen.
+    const artikel = task.payload.article;
+    return artikel
+      ? `Beoordeel artikel ${artikel} van ${naam}`
+      : `Beoordeel verrijking van ${naam}`;
   }
   if (context === WERKDOCUMENTEN) {
     const naam = fileName(task.payload.target_path);

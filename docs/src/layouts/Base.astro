@@ -40,9 +40,9 @@ const isNotFound = kind === 'notfound';
 const t = content[lang];
 // Landing is bilingual (path-driven); docs are English-only.
 const home = isLanding ? (lang === 'en' ? '/en/' : '/') : '/en/';
-// One brand subtitle everywhere (per language): the same tagline on the
-// landing and the docs, not a separate docs string.
-const brandSubtitle = t.nav.brandTagline;
+// The logo carries the ministry, not the product: that is what the wordmark
+// next to the rijkslogo stands for. RegelRecht itself is the website title.
+const brandMinistry = t.nav.brandMinistry;
 // The signup variant of the landing has no in-page anchor nav.
 const showSignup = isLanding && /\/aanmelden|\/en\/signup/.test(pathname);
 // Status pages (the thank-you page and error pages like 404) present an
@@ -344,8 +344,8 @@ const legalLinks = [
           id needed, so there is no separate skip target div. */}
       <nldd-skip-link slot="header" text={skipText}>
       <nldd-top-navigation-bar
-          logo-title="RegelRecht"
-          logo-subtitle={brandSubtitle}
+          logo-title={brandMinistry}
+          website-title="RegelRecht"
           logo-href={home}
           website-href={home}
           back-href={backHref || undefined}
