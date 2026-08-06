@@ -173,6 +173,16 @@ fn check_notes(
                         path.display()
                     );
                     warnings += 1;
+                } else if result.is_skipped() {
+                    // Not the same as orphaned: the resolver never (fully)
+                    // searched, so absence was not established.
+                    eprintln!(
+                        "  WARN: {} note[{i}]: not searched (quote of {} chars exceeds the \
+                         fuzzy scan budget; shorten the quote)",
+                        path.display(),
+                        selector.exact.chars().count()
+                    );
+                    warnings += 1;
                 }
             }
         }
@@ -492,6 +502,20 @@ mod tests {
         let doc = json!({"annotations": [zorgtoeslag_note("motorrijtuigenbelasting")]});
         assert_eq!(
             check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[]), &repo()),
+            1
+        );
+    }
+
+    /// A quote too long for the bounded fuzzy scan: the resolver reports the
+    /// search as skipped, and the validator must warn "not searched" rather
+    /// than stay silent (silence would read as "resolves fine").
+    #[test]
+    fn a_selector_too_long_to_search_warns_as_not_searched() {
+        let quote = "motorrijtuigenbelasting ".repeat(6);
+        assert!(quote.chars().count() > regelrecht_engine::config::MAX_FUZZY_QUOTE_CHARS);
+        let doc = json!({"annotations": [zorgtoeslag_note(&quote)]});
+        assert_eq!(
+            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[])),
             1
         );
     }

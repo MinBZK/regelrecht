@@ -9,6 +9,18 @@
 //! 3. One match (or a clear winner) is [`MatchStatus::Found`], several
 //!    equally-good are [`MatchStatus::Ambiguous`], none is
 //!    [`MatchStatus::Orphaned`].
+//! 4. The fuzzy scan is budgeted (see [`FuzzyBudget`] and the
+//!    `MAX_FUZZY_*` limits in [`crate::config`]): it is cubic in the quote
+//!    length and runs synchronously on the browser main thread via WASM, so
+//!    an unbounded scan freezes the editor for minutes. When a bound cuts the
+//!    search short before anything was found the result is
+//!    [`MatchStatus::Skipped`] — "this was not searched" — never a silent
+//!    `Orphaned`.
+//!
+//! [`MatchStatus::Found`]: crate::annotation::MatchStatus::Found
+//! [`MatchStatus::Ambiguous`]: crate::annotation::MatchStatus::Ambiguous
+//! [`MatchStatus::Orphaned`]: crate::annotation::MatchStatus::Orphaned
+//! [`MatchStatus::Skipped`]: crate::annotation::MatchStatus::Skipped
 //!
 //! A `regelrecht:hint` on the selector does not participate in resolution.
 //! RFC-018 is explicit that article numbers are non-authoritative and that
@@ -21,7 +33,8 @@
 //!
 //! Structurally ported from the Python proof-of-concept on the
 //! `feature/annotation-resolver` branch (resolution order, dedup, tiebreak
-//! margin; the PoC's hint fast path was dropped, see above). The scoring function differs deliberately: the
+//! margin; the PoC's hint fast path was dropped, see above). The scoring
+//! function differs deliberately: the
 //! PoC used `difflib.SequenceMatcher.ratio()` (Ratcliff-Obershelp); this uses
 //! normalised Levenshtein per RFC-018, which is harsher on block moves. The
 //! two disagree near the 0.7 threshold, so a boundary BDD scenario guards the
@@ -35,6 +48,8 @@
 
 use crate::annotation::types::{MatchResult, TextMatch, TextQuoteSelector};
 use crate::article::Article;
+use crate::config::{MAX_FUZZY_QUOTE_CHARS, MAX_FUZZY_SCAN_CHARS, MAX_FUZZY_SCORED_WINDOWS};
+use std::collections::HashSet;
 
 /// Default minimum weighted score for a fuzzy match to count.
 pub const DEFAULT_FUZZY_THRESHOLD: f64 = 0.7;
@@ -46,6 +61,40 @@ const WINDOW_TOLERANCE: f64 = 0.3;
 /// Margin by which the best fuzzy match must beat the second-best to be
 /// treated as unambiguous.
 const TIEBREAK_MARGIN: f64 = 0.1;
+
+/// Work budget for one resolve call's fuzzy scanning.
+///
+/// The sliding-window scan is cubic in the quote length and runs
+/// synchronously on the browser main thread via WASM, so it needs a hard
+/// upper bound like every other scan in this engine. The limits live in
+/// [`crate::config`] next to the YAML/array/recursion budgets; the exact-match
+/// pass is linear and stays unbudgeted. Tests construct smaller budgets to
+/// exercise the truncation paths.
+#[derive(Debug, Clone, Copy)]
+struct FuzzyBudget {
+    /// Quote length (chars) above which fuzzy matching does not run at all.
+    max_quote_chars: usize,
+    /// Law text (chars) this resolve may still fuzzily scan.
+    scan_chars_left: usize,
+    /// Candidate windows this resolve may still score (three Levenshtein
+    /// computations each).
+    scored_windows_left: usize,
+    /// Set when any part of the search was skipped for budget reasons; turns
+    /// an empty outcome into [`MatchResult::skipped`] instead of orphaned, so
+    /// "not searched" stays distinguishable from "searched and absent".
+    truncated: bool,
+}
+
+impl Default for FuzzyBudget {
+    fn default() -> Self {
+        Self {
+            max_quote_chars: MAX_FUZZY_QUOTE_CHARS,
+            scan_chars_left: MAX_FUZZY_SCAN_CHARS,
+            scored_windows_left: MAX_FUZZY_SCORED_WINDOWS,
+            truncated: false,
+        }
+    }
+}
 
 /// Resolve `selector` against the articles of a law.
 ///
@@ -78,15 +127,16 @@ pub fn resolve_with_threshold(
         };
     }
 
-    // Fuzzy match across all articles.
+    // Fuzzy match across all articles, within one shared work budget.
+    let mut budget = FuzzyBudget::default();
     let mut fuzzy: Vec<TextMatch> = Vec::new();
     for article in articles {
-        for mut m in find_fuzzy_matches(&article.text, selector, threshold) {
+        for mut m in find_fuzzy_matches(&article.text, selector, threshold, &mut budget) {
             m.article_number = article.number.clone();
             fuzzy.push(m);
         }
     }
-    finalize_fuzzy(fuzzy)
+    finalize_fuzzy(fuzzy, budget.truncated)
 }
 
 /// Resolve a selector against a single raw text body (no article context).
@@ -99,17 +149,27 @@ pub fn resolve_in_text(selector: &TextQuoteSelector, text: &str, threshold: f64)
             MatchResult::ambiguous(exact)
         };
     }
-    finalize_fuzzy(find_fuzzy_matches(text, selector, threshold))
+    let mut budget = FuzzyBudget::default();
+    let fuzzy = find_fuzzy_matches(text, selector, threshold, &mut budget);
+    finalize_fuzzy(fuzzy, budget.truncated)
 }
 
 /// Collapse fuzzy candidates into a final [`MatchResult`].
 ///
 /// Overlapping spans are deduplicated keeping the highest confidence. A single
 /// surviving match, or a clear winner (more than [`TIEBREAK_MARGIN`] ahead of
-/// the runner-up), is `Found`; otherwise `Ambiguous`; empty is `Orphaned`.
-fn finalize_fuzzy(matches: Vec<TextMatch>) -> MatchResult {
+/// the runner-up), is `Found`; otherwise `Ambiguous`. Empty is `Orphaned` —
+/// unless the scan was `truncated`, because then "nothing found" was never
+/// established: the outcome is `Skipped`, so the caller can tell the user the
+/// text was not (fully) searched. Candidates found before truncation are
+/// genuine matches and are reported normally.
+fn finalize_fuzzy(matches: Vec<TextMatch>, truncated: bool) -> MatchResult {
     if matches.is_empty() {
-        return MatchResult::orphaned();
+        return if truncated {
+            MatchResult::skipped()
+        } else {
+            MatchResult::orphaned()
+        };
     }
     let deduped = deduplicate_overlapping(matches);
     match clear_winner(&deduped) {
@@ -186,36 +246,60 @@ fn find_exact_matches(text: &str, selector: &TextQuoteSelector) -> Vec<TextMatch
 
 /// Fuzzy candidates at or above `threshold`, sorted by confidence descending.
 ///
-/// Mirrors the Python proof-of-concept: collect exact occurrences plus
-/// sliding windows of `len(exact) ± 30%` that share a significant word with
-/// `exact`, then score each by weighted Levenshtein similarity.
-fn find_fuzzy_matches(text: &str, selector: &TextQuoteSelector, threshold: f64) -> Vec<TextMatch> {
+/// Mirrors the Python proof-of-concept: collect sliding windows of
+/// `len(exact) ± 30%` that share a significant word with `exact`, then score
+/// each by weighted Levenshtein similarity. The scan draws on `budget`: a
+/// quote over the length cap, an article that no longer fits the scan budget,
+/// or running out of scoring budget all mark the budget truncated (and the
+/// last one stops the scan), so the caller reports the search as skipped
+/// rather than silently incomplete.
+fn find_fuzzy_matches(
+    text: &str,
+    selector: &TextQuoteSelector,
+    threshold: f64,
+    budget: &mut FuzzyBudget,
+) -> Vec<TextMatch> {
     let chars: Vec<char> = text.chars().collect();
     let exact_len = selector.exact.chars().count();
     if exact_len == 0 || chars.is_empty() {
         return Vec::new();
     }
+    if exact_len > budget.max_quote_chars {
+        budget.truncated = true;
+        return Vec::new();
+    }
+    if chars.len() > budget.scan_chars_left {
+        budget.truncated = true;
+        return Vec::new();
+    }
+    budget.scan_chars_left -= chars.len();
 
     let tolerance = ((exact_len as f64) * WINDOW_TOLERANCE) as usize;
     let min_w = exact_len.saturating_sub(tolerance).max(1);
     let max_w = exact_len + tolerance;
 
     // Constant for the whole scan: compute once, not per window position.
-    let exact_words = significant_words(&selector.exact);
+    let index = WordIndex::new(&chars, &selector.exact);
     let prefix_len = selector.prefix.chars().count();
     let suffix_len = selector.suffix.chars().count();
 
     let mut matches: Vec<TextMatch> = Vec::new();
-    for window in min_w..=max_w {
+    'scan: for window in min_w..=max_w {
         if window > chars.len() {
             break;
         }
+        let mut cursor = index.cursor(window);
         for i in 0..=(chars.len() - window) {
-            let candidate: String = chars[i..i + window].iter().collect();
-            if !shares_significant_content(&exact_words, &candidate) {
+            if !cursor.shares_significant_content(i) {
                 continue;
             }
+            if budget.scored_windows_left == 0 {
+                budget.truncated = true;
+                break 'scan;
+            }
+            budget.scored_windows_left -= 1;
 
+            let candidate: String = chars[i..i + window].iter().collect();
             let p_start = i.saturating_sub(prefix_len);
             let actual_prefix: String = chars[p_start..i].iter().collect();
             let s_end = (i + window + suffix_len).min(chars.len());
@@ -269,26 +353,153 @@ fn similarity(a: &str, b: &str) -> f64 {
 ///
 /// Computed once for `exact` before the sliding-window scan; "significant"
 /// excludes short function words (articles, prepositions) so the pre-filter
-/// keys on content words.
-fn significant_words(s: &str) -> std::collections::HashSet<String> {
-    s.to_lowercase()
-        .split_whitespace()
+/// keys on content words. Words are kept as `Vec<char>` so the scan can look
+/// up text slices without allocating.
+fn significant_words(s: &str) -> HashSet<Vec<char>> {
+    s.split_whitespace()
         .filter(|w| w.chars().count() > 3)
-        .map(String::from)
+        .map(|w| w.chars().map(lower_char).collect())
         .collect()
 }
 
-/// Cheap pre-filter: does the candidate share a significant word with `exact`?
-/// Avoids scoring obviously unrelated windows. `exact_words` is precomputed by
-/// the caller so this allocates nothing per window.
-fn shares_significant_content(
-    exact_words: &std::collections::HashSet<String>,
-    candidate: &str,
-) -> bool {
-    candidate
-        .to_lowercase()
-        .split_whitespace()
-        .any(|w| w.chars().count() > 3 && exact_words.contains(w))
+/// Per-`char` lowercase (first scalar of the mapping), keeping offsets
+/// aligned with the original text. Differs from `str::to_lowercase` only for
+/// exotic expanding mappings (e.g. 'İ' → "i̇"), which do not occur in Dutch
+/// legal text and would merely make the pre-filter slightly stricter there.
+fn lower_char(c: char) -> char {
+    c.to_lowercase().next().unwrap_or(c)
+}
+
+/// Pre-computed word index over one article's text for the fuzzy pre-filter:
+/// does a window share a significant word with the quote?
+///
+/// Replaces a per-window `String` build plus `to_lowercase()`, whose
+/// allocation floor alone was seconds per article even with every window
+/// rejected. This lowercases the text once, records the non-whitespace runs
+/// (words) with a per-run flag "this whole word is a significant quote word",
+/// and then answers each window in O(1) amortised: interior words via prefix
+/// sums over that flag, plus at most two hash lookups for the words truncated
+/// at the window edges — the same tokens the old
+/// `candidate.split_whitespace()` produced, so the filter's semantics are
+/// unchanged.
+struct WordIndex {
+    /// The text, lowercased per char (offset-aligned with the original).
+    lower: Vec<char>,
+    /// Non-whitespace runs as `(start, end)`; sorted, non-overlapping.
+    runs: Vec<(usize, usize)>,
+    /// `match_prefix[k]` = number of runs in `runs[..k]` that are themselves
+    /// a significant quote word.
+    match_prefix: Vec<usize>,
+    /// Significant (>3 chars, lowercased) words of the quote.
+    exact_words: HashSet<Vec<char>>,
+}
+
+impl WordIndex {
+    fn new(chars: &[char], exact: &str) -> Self {
+        let lower: Vec<char> = chars.iter().map(|&c| lower_char(c)).collect();
+        let exact_words = significant_words(exact);
+
+        let mut runs: Vec<(usize, usize)> = Vec::new();
+        let mut start: Option<usize> = None;
+        for (i, &c) in chars.iter().enumerate() {
+            match (c.is_whitespace(), start) {
+                (false, None) => start = Some(i),
+                (true, Some(s)) => {
+                    runs.push((s, i));
+                    start = None;
+                }
+                _ => {}
+            }
+        }
+        if let Some(s) = start {
+            runs.push((s, chars.len()));
+        }
+
+        let mut match_prefix = Vec::with_capacity(runs.len() + 1);
+        let mut total = 0usize;
+        match_prefix.push(total);
+        for &(s, e) in &runs {
+            let hit = e - s > 3 && exact_words.contains(&lower[s..e]);
+            total += usize::from(hit);
+            match_prefix.push(total);
+        }
+
+        Self {
+            lower,
+            runs,
+            match_prefix,
+            exact_words,
+        }
+    }
+
+    /// A cursor for scanning windows of one fixed size at non-decreasing
+    /// positions (the shape of the sliding-window loop).
+    fn cursor(&self, window: usize) -> WindowCursor<'_> {
+        WindowCursor {
+            index: self,
+            window,
+            a: 0,
+            b: 0,
+        }
+    }
+
+    /// Does the (possibly truncated) word at `lower[ts..te]` count as shared
+    /// significant content? Same rule as the old per-window tokenisation: the
+    /// token must be longer than 3 chars and equal a significant quote word.
+    fn edge_token_matches(&self, ts: usize, te: usize) -> bool {
+        te - ts > 3 && self.exact_words.contains(&self.lower[ts..te])
+    }
+}
+
+/// Sliding-window view over a [`WordIndex`] for one window size.
+///
+/// `a` is the first run starting at or after the window start, `b` the first
+/// run ending past the window end; both only ever move forward, so a whole
+/// pass over the text costs O(text + runs), not O(text × words-per-window).
+struct WindowCursor<'a> {
+    index: &'a WordIndex,
+    window: usize,
+    a: usize,
+    b: usize,
+}
+
+impl WindowCursor<'_> {
+    /// Cheap pre-filter: does the window starting at `i` share a significant
+    /// word with the quote? Positions must be queried in non-decreasing
+    /// order. Allocates nothing.
+    fn shares_significant_content(&mut self, i: usize) -> bool {
+        let j = i + self.window;
+        let runs = &self.index.runs;
+        while self.a < runs.len() && runs[self.a].0 < i {
+            self.a += 1;
+        }
+        while self.b < runs.len() && runs[self.b].1 <= j {
+            self.b += 1;
+        }
+
+        // Words lying entirely inside the window: counted via prefix sums.
+        if self.b > self.a && self.index.match_prefix[self.b] > self.index.match_prefix[self.a] {
+            return true;
+        }
+
+        // Word truncated at the left window edge (the run containing `i`, if
+        // it starts before the window does).
+        if self.a > 0 {
+            let (s, e) = runs[self.a - 1];
+            if e > i && self.index.edge_token_matches(s.max(i), e.min(j)) {
+                return true;
+            }
+        }
+        // Word truncated at the right window edge. When one run spans the
+        // whole window it is the same run as above; don't test it twice.
+        if self.b < runs.len() && (self.a == 0 || self.b != self.a - 1) {
+            let (s, e) = runs[self.b];
+            if s < j && self.index.edge_token_matches(s.max(i), e.min(j)) {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 /// Keep only the highest-confidence match for each overlapping region.
@@ -706,7 +917,12 @@ mod tests {
         // only invites the resolver to anchor on the wrong text.
         let sel = selector("zorgtoeslag", "", "");
         let text = "de zorgtoeslag wordt jaarlijks vastgesteld door de Belastingdienst";
-        let matches = find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD);
+        let matches = find_fuzzy_matches(
+            text,
+            &sel,
+            DEFAULT_FUZZY_THRESHOLD,
+            &mut FuzzyBudget::default(),
+        );
         assert!(!matches.is_empty());
         for m in &matches {
             let len = m.end - m.start;
@@ -757,6 +973,165 @@ mod tests {
         assert!(r.is_orphaned(), "got {:?} at {:?}", r.status, r.matches);
     }
 
+    // === Budgets: the scan has a ceiling, and hitting it is visible ===
+
+    /// An article of ~230 chars whose text a long quote can be sliced from.
+    fn long_sentence() -> &'static str {
+        "De verzekerde heeft tegenover de zorgverzekeraar aanspraak op vergoeding van de kosten \
+         van zorg zoals verzekerd krachtens de zorgverzekering, voor zover de verzekerde daarop \
+         naar inhoud en omvang redelijkerwijs is aangewezen."
+    }
+
+    #[test]
+    fn a_quote_over_the_length_cap_is_skipped_not_orphaned() {
+        let text = long_sentence();
+        let arts = vec![article("2", text)];
+        // The quote is the article with one word changed: fuzzy matching
+        // would find it, but only by scanning windows around a >120-char
+        // quote — exactly the cubic blow-up the cap exists for.
+        let quote = text.replace("aanspraak", "recht");
+        let sel = selector(&quote, "", "");
+
+        // Premises: the quote really is over the cap, has no exact
+        // occurrence, and would fuzzily match were the cap not there.
+        assert!(quote.chars().count() > MAX_FUZZY_QUOTE_CHARS);
+        assert!(!text.contains(&quote));
+        let mut roomy = FuzzyBudget {
+            max_quote_chars: usize::MAX,
+            ..FuzzyBudget::default()
+        };
+        assert!(
+            !find_fuzzy_matches(text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut roomy).is_empty(),
+            "without the cap this quote fuzzily matches; otherwise this test proves nothing"
+        );
+
+        let r = resolve(&sel, &arts);
+        assert!(
+            r.is_skipped(),
+            "a quote too long to search must say so, not report 'not found': {:?}",
+            r.status
+        );
+        assert!(r.matches.is_empty());
+    }
+
+    #[test]
+    fn a_long_quote_that_still_occurs_verbatim_resolves_exactly() {
+        // The length cap bounds only the fuzzy scan; the linear exact match
+        // keeps resolving quotes of any length.
+        let text = long_sentence();
+        let quote: String = text.chars().skip(3).take(150).collect();
+        assert!(quote.chars().count() > MAX_FUZZY_QUOTE_CHARS);
+        let arts = vec![article("2", text)];
+        let r = resolve(&selector(&quote, "", ""), &arts);
+        assert!(r.is_found(), "got {:?}", r.status);
+        assert_eq!(r.single().unwrap().confidence, 1.0);
+    }
+
+    #[test]
+    fn a_hinted_long_quote_is_also_skipped() {
+        // A hint does not participate in resolution, so it must not become a
+        // side door around the quote-length cap either.
+        let text = long_sentence();
+        let quote = text.replace("aanspraak", "recht");
+        assert!(quote.chars().count() > MAX_FUZZY_QUOTE_CHARS);
+        let arts = vec![article("1", "Onbelangrijke tekst."), article("2", text)];
+        let sel = hinted(&quote, "", "", "2", None);
+        let r = resolve(&sel, &arts);
+        assert!(r.is_skipped(), "got {:?}", r.status);
+    }
+
+    #[test]
+    fn text_beyond_the_scan_budget_is_skipped_not_orphaned() {
+        // Two articles that together exceed the scan budget; the changed
+        // quote sits in the second one, past the cut-off. Reporting
+        // "orphaned" would claim the whole law was searched — it was not.
+        let filler = "vulwoord ".repeat(MAX_FUZZY_SCAN_CHARS / 9 / 2 + 100);
+        let target = format!("{filler}en voorts recht op een zorgtoeslag van rechtswege");
+        let sel = selector(
+            "aanspraak op een zorgtoeslag",
+            "en voorts ",
+            " van rechtswege",
+        );
+
+        // Premises: the two articles together bust the budget, and the
+        // second article on its own (which does fit) fuzzily matches.
+        let total = filler.chars().count() + target.chars().count();
+        assert!(total > MAX_FUZZY_SCAN_CHARS);
+        let alone = resolve(&sel, &[article("2", &target)]);
+        assert!(
+            alone.is_found(),
+            "the target must be fuzzily matchable on its own, got {:?}",
+            alone.status
+        );
+
+        let arts = vec![article("1", &filler), article("2", &target)];
+        let r = resolve(&sel, &arts);
+        assert!(r.is_skipped(), "got {:?}", r.status);
+    }
+
+    #[test]
+    fn exhausting_the_scoring_budget_is_skipped_not_orphaned() {
+        // Noise made of the quote's own key word: every window passes the
+        // pre-filter and gets scored (below threshold — the context words
+        // differ), draining the scoring budget before the real target at the
+        // end is ever reached.
+        // Enough noise positions that the budget runs dry within the first
+        // window size, long before any window reaches the target.
+        let noise = "zorgtoeslag ".repeat(MAX_FUZZY_SCORED_WINDOWS);
+        let target = "de verzekerde heeft recht op een aanvullende zorgtoeslag per jaar";
+        let text = format!("{noise}{target}");
+        let sel = selector(
+            "aanspraak op een aanvullende zorgtoeslag",
+            "verzekerde heeft ",
+            " per jaar",
+        );
+
+        // Premises: the target alone matches fuzzily, and the full text
+        // genuinely exhausts the scoring budget.
+        let alone = resolve(&sel, &[article("2", target)]);
+        assert!(alone.is_found(), "got {:?}", alone.status);
+        let mut budget = FuzzyBudget::default();
+        find_fuzzy_matches(&text, &sel, DEFAULT_FUZZY_THRESHOLD, &mut budget);
+        assert_eq!(
+            budget.scored_windows_left, 0,
+            "the noise must drain the scoring budget; otherwise this test proves nothing"
+        );
+
+        let r = resolve(&sel, &[article("2", &text)]);
+        assert!(r.is_skipped(), "got {:?}", r.status);
+    }
+
+    #[test]
+    fn truncation_only_turns_an_empty_result_into_skipped() {
+        assert!(finalize_fuzzy(Vec::new(), true).is_skipped());
+        assert!(finalize_fuzzy(Vec::new(), false).is_orphaned());
+        let r = finalize_fuzzy(vec![candidate("2", 0, 10, 0.9)], true);
+        assert!(
+            r.is_found(),
+            "a match found before the cut-off is still a match"
+        );
+    }
+
+    #[test]
+    fn the_scan_budget_is_spent_per_article_and_carries_across_articles() {
+        // First article fits and is scanned; the second no longer fits. The
+        // budget must be drawn down by the first scan — a per-article reset
+        // would defeat the bound.
+        let sel = selector("aanspraak op een zorgtoeslag", "", "");
+        let first = "tekst zonder relevante woorden hier";
+        let second = "en dan recht op een zorgtoeslag";
+        let mut budget = FuzzyBudget {
+            scan_chars_left: first.chars().count() + 1,
+            ..FuzzyBudget::default()
+        };
+        let m1 = find_fuzzy_matches(first, &sel, DEFAULT_FUZZY_THRESHOLD, &mut budget);
+        assert!(m1.is_empty());
+        assert!(!budget.truncated, "the first article fits the budget");
+        let m2 = find_fuzzy_matches(second, &sel, DEFAULT_FUZZY_THRESHOLD, &mut budget);
+        assert!(m2.is_empty(), "the second article no longer fits");
+        assert!(budget.truncated);
+    }
+
     // === Scoring and collapsing helpers ===
 
     #[test]
@@ -770,27 +1145,94 @@ mod tests {
         assert!(similarity("aanspraak", "aanzoek") > 0.0);
     }
 
+    /// Old-API shim: does the window `[i, i+window)` of `text` share a
+    /// significant word with `exact`? (One-off query through the cursor.)
+    fn window_shares(text: &str, exact: &str, i: usize, window: usize) -> bool {
+        let chars: Vec<char> = text.chars().collect();
+        let index = WordIndex::new(&chars, exact);
+        index.cursor(window).shares_significant_content(i)
+    }
+
     #[test]
     fn only_words_longer_than_three_characters_are_significant() {
         let words = significant_words("Recht op een zorgtoeslag van de wet");
-        assert!(words.contains("recht"), "lowercased: {words:?}");
-        assert!(words.contains("zorgtoeslag"));
+        let as_chars = |s: &str| s.chars().collect::<Vec<char>>();
+        assert!(words.contains(&as_chars("recht")), "lowercased: {words:?}");
+        assert!(words.contains(&as_chars("zorgtoeslag")));
         assert!(
-            !words.contains("wet"),
+            !words.contains(&as_chars("wet")),
             "three characters is too common to key on"
         );
-        assert!(!words.contains("op"));
+        assert!(!words.contains(&as_chars("op")));
     }
 
     #[test]
     fn the_prefilter_needs_a_word_shared_with_the_quote() {
-        let quote = significant_words("aanspraak op zorgtoeslag");
-        assert!(shares_significant_content(&quote, "recht op zorgtoeslag"));
+        let quote = "aanspraak op zorgtoeslag";
+        let shares = |text: &str| window_shares(text, quote, 0, text.chars().count());
+        assert!(shares("recht op zorgtoeslag"));
         assert!(
-            !shares_significant_content(&quote, "vastgesteld bij ministeriële regeling"),
+            !shares("vastgesteld bij ministeriële regeling"),
             "long words that the quote does not use are not shared content"
         );
-        assert!(!shares_significant_content(&quote, "op de wet"));
+        assert!(!shares("op de wet"));
+    }
+
+    #[test]
+    fn the_prefilter_matches_case_insensitively() {
+        assert!(window_shares(
+            "ZORGTOESLAG voor iedereen",
+            "de zorgtoeslag",
+            0,
+            11
+        ));
+    }
+
+    #[test]
+    fn the_prefilter_sees_a_word_truncated_at_a_window_edge() {
+        // The window cuts "zorgtoeslagen" down to "zorgtoeslag": the old
+        // per-window tokenisation counted that truncated token as shared
+        // content, and the indexed pre-filter must keep doing so.
+        let text = "de zorgtoeslagen";
+        assert!(window_shares(text, "zorgtoeslag", 0, 14));
+        // A cut that leaves only "zorg" (long enough, but not a quote word)
+        // or "zor" (too short to be significant) is not shared content.
+        assert!(!window_shares(text, "zorgtoeslag", 0, 7));
+        assert!(!window_shares(text, "zorgtoeslag", 0, 6));
+    }
+
+    #[test]
+    fn the_prefilter_sees_interior_and_left_truncated_words() {
+        let text = "aanspraak op een zorgtoeslag";
+        // Interior word: window over " op een zorgtoeslag" fully contains
+        // "zorgtoeslag".
+        assert!(window_shares(text, "de zorgtoeslag", 9, 19));
+        // Left-truncated: window starting inside "aanspraak" keeps "spraak",
+        // which is not a quote word.
+        assert!(!window_shares(text, "de aanspraak", 3, 10));
+        // But a left cut that still leaves a full quote word elsewhere is
+        // fine: "op een zorgtoeslag" contains "zorgtoeslag".
+        assert!(window_shares(text, "de zorgtoeslag", 3, 25));
+    }
+
+    #[test]
+    fn a_cursor_answers_the_same_as_a_fresh_query_at_every_position() {
+        // The cursor's two pointers only move forward; sliding it over the
+        // text must give the same answers as querying each window cold.
+        let text = "de verzekerde heeft aanspraak op een zorgtoeslag van de wet";
+        let quote = "aanspraak op zorgtoeslag";
+        let chars: Vec<char> = text.chars().collect();
+        let index = WordIndex::new(&chars, quote);
+        for window in [5, 11, 24] {
+            let mut cursor = index.cursor(window);
+            for i in 0..=(chars.len() - window) {
+                assert_eq!(
+                    cursor.shares_significant_content(i),
+                    window_shares(text, quote, i, window),
+                    "window {window} at {i}"
+                );
+            }
+        }
     }
 
     #[test]

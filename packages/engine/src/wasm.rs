@@ -544,7 +544,11 @@ impl WasmEngine {
     ///
     /// # Returns
     /// * `Ok(JsValue)` - `MatchResult`: `{ status, matches: [{ article_number,
-    ///   start, end, confidence, matched_text }] }`. `start`/`end` are **`char`
+    ///   start, end, confidence, matched_text }] }`. `status` is `"found"`,
+    ///   `"orphaned"`, `"ambiguous"`, or `"skipped"` — the last means the
+    ///   fuzzy scan hit a resource bound (quote too long, or the scan/scoring
+    ///   budget in `config.rs`) before finding anything, so "not searched" is
+    ///   distinguishable from "not found". `start`/`end` are **`char`
     ///   offsets** (Unicode scalar values), not UTF-16 code units: JS code
     ///   slicing the article text must convert accordingly.
     /// * `Err(JsValue)` - Error if the law is not loaded, no version matches

@@ -94,6 +94,11 @@ pub enum MatchStatus {
     Orphaned,
     /// Multiple equally-good matches; the note is ambiguous.
     Ambiguous,
+    /// The fuzzy search was skipped or cut short by a resource bound
+    /// (quote too long, or the scan/scoring budget ran out) before any match
+    /// was found. Unlike [`Orphaned`](Self::Orphaned) this does **not**
+    /// assert the text is absent — it says "this was not (fully) searched".
+    Skipped,
 }
 
 /// A single located span in the law text.
@@ -151,6 +156,13 @@ impl MatchResult {
         }
     }
 
+    pub(crate) fn skipped() -> Self {
+        Self {
+            status: MatchStatus::Skipped,
+            matches: Vec::new(),
+        }
+    }
+
     /// True when exactly one location was found.
     pub fn is_found(&self) -> bool {
         self.status == MatchStatus::Found
@@ -164,6 +176,12 @@ impl MatchResult {
     /// True when multiple equally-good locations were found.
     pub fn is_ambiguous(&self) -> bool {
         self.status == MatchStatus::Ambiguous
+    }
+
+    /// True when the fuzzy search was skipped or truncated by a resource
+    /// bound before any match was found.
+    pub fn is_skipped(&self) -> bool {
+        self.status == MatchStatus::Skipped
     }
 
     /// The single match, when [`is_found`](Self::is_found).
@@ -244,6 +262,24 @@ regelrecht:hint:
         assert!(ambiguous.is_ambiguous());
         assert!(!ambiguous.is_found());
         assert!(!ambiguous.is_orphaned());
+        assert!(!ambiguous.is_skipped());
+
+        let skipped = MatchResult::skipped();
+        assert!(skipped.is_skipped());
+        assert!(!skipped.is_found());
+        assert!(
+            !skipped.is_orphaned(),
+            "a skipped search must not present itself as 'searched and absent'"
+        );
+        assert!(!skipped.is_ambiguous());
+        assert!(skipped.matches.is_empty());
+    }
+
+    /// The wire value the frontend branches on: `status: 'skipped'`.
+    #[test]
+    fn skipped_serialises_lowercase() {
+        let json = serde_json::to_string(&MatchStatus::Skipped).unwrap();
+        assert_eq!(json, "\"skipped\"");
     }
 
     /// `single()` is only meaningful for a `Found` result; an ambiguous result

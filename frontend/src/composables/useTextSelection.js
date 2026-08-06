@@ -144,6 +144,13 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber, vali
     if (isExactlyOurSelection(result)) {
       return { selector, exact, status: 'found', reason: 'ok' };
     }
+    // 'skipped': the resolver refused the fuzzy scan (quote over the budget
+    // in config.rs). Growing context cannot fix a too-long quote, and the
+    // exact pass (which is unbudgeted) already failed, so stop here rather
+    // than looping two more widths to the same answer.
+    if (result?.status === 'skipped') {
+      return { selector, exact, status: 'orphaned', reason: 'not-found' };
+    }
     if ((result?.matches?.length ?? 0) > 1) sawMultiple = true;
     // A unique `found` that is NOT our selection is a mis-anchor: treat it as
     // ambiguous (more context may still pin the right one) rather than

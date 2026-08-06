@@ -169,4 +169,20 @@ describe('buildSelector', () => {
     expect(out.status).toBe('orphaned');
     expect(calls).toBe(1);
   });
+
+  it('stops immediately when the resolver skipped the search', () => {
+    // 'skipped' = the resolver's fuzzy budget refused the quote (RFC-018
+    // scan bounds). Growing prefix/suffix cannot shorten the quote, so
+    // retrying the two wider widths would just burn the same budget again.
+    const range = { start: 10, end: 20 };
+    let calls = 0;
+    const engine = engineReturning(() => {
+      calls++;
+      return { status: 'skipped', matches: [] };
+    });
+    const out = buildSelector(raw, range, 'w', engine, '1');
+    expect(out.status).toBe('orphaned');
+    expect(out.reason).toBe('not-found');
+    expect(calls).toBe(1);
+  });
 });
