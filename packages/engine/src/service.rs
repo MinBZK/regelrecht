@@ -2317,22 +2317,40 @@ impl LawExecutionService {
 
     /// Version-aware law lookup for annotation resolution (RFC-005/RFC-018).
     ///
-    /// `valid_from` is the `valid_from` date of the version the caller is
-    /// looking at, so a note resolves against the text on screen instead of
-    /// whichever version happens to be newest — [`ServiceProvider::get_law`]
-    /// returns the newest loaded version, including one that is not yet in
-    /// force. `None` keeps the latest-version behaviour for callers without a
-    /// version context. A malformed date is an error: it must not silently
-    /// fall back to the newest version (RFC-019).
+    /// `valid_from` names the version the caller is looking at (that
+    /// version's own `valid_from` date), so a note resolves against the text
+    /// on screen instead of whichever version happens to be newest —
+    /// [`ServiceProvider::get_law`] returns the newest loaded version,
+    /// including one that is not yet in force. `None` keeps the
+    /// latest-version behaviour for callers without a version context.
+    ///
+    /// Failing loudly beats a silent wrong answer (RFC-019), twice over: a
+    /// malformed date is an error rather than a fall-back to the newest
+    /// version, and the selected version must carry exactly the requested
+    /// `valid_from`. The date-based selection alone would otherwise slide to
+    /// the next-older *loaded* version when the viewed one is absent from the
+    /// engine (the editor's dependency loader skips versions the engine
+    /// cannot parse), and the returned offsets would mis-highlight the text
+    /// on screen without any signal.
     pub fn get_law_version(
         &self,
         law_id: &str,
         valid_from: Option<&str>,
     ) -> Result<&ArticleBasedLaw> {
         let reference_date = valid_from.map(parse_calculation_date).transpose()?;
-        self.resolver
+        let law = self
+            .resolver
             .get_law_for_date_reported(law_id, reference_date)
-            .map_err(|reason| selection_error(law_id, valid_from.unwrap_or(""), reason))
+            .map_err(|reason| selection_error(law_id, valid_from.unwrap_or(""), reason))?;
+        if let Some(requested) = valid_from {
+            if law.valid_from.as_deref() != Some(requested) {
+                return Err(EngineError::LoadError(format!(
+                    "law '{law_id}' has no loaded version with valid_from {requested}; \
+                     the viewed version may have failed to load"
+                )));
+            }
+        }
+        Ok(law)
     }
 
     /// Get metadata about a loaded law.
@@ -5093,6 +5111,28 @@ articles:
             "premise check: the quote must be absent from the newest version, got {:?}",
             r.status
         );
+    }
+
+    #[test]
+    fn get_law_version_refuses_to_slide_to_an_older_loaded_version() {
+        // The requested version is not loaded (the editor's dependency loader
+        // skips versions the engine cannot parse). Date-based selection alone
+        // would silently pick the next-older loaded version and the resolver
+        // would mis-highlight the text on screen; this must be an error.
+        let service = service_with_two_text_versions(); // 2024 and 2025 loaded
+        let err = service
+            .get_law_version("test_versioned_text_law", Some("2024-07-01"))
+            .unwrap_err();
+        match err {
+            EngineError::LoadError(msg) => {
+                assert!(
+                    msg.contains("2024-07-01"),
+                    "message must name the version: {msg}"
+                );
+                assert!(msg.contains("test_versioned_text_law"));
+            }
+            other => panic!("expected LoadError, got {other:?}"),
+        }
     }
 
     #[test]

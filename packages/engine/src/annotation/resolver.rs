@@ -20,8 +20,8 @@
 //! shorten the search without being allowed to override it.
 //!
 //! Structurally ported from the Python proof-of-concept on the
-//! `feature/annotation-resolver` branch (resolution order, hint fallback,
-//! dedup, tiebreak margin). The scoring function differs deliberately: the
+//! `feature/annotation-resolver` branch (resolution order, dedup, tiebreak
+//! margin; the PoC's hint fast path was dropped, see above). The scoring function differs deliberately: the
 //! PoC used `difflib.SequenceMatcher.ratio()` (Ratcliff-Obershelp); this uses
 //! normalised Levenshtein per RFC-018, which is harsher on block moves. The
 //! two disagree near the 0.7 threshold, so a boundary BDD scenario guards the

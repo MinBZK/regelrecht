@@ -339,8 +339,15 @@ watch(activeTrajectRef, async (next) => {
 // Notes (RFC-005/RFC-018) for the current law, resolved against its text.
 // `lawValidFrom` names the version on screen: the engine holds every version
 // of the law (loadDependency), so the resolver needs to know which one the
-// user is looking at instead of defaulting to the newest.
-const lawValidFrom = computed(() => law.value?.valid_from ?? null);
+// user is looking at instead of defaulting to the newest. Corpus YAML quotes
+// the date ('2025-01-01' → string), but an unquoted date would reach us as a
+// JS Date via js-yaml, so coerce defensively.
+const lawValidFrom = computed(() => {
+  const v = law.value?.valid_from;
+  if (typeof v === 'string') return v;
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return null;
+});
 const {
   notesForArticle: committedNotesForArticle,
   issues: noteIssues,
