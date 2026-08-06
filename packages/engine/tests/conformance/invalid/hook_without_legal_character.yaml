@@ -10,10 +10,13 @@ articles:
   - number: '1'
     text: >-
       De hook zegt wanneer hij vuurt maar niet waarop hij aansluit: het schema
-      eist `legal_character` in `applies_to` (RFC-007), zodat een hook nooit
-      op alles tegelijk haakt. Het model heeft het veld als optionele string
-      en laadt deze hook zonder bezwaar; welke artikelen hij dan raakt bepaalt
-      pas de runtime.
+      eist `legal_character` in `applies_to` (RFC-007), omdat de hook-index op
+      dat veld sleutelt. Het model heeft het veld als optionele string en
+      parseert deze hook zonder bezwaar; de resolver weigert de wet
+      vervolgens al bij het laden (`check_hook_filters` in `resolver.rs`,
+      "hook declares no applies_to.legal_character, so it can never fire").
+      De leniency stopt dus bij de modelgrens, zoals bij een actie zonder
+      `output`.
     url: https://example.invalid/law/artikel/1
     machine_readable:
       hooks:

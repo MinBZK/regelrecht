@@ -12,8 +12,10 @@ articles:
       Afronden is nooit impliciet (RFC-024): een inline ROUND op een actie
       moet zeggen op hoeveel decimalen. Het schema eist `precision` zodra de
       operatie ROUND, CEIL of FLOOR is; het model heeft het veld als
-      `Option`, en welke precisie er dan geldt beslist de engine in plaats
-      van de wettekst.
+      `Option`, en de engine weigert de actie bij uitvoering ("ROUND requires
+      'precision' at action level", `engine.rs`). Er wordt dus nooit op een
+      gegokte precisie afgerond; de fout valt alleen pas bij evaluatie in
+      plaats van aan de poort.
     url: https://example.invalid/law/artikel/1
     machine_readable:
       execution:
@@ -26,5 +28,4 @@ articles:
         actions:
           - output: bedrag
             operation: ROUND
-            values:
-              - $grondslag
+            value: $grondslag
