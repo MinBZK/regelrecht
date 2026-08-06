@@ -7,7 +7,7 @@
     "prebuild": "node scripts/copy-laws.js",
     "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/copy-laws.js",
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/precompress.mjs dist",
     "preview": "vite preview",
     "pretest": "node ../bdd/codegen/gen-js.mjs",
     "test": "vitest run",
@@ -27,19 +27,19 @@
     "@vue-flow/minimap": "^1.5.4",
     "dompurify": "^3.4.10",
     "echarts": "^6.1.0",
+    "js-yaml": "^5.2.2",
     "marked": "^18.0.5",
-    "vue-echarts": "^8.0.1"
+    "vue": "^3.5.38",
+    "vue-echarts": "^8.0.1",
+    "vue-router": "^5.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/test-utils": "^2.4.11",
     "happy-dom": "^20.10.6",
-    "js-yaml": "^5.2.2",
     "jsdom": "^30.0.1",
     "vite": "^8.0.16",
-    "vitest": "^4.1.9",
-    "vue": "^3.5.38",
-    "vue-router": "^5.1.0"
+    "vitest": "^4.1.9"
   }
 }
