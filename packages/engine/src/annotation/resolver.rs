@@ -444,10 +444,13 @@ impl WordIndex {
     }
 
     /// Does the (possibly truncated) word at `lower[ts..te]` count as shared
-    /// significant content? Same rule as the old per-window tokenisation: the
-    /// token must be longer than 3 chars and equal a significant quote word.
+    /// significant content? Same rule as the old per-window tokenisation.
+    /// The >3-chars significance threshold needs no separate check here:
+    /// `exact_words` only holds words longer than 3 chars, so a shorter
+    /// token can never be contained in it.
     fn edge_token_matches(&self, ts: usize, te: usize) -> bool {
-        te - ts > 3 && self.exact_words.contains(&self.lower[ts..te])
+        debug_assert!(te > ts, "callers only pass non-empty edge tokens");
+        self.exact_words.contains(&self.lower[ts..te])
     }
 }
 
@@ -477,16 +480,21 @@ impl WindowCursor<'_> {
             self.b += 1;
         }
 
-        // Words lying entirely inside the window: counted via prefix sums.
-        if self.b > self.a && self.index.match_prefix[self.b] > self.index.match_prefix[self.a] {
+        // Words lying entirely inside the window (`runs[a..b]`), counted via
+        // prefix sums. When one run spans the whole window `b` sits before
+        // `a`; the sums are monotone, so the comparison is false on its own
+        // and needs no separate `b > a` guard.
+        if self.index.match_prefix[self.b] > self.index.match_prefix[self.a] {
             return true;
         }
 
-        // Word truncated at the left window edge (the run containing `i`, if
-        // it starts before the window does).
+        // Word truncated at the left window edge: the run containing `i`. At
+        // most one run can contain `i`, and by the pointer invariant it is
+        // `runs[a-1]` (every run at or after `a` starts inside the window).
         if self.a > 0 {
             let (s, e) = runs[self.a - 1];
-            if e > i && self.index.edge_token_matches(s.max(i), e.min(j)) {
+            debug_assert!(s < i, "runs[a-1] starts before the window");
+            if e > i && self.index.edge_token_matches(i, e.min(j)) {
                 return true;
             }
         }
@@ -494,7 +502,8 @@ impl WindowCursor<'_> {
         // whole window it is the same run as above; don't test it twice.
         if self.b < runs.len() && (self.a == 0 || self.b != self.a - 1) {
             let (s, e) = runs[self.b];
-            if s < j && self.index.edge_token_matches(s.max(i), e.min(j)) {
+            debug_assert!(e > j, "runs[b] ends past the window");
+            if s < j && self.index.edge_token_matches(s.max(i), j) {
                 return true;
             }
         }
@@ -1287,6 +1296,40 @@ mod tests {
         // But a left cut that still leaves a full quote word elsewhere is
         // fine: "op een zorgtoeslag" contains "zorgtoeslag".
         assert!(window_shares(text, "de zorgtoeslag", 3, 25));
+    }
+
+    #[test]
+    fn a_word_truncated_only_at_the_left_edge_is_seen() {
+        // The window starts four chars into "zorgtoeslagen"; the remaining
+        // "toeslagen" is a quote word. Only the left-edge check can see this.
+        let text = "zorgtoeslagen x";
+        assert!(window_shares(text, "de toeslagen", 4, 9));
+        // Same left cut, but now the window also ends inside the run: the
+        // token is clipped on both sides to "toeslag".
+        assert!(window_shares(text, "de toeslag", 4, 7));
+        // A window ending exactly where a run ends, and one starting exactly
+        // where a run starts: adjacent runs are no edge tokens at all.
+        assert!(!window_shares("de zorgtoeslag", "de zorgtoeslag", 2, 11));
+        assert!(!window_shares("zorgtoeslag de", "zorgtoeslag x", 1, 11));
+    }
+
+    #[test]
+    fn a_right_truncated_word_is_seen_from_any_window_start() {
+        let text = "de zorgtoeslagen";
+        // Window starting exactly at the run start (the pointer boundary):
+        // token [3, 14) = "zorgtoeslag".
+        assert!(window_shares(text, "zorgtoeslag", 3, 11));
+        // Window starting inside the run: token [3, 10) = "zorgtoe".
+        assert!(window_shares("de zorgtoeslagen mooi", "de zorgtoe", 3, 7));
+        // A full run inside the window before the right-truncated word: the
+        // truncated "zorgtoeslag" must still be found past the non-matching
+        // "flop".
+        assert!(window_shares(
+            "de flop zorgtoeslagen",
+            "de zorgtoeslag",
+            3,
+            16
+        ));
     }
 
     #[test]
