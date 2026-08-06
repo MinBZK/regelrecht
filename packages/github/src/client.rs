@@ -47,10 +47,16 @@ use crate::error::{GithubError, Result};
 
 /// Memory budget for the conditional-GET response cache. Entries are
 /// evicted least-recently-used first once the summed payload size passes
-/// this. 32 MiB holds a few thousand law bodies — enough for the paths an
-/// editor session touches repeatedly, small enough that it can never be the
-/// reason a container is OOM-killed.
-pub const RESPONSE_CACHE_BUDGET_BYTES: usize = 32 * 1024 * 1024;
+/// this.
+///
+/// The budget is **per client**, and a client is per backend: every corpus
+/// source of every open traject has one. The ceiling is therefore
+/// multiplied by however many of those are live, which is what keeps this
+/// number small. 8 MiB still holds a few hundred law bodies (or the
+/// implements index, at ~1,5 MB, alongside them) — the paths an editor
+/// session re-reads across snapshot rebuilds, which is where the
+/// rate-limit saving is.
+pub const RESPONSE_CACHE_BUDGET_BYTES: usize = 8 * 1024 * 1024;
 
 /// User-Agent sent on every request, so GitHub audit logs attribute reads and
 /// writes to this client uniformly (the three hand-rolled predecessors each
