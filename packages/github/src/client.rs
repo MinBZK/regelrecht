@@ -7,14 +7,50 @@
 //! The lock is only ever taken to read/replace a small `HashMap` entry or an
 //! `Option<u32>` — never held across a `.await` (clippy's `await_holding_lock`
 //! guards this), so it can't stall the async runtime.
+//!
+//! ## Conditional GETs
+//!
+//! Two shapes of ETag state live here:
+//!
+//! * [`cached_etag`](GithubClient::cached_etag) / [`store_etag`](GithubClient::store_etag)
+//!   — an ETag with **no body**, for the Trees read, whose caller keeps the
+//!   previously loaded data itself and only needs to be told "unchanged"
+//!   (`Ok(None)` on 304).
+//! * [`cached_response`](GithubClient::cached_response) /
+//!   [`store_response`](GithubClient::store_response) — an ETag **together
+//!   with the payload it was observed with**, for the Contents reads, whose
+//!   callers need the content back on a 304. Storing the two as one unit is
+//!   what makes the 304 path safe: there is never an ETag whose body was
+//!   dropped, so a 304 can never degrade into "empty" or "does not exist".
+//!
+//! Both caches are keyed per (url, token identity): a conditional request
+//! authenticated as a different principal must not be answered from another
+//! principal's cache entry. The token itself is never stored — only a hash.
+//!
+//! The response cache never serves content without asking GitHub first: it
+//! only turns a 200 into a 304, which costs no rate-limit quota. It can
+//! therefore not go stale — a changed file changes its ETag and comes back
+//! as a full 200. Its size is capped ([`RESPONSE_CACHE_BUDGET_BYTES`]) so a
+//! corpus-wide read sequence cannot grow it without bound; the least
+//! recently used entries are evicted first.
 
-use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, USER_AGENT};
 
+use crate::contents::DirectoryEntry;
 use crate::error::{GithubError, Result};
+
+/// Memory budget for the conditional-GET response cache. Entries are
+/// evicted least-recently-used first once the summed payload size passes
+/// this. 32 MiB holds a few thousand law bodies — enough for the paths an
+/// editor session touches repeatedly, small enough that it can never be the
+/// reason a container is OOM-killed.
+pub const RESPONSE_CACHE_BUDGET_BYTES: usize = 32 * 1024 * 1024;
 
 /// User-Agent sent on every request, so GitHub audit logs attribute reads and
 /// writes to this client uniformly (the three hand-rolled predecessors each
@@ -24,14 +60,79 @@ pub(crate) const USER_AGENT_VALUE: &str = concat!("regelrecht-github/", env!("CA
 /// GitHub REST API version header value pinned across all calls.
 pub(crate) const GITHUB_API_VERSION: &str = "2022-11-28";
 
+/// Payload cached alongside an ETag, per read shape. Kept as one enum so a
+/// cache hit can never hand a directory listing to a file read (or vice
+/// versa) — the reader matches on the variant it expects and treats
+/// anything else as a miss.
+#[derive(Debug, Clone)]
+pub(crate) enum CachedPayload {
+    /// A Contents file read: decoded body plus its blob sha.
+    File { content: String, sha: String },
+    /// A raw Contents file read (`application/vnd.github.raw+json`), which
+    /// carries no sha.
+    Raw(String),
+    /// A Contents directory listing.
+    Directory(Vec<DirectoryEntry>),
+}
+
+impl CachedPayload {
+    /// Approximate heap footprint, for the cache budget. Exactness doesn't
+    /// matter — the budget is a guard rail, not an accountant.
+    fn size_bytes(&self) -> usize {
+        match self {
+            Self::File { content, sha } => content.len() + sha.len(),
+            Self::Raw(content) => content.len(),
+            Self::Directory(entries) => entries
+                .iter()
+                .map(|e| e.name.len() + e.entry_type.len() + 32)
+                .sum(),
+        }
+    }
+}
+
+/// An ETag together with the payload that ETag was observed with. The two
+/// are stored and evicted as one unit — see the module docs.
+#[derive(Debug, Clone)]
+pub(crate) struct CachedResponse {
+    pub etag: String,
+    pub payload: CachedPayload,
+}
+
 /// Mutable per-client state guarded by [`GithubClient::state`].
 #[derive(Default)]
 struct ClientState {
-    /// ETag cache: request URL → last ETag value. Feeds `If-None-Match` on
+    /// ETag cache: cache key → last ETag value. Feeds `If-None-Match` on
     /// the Trees read so an unchanged tree comes back as a cheap 304.
     etag_cache: HashMap<String, String>,
+    /// Conditional-GET cache for the Contents reads: cache key → ETag +
+    /// the payload it belongs to.
+    response_cache: HashMap<String, CachedResponse>,
+    /// Cache keys in least-recently-used order (front = oldest touch), the
+    /// eviction order for [`response_cache`](Self::response_cache).
+    response_order: VecDeque<String>,
+    /// Summed [`CachedPayload::size_bytes`] of `response_cache`.
+    response_bytes: usize,
     /// Most recent `x-ratelimit-remaining` seen on any response.
     rate_limit_remaining: Option<u32>,
+}
+
+impl ClientState {
+    /// Drop least-recently-used entries until the cache fits `budget`.
+    fn evict_to(&mut self, budget: usize) {
+        while self.response_bytes > budget {
+            let Some(oldest) = self.response_order.pop_front() else {
+                // Order and map disagree — reset rather than spin.
+                self.response_cache.clear();
+                self.response_bytes = 0;
+                break;
+            };
+            if let Some(dropped) = self.response_cache.remove(&oldest) {
+                self.response_bytes = self
+                    .response_bytes
+                    .saturating_sub(dropped.payload.size_bytes());
+            }
+        }
+    }
 }
 
 /// One GitHub REST client shared by every regelrecht application.
@@ -40,6 +141,9 @@ pub struct GithubClient {
     /// API base URL — no trailing slash; every method prefixes its own
     /// `/...` path. Production default is `https://api.github.com`.
     pub(crate) api_base: String,
+    /// Byte budget for the conditional-GET response cache. A field rather
+    /// than a constant so a test can shrink it and prove eviction.
+    cache_budget: usize,
     state: Mutex<ClientState>,
 }
 
@@ -69,8 +173,19 @@ impl GithubClient {
         Ok(Self {
             client,
             api_base,
+            cache_budget: RESPONSE_CACHE_BUDGET_BYTES,
             state: Mutex::new(ClientState::default()),
         })
+    }
+
+    /// Shrink or grow the conditional-GET cache budget. Test seam: nothing
+    /// in production changes it away from [`RESPONSE_CACHE_BUDGET_BYTES`].
+    /// Takes `&mut self` so it can only be set before the client is shared.
+    pub fn set_cache_budget_bytes(&mut self, budget: usize) {
+        self.cache_budget = budget;
+        if let Ok(mut state) = self.state.lock() {
+            state.evict_to(budget);
+        }
     }
 
     /// Override the API base URL, consuming self — for callers that build a
@@ -143,19 +258,81 @@ impl GithubClient {
         }
     }
 
-    /// Read the cached ETag for `url`, if any. Guard scope is this call only.
-    pub(crate) fn cached_etag(&self, url: &str) -> Option<String> {
+    /// Cache key for a conditional GET: the URL plus the identity of the
+    /// token it is made with. Two principals reading the same URL get two
+    /// entries, so a 304 can never hand one principal a body fetched under
+    /// another's credential. The token is hashed, never stored.
+    pub(crate) fn cache_key(url: &str, token: Option<&str>) -> String {
+        match token {
+            Some(token) => {
+                let mut hasher = DefaultHasher::new();
+                token.hash(&mut hasher);
+                format!("{url}#{:016x}", hasher.finish())
+            }
+            None => format!("{url}#anon"),
+        }
+    }
+
+    /// Read the cached ETag for `key`, if any. Guard scope is this call only.
+    pub(crate) fn cached_etag(&self, key: &str) -> Option<String> {
         self.state
             .lock()
             .ok()
-            .and_then(|s| s.etag_cache.get(url).cloned())
+            .and_then(|s| s.etag_cache.get(key).cloned())
     }
 
-    /// Store the ETag observed for `url`. Guard scope is this call only.
-    pub(crate) fn store_etag(&self, url: &str, etag: &str) {
+    /// Store the ETag observed for `key`. Guard scope is this call only.
+    pub(crate) fn store_etag(&self, key: &str, etag: &str) {
         if let Ok(mut state) = self.state.lock() {
-            state.etag_cache.insert(url.to_string(), etag.to_string());
+            state.etag_cache.insert(key.to_string(), etag.to_string());
         }
+    }
+
+    /// Read the cached ETag **plus payload** for `key`, marking the entry
+    /// as most recently used. Returns a clone: the caller holds the payload
+    /// across its request, so a concurrent eviction can never leave it with
+    /// an ETag whose body is gone.
+    pub(crate) fn cached_response(&self, key: &str) -> Option<CachedResponse> {
+        let mut state = self.state.lock().ok()?;
+        let hit = state.response_cache.get(key).cloned()?;
+        if let Some(pos) = state.response_order.iter().position(|k| k == key) {
+            state.response_order.remove(pos);
+        }
+        state.response_order.push_back(key.to_string());
+        Some(hit)
+    }
+
+    /// Store an ETag together with the payload it was observed with, then
+    /// evict least-recently-used entries until the cache fits its budget.
+    pub(crate) fn store_response(&self, key: &str, etag: &str, payload: CachedPayload) {
+        let budget = self.cache_budget;
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        // A payload larger than the whole budget would be inserted and
+        // immediately evicted; skip the churn.
+        let size = payload.size_bytes();
+        if size > budget {
+            return;
+        }
+        if let Some(previous) = state.response_cache.remove(key) {
+            state.response_bytes = state
+                .response_bytes
+                .saturating_sub(previous.payload.size_bytes());
+            if let Some(pos) = state.response_order.iter().position(|k| k == key) {
+                state.response_order.remove(pos);
+            }
+        }
+        state.response_bytes += size;
+        state.response_cache.insert(
+            key.to_string(),
+            CachedResponse {
+                etag: etag.to_string(),
+                payload,
+            },
+        );
+        state.response_order.push_back(key.to_string());
+        state.evict_to(budget);
     }
 
     /// True when a 403 response is GitHub *rate limiting* rather than a
