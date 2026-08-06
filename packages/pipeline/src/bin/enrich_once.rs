@@ -66,9 +66,7 @@ use regelrecht_pipeline::enrich::{
     FeedbackRounds, LlmProvider, ProcessLlmRunner, RunSteps, SessionReuse,
 };
 use regelrecht_pipeline::enrich_v2::checks;
-use regelrecht_pipeline::enrich_v2::closure::{
-    plan_closure, Kaderwetten, LawIndex, Plan, StopRules, Task,
-};
+use regelrecht_pipeline::enrich_v2::closure::{plan_closure, LawIndex, Plan, StopRules, Task};
 
 struct Args {
     corpus: PathBuf,
@@ -81,7 +79,6 @@ struct Args {
     article: Vec<String>,
     depth: Option<usize>,
     max_plan_articles: usize,
-    kaderwetten: Option<PathBuf>,
     rounds: FeedbackRounds,
     session_reuse: SessionReuse,
     steps: RunSteps,
@@ -98,7 +95,6 @@ fn parse_args() -> Result<Args, String> {
     let mut article: Vec<String> = Vec::new();
     let mut depth = None;
     let mut max_plan_articles = 200usize;
-    let mut kaderwetten = None;
     let mut rounds = FeedbackRounds::default();
     let mut steps = RunSteps::all();
     let mut session_reuse = SessionReuse::default();
@@ -118,7 +114,6 @@ fn parse_args() -> Result<Args, String> {
             // the Zorgverzekeringswet, and planning them one at a time would
             // plan seven overlapping closures instead of the one they form.
             "--article" => article.push(value("--article")?),
-            "--kaderwetten" => kaderwetten = Some(PathBuf::from(value("--kaderwetten")?)),
             "--depth" => {
                 depth = Some(
                     value("--depth")?
@@ -149,7 +144,7 @@ fn parse_args() -> Result<Args, String> {
                     "usage: enrich-once --corpus <root> --law <path.yaml> [--provider claude] \
                      [--model opus] [--effort medium] [--timeout 900] [--articles 15] \
                      [--rounds 2|checks=2,marking=2] [--article 69]... [--depth 1] \
-                     [--max-plan-articles 200] [--kaderwetten <path>] [--steps window,reconcile] \
+                     [--max-plan-articles 200] [--steps window,reconcile] \
                      [--session-reuse window|repair|off]"
                         .to_string(),
                 )
@@ -169,7 +164,6 @@ fn parse_args() -> Result<Args, String> {
         article,
         depth,
         max_plan_articles,
-        kaderwetten,
         rounds,
         session_reuse,
         steps,
@@ -197,52 +191,11 @@ fn plan_from_args(args: &Args) -> Result<Option<Plan>, String> {
 
     let index = LawIndex::scan(&args.corpus)
         .map_err(|e| format!("cannot read the corpus at {}: {e}", args.corpus.display()))?;
-    // Three outcomes, and they may not read as one. A list that is not there
-    // designates nothing and says so; a list that is there and broken fails
-    // the run, because falling back to "no framework laws" is the silent gap
-    // RFC-026 requirement 5 names as the one form that may not occur. The
-    // message names the file that was actually read, which under
-    // `--kaderwetten` is not the one beside the corpus.
-    let kaderwetten_path = args
-        .kaderwetten
-        .clone()
-        .unwrap_or_else(|| args.corpus.join("kaderwetten.yaml"));
-    let kaderwetten = match &args.kaderwetten {
-        Some(path) => Some(
-            Kaderwetten::parse(
-                &std::fs::read_to_string(path)
-                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
-            )
-            .map_err(|e| format!("{}: {e}", path.display()))?,
-        ),
-        None => Kaderwetten::load(&args.corpus)?,
-    };
-    let unfound =
-        "A law that declares itself applicable without being referenced will not be found";
-    let kaderwetten = match kaderwetten {
-        None => {
-            eprintln!(
-                "note: {} is absent, so no framework law is designated. {unfound}",
-                kaderwetten_path.display()
-            );
-            Kaderwetten::default()
-        }
-        Some(list) if list.bwb_ids.is_empty() => {
-            eprintln!(
-                "note: {} designates no framework law. {unfound}",
-                kaderwetten_path.display()
-            );
-            list
-        }
-        Some(list) => list,
-    };
-
     let plan = plan_closure(
         &args.corpus,
         &args.law,
         &args.article,
         depth,
-        &kaderwetten,
         &index,
         StopRules::default(),
     )?;
@@ -262,9 +215,8 @@ fn plan_from_args(args: &Args) -> Result<Option<Plan>, String> {
 /// Built as lines rather than printed straight out because this is the only
 /// account of a run that costs hours: it names every law, the totals it will
 /// work through, and the edges it decided not to follow. A gap count that
-/// silently drops an occurrence, or a "kaderwetten" line that appears when
-/// there are none, misstates what the run is about to do, and nobody re-reads
-/// the plan afterwards to catch it.
+/// silently drops an occurrence misstates what the run is about to do, and
+/// nobody re-reads the plan afterwards to catch it.
 fn plan_report(plan: &Plan, depth: usize, articles: &[String]) -> Vec<String> {
     let mut lines = vec![format!(
         "=== bouwplan op diepte {depth} vanaf artikel {}",
@@ -277,12 +229,6 @@ fn plan_report(plan: &Plan, depth: usize, articles: &[String]) -> Vec<String> {
         plan.articles(),
         plan.entries()
     ));
-    if !plan.cards.is_empty() {
-        lines.push(format!(
-            "  kaderwetten (naast de diepte): {}",
-            plan.cards.join(", ")
-        ));
-    }
     if !plan.gaps.is_empty() {
         // Per kind and summed over the laws: the same reason for not following
         // an edge occurs at many laws, and what the reader needs is how much of
@@ -754,7 +700,6 @@ articles:
             article: Vec::new(),
             depth: None,
             max_plan_articles: 200,
-            kaderwetten: None,
             rounds: FeedbackRounds::default(),
             session_reuse: SessionReuse::default(),
             steps: RunSteps::all(),
@@ -843,23 +788,18 @@ articles:
     }
 
     /// A line per thing the plan actually has. An empty list is not a finding,
-    /// and printing "kaderwetten:" or "bekende gaten:" with nothing behind it
-    /// reads as the opposite of what it means.
+    /// and printing "bekende gaten:" with nothing behind it reads as the
+    /// opposite of what it means.
     #[test]
     fn test_the_report_leaves_out_what_the_plan_does_not_have() {
         let plan = Plan {
             tasks: vec![task("wet_a", 2)],
-            cards: Vec::new(),
             gaps: Vec::new(),
         };
         let report = plan_report(&plan, 1, &["1".to_string()]).join("\n");
 
         assert!(report.contains("bouwplan op diepte 1 vanaf artikel 1"));
         assert!(report.contains("totaal: 1 wetten, 2 artikelen, 4 entries"));
-        assert!(
-            !report.contains("kaderwetten"),
-            "no framework law came along, so the line must not appear: {report}"
-        );
         assert!(
             !report.contains("bekende gaten"),
             "no edge was left unfollowed, so the line must not appear: {report}"
@@ -877,7 +817,6 @@ articles:
     fn test_the_gap_summary_sums_the_occurrences_per_reason() {
         let plan = Plan {
             tasks: vec![task("wet_a", 2)],
-            cards: vec!["awb".to_string(), "awr".to_string()],
             gaps: vec![
                 Gap {
                     kind: GapKind::OutsideCorpus,
@@ -899,7 +838,6 @@ articles:
         let report = plan_report(&plan, 2, &["1".to_string(), "2".to_string()]).join("\n");
 
         assert!(report.contains("vanaf artikel 1, 2"));
-        assert!(report.contains("kaderwetten (naast de diepte): awb, awr"));
         assert!(
             report.contains("bekende gaten: Delegated 2, OutsideCorpus 7"),
             "seven edges point outside the corpus, not four and not three: {report}"
