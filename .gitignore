@@ -45,8 +45,9 @@ __pycache__/
 *.py[cod]
 .ruff_cache/
 
-# Mutation testing
-mutants.out/
+# Mutation testing. cargo-mutants hernoemt de vorige uitvoer bij een herrun
+# naar mutants.out.old/, en die naam matcht het patroon hierboven niet.
+mutants.out*/
 
 # BDD trace output
 trace_output/
