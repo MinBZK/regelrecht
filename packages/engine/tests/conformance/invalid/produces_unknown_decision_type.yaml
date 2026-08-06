@@ -1,0 +1,27 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_produces_unknown_decision_type
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      Het besluittype staat niet in de enum van negen die het schema voor
+      `produces.decision_type` vastlegt. Het model leest een vrije string; de
+      verschrijving valt pas op waar een consument het label leest, of
+      helemaal nooit.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEZEGGING
+        output:
+          - name: uitkomst
+            type: boolean
+        actions:
+          - output: uitkomst
+            value: true

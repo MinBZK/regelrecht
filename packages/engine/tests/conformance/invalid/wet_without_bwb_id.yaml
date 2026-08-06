@@ -1,0 +1,16 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_wet_without_bwb_id
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      Een WET zonder `bwb_id` is niet terug te vinden in het Basiswettenbestand.
+      Het schema koppelt per laag de verplichte identificatie (WET vereist
+      `bwb_id`, EU-recht `celex_nummer`, enzovoort); het model kent die
+      conditionele eisen niet en laadt het document met alle identificaties
+      als `Option`.
+    url: https://example.invalid/law/artikel/1

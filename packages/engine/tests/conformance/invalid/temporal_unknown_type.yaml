@@ -1,0 +1,29 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_temporal_unknown_type
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      Temporele metadata kent twee soorten: een periode of een peilmoment.
+      Het schema pint `temporal.type` op die twee; het model leest een vrije
+      string, en wat een `interval` betekent beslist dan de eerste code die
+      het veld leest.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        parameters:
+          - name: inkomen
+            type: amount
+            temporal:
+              type: interval
+        output:
+          - name: uitkomst
+            type: boolean
+        actions:
+          - output: uitkomst
+            value: true

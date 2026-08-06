@@ -1,0 +1,26 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_produces_unknown_legal_character
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      Het artikel claimt een rechtskarakter dat de Awb-indeling niet kent.
+      Het schema pint `produces.legal_character` op vijf waarden; het model
+      leest een vrije string en geeft het etiket ongecontroleerd door aan
+      alles wat erop selecteert, van hooks tot procedurekeuze.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        produces:
+          legal_character: ADVIES
+        output:
+          - name: uitkomst
+            type: boolean
+        actions:
+          - output: uitkomst
+            value: true
