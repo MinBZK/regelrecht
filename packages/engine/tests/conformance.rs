@@ -64,7 +64,7 @@ const KNOWN_GAPS: &[&str] = &[
     // should become model enums rather than documented leniency — tracked as a
     // design decision, not as a gap to accept.
     "open_term_type_array.yaml", // schema allows 5 open-term types; the model reads the full 7-wide ParameterType
-    "hook_without_legal_character.yaml", // schema requires + enums `applies_to.legal_character`; model has Option<String>
+    "hook_without_legal_character.yaml", // schema requires + enums `applies_to.legal_character`; model has Option<String>, and the resolver then refuses the law at load (`check_hook_filters`) — leniency stops at the model boundary
     "produces_unknown_legal_character.yaml", // schema pins 5 legal characters; model reads any string
     "produces_unknown_decision_type.yaml",   // schema pins 9 decision types; model reads any string
     "temporal_unknown_type.yaml", // schema pins period|point_in_time; model reads any string
@@ -73,15 +73,15 @@ const KNOWN_GAPS: &[&str] = &[
     // -- Required fields the model does not enforce. Metadata-completeness
     // errors the schema gate catches as long as the file passes CI; the model
     // stays lenient because it must also read pre-v0.6.0 files.
-    "input_without_source.yaml", // schema requires `source` on inputs (`source: {}` = registry lookup, so absence is a real difference); model Option — the engine then computes with Null, which counts as zero/not-met
+    "input_without_source.yaml", // schema requires `source` on inputs (`source: {}` = registry lookup, so absence is a real difference); model Option — resolution skips the sourceless input (`resolve_inputs_with_service`) and evaluation fails hard with "Variable not found", which does not name the missing `source` as the cause
     "wet_without_bwb_id.yaml", // schema's per-layer conditional requireds (WET→bwb_id etc.); model has all identifiers as Option
     "document_without_articles.yaml", // schema requires `articles`; model defaults to an empty list
     "article_without_url.yaml", // schema requires `url` per article; model Option (per-article twin of missing_required_url)
-    "operand_dollar_with_space.yaml", // schema forbids strings that start with `$` but are no valid variableReference; model reads any string
+    "operand_dollar_with_space.yaml", // schema forbids strings that start with `$` but are no valid variableReference; model reads any string — the engine treats everything after `$` as a variable name and fails loudly at evaluation ("Variable not found")
     //
     // -- Compat and migration leniency, deliberate on the model side.
     "comparison_alias_not_equals.yaml", // NOT_EQUALS (with IS_NULL/NOT_NULL/NOT_IN/SWITCH) is a compat alias outside the schema enum; kept for pre-canonicalization files (`value.rs`, operation deserializer)
-    "inline_round_without_precision.yaml", // schema's allOf requires `precision` on inline ROUND/CEIL/FLOOR; model Option
+    "inline_round_without_precision.yaml", // schema's allOf requires `precision` on inline ROUND/CEIL/FLOOR; model Option — the engine refuses the action at execution ("ROUND requires 'precision' at action level"), so nothing is ever rounded at a guessed precision
     "untranslatables_on_v0_6_0.yaml", // v0.6.0 dropped the old channel for `markings`; the model still parses it (it must read v0.5.x) and the engine honours the flag — flag-keeping, the safe side of wrong (see `Marking` rustdoc)
 ];
 

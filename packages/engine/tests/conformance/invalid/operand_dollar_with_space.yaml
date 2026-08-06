@@ -11,9 +11,12 @@ articles:
     text: >-
       De operand begint met een dollarteken maar voldoet niet aan het
       variabelenpatroon. Het schema laat een string alleen toe als geldige
-      variabeleverwijzing of als literal die niet met een dollar begint,
-      zodat een verschreven verwijzing nooit stilzwijgend een letterlijke
-      tekst wordt; het model leest elke string.
+      variabeleverwijzing of als literal die niet met een dollar begint. Het
+      model leest elke string; de engine behandelt alles achter het
+      dollarteken als variabelenaam en strandt bij evaluatie op "Variable
+      not found: leeftijd oud". De verschrijving wordt dus geen stille
+      literal, maar de fout valt pas bij uitvoering in plaats van aan de
+      poort.
     url: https://example.invalid/law/artikel/1
     machine_readable:
       execution:

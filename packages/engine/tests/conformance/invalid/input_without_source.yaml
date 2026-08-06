@@ -13,9 +13,12 @@ articles:
       zwijgt over waar. Het schema eist `source` op elke input; een lege
       `source: {}` betekent registry-lookup, dus het weglaten is geen
       verkorte schrijfwijze van hetzelfde. Het model heeft het veld als
-      `Option` en laadt het bestand; de engine kan de waarde nergens vandaan
-      halen en rekent verder met `Null`, dat in een berekening als nul of als
-      niet-voldaan telt.
+      `Option` en laadt het bestand; bij resolutie wordt de bronloze input
+      overgeslagen (`resolve_inputs_with_service` in `service.rs`) en de
+      uitvoering strandt hard op "Variable not found: toetsingsinkomen". Er
+      wordt niets stil verkeerd berekend; de fout valt alleen pas bij
+      evaluatie, en de melding noemt de ontbrekende `source` niet als
+      oorzaak.
     url: https://example.invalid/law/artikel/1
     machine_readable:
       execution:
