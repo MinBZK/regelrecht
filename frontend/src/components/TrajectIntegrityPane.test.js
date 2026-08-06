@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import TrajectIntegrityPane from './TrajectIntegrityPane.vue';
-import { groupBySeverity } from '../composables/useTrajectIntegrity.js';
+import { groupByLaw, impactSummary } from '../composables/useTrajectIntegrity.js';
 
 // De pane haalt het rapport via useTrajectIntegrity -> apiFetchJson op; die
 // ene netwerkpoot sturen we hier (zelfde mock-vorm als TasksCategoriesPane).
@@ -54,24 +54,65 @@ async function mountPane() {
   return wrapper;
 }
 
-describe('groupBySeverity', () => {
-  it('zet fouten boven waarschuwingen en laat lege groepen weg', () => {
-    const groups = groupBySeverity({ findings: [WARNING_FINDING, ERROR_FINDING] });
-    expect(groups.map((g) => g.severity)).toEqual(['error', 'warning']);
-    expect(groups[0].title).toBe('Fouten');
+describe('groupByLaw', () => {
+  it('groepeert per wet-map en zet de zwaarst getroffen wet bovenaan', () => {
+    const groups = groupByLaw({ findings: [WARNING_FINDING, ERROR_FINDING] });
+    expect(groups.map((g) => g.title)).toEqual(['keur_alpha', 'wet_alpha']);
     expect(groups[0].findings).toEqual([ERROR_FINDING]);
+    expect(groups[0].counts).toBe('1 fout');
+    expect(groups[1].counts).toBe('1 waarschuwing');
+  });
+
+  it('herleidt de wet-map uit versiebestanden en scenariopaden', () => {
+    const inFile = { ...ERROR_FINDING, path: 'wet/wet_alpha/2024-01-01.yaml' };
+    const inScenario = { ...WARNING_FINDING, path: 'wet/wet_alpha/scenarios/basis.feature' };
+    const groups = groupByLaw({ findings: [inFile, inScenario] });
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe('wet_alpha');
+    // Binnen de wet: fouten boven waarschuwingen.
+    expect(groups[0].findings).toEqual([inFile, inScenario]);
+    expect(groups[0].counts).toBe('1 fout, 1 waarschuwing');
+  });
+
+  it('sorteert op impact: meer fouten eerst, dan waarschuwingen, dan alfabet', () => {
+    const twoErrors = [
+      { ...ERROR_FINDING, path: 'wet/wet_zwaar/a.yaml' },
+      { ...ERROR_FINDING, path: 'wet/wet_zwaar/b.yaml' },
+    ];
+    const groups = groupByLaw({
+      findings: [WARNING_FINDING, ERROR_FINDING, ...twoErrors],
+    });
+    expect(groups.map((g) => g.title)).toEqual(['wet_zwaar', 'keur_alpha', 'wet_alpha']);
   });
 
   it('geeft een lege lijst voor een leeg of ontbrekend rapport', () => {
-    expect(groupBySeverity(null)).toEqual([]);
-    expect(groupBySeverity(CLEAN_REPORT)).toEqual([]);
+    expect(groupByLaw(null)).toEqual([]);
+    expect(groupByLaw(CLEAN_REPORT)).toEqual([]);
   });
 
-  it('laat een onbekende severity niet verdwijnen maar achteraan belanden', () => {
-    const groups = groupBySeverity({
-      findings: [{ ...WARNING_FINDING, severity: 'toekomstig' }, ERROR_FINDING],
-    });
-    expect(groups.map((g) => g.severity)).toEqual(['error', 'toekomstig']);
+  it('zet bevindingen zonder pad samen in een traject-brede groep', () => {
+    const pathless = { ...ERROR_FINDING, path: null };
+    const groups = groupByLaw({ findings: [pathless] });
+    expect(groups.map((g) => g.title)).toEqual(['Traject-breed']);
+  });
+
+  it('laat een onbekende severity niet verdwijnen maar achteraan in de groep belanden', () => {
+    const future = { ...ERROR_FINDING, severity: 'toekomstig' };
+    const groups = groupByLaw({ findings: [future, ERROR_FINDING] });
+    expect(groups[0].findings).toEqual([ERROR_FINDING, future]);
+    expect(groups[0].counts).toBe('1 fout, 1 overig');
+  });
+});
+
+describe('impactSummary', () => {
+  it('telt het totaal en over hoeveel wetten het verdeeld is', () => {
+    expect(impactSummary({ findings: [ERROR_FINDING, WARNING_FINDING] })).toBe(
+      'In totaal 1 fout, 1 waarschuwing, verdeeld over 2 wetten.',
+    );
+  });
+
+  it('is leeg zonder bevindingen', () => {
+    expect(impactSummary(CLEAN_REPORT)).toBeNull();
   });
 });
 
@@ -91,18 +132,23 @@ describe('TrajectIntegrityPane', () => {
     );
   });
 
-  it('rendert de bevindingen gegroepeerd op severity, met omschrijving en remedie', async () => {
+  it('rendert de bevindingen gegroepeerd per wet, zwaarst getroffen eerst', async () => {
     apiFetchJson.mockResolvedValue(DIRTY_REPORT);
     const wrapper = await mountPane();
     const html = wrapper.html();
 
-    // Beide koppen, met het aantal erbij.
-    expect(html).toContain('Fouten (1)');
-    expect(html).toContain('Waarschuwingen (1)');
-    // Fouten staan boven waarschuwingen.
-    expect(html.indexOf('Fouten (1)')).toBeLessThan(html.indexOf('Waarschuwingen (1)'));
+    // Eén kop per wet, met de tellers erbij; de wet met de fout bovenaan.
+    expect(html).toContain('keur_alpha (1 fout)');
+    expect(html).toContain('wet_alpha (1 waarschuwing)');
+    expect(html.indexOf('keur_alpha (1 fout)')).toBeLessThan(
+      html.indexOf('wet_alpha (1 waarschuwing)'),
+    );
 
-    // Elke bevinding draagt omschrijving + remedie + het pad waar hij zit.
+    // De impactregel geeft het rapport zijn maat.
+    expect(html).toContain('In totaal 1 fout, 1 waarschuwing, verdeeld over 2 wetten.');
+
+    // Elke bevinding draagt omschrijving + remedie + het pad waar hij zit,
+    // en een eigen severity-icoon (fouten en waarschuwingen mengen per wet).
     const cells = wrapper.findAll('nldd-text-cell');
     const error = cells.find((c) => c.attributes('text') === ERROR_FINDING.message);
     expect(error).toBeTruthy();
@@ -111,6 +157,10 @@ describe('TrajectIntegrityPane', () => {
 
     const warning = cells.find((c) => c.attributes('text') === WARNING_FINDING.message);
     expect(warning.attributes('supporting-text')).toBe(WARNING_FINDING.remedy);
+
+    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('name'));
+    expect(icons).toContain('error');
+    expect(icons).toContain('warning');
 
     // Geen "alles in orde"-melding als er wél iets is.
     expect(html).not.toContain('Geen problemen gevonden');

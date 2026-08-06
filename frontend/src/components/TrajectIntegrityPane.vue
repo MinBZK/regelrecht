@@ -12,7 +12,7 @@
 // en bij de verversknop - niet periodiek: het rapport verandert alleen als er
 // gepusht wordt, en dan weet de gebruiker dat zelf.
 import { onMounted, watch } from 'vue';
-import { useTrajectIntegrity } from '../composables/useTrajectIntegrity.js';
+import { SEVERITY_ICONS, useTrajectIntegrity } from '../composables/useTrajectIntegrity.js';
 import { paneChromeVisible } from '../constants.js';
 
 const props = defineProps({
@@ -20,7 +20,7 @@ const props = defineProps({
   trajectRef: { type: String, default: null },
 });
 
-const { report, groups, hasFindings, loading, error, load } = useTrajectIntegrity();
+const { report, groups, summary, hasFindings, loading, error, load } = useTrajectIntegrity();
 
 function reload() {
   load(props.trajectRef);
@@ -92,21 +92,23 @@ function scopeSummary(r) {
 
       <template v-else>
         <nldd-rich-text>
-          <p>{{ scopeSummary(report) }}</p>
+          <p>{{ scopeSummary(report) }} {{ summary }}</p>
         </nldd-rich-text>
         <nldd-spacer size="16"></nldd-spacer>
 
-        <template v-for="group in groups" :key="group.severity">
-          <nldd-title size="5"><h4>{{ group.title }} ({{ group.findings.length }})</h4></nldd-title>
+        <!-- Per wet, zwaarst getroffen eerst; het severity-icoon staat per
+             bevinding, want binnen één wet mengen fouten en waarschuwingen. -->
+        <template v-for="group in groups" :key="group.key">
+          <nldd-title size="5"><h4>{{ group.title }} ({{ group.counts }})</h4></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
           <nldd-list variant="box">
             <nldd-list-item
               v-for="(finding, i) in group.findings"
-              :key="`${group.severity}-${i}`"
+              :key="`${group.key}-${i}`"
               size="md"
             >
               <nldd-icon-cell size="20" vertical-alignment="top">
-                <nldd-icon :name="group.icon"></nldd-icon>
+                <nldd-icon :name="SEVERITY_ICONS[finding.severity] ?? 'info'"></nldd-icon>
               </nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell
