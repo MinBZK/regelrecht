@@ -272,11 +272,13 @@ const TRAJECT_INDEX_TTL: Duration = Duration::from_secs(60);
 const BODY_CACHE_MAX_ENTRIES: usize = 1024;
 
 /// When an implements-index build would otherwise fetch at least this many
-/// law bodies one-by-one from a *single* source, pull the whole source in
-/// one archive request instead (see [`RepoBackend::read_all_implements`]).
-/// Below the threshold the per-law lazy fetch is cheaper than downloading
-/// the archive. This is what turns the cold build over a large GitHub-backed
-/// traject from O(corpus) Contents calls (a 504) into one download.
+/// law bodies one-by-one from a *single* source, ask that source for its
+/// whole implements map in one go instead (see
+/// [`RepoBackend::read_all_implements`] — the precomputed index committed in
+/// the corpus repo, or a repo-archive download when no index describes the
+/// branch). Below the threshold the per-law lazy fetch is cheaper. This is
+/// what turns the cold build over a large GitHub-backed traject from
+/// O(corpus) Contents calls (a 504) into a couple of requests.
 ///
 /// [`RepoBackend::read_all_implements`]: regelrecht_corpus::backend::RepoBackend::read_all_implements
 const BULK_FETCH_THRESHOLD: usize = 16;
@@ -1655,15 +1657,15 @@ async fn build_traject_corpus(
 
         let is_writable_own = source.id == writable_own_source_id;
 
-        // The writable-own GitHub source goes through the in-memory
-        // Contents-API backend (no clone, no working tree) so saves are
-        // committed via the API. Read-only base/seed GitHub sources
-        // (minbzk-central, …) instead read from a local git clone: body
-        // reads (`law_yaml`, the implements scan) then hit local disk
-        // rather than the REST Contents API, which avoids exhausting the
-        // GitHub REST quota on an O(corpus) implements scan and reuses the
-        // clone the global corpus already maintains (shared by source id).
-        // Local sources keep their configured path — already isolated.
+        // The writable-own GitHub source goes through
+        // `build_traject_github_backend` because it needs a base branch to
+        // create its traject branch from; read-only base/seed GitHub
+        // sources (minbzk-central, …) go through `create_backend`, which
+        // builds the same Contents-API backend without one. Neither clones:
+        // the implements scan that used to justify a local checkout now
+        // reads the precomputed index out of the corpus repo, and body
+        // reads ride the Contents API with conditional GETs (a 304 costs no
+        // rate-limit quota). Local sources keep their configured path.
         let backend_result = match &source.source_type {
             SourceType::GitHub { github } if is_writable_own => build_traject_github_backend(
                 traject_id,

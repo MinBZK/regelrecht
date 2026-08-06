@@ -1748,8 +1748,9 @@ struct EditorWriteTarget {
 
 /// Resolve the per-traject corpus from the URL ref, re-checking the
 /// caller's membership on every call. Bumps the traject corpus cache on
-/// a miss; calls `ensure_ready` (i.e. `git clone`) for every source in
-/// the traject's federated config on first use.
+/// a miss; calls `ensure_ready` for every source in the traject's
+/// federated config on first use (a branch check per GitHub source — no
+/// clone).
 ///
 /// The `traject_ref` is the URL form `{slug}-{8hex}`. The slug part is
 /// cosmetic — `resolve_traject_ref` looks up the traject by the trailing

@@ -608,3 +608,78 @@ async fn changed_files_without_token_is_empty_and_makes_no_request() {
         .with_api_base(server.uri());
     assert!(b.changed_files().await.unwrap().is_empty());
 }
+
+/// The collision check on document upload derives a free filename from the
+/// recursive listing of the traject's documents folder. An empty answer
+/// means "no name is taken", and the write that follows is unconditional —
+/// so a listing that failed must never come back empty. A branch that does
+/// not exist (deleted preview branch, branch never created) is exactly that
+/// case: GitHub answers 404 with "No commit found for the ref".
+#[tokio::test]
+async fn recursive_listing_on_a_missing_branch_fails_instead_of_reading_empty() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/documents"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(
+            r#"{"message":"No commit found for the ref traject/abc","status":"404"}"#,
+        ))
+        .mount(&server)
+        .await;
+
+    let err = backend(&server)
+        .list_files_recursive(Path::new("documents"), None)
+        .await
+        .expect_err("a dead branch must not list as an empty folder");
+    assert!(
+        err.to_string().contains("404"),
+        "the cause must survive: {err}"
+    );
+}
+
+/// The same listing for a folder that simply has no documents yet stays an
+/// empty list — a fresh traject must not error its way out of its first
+/// upload.
+#[tokio::test]
+async fn recursive_listing_of_an_empty_folder_is_still_empty() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/documents"))
+        .respond_with(
+            ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found","status":"404"}"#),
+        )
+        .mount(&server)
+        .await;
+
+    let entries = backend(&server)
+        .list_files_recursive(Path::new("documents"), None)
+        .await
+        .unwrap();
+    assert!(entries.is_empty());
+}
+
+/// A save reads the law first (the If-Match precondition). If a failing
+/// read reported "no such file", the save would commit as a *create* over
+/// whatever is on the branch. A missing ref therefore errors here too.
+#[tokio::test]
+async fn read_on_a_missing_branch_fails_instead_of_reporting_no_such_file() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/wet/x.yaml"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(
+            r#"{"message":"No commit found for the ref traject/abc","status":"404"}"#,
+        ))
+        .mount(&server)
+        .await;
+
+    let err = backend(&server)
+        .read_file(Path::new("wet/x.yaml"))
+        .await
+        .expect_err("a dead branch must not read as a missing file");
+    assert!(
+        err.to_string().contains("404"),
+        "the cause must survive: {err}"
+    );
+}

@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 
 use crate::client::CorpusClient;
+// Only the clone-based factory branch builds a config from scratch; with
+// the `github` feature that branch is compiled out.
+#[cfg_attr(feature = "github", allow(unused_imports))]
 use crate::config::CorpusConfig;
 use crate::error::{CorpusError, Result};
 use crate::models::{Source, SourceType};
@@ -65,6 +68,7 @@ pub struct FileEntry {
 /// relative to the directory the list call was rooted at, so callers
 /// can rebuild the source-relative path without re-tracking the
 /// starting point.
+#[derive(Debug, Clone)]
 pub struct RecursiveFileEntry {
     /// Path relative to the listing root, using forward slashes
     /// regardless of platform. Example: when listing `documents/abc`
@@ -1292,13 +1296,30 @@ impl RepoBackend for SessionGitBackend {
 
 /// Create a [`RepoBackend`] for a given corpus source.
 ///
-/// For GitHub sources, an optional authentication token can be provided.
+/// A GitHub source is served over the REST API
+/// ([`GitHubApiBackend`](crate::github_api_backend::GitHubApiBackend)) — no
+/// clone, no working tree, so `ensure_ready` is a single branch check
+/// instead of minutes of git. The central corpus is 4,2 GB; cloning it in
+/// the startup path is what pushed preview deploys past their 300 s
+/// admission window, and the clone was only ever a read cache. The one
+/// read that could not be served over the API — the corpus-wide implements
+/// scan — now reads the precomputed
+/// [`implements_index`](crate::implements_index) instead of the repo
+/// archive.
 ///
-/// The on-disk checkout path is namespaced by the host identifier
-/// (`HOSTNAME` env var, falling back to `"local"`) so that multiple replicas
-/// of the editor running on the same node — or a pod restart racing with a
-/// previous instance — do not share a working directory and corrupt each
-/// other's git state during concurrent `clone`/`pull --rebase`/`push`.
+/// The API backend is created **without a base branch**: this factory
+/// serves read paths, and a source whose configured branch is missing is a
+/// misconfiguration to surface, not a branch for the editor to create on
+/// someone else's corpus. Branch creation stays with the traject flow,
+/// which owns its branch and passes a base explicitly.
+///
+/// Without the `github` feature there is no REST client to build on, so
+/// that build keeps the clone-based [`GitBackend`]. Its on-disk checkout
+/// path is namespaced by the host identifier (`HOSTNAME` env var, falling
+/// back to `"local"`) so that multiple replicas of the editor running on
+/// the same node — or a pod restart racing with a previous instance — do
+/// not share a working directory and corrupt each other's git state during
+/// concurrent `clone`/`pull --rebase`/`push`.
 pub fn create_backend(source: &Source, auth_token: Option<&str>) -> Result<Box<dyn RepoBackend>> {
     match &source.source_type {
         SourceType::Local { local } => Ok(Box::new(LocalBackend::new(
@@ -1306,6 +1327,15 @@ pub fn create_backend(source: &Source, auth_token: Option<&str>) -> Result<Box<d
             local.path.clone(),
             true,
         ))),
+        #[cfg(feature = "github")]
+        SourceType::GitHub { github } => {
+            Ok(Box::new(crate::github_api_backend::GitHubApiBackend::new(
+                github,
+                None,
+                auth_token.map(str::to_string),
+            )?))
+        }
+        #[cfg(not(feature = "github"))]
         SourceType::GitHub { github } => {
             let repo_url = format!("https://github.com/{}/{}.git", github.owner, github.repo);
             let host_id = std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string());
