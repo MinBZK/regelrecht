@@ -852,22 +852,6 @@ impl RepoBackend for GitBackend {
                 Ok(index) => match self.client.subtree_sha(&index.root).await {
                     Ok(checkout_sha) if checkout_sha == index.tree_sha => {
                         let entries = index.to_source_relative(self.repo_subpath.as_deref());
-                        // `covers` and the projection normalise slashes
-                        // slightly differently, so a source root can pass
-                        // the first and still project to nothing. An index
-                        // with files in it that yields no entries describes
-                        // some other subtree, and an empty result would
-                        // read as "this corpus holds no laws".
-                        if entries.is_empty() && !index.files.is_empty() {
-                            tracing::warn!(
-                                index_root = %index.root,
-                                source_root = self.repo_subpath.as_deref().unwrap_or("<repo root>"),
-                                indexed = index.files.len(),
-                                "implements index projects to nothing for this source root; \
-                                 falling back to a scan"
-                            );
-                            return scan_or_refuse(self).await;
-                        }
                         tracing::info!(
                             entries = entries.len(),
                             root = %index.root,

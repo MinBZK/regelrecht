@@ -203,18 +203,27 @@ impl GithubClient {
     /// It doesn't, and the read failed; the caller must not treat that as
     /// an empty folder or a free filename.
     ///
-    /// The positive answer is remembered per (repo, token identity), so a
-    /// corpus full of legitimately absent sidecar files pays this once
-    /// rather than per read. It is a snapshot: access revoked mid-process
-    /// stays confirmed until the client is rebuilt, which is the price of
-    /// not doubling every miss.
+    /// The answer is remembered per (repo, token identity) — both ways.
+    /// The positive so a corpus full of legitimately absent sidecar files
+    /// pays the lookup once rather than per read; the negative because an
+    /// unreadable repo 404s *every* read, and re-probing each one would
+    /// double the traffic of the worst case instead of halving it.
+    ///
+    /// It is a snapshot: access changed mid-process stays as first
+    /// observed until the client is rebuilt, which is the price of not
+    /// paying a lookup per miss. A token that gains access later comes
+    /// with a different token identity, so it gets its own answer.
     async fn confirm_absence(&self, repo: &str, path: &str, token: Option<&str>) -> Result<()> {
         let key = Self::cache_key(repo, None, token);
-        if self.repo_is_confirmed_readable(&key) {
-            return Ok(());
-        }
-        if self.repo_is_readable(repo, token).await? {
-            self.confirm_repo_readable(&key);
+        let readable = match self.known_repo_readable(&key) {
+            Some(known) => known,
+            None => {
+                let readable = self.repo_is_readable(repo, token).await?;
+                self.remember_repo_readable(&key, readable);
+                readable
+            }
+        };
+        if readable {
             return Ok(());
         }
         Err(GithubError::Api {
@@ -757,6 +766,94 @@ mod tests {
         assert!(
             err.to_string().contains("not readable"),
             "the message must name the real cause: {err}"
+        );
+    }
+
+    /// An unreadable repo 404s every single read. Re-probing each one
+    /// would double the traffic of the worst case, so the negative answer
+    /// is remembered exactly like the positive one.
+    #[tokio::test]
+    async fn an_unreadable_repo_is_probed_once_not_once_per_read() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus"))
+            .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+            .expect(1)
+            .mount(&server)
+            .await;
+        for file in ["a", "b", "c"] {
+            Mock::given(method("GET"))
+                .and(path_matcher(format!(
+                    "/repos/acme/corpus/contents/wet/{file}.yaml"
+                )))
+                .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+                .mount(&server)
+                .await;
+        }
+
+        let c = client(&server);
+        for file in ["a", "b", "c"] {
+            c.fetch_file_with_sha(
+                "acme/corpus",
+                "main",
+                &format!("wet/{file}.yaml"),
+                Some("tok"),
+            )
+            .await
+            .expect_err("an unreadable repo never answers with absence");
+        }
+    }
+
+    /// The Contents API serves the same URL as JSON or as raw depending on
+    /// `Accept`. Those two bodies must not share a cache entry: a raw body
+    /// cannot answer a read that wants the blob sha with it, so the second
+    /// read must go out unconditionally rather than revalidate an ETag
+    /// whose payload it cannot use.
+    #[tokio::test]
+    async fn a_raw_read_and_a_json_read_of_one_path_do_not_share_a_cache_entry() {
+        let server = MockServer::start().await;
+        // Revalidating across representations is the bug under test.
+        Mock::given(method("GET"))
+            .and(header_exists("if-none-match"))
+            .respond_with(ResponseTemplate::new(304))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/contents/wet/a.yaml"))
+            .and(header("accept", "application/vnd.github.raw+json"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("etag", "\"raw1\"")
+                    .set_body_string("$id: a\n"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/contents/wet/a.yaml"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("etag", "\"json1\"")
+                    .set_body_json(file_body("wet/a.yaml", "b1", "$id: a\n")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let c = client(&server);
+        assert_eq!(
+            c.fetch_file_raw("acme/corpus", "main", "wet/a.yaml", None)
+                .await
+                .unwrap(),
+            "$id: a\n"
+        );
+        assert_eq!(
+            c.fetch_file_with_sha("acme/corpus", "main", "wet/a.yaml", None)
+                .await
+                .unwrap(),
+            Some(("$id: a\n".to_string(), "b1".to_string())),
+            "the json read must not be answered from the raw entry"
         );
     }
 

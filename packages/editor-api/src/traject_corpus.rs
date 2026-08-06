@@ -609,8 +609,20 @@ impl TrajectCorpus {
             }
             // Metadata-only (GitHub) version — lazily fetch its body. A source
             // whose backend was skipped at build time is treated as a missing
-            // version rather than failing the whole set.
+            // version rather than failing the whole set: this path feeds the
+            // scenario dependency loader, where one unfetchable future-dated
+            // version must not take down a law whose in-force version is
+            // right here. Unlike `law_yaml`, which answers a single law and
+            // therefore errors, this stays per-version isolation — but it is
+            // no longer silent, because a dropped version changes which
+            // redaction the engine considers in force.
             let Some(entry) = self.corpus.backends.get(&source_id) else {
+                tracing::warn!(
+                    law_id = %law_id,
+                    source_id = %source_id,
+                    "skipping a law version whose source has no usable backend \
+                     in this snapshot (backend init failed at build time)"
+                );
                 continue;
             };
             // Isolate per-version fetch failures: a transient backend error for

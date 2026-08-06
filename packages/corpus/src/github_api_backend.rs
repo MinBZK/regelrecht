@@ -270,21 +270,6 @@ impl GitHubApiBackend {
         {
             Some(remote_sha) if remote_sha == index.tree_sha => {
                 let entries = index.to_source_relative(self.sub_path.as_deref());
-                // `covers` and the projection normalise slashes slightly
-                // differently, so a source root can pass the first and
-                // still project to nothing. An index with files in it that
-                // yields no entries is describing some other subtree, and
-                // an empty result would read as "this corpus holds no laws".
-                if entries.is_empty() && !index.files.is_empty() {
-                    tracing::warn!(
-                        index_root = %index.root,
-                        source_root = self.sub_path.as_deref().unwrap_or("<repo root>"),
-                        indexed = index.files.len(),
-                        "implements index projects to nothing for this source root; \
-                         falling back to the archive scan"
-                    );
-                    return Ok(None);
-                }
                 tracing::info!(
                     entries = entries.len(),
                     root = %index.root,
@@ -331,16 +316,21 @@ impl GitHubApiBackend {
     ///
     /// `repo` is the `owner/name` form; `token` is `None` only for
     /// anonymous public reads (branch creation always needs one).
+    ///
+    /// Returns whether the branch was **created** by this call. That
+    /// matters to `persist`: a branch minted from base carries the base's
+    /// files, which the reads leading up to this write did not see (they
+    /// were made against a ref that did not exist and answered "absent").
     pub async fn ensure_branch(
         client: &GithubClient,
         repo: &str,
         branch: &str,
         base_branch: Option<&str>,
         token: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let exists = client.branch_exists(repo, branch, token).await?;
         if exists {
-            return Ok(());
+            return Ok(false);
         }
         let base = base_branch.ok_or_else(|| {
             CorpusError::Config(format!(
@@ -376,12 +366,15 @@ impl GitHubApiBackend {
                         branch = %branch,
                         "GitHubApiBackend: create_branch lost a benign race; branch already exists"
                     );
+                    // Someone else minted it, so it was not created *here*
+                    // — but it did appear after our reads, so the caller
+                    // must treat it exactly like our own create.
                 } else {
                     return Err(e.into());
                 }
             }
         }
-        Ok(())
+        Ok(true)
     }
 }
 
@@ -754,8 +747,16 @@ impl RepoBackend for GitHubApiBackend {
         // (it had nothing to authenticate with), so the first persist must
         // mint the traject branch itself — with the same effective token
         // that authenticates the commit.
+        // Whether this persist is the one that minted the branch. A
+        // branch seeded from base carries the base's files, which the
+        // reads that produced these pending writes never saw: they asked a
+        // ref that did not exist and were told "absent". Blindly upserting
+        // over that would silently replace base content — an append-only
+        // sidecar (notes) would come back holding only the new entry. So
+        // an upsert that carries no base sha is create-only here.
+        let mut branch_just_created = false;
         if !inner.branch_ready {
-            Self::ensure_branch(
+            branch_just_created = Self::ensure_branch(
                 &inner.client,
                 &repo,
                 &self.branch,
@@ -780,6 +781,7 @@ impl RepoBackend for GitHubApiBackend {
                         committer.as_ref(),
                         &ctx.message,
                         Some(token),
+                        !branch_just_created,
                     )
                     .await?;
                     new_shas.insert(path, new_sha);
@@ -910,6 +912,13 @@ impl RepoBackend for GitHubApiBackend {
 /// (the file moved between our last read and this PUT) and the put is
 /// reattempted exactly once with the new SHA. A second 409 propagates so
 /// the caller can decide between abort and a higher-level retry.
+///
+/// `may_adopt_existing` governs the *other* retry: a PUT without `sha`
+/// against a file that turns out to exist. Normally that is adopted (the
+/// caller wrote blind and the file was already there — `save_law` relies
+/// on it). It is refused when the branch was just seeded from base,
+/// because then "already there" means base content the caller never read,
+/// and adopting it replaces that content instead of building on it.
 #[allow(clippy::too_many_arguments)]
 async fn try_put(
     client: &GithubClient,
@@ -921,6 +930,7 @@ async fn try_put(
     committer: Option<&Committer>,
     message: &str,
     token: Option<&str>,
+    may_adopt_existing: bool,
 ) -> Result<String> {
     match client
         .put_file(
@@ -948,6 +958,21 @@ async fn try_put(
                 )
                 .await
                 .map_err(Into::into)
+        }
+        Err(e) if is_unsigned_existing_file(&e) && !may_adopt_existing => {
+            // The branch was minted from base during this persist, so the
+            // file we are told already exists is base content that the
+            // read before this write could not see. Overwriting it would
+            // lose it silently; surface a conflict so the caller can redo
+            // the read-modify-write against the branch that now exists.
+            tracing::warn!(
+                repo = %repo,
+                path = %path,
+                "refusing to overwrite base content on a freshly created branch"
+            );
+            Err(CorpusError::Conflict(format!(
+                "'{path}' already exists on the branch that was just created from base;                  the write was prepared against a branch that did not exist yet"
+            )))
         }
         Err(e) if is_unsigned_existing_file(&e) => {
             // A PUT without `sha` against an existing file returns 422

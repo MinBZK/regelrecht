@@ -131,10 +131,16 @@ impl ImplementsIndex {
     /// `sub_path`: strips the `sub_path` prefix and **drops** entries
     /// outside it (mirrors `GitHubApiBackend::to_source_relative`). With
     /// no `sub_path` the entries pass through unchanged.
+    ///
+    /// The root is normalised exactly as [`Self::covers`] normalises it
+    /// (both ends trimmed of `/`). They have to agree: a `sub_path` that
+    /// passes `covers` but strips no prefix would project to an empty list,
+    /// and the caller reads an empty list as an authoritative "this corpus
+    /// holds no laws".
     pub fn to_source_relative(&self, sub_path: Option<&str>) -> Vec<(String, Vec<String>)> {
-        match sub_path {
+        match sub_path.map(|s| s.trim_matches('/')) {
             Some(sub) if !sub.is_empty() => {
-                let prefix = format!("{}/", sub.trim_end_matches('/'));
+                let prefix = format!("{sub}/");
                 self.files
                     .iter()
                     .filter_map(|(path, implements)| {
@@ -442,9 +448,19 @@ articles:
             )]
         );
 
-        // Trailing slash on the sub_path is tolerated.
-        let mapped = index.to_source_relative(Some("regulation/nl/"));
-        assert_eq!(mapped.len(), 1);
+        // A slash on either end is tolerated. It has to be: `covers`
+        // trims both ends, so a root it accepts must also project — an
+        // accepted root that strips no prefix yields an empty list, which
+        // the caller reads as "this corpus holds no laws".
+        for sub in ["regulation/nl/", "/regulation/nl", "/regulation/nl/"] {
+            assert_eq!(
+                index.to_source_relative(Some(sub)).len(),
+                1,
+                "root {sub} passes covers ({}) but projects to nothing",
+                index.covers(Some(sub))
+            );
+            assert!(index.covers(Some(sub)));
+        }
 
         // No sub_path: passthrough.
         let all = index.to_source_relative(None);

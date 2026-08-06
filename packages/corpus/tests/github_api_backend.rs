@@ -729,3 +729,79 @@ async fn read_on_a_branch_that_does_not_exist_yet_is_a_plain_miss() {
         .unwrap()
         .is_none());
 }
+
+/// A read against a branch that does not exist answers "absent", and the
+/// persist that follows creates that branch **from base** — so the file the
+/// caller thought was absent may well be sitting there, carried over from
+/// base. Adopting it (PUT without sha → 422 → refetch → overwrite) replaces
+/// content the caller never read: an append-only notes sidecar would come
+/// back holding only the newly added note.
+///
+/// The write is therefore create-only on a freshly minted branch, and a
+/// collision surfaces as a conflict the caller can redo.
+#[tokio::test]
+async fn a_write_after_creating_the_branch_does_not_overwrite_base_content() {
+    let server = MockServer::start().await;
+    mount_readable_repo(&server).await;
+
+    // The branch does not exist yet…
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/git/ref/heads/traject/abc"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("missing"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/git/ref/heads/main"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ref": "refs/heads/main",
+            "object": { "sha": "base-sha" },
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/repos/acme/corpus/git/refs"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "ref": "refs/heads/traject/abc",
+        })))
+        .mount(&server)
+        .await;
+    // …so the sidecar read before the write finds nothing.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/notes/x.yaml"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(
+            r#"{"message":"No commit found for the ref traject/abc","status":"404"}"#,
+        ))
+        .mount(&server)
+        .await;
+    // But after the branch is minted from base, the file IS there: GitHub
+    // refuses a create-shaped PUT with the 422 that means "supply a sha".
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/corpus/contents/notes/x.yaml"))
+        .respond_with(
+            ResponseTemplate::new(422)
+                .set_body_string(r#"{"message":"Invalid request.\n\n\"sha\" wasn't supplied."}"#),
+        )
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    assert!(
+        b.read_file(Path::new("notes/x.yaml"))
+            .await
+            .unwrap()
+            .is_none(),
+        "the branch does not exist yet, so the sidecar reads as absent"
+    );
+    b.write_file(Path::new("notes/x.yaml"), "notes: [new]\n")
+        .await
+        .unwrap();
+
+    let err = b
+        .persist(&ctx())
+        .await
+        .expect_err("base content must not be silently replaced");
+    assert!(
+        matches!(err, regelrecht_corpus::error::CorpusError::Conflict(_)),
+        "a caller can redo a conflict; it cannot undo a silent overwrite: {err}"
+    );
+}

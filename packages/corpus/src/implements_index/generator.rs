@@ -118,6 +118,18 @@ fn git(repo_root: &Path, args: &[&str]) -> Result<String, String> {
 /// tree, git error, unreadable index, systematic parse breakage); the
 /// caller maps it to exit code 2.
 pub fn run(args: &Args) -> Result<Outcome, String> {
+    // An index over the repo root contains its own file, so writing it
+    // changes the tree sha it just recorded and no consumer would ever
+    // accept it. Refuse here rather than in the CLI's argument parsing:
+    // `Args` is public, so a library caller reaches this too.
+    if args.scan_root.trim_matches('/').is_empty() {
+        return Err(
+            "scan root must name a subtree: an index rooted at the repo root contains \
+             its own file and so invalidates the tree sha it records"
+                .to_string(),
+        );
+    }
+
     // The tree sha is only honest about what was scanned when the subtree
     // has no uncommitted changes. Refuse a dirty subtree — no bypass.
     let dirty = git(
@@ -279,6 +291,20 @@ mod tests {
         }
         commit_all(root, "seed");
         dir
+    }
+
+    #[test]
+    fn a_repo_root_scan_is_refused() {
+        let dir = TempDir::new().unwrap();
+        for root in ["", "/"] {
+            let args = Args {
+                repo_root: dir.path().to_path_buf(),
+                scan_root: root.to_string(),
+                check: false,
+            };
+            let err = run(&args).expect_err("a repo-root index can never be served");
+            assert!(err.contains("subtree"), "the message must say why: {err}");
+        }
     }
 
     #[test]

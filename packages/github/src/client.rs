@@ -35,7 +35,7 @@
 //! recently used entries are evicted first.
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -136,11 +136,13 @@ struct ClientState {
     response_order: VecDeque<String>,
     /// Summed [`CachedPayload::size_bytes`] of `response_cache`.
     response_bytes: usize,
-    /// Cache keys of `(repo, token identity)` pairs that have been proven
-    /// readable. A 404 only means "not there" once the repo it was asked
-    /// of is known to be readable with that credential; see
-    /// `GithubClient::confirm_absence`.
-    readable_repos: HashSet<String>,
+    /// Cache keys of `(repo, token identity)` pairs whose readability has
+    /// been settled, and which way. A 404 only means "not there" once the
+    /// repo it was asked of is known to be readable with that credential;
+    /// see `GithubClient::confirm_absence`. Both answers are remembered:
+    /// the negative one especially, because that is the case where every
+    /// single read 404s and would otherwise re-probe forever.
+    repo_readable: HashMap<String, bool>,
     /// Most recent `x-ratelimit-remaining` seen on any response.
     rate_limit_remaining: Option<u32>,
 }
@@ -307,19 +309,19 @@ impl GithubClient {
         }
     }
 
-    /// Whether this `(repo, token)` pair has already proven readable —
-    /// see `confirm_absence` in the contents module.
-    pub(crate) fn repo_is_confirmed_readable(&self, key: &str) -> bool {
+    /// What is known about this `(repo, token)` pair's readability, if it
+    /// has been settled — see `confirm_absence` in the contents module.
+    pub(crate) fn known_repo_readable(&self, key: &str) -> Option<bool> {
         self.state
             .lock()
-            .map(|s| s.readable_repos.contains(key))
-            .unwrap_or(false)
+            .ok()
+            .and_then(|s| s.repo_readable.get(key).copied())
     }
 
-    /// Record that a `(repo, token)` pair was observed readable.
-    pub(crate) fn confirm_repo_readable(&self, key: &str) {
+    /// Record what a repo lookup said about a `(repo, token)` pair.
+    pub(crate) fn remember_repo_readable(&self, key: &str, readable: bool) {
         if let Ok(mut state) = self.state.lock() {
-            state.readable_repos.insert(key.to_string());
+            state.repo_readable.insert(key.to_string(), readable);
         }
     }
 
