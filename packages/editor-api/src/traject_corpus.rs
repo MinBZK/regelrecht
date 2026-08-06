@@ -1156,8 +1156,6 @@ impl TrajectCorpus {
         self: &Arc<Self>,
         token: Option<&str>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
-        let needs_user_token = self.changed_diff_needs_user_token().await;
-
         // Cached and fresh: serve it. Expired: decide who refreshes.
         let stale = match self.changed_cache.read().await.as_ref() {
             None => None,
@@ -1166,6 +1164,13 @@ impl TrajectCorpus {
             }
             Some(cached) => Some(cached.law_ids.clone()),
         };
+
+        // Deliberately *after* the fresh-cache return: this takes the backend
+        // mutex (to probe `supports_token_override`), and that same lock is
+        // contended by the law-body reads. The sidebar asks for this diff on
+        // every library load, so the overwhelmingly common case is the hit
+        // above — which has no need for the answer.
+        let needs_user_token = self.changed_diff_needs_user_token().await;
 
         if let Some(stale_ids) = &stale {
             if !needs_user_token {
