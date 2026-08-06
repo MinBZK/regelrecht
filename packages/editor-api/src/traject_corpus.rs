@@ -206,6 +206,24 @@ pub struct TrajectCorpus {
     /// guards, so a refresh mid-recompute cannot admit a second Compare
     /// call.
     changed_refresh_in_flight: Arc<AtomicBool>,
+    /// Single-flight gate for the *synchronous* changed-laws refresh — the
+    /// leg taken when only the caller's own token gets into the repo, so
+    /// there is no background task that could do the work. Without it every
+    /// linked member loading the library inside the same expired-TTL window
+    /// fires its own Compare call against a rate-limited token.
+    ///
+    /// A `Mutex` rather than the `AtomicBool` above because here the losers
+    /// must *wait* for the winner instead of returning stale: after taking
+    /// the gate each caller re-reads the cache, and a fresh entry left by the
+    /// winner short-circuits the Compare call. That double-check is what
+    /// makes the gate safe across callers with different credentials — an
+    /// empty result produced without a usable token is never cached (see
+    /// [`Self::changed_law_ids`]), so a token-carrying caller can never
+    /// inherit one, while a token-less caller waiting here is upgraded from
+    /// "empty" to the winner's real diff.
+    ///
+    /// Shared across snapshots like the cache it guards.
+    changed_refresh_gate: Arc<Mutex<()>>,
     /// Whether this snapshot's index scan had a per-request user token
     /// available as fallback for the writable-own source. Only a bool —
     /// the token itself is **never** stored on this shared, cross-user
@@ -1185,7 +1203,17 @@ impl TrajectCorpus {
 
         // Either nothing is cached (first call of the process — there is
         // nothing stale to serve instead) or the entry expired and only this
-        // request's personal token can refresh it.
+        // request's personal token can refresh it. Both are request-path
+        // work, so single-flight it: concurrent callers queue on the gate and
+        // the double-check below lets everyone but the first return the
+        // winner's freshly-cached diff instead of firing their own Compare.
+        let _gate = self.changed_refresh_gate.clone().lock_owned().await;
+        if let Some(cached) = self.changed_cache.read().await.as_ref() {
+            if cached.computed_at.elapsed() < CHANGED_LAWS_TTL {
+                return Ok(cached.law_ids.clone());
+            }
+        }
+
         match self.compute_changed_law_ids(token).await {
             Ok(ids) => {
                 // Only a result that could actually see the repo is worth
@@ -1939,6 +1967,7 @@ async fn build_traject_corpus(
         implements_memo: Arc::new(RwLock::new(HashMap::new())),
         changed_cache: Arc::new(RwLock::new(None)),
         changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+        changed_refresh_gate: Arc::new(Mutex::new(())),
         sidecar_cache: RwLock::new(BoundedCache::default()),
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
@@ -2050,6 +2079,7 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
         implements_memo: old.implements_memo.clone(),
         changed_cache: old.changed_cache.clone(),
         changed_refresh_in_flight: old.changed_refresh_in_flight.clone(),
+        changed_refresh_gate: old.changed_refresh_gate.clone(),
         sidecar_cache: RwLock::new(BoundedCache::default()),
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
@@ -2240,6 +2270,7 @@ mod tests {
         FileEntry, PersistOutcome, RepoBackend, WriteContext as CorpusWriteContext,
     };
     use regelrecht_corpus::error::{CorpusError, Result as CorpusResult};
+    use tokio::sync::Semaphore;
 
     /// In-memory backend stub: serves a fixed file set, optionally
     /// failing every read (the throttled-fetch path), and counts reads
@@ -2355,6 +2386,7 @@ mod tests {
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
             changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+            changed_refresh_gate: Arc::new(Mutex::new(())),
             sidecar_cache: RwLock::new(BoundedCache::default()),
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
@@ -2515,6 +2547,14 @@ mod tests {
         /// Laat de Compare-call falen (haperende upstream: rate limit, 5xx)
         /// terwijl het token gewoon klopt; de leespaden blijven werken.
         compare_fails: bool,
+        /// Aantal Compare-aanroepen dat deze backend heeft gezien, zodat een
+        /// test kan vaststellen dat gelijktijdige bellers er samen één doen.
+        compare_calls: Arc<AtomicUsize>,
+        /// Parkeert de Compare-call tot de test een permit uitdeelt. Daarmee
+        /// is de single-flight-test niet afhankelijk van scheduler-timing:
+        /// de eerste beller kan de poort niet loslaten voordat de test dat
+        /// wil, dus elke interleaving levert dezelfde telling op.
+        compare_hold: Option<Arc<Semaphore>>,
     }
 
     #[async_trait]
@@ -2554,6 +2594,10 @@ mod tests {
         /// stub telt als gewijzigd, zodat een test aan de uitkomst kan zien
         /// of het token is doorgegeven.
         async fn changed_files_with_token(&self, token: Option<&str>) -> CorpusResult<Vec<String>> {
+            self.compare_calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(hold) = &self.compare_hold {
+                let _permit = hold.acquire().await.expect("semafoor open");
+            }
             match &self.required_token {
                 Some(required) if token != Some(required.as_str()) => Ok(Vec::new()),
                 _ if self.compare_fails => Err(CorpusError::Git("simulated throttle".to_string())),
@@ -2590,6 +2634,8 @@ mod tests {
                         )]),
                         required_token: Some("user-token".to_string()),
                         compare_fails: false,
+                        compare_calls: Arc::new(AtomicUsize::new(0)),
+                        compare_hold: None,
                     }) as Box<dyn RepoBackend>)),
                     writable: false,
                 },
@@ -2604,6 +2650,8 @@ mod tests {
                         )]),
                         required_token: None,
                         compare_fails: false,
+                        compare_calls: Arc::new(AtomicUsize::new(0)),
+                        compare_hold: None,
                     }) as Box<dyn RepoBackend>)),
                     writable: false,
                 },
@@ -2837,6 +2885,7 @@ mod tests {
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
             changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+            changed_refresh_gate: Arc::new(Mutex::new(())),
             sidecar_cache: RwLock::new(BoundedCache::default()),
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
@@ -3288,6 +3337,17 @@ mod tests {
     /// Als [`private_own_corpus`], maar `compare_fails` bepaalt of de
     /// Compare-call van een correct getokende beller alsnog stukloopt.
     fn private_own_corpus_with(compare_fails: bool) -> Arc<TrajectCorpus> {
+        private_own_corpus_full(compare_fails, Arc::new(AtomicUsize::new(0)), None)
+    }
+
+    /// Als [`private_own_corpus_with`], met een teller voor het aantal
+    /// Compare-aanroepen en een optionele semafoor die de Compare-call
+    /// parkeert — samen genoeg om de single-flight-poort vast te pinnen.
+    fn private_own_corpus_full(
+        compare_fails: bool,
+        compare_calls: Arc<AtomicUsize>,
+        compare_hold: Option<Arc<Semaphore>>,
+    ) -> Arc<TrajectCorpus> {
         let mut map = SourceMap::new();
         metadata_entry(&mut map, "wet_eigen", "own");
         Arc::new(test_corpus(
@@ -3302,6 +3362,8 @@ mod tests {
                         )]),
                         required_token: Some("user-token".to_string()),
                         compare_fails,
+                        compare_calls: compare_calls.clone(),
+                        compare_hold: compare_hold.clone(),
                     }) as Box<dyn RepoBackend>)),
                     writable: false,
                 },
@@ -3413,6 +3475,54 @@ mod tests {
         let cached = cache.as_ref().unwrap();
         assert_eq!(cached.law_ids, vec!["wet_oud".to_string()]);
         assert!(cached.computed_at > expired, "TTL-klok opnieuw opgespannen");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_private_refreshes_share_one_compare_call() {
+        // De achtergrond-leg heeft `changed_refresh_in_flight`; de synchrone
+        // leg (privé-bron, alleen het token van de beller komt binnen) heeft
+        // de poort. Zonder die poort doet elk gekoppeld lid dat de
+        // bibliotheek binnen hetzelfde verlopen-TTL-venster laadt zijn eigen
+        // Compare-call tegen een gedeeld, gelimiteerd token.
+        //
+        // De semafoor maakt de uitkomst interleaving-onafhankelijk: wie de
+        // poort ook als eerste pakt, hij kan hem niet loslaten voordat de
+        // test een permit uitdeelt, dus de ander staat gegarandeerd te
+        // wachten en vindt daarna een verse cache-entry.
+        let hold = Arc::new(Semaphore::new(0));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let corpus = private_own_corpus_full(false, calls.clone(), Some(hold.clone()));
+
+        let a = corpus.clone();
+        let b = corpus.clone();
+        let first = tokio::spawn(async move { a.changed_law_ids(Some("user-token")).await });
+        let second = tokio::spawn(async move { b.changed_law_ids(Some("user-token")).await });
+
+        // Eén permit: precies genoeg voor de winnaar van de poort. Zou de
+        // verliezer alsnog bij de backend uitkomen, dan liep deze test vast
+        // in plaats van stilletjes een tweede Compare-call te slikken.
+        hold.add_permits(1);
+
+        // De permit komt bij het droppen van de guard weer vrij, dus valt de
+        // poort weg dan komt de verliezer alsnog bij de backend uit en telt
+        // de assertie hieronder er twee — de test faalt dan op de telling,
+        // niet op deze timeout. De timeout is puur een vangnet tegen een
+        // echte deadlock, zodat een fout in de poort nooit als een hangende
+        // suite eindigt.
+        let (ra, rb) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(first, second)
+        })
+        .await
+        .expect(
+            "beide bellers horen af te ronden; een tweede Compare-call parkeert op de semafoor",
+        );
+        assert_eq!(ra.unwrap().unwrap(), vec!["wet_eigen".to_string()]);
+        assert_eq!(rb.unwrap().unwrap(), vec!["wet_eigen".to_string()]);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "gelijktijdige bellers horen één Compare-call te delen"
+        );
     }
 
     #[tokio::test]

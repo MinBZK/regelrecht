@@ -685,9 +685,12 @@ fn filter_corpus_laws(source_map: &SourceMap, params: &PaginationParams) -> Vec<
 /// Without it a traject on a private, user-supplied repo — where the server
 /// holds no token by design — could never fill this list, not even after real
 /// edits. A caller who has no GitHub link resolves to no token: the deferred
-/// 428 is swallowed here rather than raised, keeping this endpoint's "empty
-/// array, not an error" contract (the frontend then simply hides the section,
-/// and the 428 connect-flow is raised by the reads that truly need it).
+/// 428 — and *only* that one — is swallowed here rather than raised, keeping
+/// this endpoint's "empty array, not an error" contract (the frontend then
+/// simply hides the section, and the 428 connect-flow is raised by the reads
+/// that truly need it). Any other error propagates: a failed feature-flag
+/// lookup is an outage, and reporting it as an empty diff would show up in the
+/// sidebar as the reassuring "nothing changed".
 pub async fn list_traject_changed_laws(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -696,9 +699,17 @@ pub async fn list_traject_changed_laws(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let own_read_token = resolve_own_read_token(&state, account.id, &headers, &traject)
-        .await
-        .unwrap_or(None);
+    let own_read_token = match resolve_own_read_token(&state, account.id, &headers, &traject).await
+    {
+        Ok(token) => token,
+        // The only error this endpoint absorbs: "you have no GitHub link
+        // yet". Everything else (e.g. the feature-flag lookup failing on
+        // the database) is a real failure and propagates like it does for
+        // every other caller of this `Result` in the crate — folding it
+        // into `None` would render as "nothing changed" in the sidebar.
+        Err((StatusCode::PRECONDITION_REQUIRED, _)) => None,
+        Err(e) => return Err(e),
+    };
     let ids = traject
         .changed_law_ids(own_read_token.as_deref())
         .await
