@@ -523,16 +523,19 @@ pub const CONTEXT_SIDECAR: &str = ".source-context.yaml";
 /// run afterwards are what decide whether the translation still holds
 /// against the corrected text.
 ///
-/// The rewrite refuses two situations instead of writing them out. An
+/// The rewrite refuses four situations instead of writing them out, all
+/// shapes in which the write would destroy more than it corrects. An
 /// empty official set never means the law lost its articles; it means the
-/// fetch or the parse went wrong (a network error, a changed response, a
-/// wrong BWB id), and acting on it would erase the whole file. And a
-/// rewrite that keeps less than half of the file's entries is treated the
-/// same way: a rewrite corrects text and moves a handful of articles in or
-/// out, it does not legitimately remove the majority of a law. When it
-/// would, either the source set does not describe this law, or the corpus
-/// is fragmented per lid and this whole-article rewrite would flatten it,
-/// losing the leden, references and links. Both need a human, not a write.
+/// fetch or the parse went wrong. A source set that shares not a single
+/// article with the file (no verdict `Verified` or `Drift`) is a
+/// different law, whatever the counts say — the shape a wrong BWB id of
+/// similar size produces. A rewrite that keeps less than half of the
+/// file's entries removes the majority of a law, which a rewrite never
+/// legitimately does. And an entry that addresses a lid or onderdeel
+/// while carrying `machine_readable` or `references` would be flattened
+/// into its whole article, silently dropping that work, because the
+/// carry-over goes by exact article number. All four need a human, not a
+/// write; each refusal says what to do next.
 ///
 /// Returns the rewritten document and the sidecar, or the reason the
 /// rewrite is refused.
@@ -543,27 +546,85 @@ pub fn rewrite(
 ) -> Result<(serde_yaml_ng::Value, ContextSidecar), String> {
     use serde_yaml_ng::{Mapping, Value};
 
-    let existing = corpus
+    let empty_seq = Vec::new();
+    let corpus_articles = corpus
         .get("articles")
         .and_then(Value::as_sequence)
-        .map_or(0, Vec::len);
+        .unwrap_or(&empty_seq);
+    let existing = corpus_articles.len();
+
     if official.is_empty() {
         return Err(format!(
             "the official toestand parsed to 0 articles while the file carries \
              {existing} entr{}; an empty source set means the fetch or the parse \
              failed (network error, changed response, wrong BWB id), not that the \
-             law has no articles — the file is left as it is",
+             law has no articles. The file is left as it is; check the bwb_id and \
+             valid_from in the file and retry when the toestand is sound",
             if existing == 1 { "y" } else { "ies" }
         ));
     }
+
+    // A source set that shares nothing with the file is a different law,
+    // whatever the counts say. This is the wrong-BWB-id-of-similar-size
+    // case: every entry fabricated, every official article missing, and a
+    // size threshold alone would wave the substitution through.
+    let overlap = report
+        .verdicts
+        .values()
+        .any(|v| matches!(v, Verdict::Verified | Verdict::Drift { .. }));
+    if existing > 0 && !overlap {
+        return Err(format!(
+            "not one of the file's {existing} entries matches an official \
+             article (0 verified, 0 drifted); a source that shares nothing \
+             with the file is a different law, so this points at a wrong \
+             bwb_id or valid_from. The file is left as it is; run without \
+             --rewrite to see the per-article verdicts",
+        ));
+    }
+
     if official.len() * 2 < existing {
         return Err(format!(
             "the rewrite would shrink the file from {existing} entries to {} \
              article(s); removing the majority of a law points at the wrong \
              source or at a per-lid fragmented corpus this whole-article \
-             rewrite would flatten — the file is left as it is",
+             rewrite would flatten. The file is left as it is; run without \
+             --rewrite to see the verdicts, and prune the file by hand if \
+             the law really shrank this much",
             official.len()
         ));
+    }
+
+    // The carry-over below goes by exact article number, so an entry that
+    // addresses a lid or onderdeel (`2.2`) is flattened into its whole
+    // article (`2`) and anything it carries is dropped. Refuse when that
+    // would discard work, whatever the entry counts are.
+    let official_by_number: BTreeMap<&str, &SourceArticle> =
+        official.iter().map(|a| (a.number.as_str(), a)).collect();
+    for article in corpus_articles {
+        let Some(number) = article.get("number").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some((source, path)) = resolve(&official_by_number, number) else {
+            continue;
+        };
+        if path.is_empty() {
+            continue;
+        }
+        let carried: Vec<&str> = ["machine_readable", "references"]
+            .into_iter()
+            .filter(|k| article.get(*k).is_some())
+            .collect();
+        if !carried.is_empty() {
+            return Err(format!(
+                "entry {number} addresses a lid or onderdeel of article {} and \
+                 carries {}; the whole-article rewrite would flatten the entry \
+                 and silently drop that work. The file is left as it is; move \
+                 the work to the whole article first, or make the correction \
+                 by hand",
+                source.number,
+                carried.join(" and ")
+            ));
+        }
     }
 
     let mut existing_mr: BTreeMap<String, Value> = BTreeMap::new();
@@ -645,38 +706,88 @@ pub fn rewrite(
     Ok((doc, sidecar))
 }
 
+/// A file staged next to its destination: the content is on disk and
+/// synced, only the rename remains. Every failure path removes the temp
+/// file again.
+struct StagedWrite {
+    tmp: std::path::PathBuf,
+    dest: std::path::PathBuf,
+}
+
+impl StagedWrite {
+    fn new(path: &std::path::Path, content: &str) -> Result<Self, String> {
+        use std::io::Write;
+
+        let parent = path
+            .parent()
+            .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| format!("{} has no file name", path.display()))?;
+        let tmp = parent.join(format!(".{file_name}.tmp"));
+
+        (|| -> std::io::Result<()> {
+            let mut file = std::fs::File::create(&tmp)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()
+        })()
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("writing {}: {e}", path.display())
+        })?;
+
+        Ok(Self {
+            tmp,
+            dest: path.to_path_buf(),
+        })
+    }
+
+    fn commit(self) -> Result<(), String> {
+        // On Windows, rename refuses when the destination exists.
+        #[cfg(target_os = "windows")]
+        if self.dest.exists() {
+            std::fs::remove_file(&self.dest)
+                .map_err(|e| format!("writing {}: {e}", self.dest.display()))?;
+        }
+        std::fs::rename(&self.tmp, &self.dest).map_err(|e| {
+            let _ = std::fs::remove_file(&self.tmp);
+            format!("writing {}: {e}", self.dest.display())
+        })
+    }
+}
+
 /// Write `content` to `path` through a temp file in the same directory and
 /// an atomic rename, so an interruption never leaves a truncated file
 /// behind. The harvester writes its YAML the same way (`yaml/writer.rs`),
 /// for the same reason.
 pub fn write_atomic(path: &std::path::Path, content: &str) -> Result<(), String> {
-    use std::io::Write;
+    StagedWrite::new(path, content)?.commit()
+}
 
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| format!("{} has no file name", path.display()))?;
-    let tmp = parent.join(format!(".{file_name}.tmp"));
-
-    let attempt = (|| -> std::io::Result<()> {
-        let mut file = std::fs::File::create(&tmp)?;
-        file.write_all(content.as_bytes())?;
-        file.sync_all()?;
-        // On Windows, rename refuses when the destination exists.
-        #[cfg(target_os = "windows")]
-        if path.exists() {
-            std::fs::remove_file(path)?;
+/// Write a law file and its companion so the law file changes last, and
+/// only when everything else already succeeded. Both temp files are
+/// written and synced before either rename; the companion is renamed
+/// first. A failure at any point before the final rename leaves the law
+/// file exactly as it was — the worst remaining case is a fresh companion
+/// beside an unchanged law file, which the next run overwrites.
+pub fn write_atomic_pair(
+    precious: (&std::path::Path, &str),
+    companion: (&std::path::Path, &str),
+) -> Result<(), String> {
+    let staged_precious = StagedWrite::new(precious.0, precious.1)?;
+    let staged_companion = match StagedWrite::new(companion.0, companion.1) {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = std::fs::remove_file(&staged_precious.tmp);
+            return Err(e);
         }
-        std::fs::rename(&tmp, path)
-    })();
-
-    attempt.map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        format!("writing {}: {e}", path.display())
-    })
+    };
+    if let Err(e) = staged_companion.commit() {
+        let _ = std::fs::remove_file(&staged_precious.tmp);
+        return Err(e);
+    }
+    staged_precious.commit()
 }
 
 /// Split a corpus article number into the source article it belongs to and
@@ -954,6 +1065,120 @@ articles:
         // XML carries three official articles; 6 entries -> 3 is exactly
         // half and passes the threshold.
         assert!(rewrite(&corpus, &official, &report).is_ok());
+    }
+
+    #[test]
+    fn rewrite_refuses_a_source_set_that_shares_nothing_with_the_file() {
+        // A wrong BWB id pointing at a law of similar size: every entry
+        // fabricated, every official article missing, and the counts even.
+        // A size threshold alone waves the substitution through and every
+        // machine_readable is gone.
+        let official = parse_toestand(
+            r#"<toestand bwb-id="BWBR0000001"><wettekst>
+              <artikel><kop><label>Artikel</label><nr>1</nr></kop><al>Een.</al></artikel>
+              <artikel><kop><label>Artikel</label><nr>2</nr></kop><al>Twee.</al></artikel>
+            </wettekst></toestand>"#,
+        )
+        .unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - {number: '10', text: Tien., machine_readable: {a: 1}}
+  - {number: '11', text: Elf., machine_readable: {b: 2}}
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        // The premise: zero overlap while the counts match.
+        assert!(!report
+            .verdicts
+            .values()
+            .any(|v| matches!(v, Verdict::Verified | Verdict::Drift { .. })));
+        let err = rewrite(&corpus, &official, &report).unwrap_err();
+        assert!(err.contains("different law"), "{err}");
+        // The refusal must tell the user the next step.
+        assert!(err.contains("without --rewrite"), "{err}");
+    }
+
+    #[test]
+    fn rewrite_refuses_to_flatten_a_part_entry_that_carries_work() {
+        // Three entries against two official articles: under the size
+        // threshold, but entry 2.2 addresses a lid and carries a
+        // machine_readable that the by-exact-number carry-over would drop.
+        let official = parse_toestand(
+            r#"<toestand bwb-id="BWBR0000001"><wettekst>
+              <artikel><kop><label>Artikel</label><nr>1</nr></kop><al>Een.</al></artikel>
+              <artikel><kop><label>Artikel</label><nr>2</nr></kop>
+                <lid><lidnr>1</lidnr><al>Eerste lid.</al></lid>
+                <lid><lidnr>2</lidnr><al>Tweede lid.</al></lid>
+              </artikel>
+            </wettekst></toestand>"#,
+        )
+        .unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - {number: '1', text: Een.}
+  - {number: '2.1', text: Eerste lid.}
+  - {number: '2.2', text: Tweede lid., machine_readable: {a: 1}}
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        let err = rewrite(&corpus, &official, &report).unwrap_err();
+        assert!(err.contains("entry 2.2"), "{err}");
+        assert!(err.contains("machine_readable"), "{err}");
+        assert!(err.contains("by hand"), "{err}");
+    }
+
+    #[test]
+    fn part_entries_without_work_do_not_block_the_rewrite() {
+        // The same fragmentation, but the part entries carry nothing that
+        // the flattening would lose: the text survives inside the whole
+        // article, so the rewrite may proceed.
+        let official = parse_toestand(
+            r#"<toestand bwb-id="BWBR0000001"><wettekst>
+              <artikel><kop><label>Artikel</label><nr>1</nr></kop><al>Een.</al></artikel>
+              <artikel><kop><label>Artikel</label><nr>2</nr></kop>
+                <lid><lidnr>1</lidnr><al>Eerste lid.</al></lid>
+                <lid><lidnr>2</lidnr><al>Tweede lid.</al></lid>
+              </artikel>
+            </wettekst></toestand>"#,
+        )
+        .unwrap();
+        let corpus: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            r#"
+articles:
+  - {number: '1', text: Een., machine_readable: {a: 1}}
+  - {number: '2.1', text: Eerste lid.}
+  - {number: '2.2', text: Tweede lid.}
+"#,
+        )
+        .unwrap();
+        let report = verify(&corpus, &official);
+        let (doc, _) = rewrite(&corpus, &official, &report).unwrap();
+        let arts = doc.get("articles").unwrap().as_sequence().unwrap();
+        assert_eq!(arts.len(), 2);
+        // Work on a whole-article entry is still carried over.
+        assert!(arts[0].get("machine_readable").is_some());
+    }
+
+    #[test]
+    fn a_failing_companion_write_leaves_the_precious_file_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let precious = dir.path().join("law.yaml");
+        std::fs::write(&precious, "oud").unwrap();
+        // A directory where the companion file should land makes its
+        // rename fail after both temp files were staged.
+        let companion = dir.path().join("sidecar.yaml");
+        std::fs::create_dir(&companion).unwrap();
+
+        let err = write_atomic_pair((&precious, "nieuw"), (&companion, "context")).unwrap_err();
+        assert!(err.contains("sidecar.yaml"), "{err}");
+        assert_eq!(std::fs::read_to_string(&precious).unwrap(), "oud");
+        // No temp litter either.
+        assert!(!dir.path().join(".law.yaml.tmp").exists());
+        assert!(!dir.path().join(".sidecar.yaml.tmp").exists());
     }
 
     #[test]

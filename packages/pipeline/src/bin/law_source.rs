@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use regelrecht_pipeline::enrich_v2::source_gate::{
-    parse_toestand, rewrite, toestand_url, verify, write_atomic, Verdict, CONTEXT_SIDECAR,
+    parse_toestand, rewrite, toestand_url, verify, write_atomic_pair, Verdict, CONTEXT_SIDECAR,
 };
 
 #[tokio::main]
@@ -184,17 +184,17 @@ async fn check_one(
             }
         };
 
-        // Serialize both documents before writing either, and write each
-        // through a temp file plus rename, so an interruption cannot leave
-        // a truncated law file behind.
+        // Serialize both documents before writing either. The pair write
+        // stages both files and renames the law file last, so neither an
+        // interruption nor a failing sidecar write can leave a truncated
+        // or half-replaced law file behind.
         let yaml = serde_yaml_ng::to_string(&fixed).map_err(|e| e.to_string())?;
         let sidecar_path = path
             .parent()
             .ok_or("law file has no parent directory")?
             .join(CONTEXT_SIDECAR);
         let sidecar_yaml = serde_yaml_ng::to_string(&sidecar).map_err(|e| e.to_string())?;
-        write_atomic(path, &yaml)?;
-        write_atomic(&sidecar_path, &sidecar_yaml)?;
+        write_atomic_pair((path, &yaml), (&sidecar_path, &sidecar_yaml))?;
 
         println!(
             "  rewritten: {} article(s) now carry the official text; structure in {}",
