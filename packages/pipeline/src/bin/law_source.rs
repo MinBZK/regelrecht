@@ -16,13 +16,15 @@
 //! sidecar beside the file. Existing `machine_readable` is carried over by
 //! article number: discarding it would throw away work, and the checks that
 //! run afterwards are what decide whether the translation still holds
-//! against the corrected text.
+//! against the corrected text. A rewrite that would empty the file or
+//! remove most of it is refused: that shape means the source is wrong, not
+//! the law.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use regelrecht_pipeline::enrich_v2::source_gate::{
-    parse_toestand, rewrite, toestand_url, verify, Verdict, CONTEXT_SIDECAR,
+    parse_toestand, rewrite, toestand_url, verify, write_atomic_pair, Verdict, CONTEXT_SIDECAR,
 };
 
 #[tokio::main]
@@ -170,16 +172,29 @@ async fn check_one(
     }
 
     if do_rewrite {
-        let (fixed, sidecar) = rewrite(&doc, &official, &report);
-        let yaml = serde_yaml_ng::to_string(&fixed).map_err(|e| e.to_string())?;
-        std::fs::write(path, yaml).map_err(|e| e.to_string())?;
+        // The rewrite refuses an empty or drastically shrunken official
+        // set instead of writing it out; acting on one has erased a
+        // complete law before. A refusal fails the gate and leaves the
+        // file exactly as it was.
+        let (fixed, sidecar) = match rewrite(&doc, &official, &report) {
+            Ok(pair) => pair,
+            Err(reason) => {
+                println!("  rewrite refused: {reason}");
+                return Ok(false);
+            }
+        };
 
+        // Serialize both documents before writing either. The pair write
+        // stages both files and renames the law file last, so neither an
+        // interruption nor a failing sidecar write can leave a truncated
+        // or half-replaced law file behind.
+        let yaml = serde_yaml_ng::to_string(&fixed).map_err(|e| e.to_string())?;
         let sidecar_path = path
             .parent()
             .ok_or("law file has no parent directory")?
             .join(CONTEXT_SIDECAR);
         let sidecar_yaml = serde_yaml_ng::to_string(&sidecar).map_err(|e| e.to_string())?;
-        std::fs::write(&sidecar_path, sidecar_yaml).map_err(|e| e.to_string())?;
+        write_atomic_pair((path, &yaml), (&sidecar_path, &sidecar_yaml))?;
 
         println!(
             "  rewritten: {} article(s) now carry the official text; structure in {}",
