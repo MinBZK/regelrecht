@@ -78,6 +78,20 @@ repos:
         pass_filenames: false
         files: ^(script/await-claude-review(\.test)?\.sh|\.github/workflows/claude-code-review\.yml)$
 
+      - id: ci-gate-tests
+        name: Test-poort in ci.yml blokkeert op een gevallen voorganger
+        entry: just ci-gate-test
+        language: system
+        pass_filenames: false
+        files: ^(\.github/workflows/ci\.yml|script/ci-gate\.test\.mjs)$
+
+      - id: dockerfile-consistency
+        name: Rust-Dockerfiles blijven bij de cargo-workspace
+        entry: just dockerfile-consistency-test
+        language: system
+        pass_filenames: false
+        files: ^(frontend/Dockerfile|packages/(admin|pipeline)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
+
       - id: skills-no-casus
         name: Skills blijven dossier-agnostisch (geen casus-inhoud)
         entry: script/check-skills-no-casus.sh
