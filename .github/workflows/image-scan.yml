@@ -1,0 +1,88 @@
+---
+# Scant de gepubliceerde images op bekende kwetsbaarheden.
+#
+# Buiten de merge-trein, en met opzet. Een kwetsbaarheid in een basis-image
+# ontstaat na de bouw: alpine of node krijgt een advisory op een laag die maanden
+# geleden is gebakken. Scannen op het moment van bouwen vindt die niet, en het
+# zou elke build duurder maken in een pool waar CI al om vecht. Wat er draait,
+# wekelijks nakijken, vindt hem wel.
+#
+# Blokkeert niets. De uitkomst gaat als SARIF naar code scanning, waar CodeQL
+# ook uitkomt.
+name: Image Scan
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # maandagochtend, na de nachtelijke opruiming
+  workflow_dispatch:
+    inputs:
+      severity:
+        description: 'Welke ernst meenemen'
+        type: string
+        default: 'CRITICAL,HIGH'
+
+permissions: {}
+
+jobs:
+  scan:
+    name: Scan ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dezelfde acht als de image-name-regels in deploy.yml.
+        image:
+          - regelrecht-editor
+          - regelrecht-admin
+          - regelrecht-harvester-worker
+          - regelrecht-enrich-worker
+          - regelrecht-pipeline-api
+          - regelrecht-grafana
+          - regelrecht-lawmaking
+          - regelrecht-docs
+    steps:
+      - name: Log in to Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan
+        uses: aquasecurity/trivy-action@dc5a429b52fcf669ce959baa2c2dd26090d2a6c4  # v0.32.0
+        with:
+          image-ref: ghcr.io/minbzk/${{ matrix.image }}:latest
+          format: sarif
+          output: trivy.sarif
+          severity: ${{ inputs.severity || 'CRITICAL,HIGH' }}
+          # De scan zelf blokkeert niet; de bevindingen landen in code scanning
+          # en worden daar beoordeeld.
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Upload naar code scanning
+        uses: github/codeql-action/upload-sarif@24c7eb380a2dc368f2d129e4c65e51d172983a1e  # v4
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-${{ matrix.image }}
+
+      # Zonder deze stap is een mislukte scan niet van een schone te
+      # onderscheiden: trivy-action laat de job slagen zodra hij iets heeft
+      # geschreven, ook een leeg rapport na een pull-fout.
+      - name: Controleer dat er werkelijk gescand is
+        run: |
+          if [ ! -s trivy.sarif ]; then
+            echo "::error title=Image Scan::trivy leverde geen rapport voor ${{ matrix.image }}; de scan heeft niets vastgesteld."
+            exit 1
+          fi
+          runs=$(jq '.runs | length' trivy.sarif)
+          if [ "${runs:-0}" -eq 0 ]; then
+            echo "::error title=Image Scan::het SARIF-rapport voor ${{ matrix.image }} bevat geen enkele run."
+            exit 1
+          fi
+          echo "${{ matrix.image }}: $(jq '[.runs[].results[]] | length' trivy.sarif) bevinding(en)"
