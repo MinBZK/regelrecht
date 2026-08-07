@@ -9,14 +9,16 @@ All components are deployed to ZAD (RIG/Quattro/rijksapps) via GitHub Actions. D
 
 ### On pull request
 
-When a PR is opened or updated:
+A PR only builds and deploys when it carries the `preview` label. Without that label nothing is built, because a preview costs about half of the repository's runner budget and no required check depends on it. Add the label and the build starts, whether the PR was opened a minute or a month ago:
 
 1. Changed components are detected automatically
 2. Docker images are built and pushed to `ghcr.io/minbzk/regelrecht-{component}:sha-{commit}`
 3. A preview deployment named `pr{N}` is created on ZAD
 4. The PR gets a comment with preview URLs
 
-Only changed components are rebuilt. Any component can also be forced to build by adding its `deploy:<component>` label to the PR (for example `deploy:editor`).
+Every later commit on a labelled PR repeats this. Remove the label and the preview and its images are cleaned up.
+
+Only changed components are rebuilt. Any component can also be forced to build by adding its `deploy:<component>` label to the PR (for example `deploy:editor`); those labels are additive and do nothing on their own, since `preview` is what opens the gate.
 
 ### On merge to main
 
@@ -26,7 +28,7 @@ When a PR merges to main, production deployment runs:
 2. Components are deployed to the `regelrecht` deployment on ZAD
 3. Production URLs update within minutes
 
-### On PR close
+### On PR close, or when the label is removed
 
 The preview deployment and its GHCR images are cleaned up automatically.
 
