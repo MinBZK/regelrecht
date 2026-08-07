@@ -65,14 +65,12 @@ tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2"
-urlencoding = "2"
 uuid = { version = "1", features = ["serde"] }
 walkdir = "2"
 
 # Test/dev deps.
 http-body-util = "0.1"
 pretty_assertions = "1.4"
-rsa = "0.9"
 tempfile = "3"
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["postgres"] }
