@@ -544,9 +544,16 @@ impl WasmEngine {
     ///
     /// # Returns
     /// * `Ok(JsValue)` - `MatchResult`: `{ status, matches: [{ article_number,
-    ///   start, end, confidence, matched_text }] }`. `start`/`end` are **`char`
-    ///   offsets** (Unicode scalar values), not UTF-16 code units: JS code
-    ///   slicing the article text must convert accordingly.
+    ///   start, end, confidence, matched_text }], skip_reason? }`. `status`
+    ///   is `"found"`, `"orphaned"`, `"ambiguous"`, or `"skipped"` — the last
+    ///   means the fuzzy scan hit a resource bound (`config.rs`) and the law
+    ///   was not (fully) searched, so "not searched" is distinguishable from
+    ///   "not found"; `skip_reason` (`"quote_too_long"` or `"search_budget"`,
+    ///   present only then) names the bound, and `matches` carries any
+    ///   candidates found before the cut-off without a uniqueness claim.
+    ///   `start`/`end` are **`char` offsets** (Unicode scalar values), not
+    ///   UTF-16 code units: JS code slicing the article text must convert
+    ///   accordingly.
     /// * `Err(JsValue)` - Error if the law is not loaded, no version matches
     ///   `valid_from`, or the selector/date is invalid
     #[wasm_bindgen(js_name = resolveNote)]

@@ -86,7 +86,7 @@ editor sessions; they are not meant to be read directly.
 
 The pipeline API and the harvester and enrich workers deploy alongside these but have no web UI of their own.
 
-PR preview environments are deployed automatically and cleaned up when the PR is closed.
+A PR gets a preview environment once it carries the `preview` label; taking the label off, or closing the PR, cleans it up again.
 
 ## Getting started
 

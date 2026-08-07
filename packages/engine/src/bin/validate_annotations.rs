@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use jsonschema::Validator;
-use regelrecht_engine::annotation::{law_id_from_source, resolve, TextQuoteSelector};
+use regelrecht_engine::annotation::{law_id_from_source, resolve, SkipReason, TextQuoteSelector};
 use regelrecht_engine::article::{ArticleBasedLaw, LawLoad};
 
 const ANNOTATION_SCHEMA: &str = include_str!("../../../../schema/v0.5.3/annotation-schema.json");
@@ -111,6 +111,22 @@ fn main() {
     }
 }
 
+/// Why a resolve was skipped, in the words the author needs.
+///
+/// Skipped is not the same as orphaned: the resolver never (fully) searched,
+/// so absence was not established. Only a quote-length skip is fixed by
+/// shortening the quote; a scan or scoring budget that ran out has nothing to
+/// do with this quote, and saying otherwise sends the author after a change
+/// that cannot help.
+fn skip_cause(reason: Option<SkipReason>, quote_chars: usize) -> String {
+    match reason {
+        Some(SkipReason::QuoteTooLong) => {
+            format!("quote of {quote_chars} chars exceeds the fuzzy quote cap; shorten the quote")
+        }
+        _ => "the law exceeds the fuzzy scan budget; the text was not fully searched".to_string(),
+    }
+}
+
 /// Resolve each note and check tag values; return the warning count.
 fn check_notes(
     path: &Path,
@@ -154,6 +170,14 @@ fn check_notes(
                                 path.display(),
                                 result.matches.len(),
                                 selector.exact
+                            );
+                            warnings += 1;
+                        } else if result.is_skipped() {
+                            let cause =
+                                skip_cause(result.skip_reason, selector.exact.chars().count());
+                            eprintln!(
+                                "  WARN: {} note[{i}]: not searched ({cause})",
+                                path.display()
                             );
                             warnings += 1;
                         }
@@ -494,6 +518,35 @@ mod tests {
             check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[]), &repo()),
             1
         );
+    }
+
+    /// A quote too long for the bounded fuzzy scan: the resolver reports the
+    /// search as skipped, and the validator must warn "not searched" rather
+    /// than stay silent (silence would read as "resolves fine").
+    #[test]
+    fn a_selector_too_long_to_search_warns_as_not_searched() {
+        let quote = "motorrijtuigenbelasting ".repeat(6);
+        assert!(quote.chars().count() > regelrecht_engine::config::MAX_FUZZY_QUOTE_CHARS);
+        let doc = json!({"annotations": [zorgtoeslag_note(&quote)]});
+        assert_eq!(
+            check_notes(Path::new("notes.yaml"), &doc, &vocabulary_of(&[]), &repo()),
+            1
+        );
+    }
+
+    /// The warning must name the bound that was actually hit. "Shorten the
+    /// quote" is advice for one of the three causes only; on the other two it
+    /// sends the author after a change that cannot help.
+    #[test]
+    fn the_skip_warning_only_blames_the_quote_when_the_quote_was_the_cause() {
+        let long = skip_cause(Some(SkipReason::QuoteTooLong), 240);
+        assert!(long.contains("240 chars"), "{long}");
+        assert!(long.contains("shorten the quote"), "{long}");
+
+        let budget = skip_cause(Some(SkipReason::SearchBudget), 40);
+        assert!(!budget.contains("shorten the quote"), "{budget}");
+        assert!(!budget.contains("40"), "{budget}");
+        assert!(budget.contains("not fully searched"), "{budget}");
     }
 
     #[test]
