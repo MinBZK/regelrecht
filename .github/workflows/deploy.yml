@@ -328,12 +328,53 @@ jobs:
         needs.build-lawmaking.result == 'success' ||
         needs.build-docs.result == 'success'
       )
-    permissions: {}
+    permissions:
+      # Alleen om de CI-run van deze commit te mogen opzoeken.
+      actions: read
+      contents: read
     environment:
       name: production
       url: ${{ steps.editor-url.outputs.url }}
 
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # ci.yml en deze workflow hangen allebei aan `push` op main en weten niets
+      # van elkaar; er is geen `needs` tussen twee workflows. Op commit 4518c575
+      # (7 augustus 2026) faalde CI op Security Audit en ging deze deploy
+      # diezelfde minuut gewoon door. Deze stap is die ontbrekende koppeling.
+      - name: Wacht op een groene CI voor deze commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: script/require-ci-green.sh
+
+      # Faalt één gevraagd image, dan gaat er niets. De conditie hierboven laat
+      # de deploy al door zodra één build slaagt, en de lijst hieronder neemt
+      # alleen de geslaagde mee: het gevolg was dat een component stil op zijn
+      # vorige image bleef staan terwijl de rest meeschoof. De editor en
+      # editor-api delen een contract, dus dat is geen halve deploy maar een
+      # inconsistente. Nooit gebeurd in de laatste honderd runs op main, en dat
+      # is precies waarom het onopgemerkt kon blijven.
+      - name: Weiger een halve deploy
+        env:
+          RESULTS: >-
+            ${{ needs.build.result }} ${{ needs.build-admin.result }}
+            ${{ needs.build-harvester-worker.result }} ${{ needs.build-enrich-worker.result }}
+            ${{ needs.build-pipeline-api.result }} ${{ needs.build-grafana.result }}
+            ${{ needs.build-lawmaking.result }} ${{ needs.build-docs.result }}
+        run: |
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*)
+              echo "::error title=Deploy-poort::Niet elk gevraagd image is gebouwd ($RESULTS). Een deploy zou de rest vooruit zetten en het gevallen component op zijn vorige image laten staan; er gaat daarom niets naar productie."
+              exit 1
+              ;;
+          esac
+          echo "Geen gevallen build; alle gevraagde images staan klaar."
+
       - name: Get short SHA
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
