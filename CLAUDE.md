@@ -244,8 +244,9 @@ One failure is benign: `Could not extract URL from result` met `"status":
 "superseded"` in de JSON eronder. ZAD laat een taak wijken voor een nieuwere
 taak die dezelfde deployment dekt (een nieuwe push, of het opruimen van een
 gesloten PR). Het werk is dan door die nieuwere taak gedaan; alleen deze job
-opnieuw draaien volstaat. Om die reden deployt `deploy-preview` alle componenten
-in één taak: twee taken voor `pr<N>` naast elkaar zetten elkaar opzij.
+opnieuw draaien volstaat. Om die reden deployen `deploy-preview` en
+`deploy-production` alle componenten in één taak: twee taken voor hetzelfde
+deployment naast elkaar zetten elkaar opzij.
 
 ### Required Secrets
 
