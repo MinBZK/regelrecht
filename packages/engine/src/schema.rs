@@ -2,30 +2,15 @@
 //! and the schema↔model conformance test suite.
 //!
 //! Only compiled with the `validate` feature (which pulls in `jsonschema`).
-//! Keeping the schema-loading list and version detection here means there is a
-//! single copy of the 12-version `include_str!` table — see the CI guard
-//! "Check schema versions registered in schema.rs" which greps this file.
+//! The version list itself lives in [`crate::config`], which is compiled
+//! unconditionally, so the embedded-schema table here and the
+//! `SUPPORTED_SCHEMAS` the loader rejects on cannot drift apart.
 
 use std::collections::HashMap;
 
 use jsonschema::Validator;
 
-/// Single source of truth for the embedded schema versions.
-///
-/// `include_str!` requires a literal path, so the version list can't be a
-/// runtime array — it lives here as a macro that hands the list to a callback
-/// macro. `load_schemas` and `detect_version` are both driven from it, so
-/// adding a schema version is a one-line change. The individual `"vX.Y.Z"`
-/// string literals also satisfy the CI guard "Check schema versions registered
-/// in schema.rs", which greps this file for each `schema/vX.Y.Z/` directory.
-macro_rules! with_schema_versions {
-    ($callback:ident) => {
-        $callback! {
-            "v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0",
-            "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4", "v0.5.5", "v0.5.6",
-        }
-    };
-}
+use crate::config::with_schema_versions;
 
 /// Embedded schemas keyed by their `$id` URL suffix (version path).
 ///

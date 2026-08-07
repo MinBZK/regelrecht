@@ -55,15 +55,35 @@ pub const MAX_CROSS_LAW_DEPTH: usize = 20;
 /// 100 levels is sufficient for complex calculations while preventing abuse.
 pub const MAX_OPERATION_DEPTH: usize = 100;
 
+/// The schema versions this engine knows about, in one place.
+///
+/// `include_str!` needs a literal path, so the embedded-schema table in
+/// [`crate::schema`] can't read a runtime array — it takes the list from this
+/// macro instead. [`SUPPORTED_SCHEMAS`] is built from the same expansion, and
+/// the tests below hold it against the `schema/` directories and the
+/// `supported-schemas` metadata in Cargo.toml. Adding a schema version is a
+/// one-line change here.
+macro_rules! with_schema_versions {
+    ($callback:ident) => {
+        $callback! {
+            "v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0",
+            "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4", "v0.5.5", "v0.5.6",
+        }
+    };
+}
+// Its only consumer, `crate::schema`, is behind the `validate` feature.
+#[allow(unused_imports)]
+pub(crate) use with_schema_versions;
+
+macro_rules! as_slice {
+    ($($version:literal),* $(,)?) => { &[$($version),*] };
+}
+
 /// Schema versions supported by this engine version (RFC-013).
 ///
-/// A regulation referencing a schema version outside this list will be
-/// rejected at load time. This list must match the `supported-schemas`
-/// metadata in Cargo.toml.
-pub const SUPPORTED_SCHEMAS: &[&str] = &[
-    "v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3",
-    "v0.5.4", "v0.5.5", "v0.5.6",
-];
+/// A regulation referencing a schema version outside this list is rejected at
+/// load time.
+pub const SUPPORTED_SCHEMAS: &[&str] = with_schema_versions!(as_slice);
 
 /// Maximum recursion depth for dot notation property access.
 ///
@@ -95,5 +115,52 @@ mod tests {
 
         assert!(MAX_PROPERTY_DEPTH >= 10, "Should allow nested objects");
         assert!(MAX_PROPERTY_DEPTH <= 100, "Should limit extreme depth");
+    }
+
+    /// A schema version that exists on disk but not here validates green with
+    /// `just validate` and is then refused by `Article::load` — officially
+    /// valid, not executable. The `schema/` tree is the ground truth.
+    #[test]
+    fn supported_schemas_covers_every_schema_directory() {
+        let schema_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema");
+        let mut on_disk: Vec<String> = std::fs::read_dir(&schema_root)
+            .expect("schema/ directory must be readable")
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with('v'))
+            .collect();
+        on_disk.sort();
+
+        let mut supported: Vec<String> = SUPPORTED_SCHEMAS.iter().map(|s| s.to_string()).collect();
+        supported.sort();
+
+        assert_eq!(
+            supported, on_disk,
+            "SUPPORTED_SCHEMAS and schema/ have diverged; update with_schema_versions! in config.rs"
+        );
+    }
+
+    /// The `supported-schemas` metadata is the crate's published claim about
+    /// which contracts it honours. Nothing reads it at runtime, so only a test
+    /// keeps it honest.
+    #[test]
+    fn cargo_metadata_matches_supported_schemas() {
+        let manifest = include_str!("../Cargo.toml");
+        let line = manifest
+            .lines()
+            .find(|l| l.trim_start().starts_with("supported-schemas"))
+            .expect("Cargo.toml must declare supported-schemas metadata");
+        let declared: Vec<&str> = line
+            .split_once('[')
+            .and_then(|(_, rest)| rest.split_once(']'))
+            .expect("supported-schemas must be a single-line array")
+            .0
+            .split(',')
+            .map(|s| s.trim().trim_matches('"'))
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        assert_eq!(declared, SUPPORTED_SCHEMAS);
     }
 }
