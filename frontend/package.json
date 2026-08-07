@@ -7,7 +7,7 @@
     "prebuild": "node scripts/copy-laws.js",
     "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/copy-laws.js",
     "dev": "vite",
-    "build": "vite build && node scripts/precompress.mjs dist",
+    "build": "vite build && node scripts/check-first-load.mjs dist && node scripts/precompress.mjs dist",
     "preview": "vite preview",
     "pretest": "node ../bdd/codegen/gen-js.mjs",
     "test": "vitest run",

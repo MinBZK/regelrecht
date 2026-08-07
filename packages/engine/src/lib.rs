@@ -50,8 +50,8 @@ pub mod wasm;
 
 // Re-export commonly used items
 pub use annotation::{
-    law_id_from_source, resolve as resolve_note, MatchResult, MatchStatus, SelectorHint, TextMatch,
-    TextQuoteSelector,
+    law_id_from_source, resolve as resolve_note, MatchResult, MatchStatus, SelectorHint,
+    SkipReason, TextMatch, TextQuoteSelector,
 };
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,

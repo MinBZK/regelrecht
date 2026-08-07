@@ -2,7 +2,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::Type,
+)]
 #[sqlx(type_name = "job_type", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum JobType {
@@ -26,6 +28,53 @@ pub enum JobType {
     #[sqlx(rename = "traject_harvest")]
     #[serde(rename = "traject_harvest")]
     TrajectHarvest,
+}
+
+impl JobType {
+    /// Every variant, in declaration order. A consumer that wants "one bucket
+    /// per job type" iterates this instead of writing the list out again, so a
+    /// new variant lands in that consumer without anyone remembering to add it.
+    pub const ALL: &'static [JobType] = &[
+        JobType::Harvest,
+        JobType::Enrich,
+        JobType::DocumentConvert,
+        JobType::LawConvert,
+        JobType::TrajectHarvest,
+    ];
+
+    /// The name this variant carries in the database enum and on the wire.
+    /// The match is exhaustive on purpose: a new variant does not compile
+    /// until it is named here, and `job_type_names_match_serde` pins the
+    /// names to the `serde`/`sqlx` renames.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            JobType::Harvest => "harvest",
+            JobType::Enrich => "enrich",
+            JobType::DocumentConvert => "document_convert",
+            JobType::LawConvert => "law_convert",
+            JobType::TrajectHarvest => "traject_harvest",
+        }
+    }
+
+    /// Parse the database/wire name back into a variant.
+    pub fn from_str_name(name: &str) -> Option<JobType> {
+        JobType::ALL.iter().copied().find(|t| t.as_str() == name)
+    }
+
+    /// Whether this job type's `law_id` column actually names a law.
+    ///
+    /// [`JobType::DocumentConvert`] and [`JobType::LawConvert`] put a synthetic
+    /// key there (`doc:{traject}/{path}` and `lawdoc:{traject}/{filename}`)
+    /// because the real identity is only chosen by the conversion, so anything
+    /// that counts or groups "per law" has to leave those two out (#1162).
+    /// [`JobType::TrajectHarvest`] carries a BWB identifier rather than a
+    /// corpus `$id`; that still denotes one law, so it stays in.
+    pub fn law_id_names_a_law(&self) -> bool {
+        match self {
+            JobType::Harvest | JobType::Enrich | JobType::TrajectHarvest => true,
+            JobType::DocumentConvert | JobType::LawConvert => false,
+        }
+    }
 }
 
 #[derive(
@@ -178,4 +227,50 @@ pub struct FeatureFlag {
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `as_str` must agree with the `serde` rename, because the dashboard keys
+    /// its per-type buckets on one and the frontend reads the other.
+    #[test]
+    fn job_type_names_match_serde() {
+        for job_type in JobType::ALL {
+            let via_serde = serde_json::to_value(job_type).expect("JobType serializes");
+            assert_eq!(
+                via_serde.as_str(),
+                Some(job_type.as_str()),
+                "as_str and the serde rename disagree for {job_type:?}"
+            );
+            assert_eq!(JobType::from_str_name(job_type.as_str()), Some(*job_type));
+        }
+    }
+
+    /// `ALL` must list every variant. Without this the list can silently lag a
+    /// new variant, which is exactly the failure the dashboard had (#1161).
+    #[test]
+    fn job_type_all_covers_every_variant() {
+        // Exhaustive match: adding a variant breaks compilation here first.
+        for job_type in JobType::ALL {
+            match job_type {
+                JobType::Harvest
+                | JobType::Enrich
+                | JobType::DocumentConvert
+                | JobType::LawConvert
+                | JobType::TrajectHarvest => {}
+            }
+        }
+        let mut names: Vec<&str> = JobType::ALL.iter().map(|t| t.as_str()).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), JobType::ALL.len(), "duplicate name in ALL");
+        assert_eq!(
+            JobType::ALL.len(),
+            5,
+            "a job type was added or removed; check every per-type consumer \
+             (admin dashboard, metrics, law-scoped counts) before bumping this"
+        );
+    }
 }
