@@ -240,6 +240,13 @@ ZAD deploy timeouts ("Task did not complete within 300s") almost always indicate
 3. If the DB is in a bad state (e.g. migration checksum mismatch after renumbering), delete the preview deployment (`zad deployment delete <deployment>`) and re-trigger CI to get a fresh DB
 4. Do **not** blindly retry — diagnose the root cause first
 
+One failure is benign: `Could not extract URL from result` met `"status":
+"superseded"` in de JSON eronder. ZAD laat een taak wijken voor een nieuwere
+taak die dezelfde deployment dekt (een nieuwe push, of het opruimen van een
+gesloten PR). Het werk is dan door die nieuwere taak gedaan; alleen deze job
+opnieuw draaien volstaat. Om die reden deployt `deploy-preview` alle componenten
+in één taak: twee taken voor `pr<N>` naast elkaar zetten elkaar opzij.
+
 ### Required Secrets
 
 - `RIG_API_KEY` - API key for ZAD Operations Manager (configured in GitHub secrets)

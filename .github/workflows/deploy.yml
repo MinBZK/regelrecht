@@ -195,10 +195,7 @@ jobs:
   # -- Deploy preview --
   deploy-preview:
     runs-on: ubuntu-latest
-    # Each ZAD component deploy takes ~5 minutes and they run sequentially;
-    # a PR touching engine + frontend + docs redeploys 6+ components, which
-    # does not fit in 15 minutes.
-    timeout-minutes: 45
+    timeout-minutes: 20
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-lawmaking, build-docs, changes]
     if: >-
       always() &&
@@ -217,130 +214,90 @@ jobs:
       pull-requests: write
     environment:
       name: pr${{ github.event.pull_request.number }}
-      url: ${{ steps.deploy.outputs.url }}
+      url: ${{ steps.editor-url.outputs.url }}
 
     steps:
       - name: Get short SHA
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Deploy admin to ZAD (Preview)
-        if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: harvester-admin
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-admin:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment'
+      # ZAD kent per deployment één taak-scope: een tweede taak voor pr<N> zet de
+      # eerste opzij ("superseded", zie RIG-Cluster features/task-supersede.md).
+      # Componenten los deployen kan daarom niet parallel; ze gaan als één lijst
+      # in één upsert-taak, die ze samen commit en in één ArgoCD-sync uitrolt.
+      - name: Stel de componentenlijst samen
+        id: plan
+        env:
+          SHA: ${{ steps.sha.outputs.short }}
+          EDITOR: ${{ needs.build.result }}
+          ADMIN: ${{ needs.build-admin.result }}
+          HARVESTER_WORKER: ${{ needs.build-harvester-worker.result }}
+          ENRICH_WORKER: ${{ needs.build-enrich-worker.result }}
+          PIPELINE_API: ${{ needs.build-pipeline-api.result }}
+          LAWMAKING: ${{ needs.build-lawmaking.result }}
+          DOCS: ${{ needs.build-docs.result }}
+        run: |
+          set -euo pipefail
+          COMPONENTS='[]'
+          add() {
+            COMPONENTS=$(jq -c --arg name "$1" --arg image "${REGISTRY}/minbzk/$2:sha-${SHA}" \
+              '. + [{name: $name, image: $image}]' <<<"$COMPONENTS")
+          }
 
-      - name: Deploy harvester-worker to ZAD (Preview)
-        if: needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: harvester-worker
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-harvester-worker:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment'
+          # De editor gaat als eerste in de lijst: de action leidt de
+          # environment-URL af van de eerste component.
+          if [ "$EDITOR" = success ]; then add editor regelrecht-editor; fi
+          if [ "$ADMIN" = success ]; then add harvester-admin regelrecht-admin; fi
+          if [ "$HARVESTER_WORKER" = success ]; then add harvester-worker regelrecht-harvester-worker; fi
+          if [ "$ENRICH_WORKER" = success ]; then add enrichworker regelrecht-enrich-worker; fi
+          if [ "$PIPELINE_API" = success ]; then add pipelineapi regelrecht-pipeline-api; fi
+          if [ "$LAWMAKING" = success ]; then add lawmaking regelrecht-lawmaking; fi
+          if [ "$DOCS" = success ]; then add docs regelrecht-docs; fi
 
-      - name: Deploy enrich-worker to ZAD (Preview)
-        if: needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: enrichworker
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-enrich-worker:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment'
+          jq -r '.[] | "  \(.name): \(.image)"' <<<"$COMPONENTS"
+          echo "components=$COMPONENTS" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy pipeline-api to ZAD (Preview)
-        if: needs.build-pipeline-api.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: pipelineapi
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-pipeline-api:sha-${{ steps.sha.outputs.short }}
-          # No public domain: pipeline-api has no authentication and is only
-          # reachable in-cluster by editor-api (which enforces auth). Matches
-          # the production deploy below.
-          clone-from: regelrecht
-          force-clone: false
-
-      - name: Deploy editor to ZAD (Preview)
-        if: needs.build.result == 'success'
+      - name: Deploy to ZAD (Preview)
         id: deploy
         uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
           deployment-name: pr${{ github.event.pull_request.number }}
-          component: editor
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-editor:sha-${{ steps.sha.outputs.short }}
+          components: ${{ steps.plan.outputs.components }}
+          # Bepaalt alleen de hostnaam-vorm. Of een component publiek bereikbaar
+          # is, hangt aan publish-on-web in de gekloonde config: pipeline-api
+          # heeft dat niet en blijft dus in-cluster, net als in productie.
           domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
           comment-on-pr: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment — editor'
+          comment-header: '## Preview Deployment'
 
-      - name: Deploy lawmaking to ZAD (Preview)
-        if: needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: lawmaking
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-lawmaking:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment — lawmaking'
+      - name: Editor-URL voor de environment
+        id: editor-url
+        if: needs.build.result == 'success'
+        env:
+          URLS: ${{ steps.deploy.outputs.urls }}
+        run: echo "url=$(jq -r '.editor // empty' <<<"$URLS")" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy docs to ZAD (Preview)
-        if: needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: docs
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-docs:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment — docs'
+      - name: Verklaar een mislukte deploy
+        if: failure() && steps.deploy.outcome == 'failure'
+        env:
+          COMPONENTS: ${{ steps.plan.outputs.components }}
+        run: |
+          echo "::notice::Deploy van pr${{ github.event.pull_request.number }} mislukt voor: $(jq -r '[.[].name] | join(", ")' <<<"$COMPONENTS")"
+          echo "'status: superseded' in de output hierboven betekent dat een nieuwere taak"
+          echo "voor dit deployment (een nieuwe push, of het opruimen van een gesloten PR)"
+          echo "het werk heeft overgenomen. Deze job opnieuw draaien is dan veilig."
+          echo "Iets anders? Zie 'Debugging deploy-preview failures' in CLAUDE.md."
 
   # -- Deploy production --
   deploy-production:
     runs-on: ubuntu-latest
-    # Same budget as deploy-preview: sequential ZAD deploys of all changed
-    # components do not fit in 15 minutes on a broad merge.
+    # Sequential ZAD deploys of all changed components do not fit in 15 minutes
+    # on a broad merge.
     timeout-minutes: 45
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-grafana, build-lawmaking, build-docs]
     if: >-
