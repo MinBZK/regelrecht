@@ -325,7 +325,12 @@ fn law_read_error(
 /// The result — including the deferred 428 — is stored on the
 /// [`TrajectScope`] and only surfaced by reads that actually target the
 /// writable-own source.
-async fn resolve_own_read_token(
+///
+/// `pub(crate)`: the integrity scan reads the writable-own repo directly
+/// (no law-by-law routing), so it resolves the very same token instead of
+/// growing a second answer to "which credential may read this repo for
+/// this caller" — see [`crate::traject_integrity`].
+pub(crate) async fn resolve_own_read_token(
     state: &AppState,
     account_id: Uuid,
     headers: &axum::http::HeaderMap,
@@ -885,13 +890,23 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
 
 /// Law ids a scenario file evaluates, extracted from its execution steps.
 ///
-/// A target is the law named in an `I evaluate "<output>" of "<law_id>"`
-/// step. The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
+/// A target is the law named in an evaluation step: `I evaluate "<output>"
+/// of "<law_id>"` (`bdd/grammar.yaml`, step `evaluate`) and its multi-output
+/// twin `I evaluate outputs "<outputs>" of "<law_id>"` (step
+/// `evaluate_outputs`). Both name the law the scenario puts to work, so
+/// leaving the second out would hide a scenario from the law it tests — and
+/// make the integrity report call that law's own folder untargeted.
+///
+/// The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
 /// the frontend step matcher (`frontend/src/gherkin/steps.js`) matches step
 /// text without its keyword, so all of these run as execution steps.
 /// `Given law "…" is loaded` lines are dependencies, not targets.
 /// Deduplicated, order of first occurrence preserved.
-fn extract_target_law_ids(content: &str) -> Vec<String> {
+///
+/// `pub(crate)`: the integrity report resolves the same targets against the
+/// federated corpus to spot scenarios pointing at a law id that no longer
+/// exists (see [`crate::traject_integrity`]).
+pub(crate) fn extract_target_law_ids(content: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim_start();
@@ -901,7 +916,11 @@ fn extract_target_law_ids(content: &str) -> Vec<String> {
         else {
             continue;
         };
-        let Some(rest) = step.trim_start().strip_prefix("I evaluate \"") else {
+        let step = step.trim_start();
+        let Some(rest) = step
+            .strip_prefix("I evaluate outputs \"")
+            .or_else(|| step.strip_prefix("I evaluate \""))
+        else {
             continue;
         };
         // rest = `<output>" of "<law_id>"…`
@@ -914,6 +933,43 @@ fn extract_target_law_ids(content: &str) -> Vec<String> {
         let Some((law_id, _)) = rest.split_once('"') else {
             continue;
         };
+        if !law_id.is_empty() && !out.iter().any(|l| l == law_id) {
+            out.push(law_id.to_string());
+        }
+    }
+    out
+}
+
+/// Law ids a scenario file declares as **dependencies**, from its
+/// `law "<law_id>" is loaded` steps (`bdd/grammar.yaml`, step `load_law`).
+///
+/// The counterpart of [`extract_target_law_ids`]: those are the laws the
+/// scenario *evaluates*, these are the ones it loads to make an evaluation
+/// possible. The keyword is `Given` in practice, but every Gherkin keyword is
+/// accepted for the same reason [`extract_target_law_ids`] does — the step
+/// matcher works on the text, not the keyword.
+///
+/// Deduplicated, order of first occurrence preserved.
+pub(crate) fn extract_loaded_law_ids(content: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let Some(step) = ["Given ", "When ", "Then ", "And ", "But ", "* "]
+            .iter()
+            .find_map(|kw| trimmed.strip_prefix(kw))
+        else {
+            continue;
+        };
+        let Some(rest) = step.trim_start().strip_prefix("law \"") else {
+            continue;
+        };
+        let Some((law_id, tail)) = rest.split_once('"') else {
+            continue;
+        };
+        // Only the `is loaded` step — not some other future `law "…"` step.
+        if !tail.trim_start().starts_with("is loaded") {
+            continue;
+        }
         if !law_id.is_empty() && !out.iter().any(|l| l == law_id) {
             out.push(law_id.to_string());
         }
@@ -4927,6 +4983,23 @@ mod tests {
         assert_eq!(
             extract_target_law_ids(content),
             vec!["law_a", "law_b", "law_c", "law_d", "law_e"]
+        );
+    }
+
+    #[test]
+    fn extract_targets_covers_the_multi_output_evaluation_step() {
+        // `evaluate_outputs` (bdd/grammar.yaml) names its law in the same
+        // place as `evaluate`. Missing it would hide the scenario from the
+        // law it tests — and make the integrity report claim the law's own
+        // scenario folder targets nothing.
+        let content = r#"
+    When I evaluate outputs "a, b" of "law_multi"
+    When I evaluate "c" of "law_single"
+    When I evaluate outputs "d" of "law_multi"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["law_multi", "law_single"]
         );
     }
 
