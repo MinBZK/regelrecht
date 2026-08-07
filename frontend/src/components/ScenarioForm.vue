@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
-import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
+import { formatValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
 

@@ -44,6 +44,7 @@ import MachineReadable from './components/MachineReadable.vue';
 import MachineEmptyState from './components/MachineEmptyState.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
+import { buildOutputTypeMap } from './utils/articleMapping.js';
 import LawGraphView from './components/LawGraphView.vue';
 
 const { authenticated, oidcConfigured } = useAuth();
@@ -1183,6 +1184,10 @@ const lastScenarioName = ref('');
 // The scenario's entry output (e.g. "is_rechthebbende"). The graph view
 // uses this to pin its "▶ start" marker to the right leaf.
 const lastOutputName = ref(null);
+// Declared units of the opened law's outputs, so the result sheet renders a
+// value as money only when its type_spec says so. Scenarios execute the opened
+// law, so its articles carry the outputs the trace reports.
+const outputTypeMap = computed(() => buildOutputTypeMap(articles.value));
 // Loading state of the last scenario and a bound re-run callback, so the
 // result sheet can show "running…" / an error with a reload action.
 const lastRunning = ref(false);
@@ -3073,6 +3078,7 @@ async function handleActionSave() {
           :error="lastError"
           :running="lastRunning"
           :expectations="lastExpectations"
+          :output-types="outputTypeMap"
           :can-reload="!!lastReload"
           @reload="lastReload && lastReload()"
         />
