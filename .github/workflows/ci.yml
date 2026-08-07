@@ -501,6 +501,9 @@ jobs:
   test:
     name: Test
     needs:
+      # Niet als voorganger die iets test, maar omdat elke baan hieronder eraan
+      # hangt: valt `changes` om, dan slaan ze allemaal over.
+      - changes
       - rust-tests
       - frontend-tests
       # Deze vier draaiden al bij elke PR maar blokkeerden niets. Ze hier
@@ -526,6 +529,20 @@ jobs:
               *) echo "$1: $2" ;;
             esac
           }
+          # `changes` is de enige voorganger die geslaagd MOET zijn. Overgeslagen
+          # geldt hieronder als geslaagd, en terecht: een PR die geen Rust raakt
+          # hoort niet te blijven hangen op een testbaan die niets te doen had.
+          # Maar valt `changes` zelf om, dan slaan al zijn afhankelijken over om
+          # een heel andere reden, en zou de poort die zes stuk voor stuk als
+          # geslaagd lezen. De hele required set wordt dan groen terwijl er niets
+          # gedraaid is.
+          require() {
+            case "$2" in
+              success) echo "$1: $2" ;;
+              *) echo "::error::$1 gaf $2, dus de banen erachter zijn nooit gedraaid"; status=1 ;;
+            esac
+          }
+          require changes "${{ needs.changes.result }}"
           check rust-tests "${{ needs.rust-tests.result }}"
           check frontend-tests "${{ needs.frontend-tests.result }}"
           check e2e "${{ needs.e2e.result }}"

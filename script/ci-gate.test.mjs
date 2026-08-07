@@ -93,7 +93,13 @@ function runGate(results) {
   return spawnSync('bash', ['-e', '-o', 'pipefail', '-c', filled], { encoding: 'utf8' });
 }
 
-const withAll = (value) => Object.fromEntries(NEEDS.map((job) => [job, value]));
+// De baan die bepaalt of de rest überhaupt draait. Hij hoort niet in de
+// skipped-is-geslaagd-regel thuis en heeft daarom zijn eigen assertie.
+const STRICT = 'changes';
+
+/** Alle voorgangers op `value`, behalve `changes`: die blijft geslaagd. */
+const withAll = (value) =>
+  Object.fromEntries(NEEDS.map((job) => [job, job === STRICT ? 'success' : value]));
 
 test('de poort hangt aan de vier checks die tot nu toe niets blokkeerden', () => {
   for (const job of ['e2e', 'cross-law-integrity', 'provenance-checks', 'docs-a11y']) {
@@ -122,6 +128,19 @@ test('alles overgeslagen laat de poort door', () => {
   // Een PR die alleen docs raakt slaat elke testbaan over. Zou skipped hier
   // rood worden, dan blokkeert de required check zo'n PR voorgoed.
   assert.equal(runGate(withAll('skipped')).status, 0);
+});
+
+test('de poort hangt aan changes en leest hem strikt', () => {
+  assert.ok(NEEDS.includes(STRICT), `${STRICT} hangt niet aan de poort`);
+  assert.ok(JOBS.has(STRICT), `${STRICT} bestaat niet als baan in ci.yml`);
+
+  // Overgeslagen of gefaald hoort hier rood te zijn, ook al is skipped voor elke
+  // andere voorganger geslaagd: de rest heeft dan niet gedraaid.
+  for (const result of ['skipped', 'failure', 'cancelled']) {
+    const run = runGate({ ...withAll('skipped'), [STRICT]: result });
+    assert.equal(run.status, 1, `changes op ${result} liet de poort door`);
+    assert.match(run.stdout, /::error::changes gaf/);
+  }
 });
 
 test('een gevallen voorganger laat de poort omvallen, welke dan ook', () => {
