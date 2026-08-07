@@ -269,6 +269,12 @@ impl Drop for ResetOnDrop {
 /// loads (mount + tab switches + retries) into a single Compare call.
 const CHANGED_LAWS_TTL: Duration = Duration::from_secs(60);
 
+/// How long a caller waits for the synchronous-refresh gate before giving up
+/// and computing for itself. See the use site: this caps the added latency of
+/// the gate at roughly one Compare round-trip instead of letting concurrent
+/// callers queue behind a persistently failing upstream.
+const CHANGED_REFRESH_GATE_WAIT: Duration = Duration::from_secs(10);
+
 /// How long a traject's cached index snapshot (its [`SourceMap`] plus the
 /// derived body / sidecar / implements caches) is served before the first
 /// request past the deadline triggers a *background* re-enumeration of
@@ -1212,7 +1218,21 @@ impl TrajectCorpus {
         // work, so single-flight it: concurrent callers queue on the gate and
         // the double-check below lets everyone but the first return the
         // winner's freshly-cached diff instead of firing their own Compare.
-        let _gate = self.changed_refresh_gate.clone().lock_owned().await;
+        // Bounded: the gate is held across a GitHub Compare call, and that
+        // call has its own multi-second timeout. Waiting unboundedly would
+        // turn a persistently failing upstream (rate limit, outage) into a
+        // queue — the Nth concurrent member would wait N timeouts where
+        // before this gate existed they each waited one, and the sidebar
+        // blocks on this request. On timeout we simply do what the code did
+        // before the gate: compute for ourselves. The herd-collapsing still
+        // works in the normal case, where the winner returns in well under
+        // this budget.
+        let _gate = tokio::time::timeout(
+            CHANGED_REFRESH_GATE_WAIT,
+            self.changed_refresh_gate.clone().lock_owned(),
+        )
+        .await
+        .ok();
         if let Some(cached) = self.changed_cache.read().await.as_ref() {
             if cached.computed_at.elapsed() < CHANGED_LAWS_TTL {
                 return Ok(cached.law_ids.clone());
@@ -1223,6 +1243,22 @@ impl TrajectCorpus {
             Ok(ids) => {
                 // Only a result that could actually see the repo is worth
                 // sharing with the other members of this traject.
+                //
+                //
+                // Known and accepted limitation: on the private-repo leg an
+                // empty diff is ambiguous. It is what a branch without edits
+                // returns, but ALSO what a member gets whose token cannot see
+                // the repo - GitHub answers 404 (not 403) for an invisible
+                // private repo and `compare_files` maps that to "no files
+                // changed". Such a member can therefore blank "Bewerkt" for
+                // the others for up to one TTL window, after which any member
+                // who *can* see the repo overwrites it with the truth. That
+                // self-healing bound is why this is tolerated rather than
+                // patched here: refusing to cache empty results instead would
+                // leave a merged-away diff standing forever for token-less
+                // members, which is worse. The real fix is upstream - teach
+                // `compare_files` to distinguish 404 from "nothing changed" -
+                // and is tracked separately.
                 if token.is_some() || !needs_user_token {
                     *self.changed_cache.write().await = Some(ChangedLawsCache {
                         computed_at: Instant::now(),
@@ -1253,9 +1289,19 @@ impl TrajectCorpus {
 
     /// Whether computing the branch-vs-base diff depends on the *caller's*
     /// GitHub token — i.e. the writable-own backend authenticates per call
-    /// and has no credential at rest. Mirrors the read-token decision table
-    /// in `TrajectCredentials::for_read`, so the diff and the law reads
-    /// agree on when a personal token is the only way in.
+    /// and has no credential at rest.
+    ///
+    /// This deliberately stops at the *capability* probe and does NOT mirror
+    /// `TrajectCredentials::for_read` all the way down: that path additionally
+    /// consults `write_requires_user_token` (config + the `github.user_oauth`
+    /// flag) and hands back `None` when the user-token mode is off. Answering
+    /// that question here would mean a DB round-trip on a hot path, and it
+    /// would buy nothing: this predicate only ever guards *caching and
+    /// background-refresh* decisions, and a token-less backend
+    /// (`is_writable() == self.token.is_some()`) short-circuits the diff to an
+    /// empty list without touching GitHub anyway. With the user-token mode off
+    /// the effect is therefore a cheap empty recompute per request rather than
+    /// a shared cache entry — never a wrong answer.
     ///
     /// `false` for everything else: a backend with a service token, a local
     /// backend, or a missing backend all produce a token-independent result

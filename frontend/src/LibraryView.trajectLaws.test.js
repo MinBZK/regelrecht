@@ -315,6 +315,21 @@ describe('LibraryView - wetten van het traject in het linkermenu', () => {
     expect(sectionOrder(wrapper)).toEqual(['changed', 'favorites', 'recent', 'traject']);
   });
 
+  it('resolvet een naam via de traject-lijst als de wet in geen enkele id-set zit', async () => {
+    // De sidebar haalt metadata alleen op voor favorieten + bewerkte wetten
+    // (`?ids=`). De traject-sectie maakt wetten aanklikbaar die in geen van
+    // beide zitten, dus zonder de traject-lijst als tweede bron valt de naam
+    // terug op het opgeslagen - hier bewust verouderde - label. Wetten met een
+    // dynamische `name: '#output_ref'` renderen dan structureel verkeerd.
+    localStorage.setItem(
+      'regelrecht-recent-laws:traject-abcd1234',
+      JSON.stringify([{ law_id: 'wet_c', name: 'Verouderd label' }]),
+    );
+    const wrapper = await mountLibrary();
+
+    expect(sectionLaws(wrapper, 'recent')).toEqual(['Wet langdurige zorg']);
+  });
+
   it('laat een bewerkte wet in Bewerkt én in de traject-lijst staan', async () => {
     // Geen ontdubbeling: de traject-lijst is "alles wat in dit traject zit",
     // niet "de rest". Zou hij tegen Bewerkt filteren, dan springt een wet

@@ -1008,8 +1008,7 @@ const sidebarSections = computed(() => {
   // available, otherwise to the stored { law_id, name } (e.g. a law not present
   // in the active traject).
   if (recentLaws.value.length > 0) {
-    const recent = recentLaws.value
-      .map(r => list.find(law => law.law_id === r.law_id) || r);
+    const recent = recentLaws.value.map(r => indexedLaw(r.law_id) || r);
     sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
   }
 
@@ -1025,6 +1024,22 @@ const sidebarSections = computed(() => {
   }
 
   return sections;
+});
+
+// A law opened from elsewhere (search, deep link) can sit past the collapsed
+// slice, leaving the selection with no visible anchor anywhere in the menu.
+// Unfold only then: `highlightSection` prefers the FIRST section holding the
+// law and "Traject" is pushed last, so a law that is also edited, starred or
+// recently viewed is already highlighted above - expanding 180 rows for it
+// would be exactly the wall of text the collapsing exists to prevent.
+watch([selectedLawId, trajectLaws], ([lawId, all]) => {
+  if (!lawId || trajectLawsExpanded.value || !all) return;
+  // Reading a computed inside a watcher with explicit sources adds no
+  // dependency, so this cannot feed back into the watcher.
+  if (highlightSection.value) return;
+  if (all.findIndex(law => law.law_id === lawId) >= TRAJECT_LAWS_COLLAPSED) {
+    trajectLawsExpanded.value = true;
+  }
 });
 
 // Label of the collapse toggle under the traject section, or `null` when the
@@ -1131,11 +1146,27 @@ const lawName = computed(() => {
   return humanizeLawId(selectedLaw.value.$id || selectedLaw.value.law_id || '');
 });
 
+/**
+ * Metadata for a law id from whatever the sidebar has loaded: the `?ids=` set
+ * (favorites + edits) first, then the traject's own list.
+ *
+ * The second lookup matters because the "Traject" section makes laws clickable
+ * that are in neither of those id sets. Without it they resolve to
+ * `humanizeLawId`, which is wrong for every law whose YAML carries a dynamic
+ * `name: '#output_ref'` - the backend resolves those into `display_name`, and
+ * the humanized id is a different string entirely.
+ */
+function indexedLaw(lawId) {
+  return laws.value.find(l => l.law_id === lawId)
+    ?? trajectLaws.value?.find(l => l.law_id === lawId)
+    ?? null;
+}
+
 // Display name resolved from the index. Used in the load-error state where
 // `selectedLaw` is null and `lawName` would be empty.
 const indexedLawName = computed(() => {
   if (!selectedLawId.value) return '';
-  const law = laws.value.find(l => l.law_id === selectedLawId.value);
+  const law = indexedLaw(selectedLawId.value);
   return law ? displayName(law) : humanizeLawId(selectedLawId.value);
 });
 
@@ -1349,6 +1380,17 @@ async function fetchChangedLawIds(trajectRef) {
 // `useLawPromote` and `AddLawSheet` already use). Federated sources are
 // deliberately left out: the central one is the full BWB corpus.
 //
+// Why not reuse `useCorpusLaws` (already instantiated above, and it does hold
+// `source_priority`): its list is the UNFILTERED route, which the backend
+// sorts by `law_id` across every source and then truncates at the limit. A
+// traject that federates the central BWB corpus can therefore lose its own
+// laws past that cap - they simply sort too late - and filtering the result on
+// `source_priority === 0` would silently show a partial section. `?source=`
+// takes the filtered branch, which orders by source priority precisely so the
+// cap cannot starve the own repo (see `list_corpus_laws_in_scope`). The
+// `/sources` call stays regardless: it is the only place carrying `law_count`
+// (exact past any cap) and `index_error`.
+//
 // Returns `{ laws, count }`:
 //   - `laws: null` means "no section": no traject, no own source, a source
 //     that could not be scanned (`index_error` - the existing index-error
@@ -1375,7 +1417,12 @@ async function fetchTrajectOwnLaws(trajectRef) {
       laws: [...trajectLawList].sort((a, b) => displayName(a).localeCompare(displayName(b), 'nl')),
       count: own.law_count,
     };
-  } catch {
+  } catch (e) {
+    // De sectie blijft weg (dezelfde stille stance als `fetchChangedLawIds`),
+    // maar een serverfout laat wél een spoor achter: dit is de hoofdinhoud van
+    // het menu van een vers traject, dus "mijn wetten zijn weg" met een schone
+    // console is een diagnostisch gat. Zelfde drempel als `loadFavorites`.
+    if (e instanceof ApiError && e.status >= 500) console.warn(e.message);
     return none;
   }
 }
@@ -1415,8 +1462,9 @@ async function toggleFavorite(lawId) {
     await apiFetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
     // Re-resolve the sidebar's id-set so a newly-favorited law (whose
     // metadata isn't loaded yet, since we only fetch favorites + edits by
-    // id) appears in the Favorieten section without a manual reload.
-    loadIndex();
+    // id) appears in the Favorieten section without a manual reload. The
+    // traject's own laws are untouched by starring, so they are not refetched.
+    loadIndex({ refreshTrajectLaws: false });
   } catch {
     // HTTP or network failure - roll the optimistic toggle back.
     revert();
@@ -1427,7 +1475,13 @@ async function toggleFavorite(lawId) {
 
 const claimLoadIndex = useLatest();
 
-async function loadIndex() {
+/**
+ * Reload what the sidebar needs. `refreshTrajectLaws: false` keeps the
+ * traject's own-law list as it is - starring a law cannot change the contents
+ * of the traject's repo, and refetching it there would add a `/sources` call
+ * plus an up-to-200-entry list to every click on the star.
+ */
+async function loadIndex({ refreshTrajectLaws = true } = {}) {
   const isCurrent = claimLoadIndex();
   // Drop any previous scope's failure before we start. The error describes one
   // specific index load, so it must not outlive the run that produced it:
@@ -1450,12 +1504,14 @@ async function loadIndex() {
     const [, changedIds, trajectOwn] = await Promise.all([
       loadFavorites(),
       fetchChangedLawIds(trajectRef),
-      fetchTrajectOwnLaws(trajectRef),
+      refreshTrajectLaws ? fetchTrajectOwnLaws(trajectRef) : null,
     ]);
     if (!isCurrent()) return;
     changedLawIds.value = changedIds;
-    trajectLaws.value = trajectOwn.laws;
-    trajectLawCount.value = trajectOwn.count;
+    if (trajectOwn) {
+      trajectLaws.value = trajectOwn.laws;
+      trajectLawCount.value = trajectOwn.count;
+    }
 
     // Fetch metadata for just those ids via `?ids=` - never the whole corpus.
     // The central corpus is the full BWB corpus (thousands of laws); loading

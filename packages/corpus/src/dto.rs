@@ -55,9 +55,15 @@ pub struct PaginationParams {
     /// | `source` + `q` | the `q` matches that live in that source |
     /// | `source` + `ids` + `q` | `ids` still beats `q`, then narrowed by source |
     ///
-    /// An unknown source id matches nothing (empty list); an absent `source`
-    /// filters nothing, leaving the pre-existing behaviour of every route
-    /// that inherits this struct untouched.
+    /// An unknown source id matches nothing (empty list); an absent — or
+    /// blank/whitespace-only — `source` filters nothing, leaving the
+    /// pre-existing behaviour of every route that inherits this struct
+    /// untouched.
+    ///
+    /// **`source` disables `offset` paging.** Like `ids` and `q` it selects the
+    /// filtered branch, which returns the whole matching set capped at `limit`
+    /// and ignores `offset`. A caller that pages the global route with
+    /// `?source=…&offset=…` would otherwise keep receiving page one.
     #[serde(default)]
     pub source: Option<String>,
 }

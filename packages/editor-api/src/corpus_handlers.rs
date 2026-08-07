@@ -689,8 +689,10 @@ fn filter_corpus_laws(source_map: &SourceMap, params: &PaginationParams) -> Vec<
 /// this endpoint's "empty array, not an error" contract (the frontend then
 /// simply hides the section, and the 428 connect-flow is raised by the reads
 /// that truly need it). Any other error propagates: a failed feature-flag
-/// lookup is an outage, and reporting it as an empty diff would show up in the
-/// sidebar as the reassuring "nothing changed".
+/// lookup is an outage, and a 200 with an empty array launders it into a
+/// success that no log or metric will ever flag. (The sidebar renders the same
+/// either way — `fetchChangedLawIds` hides the section on any failure — so the
+/// argument here is operator visibility, not what the user sees.)
 pub async fn list_traject_changed_laws(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -706,7 +708,7 @@ pub async fn list_traject_changed_laws(
         // yet". Everything else (e.g. the feature-flag lookup failing on
         // the database) is a real failure and propagates like it does for
         // every other caller of this `Result` in the crate — folding it
-        // into `None` would render as "nothing changed" in the sidebar.
+        // into `None` would hide a real outage behind a 200.
         Err((StatusCode::PRECONDITION_REQUIRED, _)) => None,
         Err(e) => return Err(e),
     };
@@ -5144,6 +5146,23 @@ mod tests {
     }
 
     #[test]
+    fn blank_source_is_no_filter_rather_than_a_filter_matching_nothing() {
+        // `?source=` (of alleen spaties) komt binnen als `Some("")`. Dat is
+        // géén bron-id dat nergens op matcht — het wordt genormaliseerd naar
+        // "geen filter", zodat een leeg queryveld de lijst niet leegt.
+        let map = two_source_map();
+        let full = law_ids(filter_corpus_laws(&map, &params(None, None, None)));
+        assert!(!full.is_empty());
+        for blank in ["", "   "] {
+            assert_eq!(
+                law_ids(filter_corpus_laws(&map, &params(Some(blank), None, None))),
+                full,
+                "een lege `source` hoort zich als een afwezige te gedragen"
+            );
+        }
+    }
+
+    #[test]
     fn absent_source_leaves_the_existing_listing_untouched() {
         // Regressie op de globale route: elke route erft dit veld, dus een
         // afwezige `source` mag niets veranderen aan wat er vandaag uitkomt.
@@ -5237,7 +5256,9 @@ mod tests {
         assert_eq!(query.effective_limit(), 200);
 
         // En de bestaande vorm zonder `source` blijft een afwezig filter, niet
-        // een lege string (die zou alles wegfilteren).
+        // een lege string. `filter_corpus_laws` normaliseert een lege of
+        // whitespace-only `source` bovendien terug naar "geen filter", zodat
+        // `?source=` niet stilletjes alles wegfiltert.
         let bare: Query<PaginationParams> =
             Query::try_from_uri(&"http://editor.test/api/corpus/laws".parse().unwrap())
                 .expect("query zonder source moet deserialiseren");
