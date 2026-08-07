@@ -80,6 +80,7 @@ const {
   featureText,
   loading: scenariosLoading,
   saving,
+  error: scenariosError,
   saveError,
   selectScenario: selectScenarioFile,
   saveScenario,
@@ -580,6 +581,13 @@ defineExpose({ save: onSave });
 
       <nldd-inline-dialog v-if="depsError" variant="alert" text="Fout" :supporting-text="String(depsError)"></nldd-inline-dialog>
 
+      <nldd-inline-dialog
+        v-if="scenariosError"
+        variant="alert"
+        text="Scenario's konden niet worden geladen"
+        :supporting-text="scenariosError.message || String(scenariosError)"
+      ></nldd-inline-dialog>
+
       <template v-if="formState">
         <nldd-collection layout="grid" item-width="320px">
           <nldd-card v-for="(scenario, i) in formState.scenarios" :key="i">
@@ -629,7 +637,7 @@ defineExpose({ save: onSave });
       </template>
 
       <nldd-inline-dialog
-        v-else-if="!articleLoading && !scenariosLoading && !depsLoading"
+        v-else-if="!articleLoading && !scenariosLoading && !depsLoading && !scenariosError"
         text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>
