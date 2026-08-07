@@ -41,11 +41,10 @@ format:
     cd packages && cargo fmt --check --all
 
 # The features a deployed artefact or a `just` recipe actually turns on.
-# Deliberately not --all-features: that also builds `engine/otel` (the whole
-# OpenTelemetry stack, enabled by no Dockerfile, CI job or recipe),
-# `engine/wasm` and the two `test-utils` features, together 46 crates. Those
-# three still get compiled by `just test`, which does run --all-features, so
-# leaving them out here costs clippy coverage on that code and nothing else.
+# Deliberately not --all-features: that also builds `engine/wasm` and the two
+# `test-utils` features. Those still get compiled by `just test`, which does run
+# --all-features, so leaving them out here costs clippy coverage on that code
+# and nothing else.
 check_features := "regelrecht-engine/validate,regelrecht-corpus/annotation-validation"
 
 # Run clippy lints

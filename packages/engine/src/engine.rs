@@ -121,7 +121,6 @@ impl<'a> ArticleEngine<'a> {
     /// # Returns
     /// * `Ok(ArticleResult)` - Execution result with outputs and metadata
     /// * `Err(EngineError)` - If execution fails
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %self.law.id, article = %self.article.number)))]
     pub fn evaluate(
         &self,
         parameters: BTreeMap<String, Value>,
