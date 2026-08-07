@@ -92,6 +92,20 @@ repos:
         pass_filenames: false
         files: ^(frontend/Dockerfile|packages/(admin|pipeline)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
 
+      - id: deploy-gate-tests
+        name: Deploy-poort op een groene CI doet wat hij belooft
+        entry: script/require-ci-green.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/require-ci-green(\.test)?\.sh|\.github/workflows/deploy\.yml)$
+
+      - id: deployed-urls-tests
+        name: Productiecontrole na de deploy doet wat hij belooft
+        entry: script/check-deployed-urls.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-deployed-urls(\.test)?\.sh|\.github/workflows/deploy\.yml)$
+
       - id: skills-no-casus
         name: Skills blijven dossier-agnostisch (geen casus-inhoud)
         entry: script/check-skills-no-casus.sh

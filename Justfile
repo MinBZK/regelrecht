@@ -114,11 +114,24 @@ ci-gate-test:
 dockerfile-consistency-test:
     node --test script/dockerfile-consistency.test.mjs
 
+# De poort die productie op een groene CI laat wachten. Zonder deze test is een
+# poort die alles doorlaat niet te onderscheiden van een die werkt; `gh` staat
+# hier als stub op PATH, dus er gaat geen verkeer naar GitHub.
+[doc("Check the gate that holds production to a green CI")]
+deploy-gate-test:
+    script/require-ci-green.test.sh
+
+# De controle die na de uitrol nakijkt of productie antwoordt. `curl` staat in
+# de test als stub op PATH, dus er gaat geen verkeer naar buiten.
+[doc("Check the post-deploy health check")]
+deployed-urls-test:
+    script/check-deployed-urls.test.sh
+
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test test
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test test
 
 # --- Tests ---
 
