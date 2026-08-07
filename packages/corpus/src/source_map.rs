@@ -521,7 +521,7 @@ impl Default for SourceMap {
 /// Extract a YYYY-MM-DD date from the filename component of a path.
 ///
 /// Matches the convention `…/law_id/2025-01-01.yaml`.
-fn extract_date_from_path(path: &str) -> Option<String> {
+pub(crate) fn extract_date_from_path(path: &str) -> Option<String> {
     let filename = path.rsplit('/').next().unwrap_or(path);
     let stem = filename.strip_suffix(".yaml")?;
     // Validate YYYY-MM-DD pattern
