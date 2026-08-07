@@ -1,0 +1,7 @@
+# Test code may unwrap, expect and panic: that is how a test reports a failure,
+# and a `?`-returning test hides the reason. Without these three, turning on
+# `--all-targets` in `just lint` (issue #1143) would drop ~500 findings that all
+# say the same non-thing.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

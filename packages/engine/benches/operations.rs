@@ -1,7 +1,11 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+//! Benchmark, not product code: a failed setup here should abort loudly.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::operations::{evaluate_value, execute_operation, ValueResolver};
 use regelrecht_engine::{ActionOperation, ActionValue, Case, Value};
 use std::collections::HashMap;
+use std::hint::black_box;
 
 /// Simple resolver backed by a HashMap (no tracing overhead).
 struct SimpleResolver {

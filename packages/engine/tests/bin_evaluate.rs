@@ -4,6 +4,10 @@
 //! on stdin, a JSON response on stdout, and flags that change the shape of that
 //! response. These tests pin that contract, not the engine internals behind it.
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use std::io::Write;
 use std::process::{Command, Stdio};
 

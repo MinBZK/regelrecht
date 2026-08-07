@@ -16,6 +16,10 @@
 //! Docker-dependent, and it also runs under `just test-all`, so coverage isn't
 //! gated on the Docker-only `pipeline-integration-test` recipe.
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use std::path::Path;
 
 use regelrecht_corpus::CorpusConfig;

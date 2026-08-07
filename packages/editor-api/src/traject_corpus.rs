@@ -2125,6 +2125,51 @@ struct TrajectSourceRow {
     is_writable_own: bool,
 }
 
+impl TrajectSourceRow {
+    fn to_source(&self) -> Source {
+        let source_type = match self.source_type.as_str() {
+            "github" => SourceType::GitHub {
+                github: GitHubSource {
+                    owner: self.gh_owner.clone().unwrap_or_default(),
+                    repo: self.gh_repo.clone().unwrap_or_default(),
+                    branch: self.gh_branch.clone().unwrap_or_default(),
+                    path: self.gh_path.clone(),
+                    git_ref: self.gh_ref.clone(),
+                },
+            },
+            _ => SourceType::Local {
+                local: LocalSource {
+                    path: PathBuf::from(self.local_path.clone().unwrap_or_default()),
+                },
+            },
+        };
+
+        let scopes = serde_json::from_value(self.scopes.clone()).unwrap_or_else(|e| {
+            tracing::warn!(
+                source_id = %self.source_id,
+                error = %e,
+                "traject_corpus_sources.scopes failed to deserialise, falling back to empty list"
+            );
+            Default::default()
+        });
+
+        Source {
+            id: self.source_id.clone(),
+            name: self.name.clone(),
+            source_type,
+            scopes,
+            priority: self.priority.max(0) as u32,
+            auth_ref: self.auth_ref.clone(),
+            // The writable-own's `auth_ref` derives from user-supplied repo
+            // coords (create-traject request), so EVERY token lookup for it
+            // — backend construction here, but also the index scan inside
+            // `CorpusRegistry::index_all_sources_async` — must resolve
+            // strictly, without the legacy `CORPUS_GIT_TOKEN` fallback.
+            strict_auth: self.is_writable_own,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! Unit tests for the snapshot caches: the bounded lazy-body cache,
@@ -3425,50 +3470,5 @@ mod tests {
         cache.insert("overflow".to_string(), "x".to_string());
         assert!(cache.get("victim").is_none());
         assert_eq!(cache.get("filler-0"), Some(&"x".to_string()));
-    }
-}
-
-impl TrajectSourceRow {
-    fn to_source(&self) -> Source {
-        let source_type = match self.source_type.as_str() {
-            "github" => SourceType::GitHub {
-                github: GitHubSource {
-                    owner: self.gh_owner.clone().unwrap_or_default(),
-                    repo: self.gh_repo.clone().unwrap_or_default(),
-                    branch: self.gh_branch.clone().unwrap_or_default(),
-                    path: self.gh_path.clone(),
-                    git_ref: self.gh_ref.clone(),
-                },
-            },
-            _ => SourceType::Local {
-                local: LocalSource {
-                    path: PathBuf::from(self.local_path.clone().unwrap_or_default()),
-                },
-            },
-        };
-
-        let scopes = serde_json::from_value(self.scopes.clone()).unwrap_or_else(|e| {
-            tracing::warn!(
-                source_id = %self.source_id,
-                error = %e,
-                "traject_corpus_sources.scopes failed to deserialise, falling back to empty list"
-            );
-            Default::default()
-        });
-
-        Source {
-            id: self.source_id.clone(),
-            name: self.name.clone(),
-            source_type,
-            scopes,
-            priority: self.priority.max(0) as u32,
-            auth_ref: self.auth_ref.clone(),
-            // The writable-own's `auth_ref` derives from user-supplied repo
-            // coords (create-traject request), so EVERY token lookup for it
-            // — backend construction here, but also the index scan inside
-            // `CorpusRegistry::index_all_sources_async` — must resolve
-            // strictly, without the legacy `CORPUS_GIT_TOKEN` fallback.
-            strict_auth: self.is_writable_own,
-        }
     }
 }

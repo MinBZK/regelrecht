@@ -6,6 +6,10 @@
 //! Example:
 //!   cargo run --example trace -- wet_op_de_zorgtoeslag hoogte_zorgtoeslag 2025-01-01 bsn=999993653
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use regelrecht_engine::{LawExecutionService, Value};
 use std::collections::BTreeMap;
 use std::path::Path;

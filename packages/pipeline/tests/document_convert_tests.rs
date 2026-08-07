@@ -6,6 +6,10 @@
 //! `status <> 'completed'` guard. Neither is visible from the call site, so a
 //! refactor could drop either without any caller noticing - hence these.
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use serde_json::json;
 
 use regelrecht_pipeline::document_convert::cancel_traject_document_job;

@@ -1,5 +1,9 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+//! Benchmark, not product code: a failed setup here should abort loudly.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{ArticleBasedLaw, LawLoad};
+use std::hint::black_box;
 use std::path::PathBuf;
 
 fn corpus_path() -> PathBuf {

@@ -284,7 +284,23 @@ decides green versus red; the tests run as a pre-commit hook.
 
 ### Debugging deploy-preview failures
 
-ZAD deploy timeouts ("Task did not complete within 300s") almost always indicate an **application error**, not a platform issue. When `deploy-preview` fails:
+Two failure shapes, and they need opposite responses. Read the message before
+you read the logs.
+
+**A timeout on the wait limit** ("Timed out after 300s waiting for the task; it
+may still be running", "Task did not complete within 300s") says only that ZAD
+took longer than the window. The deployment carries on; the CLI stopped
+watching. Measured over the last 25 runs of Build and Deploy, the durations of
+passing and failing jobs overlap completely: 295s, 337s, 428s, 495s, 512s and
+568s passed, while 251s, 305s, 322s and 553s timed out. The 300-second limit
+sits in the middle of the normal spread, so red here carries no information
+about whether the PR is broken. The check is not required. Re-running the job,
+or checking the preview URL, is the whole response. See #1144 for the workflow
+side.
+
+**An error with a status or an exception in it** is the diagnostic one: a broken
+image, a missing env var, a migration conflict, a startup panic. Those come back
+fast and loud. Then:
 
 1. Check container logs: `zad logs <deployment>` (e.g. `zad logs pr429`)
 2. Look for ERROR lines — common causes: migration conflicts, missing env vars, startup panics

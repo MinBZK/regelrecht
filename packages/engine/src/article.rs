@@ -1102,21 +1102,6 @@ articles:
             let result = ArticleBasedLaw::from_yaml_str(yaml);
             assert!(result.is_ok());
         }
-
-        #[test]
-        fn test_file_size_limit_check() {
-            // Verify that the file size is checked before reading
-            // We can't easily test with a real large file, but we can verify
-            // the size limit constant is reasonable
-            assert!(
-                config::MAX_YAML_SIZE >= 100_000,
-                "MAX_YAML_SIZE should allow at least 100KB"
-            );
-            assert!(
-                config::MAX_YAML_SIZE <= 10_000_000,
-                "MAX_YAML_SIZE should not exceed 10MB"
-            );
-        }
     }
 
     /// The size limits are inclusive: a document that is exactly at the limit

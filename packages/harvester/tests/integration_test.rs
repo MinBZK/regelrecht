@@ -3,6 +3,10 @@
 //! Tests the complete pipeline from XML parsing to YAML generation
 //! using fixture data from the Wet op de zorgtoeslag (BWBR0018451).
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use std::fs;
 use std::path::Path;
 

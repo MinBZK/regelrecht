@@ -64,6 +64,13 @@ repos:
         exclude: (^|/)\.[^/]*\.yaml$
         types: [yaml]
 
+      - id: docs-prose-style
+        name: Prozastijl in de docs (geen AI-tells)
+        entry: node .claude/skills/docs-writing/check-prose-style.mjs
+        language: system
+        pass_filenames: true
+        files: ^docs/src/(content/.*\.(md|mdx)|lib/landing-content\.ts)$
+
       - id: tool-pins-in-sync
         name: cargo-chef-pin gelijk in alle Dockerfiles
         entry: script/check-tool-pins.sh

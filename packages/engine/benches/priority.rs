@@ -1,7 +1,11 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+//! Benchmark, not product code: a failed setup here should abort loudly.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::priority::{resolve_candidate, Candidate};
 use regelrecht_engine::types::RegulatoryLayer;
 use regelrecht_engine::ArticleBasedLaw;
+use std::hint::black_box;
 
 fn make_law(id: &str, layer: RegulatoryLayer, valid_from: &str) -> ArticleBasedLaw {
     ArticleBasedLaw {

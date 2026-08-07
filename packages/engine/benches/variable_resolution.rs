@@ -1,6 +1,10 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+//! Benchmark, not product code: a failed setup here should abort loudly.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{RuleContext, Value, ValueResolver};
 use std::collections::BTreeMap;
+use std::hint::black_box;
 
 fn make_context() -> RuleContext {
     let mut parameters = BTreeMap::new();

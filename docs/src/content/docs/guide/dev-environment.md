@@ -151,8 +151,8 @@ its own subscriber and reads only `RUST_LOG`.
 flattened to the top level; the enclosing spans are added as nested `span` and
 `spans` keys, so a log backend can search per field. Set it per deployment in
 ZAD; locally the text lines read better, so leave the variable unset. An
-unrecognised value falls back to text
-and warns on stderr — a typo never silences logging.
+unrecognised value falls back to text and warns on stderr, so a typo never
+silences logging.
 
 ## Pre-commit Hooks
 

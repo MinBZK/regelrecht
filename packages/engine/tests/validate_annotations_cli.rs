@@ -9,6 +9,11 @@
 //! exits 2 — it must never pass for a clean corpus.
 //!
 //! Only built with the `validate` feature, which is what gates the binary.
+
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "validate")]
 
 use std::path::PathBuf;

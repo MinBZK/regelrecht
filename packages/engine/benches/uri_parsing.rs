@@ -1,5 +1,9 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+//! Benchmark, not product code: a failed setup here should abort loudly.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::uri::{RegelrechtUri, RegelrechtUriBuilder};
+use std::hint::black_box;
 
 fn bench_parse_regelrecht_uri(c: &mut Criterion) {
     let mut group = c.benchmark_group("uri_parsing");

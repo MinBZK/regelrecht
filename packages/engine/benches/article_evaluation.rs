@@ -1,6 +1,10 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+//! Benchmark, not product code: a failed setup here should abort loudly.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{ArticleBasedLaw, ArticleEngine, LawLoad, Value};
 use std::collections::BTreeMap;
+use std::hint::black_box;
 
 const SIMPLE_LAW_YAML: &str = r#"
 $id: bench_simple

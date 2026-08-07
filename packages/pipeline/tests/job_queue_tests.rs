@@ -1,3 +1,8 @@
+//! Test code: unwrap/expect/panic is how a failure is reported here. Clippy's
+//! `allow-*-in-tests` only covers `#[cfg(test)]` modules, not an integration
+//! test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use std::time::Duration;
 
 use pretty_assertions::assert_eq;

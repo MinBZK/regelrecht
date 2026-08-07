@@ -75,6 +75,10 @@ pub const MAX_PROPERTY_DEPTH: usize = 32;
 mod tests {
     use super::*;
 
+    // Every assertion here is constant-folded — that is the point. The test
+    // exists so a future edit that sets one of these limits to something
+    // unusable fails here instead of in production.
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn test_constants_are_reasonable() {
         // Sanity checks that limits are within reasonable bounds

@@ -4411,6 +4411,10 @@ mod tests {
     /// the spoofing surface. Document the invariant via a compile-time
     /// signature assertion rather than a runtime probe — the runtime
     /// path is "session in → context out", with no body in between.
+    // The signature *is* the assertion here: spelling out every extractor is
+    // what makes a changed handler fail to compile. Factoring it into a type
+    // alias would hide the thing being asserted.
+    #[allow(clippy::type_complexity)]
     #[test]
     fn save_handler_signatures_take_raw_body_no_author_field() {
         // Compile-time assertions: the function pointer types include

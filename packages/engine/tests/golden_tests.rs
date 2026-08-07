@@ -3,6 +3,10 @@
 //! These tests verify that the Rust engine produces the correct outputs
 //! for a comprehensive set of test cases using pre-generated fixtures.
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use regelrecht_engine::{LawExecutionService, Value};
 use rust_decimal::prelude::ToPrimitive;
 use serde::Deserialize;

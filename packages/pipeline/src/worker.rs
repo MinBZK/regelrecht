@@ -3621,6 +3621,9 @@ articles:
 /// aan te raken.
 #[cfg(all(test, feature = "test-utils"))]
 mod contract_tests {
+    // Clippy only recognises a plain `#[cfg(test)]` module as test context,
+    // so `allow-unwrap-in-tests` does not reach this one.
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::*;
     use crate::enrich::LlmProvider;
     use crate::test_utils::TestDb;

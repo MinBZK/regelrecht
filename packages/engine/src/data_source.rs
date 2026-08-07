@@ -777,7 +777,7 @@ mod tests {
     fn test_value_to_key() {
         assert_eq!(value_to_key(&Value::String("test".to_string())), "test");
         assert_eq!(value_to_key(&Value::Int(42)), "42");
-        assert_eq!(value_to_key(&Value::from(3.14)), "3.14");
+        assert_eq!(value_to_key(&Value::from(2.75)), "2.75");
         assert_eq!(value_to_key(&Value::Bool(true)), "true");
         assert_eq!(value_to_key(&Value::Null), "null");
     }

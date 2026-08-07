@@ -341,6 +341,9 @@ mod tests {
     /// against the expected `TokenDecision`. Pins the three standing
     /// guarantees in one place: env wins over file, per-source wins over
     /// legacy, and strict lookups never see the legacy token.
+    // The tuple is a decision table row (strict, env, file, legacy, expected
+    // token, expected origin); naming it would not make it more readable.
+    #[allow(clippy::type_complexity)]
     #[test]
     fn decision_table_covers_all_strict_env_file_legacy_combinations() {
         let _g = ENV_LOCK.lock().unwrap();

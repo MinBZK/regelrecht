@@ -66,6 +66,9 @@ pub async fn replace_untranslatables(
 
 #[cfg(all(test, feature = "test-utils"))]
 mod tests {
+    // Clippy only recognises a plain `#[cfg(test)]` module as test context,
+    // so `allow-unwrap-in-tests` does not reach this one.
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::*;
     use crate::job_queue::{create_job, CreateJobRequest};
     use crate::law_status::upsert_law;

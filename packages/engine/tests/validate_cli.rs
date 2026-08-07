@@ -7,6 +7,11 @@
 //!
 //! Alleen gebouwd met de `validate`-feature, net als de binary zelf (die heeft
 //! `required-features = ["validate"]`). `just test` draait met `--all-features`.
+
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "validate")]
 
 use std::path::PathBuf;

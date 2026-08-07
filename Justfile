@@ -48,13 +48,29 @@ format:
 # leaving them out here costs clippy coverage on that code and nothing else.
 check_features := "regelrecht-engine/validate,regelrecht-corpus/annotation-validation"
 
-# Run clippy lints
+# Run clippy lints.
+#
+# --all-targets, so tests, benches and bin targets are linted too. Without it
+# the gate skipped exactly the code where problems hide: a doorlichting found
+# fourteen tests that pass by construction, and none of them were ever seen by
+# the only static check we have (#1143). Test code may unwrap/expect/panic —
+# that allowance lives in packages/clippy.toml and, for integration-test crates
+# and benches, in a per-file #![allow] with the reason spelled out.
 lint:
-    cd packages && {{ci_flags}} cargo clippy --workspace --features {{check_features}}
+    cd packages && {{ci_flags}} cargo clippy --workspace --all-targets --features {{check_features}}
 
 # Run cargo check
 build-check:
     cd packages && {{ci_flags}} cargo check --workspace --features {{check_features}}
+
+# Prose style in the docs: em-dashes, banned phrases, summary openers.
+# The linter existed but was wired into nothing, which is how the docs filled
+# up with tells while the check sat next to them (#1011). Errors fail; the
+# "not X but Y" findings are warnings, so a pre-commit hook cannot trip over
+# an unrelated line. No arguments = the whole docs prose set.
+[doc("Check docs prose for AI tell-tales")]
+prose *FILES:
+    node .claude/skills/docs-writing/check-prose-style.mjs {{FILES}}
 
 # Validate regulation YAML files
 validate *FILES:

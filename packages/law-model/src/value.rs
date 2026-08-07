@@ -798,7 +798,7 @@ mod tests {
     fn test_value_from_primitives() {
         assert_eq!(Value::from(true), Value::Bool(true));
         assert_eq!(Value::from(42i64), Value::Int(42));
-        assert_eq!(Value::from(3.14f64), Value::Decimal(dec!(3.14)));
+        assert_eq!(Value::from(2.75f64), Value::Decimal(dec!(2.75)));
         // Whole-number floats coerce to Int
         assert_eq!(Value::from(5.0f64), Value::Int(5));
         // Non-finite floats have no Decimal representation -> Null

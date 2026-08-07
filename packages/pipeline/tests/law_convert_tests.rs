@@ -1,6 +1,10 @@
 //! DB-tests voor de law-convert-keten: upload → basis-wet-YAML → geketende
 //! taak-flow-enrich-job → law_create-review-taak. Patroon tasks_tests.rs.
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use serde_json::json;
 
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};

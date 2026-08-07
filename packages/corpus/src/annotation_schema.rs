@@ -662,7 +662,11 @@ annotations:
 
         // Only the existing note resubmitted → nothing to write.
         assert!(matches!(
-            append_notes_to_sidecar(Some(CURATED_BASE), &[existing.clone()], "https://s"),
+            append_notes_to_sidecar(
+                Some(CURATED_BASE),
+                std::slice::from_ref(&existing),
+                "https://s"
+            ),
             Ok(AppendOutcome::NoChange)
         ));
 

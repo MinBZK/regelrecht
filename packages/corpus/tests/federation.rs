@@ -3,6 +3,10 @@
 //! Tests multi-source loading, priority-based conflict resolution,
 //! and the full registry → source map → engine pipeline.
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use regelrecht_corpus::models::{LocalSource, Source, SourceType};
 use regelrecht_corpus::source_map::SourceMap;
 use regelrecht_corpus::CorpusRegistry;

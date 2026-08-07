@@ -5,6 +5,10 @@
 //! status machine without ever stranding a law in `enriching` without an
 //! active/pending job.
 
+// Test code: unwrap/expect/panic is how a failure is reported here.
+// Clippy's `allow-*-in-tests` covers `#[cfg(test)]` modules, not an
+// integration test crate, so the allowance is spelled out per file.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use serde_json::json;
 
 use regelrecht_pipeline::enrich::{EnrichPayload, EnrichResult};
