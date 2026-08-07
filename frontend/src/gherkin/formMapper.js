@@ -5,7 +5,7 @@
  * Reverse:  visual form state → formStateToGherkin() → Gherkin text
  */
 
-import { parseValue } from './actions.js';
+import { bareValue, quotedValue, tableCellValue } from './actions.js';
 import { GRAMMAR } from './grammar.generated.js';
 
 // --- Generated grammar lookups (single source of truth for phrasing) ---
@@ -39,7 +39,7 @@ function extractFragment(entry, match, step) {
       return {
         type: 'parameter',
         name: match[1],
-        value: entry.id === 'set_parameter_number' ? parseValue(match[2]) : match[2],
+        value: entry.id === 'set_parameter_number' ? bareValue(match[2]) : quotedValue(match[2]),
       };
     case 'set_parameters_table':
       return { type: 'parameterTable', parameters: tableToParams(step.dataTable) };
@@ -68,7 +68,7 @@ function extractFragment(entry, match, step) {
       };
     case 'assert_equals':
       return entry.id === 'assert_equals_number'
-        ? { type: 'assertion', assertionType: 'equals', outputName: match[1], value: parseValue(match[2]) }
+        ? { type: 'assertion', assertionType: 'equals', outputName: match[1], value: bareValue(match[2]) }
         : { type: 'assertion', assertionType: 'equalsString', outputName: match[1], value: match[2] };
     case 'assert_null':
       return { type: 'assertion', assertionType: 'null', outputName: match[1] };
@@ -87,7 +87,7 @@ function tableToParams(dataTable) {
     .filter((row) => row.length >= 2)
     .map((row) => ({
       name: row[0].trim(),
-      value: parseValue(row[1] || ''),
+      value: tableCellValue(row[1] || ''),
     }));
 }
 
@@ -288,7 +288,10 @@ export function syncEditedValues(formState, scenarioIndex, values) {
   const bgParamMap = new Map(bgParams.map((p) => [p.name, p]));
 
   for (const [name, rawValue] of Object.entries(parameterValues)) {
-    const value = parseValue(rawValue);
+    // Same rule as reading a step: the content decides. An input control hands
+    // back a raw string, and leaving it at that would write `is "50000"` where
+    // the scenario said `is 50000`.
+    const value = quotedValue(rawValue);
 
     if (scenarioParamMap.has(name)) {
       // Update existing scenario-level parameter

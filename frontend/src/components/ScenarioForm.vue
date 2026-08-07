@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
-import { parseValue } from '../gherkin/steps.js';
+import { quotedValue, tableCellValue } from '../gherkin/actions.js';
 import { formatValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
@@ -181,7 +181,7 @@ function execute() {
         const typed = {};
         for (const [k, v] of Object.entries(row)) {
           if (k === '_id') continue;
-          typed[k] = typeof v === 'string' ? parseValue(v) : v;
+          typed[k] = typeof v === 'string' ? tableCellValue(v) : v;
         }
         return typed;
       });
@@ -189,10 +189,12 @@ function execute() {
     }
 
     // Build parameters
+    // Type each parameter by the grammar's rule, so a live run in the editor
+    // sees the same values the Rust runner reads back from the saved feature.
     const params = {};
     for (const [k, v] of Object.entries(parameterValues.value)) {
       if (v !== '' && v !== null && v !== undefined) {
-        params[k] = typeof v === 'string' ? parseValue(v) : v;
+        params[k] = typeof v === 'string' ? quotedValue(v) : v;
       }
     }
 
