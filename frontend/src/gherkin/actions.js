@@ -91,7 +91,8 @@ function tierUnsupported(tier) {
  * @param {object} engine - WasmEngine instance
  * @param {string} action - canonical action id from the grammar
  * @param {Array} args - ordered typed captures + literals
- * @param {string[][]|null} table - step dataTable rows (header first) or null
+ * @param {string[][]|null} table - step dataTable rows, or null; row 0 is a
+ *   header for a data-source table and a value row for a parameter table
  * @param {object} options
  * @param {(lawId: string) => Promise<void>} options.loadDependency
  */
