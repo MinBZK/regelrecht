@@ -45,6 +45,15 @@ export function changedLawsUrl(trajectRef) {
   return `${corpusBase(trajectRef)}/changed-laws`;
 }
 
+// De bronnen van een traject: id, naam, priority, law_count en index_error
+// per bron. Zit náást de corpus-prefix (`/api/trajects/{ref}/sources`), niet
+// erin - vandaar de eigen opbouw in plaats van `corpusBase`. Traject-only:
+// de globale tegenhanger `/api/sources` heeft geen aanroeper in de editor.
+export function trajectSourcesUrl(trajectRef) {
+  requireTraject(trajectRef, 'sources listing');
+  return `/api/trajects/${encodeURIComponent(trajectRef)}/sources`;
+}
+
 // Law ids whose articles `implements` an open_term of `lawId` (the IoC
 // reverse link). Computed server-side over the in-memory corpus, so the
 // scenario dependency loader resolves implementing regulations with a
@@ -87,12 +96,19 @@ export function documentFileUrl(trajectRef, docPath) {
   return `${corpusBase(trajectRef)}/documents/${encoded}`;
 }
 
-// Multipart upload of a PDF/Word document; the backend stores the bytes
-// and enqueues an async conversion-to-markdown job. Traject-scoped only,
-// like the other document builders.
-export function documentUploadUrl(trajectRef) {
+// Multipart upload of a document; the backend stores the bytes and enqueues
+// an async conversion-to-markdown job. Traject-scoped only, like the other
+// document builders.
+//
+// `allowLlm` is de keuze van de gebruiker in de uploadbevestiging en gaat mee
+// als query-parameter, niet als multipart-veld: de backend leest het
+// multipart-body maar tot en met het `file`-veld, dus een extra veld zou
+// stilzwijgend van de veldvolgorde afhangen. Weglaten = geen toestemming; de
+// parameter alleen zetten wanneer hij `true` is houdt de URL eerlijk kort.
+export function documentUploadUrl(trajectRef, { allowLlm = false } = {}) {
   requireTraject(trajectRef, 'document upload');
-  return `${corpusBase(trajectRef)}/documents/upload`;
+  const base = `${corpusBase(trajectRef)}/documents/upload`;
+  return allowLlm ? `${base}?llm=1` : base;
 }
 
 // Upload a source document that becomes a NEW law in the traject: the

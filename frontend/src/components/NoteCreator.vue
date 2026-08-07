@@ -177,6 +177,7 @@ const referencedFragment = computed(() => {
 });
 const selectorStatus = computed(() => selectorResult.value?.status ?? null);
 const selectorReason = computed(() => selectorResult.value?.reason ?? null);
+const selectorSkipReason = computed(() => selectorResult.value?.skipReason ?? null);
 
 // Individual "is this part filled?" checks, shared by canSave and the body /
 // motivation builders. A link only counts once its target is actually chosen.
@@ -378,6 +379,21 @@ const statusInfo = computed(() => {
         title: 'Niet eenduidig',
         lead: 'Dit fragment is hier niet uniek. Breid de selectie uit met de omringende woorden.',
       };
+    case 'not-searched':
+      // status 'skipped': the resolver hit one of its bounds and never
+      // searched. Saying "niet teruggevonden" here would be untrue (nothing
+      // was established) and the lidnummer advice would be misdirected.
+      // Which bound was hit decides the advice: only 'quote_too_long' is
+      // something the author fixes by shortening the selection.
+      return selectorSkipReason.value === 'search_budget'
+        ? {
+            title: 'Niet naar gezocht',
+            lead: 'De wettekst is te groot om deze selectie in terug te zoeken. Korter selecteren helpt hier niet.',
+          }
+        : {
+            title: 'Niet naar gezocht',
+            lead: 'De selectie is te lang om terug te zoeken. Maak de selectie korter.',
+          };
     default: // 'not-found'
       return {
         title: 'Niet teruggevonden',

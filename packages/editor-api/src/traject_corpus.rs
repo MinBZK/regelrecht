@@ -206,6 +206,24 @@ pub struct TrajectCorpus {
     /// guards, so a refresh mid-recompute cannot admit a second Compare
     /// call.
     changed_refresh_in_flight: Arc<AtomicBool>,
+    /// Single-flight gate for the *synchronous* changed-laws refresh — the
+    /// leg taken when only the caller's own token gets into the repo, so
+    /// there is no background task that could do the work. Without it every
+    /// linked member loading the library inside the same expired-TTL window
+    /// fires its own Compare call against a rate-limited token.
+    ///
+    /// A `Mutex` rather than the `AtomicBool` above because here the losers
+    /// must *wait* for the winner instead of returning stale: after taking
+    /// the gate each caller re-reads the cache, and a fresh entry left by the
+    /// winner short-circuits the Compare call. That double-check is what
+    /// makes the gate safe across callers with different credentials — an
+    /// empty result produced without a usable token is never cached (see
+    /// [`Self::changed_law_ids`]), so a token-carrying caller can never
+    /// inherit one, while a token-less caller waiting here is upgraded from
+    /// "empty" to the winner's real diff.
+    ///
+    /// Shared across snapshots like the cache it guards.
+    changed_refresh_gate: Arc<Mutex<()>>,
     /// Whether this snapshot's index scan had a per-request user token
     /// available as fallback for the writable-own source. Only a bool —
     /// the token itself is **never** stored on this shared, cross-user
@@ -250,6 +268,12 @@ impl Drop for ResetOnDrop {
 /// promptly in the sidebar, long enough to collapse a burst of library
 /// loads (mount + tab switches + retries) into a single Compare call.
 const CHANGED_LAWS_TTL: Duration = Duration::from_secs(60);
+
+/// How long a caller waits for the synchronous-refresh gate before giving up
+/// and computing for itself. See the use site: this caps the added latency of
+/// the gate at roughly one Compare round-trip instead of letting concurrent
+/// callers queue behind a persistently failing upstream.
+const CHANGED_REFRESH_GATE_WAIT: Duration = Duration::from_secs(10);
 
 /// How long a traject's cached index snapshot (its [`SourceMap`] plus the
 /// derived body / sidecar / implements caches) is served before the first
@@ -1116,48 +1140,181 @@ impl TrajectCorpus {
     /// fresh-compute failure (e.g. token throttled) a stale cached value, if
     /// any, is served rather than propagating the error — the sidebar keeps
     /// showing the last-known edit set instead of dropping the section.
+    ///
+    /// `token` is the acting user's GitHub token, used when the writable-own
+    /// source has no server-side credential of its own (the private-repo
+    /// traject route — see [`Self::changed_diff_needs_user_token`]). The
+    /// *diff* is not user-specific: every member sees the same branch-vs-base
+    /// set, so the cache stays per traject. An **empty result caused by the
+    /// absence of a usable token** is user-specific though, so that one is
+    /// never written to the shared cache — it would otherwise be served for a
+    /// full TTL window to members who do have a link, blanking their
+    /// "Bewerkt" section.
+    ///
+    /// That also splits the refresh in two. When the backend can diff on its
+    /// own credential the expired entry is refreshed in the background
+    /// (stale-while-revalidate, nobody waits for GitHub). When only a
+    /// personal token gets in, the background leg has no credential to use,
+    /// so the refresh happens on the request path of the first caller past
+    /// the TTL who actually carries one; a caller without a token keeps
+    /// being served the stale entry rather than blanking it.
     pub async fn changed_law_ids(
         self: &Arc<Self>,
+        token: Option<&str>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
-        // Fresh or expired, a cached entry is always served immediately.
-        // Past the TTL the first caller additionally kicks off ONE
-        // background recompute (stale-while-revalidate) — nobody waits
-        // out the GitHub Compare round-trip on the request path, and
-        // convergence stays within one extra TTL window.
-        if let Some(cached) = self.changed_cache.read().await.as_ref() {
-            if cached.computed_at.elapsed() >= CHANGED_LAWS_TTL
-                && self
+        // Cached and fresh: serve it. Expired: decide who refreshes.
+        let stale = match self.changed_cache.read().await.as_ref() {
+            None => None,
+            Some(cached) if cached.computed_at.elapsed() < CHANGED_LAWS_TTL => {
+                return Ok(cached.law_ids.clone());
+            }
+            Some(cached) => Some(cached.law_ids.clone()),
+        };
+
+        // Deliberately *after* the fresh-cache return: this takes the backend
+        // mutex (to probe `supports_token_override`), and that same lock is
+        // contended by the law-body reads. The sidebar asks for this diff on
+        // every library load, so the overwhelmingly common case is the hit
+        // above — which has no need for the answer.
+        let needs_user_token = self.changed_diff_needs_user_token().await;
+
+        if let Some(stale_ids) = &stale {
+            if !needs_user_token {
+                // The backend has its own credential, so ONE background
+                // recompute converges the entry while this request returns
+                // immediately — convergence stays within one extra TTL
+                // window and nobody waits out the Compare round-trip.
+                if self
                     .changed_refresh_in_flight
                     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
-            {
-                let corpus = self.clone();
-                tokio::spawn(async move {
-                    // RAII reset (not a trailing `store`): a panic inside
-                    // the recompute must not leave the flag latched true,
-                    // or no request would ever recompute again and the
-                    // stale ids would serve until process restart — the
-                    // AtomicBool analogue of the snapshot refresh's
-                    // OwnedMutexGuard.
-                    let _reset = ResetOnDrop(corpus.changed_refresh_in_flight.clone());
-                    corpus.recompute_changed_cache().await;
-                });
+                {
+                    let corpus = self.clone();
+                    tokio::spawn(async move {
+                        // RAII reset (not a trailing `store`): a panic inside
+                        // the recompute must not leave the flag latched true,
+                        // or no request would ever recompute again and the
+                        // stale ids would serve until process restart — the
+                        // AtomicBool analogue of the snapshot refresh's
+                        // OwnedMutexGuard.
+                        let _reset = ResetOnDrop(corpus.changed_refresh_in_flight.clone());
+                        corpus.recompute_changed_cache().await;
+                    });
+                }
+                return Ok(stale_ids.clone());
             }
-            return Ok(cached.law_ids.clone());
+            if token.is_none() {
+                // Only a personal token gets into this repo and this caller
+                // has none: recomputing would yield an empty list that says
+                // nothing about the branch. Keep serving the stale entry
+                // until a linked member refreshes it.
+                return Ok(stale_ids.clone());
+            }
         }
 
-        // Nothing cached (first call of the process): compute on the
-        // request path — there is nothing stale to serve instead.
-        match self.compute_changed_law_ids().await {
+        // Either nothing is cached (first call of the process — there is
+        // nothing stale to serve instead) or the entry expired and only this
+        // request's personal token can refresh it. Both are request-path
+        // work, so single-flight it: concurrent callers queue on the gate and
+        // the double-check below lets everyone but the first return the
+        // winner's freshly-cached diff instead of firing their own Compare.
+        // Bounded: the gate is held across a GitHub Compare call, and that
+        // call has its own multi-second timeout. Waiting unboundedly would
+        // turn a persistently failing upstream (rate limit, outage) into a
+        // queue — the Nth concurrent member would wait N timeouts where
+        // before this gate existed they each waited one, and the sidebar
+        // blocks on this request. On timeout we simply do what the code did
+        // before the gate: compute for ourselves. The herd-collapsing still
+        // works in the normal case, where the winner returns in well under
+        // this budget.
+        let _gate = tokio::time::timeout(
+            CHANGED_REFRESH_GATE_WAIT,
+            self.changed_refresh_gate.clone().lock_owned(),
+        )
+        .await
+        .ok();
+        if let Some(cached) = self.changed_cache.read().await.as_ref() {
+            if cached.computed_at.elapsed() < CHANGED_LAWS_TTL {
+                return Ok(cached.law_ids.clone());
+            }
+        }
+
+        match self.compute_changed_law_ids(token).await {
             Ok(ids) => {
-                *self.changed_cache.write().await = Some(ChangedLawsCache {
-                    computed_at: Instant::now(),
-                    law_ids: ids.clone(),
-                });
+                // Only a result that could actually see the repo is worth
+                // sharing with the other members of this traject.
+                //
+                //
+                // Known and accepted limitation: on the private-repo leg an
+                // empty diff is ambiguous. It is what a branch without edits
+                // returns, but ALSO what a member gets whose token cannot see
+                // the repo - GitHub answers 404 (not 403) for an invisible
+                // private repo and `compare_files` maps that to "no files
+                // changed". Such a member can therefore blank "Bewerkt" for
+                // the others for up to one TTL window, after which any member
+                // who *can* see the repo overwrites it with the truth. That
+                // self-healing bound is why this is tolerated rather than
+                // patched here: refusing to cache empty results instead would
+                // leave a merged-away diff standing forever for token-less
+                // members, which is worse. The real fix is upstream - teach
+                // `compare_files` to distinguish 404 from "nothing changed" -
+                // and is tracked separately.
+                if token.is_some() || !needs_user_token {
+                    *self.changed_cache.write().await = Some(ChangedLawsCache {
+                        computed_at: Instant::now(),
+                        law_ids: ids.clone(),
+                    });
+                }
                 Ok(ids)
             }
-            Err(e) => Err(e),
+            // Same degrade-to-stale stance as the background leg: a
+            // throttled upstream must not drop the sidebar's section, and
+            // re-arming the clock stops every subsequent request from
+            // re-attempting against it.
+            Err(e) => match stale {
+                Some(stale_ids) => {
+                    tracing::warn!(
+                        error = %e,
+                        "changed-laws refresh failed; serving stale cached value for another TTL"
+                    );
+                    if let Some(cached) = self.changed_cache.write().await.as_mut() {
+                        cached.computed_at = Instant::now();
+                    }
+                    Ok(stale_ids)
+                }
+                None => Err(e),
+            },
         }
+    }
+
+    /// Whether computing the branch-vs-base diff depends on the *caller's*
+    /// GitHub token — i.e. the writable-own backend authenticates per call
+    /// and has no credential at rest.
+    ///
+    /// This deliberately stops at the *capability* probe and does NOT mirror
+    /// `TrajectCredentials::for_read` all the way down: that path additionally
+    /// consults `write_requires_user_token` (config + the `github.user_oauth`
+    /// flag) and hands back `None` when the user-token mode is off. Answering
+    /// that question here would mean a DB round-trip on a hot path, and it
+    /// would buy nothing: this predicate only ever guards *caching and
+    /// background-refresh* decisions, and a token-less backend
+    /// (`is_writable() == self.token.is_some()`) short-circuits the diff to an
+    /// empty list without touching GitHub anyway. With the user-token mode off
+    /// the effect is therefore a cheap empty recompute per request rather than
+    /// a shared cache entry — never a wrong answer.
+    ///
+    /// `false` for everything else: a backend with a service token, a local
+    /// backend, or a missing backend all produce a token-independent result
+    /// that is safe to share across members and to recompute in the
+    /// background.
+    async fn changed_diff_needs_user_token(&self) -> bool {
+        let Some(entry) = self.corpus.backends.get(&self.writable_own_source_id) else {
+            return false;
+        };
+        if entry.writable {
+            return false;
+        }
+        entry.backend.lock().await.supports_token_override()
     }
 
     /// The background leg of [`changed_law_ids`]'s stale-while-revalidate:
@@ -1174,8 +1331,12 @@ impl TrajectCorpus {
     /// at the next recompute, ≤ one [`CHANGED_LAWS_TTL`] window; the
     /// pre-existing invalidate-based code had the same window around a
     /// save.
+    ///
+    /// Runs outside a request, so it has no user token — only started when
+    /// the backend can diff on its own credential (see
+    /// [`Self::changed_law_ids`]).
     async fn recompute_changed_cache(&self) {
-        match self.compute_changed_law_ids().await {
+        match self.compute_changed_law_ids(None).await {
             Ok(ids) => {
                 *self.changed_cache.write().await = Some(ChangedLawsCache {
                     computed_at: Instant::now(),
@@ -1215,17 +1376,19 @@ impl TrajectCorpus {
     }
 
     /// Uncached computation behind [`changed_law_ids`]: ask the writable-own
-    /// backend for its branch-vs-base diff and map the changed paths to law
-    /// ids via the source map.
+    /// backend for its branch-vs-base diff — authenticating with `token` when
+    /// the backend has no credential of its own — and map the changed paths
+    /// to law ids via the source map.
     async fn compute_changed_law_ids(
         &self,
+        token: Option<&str>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
         let Some(entry) = self.corpus.backends.get(&self.writable_own_source_id) else {
             return Ok(Vec::new());
         };
         let changed = {
             let backend = entry.backend.lock().await;
-            backend.changed_files().await?
+            backend.changed_files_with_token(token).await?
         };
         if changed.is_empty() {
             return Ok(Vec::new());
@@ -1787,9 +1950,10 @@ async fn build_traject_corpus(
         source_id: &writable_own_source_id,
         token,
     });
+    let today = regelrecht_shared::dates::today_str();
     let (source_map, index_failures) = match timing::measure(
         "index",
-        registry.index_all_sources_with_override(auth_file, scan_override),
+        registry.index_all_sources_with_override(auth_file, scan_override, &today),
     )
     .await
     {
@@ -1828,8 +1992,8 @@ async fn build_traject_corpus(
                 .collect();
             (
                 registry
-                    .load_local_sources()
-                    .unwrap_or_else(|_| SourceMap::new()),
+                    .load_local_sources(&today)
+                    .unwrap_or_else(|_| SourceMap::new(regelrecht_shared::dates::today_str())),
                 failures,
             )
         }
@@ -1855,6 +2019,7 @@ async fn build_traject_corpus(
         implements_memo: Arc::new(RwLock::new(HashMap::new())),
         changed_cache: Arc::new(RwLock::new(None)),
         changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+        changed_refresh_gate: Arc::new(Mutex::new(())),
         sidecar_cache: RwLock::new(BoundedCache::default()),
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
@@ -1913,7 +2078,11 @@ async fn refresh_traject_corpus(
         token,
     });
     let (source_map, failed) = registry
-        .index_all_sources_with_override(auth_file.as_deref(), scan_override)
+        .index_all_sources_with_override(
+            auth_file.as_deref(),
+            scan_override,
+            &regelrecht_shared::dates::today_str(),
+        )
         .await?;
     if !failed.is_empty() {
         let details: Vec<String> = failed
@@ -1966,6 +2135,7 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
         implements_memo: old.implements_memo.clone(),
         changed_cache: old.changed_cache.clone(),
         changed_refresh_in_flight: old.changed_refresh_in_flight.clone(),
+        changed_refresh_gate: old.changed_refresh_gate.clone(),
         sidecar_cache: RwLock::new(BoundedCache::default()),
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
@@ -2156,6 +2326,7 @@ mod tests {
         FileEntry, PersistOutcome, RepoBackend, WriteContext as CorpusWriteContext,
     };
     use regelrecht_corpus::error::{CorpusError, Result as CorpusResult};
+    use tokio::sync::Semaphore;
 
     /// In-memory backend stub: serves a fixed file set, optionally
     /// failing every read (the throttled-fetch path), and counts reads
@@ -2271,6 +2442,7 @@ mod tests {
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
             changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+            changed_refresh_gate: Arc::new(Mutex::new(())),
             sidecar_cache: RwLock::new(BoundedCache::default()),
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
@@ -2376,7 +2548,7 @@ mod tests {
     #[test]
     fn cached_corpus_freshness_respects_ttl() {
         let cached = CachedCorpus {
-            corpus: Arc::new(test_corpus(SourceMap::new(), HashMap::new())),
+            corpus: Arc::new(test_corpus(SourceMap::new("2026-06-01"), HashMap::new())),
             built_at: Instant::now(),
         };
         // A just-built snapshot is fresh under the production TTL…
@@ -2389,7 +2561,7 @@ mod tests {
 
     #[tokio::test]
     async fn law_yaml_caches_lazy_fetch_and_prefers_overlay() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "seed");
         let stub = StubBackend::with_files(&[("wet/wet_a/2025-01-01.yaml", "$id: wet_a\n")]);
         let reads = stub.reads.clone();
@@ -2428,6 +2600,17 @@ mod tests {
     struct TokenGatedBackend {
         files: HashMap<String, String>,
         required_token: Option<String>,
+        /// Laat de Compare-call falen (haperende upstream: rate limit, 5xx)
+        /// terwijl het token gewoon klopt; de leespaden blijven werken.
+        compare_fails: bool,
+        /// Aantal Compare-aanroepen dat deze backend heeft gezien, zodat een
+        /// test kan vaststellen dat gelijktijdige bellers er samen één doen.
+        compare_calls: Arc<AtomicUsize>,
+        /// Parkeert de Compare-call tot de test een permit uitdeelt. Daarmee
+        /// is de single-flight-test niet afhankelijk van scheduler-timing:
+        /// de eerste beller kan de poort niet loslaten voordat de test dat
+        /// wil, dus elke interleaving levert dezelfde telling op.
+        compare_hold: Option<Arc<Semaphore>>,
     }
 
     #[async_trait]
@@ -2461,6 +2644,22 @@ mod tests {
         async fn list_files(&self, _: &Path, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
             Ok(Vec::new())
         }
+        /// Zelfde poort als `read_file_with_token`, nu voor de Compare-call:
+        /// zonder bruikbaar token doet `GitHubApiBackend` geen enkele
+        /// round-trip en komt er een lege lijst terug. Elk bestand van deze
+        /// stub telt als gewijzigd, zodat een test aan de uitkomst kan zien
+        /// of het token is doorgegeven.
+        async fn changed_files_with_token(&self, token: Option<&str>) -> CorpusResult<Vec<String>> {
+            self.compare_calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(hold) = &self.compare_hold {
+                let _permit = hold.acquire().await.expect("semafoor open");
+            }
+            match &self.required_token {
+                Some(required) if token != Some(required.as_str()) => Ok(Vec::new()),
+                _ if self.compare_fails => Err(CorpusError::Git("simulated throttle".to_string())),
+                _ => Ok(self.files.keys().cloned().collect()),
+            }
+        }
         async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
             Ok(PersistOutcome::default())
         }
@@ -2477,7 +2676,7 @@ mod tests {
 
     #[tokio::test]
     async fn law_yaml_forwards_the_read_token_only_to_the_writable_own_source() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_eigen", "own");
         metadata_entry(&mut map, "wet_seed", "seed");
         let backends = HashMap::from([
@@ -2490,6 +2689,9 @@ mod tests {
                             "$id: wet_eigen\n".to_string(),
                         )]),
                         required_token: Some("user-token".to_string()),
+                        compare_fails: false,
+                        compare_calls: Arc::new(AtomicUsize::new(0)),
+                        compare_hold: None,
                     }) as Box<dyn RepoBackend>)),
                     writable: false,
                 },
@@ -2503,6 +2705,9 @@ mod tests {
                             "$id: wet_seed\n".to_string(),
                         )]),
                         required_token: None,
+                        compare_fails: false,
+                        compare_calls: Arc::new(AtomicUsize::new(0)),
+                        compare_hold: None,
                     }) as Box<dyn RepoBackend>)),
                     writable: false,
                 },
@@ -2545,7 +2750,7 @@ mod tests {
 
     #[tokio::test]
     async fn implementors_of_builds_index_once_and_reverse_looks_up() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_hoger", "seed");
         let stub = StubBackend::with_files(&[
@@ -2579,7 +2784,7 @@ mod tests {
 
     #[tokio::test]
     async fn implementors_of_reports_fetch_failures_as_skipped() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_kapot", "broken");
         let stub = StubBackend::with_files(&[(
@@ -2608,7 +2813,7 @@ mod tests {
         // must be pulled in ONE bulk request, not one fetch per law — this
         // is what stops the cold build 504-ing on large GitHub trajects.
         let n = BULK_FETCH_THRESHOLD;
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let mut files: Vec<(String, String)> = Vec::new();
         for i in 0..n {
             let law_id = format!("reg_{i}");
@@ -2644,7 +2849,7 @@ mod tests {
 
     #[tokio::test]
     async fn record_save_updates_built_implements_index_in_place() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         let stub = StubBackend::with_files(&[(
             "wet/regeling_a/2025-01-01.yaml",
@@ -2705,7 +2910,7 @@ mod tests {
             strict_auth: false,
         };
         let registry = CorpusRegistry::from_sources(vec![source.clone()]);
-        let source_map = registry.load_local_sources().unwrap();
+        let source_map = registry.load_local_sources("2026-06-01").unwrap();
         let mut backend = create_backend(&source, None).unwrap();
         backend.ensure_ready().await.unwrap();
         let writable = backend.is_writable();
@@ -2736,6 +2941,7 @@ mod tests {
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
             changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+            changed_refresh_gate: Arc::new(Mutex::new(())),
             sidecar_cache: RwLock::new(BoundedCache::default()),
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
@@ -2847,7 +3053,7 @@ mod tests {
         // implementor lookups from it while another task holds the build
         // lock — the post-refresh lookup herd must never queue behind the
         // rescan (the federated-panel hang of PR #762).
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         let corpus = Arc::new(test_corpus(
             map,
@@ -2886,7 +3092,7 @@ mod tests {
 
     #[tokio::test]
     async fn rebuild_after_refresh_skips_unchanged_bodies_via_memo() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_hoger", "seed");
         let stub = StubBackend::with_files(&[
@@ -2915,7 +3121,7 @@ mod tests {
         // TTL refresh with an UNCHANGED enumeration (same blob shas):
         // the post-refresh rebuild must answer entirely from the memo —
         // zero body fetches.
-        let mut same_map = SourceMap::new();
+        let mut same_map = SourceMap::new("2026-06-01");
         metadata_entry(&mut same_map, "regeling_a", "seed");
         metadata_entry(&mut same_map, "wet_hoger", "seed");
         let refreshed = next_snapshot(&old, same_map).await;
@@ -2931,7 +3137,7 @@ mod tests {
 
         // Next refresh where ONE law's sha moved: only that body is
         // refetched.
-        let mut changed_map = SourceMap::new();
+        let mut changed_map = SourceMap::new("2026-06-01");
         metadata_entry_with_sha(
             &mut changed_map,
             "regeling_a",
@@ -3100,7 +3306,7 @@ mod tests {
 
     #[tokio::test]
     async fn expired_changed_cache_serves_stale_and_recomputes_in_background() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3119,7 +3325,7 @@ mod tests {
 
         // Served immediately, stale value and all — no Compare round-trip
         // on the request path.
-        let ids = corpus.changed_law_ids().await.unwrap();
+        let ids = corpus.changed_law_ids(None).await.unwrap();
         assert_eq!(ids, vec!["wet_a".to_string()]);
 
         // …while the background recompute converges to the real diff and
@@ -3141,7 +3347,7 @@ mod tests {
 
     #[tokio::test]
     async fn failed_changed_recompute_rearms_stale_and_releases_the_flag() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3156,7 +3362,7 @@ mod tests {
 
         // Stale value serves; the background recompute fails against the
         // throttled backend.
-        let ids = corpus.changed_law_ids().await.unwrap();
+        let ids = corpus.changed_law_ids(None).await.unwrap();
         assert_eq!(ids, vec!["wet_a".to_string()]);
 
         // Failure stance: the stale ids survive, the TTL clock is
@@ -3177,9 +3383,217 @@ mod tests {
         .await;
     }
 
+    /// Traject op een privé, door de gebruiker aangedragen repo: de server
+    /// heeft er geen eigen token voor, dus alleen het persoonlijke token van
+    /// de handelende gebruiker komt binnen.
+    fn private_own_corpus() -> Arc<TrajectCorpus> {
+        private_own_corpus_with(false)
+    }
+
+    /// Als [`private_own_corpus`], maar `compare_fails` bepaalt of de
+    /// Compare-call van een correct getokende beller alsnog stukloopt.
+    fn private_own_corpus_with(compare_fails: bool) -> Arc<TrajectCorpus> {
+        private_own_corpus_full(compare_fails, Arc::new(AtomicUsize::new(0)), None)
+    }
+
+    /// Als [`private_own_corpus_with`], met een teller voor het aantal
+    /// Compare-aanroepen en een optionele semafoor die de Compare-call
+    /// parkeert — samen genoeg om de single-flight-poort vast te pinnen.
+    fn private_own_corpus_full(
+        compare_fails: bool,
+        compare_calls: Arc<AtomicUsize>,
+        compare_hold: Option<Arc<Semaphore>>,
+    ) -> Arc<TrajectCorpus> {
+        let mut map = SourceMap::new("2026-06-01");
+        metadata_entry(&mut map, "wet_eigen", "own");
+        Arc::new(test_corpus(
+            map,
+            HashMap::from([(
+                "own".to_string(),
+                BackendEntry {
+                    backend: Arc::new(Mutex::new(Box::new(TokenGatedBackend {
+                        files: HashMap::from([(
+                            "wet/wet_eigen/2025-01-01.yaml".to_string(),
+                            "$id: wet_eigen\n".to_string(),
+                        )]),
+                        required_token: Some("user-token".to_string()),
+                        compare_fails,
+                        compare_calls: compare_calls.clone(),
+                        compare_hold: compare_hold.clone(),
+                    }) as Box<dyn RepoBackend>)),
+                    writable: false,
+                },
+            )]),
+        ))
+    }
+
+    #[tokio::test]
+    async fn changed_law_ids_uses_the_callers_token_on_a_private_own_source() {
+        // De kern van de "Bewerkt is stuk bij privé-trajecten"-fix: zonder
+        // per-call token blijft de diff leeg (het oude, permanente gedrag);
+        // mét token levert dezelfde backend de gewijzigde wet.
+        let corpus = private_own_corpus();
+
+        assert!(corpus.changed_law_ids(None).await.unwrap().is_empty());
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_eigen".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn tokenless_empty_diff_is_never_written_to_the_shared_cache() {
+        // `changed_cache` is per traject (TTL 60 s), niet per gebruiker. Een
+        // lege uitkomst die alleen ontstond doordat *deze* gebruiker geen
+        // GitHub-koppeling heeft, mag daarom niet 60 s lang aan alle leden
+        // worden geserveerd — anders blijft "Bewerkt" leeg voor iemand die
+        // wél gekoppeld is.
+        let corpus = private_own_corpus();
+
+        assert!(corpus.changed_law_ids(None).await.unwrap().is_empty());
+        assert!(
+            corpus.changed_cache.read().await.is_none(),
+            "een token-loze lege diff hoort niet in de gedeelde cache"
+        );
+
+        // Het gekoppelde lid berekent wél een deelbare uitkomst…
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_eigen".to_string()]
+        );
+        assert_eq!(
+            corpus.changed_cache.read().await.as_ref().unwrap().law_ids,
+            vec!["wet_eigen".to_string()]
+        );
+
+        // …en die uitkomst blijft staan als een ongekoppeld lid langskomt.
+        assert_eq!(
+            corpus.changed_law_ids(None).await.unwrap(),
+            vec!["wet_eigen".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_private_cache_waits_for_a_linked_caller_instead_of_blanking() {
+        // De achtergrond-recompute draait buiten een request en heeft dus
+        // geen gebruikerstoken; op een privé-bron zou hij de cache leegvegen.
+        // Hij wordt daarom niet gestart: een ongekoppelde beller krijgt de
+        // stale waarde, een gekoppelde ververst hem op het request-pad.
+        let corpus = private_own_corpus();
+        let expired = Instant::now() - Duration::from_secs(3600);
+        *corpus.changed_cache.write().await = Some(ChangedLawsCache {
+            computed_at: expired,
+            law_ids: vec!["wet_oud".to_string()],
+        });
+
+        assert_eq!(
+            corpus.changed_law_ids(None).await.unwrap(),
+            vec!["wet_oud".to_string()]
+        );
+        let cache = corpus.changed_cache.read().await;
+        let cached = cache.as_ref().unwrap();
+        assert_eq!(cached.law_ids, vec!["wet_oud".to_string()]);
+        assert_eq!(cached.computed_at, expired, "geen achtergrond-recompute");
+        assert!(!corpus.changed_refresh_in_flight.load(Ordering::SeqCst));
+        drop(cache);
+
+        // Een gekoppeld lid ververst de verlopen entry meteen (synchroon:
+        // er is geen achtergrond-leg met een bruikbaar token).
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_eigen".to_string()]
+        );
+        let cache = corpus.changed_cache.read().await;
+        let cached = cache.as_ref().unwrap();
+        assert_eq!(cached.law_ids, vec!["wet_eigen".to_string()]);
+        assert!(cached.computed_at > expired);
+    }
+
+    #[tokio::test]
+    async fn failed_private_request_refresh_serves_stale_instead_of_erroring() {
+        // Op een privé-bron ververst een gekoppelde beller de verlopen entry
+        // op het request-pad. Loopt die Compare-call stuk, dan geldt dezelfde
+        // degradeer-naar-stale-houding als in de achtergrond-leg: geen 502 die
+        // "Bewerkt" laat verdwijnen, en de TTL-klok wordt opnieuw opgespannen
+        // zodat niet elk volgend verzoek tegen een haperende upstream aanloopt.
+        let corpus = private_own_corpus_with(true);
+        let expired = Instant::now() - Duration::from_secs(3600);
+        *corpus.changed_cache.write().await = Some(ChangedLawsCache {
+            computed_at: expired,
+            law_ids: vec!["wet_oud".to_string()],
+        });
+
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_oud".to_string()]
+        );
+        let cache = corpus.changed_cache.read().await;
+        let cached = cache.as_ref().unwrap();
+        assert_eq!(cached.law_ids, vec!["wet_oud".to_string()]);
+        assert!(cached.computed_at > expired, "TTL-klok opnieuw opgespannen");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_private_refreshes_share_one_compare_call() {
+        // De achtergrond-leg heeft `changed_refresh_in_flight`; de synchrone
+        // leg (privé-bron, alleen het token van de beller komt binnen) heeft
+        // de poort. Zonder die poort doet elk gekoppeld lid dat de
+        // bibliotheek binnen hetzelfde verlopen-TTL-venster laadt zijn eigen
+        // Compare-call tegen een gedeeld, gelimiteerd token.
+        //
+        // De semafoor maakt de uitkomst interleaving-onafhankelijk: wie de
+        // poort ook als eerste pakt, hij kan hem niet loslaten voordat de
+        // test een permit uitdeelt, dus de ander staat gegarandeerd te
+        // wachten en vindt daarna een verse cache-entry.
+        let hold = Arc::new(Semaphore::new(0));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let corpus = private_own_corpus_full(false, calls.clone(), Some(hold.clone()));
+
+        let a = corpus.clone();
+        let b = corpus.clone();
+        let first = tokio::spawn(async move { a.changed_law_ids(Some("user-token")).await });
+        let second = tokio::spawn(async move { b.changed_law_ids(Some("user-token")).await });
+
+        // Eén permit: precies genoeg voor de winnaar van de poort. Zou de
+        // verliezer alsnog bij de backend uitkomen, dan liep deze test vast
+        // in plaats van stilletjes een tweede Compare-call te slikken.
+        hold.add_permits(1);
+
+        // De permit komt bij het droppen van de guard weer vrij, dus valt de
+        // poort weg dan komt de verliezer alsnog bij de backend uit en telt
+        // de assertie hieronder er twee — de test faalt dan op de telling,
+        // niet op deze timeout. De timeout is puur een vangnet tegen een
+        // echte deadlock, zodat een fout in de poort nooit als een hangende
+        // suite eindigt.
+        let (ra, rb) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(first, second)
+        })
+        .await
+        .expect(
+            "beide bellers horen af te ronden; een tweede Compare-call parkeert op de semafoor",
+        );
+        assert_eq!(ra.unwrap().unwrap(), vec!["wet_eigen".to_string()]);
+        assert_eq!(rb.unwrap().unwrap(), vec!["wet_eigen".to_string()]);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "gelijktijdige bellers horen één Compare-call te delen"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_private_first_compute_still_errors() {
+        // Zonder iets in de cache is er niets om op terug te vallen: de fout
+        // hoort dan wél door te komen (de handler maakt er een 502 van), in
+        // plaats van stil als "niets bewerkt" te worden gepresenteerd.
+        let corpus = private_own_corpus_with(true);
+        assert!(corpus.changed_law_ids(Some("user-token")).await.is_err());
+        assert!(corpus.changed_cache.read().await.is_none());
+    }
+
     #[tokio::test]
     async fn record_changed_law_folds_a_save_into_the_cached_diff() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3214,7 +3628,7 @@ mod tests {
 
     #[tokio::test]
     async fn sidecar_cache_round_trips_and_resets_per_snapshot() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3307,7 +3721,7 @@ mod tests {
         corpus
             .store_sidecar("scn:wet_a/y.feature".to_string(), None)
             .await;
-        let mut next_map = SourceMap::new();
+        let mut next_map = SourceMap::new("2026-06-01");
         metadata_entry(&mut next_map, "wet_a", "own");
         let next = next_snapshot(&corpus, next_map).await;
         assert!(next.cached_sidecar("scn:wet_a/y.feature").await.is_none());
@@ -3315,7 +3729,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_read_store_is_dropped_after_a_write_bumps_the_generation() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,

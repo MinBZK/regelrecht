@@ -105,6 +105,7 @@ pub async fn fetch_source_filtered(
     source: &GitHubSource,
     token: Option<&str>,
     law_ids: &HashSet<String>,
+    today: &str,
 ) -> Result<FetchResult> {
     if law_ids.is_empty() {
         return Ok(FetchResult::Fetched(Vec::new()));
@@ -125,7 +126,7 @@ pub async fn fetch_source_filtered(
         None => return Ok(FetchResult::NotModified),
     };
 
-    let best_per_law = group_best_versions(&all_paths, base_path, Some(law_ids));
+    let best_per_law = group_best_versions(&all_paths, base_path, Some(law_ids), today);
 
     tracing::info!(
         matched = best_per_law.len(),
@@ -167,6 +168,7 @@ pub async fn list_source_law_paths(
     client: &GithubClient,
     source: &GitHubSource,
     token: Option<&str>,
+    today: &str,
 ) -> Result<Vec<(String, String, Option<String>)>> {
     let base_path = source.path.as_deref().unwrap_or("");
     let all_paths = match list_yaml_files(
@@ -181,7 +183,7 @@ pub async fn list_source_law_paths(
         Some(paths) => paths,
         None => return Ok(Vec::new()),
     };
-    Ok(group_best_versions(&all_paths, base_path, None)
+    Ok(group_best_versions(&all_paths, base_path, None, today)
         .into_iter()
         .map(|(law_id, file)| (law_id, file.path, file.sha))
         .collect())
@@ -251,13 +253,13 @@ fn group_best_versions(
     all_paths: &[TreeFile],
     base_path: &str,
     filter: Option<&HashSet<String>>,
+    today: &str,
 ) -> HashMap<String, TreeFile> {
     let prefix = if base_path.is_empty() {
         String::new()
     } else {
         format!("{}/", base_path)
     };
-    let today = crate::source_map::today_str();
     let mut best_per_law: HashMap<String, TreeFile> = HashMap::new();
 
     for file in all_paths {
@@ -294,14 +296,16 @@ fn group_best_versions(
             }
         }
 
-        let filename = parts[parts.len() - 1];
-        let new_date = filename.strip_suffix(".yaml");
+        let new_date = crate::source_map::extract_date_from_path(rel);
 
         if let Some(existing) = best_per_law.get(law_id) {
-            let existing_filename = existing.path.rsplit('/').next().unwrap_or("");
-            let existing_date = existing_filename.strip_suffix(".yaml");
+            let existing_date = crate::source_map::extract_date_from_path(&existing.path);
 
-            let new_wins = crate::source_map::pick_best_version(existing_date, new_date, &today);
+            let new_wins = crate::source_map::pick_best_version(
+                existing_date.as_deref(),
+                new_date.as_deref(),
+                today,
+            );
 
             if new_wins {
                 best_per_law.insert(law_id.to_string(), file.clone());
@@ -390,11 +394,69 @@ mod tests {
                 sha: Some("def456".to_string()),
             },
         ];
-        let best = group_best_versions(&paths, "", None);
+        let best = group_best_versions(&paths, "", None, "2026-06-01");
         assert_eq!(sorted_ids(&best), vec!["wet_op_de_zorgtoeslag".to_string()]);
         assert!(
             !best.contains_key("zorgtoeslagwet"),
             "annotation file was mis-indexed as law 'zorgtoeslagwet'"
+        );
+    }
+
+    // Both routes into `pick_best_version` must read a filename the same way.
+    // The tree route used to hand it the bare stem, so `2025-01-01-concept`
+    // sorted above `2025-01-01` and the concept won — while the local scan,
+    // which validates the stem as a date, dropped it. Same repo, two answers.
+    #[test]
+    fn undated_stem_loses_to_a_dated_file_on_both_routes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let law_dir = dir.path().join("wet").join("test_wet");
+        std::fs::create_dir_all(&law_dir).expect("create law dir");
+        let body = "$id: test_wet\nname: Test\nregulatory_layer: WET\narticles: []\n";
+        for stem in ["2025-01-01", "2025-01-01-concept"] {
+            std::fs::write(law_dir.join(format!("{stem}.yaml")), body).expect("write law");
+        }
+
+        let source = crate::models::Source {
+            id: "local".to_string(),
+            name: "Local".to_string(),
+            source_type: crate::models::SourceType::Local {
+                local: crate::models::LocalSource {
+                    path: dir.path().to_path_buf(),
+                },
+            },
+            scopes: vec![],
+            priority: 1,
+            auth_ref: None,
+            strict_auth: false,
+        };
+        let mut map = crate::source_map::SourceMap::new("2026-06-01");
+        map.load_source(&source).expect("load local source");
+        let local_pick = map
+            .get_law("test_wet")
+            .expect("law loaded")
+            .file_path
+            .clone();
+
+        let paths: Vec<TreeFile> = ["2025-01-01", "2025-01-01-concept"]
+            .iter()
+            .map(|stem| TreeFile {
+                path: format!("wet/test_wet/{stem}.yaml"),
+                sha: None,
+            })
+            .collect();
+        let tree_pick = group_best_versions(&paths, "", None, "2026-06-01")
+            .get("test_wet")
+            .expect("law indexed")
+            .path
+            .clone();
+
+        assert!(
+            local_pick.ends_with("2025-01-01.yaml"),
+            "local scan picked {local_pick}"
+        );
+        assert!(
+            tree_pick.ends_with("2025-01-01.yaml"),
+            "tree scan picked {tree_pick}"
         );
     }
 }

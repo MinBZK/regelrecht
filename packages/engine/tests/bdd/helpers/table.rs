@@ -8,7 +8,11 @@ use std::collections::BTreeMap;
 
 use regelrecht_engine::Value;
 
-use super::value_conversion::convert_gherkin_value;
+/// How a single cell becomes a `Value`. Passed in rather than called directly:
+/// the rule lives in `bdd/grammar.yaml` (`value_typing.table_cell`) and reaches
+/// the dispatch through codegen, which this module cannot see — it is also
+/// compiled standalone by `tests/bdd_table.rs`.
+pub type CellFn = fn(&str) -> Value;
 
 /// Table rows straight from cucumber's `gherkin::Step.table.rows`. Whether
 /// `row[0]` is a header depends on the step: a data-source table has one, a
@@ -16,11 +20,11 @@ use super::value_conversion::convert_gherkin_value;
 pub type Rows = Vec<Vec<String>>;
 
 /// Parse a two-column key/value parameter table.
-pub fn rows_to_params(rows: &Rows) -> BTreeMap<String, Value> {
+pub fn rows_to_params(rows: &Rows, cell: CellFn) -> BTreeMap<String, Value> {
     let mut params = BTreeMap::new();
     for row in rows {
         if row.len() >= 2 {
-            params.insert(row[0].trim().to_string(), convert_gherkin_value(&row[1]));
+            params.insert(row[0].trim().to_string(), cell(&row[1]));
         }
     }
     params
@@ -34,7 +38,7 @@ pub fn rows_to_params(rows: &Rows) -> BTreeMap<String, Value> {
 /// dependency we bump, though, and the editor's `tableToRecords` leans on a
 /// different parser with a different fallback. The explicit check makes both
 /// sides fail identically and loudly if either parser ever loosens.
-pub fn rows_to_records(rows: &Rows) -> Vec<BTreeMap<String, Value>> {
+pub fn rows_to_records(rows: &Rows, cell: CellFn) -> Vec<BTreeMap<String, Value>> {
     if rows.len() < 2 {
         return Vec::new();
     }
@@ -51,7 +55,7 @@ pub fn rows_to_records(rows: &Rows) -> Vec<BTreeMap<String, Value>> {
             headers
                 .iter()
                 .zip(row)
-                .map(|(header, cell)| (header.clone(), convert_gherkin_value(cell)))
+                .map(|(header, raw)| (header.clone(), cell(raw)))
                 .collect(),
         );
     }

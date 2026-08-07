@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 axum.workspace = true
 regelrecht-auth = { path = "../auth" }
-regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+regelrecht-shared = { path = "../shared", features = ["telemetry", "dates"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono"] }
 regelrecht-corpus = { path = "../corpus", default-features = false }
 regelrecht-harvester = { path = "../harvester", default-features = false }

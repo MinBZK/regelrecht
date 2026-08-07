@@ -276,6 +276,7 @@ fn ids_query() -> Query<PaginationParams> {
         limit: None,
         q: None,
         ids: Some(LAW_ID.to_string()),
+        source: None,
     })
 }
 

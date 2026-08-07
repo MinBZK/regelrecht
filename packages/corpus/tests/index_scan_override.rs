@@ -122,7 +122,10 @@ async fn scan_override_reaches_only_its_source_and_loses_from_server_tokens() {
     // Fase 1: zonder override faalt de token-loze writable-own (404); de
     // seed scant gewoon met z'n servertoken.
     // ------------------------------------------------------------------
-    let (map, failed) = registry.index_all_sources_async(None).await.unwrap();
+    let (map, failed) = registry
+        .index_all_sources_async(None, "2026-06-01")
+        .await
+        .unwrap();
     assert_eq!(failed.len(), 1, "alleen de token-loze own hoort te falen");
     assert_eq!(failed[0].source_id, "traject-own");
     assert!(
@@ -145,6 +148,7 @@ async fn scan_override_reaches_only_its_source_and_loses_from_server_tokens() {
                 source_id: "traject-own",
                 token: "user-token",
             }),
+            "2026-06-01",
         )
         .await
         .unwrap();
@@ -191,6 +195,7 @@ async fn scan_override_reaches_only_its_source_and_loses_from_server_tokens() {
                 source_id: "traject-own",
                 token: "user-token",
             }),
+            "2026-06-01",
         )
         .await
         .unwrap();

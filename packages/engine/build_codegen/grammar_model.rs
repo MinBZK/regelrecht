@@ -8,6 +8,20 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct Grammar {
     pub steps: Vec<Step>,
+    #[serde(default)]
+    pub value_typing: ValueTyping,
+}
+
+/// How a captured value is typed on its way to the engine. Owned by
+/// `bdd/grammar.yaml` so the Rust and JS dispatchers cannot drift apart on it.
+#[derive(Debug, Default, Deserialize)]
+pub struct ValueTyping {
+    #[serde(default)]
+    pub quoted: String,
+    #[serde(default)]
+    pub bare: String,
+    #[serde(default)]
+    pub table_cell: String,
 }
 
 #[derive(Debug, Deserialize)]

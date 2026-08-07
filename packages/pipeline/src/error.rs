@@ -35,6 +35,20 @@ pub enum PipelineError {
     #[error("enrichment error: {0}")]
     Enrich(String),
 
+    /// De uploader gaf geen toestemming voor een taalmodel en de deterministische
+    /// route leverde niets op, dus stopt de conversie. Een eigen variant en niet
+    /// [`Self::Enrich`], om twee redenen:
+    ///
+    /// 1. De boodschap is al een afgeronde uitleg voor de gebruiker (ze belandt
+    ///    in de "Conversie mislukt"-taak), dus zonder `enrichment error:`-prefix —
+    ///    er is hier ook niets verrijkt.
+    /// 2. Ze bevat de door de gebruiker gekozen bestandsnaam. De worker
+    ///    classificeert mislukkingen op tekst (fork/EAGAIN/OOM-markers), en die
+    ///    classificatie mag nooit op door een gebruiker te kiezen tekst
+    ///    afgaan — zie `worker::document_convert_outcome`.
+    #[error("{0}")]
+    LlmNotPermitted(String),
+
     #[error("base drift for {yaml_path}: base branch {base} changed (was {expected}, now {actual}); human review / re-enrich required")]
     BaseDrift {
         yaml_path: String,
