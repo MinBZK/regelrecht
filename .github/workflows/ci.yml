@@ -468,6 +468,20 @@ jobs:
       - name: Run shared-package tests
         run: npm test -w packages/frontend-shared
 
+      # De productiebundel werd tot nu toe alleen in frontend/Dockerfile
+      # gemaakt, en sinds de images uit de standaardloop van een PR zijn
+      # gehaald draaide `vite build` nergens meer. Dit dekt in één stap de
+      # bundel plus de drie scripts die eraan hangen: copy-laws (prebuild),
+      # check-first-load en precompress.
+      #
+      # Na de tests: `prebuild` schrijft in frontend/public/data, en die map
+      # hoort niet onder de vitest-run te veranderen.
+      - name: Build editor bundle
+        run: npm run build -w frontend
+
+      - name: Build lawmaking bundle
+        run: npm run build -w frontend-lawmaking
+
   # Verplichte check op main. De benen hierboven dragen nieuwe namen en mogen
   # dus van vorm veranderen; deze naam moet blijven bestaan, want een required
   # check die niet verschijnt laat elke PR eeuwig hangen. Skipped benen (geen
