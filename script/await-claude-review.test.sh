@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Tests voor script/await-claude-review.sh.
 #
-# `gh` wordt vervangen door een stub die een vast JSON-antwoord teruggeeft, of
-# een reeks antwoorden (één per regel-index) om een lopende review te simuleren
-# die later klaar is. Zo is elk pad deterministisch te bewijzen zonder GitHub.
+# `gh` wordt vervangen door een stub die per endpoint antwoordt: check-runs uit
+# een reeks (één antwoord per aanroep, zodat een lopende review die later klaar
+# is te simuleren valt), comments en reviews uit vaste fixtures. Zo is elk pad
+# deterministisch te bewijzen zonder GitHub.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,20 +16,33 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "${WORK}/bin"
 cat >"${WORK}/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-# Geeft het n-de antwoord uit $STUB_RESPONSES terug en telt de aanroepen.
-n=$(cat "$STUB_COUNTER")
-echo $((n + 1)) >"$STUB_COUNTER"
-mapfile -t responses <"$STUB_RESPONSES"
-idx=$n
-if [ "$idx" -ge "${#responses[@]}" ]; then
-  idx=$((${#responses[@]} - 1))
-fi
-line="${responses[$idx]}"
-if [ "$line" = "ERROR" ]; then
-  echo "gh: simulated API failure" >&2
+# Routeert op URL. Check-runs komen uit $STUB_RESPONSES, één antwoord per
+# aanroep, zodat een nog lopende review die later klaar is te simuleren is.
+# Comments en reviews komen uit vaste bestanden.
+url="$2"
+case "$url" in
+*check-runs*)
+  n=$(cat "$STUB_COUNTER")
+  echo $((n + 1)) >"$STUB_COUNTER"
+  mapfile -t responses <"$STUB_RESPONSES"
+  idx=$n
+  if [ "$idx" -ge "${#responses[@]}" ]; then
+    idx=$((${#responses[@]} - 1))
+  fi
+  line="${responses[$idx]}"
+  if [ "$line" = "ERROR" ]; then
+    echo "gh: simulated API failure" >&2
+    exit 1
+  fi
+  printf '%s\n' "$line"
+  ;;
+*/comments*) cat "$STUB_COMMENTS" ;;
+*/reviews*) cat "$STUB_REVIEWS" ;;
+*)
+  echo "gh: onverwachte URL: $url" >&2
   exit 1
-fi
-printf '%s\n' "$line"
+  ;;
+esac
 STUB
 chmod +x "${WORK}/bin/gh"
 export PATH="${WORK}/bin:${PATH}"
@@ -43,16 +57,23 @@ run() {
 
   export STUB_COUNTER="${WORK}/counter"
   export STUB_RESPONSES="${WORK}/responses"
+  export STUB_COMMENTS="${WORK}/comments"
+  export STUB_REVIEWS="${WORK}/reviews"
   echo 0 >"$STUB_COUNTER"
+  [ -f "$STUB_COMMENTS" ] || echo '[]' >"$STUB_COMMENTS"
+  [ -f "$STUB_REVIEWS" ] || echo '[]' >"$STUB_REVIEWS"
 
   local out code
   out=$(env "$@" \
     REPO='example-org/example-repo' \
     HEAD_SHA='0000000000000000000000000000000000000000' \
+    PR_NUMBER='1' \
     POLL_SECONDS=0 \
     GITHUB_STEP_SUMMARY="${WORK}/summary.md" \
     STUB_COUNTER="$STUB_COUNTER" \
     STUB_RESPONSES="$STUB_RESPONSES" \
+    STUB_COMMENTS="$STUB_COMMENTS" \
+    STUB_REVIEWS="$STUB_REVIEWS" \
     "$GATE" 2>&1)
   code=$?
 
@@ -73,15 +94,26 @@ run() {
 }
 
 responses() { printf '%s\n' "$@" >"${WORK}/responses"; }
+comments() { printf '%s\n' "$1" >"${WORK}/comments"; }
+reviews() { printf '%s\n' "$1" >"${WORK}/reviews"; }
 
-RUNNING='{"check_runs":[{"id":1,"status":"in_progress","conclusion":null,"html_url":"http://example.invalid/1"}]}'
-DONE_OK='{"check_runs":[{"id":1,"status":"completed","conclusion":"success","html_url":"http://example.invalid/1"}]}'
-DONE_FAIL='{"check_runs":[{"id":1,"status":"completed","conclusion":"failure","html_url":"http://example.invalid/1"}]}'
-DONE_CANCELLED='{"check_runs":[{"id":1,"status":"completed","conclusion":"cancelled","html_url":"http://example.invalid/1"}]}'
-DONE_SKIPPED='{"check_runs":[{"id":1,"status":"completed","conclusion":"skipped","html_url":"http://example.invalid/1"}]}'
+RUNNING='{"check_runs":[{"id":1,"status":"in_progress","conclusion":null,"started_at":"2026-01-01T12:00:00Z","html_url":"http://example.invalid/1"}]}'
+DONE_OK='{"check_runs":[{"id":1,"status":"completed","conclusion":"success","started_at":"2026-01-01T12:00:00Z","html_url":"http://example.invalid/1"}]}'
+DONE_FAIL='{"check_runs":[{"id":1,"status":"completed","conclusion":"failure","started_at":"2026-01-01T12:00:00Z","html_url":"http://example.invalid/1"}]}'
+DONE_CANCELLED='{"check_runs":[{"id":1,"status":"completed","conclusion":"cancelled","started_at":"2026-01-01T12:00:00Z","html_url":"http://example.invalid/1"}]}'
+DONE_SKIPPED='{"check_runs":[{"id":1,"status":"completed","conclusion":"skipped","started_at":"2026-01-01T12:00:00Z","html_url":"http://example.invalid/1"}]}'
 EMPTY='{"check_runs":[]}'
 # Re-run: oude gefaalde run met lage id, nieuwe geslaagde run met hoge id.
-RERUN='{"check_runs":[{"id":1,"status":"completed","conclusion":"failure","html_url":"http://example.invalid/1"},{"id":9,"status":"completed","conclusion":"success","html_url":"http://example.invalid/9"}]}'
+RERUN='{"check_runs":[{"id":1,"status":"completed","conclusion":"failure","started_at":"2026-01-01T11:00:00Z","html_url":"http://example.invalid/1"},{"id":9,"status":"completed","conclusion":"success","started_at":"2026-01-01T12:00:00Z","html_url":"http://example.invalid/9"}]}'
+
+NONE='[]'
+STICKY='[{"user":{"login":"claude[bot]"},"created_at":"2026-01-01T12:00:30Z","updated_at":"2026-01-01T12:00:30Z"}]'
+STICKY_STALE='[{"user":{"login":"claude[bot]"},"created_at":"2026-01-01T09:00:00Z","updated_at":"2026-01-01T09:00:00Z"}]'
+HUMAN_ONLY='[{"user":{"login":"someone"},"created_at":"2026-01-01T12:00:30Z","updated_at":"2026-01-01T12:00:30Z"}]'
+CLAUDE_REVIEW='[{"user":{"login":"claude[bot]"},"state":"COMMENTED","submitted_at":"2026-01-01T12:00:40Z"}]'
+
+comments "$STICKY"
+reviews "$NONE"
 
 echo "== niet van toepassing =="
 responses "$EMPTY"
@@ -101,9 +133,29 @@ run "review geannuleerd: rood" 1 "eindigde op \`cancelled\`" -- MAX_WAIT_SECONDS
 responses "$DONE_SKIPPED"
 run "review overgeslagen zonder geldige reden: rood" 1 "is overgeslagen" -- MAX_WAIT_SECONDS=0
 
-echo "== de poort opent =="
+echo "== groen vraagt ook een spoor van de review zelf =="
+# De claude-code-action stapt uit met conclusie success, zonder te reviewen en
+# zonder iets te plaatsen, zodra het workflowbestand afwijkt van de default
+# branch. Een groene check-run alleen is dus geen bewijs.
 responses "$DONE_OK"
-run "review afgerond: groen" 0 "review afgerond (success)" -- MAX_WAIT_SECONDS=0
+comments "$NONE"
+reviews "$NONE"
+run "groen zonder enig spoor van claude[bot]: rood" 1 "heeft in die run niets geplaatst" -- MAX_WAIT_SECONDS=0
+comments "$HUMAN_ONLY"
+run "alleen comments van mensen: rood" 1 "heeft in die run niets geplaatst" -- MAX_WAIT_SECONDS=0
+comments "$STICKY_STALE"
+run "spoor van vóór deze run telt niet: rood" 1 "heeft in die run niets geplaatst" -- MAX_WAIT_SECONDS=0
+
+echo "== de poort opent =="
+comments "$STICKY"
+reviews "$NONE"
+responses "$DONE_OK"
+run "review afgerond met sticky comment: groen" 0 "review afgerond (success)" -- MAX_WAIT_SECONDS=0
+comments "$NONE"
+reviews "$CLAUDE_REVIEW"
+run "een geplaatste review telt ook als spoor: groen" 0 "review afgerond (success)" -- MAX_WAIT_SECONDS=0
+comments "$STICKY"
+reviews "$NONE"
 responses "$RERUN"
 run "na re-run telt de nieuwste check-run" 0 "review afgerond (success)" -- MAX_WAIT_SECONDS=0
 responses "$RUNNING" "$RUNNING" "$DONE_OK"

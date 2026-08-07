@@ -116,6 +116,7 @@ jobs:
     permissions:
       contents: read
       checks: read
+      pull-requests: read
 
     steps:
       - name: Checkout repository
@@ -128,6 +129,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}

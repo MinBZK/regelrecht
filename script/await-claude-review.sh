@@ -2,18 +2,19 @@
 # Merge gate: block until the Claude review check-run for this commit is done.
 #
 # Zero review comments is not evidence of "no findings" — it is equally
-# consistent with "the review is still running". So this gate reads the status
-# of the check-run, never the comments.
+# consistent with "the review is still running". So the wait is driven by the
+# check-run's status, never by a comment count.
 #
 # It exits 0 only when the review demonstrably ran to completion for this exact
-# commit, or when the review demonstrably cannot apply (fork, draft, dependabot).
-# Those reasons are read off the pull request itself, not off the review's own
-# result, so a review that ran and failed can never pass as one that was never
-# meant to run.
+# commit and left something behind, or when the review demonstrably cannot apply
+# (fork, draft, dependabot). Those reasons are read off the pull request itself,
+# not off the review's own result, so a review that ran and failed can never
+# pass as one that was never meant to run.
 set -uo pipefail
 
 : "${REPO:?REPO is verplicht}"
 : "${HEAD_SHA:?HEAD_SHA is verplicht}"
+: "${PR_NUMBER:?PR_NUMBER is verplicht}"
 
 IS_FORK="${IS_FORK:-false}"
 IS_DRAFT="${IS_DRAFT:-false}"
@@ -86,14 +87,36 @@ latest=$(jq -c '.check_runs | sort_by(.id) | last' <<<"$response")
 conclusion=$(jq -r '.conclusion // "none"' <<<"$latest")
 url=$(jq -r '.html_url // ""' <<<"$latest")
 
+started_at=$(jq -r '.started_at // ""' <<<"$latest")
+
+# Een groene check-run is niet genoeg. De claude-code-action stapt uit met
+# conclusie `success` zonder ook maar iets te reviewen zodra het workflowbestand
+# afwijkt van dat op de default branch ("Exiting due to workflow validation
+# skip"). Gemeten op PR 1157: veertien seconden, groen, geen review. Eis daarom
+# ook een spoor van de review zelf, geplaatst na de start van deze run. Dat is
+# geen comment-telling vooraf — de status zegt of hij klaar is, dit zegt of hij
+# iets heeft opgeleverd.
+assert_review_output() {
+  local comments reviews newest
+  comments=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --paginate 2>/dev/null || echo '[]')
+  reviews=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --paginate 2>/dev/null || echo '[]')
+  newest=$(printf '%s\n%s\n' "$comments" "$reviews" |
+    jq -rs '[.[][] | select(.user.login == "claude[bot]") | (.updated_at // .submitted_at)] | map(select(. != null)) | sort | last // ""' 2>/dev/null)
+
+  if [ -z "$newest" ] || { [ -n "$started_at" ] && [[ "$newest" < "$started_at" ]]; }; then
+    blocked "\`${CHECK_NAME}\` meldt \`${conclusion}\` voor commit \`${HEAD_SHA}\`, maar claude[bot] heeft in die run niets geplaatst. De review-actie slaat zichzelf over (met conclusie success) zodra \`.github/workflows/claude-code-review.yml\` afwijkt van de versie op de default branch. Wijzigt deze PR dat bestand, dan is er geen automatische review en moet een mens de wijziging nalopen. ${url}"
+  fi
+}
+
 case "$conclusion" in
 success | neutral)
+  assert_review_output
   echo "::notice title=Claude review gate::review afgerond (${conclusion})"
   summary "### Claude review gate: groen"
   summary ""
   summary "\`${CHECK_NAME}\` is afgerond voor commit \`${HEAD_SHA}\` met conclusie \`${conclusion}\`."
   summary ""
-  summary "Wat deze check bewijst: de review is gedraaid en klaar voor precies deze commit. Wat hij niet bewijst: dat de bevindingen deugen of dat ze zijn verwerkt. Dat blijft mensenwerk."
+  summary "Wat deze check bewijst: de review is gedraaid, klaar voor precies deze commit, en heeft daadwerkelijk iets geplaatst. Wat hij niet bewijst: dat de bevindingen deugen of dat ze zijn verwerkt. Dat blijft mensenwerk."
   summary ""
   summary "[Bekijk de review-run](${url})"
   ;;

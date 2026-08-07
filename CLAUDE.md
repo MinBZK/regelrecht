@@ -232,8 +232,17 @@ always reports; it derives "not applicable" from the PR itself (fork, draft,
 dependabot) rather than from `claude-review`'s conclusion, so a failed or
 skipped review can never pass as an inapplicable one.
 
-The gate proves the review ran to completion for this commit. It says nothing
-about the content of the findings or whether they were addressed.
+A green check-run is not enough on its own. `claude-code-action` exits with
+conclusion `success` **without reviewing anything** when the workflow file
+differs from the version on the default branch ("Exiting due to workflow
+validation skip"). The gate therefore also requires that `claude[bot]` posted a
+comment or review after the check-run started. Practical consequence: a PR that
+edits `.github/workflows/claude-code-review.yml` cannot get a green gate, and
+needs a human review plus an admin merge. Every other PR is unaffected.
+
+The gate proves the review ran to completion for this commit and produced
+output. It says nothing about the content of the findings or whether they were
+addressed.
 
 The logic lives in `script/await-claude-review.sh`, with
 `script/await-claude-review.test.sh` (a `gh` stub) covering every branch; the
