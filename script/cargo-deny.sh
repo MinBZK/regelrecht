@@ -23,28 +23,31 @@ fi
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/regelrecht"
 binary="${cache}/cargo-deny-${version}"
 
-if [ ! -x "$binary" ]; then
+versie_van() { "$1" --version 2>/dev/null | awk '{print $2}'; }
+
+# Staat de juiste versie al op PATH, gebruik die. De Security Audit-baan in CI
+# installeert hem naar /usr/local/bin; zonder deze tak zou dit script daarnaast
+# een tweede exemplaar ophalen.
+op_path=$(command -v cargo-deny || true)
+if [ -n "$op_path" ] && [ "$(versie_van "$op_path")" = "$version" ]; then
+    binary="$op_path"
+elif [ ! -x "$binary" ]; then
     if [ "$(uname -s)" != "Linux" ] || [ "$(uname -m)" != "x86_64" ]; then
-        installed=$(cargo deny --version 2>/dev/null | awk '{print $2}')
-        if [ "$installed" != "$version" ]; then
-            echo "FOUT: deze repo draait cargo-deny ${version}, hier staat ${installed:-niets}." >&2
-            echo "      Er is geen prebuilt binary voor $(uname -s)/$(uname -m); installeer met:" >&2
-            echo "      cargo install cargo-deny --locked --version ${version}" >&2
-            exit 1
-        fi
-        binary=$(command -v cargo-deny)
-    else
-        echo "cargo-deny ${version} ophalen (eenmalig, naar ${cache})"
-        mkdir -p "$cache"
-        tarball="cargo-deny-${version}-x86_64-unknown-linux-musl"
-        tmp=$(mktemp -d)
-        trap 'rm -rf "$tmp"' EXIT
-        curl -sSL "https://github.com/EmbarkStudios/cargo-deny/releases/download/${version}/${tarball}.tar.gz" \
-            -o "$tmp/cargo-deny.tar.gz"
-        echo "${sha}  $tmp/cargo-deny.tar.gz" | sha256sum -c -
-        tar -xz --strip-components=1 -C "$tmp" -f "$tmp/cargo-deny.tar.gz" "${tarball}/cargo-deny"
-        install -m0755 "$tmp/cargo-deny" "$binary"
+        echo "FOUT: deze repo draait cargo-deny ${version}, hier staat ${op_path:+$(versie_van "$op_path")}${op_path:-niets}." >&2
+        echo "      Er is geen prebuilt binary voor $(uname -s)/$(uname -m); installeer met:" >&2
+        echo "      cargo install cargo-deny --locked --version ${version}" >&2
+        exit 1
     fi
+    echo "cargo-deny ${version} ophalen (eenmalig, naar ${cache})"
+    mkdir -p "$cache"
+    tarball="cargo-deny-${version}-x86_64-unknown-linux-musl"
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    curl -sSL "https://github.com/EmbarkStudios/cargo-deny/releases/download/${version}/${tarball}.tar.gz" \
+        -o "$tmp/cargo-deny.tar.gz"
+    echo "${sha}  $tmp/cargo-deny.tar.gz" | sha256sum -c -
+    tar -xz --strip-components=1 -C "$tmp" -f "$tmp/cargo-deny.tar.gz" "${tarball}/cargo-deny"
+    install -m0755 "$tmp/cargo-deny" "$binary"
 fi
 
 cd packages
