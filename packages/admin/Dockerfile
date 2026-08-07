@@ -7,8 +7,29 @@
 # Stage 1: Chef base
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
 FROM rust:1.96-alpine@sha256:a41f7740f8b45d45795624eec13a8b42263cc700f19f7e4e86e04d3dda08a479 AS chef
-RUN apk add --no-cache musl-dev
-RUN cargo install cargo-chef --locked
+RUN apk add --no-cache musl-dev curl xz
+# cargo-chef als officiële prebuilt binary van de releasepagina van het project,
+# in plaats van vanaf broncode te compileren. De sha256's zijn de gepubliceerde
+# .sha256-bestanden van diezelfde release; zonder die pin zou een gewijzigd of
+# afgebroken artefact ongemerkt de build in glijden.
+ARG TARGETARCH
+ARG CARGO_CHEF_VERSION=0.1.77
+ARG CARGO_CHEF_SHA256_AMD64=a3733ab416c3ffddd37914cd13919ca05fee1a1cf654f3016dcfe7f399d89cd1
+ARG CARGO_CHEF_SHA256_ARM64=3bff2e7ff979db837c7e820dfd8d51d2d97b9c94283506c6e596ae4887ef178b
+RUN set -eu; \
+    case "${TARGETARCH:-}" in \
+      amd64) arch=x86_64; sha="${CARGO_CHEF_SHA256_AMD64}" ;; \
+      arm64) arch=aarch64; sha="${CARGO_CHEF_SHA256_ARM64}" ;; \
+      *) echo "geen gepinde cargo-chef-binary voor TARGETARCH='${TARGETARCH:-}'" >&2; exit 1 ;; \
+    esac; \
+    dir="cargo-chef-${arch}-unknown-linux-musl"; \
+    curl -fsSLo "/tmp/${dir}.tar.xz" \
+      "https://github.com/LukeMathWalker/cargo-chef/releases/download/v${CARGO_CHEF_VERSION}/${dir}.tar.xz"; \
+    echo "${sha}  /tmp/${dir}.tar.xz" | sha256sum -c -; \
+    tar -xJf "/tmp/${dir}.tar.xz" -C /tmp; \
+    install -m0755 "/tmp/${dir}/cargo-chef" /usr/local/bin/cargo-chef; \
+    rm -rf "/tmp/${dir}.tar.xz" "/tmp/${dir}"; \
+    cargo chef --version
 WORKDIR /build
 
 # Stage 2: Plan dependencies

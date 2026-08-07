@@ -572,36 +572,38 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-registry-
 
       # `just test-e2e` hangt aan `wasm-build`, dat `wasm-bindgen` op PATH
-      # verwacht. De versie wordt uit packages/Cargo.lock gelezen in plaats van
-      # hier hardgecodeerd: wasm-bindgen-cli moet exact overeenkomen met de
-      # wasm-bindgen-crate, anders faalt het bindgen-stap met een versie-mismatch.
-      - name: Resolve wasm-bindgen version
-        id: wasm-bindgen-version
+      # verwacht. Versie en checksum staan in frontend/Dockerfile en worden hier
+      # gelezen in plaats van een tweede keer opgeschreven; dat houdt CI en het
+      # editor-image op precies dezelfde binary. De versie moet gelijk lopen met
+      # de wasm-bindgen-crate uit packages/Cargo.lock, anders faalt de
+      # bindgen-stap verderop met een versie-mismatch.
+      - name: Install wasm-bindgen-cli
         if: needs.changes.outputs.ci == 'true'
         run: |
-          version=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
-            | sed -n 's/^version = "\(.*\)"$/\1/p' | head -1)
-          if [ -z "$version" ]; then
+          set -eu
+          locked=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
+            | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}')
+          version=$(sed -n 's/^ARG WASM_BINDGEN_VERSION=\(.*\)$/\1/p' frontend/Dockerfile)
+          sha=$(sed -n 's/^ARG WASM_BINDGEN_SHA256_AMD64=\(.*\)$/\1/p' frontend/Dockerfile)
+          if [ -z "$locked" ]; then
             echo "::error::kon wasm-bindgen-versie niet uit packages/Cargo.lock lezen"
             exit 1
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Cache wasm-bindgen-cli
-        id: wasm-bindgen-cache
-        if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: ~/.cargo/bin/wasm-bindgen
-          key: ${{ runner.os }}-wasm-bindgen-${{ steps.wasm-bindgen-version.outputs.version }}
-
-      # Overslaan bij een cache-hit. Zonder deze guard faalt elke run ná de
-      # eerste: de cache legt alleen het binary terug, niet `.crates.toml`,
-      # waardoor cargo het bestand niet als het zijne herkent en weigert te
-      # overschrijven ("binary `wasm-bindgen` already exists in destination").
-      - name: Install wasm-bindgen-cli
-        if: needs.changes.outputs.ci == 'true' && steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
-        run: cargo install wasm-bindgen-cli@${{ steps.wasm-bindgen-version.outputs.version }} --locked
+          if [ -z "$version" ] || [ -z "$sha" ]; then
+            echo "::error::kon WASM_BINDGEN_VERSION/WASM_BINDGEN_SHA256_AMD64 niet uit frontend/Dockerfile lezen"
+            exit 1
+          fi
+          if [ "$version" != "$locked" ]; then
+            echo "::error::wasm-bindgen-cli is in frontend/Dockerfile gepind op $version, packages/Cargo.lock heeft $locked. Werk WASM_BINDGEN_VERSION en beide WASM_BINDGEN_SHA256_* bij naar $locked; de checksums staan naast de release op https://github.com/wasm-bindgen/wasm-bindgen/releases/tag/$locked"
+            exit 1
+          fi
+          dir="wasm-bindgen-${version}-x86_64-unknown-linux-musl"
+          curl -fsSLo "/tmp/${dir}.tar.gz" \
+            "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/${dir}.tar.gz"
+          echo "${sha}  /tmp/${dir}.tar.gz" | sha256sum -c -
+          tar -xzf "/tmp/${dir}.tar.gz" -C /tmp
+          install -D -m0755 "/tmp/${dir}/wasm-bindgen" "$HOME/.cargo/bin/wasm-bindgen"
+          wasm-bindgen --version
 
       - name: Setup Node.js
         if: needs.changes.outputs.ci == 'true'
