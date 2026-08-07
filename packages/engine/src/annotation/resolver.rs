@@ -1127,6 +1127,50 @@ mod tests {
     }
 
     #[test]
+    fn a_better_candidate_past_the_cut_off_is_not_lost_behind_a_found() {
+        // A weak-but-scoring candidate in the first article, then an article
+        // whose noise drains the scoring budget before the better candidate
+        // at its end is ever scored. Reporting the early candidate as `Found`
+        // would anchor the note on the worse place and hide that the search
+        // never got to the better one.
+        let sel = selector(
+            "aanspraak op een aanvullende zorgtoeslag",
+            "verzekerde heeft ",
+            " per jaar",
+        );
+        let weak = "de verzekerde heeft aanspraak op enige aanvullende toeslag per jaar";
+        let better = "de verzekerde heeft aanspraak op een aanvullende zorgtoeslaag per jaar";
+        let noise = "zorgtoeslag ".repeat(MAX_FUZZY_SCORED_WINDOWS);
+
+        // Premises: both articles match on their own, the second one better.
+        let weak_alone = resolve(&sel, &[article("1", weak)]);
+        let better_alone = resolve(&sel, &[article("2", better)]);
+        assert!(weak_alone.is_found(), "got {:?}", weak_alone.status);
+        assert!(better_alone.is_found(), "got {:?}", better_alone.status);
+        assert!(
+            better_alone.single().unwrap().confidence > weak_alone.single().unwrap().confidence,
+            "the second article must be the better candidate"
+        );
+
+        let arts = vec![
+            article("1", weak),
+            article("2", &format!("{noise}{better}")),
+        ];
+        let r = resolve(&sel, &arts);
+        assert!(r.is_skipped(), "got {:?}", r.status);
+        assert_eq!(r.skip_reason, Some(SkipReason::SearchBudget));
+        assert!(
+            r.single().is_none(),
+            "the early candidate must not pass as the unique match"
+        );
+        assert_eq!(
+            r.matches.first().map(|m| m.article_number.as_str()),
+            Some("1"),
+            "the candidate found before the cut-off stays visible"
+        );
+    }
+
+    #[test]
     fn a_cut_short_search_never_claims_a_definitive_outcome() {
         let cut = Some(SkipReason::SearchBudget);
         assert!(finalize_fuzzy(Vec::new(), cut).is_skipped());
