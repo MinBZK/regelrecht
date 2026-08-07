@@ -284,6 +284,7 @@ audit:
     # own; the whole-tree scan is strictly broader coverage.)
     npm audit
     npx license-checker --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
+    cd docs && npm audit
 
 # --- Admin ---
 
