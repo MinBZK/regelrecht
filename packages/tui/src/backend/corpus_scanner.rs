@@ -72,7 +72,6 @@ fn find_regulation_dir(project_root: &Path) -> Option<PathBuf> {
 }
 
 /// Get all YAML file paths from the corpus.
-#[allow(dead_code)]
 pub fn corpus_yaml_files(project_root: &Path) -> Vec<PathBuf> {
     let regulation_dir = match find_regulation_dir(project_root) {
         Some(d) => d,
