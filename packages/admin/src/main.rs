@@ -16,7 +16,6 @@ use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 
 mod config;
-mod corpus_handlers;
 mod error;
 mod handlers;
 mod metrics;
@@ -116,9 +115,6 @@ async fn main() {
             .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
     );
 
-    // Initialize corpus registry
-    let corpus_state = init_corpus();
-
     let http_client = match reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(10))
@@ -138,7 +134,6 @@ async fn main() {
         config: Arc::new(app_config),
         metrics_cache: Arc::new(metrics::new_cache()),
         http_client,
-        corpus: Arc::new(tokio::sync::RwLock::new(corpus_state)),
     };
 
     let session_layer = SessionManagerLayer::new(session_store)
@@ -148,7 +143,7 @@ async fn main() {
         .with_secure(true);
 
     // Reader routes — anyone with `harvester-reader` (or higher) can list
-    // jobs, sources, law entries, and platform info.
+    // jobs, law entries, and platform info.
     // Note: `/api/jobs` is split by HTTP method across this router and
     // `admin_routes` (GET here, DELETE there). This works because each
     // router's `route_layer` is baked into its `MethodRouter` before merge,
@@ -160,8 +155,6 @@ async fn main() {
         .route("/api/dashboard-stats", get(handlers::dashboard_stats))
         .route("/api/jobs/{job_id}", get(handlers::get_job))
         .route("/api/untranslatables", get(handlers::list_untranslatables))
-        .route("/api/sources", get(corpus_handlers::list_sources))
-        .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
         .route("/api/info", get(handlers::platform_info))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -178,8 +171,8 @@ async fn main() {
         ));
 
     // Admin routes — destructive/state-mutating ops require `harvester-admin`.
-    // Reset-exhausted and source sync change shared state across the queue.
-    // Job deletion is destructive even though it's a DELETE method.
+    // Reset-exhausted changes shared state across the queue. Job deletion is
+    // destructive even though it's a DELETE method.
     // Note: `DELETE /api/jobs` shares its path with `GET /api/jobs` in
     // `reader_routes`; see the comment there for why this is safe.
     let admin_routes = Router::new()
@@ -190,10 +183,6 @@ async fn main() {
         .route(
             "/api/law_entries/{law_id}/reset-exhausted",
             post(handlers::reset_exhausted),
-        )
-        .route(
-            "/api/sources/{source_id}/sync",
-            post(corpus_handlers::sync_source),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -276,51 +265,5 @@ async fn main() {
             }
             std::process::exit(1);
         }
-    }
-}
-
-/// Initialize the corpus registry and load local sources.
-///
-/// Registry file paths can be configured via environment variables:
-/// - `CORPUS_REGISTRY_PATH` (default: `corpus-registry.yaml`)
-/// - `CORPUS_REGISTRY_LOCAL_PATH` (default: `corpus-registry.local.yaml`)
-fn init_corpus() -> state::CorpusState {
-    let manifest_str =
-        env::var("CORPUS_REGISTRY_PATH").unwrap_or_else(|_| "corpus-registry.yaml".to_string());
-    let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")
-        .unwrap_or_else(|_| "corpus-registry.local.yaml".to_string());
-    let manifest_path = std::path::PathBuf::from(&manifest_str);
-    let local_path = std::path::PathBuf::from(&local_str);
-
-    let registry = if manifest_path.exists() {
-        match regelrecht_corpus::CorpusRegistry::load(&manifest_path, Some(&local_path)) {
-            Ok(r) => {
-                tracing::info!(sources = r.sources().len(), "Loaded corpus registry");
-                r
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to load corpus registry, using empty");
-                regelrecht_corpus::CorpusRegistry::empty()
-            }
-        }
-    } else {
-        tracing::info!("No corpus-registry.yaml found, corpus endpoints will return empty results");
-        regelrecht_corpus::CorpusRegistry::empty()
-    };
-
-    let source_map = match registry.load_local_sources() {
-        Ok(map) => {
-            tracing::info!(laws = map.len(), "Loaded corpus laws");
-            map
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to load corpus sources");
-            regelrecht_corpus::SourceMap::new()
-        }
-    };
-
-    state::CorpusState {
-        registry,
-        source_map,
     }
 }

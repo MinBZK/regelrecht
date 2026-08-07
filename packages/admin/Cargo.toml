@@ -20,7 +20,6 @@ axum.workspace = true
 regelrecht-auth = { path = "../auth" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono"] }
-regelrecht-corpus = { path = "../corpus", default-features = false }
 regelrecht-harvester = { path = "../harvester", default-features = false }
 regelrecht-pipeline = { path = "../pipeline" }
 chrono.workspace = true

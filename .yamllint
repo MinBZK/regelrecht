@@ -72,6 +72,5 @@ rules:
 ignore: |
   frontend/
   .venv/
-  .tox/
   node_modules/
   .github/workflows/

@@ -34,9 +34,6 @@ fn test_app(pool: sqlx::PgPool) -> Router {
         }),
         metrics_cache: Arc::new(metrics::new_cache()),
         http_client: regelrecht_auth::http_client(),
-        corpus: Arc::new(tokio::sync::RwLock::new(
-            regelrecht_admin::state::CorpusState::empty(),
-        )),
     };
     Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))

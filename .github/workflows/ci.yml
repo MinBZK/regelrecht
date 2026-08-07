@@ -311,6 +311,10 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         run: just precompress-test
 
+      - name: Check CI config lists
+        if: needs.changes.outputs.ci == 'true'
+        run: just ci-config-test
+
       # Leak-guard laag 2: voorzie het git-ignored aanvulbestand met de casus-/
       # sector-specifieke patronen uit een secret, zodat de skills-no-casus hook in
       # CI op volle sterkte draait zonder die patronen in de publieke repo te zetten.
@@ -420,7 +424,6 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
-          registry-url: https://npm.pkg.github.com
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -536,9 +539,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      # Parity met de andere npm-jobs: de workspace kan @nldd-pakketten van
-      # npm.pkg.github.com halen.
-      packages: read
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
@@ -610,7 +610,6 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
-          registry-url: https://npm.pkg.github.com
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -664,7 +663,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -695,7 +693,6 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
-          registry-url: https://npm.pkg.github.com
           cache: 'npm'
           cache-dependency-path: package-lock.json
 

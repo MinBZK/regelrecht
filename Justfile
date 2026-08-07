@@ -86,11 +86,17 @@ deploy-filters-test:
 precompress-test:
     node --test frontend/scripts/precompress.test.mjs
 
+# Houdt de imagelijst van de nachtelijke opruiming en de dependabot-blokken
+# gelijk aan wat deploy.yml bouwt en wat er aan Dockerfiles staat.
+[doc("Check the CI config lists against the repo they describe")]
+ci-config-test:
+    node --test script/ci-config.test.mjs
+
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test test
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test ci-config-test test
 
 # --- Tests ---
 

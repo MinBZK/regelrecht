@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use regelrecht_auth::{ConfiguredClient, OidcAppState, OidcConfig};
-use regelrecht_corpus::SourceMap;
 use sqlx::PgPool;
-use tokio::sync::RwLock;
 
 use crate::config::AppConfig;
 use crate::metrics::MetricsCache;
@@ -17,8 +15,6 @@ pub struct AppState {
     pub metrics_cache: Arc<MetricsCache>,
     /// Shared HTTP client for outgoing requests (connection pool reuse).
     pub http_client: reqwest::Client,
-    /// Loaded corpus sources with provenance metadata.
-    pub corpus: Arc<RwLock<CorpusState>>,
 }
 
 impl OidcAppState for AppState {
@@ -39,22 +35,5 @@ impl OidcAppState for AppState {
     }
     fn http_client(&self) -> &reqwest::Client {
         &self.http_client
-    }
-}
-
-/// State for the corpus subsystem.
-pub struct CorpusState {
-    pub registry: regelrecht_corpus::CorpusRegistry,
-    pub source_map: SourceMap,
-}
-
-impl CorpusState {
-    /// Create an empty corpus state (used by tests).
-    #[allow(dead_code)]
-    pub fn empty() -> Self {
-        Self {
-            registry: regelrecht_corpus::CorpusRegistry::empty(),
-            source_map: SourceMap::new(),
-        }
     }
 }

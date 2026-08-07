@@ -1,5 +1,4 @@
 pub mod config;
-pub mod corpus_handlers;
 pub mod error;
 pub mod handlers;
 pub mod metrics;

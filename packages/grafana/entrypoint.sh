@@ -30,7 +30,7 @@ fi
 
 # Always set a strong random admin password to avoid the insecure admin/admin
 # default. The login form is disabled when OIDC is active, so the admin account
-# can only be used internally (e.g. grafanactl for Git Sync).
+# is only reachable over the loopback API inside the container.
 if [ -z "${GF_SECURITY_ADMIN_PASSWORD:-}" ]; then
   export GF_SECURITY_ADMIN_PASSWORD
   GF_SECURITY_ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
@@ -48,60 +48,6 @@ fi
 /run.sh "$@" &
 GRAFANA_PID=$!
 trap 'kill -TERM $GRAFANA_PID' TERM INT
-
-# Configure Git Sync for dashboard version control if GITHUB_PAT is set.
-if [ -n "${GITHUB_PAT:-}" ]; then
-  echo "Waiting for Grafana to become ready..."
-  GRAFANA_READY=false
-  for i in $(seq 1 30); do
-    if wget -q -O /dev/null "http://localhost:${GF_SERVER_HTTP_PORT:-8000}/api/health" 2>/dev/null; then
-      GRAFANA_READY=true
-      break
-    fi
-    sleep 2
-  done
-
-  if [ "$GRAFANA_READY" = false ]; then
-    echo "ERROR: Grafana did not become ready in 60s — skipping Git Sync setup"
-  else
-  # Create repository CRD for Git Sync
-  REPO_DIR=$(mktemp -d)
-  cat > "${REPO_DIR}/repository.yaml" <<GITEOF
-apiVersion: provisioning.grafana.app/v0alpha1
-kind: Repository
-metadata:
-  name: regelrecht-dashboards
-spec:
-  sync:
-    enabled: true
-    intervalSeconds: 60
-    target: folder
-  workflows:
-    - write
-    - branch
-  title: Regelrecht Dashboards
-  type: github
-  github:
-    url: ${GITHUB_REPO_URL:-https://github.com/MinBZK/regelrecht}
-    branch: ${GITHUB_BRANCH:-main}
-    path: packages/grafana/dashboards/
-secure:
-  token:
-    create: "${GITHUB_PAT}"
-GITEOF
-
-  export GRAFANA_SERVER="http://localhost:${GF_SERVER_HTTP_PORT:-8000}"
-  export GRAFANA_USER=admin
-  export GRAFANA_PASSWORD="${GF_SECURITY_ADMIN_PASSWORD}"
-  export GRAFANA_ORG_ID=1
-
-  echo "Configuring Git Sync..."
-  grafanactl resources push --path "${REPO_DIR}" 2>&1 || echo "WARNING: Git Sync configuration failed"
-  rm -rf "${REPO_DIR}"
-  fi # GRAFANA_READY
-else
-  echo "WARNING: GITHUB_PAT not set — Git Sync for dashboards is disabled."
-fi
 
 # Wait for Grafana to exit
 wait $GRAFANA_PID

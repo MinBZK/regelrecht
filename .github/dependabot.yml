@@ -130,13 +130,6 @@ updates:
       - dependencies
       - docker
     ignore:
-      - dependency-name: node
-        versions:
-          - '23'
-          - '25'
-          - '27'
-          - '29'
-          - '31'
       # The Rust image version must match rust-toolchain.toml (source of
       # truth); bump it manually together with the toolchain.
       - dependency-name: rust
@@ -161,6 +154,58 @@ updates:
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+
+  # De drie Dockerfiles hieronder hebben digest-gepinde bases. Zonder een eigen
+  # blok bumpt niemand ze; bij docs en lawmaking gaat het om een publiek
+  # bereikbare nginx.
+  - package-ecosystem: docker
+    directory: /docs
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
+    labels:
+      - dependencies
+      - docker
+    ignore:
+      - dependency-name: node
+        versions:
+          - '23'
+          - '25'
+          - '27'
+          - '29'
+          - '31'
+
+  - package-ecosystem: docker
+    directory: /frontend-lawmaking
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
+    labels:
+      - dependencies
+      - docker
+    ignore:
+      - dependency-name: node
+        versions:
+          - '23'
+          - '25'
+          - '27'
+          - '29'
+          - '31'
+
+  - package-ecosystem: docker
+    directory: /packages/grafana
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 5
+    labels:
+      - dependencies
+      - docker
 
   - package-ecosystem: npm
     directory: /docs

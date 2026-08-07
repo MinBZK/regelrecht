@@ -22,7 +22,6 @@ pub enum ApiError {
     Forbidden(String),
     NotFound(String),
     Conflict(String),
-    NotImplemented(String),
     Internal(String),
 }
 
@@ -34,7 +33,6 @@ impl ApiError {
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
-            Self::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -46,7 +44,6 @@ impl ApiError {
             Self::Forbidden(_) => "FORBIDDEN",
             Self::NotFound(_) => "NOT_FOUND",
             Self::Conflict(_) => "CONFLICT",
-            Self::NotImplemented(_) => "NOT_IMPLEMENTED",
             Self::Internal(_) => "INTERNAL_SERVER_ERROR",
         }
     }
@@ -58,7 +55,6 @@ impl ApiError {
             | Self::Forbidden(msg)
             | Self::NotFound(msg)
             | Self::Conflict(msg)
-            | Self::NotImplemented(msg)
             | Self::Internal(msg) => msg,
         }
     }

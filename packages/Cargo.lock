@@ -4021,7 +4021,6 @@ dependencies = [
  "pretty_assertions",
  "prometheus-client",
  "regelrecht-auth",
- "regelrecht-corpus",
  "regelrecht-harvester",
  "regelrecht-pipeline",
  "regelrecht-shared",

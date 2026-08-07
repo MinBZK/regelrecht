@@ -181,7 +181,6 @@ mod tests {
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
             http_client: regelrecht_auth::http_client(),
-            corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }
 
@@ -528,7 +527,6 @@ mod tests {
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
             http_client: regelrecht_auth::http_client(),
-            corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }
 
