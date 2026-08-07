@@ -19,6 +19,13 @@ use crate::state::AppState;
 /// tracing::error!(error = %e, "<op>"); ApiError::Internal("internal server
 /// error".into()) })` blocks. Internal-only — the user always sees the
 /// generic "internal server error" message.
+fn db_err(op: &'static str) -> impl FnOnce(sqlx::Error) -> ApiError {
+    move |e: sqlx::Error| {
+        tracing::error!(error = %e, "{op}");
+        ApiError::Internal("internal server error".to_string())
+    }
+}
+
 /// SQL predicate restricting `jobs` to the types whose `law_id` names a law.
 /// Built from [`JobType::law_id_names_a_law`], so a new job type is classified
 /// at the enum instead of in a string literal here. Literal names, no binds:
@@ -30,13 +37,6 @@ fn law_scoped_job_types_sql() -> String {
         .map(|t| format!("'{}'", t.as_str()))
         .collect();
     format!("job_type::text IN ({})", names.join(", "))
-}
-
-fn db_err(op: &'static str) -> impl FnOnce(sqlx::Error) -> ApiError {
-    move |e: sqlx::Error| {
-        tracing::error!(error = %e, "{op}");
-        ApiError::Internal("internal server error".to_string())
-    }
 }
 
 // --- Platform info ---

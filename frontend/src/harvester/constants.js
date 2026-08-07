@@ -9,11 +9,16 @@ export const LAW_STATUSES = [
 export const JOB_STATUSES = ['pending', 'processing', 'completed', 'failed'];
 
 // Mirrors the `job_type` database enum (packages/pipeline/src/models.rs).
-// The dashboard no longer reads this list — it takes the buckets the API
-// returns — but the jobs-table filter does.
+// The dashboard no longer reads this list; it takes the buckets the API returns.
 export const JOB_TYPES = [
   'harvest', 'enrich', 'document_convert', 'law_convert', 'traject_harvest',
 ];
+
+// The subset whose `law_id` names a law, mirroring
+// `JobType::law_id_names_a_law`. Only these belong in a filter over the
+// law-grouped view: that endpoint leaves the other two out, so offering them
+// there is a dropdown option that always returns nothing.
+export const LAW_SCOPED_JOB_TYPES = ['harvest', 'enrich', 'traject_harvest'];
 
 export const ENRICHABLE_STATUSES = ['harvested', 'enriched', 'enrich_failed'];
 export const RE_HARVESTABLE_STATUSES = ['unknown', 'queued', 'harvest_failed', 'harvested', 'enriched', 'enrich_failed', 'not_harvestable'];
@@ -72,7 +77,7 @@ export const GROUPED_COLUMNS = [
     key: 'law_id',
     label: 'Law ID',
     sortable: true,
-    filter: { key: 'job_type', options: JOB_TYPES, label: 'Type' },
+    filter: { key: 'job_type', options: LAW_SCOPED_JOB_TYPES, label: 'Type' },
     text: (g) => g.law_id,
     supportingText: (g) =>
       g.latest_created_at ? `Updated at ${formatDate(g.latest_created_at)}` : undefined,
