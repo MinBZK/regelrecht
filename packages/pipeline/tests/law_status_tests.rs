@@ -1,5 +1,6 @@
 use pretty_assertions::assert_eq;
 
+use regelrecht_pipeline::harvest_request::IN_PROGRESS_STATUSES;
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::law_status;
 use regelrecht_pipeline::models::{JobType, LawStatusValue};
@@ -292,16 +293,10 @@ async fn test_transaction_rollback() {
 }
 
 #[tokio::test]
-async fn test_update_status_unless_any_protects_multiple_statuses() {
+async fn test_update_status_unless_any_protects_the_in_progress_set() {
     let db = TestDb::new().await;
 
-    // Mirrors the production protected set in api::harvest::create_harvest_job.
-    let protected = &[
-        LawStatusValue::Harvesting,
-        LawStatusValue::Harvested,
-        LawStatusValue::Enriching,
-        LawStatusValue::Enriched,
-    ];
+    let protected = IN_PROGRESS_STATUSES;
 
     for status in protected {
         law_status::upsert_law(&db.pool, "protected_law", None, None)
@@ -329,23 +324,30 @@ async fn test_update_status_unless_any_protects_multiple_statuses() {
         assert_eq!(entry.status, *status);
     }
 
-    // Non-protected statuses should still allow the update.
-    law_status::update_status(&db.pool, "protected_law", LawStatusValue::HarvestFailed)
+    // Statuses outside the set still allow the update — including the
+    // completed ones, which a re-harvest request does put back in the queue.
+    for status in [
+        LawStatusValue::HarvestFailed,
+        LawStatusValue::Harvested,
+        LawStatusValue::Enriched,
+    ] {
+        law_status::update_status(&db.pool, "protected_law", status)
+            .await
+            .unwrap();
+        let res = law_status::update_status_unless_any(
+            &db.pool,
+            "protected_law",
+            protected,
+            LawStatusValue::Queued,
+        )
         .await
         .unwrap();
-    let res = law_status::update_status_unless_any(
-        &db.pool,
-        "protected_law",
-        protected,
-        LawStatusValue::Queued,
-    )
-    .await
-    .unwrap();
-    assert!(res.is_some(), "HarvestFailed is not in the protected set");
-    let entry = law_status::get_law(&db.pool, "protected_law")
-        .await
-        .unwrap();
-    assert_eq!(entry.status, LawStatusValue::Queued);
+        assert!(res.is_some(), "{status:?} is not in the protected set");
+        let entry = law_status::get_law(&db.pool, "protected_law")
+            .await
+            .unwrap();
+        assert_eq!(entry.status, LawStatusValue::Queued);
+    }
 }
 
 #[tokio::test]
