@@ -272,6 +272,7 @@ decides green versus red; the tests run as a pre-commit hook.
 | harvester-admin | `regelrecht-admin` | `harvester-admin.regelrecht.rijks.app` |
 | harvester-worker | `regelrecht-harvester-worker` | (no web UI) |
 | enrichworker | `regelrecht-enrich-worker` | (no web UI) |
+| pipelineapi | `regelrecht-pipeline-api` | (no public domain, by design) |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |

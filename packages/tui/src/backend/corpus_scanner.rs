@@ -55,7 +55,11 @@ pub fn extract_metadata(content: &str) -> LawMetadata {
 }
 
 /// Find the corpus regulation directory by checking common locations.
-fn find_regulation_dir(project_root: &Path) -> Option<PathBuf> {
+///
+/// The engine backend loads from the same tree, so both go through this one
+/// list: a fifth candidate added to only one of them would show laws in the
+/// corpus browser that the engine never loaded.
+pub fn find_regulation_dir(project_root: &Path) -> Option<PathBuf> {
     let candidates = [
         project_root.join("corpus/regulation/nl"),
         project_root.join("corpus/regulation"),
@@ -72,7 +76,6 @@ fn find_regulation_dir(project_root: &Path) -> Option<PathBuf> {
 }
 
 /// Get all YAML file paths from the corpus.
-#[allow(dead_code)]
 pub fn corpus_yaml_files(project_root: &Path) -> Vec<PathBuf> {
     let regulation_dir = match find_regulation_dir(project_root) {
         Some(d) => d,
@@ -91,4 +94,47 @@ pub fn corpus_yaml_files(project_root: &Path) -> Vec<PathBuf> {
         })
         .map(|e| e.path().to_path_buf())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(path: &Path, body: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    }
+
+    #[test]
+    fn corpus_yaml_files_finds_both_yaml_spellings_under_the_first_candidate() {
+        let root = tempfile::tempdir().unwrap();
+        let nl = root.path().join("corpus/regulation/nl");
+        write(&nl.join("wet/foo/2025-01-01.yaml"), "$id: foo\n");
+        write(&nl.join("wet/bar/2025-01-01.yml"), "$id: bar\n");
+        write(&nl.join("wet/foo/README.md"), "not a law\n");
+
+        let found = corpus_yaml_files(root.path());
+
+        assert_eq!(found.len(), 2, "found: {found:?}");
+        assert!(found.iter().all(|p| p.starts_with(&nl)));
+    }
+
+    #[test]
+    fn find_regulation_dir_prefers_the_nl_subtree_over_its_parent() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("corpus/regulation/nl")).unwrap();
+
+        assert_eq!(
+            find_regulation_dir(root.path()),
+            Some(root.path().join("corpus/regulation/nl"))
+        );
+    }
+
+    #[test]
+    fn a_project_without_a_corpus_yields_no_files() {
+        let root = tempfile::tempdir().unwrap();
+
+        assert!(find_regulation_dir(root.path()).is_none());
+        assert!(corpus_yaml_files(root.path()).is_empty());
+    }
 }

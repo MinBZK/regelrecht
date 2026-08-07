@@ -126,23 +126,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check schema versions registered in schema.rs
-        run: |
-          # Every schema/vX.Y.Z/ directory must appear in the embedded schema table.
-          VALIDATE_RS="packages/engine/src/schema.rs"
-          MISSING=""
-          for dir in schema/v*/; do
-            version=$(basename "$dir")
-            if ! grep -q "\"$version\"" "$VALIDATE_RS"; then
-              MISSING="$MISSING  $version\n"
-            fi
-          done
-          if [ -n "$MISSING" ]; then
-            echo "ERROR: Schema versions not registered in schema.rs:"
-            printf "$MISSING"
-            exit 1
-          fi
-          echo "All schema versions registered in schema.rs"
+      # Schema versions are no longer grepped here: config::with_schema_versions!
+      # is the single list, and the tests in packages/engine/src/config.rs hold
+      # it against schema/ and against the Cargo.toml metadata.
 
       - name: Check corpus schema references
         run: |

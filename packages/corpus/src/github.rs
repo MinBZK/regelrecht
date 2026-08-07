@@ -294,14 +294,16 @@ fn group_best_versions(
             }
         }
 
-        let filename = parts[parts.len() - 1];
-        let new_date = filename.strip_suffix(".yaml");
+        let new_date = crate::source_map::extract_date_from_path(path);
 
         if let Some(existing) = best_per_law.get(law_id) {
-            let existing_filename = existing.path.rsplit('/').next().unwrap_or("");
-            let existing_date = existing_filename.strip_suffix(".yaml");
+            let existing_date = crate::source_map::extract_date_from_path(&existing.path);
 
-            let new_wins = crate::source_map::pick_best_version(existing_date, new_date, &today);
+            let new_wins = crate::source_map::pick_best_version(
+                existing_date.as_deref(),
+                new_date.as_deref(),
+                &today,
+            );
 
             if new_wins {
                 best_per_law.insert(law_id.to_string(), file.clone());
@@ -395,6 +397,52 @@ mod tests {
         assert!(
             !best.contains_key("zorgtoeslagwet"),
             "annotation file was mis-indexed as law 'zorgtoeslagwet'"
+        );
+    }
+
+    // Version selection compares filename stems as strings, so a stem that is
+    // not a date sorts against real dates as if it were one:
+    // "2025-01-01-concept" > "2025-01-01". Only the tree indexer saw such a
+    // stem — `SourceMap` rejects it — so the same repo answered differently
+    // depending on which path filled the cache.
+    #[test]
+    fn a_non_date_filename_never_beats_a_dated_version() {
+        let paths = vec![
+            TreeFile {
+                path: "wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
+                sha: Some("real".to_string()),
+            },
+            TreeFile {
+                path: "wet/wet_op_de_zorgtoeslag/2025-01-01-concept.yaml".to_string(),
+                sha: Some("concept".to_string()),
+            },
+        ];
+        let best = group_best_versions(&paths, "", None);
+        assert_eq!(
+            best["wet_op_de_zorgtoeslag"].path,
+            "wet/wet_op_de_zorgtoeslag/2025-01-01.yaml"
+        );
+    }
+
+    // Insertion order must not decide the outcome: the first file seen is
+    // inserted unconditionally, so a leading non-date stem has to be displaced
+    // by the dated file that follows it.
+    #[test]
+    fn a_dated_version_displaces_a_non_date_filename_seen_first() {
+        let paths = vec![
+            TreeFile {
+                path: "wet/wet_op_de_zorgtoeslag/draft.yaml".to_string(),
+                sha: Some("draft".to_string()),
+            },
+            TreeFile {
+                path: "wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
+                sha: Some("real".to_string()),
+            },
+        ];
+        let best = group_best_versions(&paths, "", None);
+        assert_eq!(
+            best["wet_op_de_zorgtoeslag"].path,
+            "wet/wet_op_de_zorgtoeslag/2025-01-01.yaml"
         );
     }
 }

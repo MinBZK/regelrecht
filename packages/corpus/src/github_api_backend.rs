@@ -53,7 +53,10 @@ use tokio::sync::Mutex;
 
 use regelrecht_github::{Committer, GithubClient, GithubError};
 
-use crate::backend::{FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend, WriteContext};
+use crate::backend::{
+    validate_relative_path, FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend,
+    WriteContext,
+};
 use crate::error::{CorpusError, Result};
 use crate::models::GitHubSource;
 use crate::timing;
@@ -172,14 +175,18 @@ impl GitHubApiBackend {
     /// Resolve a source-relative path to the in-repo path the GitHub API
     /// expects (with `sub_path` prefix). Forward slashes always — GitHub
     /// is OS-agnostic.
+    ///
+    /// The traversal guard runs on the *rewritten* path: the rewrite is what
+    /// turns a backslash into a separator, so validating the input first would
+    /// wave `..\..\etc` through.
     fn api_path(&self, relative: &Path) -> Result<String> {
-        validate_relative(relative)?;
         let rel = relative
             .to_str()
             .ok_or_else(|| {
                 CorpusError::Config(format!("path is not valid UTF-8: {}", relative.display()))
             })?
             .replace('\\', "/");
+        validate_relative_path(Path::new(&rel))?;
         Ok(match &self.sub_path {
             Some(sub) if !sub.is_empty() => format!("{}/{}", sub.trim_end_matches('/'), rel),
             _ => rel,
@@ -408,24 +415,6 @@ impl GitHubApiBackend {
     }
 }
 
-fn validate_relative(path: &Path) -> Result<()> {
-    if path.is_absolute() {
-        return Err(CorpusError::Config(format!(
-            "path must be relative: {}",
-            path.display()
-        )));
-    }
-    for component in path.components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err(CorpusError::Config(format!(
-                "path must not contain '..': {}",
-                path.display()
-            )));
-        }
-    }
-    Ok(())
-}
-
 #[async_trait]
 impl RepoBackend for GitHubApiBackend {
     #[tracing::instrument(name = "gh_read_file", skip_all, fields(path = %relative_path.display()))]
@@ -539,7 +528,7 @@ impl RepoBackend for GitHubApiBackend {
     // and the override only becomes visible at `persist`. Buffer now;
     // `persist` refuses with `ReadOnly` when neither token is present.
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
-        validate_relative(relative_path)?;
+        validate_relative_path(relative_path)?;
         let mut inner = self.inner.lock().await;
         let base_sha = inner.sha_cache.get(relative_path).cloned();
         let read_saw_absence = inner.absent_reads.contains(relative_path);
@@ -556,7 +545,7 @@ impl RepoBackend for GitHubApiBackend {
 
     // Same stance as `write_file`: token enforcement lives in `persist`.
     async fn delete_file(&self, relative_path: &Path) -> Result<()> {
-        validate_relative(relative_path)?;
+        validate_relative_path(relative_path)?;
         let mut inner = self.inner.lock().await;
         let base_sha = inner.sha_cache.get(relative_path).cloned();
         inner.pending.push((
@@ -1154,6 +1143,35 @@ mod tests {
             path: Some("regulation/nl".to_string()),
             git_ref: None,
         }
+    }
+
+    // `api_path` rewrites backslashes to forward slashes because GitHub only
+    // speaks forward slashes. On Linux a backslash is an ordinary filename
+    // character, so `Path::components()` sees `..\..\etc\passwd` as one
+    // component and the traversal guard has nothing to reject — the rewrite
+    // then produces the escape. Validation must therefore run on the rewritten
+    // path, not the input.
+    #[test]
+    fn backslash_traversal_is_rejected_after_separator_rewrite() {
+        let backend = GitHubApiBackend::new(&nl_source(), Some("main".to_string()), None).unwrap();
+        let err = backend
+            .api_path(std::path::Path::new(r"..\..\etc\passwd"))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains(".."),
+            "expected a traversal rejection, got: {err}"
+        );
+    }
+
+    #[test]
+    fn api_path_keeps_prefixing_ordinary_paths() {
+        let backend = GitHubApiBackend::new(&nl_source(), Some("main".to_string()), None).unwrap();
+        assert_eq!(
+            backend
+                .api_path(std::path::Path::new("wet/foo/2025-01-01.yaml"))
+                .unwrap(),
+            "regulation/nl/wet/foo/2025-01-01.yaml"
+        );
     }
 
     fn backend_at(server: &MockServer) -> GitHubApiBackend {

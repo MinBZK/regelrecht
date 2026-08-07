@@ -139,6 +139,46 @@ const SOURCE_TEXT_FILE: &str = "source.md";
 /// follows works on the same version).
 const SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json";
 
+/// The regulatory layers offered to the model, each with the English gloss
+/// that tells it which one to pick. Keyed on the enum rather than on a bare
+/// string so a rename cannot silently produce a value the deserializer
+/// rejects; `every_regulatory_layer_is_offered_to_the_model` covers
+/// completeness.
+const LAYER_DESCRIPTIONS: &[(RegulatoryLayer, &str)] = &[
+    (RegulatoryLayer::Grondwet, "constitutional law"),
+    (RegulatoryLayer::Wet, "a formal law (wet in formele zin)"),
+    (RegulatoryLayer::Amvb, "algemene maatregel van bestuur"),
+    (RegulatoryLayer::KoninklijkBesluit, "koninklijk besluit"),
+    (
+        RegulatoryLayer::MinisterieleRegeling,
+        "ministeriële regeling",
+    ),
+    (
+        RegulatoryLayer::Beleidsregel,
+        "beleidsregel (policy rule of an bestuursorgaan)",
+    ),
+    (
+        RegulatoryLayer::Uitvoeringsbeleid,
+        "uitvoeringsbeleid, werkinstructies or other internal implementation policy of a \
+         ministry or organisation — the default for internal documents",
+    ),
+    (RegulatoryLayer::EuVerordening, "EU regulation"),
+    (RegulatoryLayer::EuRichtlijn, "EU directive"),
+    (RegulatoryLayer::Verdrag, "international treaty"),
+    (
+        RegulatoryLayer::GemeentelijkeVerordening,
+        "municipal ordinance",
+    ),
+    (
+        RegulatoryLayer::ProvincialeVerordening,
+        "provincial ordinance",
+    ),
+    (
+        RegulatoryLayer::WaterschapsVerordening,
+        "water board ordinance",
+    ),
+];
+
 /// Sanitize the uploaded filename into something safe for the synthetic
 /// `upload://` source-URL (schema `url` is `format: uri`, so no spaces).
 fn sanitize_for_url(filename: &str) -> String {
@@ -177,32 +217,11 @@ fn build_structure_prompt(source_file: &str, source_is_text: bool, source_url: &
              access. If no tool fits, read and transcribe it directly."
         )
     };
-    let layers = [
-        ("GRONDWET", "constitutional law"),
-        ("WET", "a formal law (wet in formele zin)"),
-        ("AMVB", "algemene maatregel van bestuur"),
-        ("KONINKLIJK_BESLUIT", "koninklijk besluit"),
-        ("MINISTERIELE_REGELING", "ministeriële regeling"),
-        (
-            "BELEIDSREGEL",
-            "beleidsregel (policy rule of an bestuursorgaan)",
-        ),
-        (
-            "UITVOERINGSBELEID",
-            "uitvoeringsbeleid, werkinstructies or other internal implementation policy of a \
-             ministry or organisation — the default for internal documents",
-        ),
-        ("EU_VERORDENING", "EU regulation"),
-        ("EU_RICHTLIJN", "EU directive"),
-        ("VERDRAG", "international treaty"),
-        ("GEMEENTELIJKE_VERORDENING", "municipal ordinance"),
-        ("PROVINCIALE_VERORDENING", "provincial ordinance"),
-        ("WATERSCHAPS_VERORDENING", "water board ordinance"),
-    ]
-    .into_iter()
-    .map(|(k, v)| format!("   - `{k}`: {v}"))
-    .collect::<Vec<_>>()
-    .join("\n");
+    let layers = LAYER_DESCRIPTIONS
+        .iter()
+        .map(|(layer, description)| format!("   - `{}`: {description}", layer.as_str()))
+        .collect::<Vec<_>>()
+        .join("\n");
     let today = Utc::now().format("%Y-%m-%d");
     format!(
         "You are converting a source document into a regelrecht base-law YAML file — the same \
@@ -525,6 +544,24 @@ pub async fn finish_law_convert_job(
 mod tests {
     use super::*;
     use crate::enrich::LlmProvider;
+
+    /// A layer the prompt does not name is a layer the model cannot pick, so
+    /// it lands on the documented default (`UITVOERINGSBELEID`) and the
+    /// document is misclassified without anything failing. The compiler forces
+    /// an arm in `as_dir_name`; nothing forced this list.
+    #[test]
+    fn every_regulatory_layer_is_offered_to_the_model() {
+        let offered: Vec<RegulatoryLayer> = LAYER_DESCRIPTIONS.iter().map(|(l, _)| *l).collect();
+
+        for layer in RegulatoryLayer::ALL_VARIANTS {
+            assert!(
+                offered.contains(layer),
+                "{} is missing from the conversion prompt",
+                layer.as_str()
+            );
+        }
+        assert_eq!(offered.len(), RegulatoryLayer::ALL_VARIANTS.len());
+    }
 
     fn test_config() -> EnrichConfig {
         EnrichConfig::for_test(LlmProvider::Claude {
