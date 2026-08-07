@@ -226,14 +226,16 @@ job up by run id rather than by head SHA, because `ready_for_review` and
 from the previous run.
 
 Drive the wait off the job's `status`, never off the number of review comments —
-zero comments is equally consistent with "still running".
+zero comments is equally consistent with "still running" and with "the review had
+nothing to report".
 
 `claude-review` itself cannot be a required check, because it does not run on
 cross-repo (fork) PRs, where no secrets exist and `CLAUDE_CODE_OAUTH_TOKEN` is
 absent, and a required check that never reports blocks such a PR forever.
 `review-gate` always runs and always reports; it derives "not applicable" from
-the PR itself (cross-repo, draft, dependabot) rather than from `claude-review`'s
-conclusion, so a failed or skipped review can never pass as an inapplicable one.
+the PR as the API describes it (cross-repo, draft, dependabot) rather than from
+`claude-review`'s conclusion, so a failed or skipped review can never pass as an
+inapplicable one.
 
 Dependabot is a deliberate exemption, not an oversight: those PRs go through
 `claude-dependabot.yml`, and that workflow decides for itself whether to merge.
@@ -242,11 +244,55 @@ The gate does not verify that it ran.
 A green job is not enough on its own. `claude-code-action` exits with conclusion
 `success` **without reviewing anything** when the workflow file differs from the
 version on the default branch ("Exiting due to workflow validation skip"). The
-gate used to close that hole by requiring a comment from `claude[bot]` after the
-job started, but a review that finishes with nothing to report posts nothing, so
-every clean PR went red on a cause that had not been established (issue #1178).
-That requirement is gone; until the run-bound replacement lands, a self-skipped
-review passes the gate.
+gate therefore checks two things before it believes a green job.
+
+First it compares `.github/workflows/claude-code-review.yml` as this run has it
+with the copy on the default branch, through the contents API. Differ, and there
+is no automatic review to wait for: the gate blocks straight away, before the
+wait. That is also what makes the rest trustworthy — identical files mean the
+workflow that ran is the one from the default branch, not something the PR
+brought along. A PR that edits this file needs a human review plus an admin
+merge.
+
+It compares `refs/pull/N/merge`, not the head commit. A `pull_request` run
+executes the workflow file as it stands in the test merge of PR and base, so a
+branch that has fallen behind still runs the base's copy. Comparing against the
+head commit would put exactly those branches on red while their review ran fine.
+
+Then it reads the proof out of the review job: the step **Record that the review
+ran** carries `if: steps.claude-review.outputs.execution_file != ''`, and that
+output is only set once the Claude CLI has actually run. Self-skip, and the step
+is `skipped`. The gate reads that step's conclusion from the `steps[]` array of
+the job it already looked up, so the proof is bound to this run and this attempt
+by construction, and it exists just as well when the review had zero findings. It
+insists on exactly one step by that name; two would let an added decoy outvote
+the real one.
+
+Do not rename that step without changing `PROOF_STEP` in the gate. The test suite
+asserts that the workflow still carries the step under that name with that `if:`,
+and the pre-commit hook runs on the workflow file for exactly that reason.
+
+What the gate treats as fact it fetches itself. The workflow that invokes it
+lives in the pull request, so anything that workflow passes in is written by the
+author of the change under review — `IS_DRAFT: true` in the env block used to be
+enough to declare the review inapplicable. Draft, fork, author and the workflow
+file all come from the API now; the env block carries only the coordinates of the
+run (repository, run id, PR number), and the gate checks that the run and the PR
+describe the same commit, so pointing it at another PR's run yields a red.
+
+What none of this reaches: the `review-gate` job itself lives in the workflow
+file the PR brings along. A PR that keeps the job name **Claude review completed**
+and replaces its steps with `run: true` reports green without ever running the
+script, and nothing inside the script can prevent that. Closing it takes a rule
+outside the pull request — a ruleset or CODEOWNERS entry over
+`.github/workflows/**`, or a `workflow_run`-triggered gate that judges the review
+run from the outside. Until then the gate protects against mistakes, not against
+someone determined to route around it.
+
+Every red outcome states what was established and names no cause it has not
+tested. An earlier version told every clean PR that the review action had skipped
+itself over a workflow change, on PRs that changed no workflow at all (issue
+#1178).
 
 The gate runs the copy of its own script from the base branch, not the one in
 the PR — otherwise a PR could turn the script into `exit 0` and be green by
@@ -257,8 +303,8 @@ It looks the review job up with `filter=all`, because the run id survives a
 "Re-run this job" and `claude-review` is then absent from the newest attempt's
 job list.
 
-The gate proves the review ran to completion for this commit and produced
-output. It says nothing about the content of the findings or whether they were
+The gate proves the review ran to completion for this commit. It says nothing
+about how many findings there were, whether they hold up, or whether they were
 addressed.
 
 The logic lives in `script/await-claude-review.sh`, with
