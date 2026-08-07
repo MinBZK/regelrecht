@@ -4156,6 +4156,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "regelrecht-law-model",
+ "regex",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",

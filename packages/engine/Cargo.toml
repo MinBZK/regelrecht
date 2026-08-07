@@ -107,6 +107,10 @@ rust_decimal_macros.workspace = true
 # re-declared here to be in scope for the integration-test crate.
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
+# tests/grammar_coverage.rs include!s the codegen's grammar model and matches
+# its regexes against the feature files.
+serde.workspace = true
+regex.workspace = true
 
 [[bench]]
 name = "uri_parsing"

@@ -10,4 +10,5 @@ Feature: Engine error handling
 
   Scenario: A non-existent output fails with the output name
     When I evaluate "nonexistent_output" of "test_untranslatables"
+    Then the execution fails
     Then the execution fails with "nonexistent_output"
