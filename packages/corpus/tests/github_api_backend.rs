@@ -821,4 +821,15 @@ async fn a_write_after_creating_the_branch_does_not_overwrite_base_content() {
         matches!(err, regelrecht_corpus::error::CorpusError::Conflict(_)),
         "a caller can redo a conflict; it cannot undo a silent overwrite: {err}"
     );
+    // The message reaches an editor and the logs, so it has to read as a
+    // sentence — a line-wrapped literal leaves a run of spaces in the middle.
+    let message = err.to_string();
+    assert!(
+        !message.contains("  "),
+        "the message must not carry a run of spaces: {message}"
+    );
+    assert!(
+        message.contains("did not exist yet"),
+        "the message must say why the write was refused: {message}"
+    );
 }
