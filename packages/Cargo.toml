@@ -39,7 +39,11 @@ chrono = { version = "0.4", features = ["serde"] }
 # in reqwest, rustls and aws-lc-rs - roughly a hundred crates of HTTP stack
 # that is compiled but never called.
 jsonschema = { version = "0.49", default-features = false }
-openidconnect = "4.0"
+# default-features = false drops `rustls-tls`, which would hand
+# oauth2/reqwest 0.12 the ring provider and put a second crypto backend in
+# every image. TLS comes from our own reqwest declaration instead, which picks
+# aws-lc-rs, the provider sqlx and reqwest 0.13 already use.
+openidconnect = { version = "4.0", default-features = false, features = ["reqwest"] }
 regex = "1.11"
 # Note: reqwest is intentionally NOT workspace-hoisted, and must stay that way.
 # admin/auth/editor-api require reqwest 0.12 to satisfy openidconnect/oauth2's

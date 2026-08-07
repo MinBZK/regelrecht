@@ -46,6 +46,7 @@ async fn main() {
     // `true`), while the shared subscriber leaves them off by default for
     // the hot-path workers. `LOG_SPAN_EVENTS` still overrides at runtime.
     regelrecht_shared::telemetry::init_subscriber_with_spans("info", true);
+    regelrecht_auth::install_crypto_provider();
 
     let app_config = config::AppConfig::from_env();
 

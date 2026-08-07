@@ -1212,7 +1212,7 @@ mod tests {
             .await;
 
         let oauth = test_oauth(&server.uri(), &server.uri());
-        let client = reqwest::Client::new();
+        let client = regelrecht_auth::http_client();
         let token = exchange_code(
             &client,
             &oauth,
@@ -1239,7 +1239,7 @@ mod tests {
             .await;
 
         let oauth = test_oauth(&server.uri(), &server.uri());
-        let client = reqwest::Client::new();
+        let client = regelrecht_auth::http_client();
         let err = match exchange_code(&client, &oauth, "bad", "https://app/cb").await {
             Ok(_) => panic!("provider error must propagate"),
             Err(e) => e,
@@ -1260,7 +1260,7 @@ mod tests {
             .await;
 
         let oauth = test_oauth(&server.uri(), &server.uri());
-        let client = reqwest::Client::new();
+        let client = regelrecht_auth::http_client();
         let login = fetch_login(&client, &oauth, "gho_token")
             .await
             .expect("user fetch should succeed");

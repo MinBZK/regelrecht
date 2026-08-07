@@ -11,7 +11,10 @@ repository = "https://github.com/MinBZK/regelrecht"
 axum.workspace = true
 openidconnect.workspace = true
 tower-sessions.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots-no-provider", "json"] }
+# Direct dependency purely to install the process-wide crypto provider; see
+# install_crypto_provider(). Same version reqwest and sqlx already resolve to.
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
 base64.workspace = true
 subtle.workspace = true
 serde.workspace = true
