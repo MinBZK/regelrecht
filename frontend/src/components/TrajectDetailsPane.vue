@@ -3,6 +3,7 @@
 // Renders the detail list + owner-delete / contributor-leave, each behind a
 // confirmation modal. Loads on mount and whenever the traject changes.
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import {
   useTrajectDetail,
   writableSource,
@@ -10,6 +11,8 @@ import {
 } from '../composables/useTrajectDetail.js';
 import { deleteTraject, leaveTraject } from '../composables/useTrajects.js';
 import { paneChromeVisible } from '../constants.js';
+
+const router = useRouter();
 
 const props = defineProps({
   /** Traject to show (UUID id). */
@@ -41,6 +44,16 @@ const subpath = computed(() => {
 
 function orDash(v) {
   return v && String(v).trim() ? v : '—';
+}
+
+// De integriteitspagina hangt aan de URL-vorm van het traject (`{slug}-{8hex}`),
+// niet aan de UUID die deze pane verder gebruikt; `detail.ref` draagt die.
+function openIntegrity() {
+  if (!detail.value?.ref) return;
+  router.push({
+    name: 'traject-integriteit',
+    params: { trajectRef: detail.value.ref },
+  });
 }
 
 // --- Verwijderen (owner-only) ---
@@ -178,6 +191,25 @@ async function confirmLeave() {
         <nldd-text-cell :text="subpath"></nldd-text-cell>
       </nldd-list-item>
     </nldd-list>
+
+    <!-- Doorstap naar de integriteitspagina. Geen status of aantal hier: dat
+         zou de repo bij elke keer Instellingen openen opnieuw laten doorlezen,
+         terwijl je hier meestal iets heel anders komt doen. -->
+    <template v-if="detail.ref">
+      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-list variant="box" arrow-navigation>
+        <nldd-list-item size="md" button @click="openIntegrity">
+          <nldd-icon-cell size="20"><nldd-icon name="verified"></nldd-icon></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell
+            text="Integriteit"
+            supporting-text="Controleer de configuratie van het traject-corpus op mapnamen, dubbele wet-id's en verwijzingen die nergens uitkomen."
+          ></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+        </nldd-list-item>
+      </nldd-list>
+    </template>
 
     <!-- De onomkeerbare actie in een eigen vlak, met een kopje erboven: zo zie je
          bij het scrollen dat er nog iets komt, in plaats van dat je een rode knop

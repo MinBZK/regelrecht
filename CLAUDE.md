@@ -213,6 +213,104 @@ After completing significant code changes, proactively use the `code-reviewer` s
 All components are deployed to ZAD (RIG/Quattro/rijksapps) via `.github/workflows/deploy.yml`.
 CI runs via `.github/workflows/ci.yml`.
 
+### The Claude review merge gate
+
+`claude-code-review.yml` posts its findings as review comments and takes about
+ten minutes, roughly twice as long as the required checks. Merging on green
+therefore used to be possible before the review had said anything. The
+`review-gate` job (check name **Claude review completed**) closes that window:
+it waits for the `claude-review` job **inside its own workflow run** and only
+passes once that job is `completed` with `success` or `neutral`. It looks the
+job up by run id rather than by head SHA, because `ready_for_review` and
+`reopened` keep the same SHA and a SHA lookup can then read a leftover check-run
+from the previous run.
+
+Drive the wait off the job's `status`, never off the number of review comments —
+zero comments is equally consistent with "still running" and with "the review had
+nothing to report".
+
+`claude-review` itself cannot be a required check, because it does not run on
+cross-repo (fork) PRs, where no secrets exist and `CLAUDE_CODE_OAUTH_TOKEN` is
+absent, and a required check that never reports blocks such a PR forever.
+`review-gate` always runs and always reports; it derives "not applicable" from
+the PR as the API describes it (cross-repo, draft, dependabot) rather than from
+`claude-review`'s conclusion, so a failed or skipped review can never pass as an
+inapplicable one.
+
+Dependabot is a deliberate exemption, not an oversight: those PRs go through
+`claude-dependabot.yml`, and that workflow decides for itself whether to merge.
+The gate does not verify that it ran.
+
+A green job is not enough on its own. `claude-code-action` exits with conclusion
+`success` **without reviewing anything** when the workflow file differs from the
+version on the default branch ("Exiting due to workflow validation skip"). The
+gate therefore checks two things before it believes a green job.
+
+First it compares `.github/workflows/claude-code-review.yml` as this run has it
+with the copy on the default branch, through the contents API. Differ, and there
+is no automatic review to wait for: the gate blocks straight away, before the
+wait. That is also what makes the rest trustworthy — identical files mean the
+workflow that ran is the one from the default branch, not something the PR
+brought along. A PR that edits this file needs a human review plus an admin
+merge.
+
+It compares `refs/pull/N/merge`, not the head commit. A `pull_request` run
+executes the workflow file as it stands in the test merge of PR and base, so a
+branch that has fallen behind still runs the base's copy. Comparing against the
+head commit would put exactly those branches on red while their review ran fine.
+
+Then it reads the proof out of the review job: the step **Record that the review
+ran** carries `if: steps.claude-review.outputs.execution_file != ''`, and that
+output is only set once the Claude CLI has actually run. Self-skip, and the step
+is `skipped`. The gate reads that step's conclusion from the `steps[]` array of
+the job it already looked up, so the proof is bound to this run and this attempt
+by construction, and it exists just as well when the review had zero findings. It
+insists on exactly one step by that name; two would let an added decoy outvote
+the real one.
+
+Do not rename that step without changing `PROOF_STEP` in the gate. The test suite
+asserts that the workflow still carries the step under that name with that `if:`,
+and the pre-commit hook runs on the workflow file for exactly that reason.
+
+What the gate treats as fact it fetches itself. The workflow that invokes it
+lives in the pull request, so anything that workflow passes in is written by the
+author of the change under review — `IS_DRAFT: true` in the env block used to be
+enough to declare the review inapplicable. Draft, fork, author and the workflow
+file all come from the API now; the env block carries only the coordinates of the
+run (repository, run id, PR number), and the gate checks that the run and the PR
+describe the same commit, so pointing it at another PR's run yields a red.
+
+What none of this reaches: the `review-gate` job itself lives in the workflow
+file the PR brings along. A PR that keeps the job name **Claude review completed**
+and replaces its steps with `run: true` reports green without ever running the
+script, and nothing inside the script can prevent that. Closing it takes a rule
+outside the pull request — a ruleset or CODEOWNERS entry over
+`.github/workflows/**`, or a `workflow_run`-triggered gate that judges the review
+run from the outside. Until then the gate protects against mistakes, not against
+someone determined to route around it.
+
+Every red outcome states what was established and names no cause it has not
+tested. An earlier version told every clean PR that the review action had skipped
+itself over a workflow change, on PRs that changed no workflow at all (issue
+#1178).
+
+The gate runs the copy of its own script from the base branch, not the one in
+the PR — otherwise a PR could turn the script into `exit 0` and be green by
+construction. If that copy cannot be fetched or checked out, the gate blocks
+rather than falling back to the PR's version.
+
+It looks the review job up with `filter=all`, because the run id survives a
+"Re-run this job" and `claude-review` is then absent from the newest attempt's
+job list.
+
+The gate proves the review ran to completion for this commit. It says nothing
+about how many findings there were, whether they hold up, or whether they were
+addressed.
+
+The logic lives in `script/await-claude-review.sh`, with
+`script/await-claude-review.test.sh` (a `gh` stub) covering every path that
+decides green versus red; the tests run as a pre-commit hook.
+
 ### Deployed Components
 
 | Component | Image | Production URL |
@@ -227,9 +325,31 @@ CI runs via `.github/workflows/ci.yml`.
 
 ### How It Works
 
-1. **PR opened/updated**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
-2. **PR closed**: Deletes ZAD deployment and GHCR images
+1. **PR carrying the `preview` label, opened or pushed to**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
+2. **`preview` label removed, or PR closed**: Deletes ZAD deployment and GHCR images
 3. **Push to main**: Deploys `regelrecht` (production) to ZAD
+
+### Previews are opt-in
+
+A pull request builds and deploys nothing unless someone puts the **`preview`**
+label on it. Seven images plus a preview environment per PR was about half of
+the repository's runner consumption, and it held up no merge: none of those
+checks is required and nothing tests against the preview (`E2E (mocked)` runs
+against mocks). The budget goes to the merge train; a preview is a choice
+someone makes.
+
+Put the label on and the build starts from that moment, however old the PR is.
+Every following commit rebuilds as long as the label is there. Take the label
+off and `cleanup-preview` runs, exactly as it does when the PR closes — no
+preview keeps running that nobody is looking at.
+
+The gate is the *presence* of the label on the PR, checked on every event, not
+the kind of event. The `deploy:<component>` labels are a separate, additive
+thing: they force a component to build that the change-detection did not flag,
+and they do nothing on a PR without `preview`.
+
+Fork PRs stay out of the chain regardless of labels; they have no secrets and a
+read-only `GITHUB_TOKEN`, so the push to GHCR could never succeed.
 
 ### Debugging deploy-preview failures
 
@@ -239,6 +359,14 @@ ZAD deploy timeouts ("Task did not complete within 300s") almost always indicate
 2. Look for ERROR lines — common causes: migration conflicts, missing env vars, startup panics
 3. If the DB is in a bad state (e.g. migration checksum mismatch after renumbering), delete the preview deployment (`zad deployment delete <deployment>`) and re-trigger CI to get a fresh DB
 4. Do **not** blindly retry — diagnose the root cause first
+
+One failure is benign: `Could not extract URL from result` met `"status":
+"superseded"` in de JSON eronder. ZAD laat een taak wijken voor een nieuwere
+taak die dezelfde deployment dekt (een nieuwe push, of het opruimen van een
+gesloten PR). Het werk is dan door die nieuwere taak gedaan; alleen deze job
+opnieuw draaien volstaat. Om die reden deployen `deploy-preview` en
+`deploy-production` alle componenten in één taak: twee taken voor hetzelfde
+deployment naast elkaar zetten elkaar opzij.
 
 ### Required Secrets
 

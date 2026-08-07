@@ -85,6 +85,68 @@ const KNOWN_GAPS: &[&str] = &[
     "untranslatables_on_v0_6_0.yaml", // v0.6.0 dropped the old channel for `markings`; the model still parses it (it must read v0.5.x) and the engine honours the flag — flag-keeping, the safe side of wrong (see `Marking` rustdoc)
 ];
 
+/// Corpus laws whose re-serialized model is not value-stable, with the measured
+/// cause. Same discipline as `KNOWN_GAPS`: an unlisted drift fails the suite and
+/// a listed law that no longer drifts fails it too, so the check reports a set
+/// instead of a count. Measured 2026-08-07.
+const KNOWN_VALUE_DRIFT: &[&str] = &[
+    // `articles[].references` (31 entries here) survives the schema and is
+    // dropped by the model: `law-model` has no field for it, so serde discards
+    // it on load and cannot write it back.
+    "corpus/regulation/nl/ministeriele_regeling/subsidieregeling_bekostiging_plafond_energietarieven_kleinverbruikers_2023/2022-12-15.yaml",
+    // `machine_readable.execution.input[].source.description` — same shape:
+    // `Source` in `law-model` carries only regulation/output/parameters.
+    "corpus/regulation/nl/wet/kieswet/2025-01-01.yaml",
+];
+
+/// First path at which two JSON values differ, as a `/`-separated pointer, with
+/// both sides. Without it a drift report names a file and leaves the reader to
+/// diff a 3000-line document by hand.
+fn first_difference(a: &Value, b: &Value, path: &str) -> Option<String> {
+    match (a, b) {
+        (Value::Object(x), Value::Object(y)) => {
+            let mut keys: Vec<&String> = x.keys().chain(y.keys()).collect();
+            keys.sort();
+            keys.dedup();
+            for k in keys {
+                let sub = format!("{path}/{k}");
+                match (x.get(k), y.get(k)) {
+                    (Some(xv), Some(yv)) => {
+                        if let Some(d) = first_difference(xv, yv, &sub) {
+                            return Some(d);
+                        }
+                    }
+                    (Some(xv), None) => {
+                        return Some(format!("{sub}: source has {xv}, model omits"))
+                    }
+                    (None, Some(yv)) => {
+                        return Some(format!("{sub}: source omits, model has {yv}"))
+                    }
+                    (None, None) => {}
+                }
+            }
+            None
+        }
+        (Value::Array(x), Value::Array(y)) => {
+            if x.len() != y.len() {
+                return Some(format!(
+                    "{path}: source has {} items, model {}",
+                    x.len(),
+                    y.len()
+                ));
+            }
+            for (i, (xv, yv)) in x.iter().zip(y).enumerate() {
+                if let Some(d) = first_difference(xv, yv, &format!("{path}/{i}")) {
+                    return Some(d);
+                }
+            }
+            None
+        }
+        (x, y) if x == y => None,
+        (x, y) => Some(format!("{path}: source {x}, model {y}")),
+    }
+}
+
 /// Repo root, derived from this crate's manifest dir (`packages/engine`).
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -163,7 +225,7 @@ fn tier_a_corpus_differential() {
     let mut checked = 0usize;
     let mut hard_failures: Vec<String> = Vec::new();
     let mut not_revalid: Vec<String> = Vec::new();
-    let mut value_drift: Vec<String> = Vec::new();
+    let mut value_drift: Vec<(String, String)> = Vec::new();
 
     for entry in WalkDir::new(&corpus).into_iter().filter_map(Result::ok) {
         let path = entry.path();
@@ -206,7 +268,8 @@ fn tier_a_corpus_differential() {
         // the model emits `None` as explicit `null` (no skip_serializing_if), and
         // `null` ≡ absent for an optional field — normalizing isolates real
         // structural problems from that serialization quirk.
-        let reserialized = normalize(&serde_json::to_value(&law).expect("serialize model"));
+        let mut reserialized_value = serde_json::to_value(&law).expect("serialize model");
+        let reserialized = normalize(&reserialized_value);
         if !validation_errors_for(version, &reserialized)
             .expect("compile schema")
             .is_empty()
@@ -214,11 +277,21 @@ fn tier_a_corpus_differential() {
             not_revalid.push(rel.clone());
         }
         // (4) value-stability (reported): compare modulo $schema meta + key order.
+        // `$schema` has to come off *both* sides. The model carries the field
+        // (`ArticleBasedLaw`, `#[serde(rename = "$schema")]`) and writes it back,
+        // so dropping it only from the source made the comparison unsatisfiable
+        // for every law that declares one — which is every law this loop looks at.
         if let Value::Object(map) = &mut value {
             map.remove("$schema");
         }
-        if normalize(&value) != reserialized {
-            value_drift.push(rel);
+        if let Value::Object(map) = &mut reserialized_value {
+            map.remove("$schema");
+        }
+        let (src, model) = (normalize(&value), normalize(&reserialized_value));
+        if src != model {
+            let where_ = first_difference(&src, &model, "")
+                .unwrap_or_else(|| "(unequal but no differing leaf found)".to_string());
+            value_drift.push((rel, where_));
         }
     }
 
@@ -230,8 +303,8 @@ fn tier_a_corpus_differential() {
     for r in &not_revalid {
         eprintln!("  not-revalidating: {r}");
     }
-    for r in &value_drift {
-        eprintln!("  value-drift: {r}");
+    for (r, where_) in &value_drift {
+        eprintln!("  value-drift: {r}\n      at {where_}");
     }
 
     assert!(checked > 0, "no corpus laws checked — corpus path wrong?");
@@ -239,6 +312,24 @@ fn tier_a_corpus_differential() {
         hard_failures.is_empty(),
         "Tier A hard failures (schema⋂model disagreement on real laws):\n{}",
         hard_failures.join("\n")
+    );
+
+    // Value-stability is a set, not a count: anything outside `KNOWN_VALUE_DRIFT`
+    // is a newly lossy round-trip, and a listed law that stopped drifting means
+    // the list is stale. Reporting only (as it did before) cannot tell a real
+    // regression apart from the standing entries.
+    let observed: Vec<&str> = value_drift.iter().map(|(r, _)| r.as_str()).collect();
+    let unexpected: Vec<&&str> = observed
+        .iter()
+        .filter(|r| !KNOWN_VALUE_DRIFT.contains(r))
+        .collect();
+    let stale: Vec<&&str> = KNOWN_VALUE_DRIFT
+        .iter()
+        .filter(|k| !observed.contains(k))
+        .collect();
+    assert!(
+        unexpected.is_empty() && stale.is_empty(),
+        "Tier A value-drift set changed.\n  newly drifting (add only with a measured cause): {unexpected:?}\n  no longer drifting (remove from KNOWN_VALUE_DRIFT): {stale:?}"
     );
 }
 

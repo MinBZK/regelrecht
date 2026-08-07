@@ -155,6 +155,29 @@ describe('AddLawSheet', () => {
     expect(row.get('nldd-text-cell').attributes('text')).toBe('Voorbeeldwet extern');
   });
 
+  // De zoekopdracht gaat naar `/api/trajects/{ref}/corpus/laws`, dus een
+  // mislukte zoekopdracht gaat over de bibliotheek van dít traject - niet over
+  // het centrale corpus. De melding moet daar ook naar wijzen, ook wanneer de
+  // trajectenlijst (en dus de naam) nog niet binnen is: de scope hangt aan de
+  // ref uit de route, niet aan het opgehaalde traject-object.
+  it('wijst bij een mislukte zoekopdracht naar het traject, niet naar het centrale corpus', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url) => {
+        const u = String(url);
+        if (u.startsWith(`/api/trajects/${TRAJECT_REF}/corpus/laws`)) throw new Error('boom');
+        return { ok: true, json: async () => [] };
+      }),
+    );
+    const wrapper = mount(AddLawSheet);
+    await searchFor(wrapper, 'wet');
+
+    const dialog = wrapper.get('nldd-inline-dialog[text="Zoeken is mislukt"]');
+    const supporting = dialog.attributes('supporting-text');
+    expect(supporting).toContain('bibliotheek van dit traject');
+    expect(supporting).not.toContain('centrale corpus');
+  });
+
   it('start een traject-scoped harvest voor een BWB-resultaat en emit "harvest-requested"', async () => {
     const wrapper = mount(AddLawSheet);
     await wrapper.vm.requestTrajectHarvest('BWBR0002399', 'Voorbeeldwet extern');

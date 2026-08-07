@@ -228,8 +228,11 @@ fn truncate(s: &str, max: usize) -> String {
 /// chars (alphanumeric, `-._~`) pass through, everything else becomes `%XX`.
 ///
 /// Inline rather than a crate dep: the call is tiny, the rule is fixed by the
-/// RFC, and this crate carries no `percent_encoding`/`url` dependency.
-fn percent_encode_path_segment(s: &str) -> String {
+/// RFC, and this crate carries no `percent_encoding`/`url` dependency. Also
+/// safe for a query-string *value* — encoding more than strictly required
+/// there is always allowed — which is what `activity` uses it for (this crate
+/// builds reqwest without the feature behind `RequestBuilder::query`).
+pub(crate) fn percent_encode_path_segment(s: &str) -> String {
     use std::fmt::Write;
     let mut out = String::with_capacity(s.len());
     for &b in s.as_bytes() {

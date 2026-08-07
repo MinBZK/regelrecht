@@ -21,8 +21,10 @@
 //!    wordt de kapotte (token-loos gescande) snapshot synchroon herbouwd
 //!    en is de bibliotheek weer gezond.
 //! 4. **Gekoppeld maar geen toegang.** Faalt de scan ook mét user-token,
-//!    dan is de fout een expliciete 502 (met de scan-fout), geen 428 en
-//!    geen stille fallback. `index_error` blijft zichtbaar op `/sources`.
+//!    dan faalt de bibliotheek luid en geclassificeerd — hier: GitHub kent
+//!    de repo niet op dat adres, dus 404 met een melding die het adres
+//!    noemt. Geen 428 (opnieuw koppelen lost dit niet op) en geen stille
+//!    fallback; `index_error` blijft zichtbaar op `/sources`.
 //!
 //! GitHub wordt gespeeld door wiremock via de proces-brede
 //! `GITHUB_API_BASE`-seam — daarom staan alle scenario's in ÉÉN test.
@@ -72,11 +74,12 @@ fn state_with_user_token_mode(pool: PgPool, oauth: GithubOAuth) -> AppState {
             github_oauth: Some(oauth),
             task_enrich_provider: "claude".to_string(),
         }),
-        http_client: reqwest::Client::new(),
+        http_client: regelrecht_auth::http_client(),
         pool: Some(pool),
         pipeline_api_url: None,
         harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
+        integrity: Default::default(),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }
 }
@@ -425,9 +428,11 @@ async fn traject_index_scans_with_user_token_and_fails_loud_without_any_token() 
 
     // ------------------------------------------------------------------
     // Scenario 4: gekoppeld maar géén toegang — de scan faalt ook mét
-    // user-token (repo zonder Trees-mock → altijd 404). Expliciete 502
-    // met de scan-fout, geen 428 (koppelen lost dit niet op) en geen
-    // stille seed-fallback.
+    // user-token (repo zonder Trees-mock → altijd 404). De diagnose vraagt
+    // het na met datzelfde token en krijgt op de repo-lookup óók een 404:
+    // de repo staat niet op dit adres. Dus 404 met een melding die het
+    // adres noemt — geen 428 (koppelen lost dit niet op) en geen stille
+    // seed-fallback.
     // ------------------------------------------------------------------
     let traject_b = seeded_traject(
         &db.pool,
@@ -451,14 +456,20 @@ async fn traject_index_scans_with_user_token_and_fails_loud_without_any_token() 
     .expect_err("scan-fout mét token → expliciete fout, geen stille fallback");
     assert_eq!(
         err.0,
-        StatusCode::BAD_GATEWAY,
-        "gekoppeld-maar-geen-toegang is geen koppel-probleem: 502, got: {}: {}",
+        StatusCode::NOT_FOUND,
+        "gekoppeld-maar-geen-toegang is geen koppel-probleem, maar wél een \
+         geclassificeerde fout, got: {}: {}",
         err.0,
         err.1
     );
     assert!(
-        err.1.contains("404"),
-        "de fout moet de onderliggende scan-fout dragen, got: {}",
+        err.1.contains("example-org/example-no-access-repo"),
+        "de melding moet het adres noemen waar de repo niet (meer) staat, got: {}",
+        err.1
+    );
+    assert!(
+        !err.1.contains("De gegevens konden niet worden opgehaald"),
+        "geen enkele situatie mag terugvallen op de generieke melding, got: {}",
         err.1
     );
 

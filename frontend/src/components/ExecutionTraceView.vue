@@ -110,16 +110,22 @@ const overallStatus = computed(() => {
       <nldd-spacer size="16"></nldd-spacer>
     </template>
 
+    <!-- `wrap` because the code-viewer only ever owns a *horizontal* scroller
+         and grows to its full content height. Inside the trace sheet that puts
+         its horizontal scrollbar thousands of pixels below the fold, so long
+         lines (a DEFINITION with a dozen enum values) read as truncated with no
+         hint that there is more to the right. Wrapping keeps every value
+         visible; the sheet's own scroller handles the vertical axis. -->
     <template v-if="result && traceText">
       <nldd-title size="5" class="etv-section-title"><span>Execution trace</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-code-viewer>{{ traceText }}</nldd-code-viewer>
+      <nldd-code-viewer wrap>{{ traceText }}</nldd-code-viewer>
     </template>
 
     <template v-if="error && traceText && !result">
       <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-code-viewer>{{ traceText }}</nldd-code-viewer>
+      <nldd-code-viewer wrap>{{ traceText }}</nldd-code-viewer>
       <template v-if="canReload">
         <nldd-spacer size="12"></nldd-spacer>
         <nldd-button size="md" text="Opnieuw uitvoeren" @click="emit('reload')"></nldd-button>

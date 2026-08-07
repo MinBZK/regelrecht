@@ -82,3 +82,32 @@ describe('core grammar patterns match their canonical example lines', () => {
     });
   }
 });
+
+// Mirror of Rust `rows_to_params` in packages/engine/tests/bdd/dispatch.rs:
+// a parameter table carries no header row.
+describe('set_parameters_table dispatch', () => {
+  async function runTable(dataTable) {
+    const ctx = { calculationDate: null, parameters: {}, result: null, error: null, executed: false };
+    const def = createStepDefinitions({ loadDependency: async () => {} }).find(
+      (d) => d.pattern.test('the following parameters:'),
+    );
+    await def.execute(ctx, null, 'the following parameters:'.match(def.pattern), { dataTable });
+    return ctx.parameters;
+  }
+
+  it('reads every row of a corpus parameter table', async () => {
+    expect(
+      await runTable([
+        ['gemeente_code', 'GM0363'],
+        ['type_beplanting', 'boom'],
+        ['postcode', '1012'],
+      ]),
+    ).toEqual({ gemeente_code: 'GM0363', type_beplanting: 'boom', postcode: 1012 });
+  });
+
+  it('reads a single-row parameter table', async () => {
+    expect(await runTable([['indieningsdatum', '2025-01-01']])).toEqual({
+      indieningsdatum: '2025-01-01',
+    });
+  });
+});

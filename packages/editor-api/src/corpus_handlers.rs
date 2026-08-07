@@ -23,11 +23,15 @@ use regelrecht_corpus::source_map::{
 };
 use regelrecht_corpus::timing;
 use regelrecht_corpus::CorpusError;
+use regelrecht_github::GithubClient;
 
 use crate::accounts::AccountRecord;
 use crate::credentials::{self, TrajectCredentials};
 use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{ScenarioListEntry, TrajectCorpus, TrajectCorpusError};
+use crate::traject_index_diagnosis::{
+    classify_index_failure, index_failure_to_status, IndexFailureKind, TokenOrigin,
+};
 use crate::trajects::resolve_traject_ref;
 use crate::user_notes;
 
@@ -137,6 +141,11 @@ pub(crate) enum ReadScope {
 pub(crate) struct TrajectScope {
     traject: Arc<TrajectCorpus>,
     own_read_token: Result<Option<String>, (StatusCode, String)>,
+    /// The caller's editor account. Only used for logging on the
+    /// index-failure path: reading the logs back, an operator needs to know
+    /// *whose* access path broke, and an account id says that without
+    /// putting a name or e-mail address in the log.
+    account_id: Uuid,
 }
 
 impl TrajectScope {
@@ -208,6 +217,7 @@ impl ReadScope {
         ReadScope::Traject(TrajectScope {
             traject,
             own_read_token,
+            account_id,
         })
     }
 
@@ -237,7 +247,7 @@ impl ReadScope {
                 t.traject
                     .law_yaml_with_read_token(law_id, token)
                     .await
-                    .map_err(law_read_error(law_id))
+                    .map_err(law_read_error(t.traject.traject_id, law_id))
             }
             // The global corpus is fully loaded up front, so there's no lazy
             // fetch that could fail — a miss is always a genuine miss.
@@ -259,7 +269,12 @@ impl ReadScope {
                     .law_yaml_versions_with_read_token(law_id, token)
                     .await
                     .map_err(|e| {
-                        tracing::warn!(law_id = %law_id, error = %e, "failed to load law versions");
+                        tracing::warn!(
+                            traject = %t.traject.traject_id,
+                            law_id = %law_id,
+                            error = %e,
+                            "failed to load law versions"
+                        );
                         (
                             StatusCode::BAD_GATEWAY,
                             format!("Kon versies van wet '{law_id}' niet laden"),
@@ -290,12 +305,14 @@ impl ReadScope {
 }
 
 /// Map a law-body backend failure to the client-facing 502; the raw error
-/// is logged for operators.
+/// is logged for operators, tagged with the traject so it can be correlated
+/// with the rest of that traject's read path.
 fn law_read_error(
+    traject_id: Uuid,
     law_id: &str,
 ) -> impl FnOnce(regelrecht_corpus::error::CorpusError) -> (StatusCode, String) + '_ {
     move |e| {
-        tracing::warn!(law_id = %law_id, error = %e, "failed to load law body");
+        tracing::warn!(traject = %traject_id, law_id = %law_id, error = %e, "failed to load law body");
         (
             StatusCode::BAD_GATEWAY,
             format!("Kon wet '{law_id}' niet laden"),
@@ -308,7 +325,12 @@ fn law_read_error(
 /// The result — including the deferred 428 — is stored on the
 /// [`TrajectScope`] and only surfaced by reads that actually target the
 /// writable-own source.
-async fn resolve_own_read_token(
+///
+/// `pub(crate)`: the integrity scan reads the writable-own repo directly
+/// (no law-by-law routing), so it resolves the very same token instead of
+/// growing a second answer to "which credential may read this repo for
+/// this caller" — see [`crate::traject_integrity`].
+pub(crate) async fn resolve_own_read_token(
     state: &AppState,
     account_id: Uuid,
     headers: &axum::http::HeaderMap,
@@ -397,32 +419,95 @@ async fn require_traject_scope(
 /// Criterion "luid falen": when the traject's writable-own source failed
 /// to index, the traject-scoped law index must refuse to serve instead of
 /// presenting a normal-looking list in which every law silently resolved
-/// from the central seed corpus. A missing/expired GitHub link is the one
-/// *actionable* cause, so that surfaces as the deferred 428 (the connect
-/// flow); any other scan failure maps to an explicit 502 carrying the
-/// scan error. `/sources` deliberately stays outside this gate — the
-/// per-source `index_error` there is how the failure is diagnosed.
-fn require_traject_index(scope: &ReadScope) -> Result<(), (StatusCode, String)> {
+/// from the central seed corpus. `/sources` deliberately stays outside
+/// this gate — the per-source `index_error` there is how the failure is
+/// diagnosed.
+///
+/// Refusing is not the same as being useless about it. A failed scan has
+/// half a dozen wildly different causes — a traject that was never
+/// initialised, a branch someone deleted, a repo that moved, a link that
+/// GitHub no longer accepts — each with its own remedy, and one blanket
+/// 502 tells the member none of them. So the failure path classifies the
+/// cause in-band, with the very token the scan used (see
+/// [`crate::traject_index_diagnosis`]), and answers with the matching
+/// status and a Dutch sentence that names both the problem and the fix.
+///
+/// The extra GitHub calls that costs land **only here**, on a request
+/// that has already failed; the happy path returns on the first line
+/// without touching the network.
+async fn require_traject_index(scope: &ReadScope) -> Result<(), (StatusCode, String)> {
     let ReadScope::Traject(t) = scope else {
         return Ok(());
     };
-    let Some(err) = t.traject.own_index_error() else {
+    let Some(scan_error) = t.traject.own_index_error() else {
         return Ok(());
     };
     // Deferred read-token outcome first: unlinked (or expired) in
-    // user-token mode → 428 into the koppel-flow.
-    t.own_read_token()?;
+    // user-token mode → 428 into the koppel-flow. That is the one
+    // situation the server can already name without asking GitHub.
+    let user_token = t.own_read_token()?;
+
+    // Same token the scan authenticated with, so the probe walks the same
+    // access path: the caller's personal one when there is one, otherwise
+    // the source's server-side token.
+    let server_token = if user_token.is_none() {
+        t.traject.own_server_token()
+    } else {
+        None
+    };
+    let (token, origin) = match (user_token, server_token.as_deref()) {
+        (Some(tok), _) => (Some(tok), TokenOrigin::User),
+        (None, Some(tok)) => (Some(tok), TokenOrigin::Server),
+        (None, None) => (None, TokenOrigin::Absent),
+    };
+
+    let (kind, status, message) = match t.traject.own_source_target() {
+        Some(target) => {
+            // Plain `new()`: it honours the same `GITHUB_API_BASE` seam the
+            // scan's own client did, so the probe reaches the same host that
+            // just refused it.
+            let kind = match GithubClient::new() {
+                Ok(client) => classify_index_failure(&client, &target, token).await,
+                // No client, nothing to probe with — an infrastructure
+                // fault of our own, not a diagnosis.
+                Err(e) => {
+                    tracing::error!(
+                        traject = %target.traject_id,
+                        error = %e,
+                        "failed to build GitHub client for traject index diagnosis"
+                    );
+                    IndexFailureKind::Unknown
+                }
+            };
+            let (status, message) = index_failure_to_status(kind, &target, origin);
+            (kind, status, message)
+        }
+        // A writable-own source that isn't GitHub-backed (local dev /
+        // preview stack): there is no repo to interrogate.
+        None => (
+            IndexFailureKind::Unknown,
+            StatusCode::BAD_GATEWAY,
+            "De bibliotheek van dit traject kon niet worden gelezen. Probeer het opnieuw en \
+             meld het als het blijft misgaan."
+                .to_string(),
+        ),
+    };
+
+    // The one place this path logs its outcome, with a fixed field set so an
+    // incident is findable both by traject and by kind. `error` carries the
+    // raw scan failure; `account` says whose access path broke without naming
+    // the person behind it.
     tracing::warn!(
-        error = %err,
+        traject = %t.traject.traject_id,
+        source_id = %t.traject.writable_own_source_id,
+        account = %t.account_id,
+        kind = %kind,
+        token_origin = %origin.as_str(),
+        status = status.as_u16(),
+        error = %scan_error,
         "traject library refused: writable-own source failed to index"
     );
-    Err((
-        StatusCode::BAD_GATEWAY,
-        format!(
-            "De bibliotheek van dit traject is niet beschikbaar: de traject-repo kon niet \
-             worden gescand ({err})"
-        ),
-    ))
+    Err((status, message))
 }
 
 /// GET /api/sources — list all registered corpus sources (global).
@@ -475,8 +560,9 @@ pub async fn list_traject_corpus_laws(
 ) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
     let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     // No silent central-only fallback: a traject whose own repo couldn't
-    // be scanned fails this listing loudly (428 koppel-flow / 502).
-    require_traject_index(&scope)?;
+    // be scanned fails this listing loudly, with the cause classified and
+    // the status that fits it.
+    require_traject_index(&scope).await?;
     Ok(Json(list_corpus_laws_in_scope(&scope, params)))
 }
 
@@ -804,13 +890,23 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
 
 /// Law ids a scenario file evaluates, extracted from its execution steps.
 ///
-/// A target is the law named in an `I evaluate "<output>" of "<law_id>"`
-/// step. The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
+/// A target is the law named in an evaluation step: `I evaluate "<output>"
+/// of "<law_id>"` (`bdd/grammar.yaml`, step `evaluate`) and its multi-output
+/// twin `I evaluate outputs "<outputs>" of "<law_id>"` (step
+/// `evaluate_outputs`). Both name the law the scenario puts to work, so
+/// leaving the second out would hide a scenario from the law it tests — and
+/// make the integrity report call that law's own folder untargeted.
+///
+/// The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
 /// the frontend step matcher (`frontend/src/gherkin/steps.js`) matches step
 /// text without its keyword, so all of these run as execution steps.
 /// `Given law "…" is loaded` lines are dependencies, not targets.
 /// Deduplicated, order of first occurrence preserved.
-fn extract_target_law_ids(content: &str) -> Vec<String> {
+///
+/// `pub(crate)`: the integrity report resolves the same targets against the
+/// federated corpus to spot scenarios pointing at a law id that no longer
+/// exists (see [`crate::traject_integrity`]).
+pub(crate) fn extract_target_law_ids(content: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim_start();
@@ -820,7 +916,11 @@ fn extract_target_law_ids(content: &str) -> Vec<String> {
         else {
             continue;
         };
-        let Some(rest) = step.trim_start().strip_prefix("I evaluate \"") else {
+        let step = step.trim_start();
+        let Some(rest) = step
+            .strip_prefix("I evaluate outputs \"")
+            .or_else(|| step.strip_prefix("I evaluate \""))
+        else {
             continue;
         };
         // rest = `<output>" of "<law_id>"…`
@@ -833,6 +933,43 @@ fn extract_target_law_ids(content: &str) -> Vec<String> {
         let Some((law_id, _)) = rest.split_once('"') else {
             continue;
         };
+        if !law_id.is_empty() && !out.iter().any(|l| l == law_id) {
+            out.push(law_id.to_string());
+        }
+    }
+    out
+}
+
+/// Law ids a scenario file declares as **dependencies**, from its
+/// `law "<law_id>" is loaded` steps (`bdd/grammar.yaml`, step `load_law`).
+///
+/// The counterpart of [`extract_target_law_ids`]: those are the laws the
+/// scenario *evaluates*, these are the ones it loads to make an evaluation
+/// possible. The keyword is `Given` in practice, but every Gherkin keyword is
+/// accepted for the same reason [`extract_target_law_ids`] does — the step
+/// matcher works on the text, not the keyword.
+///
+/// Deduplicated, order of first occurrence preserved.
+pub(crate) fn extract_loaded_law_ids(content: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let Some(step) = ["Given ", "When ", "Then ", "And ", "But ", "* "]
+            .iter()
+            .find_map(|kw| trimmed.strip_prefix(kw))
+        else {
+            continue;
+        };
+        let Some(rest) = step.trim_start().strip_prefix("law \"") else {
+            continue;
+        };
+        let Some((law_id, tail)) = rest.split_once('"') else {
+            continue;
+        };
+        // Only the `is loaded` step — not some other future `law "…"` step.
+        if !tail.trim_start().starts_with("is loaded") {
+            continue;
+        }
         if !law_id.is_empty() && !out.iter().any(|l| l == law_id) {
             out.push(law_id.to_string());
         }
@@ -1503,8 +1640,26 @@ async fn resolve_backend_for_law(
             continue;
         }
         let backend = entry.backend.lock().await;
-        let exists = backend.read_file(law_rel).await.ok().flatten().is_some();
+        let read = backend.read_file(law_rel).await;
         drop(backend);
+        // A failed read is not "this source doesn't hold the law". The
+        // candidate is still skipped — another one may serve the write,
+        // and failing the whole resolve on one unreachable source would be
+        // worse — but the reason has to reach the logs, or a fallback that
+        // silently stopped matching is undiagnosable.
+        let exists = match read {
+            Ok(found) => found.is_some(),
+            Err(e) => {
+                tracing::warn!(
+                    law_id = %law_id,
+                    candidate_source = %source_id,
+                    error = %e,
+                    "could not read the law from a candidate source; skipping it as a \
+                     write target without knowing whether it holds the law"
+                );
+                false
+            }
+        };
         if exists {
             tracing::warn!(
                 law_id = %law_id,
@@ -1667,8 +1822,9 @@ struct EditorWriteTarget {
 
 /// Resolve the per-traject corpus from the URL ref, re-checking the
 /// caller's membership on every call. Bumps the traject corpus cache on
-/// a miss; calls `ensure_ready` (i.e. `git clone`) for every source in
-/// the traject's federated config on first use.
+/// a miss; calls `ensure_ready` for every source in the traject's
+/// federated config on first use (a branch check per GitHub source — no
+/// clone).
 ///
 /// The `traject_ref` is the URL form `{slug}-{8hex}`. The slug part is
 /// cosmetic — `resolve_traject_ref` looks up the traject by the trailing
@@ -1716,7 +1872,11 @@ async fn require_traject_corpus_from_ref_with_scan_token(
         .get(SESSION_KEY_SUB)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "session read sub in require_traject_corpus_from_ref");
+            tracing::error!(
+                traject = %traject_id,
+                error = %e,
+                "session read sub in require_traject_corpus_from_ref"
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "session read failed".to_string(),
@@ -1738,7 +1898,7 @@ async fn require_traject_corpus_from_ref_with_scan_token(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "membership re-check query failed");
+        tracing::error!(traject = %traject_id, error = %e, "membership re-check query failed");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "membership check failed".to_string(),
@@ -1759,10 +1919,13 @@ async fn require_traject_corpus_from_ref_with_scan_token(
         .trajects
         .get_or_build(pool, traject_id, auth_file, own_scan_token)
         .await
-        .map_err(traject_corpus_error)
+        .map_err(|e| traject_corpus_error(traject_id, e))
 }
 
-fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
+/// `traject_id` is carried in purely so the one log line here names the
+/// traject: every warning on this read path has to be correlatable with the
+/// rest of that traject's trail.
+fn traject_corpus_error(traject_id: Uuid, e: TrajectCorpusError) -> (StatusCode, String) {
     match e {
         TrajectCorpusError::NotFound => (
             StatusCode::NOT_FOUND,
@@ -1773,7 +1936,7 @@ fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
             "Traject heeft geen eigen schrijfbare source".to_string(),
         ),
         other => {
-            tracing::error!(error = %other, "traject corpus build failed");
+            tracing::error!(traject = %traject_id, error = %other, "traject corpus build failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Traject corpus init failed".to_string(),
@@ -3063,6 +3226,59 @@ const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
 /// of going through a `document_convert` job.
 const MARKDOWN_PASSTHROUGH_EXTENSIONS: &[&str] = &["md", "markdown"];
 
+/// Welke formaten de werkdocument-upload hoe behandelt. Puur afgeleid van de
+/// twee bronnen die het gedrag ook echt bepalen — de pass-through-lijst
+/// hierboven en de convertertabel in de pipeline — zodat de editor de gebruiker
+/// per bestand kan vertellen of er AI aan te pas komt zonder daarvoor een eigen
+/// (en dus af te drijven) lijst bij te houden.
+#[derive(Debug, Serialize)]
+pub struct DocumentUploadFormats {
+    /// Wordt zonder conversie opgeslagen; er gebeurt niets met de inhoud.
+    pub passthrough: Vec<&'static str>,
+    /// Heeft een deterministische converter (pandoc/pdftotext): om te zetten
+    /// zonder taalmodel. Elk formaat dat in géén van beide lijsten staat kan
+    /// alleen met een taalmodel worden omgezet.
+    pub deterministic: Vec<&'static str>,
+}
+
+/// GET /api/document-upload-formats
+///
+/// Statische indeling voor de upload-bevestiging in de editor. Geen
+/// traject-scope en niets gevoeligs: het is dezelfde informatie die een
+/// gebruiker ook uit proberen zou afleiden.
+pub async fn list_document_upload_formats() -> Json<DocumentUploadFormats> {
+    Json(DocumentUploadFormats {
+        passthrough: MARKDOWN_PASSTHROUGH_EXTENSIONS.to_vec(),
+        deterministic: regelrecht_pipeline::document_convert::deterministic_extensions(),
+    })
+}
+
+/// Query-parameters van de werkdocument-upload.
+///
+/// Bewust een query-parameter en geen multipart-veld: [`read_upload_multipart`]
+/// breekt de veldenlus af zodra het `file`-veld voorbijkomt, dus een extra
+/// multipart-veld zou alleen werken bij de juiste veldvolgorde — een stille
+/// valstrik precies op de plek waar stilte het gevaarlijkst is.
+#[derive(Debug, Default, Deserialize)]
+pub struct UploadDocumentQuery {
+    /// `?llm=1` ⇒ de uploader staat toe dat een taalmodel het document leest.
+    /// Afwezig is nee: geen toestemming is de veilige uitkomst, ook wanneer een
+    /// oudere client de parameter niet meestuurt.
+    #[serde(default)]
+    pub llm: Option<String>,
+}
+
+impl UploadDocumentQuery {
+    /// Alleen een uitdrukkelijke bevestiging telt als toestemming; al het
+    /// andere (afwezig, leeg, `0`, onzin) is nee.
+    fn allow_llm(&self) -> bool {
+        matches!(
+            self.llm.as_deref().map(str::trim),
+            Some("1") | Some("true") | Some("yes")
+        )
+    }
+}
+
 /// Enforce the optional upload allow-list on `filename`. `None` accepts any
 /// format (the werkdocument upload — the conversion pipeline routes it), while
 /// `Some(list)` rejects any extension outside the list with a 415 (the
@@ -3244,11 +3460,18 @@ async fn write_markdown_passthrough(
 /// markdown upload needs no conversion: its bytes are written straight to the
 /// target `.md` (pass-through, responds `201 Created`). Either way the response
 /// carries the target `.md` path the document appears at.
+///
+/// `?llm=1` is de toestemming van de uploader om een taalmodel te gebruiken.
+/// Zonder die toestemming én zonder deterministische converter voor dit formaat
+/// zou er alleen een job ontstaan die niets anders kán dan falen; dat weigeren
+/// we hier meteen met een 400 die uitlegt waarom, in plaats van de gebruiker
+/// later een mislukte-conversie-taak te sturen.
 pub async fn upload_traject_document(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    Query(query): Query<UploadDocumentQuery>,
     headers: axum::http::HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadDocumentResponse>), (StatusCode, String)> {
@@ -3267,6 +3490,37 @@ pub async fn upload_traject_document(
     // or the agentic enricher fallback otherwise, returning reviewable markdown.
     let (filename, content_type, data) = read_upload_multipart(&mut multipart, None).await?;
     let ext = lowercase_extension(&filename);
+    let allow_llm = query.allow_llm();
+
+    // Weiger vóór al het werk hieronder wat toch niet kan: geen toestemming voor
+    // een taalmodel, geen deterministische converter, en het is geen markdown
+    // (die gaat ongemoeid door). De uitleg is de belofte zelf — er is niets
+    // gelezen en niets verstuurd.
+    //
+    // De extensie komt hier uit de bestandsnaam, terwijl de pipeline bij een
+    // naam zonder extensie nog op het content-type terugvalt. Die grens loopt
+    // dus één kant op scheef: een naamloos-formaat bestand wordt hier geweigerd
+    // terwijl de conversie het misschien had gekund. Dat is de goede kant —
+    // strenger dan de pipeline, nooit ruimer — en het is dezelfde extensie die
+    // de uploadbevestiging de gebruiker liet zien.
+    if !allow_llm
+        && !MARKDOWN_PASSTHROUGH_EXTENSIONS.contains(&ext.as_str())
+        && !regelrecht_pipeline::document_convert::has_deterministic_converter(&ext)
+    {
+        let format = if ext.is_empty() {
+            "Dit bestand".to_string()
+        } else {
+            format!("Een .{ext}-bestand")
+        };
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{format} kan alleen met AI worden omgezet. Het bestand is niet opgeslagen en \
+                 niet omgezet. Upload het opnieuw met 'Omzetten met AI toestaan' aan, of lever \
+                 het aan als PDF, Word (.docx) of markdown."
+            ),
+        ));
+    }
 
     // Derive a collision-safe target markdown path against the existing docs.
     // A failed listing must NOT be swallowed: an empty `existing` set would let
@@ -3387,6 +3641,10 @@ pub async fn upload_traject_document(
         // committen gebeurt pas bij goedkeuren in de request-context van de
         // gebruiker (met diens token wanneer enforcement aan staat).
         deliver: Some("task".to_string()),
+        // De keuze van de uploader reist mee de pipeline in; dáár wordt hij
+        // afgedwongen (de deterministische route kan óók stuklopen, en dan mag
+        // de agent alleen draaien als dit waar is).
+        allow_llm,
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;
@@ -4820,6 +5078,23 @@ mod tests {
         assert_eq!(
             extract_target_law_ids(content),
             vec!["law_a", "law_b", "law_c", "law_d", "law_e"]
+        );
+    }
+
+    #[test]
+    fn extract_targets_covers_the_multi_output_evaluation_step() {
+        // `evaluate_outputs` (bdd/grammar.yaml) names its law in the same
+        // place as `evaluate`. Missing it would hide the scenario from the
+        // law it tests — and make the integrity report claim the law's own
+        // scenario folder targets nothing.
+        let content = r#"
+    When I evaluate outputs "a, b" of "law_multi"
+    When I evaluate "c" of "law_single"
+    When I evaluate outputs "d" of "law_multi"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["law_multi", "law_single"]
         );
     }
 

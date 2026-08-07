@@ -79,12 +79,16 @@ function extractFragment(entry, match, step) {
   }
 }
 
+// A `Given the following parameters:` table is two columns of name/value with
+// no header row (mirror of Rust `rows_to_params`), so every row is data.
 function tableToParams(dataTable) {
-  if (!dataTable || dataTable.length < 2) return [];
-  return dataTable.slice(1).map((row) => ({
-    name: row[0],
-    value: parseValue(row[1] || ''),
-  }));
+  if (!dataTable) return [];
+  return dataTable
+    .filter((row) => row.length >= 2)
+    .map((row) => ({
+      name: row[0].trim(),
+      value: parseValue(row[1] || ''),
+    }));
 }
 
 function classifyStep(step) {

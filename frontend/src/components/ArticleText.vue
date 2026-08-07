@@ -10,8 +10,8 @@ const props = defineProps({
   centered: { type: Boolean, default: false },
 });
 
-// Shared marked + DOMPurify pipeline so the notes-on view (AnnotatedText)
-// renders byte-identically to this notes-off view (#646).
+// marked + DOMPurify pipeline (useArticleMarkdown): same list nesting and
+// paragraph breaks as the editable Tekst pane, sanitized before v-html.
 const html = computed(() => renderArticleHtml(props.article?.text || ''));
 
 const paragraphs = computed(() => {

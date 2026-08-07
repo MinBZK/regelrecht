@@ -10,7 +10,8 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
-pub use regelrecht_auth::middleware::{refresh_session_token, security_headers};
+pub use regelrecht_auth::middleware::refresh_session_token;
+pub use regelrecht_auth::security_headers::{security_headers, API_CSP};
 use regelrecht_auth::{check_session_role, RoleCheck};
 
 use crate::error::ApiError;
@@ -180,7 +181,7 @@ mod tests {
             end_session_url: None,
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
-            http_client: reqwest::Client::new(),
+            http_client: regelrecht_auth::http_client(),
             corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }
@@ -215,30 +216,6 @@ mod tests {
             ))
             .with_state(state)
             .layer(session_layer)
-    }
-
-    #[tokio::test]
-    async fn security_headers_are_set() {
-        let app = Router::new()
-            .route("/test", get(|| async { "ok" }))
-            .layer(axum_middleware::from_fn(security_headers));
-
-        let response = app
-            .oneshot(
-                axum::http::Request::builder()
-                    .uri("/test")
-                    .body(Body::empty())
-                    .expect("request"),
-            )
-            .await
-            .expect("response");
-
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get("x-content-type-options").unwrap(),
-            "nosniff"
-        );
-        assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
     }
 
     #[tokio::test]
@@ -527,7 +504,7 @@ mod tests {
             end_session_url: None,
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
-            http_client: reqwest::Client::new(),
+            http_client: regelrecht_auth::http_client(),
             corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }

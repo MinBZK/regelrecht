@@ -65,6 +65,17 @@ describe('route disambiguation (traject vs no-traject)', () => {
     expect(r.params.lawId).toBeUndefined();
   });
 
+  // De integriteitspagina is een top-level route (eigen chrome), maar deelt
+  // het `/trajecten/{ref}/...`-pad met de AppShell-kinderen. Deze test pint
+  // vast dat hij daar niet door een van die kinderen wordt opgeslokt.
+  it('routes a traject integriteit URL to traject-integriteit', () => {
+    const r = router.resolve(`/trajecten/${REF}/integriteit`);
+    expect(r.name).toBe('traject-integriteit');
+    expect(r.params.trajectRef).toBe(REF);
+    expect(r.meta.requiresAuth).toBe(true);
+    expect(r.meta.title).toBe('Integriteit');
+  });
+
   it('routes a plain law-id corpus URL to corpus-juris (no traject)', () => {
     const r = router.resolve('/corpus-juris/wet_op_de_zorgtoeslag');
     expect(r.name).toBe('corpus-juris');

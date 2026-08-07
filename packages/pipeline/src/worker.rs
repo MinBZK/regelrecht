@@ -72,6 +72,25 @@ fn outcome_for_error(err: &str) -> JobOutcome {
     }
 }
 
+/// [`outcome_for_error`] voor een mislukte document-convert-job, met één
+/// uitzondering die het verschil maakt.
+///
+/// `is_resource_exhaustion` herkent echte fork/EAGAIN/OOM-uitputting aan
+/// tekstmarkers ("cannot fork", "os error 11", …) in de foutmelding. Dat werkt
+/// alleen zolang die foutmelding niet door een buitenstaander te kiezen is: de
+/// weigering-zonder-toestemming noemt de geüploade bestandsnaam, dus een
+/// document dat `cannot fork.pdf` heet zou anders als resource-uitputting tellen
+/// en — na `WORKER_MAX_CONSECUTIVE_RESOURCE_FAILURES` van zulke uploads op rij —
+/// de breaker laten afgaan die de worker afsluit. Die mislukking is per
+/// definitie een gewoon, afgehandeld geval: we classificeren 'm op het
+/// fouttype in plaats van op de tekst.
+fn document_convert_outcome(err: &PipelineError, msg: &str) -> JobOutcome {
+    match err {
+        PipelineError::LlmNotPermitted(_) => JobOutcome::Processed,
+        _ => outcome_for_error(msg),
+    }
+}
+
 /// Returns true when an error indicates the container has exhausted the OS
 /// resources needed to spawn processes or threads — `fork()` returning EAGAIN
 /// ("cannot fork() ... Resource temporarily unavailable"), thread-create
@@ -1489,7 +1508,7 @@ async fn process_next_document_convert_job(
             }
             fail_result?;
 
-            Ok(outcome_for_error(&msg))
+            Ok(document_convert_outcome(&e, &msg))
         }
     }
 }
@@ -1510,7 +1529,7 @@ async fn run_document_convert(
     // Buitenste begrenzing ónder de reaper-window (zie de aanroeper): de
     // gedropte future komt niet meer aan zijn eigen tempdir-cleanup toe, dus
     // die doen we hier; kill_on_drop ruimt het agent-subprocess op.
-    let markdown = match tokio::time::timeout(
+    let converted = match tokio::time::timeout(
         convert_deadline,
         document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter),
     )
@@ -1528,7 +1547,7 @@ async fn run_document_convert(
         }
         Ok(r) => r?,
     };
-    finish_document_convert_task_job(pool, job, payload, &markdown).await?;
+    finish_document_convert_task_job(pool, job, payload, &converted).await?;
     Ok(())
 }
 
@@ -1856,6 +1875,99 @@ pub async fn materialize_task_workdir(
     Ok(dir)
 }
 
+/// Reden waarmee een geslaagde run die niets beoordeelbaars opleverde alsnog
+/// als mislukking bij de aanvrager landt. Zonder deze stap zou de review-taak
+/// gewoon worden aangemaakt en zou de gebruiker een taak openen die per
+/// definitie niet af te maken is.
+pub(crate) const NO_REVIEWABLE_LAW: &str =
+    "de verrijking leverde geen wet-YAML op om te beoordelen";
+
+/// Whether an enrich run wrote something the review UI can actually open.
+///
+/// Mirrors how `useTaskReview` picks the law out of the result blobs: the
+/// exact `yaml_path` from the payload, else a file whose basename is neither
+/// dot-prefixed nor a sidecar. The worker stages `features/*.feature` files
+/// alongside the law, and those are not a proposal on their own — a run that
+/// produced only those has nothing to review.
+///
+/// Pure so the contract can be pinned without a live database or workdir.
+pub(crate) fn produced_reviewable_law(
+    workdir: &Path,
+    written_files: &[std::path::PathBuf],
+    yaml_path: &str,
+) -> bool {
+    written_files.iter().any(|abs| {
+        let rel = abs.strip_prefix(workdir).unwrap_or(abs);
+        if rel.to_string_lossy() == yaml_path {
+            return true;
+        }
+        rel.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| !name.starts_with('.') && name.ends_with(".yaml"))
+    })
+}
+
+/// Article numbers whose content differs between the source snapshot and the
+/// proposal, in the proposal's own order.
+///
+/// The enrichment writes `machine_readable` per article, so a run typically
+/// touches a handful of them while leaving the rest byte-identical. Splitting
+/// the review per article means a reviewer decides on what actually changed
+/// instead of on the whole law at once.
+///
+/// Compared as untyped YAML rather than through the law model on purpose: the
+/// only question here is "did this article change", and an untyped compare
+/// keeps answering that when the schema grows a field this crate does not know
+/// about yet. An article the source does not have at all counts as changed.
+///
+/// A parse failure yields None, and the caller then falls back to one task for
+/// the whole law — a proposal we cannot read is still reviewable by hand.
+pub(crate) fn changed_articles(source_yaml: &str, proposal_yaml: &str) -> Option<Vec<String>> {
+    /// `number:` als string, of de YAML hem nu quootte of niet.
+    ///
+    /// Een ongequote `number: 2` parset als YAML-integer. Alleen `as_str()`
+    /// lezen liet zo'n artikel stil uit beide lijsten vallen: geen review-taak
+    /// voor een wél gewijzigd artikel, en ook geen parse-fout die de
+    /// hele-wet-fallback aanzet. De frontend normaliseert hetzelfde veld op
+    /// dezelfde manier (`String(a.number)` in `proposalDivergence`), en de
+    /// taak-payload draagt het nummer als string, dus dat is hier de eenheid.
+    fn article_number(article: &serde_yaml_ng::Value) -> Option<String> {
+        match article.get("number")? {
+            serde_yaml_ng::Value::String(s) => Some(s.clone()),
+            serde_yaml_ng::Value::Number(n) => Some(n.to_string()),
+            // Alles anders (ontbrekend, null, een lijst) is geen artikelnummer
+            // waar een reviewer iets aan heeft; die artikelen blijven buiten
+            // de diff.
+            _ => None,
+        }
+    }
+
+    fn articles(yaml: &str) -> Option<Vec<(String, serde_yaml_ng::Value)>> {
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).ok()?;
+        let list = doc.get("articles")?.as_sequence()?;
+        Some(
+            list.iter()
+                .filter_map(|a| Some((article_number(a)?, a.clone())))
+                .collect(),
+        )
+    }
+
+    let source = articles(source_yaml)?;
+    let proposal = articles(proposal_yaml)?;
+    Some(
+        proposal
+            .into_iter()
+            .filter(|(number, article)| {
+                source
+                    .iter()
+                    .find(|(n, _)| n == number)
+                    .is_none_or(|(_, before)| before != article)
+            })
+            .map(|(number, _)| number)
+            .collect(),
+    )
+}
+
 /// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
 /// result-blobs, verwijder de input-blobs, complete de job en maak de
 /// review-taak aan — alles in één transactie.
@@ -1869,8 +1981,17 @@ pub async fn finish_enrich_task_job(
     let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
         .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
 
+    // Vóór de transactie, want delete_blobs_for_job hieronder gooit de
+    // input-blobs weg: dit is de bronsnapshot waartegen we de proposal diffen.
+    let source_yaml = crate::tasks::load_blobs(pool, job.id, crate::tasks::BlobKind::Input)
+        .await?
+        .into_iter()
+        .find(|b| b.path == payload.yaml_path)
+        .map(|b| b.content);
+
     let mut tx = pool.begin().await?;
     crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    let mut proposal_yaml: Option<String> = None;
     for abs in written_files {
         let rel = abs
             .strip_prefix(workdir)
@@ -1883,6 +2004,9 @@ pub async fn finish_enrich_task_job(
             .to_string_lossy()
             .to_string();
         let content = tokio::fs::read_to_string(abs).await?;
+        if rel == payload.yaml_path {
+            proposal_yaml = Some(content.clone());
+        }
         crate::tasks::insert_blob(
             &mut *tx,
             job.id,
@@ -1907,23 +2031,81 @@ pub async fn finish_enrich_task_job(
     if new_law {
         task_payload["kind"] = serde_json::json!("law_create");
     }
-    let title = if new_law {
-        format!("Nieuwe wet beoordelen: {}", payload.law_id)
+
+    // Eén taak per gewijzigd artikel. Een verrijking raakt doorgaans een
+    // handvol artikelen en laat de rest ongemoeid; per artikel beslissen laat de
+    // beoordelaar zich uitspreken over wat er werkelijk veranderd is.
+    //
+    // Terug naar één taak voor de hele wet wanneer we niet kunnen diffen: bij
+    // een nieuwe wet is er geen bron om tegen af te zetten, en bij een
+    // onleesbare YAML weten we het simpelweg niet. Beide zijn met de hand nog
+    // prima te beoordelen, dus dat is een terugval en geen fout.
+    let per_article = if new_law {
+        None
     } else {
-        format!("Verrijking beoordelen: {}", payload.law_id)
+        match (source_yaml.as_deref(), proposal_yaml.as_deref()) {
+            (Some(before), Some(after)) => changed_articles(before, after),
+            _ => None,
+        }
     };
-    crate::tasks::create_task(
-        &mut *tx,
-        crate::tasks::NewTask {
-            task_type: crate::tasks::TaskType::JobReview,
-            assignee_account_id: payload.requested_by,
-            traject_id: payload.traject_id,
-            job_id: Some(job.id),
-            title,
-            payload: Some(task_payload),
-        },
-    )
-    .await?;
+
+    match per_article {
+        Some(articles) if !articles.is_empty() => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %payload.law_id,
+                articles = articles.len(),
+                "review-taken per artikel aangemaakt"
+            );
+            for number in articles {
+                let mut article_payload = task_payload.clone();
+                article_payload["article"] = serde_json::json!(number);
+                crate::tasks::create_task(
+                    &mut *tx,
+                    crate::tasks::NewTask {
+                        task_type: crate::tasks::TaskType::JobReview,
+                        assignee_account_id: payload.requested_by,
+                        traject_id: payload.traject_id,
+                        job_id: Some(job.id),
+                        title: format!(
+                            "Verrijking beoordelen: {} artikel {}",
+                            payload.law_id, number
+                        ),
+                        payload: Some(article_payload),
+                    },
+                )
+                .await?;
+            }
+        }
+        // Leeg betekent: de proposal verschilt nergens van de bron. Dan valt er
+        // niets te beoordelen en hoort er geen taak te komen; de job is klaar.
+        Some(_) => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %payload.law_id,
+                "verrijking leverde geen wijziging op, geen review-taak"
+            );
+        }
+        None => {
+            let title = if new_law {
+                format!("Nieuwe wet beoordelen: {}", payload.law_id)
+            } else {
+                format!("Verrijking beoordelen: {}", payload.law_id)
+            };
+            crate::tasks::create_task(
+                &mut *tx,
+                crate::tasks::NewTask {
+                    task_type: crate::tasks::TaskType::JobReview,
+                    assignee_account_id: payload.requested_by,
+                    traject_id: payload.traject_id,
+                    job_id: Some(job.id),
+                    title,
+                    payload: Some(task_payload),
+                },
+            )
+            .await?;
+        }
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -1932,11 +2114,18 @@ pub async fn finish_enrich_task_job(
 /// als result-blob en maak de review-taak aan - atomair met complete_job.
 /// De worker pusht niets; goedkeuren gebeurt in de request-context van de
 /// gebruiker (met diens token wanneer enforcement aan staat).
+///
+/// De genomen route (`pandoc` / `pdftotext` / `llm`) reist mee als
+/// `converted_with`. Twee plekken, met opzet: in `jobs.result` als duurzaam
+/// spoor van wat er gebeurd is, en in de taak-payload omdat dát is wat de
+/// reviewbanner leest (`job_blobs` heeft geen metadata-kolom om het aan de
+/// result-blob zelf te hangen). Dit is expliciet iets anders dan het vinkje bij
+/// de upload: dat zegt wat mócht, dit zegt wat er is gebeurd.
 pub async fn finish_document_convert_task_job(
     pool: &PgPool,
     job: &crate::models::Job,
     payload: &DocumentConvertPayload,
-    markdown: &str,
+    converted: &document_convert::ConvertedDocument,
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
     // Hygiëne: er zijn geen input-blobs voor document-convert (de bytes
@@ -1948,10 +2137,15 @@ pub async fn finish_document_convert_task_job(
         job.id,
         crate::tasks::BlobKind::Result,
         &payload.target_path,
-        markdown,
+        &converted.markdown,
     )
     .await?;
-    job_queue::complete_job(&mut *tx, job.id, None).await?;
+    job_queue::complete_job(
+        &mut *tx,
+        job.id,
+        Some(serde_json::json!({ "converted_with": converted.route.as_str() })),
+    )
+    .await?;
     crate::tasks::create_task(
         &mut *tx,
         crate::tasks::NewTask {
@@ -1964,6 +2158,7 @@ pub async fn finish_document_convert_task_job(
                 "kind": "document",
                 "traject_ref": payload.traject_ref,
                 "target_path": payload.target_path,
+                "converted_with": converted.route.as_str(),
             })),
         },
     )
@@ -2149,6 +2344,21 @@ async fn process_enrich_task_job(
             }
         }
         Ok(Ok((result, written_files))) => {
+            // De run meldde succes, maar zonder wet-YAML valt er niets te
+            // beoordelen. Een review-taak aanmaken zou de aanvrager een
+            // onmogelijke taak geven; met retry-semantiek krijgt hij in plaats
+            // daarvan een nieuwe poging, en pas na de laatste een
+            // `job_failed`-taak met deze reden erin.
+            if !produced_reviewable_law(workdir.path(), &written_files, &payload.yaml_path) {
+                tracing::warn!(
+                    job_id = %job.id,
+                    law_id = %job.law_id,
+                    files = written_files.len(),
+                    "enrich-run zonder beoordeelbare wet-YAML"
+                );
+                fail_enrich_task_job_with_retry(pool, job, NO_REVIEWABLE_LAW).await?;
+                return Ok(JobOutcome::Processed);
+            }
             let result_json = match serde_json::to_value(&result) {
                 Ok(v) => Some(v),
                 Err(e) => {
@@ -3055,6 +3265,7 @@ async fn handle_enrich_exhausted_or_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn hourly_cap_day_vs_night() {
@@ -3134,6 +3345,164 @@ mod tests {
         assert!(!is_resource_exhaustion(
             "YAML error: did not find expected key at line 5 column 3"
         ));
+    }
+
+    const SOURCE: &str = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output: []
+"#;
+
+    #[test]
+    fn reports_only_the_articles_that_differ() {
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+"#;
+        assert_eq!(
+            changed_articles(SOURCE, proposal),
+            Some(vec!["2".to_string()])
+        );
+    }
+
+    #[test]
+    fn reports_nothing_when_the_proposal_matches_the_source() {
+        assert_eq!(changed_articles(SOURCE, SOURCE), Some(Vec::new()));
+    }
+
+    #[test]
+    fn counts_an_article_the_source_does_not_have_as_changed() {
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output: []
+  - number: "3"
+    text: Nieuw artikel
+"#;
+        assert_eq!(
+            changed_articles(SOURCE, proposal),
+            Some(vec!["3".to_string()])
+        );
+    }
+
+    // Een ongequote `number: 2` is geldige YAML en komt in de praktijk voor.
+    // Vroeger viel zo'n artikel stil uit de diff (as_str() op een integer), dus
+    // kreeg een wél gewijzigd artikel geen review-taak - en zonder parse-fout
+    // sloeg de hele-wet-fallback ook niet aan: het voorstel verdween geruisloos.
+    #[test]
+    fn reports_a_changed_article_with_an_unquoted_number() {
+        let source = r#"
+$id: wet_x
+articles:
+  - number: 1
+    text: Eerste artikel
+  - number: 2
+    text: Tweede artikel
+"#;
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: 1
+    text: Eerste artikel
+  - number: 2
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+"#;
+        assert_eq!(
+            changed_articles(source, proposal),
+            Some(vec!["2".to_string()])
+        );
+        assert_eq!(changed_articles(source, source), Some(Vec::new()));
+    }
+
+    #[test]
+    fn yields_none_on_unreadable_yaml_so_the_caller_falls_back() {
+        // Geen paniek en geen lege lijst: "ik weet het niet" is iets anders dan
+        // "er is niets veranderd", en de caller maakt er één taak van.
+        assert_eq!(
+            changed_articles(SOURCE, "dit is: [geen: geldige yaml"),
+            None
+        );
+        assert_eq!(changed_articles("zonder articles-sleutel: 1", SOURCE), None);
+    }
+
+    #[test]
+    fn accepts_a_run_that_wrote_the_law_yaml() {
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![
+            PathBuf::from("/tmp/wd/features/zorgtoeslag.feature"),
+            PathBuf::from("/tmp/wd/laws/wet_op_de_zorgtoeslag/law.yaml"),
+        ];
+        assert!(produced_reviewable_law(
+            workdir,
+            &files,
+            "laws/wet_op_de_zorgtoeslag/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_run_that_only_wrote_feature_files() {
+        // De worker staged features naast de wet. Alleen features betekent dat
+        // er niets te beoordelen is, ook al meldde de run succes.
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![
+            PathBuf::from("/tmp/wd/features/zorgtoeslag.feature"),
+            PathBuf::from("/tmp/wd/features/premie.feature"),
+        ];
+        assert!(!produced_reviewable_law(
+            workdir,
+            &files,
+            "laws/wet_op_de_zorgtoeslag/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_run_that_only_wrote_sidecars() {
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![PathBuf::from("/tmp/wd/laws/x/.enrichment.yaml")];
+        assert!(!produced_reviewable_law(workdir, &files, "laws/x/law.yaml"));
+    }
+
+    #[test]
+    fn rejects_a_run_that_wrote_nothing() {
+        assert!(!produced_reviewable_law(
+            Path::new("/tmp/wd"),
+            &[],
+            "laws/x/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn accepts_a_law_yaml_on_a_path_other_than_the_payload_one() {
+        // Fallback, gelijk aan die van useTaskReview: schrijft het model de wet
+        // ergens anders neer, dan is er nog steeds iets te beoordelen. Alleen
+        // een run zonder énige wet-YAML faalt.
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![PathBuf::from("/tmp/wd/regulation/nl/wet/anders.yaml")];
+        assert!(produced_reviewable_law(workdir, &files, "laws/x/law.yaml"));
     }
 
     #[test]
@@ -3225,6 +3594,50 @@ mod tests {
         assert_eq!(counter, 1);
         handle_resource_exhaustion(&mut counter, 3, "test");
         assert_eq!(counter, 2);
+    }
+
+    /// De uitputtings-breaker sluit de worker af, dus mag een gebruiker hem niet
+    /// kunnen laten afgaan. De weigering-zonder-toestemming noemt de geüploade
+    /// bestandsnaam; heet die `cannot fork.pdf`, dan matcht de tekst-classificatie
+    /// een fork-marker. Het fouttype moet daar dwars doorheen gaan.
+    #[test]
+    fn document_convert_refusal_never_counts_as_resource_exhaustion() {
+        let err = PipelineError::LlmNotPermitted(
+            "Conversie van cannot fork.pdf gestopt: de omzetting zonder AI leverde geen \
+             bruikbare tekst op. Er is geen taalmodel gebruikt."
+                .to_string(),
+        );
+        let msg = err.to_string();
+        // De tekst zou de breaker wél laten aanslaan — daarom classificeren we
+        // deze mislukking op type.
+        assert!(is_resource_exhaustion(&msg));
+        assert_eq!(outcome_for_error(&msg), JobOutcome::ResourceExhausted);
+        assert_eq!(
+            document_convert_outcome(&err, &msg),
+            JobOutcome::Processed,
+            "een geweigerde conversie is een gewone mislukking, geen resource-uitputting"
+        );
+    }
+
+    /// De tegenproef: echte fork/OOM-uitputting op deze zelfde job moet de
+    /// breaker nog steeds voeden.
+    #[test]
+    fn document_convert_real_exhaustion_still_trips_the_breaker() {
+        let err =
+            PipelineError::Enrich("cannot fork: Resource temporarily unavailable".to_string());
+        let msg = err.to_string();
+        assert_eq!(
+            document_convert_outcome(&err, &msg),
+            JobOutcome::ResourceExhausted
+        );
+    }
+
+    /// De uitleg gaat ongewijzigd naar de gebruiker (taak-payload, `jobs.result`),
+    /// dus zonder `enrichment error:`-voorvoegsel voor iets dat niet verrijkt is.
+    #[test]
+    fn llm_not_permitted_displays_without_prefix() {
+        let err = PipelineError::LlmNotPermitted("Conversie van brief.doc gestopt.".to_string());
+        assert_eq!(err.to_string(), "Conversie van brief.doc gestopt.");
     }
 
     #[test]
@@ -3390,6 +3803,87 @@ mod contract_tests {
 
         process_one(&db).await;
         assert_rejected_without_delivery(&db, job_id).await;
+    }
+
+    /// Een account + traject om een echte taak aan te kunnen hangen (de
+    /// `tasks`-FK's eisen bestaande rijen). De contract-tests hierboven hebben
+    /// dit niet nodig omdat daar juist géén taak ontstaat.
+    async fn seed_account_and_traject(db: &TestDb) -> (uuid::Uuid, uuid::Uuid) {
+        let (account_id,): (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO accounts (person_sub, email, name) \
+             VALUES ('sub-uploader', 'uploader@example.test', 'Uploader') RETURNING id",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("insert account");
+        let (traject_id,): (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO trajects (name, description, scope, created_by) \
+             VALUES ('Testtraject', '', '', $1) RETURNING id",
+        )
+        .bind(account_id)
+        .fetch_one(&db.pool)
+        .await
+        .expect("insert traject");
+        (account_id, traject_id)
+    }
+
+    /// De belofte end-to-end door de worker heen: zonder `allow_llm` faalt een
+    /// conversie die de deterministische route niet haalt terminaal, mét de
+    /// bestaande "Conversie mislukt"-taak — en zonder ooit de agent te starten.
+    /// De seed-upload is een `.pdf` met onzin-bytes: een formaat dát een
+    /// converter heeft, waarvan de tool op deze input stukloopt. Precies de
+    /// stille terugval die dit ticket dichtzet (en die niet zichtbaar zou zijn
+    /// als we alleen een onbekende extensie zouden testen).
+    #[tokio::test]
+    async fn document_convert_without_llm_permission_fails_terminally_with_task() {
+        let db = TestDb::new().await;
+        let (account_id, traject_id) = seed_account_and_traject(&db).await;
+        let (job_id, _upload) = seed_job(
+            &db,
+            json!({
+                "traject_id": traject_id,
+                "traject_ref": "testtraject-abcd1234",
+                "target_path": "report.md",
+                "deliver": "task",
+                "requested_by": account_id,
+                "allow_llm": false,
+            }),
+        )
+        .await;
+
+        process_one(&db).await;
+
+        let (status, error): (String, Option<String>) =
+            sqlx::query_as("SELECT status::text, result->>'error' FROM jobs WHERE id = $1")
+                .bind(job_id)
+                .fetch_one(&db.pool)
+                .await
+                .expect("job row");
+        assert_eq!(status, "failed", "de job faalt terminaal, zonder retry");
+        let error = error.unwrap_or_default();
+        assert!(
+            error.contains("Er is geen taalmodel gebruikt"),
+            "de fout legt uit waarom er niets is omgezet, kreeg: {error}"
+        );
+
+        // Het bestaande faal-pad levert 'm af als taak; geen nieuw mechanisme.
+        let (task_type, title): (String, String) =
+            sqlx::query_as("SELECT task_type, title FROM tasks WHERE job_id = $1")
+                .bind(job_id)
+                .fetch_one(&db.pool)
+                .await
+                .expect("taak-rij");
+        assert_eq!(task_type, "job_failed");
+        assert_eq!(title, "Conversie mislukt: report.md");
+
+        let (uploads, blobs): (i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM document_uploads), (SELECT COUNT(*) FROM job_blobs)",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("counts");
+        assert_eq!(uploads, 0, "de upload-bytes zijn opgeruimd");
+        assert_eq!(blobs, 0, "er is niets opgeleverd");
     }
 
     #[tokio::test]

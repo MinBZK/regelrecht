@@ -65,6 +65,35 @@ pub const SUPPORTED_SCHEMAS: &[&str] = &[
     "v0.5.4", "v0.5.5", "v0.5.6", "v0.6.0",
 ];
 
+/// Maximum quote length (in `char`s) for the fuzzy annotation scan.
+///
+/// The sliding-window fuzzy match in `annotation::resolver` is cubic in the
+/// quote length; unbounded it freezes the browser main thread for minutes on
+/// a long quote (the resolver also runs synchronously via WASM). Above this
+/// length only the exact match runs and the result is reported as
+/// [`crate::annotation::MatchStatus::Skipped`], so a user can tell "not
+/// searched" apart from "not found". 120 chars is well past the RFC-018
+/// write-path context (40) and covers any quote a note reasonably anchors on.
+pub const MAX_FUZZY_QUOTE_CHARS: usize = 120;
+
+/// Maximum law text (in `char`s) one fuzzy resolve may scan.
+///
+/// Bounds the sliding-window scan across articles: articles that no longer
+/// fit in the budget are not fuzzily searched and the result reports
+/// `Skipped` instead of pretending the whole law was searched. 250k chars is
+/// roughly twice the Zorgverzekeringswet (~120k), so ordinary laws are fully
+/// scanned.
+pub const MAX_FUZZY_SCAN_CHARS: usize = 250_000;
+
+/// Maximum number of candidate windows one fuzzy resolve may score.
+///
+/// Scoring a window costs three Levenshtein computations (quadratic in the
+/// quote length). The pre-filter is cheap, but on a law that repeats the
+/// quote's words everywhere it passes almost every window; this cap bounds
+/// the total work regardless. Exceeding it truncates the scan and reports
+/// `Skipped` when nothing was found by then.
+pub const MAX_FUZZY_SCORED_WINDOWS: usize = 10_000;
+
 /// Maximum recursion depth for dot notation property access.
 ///
 /// Prevents stack overflow on malicious input like "a.a.a.a.a...".
@@ -95,5 +124,27 @@ mod tests {
 
         assert!(MAX_PROPERTY_DEPTH >= 10, "Should allow nested objects");
         assert!(MAX_PROPERTY_DEPTH <= 100, "Should limit extreme depth");
+
+        assert!(
+            MAX_FUZZY_QUOTE_CHARS >= 100,
+            "Should allow a sentence-length quote"
+        );
+        assert!(
+            MAX_FUZZY_QUOTE_CHARS <= 500,
+            "Should keep the cubic scan bounded"
+        );
+        assert!(
+            MAX_FUZZY_SCAN_CHARS >= 119_763,
+            "Should cover the Zorgverzekeringswet in one scan"
+        );
+        assert!(MAX_FUZZY_SCAN_CHARS <= 1_000_000, "Should bound the scan");
+        assert!(
+            MAX_FUZZY_SCORED_WINDOWS >= 1_000,
+            "Should score enough windows to find real fuzzy matches"
+        );
+        assert!(
+            MAX_FUZZY_SCORED_WINDOWS <= 100_000,
+            "Should bound the Levenshtein work"
+        );
     }
 }

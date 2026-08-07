@@ -14,6 +14,18 @@ Feature: Note resolution (RFC-005, RFC-018)
     Then the note resolves to article "2"
     And the note is an exact match
 
+  Scenario: Column order of the article table is read from the header
+    # The header names the columns; their order carries no meaning. Reading the
+    # table positionally made a swapped-but-correctly-headed table resolve the
+    # note against an article number instead of against the article text.
+    Given a law with the following articles:
+      | text                                                                         | number |
+      | heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil | 2      |
+    And a note selecting "zorgtoeslag" with prefix "op een " and suffix " ter grootte"
+    When the note is resolved
+    Then the note resolves to article "2"
+    And the note is an exact match
+
   Scenario: Article renumbered keeps the note anchored to the text
     # A new article 1a is inserted; the annotated text moves to article 4a.
     # The content-addressed selector still finds it.
@@ -107,6 +119,21 @@ Feature: Note resolution (RFC-005, RFC-018)
     And the note hints article "9" at position 0 to 5
     When the note is resolved
     Then the note resolves to article "2"
+
+  Scenario: A hint does not remove a genuine ambiguity
+    # The quote occurs verbatim in two articles. After a renumbering the
+    # recorded hint may point at the wrong article, so a hint that happens to
+    # match may not silently decide: the ambiguity goes to a human, exactly
+    # as it would without the hint (RFC-018: article numbers are
+    # non-authoritative, the note follows the text).
+    Given a law with the following articles:
+      | number | text                                         |
+      | 3      | Deze verplichting vloeit voort uit de wet.   |
+      | 7      | De inspecteur handelt overeenkomstig de wet. |
+    And a note selecting "de wet"
+    And the note hints article "3"
+    When the note is resolved
+    Then the note is ambiguous
 
   # === Ambiguity tracking (RFC-018 Decision 6) ===
   # A questioning note over an open norm still has to resolve to the text it

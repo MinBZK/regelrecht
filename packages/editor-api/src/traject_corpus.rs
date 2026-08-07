@@ -40,11 +40,22 @@ use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::state::{BackendEntry, CorpusState};
+use crate::traject_index_diagnosis::OwnSourceTarget;
 
 /// Resolved corpus state for a single traject, plus per-source write
 /// routing.
 pub struct TrajectCorpus {
     pub corpus: CorpusState,
+    /// The traject this snapshot belongs to. Carried on the snapshot so
+    /// every log line written from a read path can be tied back to one
+    /// traject — a warning without it cannot be correlated with anything.
+    pub traject_id: Uuid,
+    /// The branch the writable-own source branches from (the
+    /// `gh_base_branch` column), when that source is GitHub-backed.
+    /// Kept outside the registry's [`Source`] because it is
+    /// traject-flow-specific; the diagnosis of a failed index scan needs
+    /// it to tell "the base branch is gone" apart from the other causes.
+    pub own_base_branch: Option<String>,
     /// Maps the `source_id` a law was loaded from to the `source_id`
     /// whose backend should receive the write. When the read source is
     /// itself writable (local source, or a GitHub source that doesn't
@@ -261,11 +272,13 @@ const TRAJECT_INDEX_TTL: Duration = Duration::from_secs(60);
 const BODY_CACHE_MAX_ENTRIES: usize = 1024;
 
 /// When an implements-index build would otherwise fetch at least this many
-/// law bodies one-by-one from a *single* source, pull the whole source in
-/// one archive request instead (see [`RepoBackend::read_all_implements`]).
-/// Below the threshold the per-law lazy fetch is cheaper than downloading
-/// the archive. This is what turns the cold build over a large GitHub-backed
-/// traject from O(corpus) Contents calls (a 504) into one download.
+/// law bodies one-by-one from a *single* source, ask that source for its
+/// whole implements map in one go instead (see
+/// [`RepoBackend::read_all_implements`] — the precomputed index committed in
+/// the corpus repo, or a repo-archive download when no index describes the
+/// branch). Below the threshold the per-law lazy fetch is cheaper. This is
+/// what turns the cold build over a large GitHub-backed traject from
+/// O(corpus) Contents calls (a 504) into a couple of requests.
 ///
 /// [`RepoBackend::read_all_implements`]: regelrecht_corpus::backend::RepoBackend::read_all_implements
 const BULK_FETCH_THRESHOLD: usize = 16;
@@ -375,6 +388,69 @@ impl TrajectCorpus {
             .map(String::as_str)
     }
 
+    /// The registry entry of this traject's **writable-own** source — the
+    /// repo the editor commits to. `None` only when the traject's source
+    /// config no longer lists it (a shape the build path doesn't produce).
+    ///
+    /// Shared by every caller that needs the source's own coordinates
+    /// rather than a law's: the index-failure diagnosis
+    /// ([`Self::own_source_target`]) and the integrity scan, which reads
+    /// the repo's whole file tree instead of one law.
+    pub fn own_source(&self) -> Option<&Source> {
+        self.corpus
+            .registry
+            .get_source(&self.writable_own_source_id)
+    }
+
+    /// The GitHub coordinates of the writable-own source, for the in-band
+    /// diagnosis of a failed index scan (see
+    /// [`crate::traject_index_diagnosis`]). `None` when that source isn't
+    /// GitHub-backed (a local dev/preview stack), which leaves nothing to
+    /// ask GitHub about.
+    ///
+    /// The branch comes straight from the stored source config rather than
+    /// being re-derived from the traject name, so the probe asks about the
+    /// branch the scan actually read.
+    pub fn own_source_target(&self) -> Option<OwnSourceTarget> {
+        let source = self.own_source()?;
+        let SourceType::GitHub { github } = &source.source_type else {
+            return None;
+        };
+        Some(OwnSourceTarget {
+            traject_id: self.traject_id,
+            source_id: self.writable_own_source_id.clone(),
+            owner: github.owner.clone(),
+            repo: github.repo.clone(),
+            branch: github.branch.clone(),
+            // Mirrors `build_traject_github_backend`'s default: a NULL
+            // `gh_base_branch` means "main".
+            base_branch: self
+                .own_base_branch
+                .clone()
+                .unwrap_or_else(|| "main".to_string()),
+        })
+    }
+
+    /// Re-resolve the server-side token configured for the writable-own
+    /// source, if any.
+    ///
+    /// For the callers that talk to GitHub directly instead of through the
+    /// backend: when a request carries no personal token, this is the
+    /// credential the backend itself would have used, so they have to
+    /// re-resolve it or they walk a different access path than the ordinary
+    /// reads. The index diagnosis needs that to probe the path that actually
+    /// broke ([`crate::traject_index_diagnosis`]); the integrity scan needs
+    /// it to enumerate the branch at all ([`crate::traject_integrity`]).
+    /// Resolved on demand and dropped by the caller — no token is ever
+    /// stored on this shared, cross-user snapshot.
+    pub fn own_server_token(&self) -> Option<String> {
+        let source = self.own_source()?;
+        regelrecht_corpus::auth::CredentialResolver::new(self.corpus.auth_file.as_deref())
+            .resolve_source(source)
+            .ok()
+            .and_then(regelrecht_corpus::auth::TokenDecision::into_token)
+    }
+
     /// Resolve the YAML content for a law in this traject, preferring the
     /// post-save overlay over the source_map snapshot built at traject
     /// activation time.
@@ -429,9 +505,16 @@ impl TrajectCorpus {
         };
 
         // The source is indexed but its backend was skipped at build time
-        // (already logged then) — the law isn't readable. Treat as a miss.
+        // — `ensure_ready` failed, which is as likely a GitHub hiccup as a
+        // misconfiguration. This law exists (the index enumerated it), so
+        // "no backend" is a failure to read it, not a law that isn't
+        // there; returning a miss would render the whole source as
+        // "leeg maar in orde" for a TTL window.
         let Some(entry) = self.corpus.backends.get(&source_id) else {
-            return Ok(None);
+            return Err(regelrecht_corpus::error::CorpusError::Config(format!(
+                "source '{source_id}' has no usable backend in this snapshot, \
+                 so law '{law_id}' cannot be read (backend init failed at build time)"
+            )));
         };
 
         // The personal token authenticates exclusively against the
@@ -538,8 +621,20 @@ impl TrajectCorpus {
             }
             // Metadata-only (GitHub) version — lazily fetch its body. A source
             // whose backend was skipped at build time is treated as a missing
-            // version rather than failing the whole set.
+            // version rather than failing the whole set: this path feeds the
+            // scenario dependency loader, where one unfetchable future-dated
+            // version must not take down a law whose in-force version is
+            // right here. Unlike `law_yaml`, which answers a single law and
+            // therefore errors, this stays per-version isolation — but it is
+            // no longer silent, because a dropped version changes which
+            // redaction the engine considers in force.
             let Some(entry) = self.corpus.backends.get(&source_id) else {
+                tracing::warn!(
+                    law_id = %law_id,
+                    source_id = %source_id,
+                    "skipping a law version whose source has no usable backend \
+                     in this snapshot (backend init failed at build time)"
+                );
                 continue;
             };
             // Isolate per-version fetch failures: a transient backend error for
@@ -970,8 +1065,11 @@ impl TrajectCorpus {
                             }
                             implements
                         }
-                        // A genuine miss (no backend / file vanished) has
-                        // nothing to index and nothing to retry.
+                        // A genuine miss (the file vanished from the branch
+                        // between enumeration and now) has nothing to index
+                        // and nothing to retry. A source without a usable
+                        // backend is not this case — `law_yaml` errors for
+                        // that, so it lands in `failed_law_ids` below.
                         Ok(None) => continue,
                         Err(e) => {
                             tracing::debug!(law_id = %entry.law_id, error = %e, "implements scan: body fetch failed");
@@ -1514,6 +1612,14 @@ async fn build_traject_corpus(
         .map(|r| r.source_id.clone())
         .ok_or(TrajectCorpusError::NoWritableOwn)?;
 
+    // Traject-flow-specific, so it never made it into `Source`: the branch
+    // the traject branch is cut from. Kept on the snapshot so a failed
+    // index scan can be diagnosed without a second DB round trip.
+    let own_base_branch = rows
+        .iter()
+        .find(|r| r.is_writable_own)
+        .and_then(|r| r.gh_base_branch.clone());
+
     // Build the read-source → write-target-source map. Every non-
     // writable_own source (local seed, GitHub seed, …) is routed to the
     // writable_own's backend so a save on any read-only seed-loaded law
@@ -1585,15 +1691,15 @@ async fn build_traject_corpus(
 
         let is_writable_own = source.id == writable_own_source_id;
 
-        // The writable-own GitHub source goes through the in-memory
-        // Contents-API backend (no clone, no working tree) so saves are
-        // committed via the API. Read-only base/seed GitHub sources
-        // (minbzk-central, …) instead read from a local git clone: body
-        // reads (`law_yaml`, the implements scan) then hit local disk
-        // rather than the REST Contents API, which avoids exhausting the
-        // GitHub REST quota on an O(corpus) implements scan and reuses the
-        // clone the global corpus already maintains (shared by source id).
-        // Local sources keep their configured path — already isolated.
+        // The writable-own GitHub source goes through
+        // `build_traject_github_backend` because it needs a base branch to
+        // create its traject branch from; read-only base/seed GitHub
+        // sources (minbzk-central, …) go through `create_backend`, which
+        // builds the same Contents-API backend without one. Neither clones:
+        // the implements scan that used to justify a local checkout now
+        // reads the precomputed index out of the corpus repo, and body
+        // reads ride the Contents API with conditional GETs (a 304 costs no
+        // rate-limit quota). Local sources keep their configured path.
         let backend_result = match &source.source_type {
             SourceType::GitHub { github } if is_writable_own => build_traject_github_backend(
                 traject_id,
@@ -1737,6 +1843,8 @@ async fn build_traject_corpus(
             auth_file: auth_file.map(|p| p.to_path_buf()),
             index_failures,
         },
+        traject_id,
+        own_base_branch,
         write_target_for_source,
         writable_own_source_id,
         overlay: Arc::new(RwLock::new(HashMap::new())),
@@ -1846,6 +1954,8 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
             // scan failures to report.
             index_failures: HashMap::new(),
         },
+        traject_id: old.traject_id,
+        own_base_branch: old.own_base_branch.clone(),
         write_target_for_source: old.write_target_for_source.clone(),
         writable_own_source_id: old.writable_own_source_id.clone(),
         overlay: old.overlay.clone(),
@@ -2149,6 +2259,8 @@ mod tests {
                 auth_file: None,
                 index_failures: HashMap::new(),
             },
+            traject_id: Uuid::nil(),
+            own_base_branch: None,
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
             overlay: Arc::new(RwLock::new(HashMap::new())),
@@ -2612,6 +2724,8 @@ mod tests {
                 auth_file: None,
                 index_failures: HashMap::new(),
             },
+            traject_id: Uuid::nil(),
+            own_base_branch: None,
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
             overlay: Arc::new(RwLock::new(HashMap::new())),

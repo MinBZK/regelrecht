@@ -25,9 +25,8 @@ use crate::article::{
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::priority::{self, Candidate};
-use crate::types::Value;
+use crate::types::{RegulatoryLayer, Value};
 use chrono::NaiveDate;
-use regelrecht_shared::RegulatoryLayer;
 use std::collections::{HashMap, HashSet};
 
 /// Why a law version could not be selected for a reference date.

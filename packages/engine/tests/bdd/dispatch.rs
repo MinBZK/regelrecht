@@ -6,13 +6,14 @@
 //! live here — codegen carries no per-action knowledge. Bodies are ported from
 //! the hand-written `steps/{given,when,then,notes}.rs`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use regelrecht_engine::{
     annotation, Article, OutputProvenance, SelectorHint, TextQuoteSelector, Value,
 };
 use rust_decimal::Decimal;
 
+use crate::helpers::table::{rows_to_params, rows_to_records, Rows};
 use crate::helpers::value_conversion::{convert_gherkin_value, values_equal_with_tolerance};
 use crate::world::RegelrechtWorld;
 
@@ -46,10 +47,6 @@ impl ArgValue {
         }
     }
 }
-
-/// Table rows come straight from cucumber's `gherkin::Step.table.rows`:
-/// `Vec<Vec<String>>` where `row[0]` is the header row.
-type Rows = Vec<Vec<String>>;
 
 impl RegelrechtWorld {
     /// Execute one canonical grammar action. Panics (test assertion) on any
@@ -293,13 +290,28 @@ impl RegelrechtWorld {
 
     // ----- note helpers (ported verbatim from notes.rs) -----
 
+    /// Reads the article table by header name, like `rows_to_records` does for
+    /// data-source tables. It used to read `row[0]`/`row[1]` positionally while
+    /// carrying a `number | text` header that nothing checked, so swapping the
+    /// two columns (header included) silently changed what the scenario meant.
+    /// One convention for every table in this language: the header is the
+    /// contract.
     fn note_set_articles(&mut self, table: &Rows) {
         self.note_articles.clear();
-        // First row is the header (number | text).
+        let headers: Vec<String> = table
+            .first()
+            .map(|row| row.iter().map(|s| s.trim().to_string()).collect())
+            .unwrap_or_default();
+        let column = |name: &str| -> usize {
+            headers.iter().position(|h| h == name).unwrap_or_else(|| {
+                panic!("article table needs a '{name}' column; header is {headers:?}")
+            })
+        };
+        let (number_at, text_at) = (column("number"), column("text"));
         for row in table.iter().skip(1) {
             self.note_articles.push(Article {
-                number: row[0].trim().to_string(),
-                text: row[1].trim().to_string(),
+                number: row[number_at].trim().to_string(),
+                text: row[text_at].trim().to_string(),
                 url: None,
                 placement: None,
                 machine_readable: None,
@@ -423,36 +435,6 @@ fn num_to_value(n: f64) -> Value {
                 .expect("numeric literal parses as Decimal"),
         )
     }
-}
-
-/// Parse a two-column key/value parameter table.
-fn rows_to_params(rows: &Rows) -> BTreeMap<String, Value> {
-    let mut params = BTreeMap::new();
-    for row in rows {
-        if row.len() >= 2 {
-            params.insert(row[0].trim().to_string(), convert_gherkin_value(&row[1]));
-        }
-    }
-    params
-}
-
-/// Parse a header-row table into a list of records (one per data row).
-fn rows_to_records(rows: &Rows) -> Vec<BTreeMap<String, Value>> {
-    if rows.len() < 2 {
-        return Vec::new();
-    }
-    let headers: Vec<String> = rows[0].iter().map(|s| s.trim().to_string()).collect();
-    let mut records = Vec::new();
-    for row in rows.iter().skip(1) {
-        let mut record = BTreeMap::new();
-        for (i, cell) in row.iter().enumerate() {
-            if let Some(header) = headers.get(i) {
-                record.insert(header.clone(), convert_gherkin_value(cell));
-            }
-        }
-        records.push(record);
-    }
-    records
 }
 
 /// Parse the untranslatable mode string into the engine enum. From `given.rs`.

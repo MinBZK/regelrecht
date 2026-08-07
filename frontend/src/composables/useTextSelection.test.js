@@ -1,96 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { selectionToRawRange, buildSelector } from './useTextSelection.js';
+import { cpToUtf16, utf16ToCp, buildSelector } from './useTextSelection.js';
 
-// useTextSelection turns a DOM selection in the markdown-rendered article back
-// into raw char offsets, then grows TextQuoteSelector context until the
-// resolver finds it uniquely. The raw<->DOM gap (stripped "1. " prefixes,
-// collapsed whitespace) is the same one useNotesHighlight handles; these tests
-// pin the inverse direction and the context-growing loop.
+// useTextSelection converts between the resolver's code-point offsets and the
+// DOM's UTF-16 offsets, and grows TextQuoteSelector context until the
+// resolver finds the quoted span uniquely; these tests pin the offset
+// conversion pair and the context-growing loop.
 
-/** Build a DOM tree from HTML and select a substring of one text node. */
-function selectIn(html, findText) {
-  document.body.innerHTML = `<div id="root">${html}</div>`;
-  const root = document.getElementById('root');
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let node;
-  while ((node = walker.nextNode())) {
-    const i = node.textContent.indexOf(findText);
-    if (i === -1) continue;
-    const range = document.createRange();
-    range.setStart(node, i);
-    range.setEnd(node, i + findText.length);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    return root;
-  }
-  throw new Error(`text ${JSON.stringify(findText)} not found in DOM`);
-}
-
-describe('selectionToRawRange', () => {
-  it('maps a selection in plain rendered text to raw offsets', () => {
-    const raw = 'heeft de verzekerde aanspraak op zorgtoeslag';
-    const root = selectIn(`<p>${raw}</p>`, 'zorgtoeslag');
-    const range = selectionToRawRange(raw, root);
-    expect(range).not.toBeNull();
-    expect(raw.slice(range.start, range.end)).toBe('zorgtoeslag');
+describe('cpToUtf16 / utf16ToCp', () => {
+  it('is identity for BMP text', () => {
+    expect(cpToUtf16('abcdef', 3)).toBe(3);
+    expect(utf16ToCp('abcdef', 3)).toBe(3);
   });
 
-  it('accounts for a list prefix marked stripped from the DOM', () => {
-    // Raw lid: "1. Indien de normpremie"; rendered as <li> without "1. ".
-    const raw = '1. Indien de normpremie';
-    const root = selectIn('<ol><li>Indien de normpremie</li></ol>', 'normpremie');
-    const range = selectionToRawRange(raw, root);
-    expect(range).not.toBeNull();
-    // The raw offset must include the stripped "1. " (3 chars): "normpremie"
-    // starts at raw index 13, not the DOM index 10.
-    expect(raw.slice(range.start, range.end)).toBe('normpremie');
-    expect(range.start).toBe(13);
-  });
-
-  it('maps a selection that starts at an element boundary (ol, 0)', () => {
-    // marked renders "<ol>\n<li>..." - childNodes[0] of <ol> is a "\n" text
-    // node with no raw counterpart. A drag starting at the very beginning of
-    // the list reports start as (ol, 0); the scan must skip the "\n" and not
-    // dead-end. Regression for the element-endpoint-on-whitespace bug.
-    const raw = '1. eerste lid\n\n2. tweede lid';
-    document.body.innerHTML =
-      '<div id="root"><ol>\n<li>eerste lid</li>\n<li>tweede lid</li>\n</ol></div>';
-    const root = document.getElementById('root');
-    const ol = root.querySelector('ol');
-    const firstLiText = ol.querySelectorAll('li')[0].firstChild;
-    const range = document.createRange();
-    range.setStart(ol, 0); // element boundary, before the "\n"
-    range.setEnd(firstLiText, 'eerste'.length);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    const out = selectionToRawRange(raw, root);
-    expect(out).not.toBeNull();
-    // "eerste" is at raw offset 3 (after the stripped "1. ").
-    expect(raw.slice(out.start, out.end)).toBe('eerste');
-  });
-
-  it('returns null for a collapsed (empty) selection', () => {
-    const raw = 'abc';
-    document.body.innerHTML = '<div id="root"><p>abc</p></div>';
-    const root = document.getElementById('root');
-    window.getSelection().removeAllRanges();
-    expect(selectionToRawRange(raw, root)).toBeNull();
-  });
-
-  it('returns null when the selection is outside the root', () => {
-    const raw = 'abc';
-    document.body.innerHTML =
-      '<div id="root"><p>abc</p></div><p id="other">def</p>';
-    const root = document.getElementById('root');
-    const other = document.getElementById('other');
-    const range = document.createRange();
-    range.selectNodeContents(other);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    expect(selectionToRawRange(raw, root)).toBeNull();
+  it('counts an astral code point as two UTF-16 units', () => {
+    // "𝕏" (U+1D54F) is one code point but two UTF-16 units.
+    const text = 'a𝕏b';
+    expect(cpToUtf16(text, 2)).toBe(3); // after "a𝕏"
+    expect(utf16ToCp(text, 3)).toBe(2); // inverse
   });
 });
 
@@ -131,6 +57,29 @@ describe('buildSelector', () => {
     expect(out.selector.exact).toBe('normpremie');
     expect(out.selector.prefix).toBeUndefined();
     expect(out.selector.suffix).toBeUndefined();
+  });
+
+  it('hands the viewed version (validFrom) to the resolver', () => {
+    // The engine holds every version of the law; without the valid_from of
+    // the version on screen the resolver would validate uniqueness against
+    // the newest version instead of the text being annotated.
+    const range = { start: 10, end: 20 };
+    const seen = [];
+    const engine = {
+      resolveNote(_lawId, _selector, validFrom) {
+        seen.push(validFrom);
+        return {
+          status: 'found',
+          matches: [{ article_number: '1', start: 10, end: 20 }],
+        };
+      },
+    };
+    const out = buildSelector(raw, range, 'w', engine, '1', '2024-01-01');
+    expect(out.status).toBe('found');
+    expect(seen).toEqual(['2024-01-01']);
+    // Without a version context the argument stays undefined (= latest).
+    buildSelector(raw, range, 'w', engine, '1');
+    expect(seen).toEqual(['2024-01-01', undefined]);
   });
 
   it('rejects a unique match at the WRONG offsets as a mis-anchor', () => {
@@ -218,6 +167,24 @@ describe('buildSelector', () => {
     });
     const out = buildSelector(raw, range, 'w', engine, '1');
     expect(out.status).toBe('orphaned');
+    expect(calls).toBe(1);
+  });
+
+  it('passes a skipped search through as its own status, not as orphaned', () => {
+    // 'skipped' = the resolver's fuzzy budget refused the quote (RFC-018
+    // scan bounds). Growing prefix/suffix cannot shorten the quote, so
+    // retrying the two wider widths would just burn the same budget again.
+    // The status must survive to the caller: "not searched" and "not found"
+    // are different messages to the user, with different advice.
+    const range = { start: 10, end: 20 };
+    let calls = 0;
+    const engine = engineReturning(() => {
+      calls++;
+      return { status: 'skipped', matches: [], skip_reason: 'quote_too_long' };
+    });
+    const out = buildSelector(raw, range, 'w', engine, '1');
+    expect(out.status).toBe('skipped');
+    expect(out.reason).toBe('not-searched');
     expect(calls).toBe(1);
   });
 });

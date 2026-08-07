@@ -151,9 +151,10 @@ const OUTPUT_FILE: &str = "law.yaml";
 /// Name of the deterministically extracted text, when extraction succeeded.
 const SOURCE_TEXT_FILE: &str = "source.md";
 
-/// `$schema` URL the generated law must carry (pinned; the enrichment that
-/// follows works on the same version).
-const SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json";
+/// `$schema` URL the generated law must carry. Shared with the harvester so the
+/// two writers cannot stamp different contracts into one corpus (#1167); the
+/// enrichment that follows works on the same version.
+use regelrecht_shared::SCHEMA_URL;
 
 /// Sanitize the uploaded filename into something safe for the synthetic
 /// `upload://` source-URL (schema `url` is `format: uri`, so no spaces).

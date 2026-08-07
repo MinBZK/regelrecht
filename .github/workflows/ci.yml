@@ -297,8 +297,11 @@ jobs:
       # die van eigenaar wisselt kan een component stil buiten de deploy laten
       # vallen. Die test hoort in een required check, en deze baan heeft cargo
       # al staan; `cargo metadata` bouwt niets en kost seconden.
+      # Ongegate: de security-headers-guard verderop bewaakt bestanden
+      # (deploy/nginx, de twee nginx.conf's, het Grafana-Dockerfile) die niet
+      # onder het `ci`-filter vallen. Gegate zou hij precies de wijzigingen
+      # missen waarvoor hij bestaat.
       - name: Setup Node.js
-        if: needs.changes.outputs.ci == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
@@ -306,6 +309,17 @@ jobs:
       - name: Check deploy filters
         if: needs.changes.outputs.ci == 'true'
         run: just deploy-filters-test
+
+      - name: Check asset precompression
+        if: needs.changes.outputs.ci == 'true'
+        run: just precompress-test
+
+      - name: Check security headers
+        run: just security-headers-test
+
+      - name: Check first-load guard
+        if: needs.changes.outputs.ci == 'true'
+        run: just first-load-test
 
       # Leak-guard laag 2: voorzie het git-ignored aanvulbestand met de casus-/
       # sector-specifieke patronen uit een secret, zodat de skills-no-casus hook in
@@ -420,8 +434,16 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
+      # --ignore-scripts: een gekaapte release mag zijn preinstall/postinstall
+      # niet in onze CI draaien. Dependabot lost zelf al met --ignore-scripts
+      # op, dus de PR is onschuldig; het venster zit hier, in de eerste install
+      # op die branch.
+      #
+      # Geen enkele install-hook in deze workspace levert iets op wat de build
+      # nodig heeft. De uitzondering zit in docs/ (puppeteer voor pa11y) en
+      # wordt daar in een eigen stap opgevangen.
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: BDD grammar codegen is in sync
         run: |
@@ -560,36 +582,38 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-registry-
 
       # `just test-e2e` hangt aan `wasm-build`, dat `wasm-bindgen` op PATH
-      # verwacht. De versie wordt uit packages/Cargo.lock gelezen in plaats van
-      # hier hardgecodeerd: wasm-bindgen-cli moet exact overeenkomen met de
-      # wasm-bindgen-crate, anders faalt het bindgen-stap met een versie-mismatch.
-      - name: Resolve wasm-bindgen version
-        id: wasm-bindgen-version
+      # verwacht. Versie en checksum staan in frontend/Dockerfile en worden hier
+      # gelezen in plaats van een tweede keer opgeschreven; dat houdt CI en het
+      # editor-image op precies dezelfde binary. De versie moet gelijk lopen met
+      # de wasm-bindgen-crate uit packages/Cargo.lock, anders faalt de
+      # bindgen-stap verderop met een versie-mismatch.
+      - name: Install wasm-bindgen-cli
         if: needs.changes.outputs.ci == 'true'
         run: |
-          version=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
-            | sed -n 's/^version = "\(.*\)"$/\1/p' | head -1)
-          if [ -z "$version" ]; then
+          set -eu
+          locked=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
+            | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}')
+          version=$(sed -n 's/^ARG WASM_BINDGEN_VERSION=\(.*\)$/\1/p' frontend/Dockerfile)
+          sha=$(sed -n 's/^ARG WASM_BINDGEN_SHA256_AMD64=\(.*\)$/\1/p' frontend/Dockerfile)
+          if [ -z "$locked" ]; then
             echo "::error::kon wasm-bindgen-versie niet uit packages/Cargo.lock lezen"
             exit 1
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Cache wasm-bindgen-cli
-        id: wasm-bindgen-cache
-        if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: ~/.cargo/bin/wasm-bindgen
-          key: ${{ runner.os }}-wasm-bindgen-${{ steps.wasm-bindgen-version.outputs.version }}
-
-      # Overslaan bij een cache-hit. Zonder deze guard faalt elke run ná de
-      # eerste: de cache legt alleen het binary terug, niet `.crates.toml`,
-      # waardoor cargo het bestand niet als het zijne herkent en weigert te
-      # overschrijven ("binary `wasm-bindgen` already exists in destination").
-      - name: Install wasm-bindgen-cli
-        if: needs.changes.outputs.ci == 'true' && steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
-        run: cargo install wasm-bindgen-cli@${{ steps.wasm-bindgen-version.outputs.version }} --locked
+          if [ -z "$version" ] || [ -z "$sha" ]; then
+            echo "::error::kon WASM_BINDGEN_VERSION/WASM_BINDGEN_SHA256_AMD64 niet uit frontend/Dockerfile lezen"
+            exit 1
+          fi
+          if [ "$version" != "$locked" ]; then
+            echo "::error::wasm-bindgen-cli is in frontend/Dockerfile gepind op $version, packages/Cargo.lock heeft $locked. Werk WASM_BINDGEN_VERSION en beide WASM_BINDGEN_SHA256_* bij naar $locked; de checksums staan naast de release op https://github.com/wasm-bindgen/wasm-bindgen/releases/tag/$locked"
+            exit 1
+          fi
+          dir="wasm-bindgen-${version}-x86_64-unknown-linux-musl"
+          curl -fsSLo "/tmp/${dir}.tar.gz" \
+            "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/${dir}.tar.gz"
+          echo "${sha}  /tmp/${dir}.tar.gz" | sha256sum -c -
+          tar -xzf "/tmp/${dir}.tar.gz" -C /tmp
+          install -D -m0755 "/tmp/${dir}/wasm-bindgen" "$HOME/.cargo/bin/wasm-bindgen"
+          wasm-bindgen --version
 
       - name: Setup Node.js
         if: needs.changes.outputs.ci == 'true'
@@ -602,7 +626,7 @@ jobs:
 
       - name: Install workspace dependencies
         if: needs.changes.outputs.ci == 'true'
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       # De browserdownload (~150 MB) is de duurste stap; cache hem op de
       # playwright-versie uit de lockfile. De apt-kant van `--with-deps` is niet
@@ -686,7 +710,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install workspace dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
@@ -727,15 +751,37 @@ jobs:
       - name: Install docs dependencies
         if: needs.changes.outputs.docs == 'true'
         working-directory: docs
-        run: npm ci
+        run: npm ci --ignore-scripts
 
-      # rehype-mermaid renders diagrams with a headless Chromium at build time,
-      # and pa11y drives Chromium too — install it (with system deps) the same
-      # way docs/Dockerfile does.
+      # rehype-mermaid rendert diagrammen met een headless Chromium tijdens de
+      # build — installeer die (met systeemdeps) op dezelfde manier als
+      # docs/Dockerfile.
       - name: Install Playwright Chromium
         if: needs.changes.outputs.docs == 'true'
         working-directory: docs
         run: npx playwright install --with-deps chromium
+
+      # pa11y draait niet op playwright maar op puppeteer, met een eigen
+      # browsercache (~/.cache/puppeteer). Die download zat in puppeteers
+      # postinstall en verdween met --ignore-scripts hierboven; hij hoort
+      # daarom expliciet te staan. Zonder deze stap faalt de gate met
+      # "Could not find Chrome".
+      #
+      # Deze stap haalt alleen de browser zelf binnen. De gedeelde libraries
+      # (libnss3, libgbm, libasound2, …) die pa11y straks nodig heeft om deze
+      # Chrome te starten komen van `playwright install --with-deps` hierboven;
+      # die stap moet dus blijven staan. `browsers install` heeft daar zelf wel
+      # een --install-deps voor, maar dat vereist root en dat is de runner niet.
+      #
+      # `--no` houdt npx bij de puppeteer uit docs/package-lock.json. Zonder
+      # die vlag zou npx bij een resolutiewijziging stilletjes puppeteer@latest
+      # van de registry halen — inclusief de postinstall die we hierboven net
+      # hebben uitgezet. De playwright-regel hierboven staat nog zonder --no;
+      # playwright heeft geen install-hook, dus daar valt niets uit te voeren.
+      - name: Install Puppeteer Chrome
+        if: needs.changes.outputs.docs == 'true'
+        working-directory: docs
+        run: npx --no puppeteer browsers install chrome
 
       # Alleen op een pull request: de lijst gewijzigde bestanden, waarmee
       # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de PR

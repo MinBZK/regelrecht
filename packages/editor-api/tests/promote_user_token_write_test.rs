@@ -60,11 +60,12 @@ fn state_with_user_token_mode(pool: PgPool, oauth: GithubOAuth) -> AppState {
             github_oauth: Some(oauth),
             task_enrich_provider: "claude".to_string(),
         }),
-        http_client: reqwest::Client::new(),
+        http_client: regelrecht_auth::http_client(),
         pool: Some(pool),
         pipeline_api_url: None,
         harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
+        integrity: Default::default(),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }
 }
@@ -180,6 +181,18 @@ fn write_central_law(central_dir: &std::path::Path) {
 /// branch-bootstrap (bestaat nog niet → aanmaken vanaf `main`) en de
 /// Contents-PUT's, allemaal geauthenticeerd met het user-token.
 async fn mount_write_mocks(server: &MockServer) {
+    // Promote leest eerst of de wet al in de traject-repo staat. Die read
+    // 404't (hij staat er niet, de branch bestaat nog niet eens), en een
+    // 404 telt pas als afwezigheid zodra de repo zelf leesbaar blijkt —
+    // anders zou een repo die dit token niet mag zien als "leeg" lezen.
+    // Eén lookup per repo+token, daarna onthouden.
+    Mock::given(method("GET"))
+        .and(path(format!("/repos/{OWN_REPO}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "full_name": OWN_REPO,
+        })))
+        .mount(server)
+        .await;
     // Branch-check van de traject-branch: bestaat nog niet bij de eerste
     // bootstrap (404, eenmalig), daarna wél — de save-scenario bouwt het
     // traject-corpus opnieuw op (promote invalideert de cache) en diens

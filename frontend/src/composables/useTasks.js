@@ -7,7 +7,7 @@
  * zijn laagfrequent; na eigen acties (enrich-aanvraag, resolve) wordt direct
  * ge-refreshed.
  */
-import { ref, computed, onUnmounted, getCurrentInstance } from 'vue';
+import { ref, computed, watch, onUnmounted, getCurrentInstance } from 'vue';
 import { apiFetch } from '@regelrecht/frontend-shared';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -52,6 +52,12 @@ async function resolveTask(taskId, action) {
   await refresh();
 }
 
+// Kaal: vraagt de verrijking aan en raakt de gedeelde takenlijst niet. Zonder
+// een refresh erachteraan blijft `running` leeg, slaat de bezig-staat van de
+// lege Machine-/YAML-pane niet om en begint usePollWhile nooit te pollen. Een
+// view die een wet toont neemt daarom useEnrichState, dat die refresh eraan
+// vastknoopt; wie deze rechtstreeks aanroept (TasksListPane, dat zelf al pollt)
+// zet er zelf een refresh() achter.
 async function requestEnrich(trajectRef, lawId) {
   const res = await apiFetch(
     `/api/trajects/${encodeURIComponent(trajectRef)}/corpus/laws/${encodeURIComponent(lawId)}/enrich`,
@@ -109,5 +115,42 @@ export function useTasks() {
 // that DO want the shared, polled task list (the taken-lijst in Home:
 // TasksSidebarItem/TasksListPane) keep using useTasks().
 export function useTaskActions() {
-  return { fetchTask, resolveTask, requestEnrich, refresh };
+  // `running` is een module-level ref, gedeeld met useTasks(). Meegeven kost
+  // niets en start geen poll: een view die alleen wil weten of er iets loopt,
+  // leest hem en ververst zelf na een actie of bij mount.
+  return { fetchTask, resolveTask, requestEnrich, refresh, running, tasks };
+}
+
+/**
+ * Ververs de takenlijst zolang `active` waar is, en stop zodra hij omslaat of
+ * de component verdwijnt.
+ *
+ * Voor de bezig-staat van een verrijking: die kan minuten duren, dus een
+ * permanente poll is verspilling, maar wie er op dat moment naar kijkt wil het
+ * zien omslaan zonder zelf te verversen. De kosten hangen zo aan kijktijd in
+ * plaats van aan looptijd. Bewust korter dan de 30s van useTasks: dit is een
+ * gerichte poll die je zelf in gang hebt gezet.
+ */
+export function usePollWhile(active, intervalMs = 10000) {
+  let pollTimer = null;
+  const stop = () => {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+  };
+  // Bewust NIET immediate: `running` is bij setup nog leeg, dus er valt op dat
+  // moment nooit iets te starten - de eerste refresh laat de watch alsnog
+  // afgaan.
+  //
+  // Wat het weglaten van immediate NIET wegneemt: een watch leest zijn bron
+  // hoe dan ook meteen bij aanmaak, om de dependency te leggen. Alles wat
+  // `active` aanraakt moet dus al gedeclareerd zijn - een computed die state
+  // leest die verderop in het bestand pas komt, gooit hier een ReferenceError
+  // (temporal dead zone) en dan rendert de hele view niets. useEnrichState
+  // ontloopt dat door zijn bronnen als argument binnen te krijgen: die bestaan
+  // per definitie al op de aanroepregel.
+  watch(active, (on) => {
+    stop();
+    if (on) pollTimer = setInterval(refresh, intervalMs);
+  });
+  if (getCurrentInstance()) onUnmounted(stop);
 }

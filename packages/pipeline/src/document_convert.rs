@@ -6,8 +6,15 @@
 //! untrusted document away from the Bash-enabled LLM. Any other format (the
 //! upload boundary no longer gates on an allow-list) falls back to the LLM
 //! agent subprocess that enrich uses (see
-//! `crate::enrich::run_llm_subprocess`), which decides for itself how to
-//! convert (pick a tool, or read it directly). This module owns the payload
+//! [`crate::enrich::run_llm_subprocess`]), which decides for itself how to
+//! convert (pick a tool, or read it directly).
+//!
+//! Die fallback is niet vanzelfsprekend: hij draait alleen met expliciete
+//! toestemming van de uploader ([`DocumentConvertPayload::allow_llm`]). Zonder
+//! toestemming stopt de conversie zichtbaar op het moment dat de
+//! deterministische route niets oplevert — welke van de vele redenen dat ook
+//! heeft. Zo is "geen AI" een belofte die de pipeline kan waarmaken in plaats
+//! van een voorkeur die stilletjes wegvalt. This module owns the payload
 //! type, the transient upload storage helpers, the status-list query for the
 //! editor, and the conversion orchestration. The worker (see `worker.rs`) drives
 //! it and delivers the produced markdown as a job-blob + review-taak
@@ -60,6 +67,22 @@ pub struct DocumentConvertPayload {
     /// worker terminaal geweigerd: zie [`Self::require_task_delivery`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deliver: Option<String>,
+    /// Gaf de uploader expliciet toestemming om een taalmodel te gebruiken?
+    ///
+    /// `false` (de default, óók voor payloads van vóór dit veld) is een harde
+    /// belofte: de inhoud van dit document komt onder geen enkele omstandigheid
+    /// bij een LLM terecht. Lukt de deterministische conversie niet — geen
+    /// converter voor dit formaat, tool afwezig, non-zero exit, of lege output
+    /// (denk aan een gescande pdf) — dan faalt de job zichtbaar in plaats van
+    /// stilletjes uit te wijken naar de agent. Zie [`convert_in_dir`].
+    ///
+    /// Dat de default `false` is, is bewust: een nog-in-de-wachtrij staande job
+    /// van vóór dit veld draagt geen toestemming, dus mag hij er ook geen
+    /// krijgen. Zo'n job faalt hooguit terminaal met een uitleg — het
+    /// tegenovergestelde (stil alsnog een LLM voeren) is de fout die dit veld
+    /// juist moet uitsluiten.
+    #[serde(default)]
+    pub allow_llm: bool,
 }
 
 impl DocumentConvertPayload {
@@ -389,21 +412,30 @@ pub(crate) fn extension_for(filename: &str, content_type: &str) -> String {
 }
 
 /// Load the upload, run the conversion in a fresh working directory, and return
-/// the produced markdown. The caller (worker) is responsible for writing the
-/// markdown to git and for cleaning up the upload row + job.
+/// the produced markdown plus the route that produced it. The caller (worker) is
+/// responsible for delivering the markdown and for cleaning up the upload row +
+/// job.
 pub async fn execute_document_convert(
     pool: &PgPool,
     payload: &DocumentConvertPayload,
     config: &EnrichConfig,
     converter: &dyn DocumentConverter,
-) -> Result<String> {
+) -> Result<ConvertedDocument> {
     let upload = load_upload(pool, payload.upload_id).await?;
     let work_dir = std::env::temp_dir().join(format!("docconvert-{}", payload.upload_id));
     // Clear any stale directory left by a previous attempt of this same job.
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
     tokio::fs::create_dir_all(&work_dir).await?;
 
-    let result = convert_in_dir(&work_dir, &upload, &payload.target_path, config, converter).await;
+    let result = convert_in_dir(
+        &work_dir,
+        &upload,
+        &payload.target_path,
+        payload.allow_llm,
+        config,
+        converter,
+    )
+    .await;
 
     // Always remove the working directory, success or failure.
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
@@ -412,39 +444,105 @@ pub async fn execute_document_convert(
 
 /// The deterministic command-line converter that handles a given extension.
 /// `pandoc` reads the office/markup formats; `pdftotext` (poppler) reads PDF.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeterministicTool {
     Pandoc,
     PdfToText,
 }
 
-/// The deterministic converter for `ext`, or `None` when no tool fits and the
-/// agentic (LLM) fallback must run. Single source of truth for "which formats
-/// take the fast, offline route" — both [`try_deterministic_convert`] and
-/// [`has_deterministic_converter`] read it, so the routing decision and the
-/// command dispatch can never drift apart.
+/// Single source of truth for "which formats take the fast, offline route":
+/// extension → the tool that reads it. Everything else — the command dispatch
+/// in [`try_deterministic_convert`], the predicate
+/// [`has_deterministic_converter`] the editor-api gates its upload on, and the
+/// list [`deterministic_extensions`] the editor shows the user — is derived
+/// from this table, so the routing decision can never drift apart from what the
+/// UI promises.
+const DETERMINISTIC_CONVERTERS: &[(&str, DeterministicTool)] = &[
+    // pandoc reads these natively and emits GitHub-flavored Markdown.
+    ("docx", DeterministicTool::Pandoc),
+    ("odt", DeterministicTool::Pandoc),
+    ("rtf", DeterministicTool::Pandoc),
+    ("html", DeterministicTool::Pandoc),
+    ("htm", DeterministicTool::Pandoc),
+    ("epub", DeterministicTool::Pandoc),
+    ("fb2", DeterministicTool::Pandoc),
+    // pandoc cannot read PDF; poppler's pdftotext extracts the text layer.
+    ("pdf", DeterministicTool::PdfToText),
+];
+
+/// The deterministic converter for `ext`, or `None` when no tool fits — in which
+/// case only the agentic (LLM) fallback can convert the document, and that route
+/// requires the uploader's explicit permission (`allow_llm`).
 fn deterministic_tool_for(ext: &str) -> Option<DeterministicTool> {
-    match ext {
-        // pandoc reads these natively and emits GitHub-flavored Markdown.
-        "docx" | "odt" | "rtf" | "html" | "htm" | "epub" | "fb2" => Some(DeterministicTool::Pandoc),
-        // pandoc cannot read PDF; poppler's pdftotext extracts the text layer.
-        "pdf" => Some(DeterministicTool::PdfToText),
-        _ => None,
-    }
+    DETERMINISTIC_CONVERTERS
+        .iter()
+        .find(|(e, _)| *e == ext)
+        .map(|(_, tool)| *tool)
 }
 
-/// Whether a deterministic converter handles `ext`. Formats without one take the
-/// agentic (LLM) fallback route instead. Public so tests (and any future caller)
-/// can reason about which route a given format will follow without spawning a
-/// tool.
+/// Whether a deterministic converter handles `ext`. Formats without one can only
+/// be converted by the agentic (LLM) route. Public because the upload boundary
+/// gates on it: an upload without LLM permission for such a format is rejected
+/// up front instead of enqueueing a job that could only fail.
 pub fn has_deterministic_converter(ext: &str) -> bool {
     deterministic_tool_for(ext).is_some()
 }
 
+/// Every extension a deterministic converter handles, in table order. The
+/// editor-api serves this to the frontend so the upload dialog can tell the
+/// user, per chosen file, whether it can be converted without AI — from this
+/// one source, instead of a second hand-maintained list in the UI.
+pub fn deterministic_extensions() -> Vec<&'static str> {
+    DETERMINISTIC_CONVERTERS.iter().map(|(e, _)| *e).collect()
+}
+
+/// Which route a conversion actually took. The uploader's checkbox says what was
+/// *allowed*; only the pipeline knows what *happened*, so this travels back with
+/// the result and ends up in the review banner ("omgezet met pandoc" /
+/// "omgezet met AI").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionRoute {
+    Pandoc,
+    PdfToText,
+    /// The agentic fallback: the document was read by an LLM agent.
+    Llm,
+}
+
+impl ConversionRoute {
+    /// Stable machine token stored in the job result and the review-taak payload.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConversionRoute::Pandoc => "pandoc",
+            ConversionRoute::PdfToText => "pdftotext",
+            ConversionRoute::Llm => "llm",
+        }
+    }
+
+    fn from_tool(tool: DeterministicTool) -> Self {
+        match tool {
+            DeterministicTool::Pandoc => ConversionRoute::Pandoc,
+            DeterministicTool::PdfToText => ConversionRoute::PdfToText,
+        }
+    }
+}
+
+/// A finished conversion: the markdown plus the route that produced it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConvertedDocument {
+    pub markdown: String,
+    pub route: ConversionRoute,
+}
+
 /// Try to convert `input_file` to markdown at `output_path` with a deterministic
-/// command-line tool, chosen by extension. Returns `Some(markdown)` on success,
+/// command-line tool, chosen by extension. Returns `Some(document)` on success,
 /// or `None` when the format is not handled, the tool is absent, it exits
-/// non-zero, or it produces empty output — every `None` case falls through to the
-/// agentic converter, so a missing tool or an odd file never hard-fails here.
+/// non-zero, or it produces empty output.
+///
+/// Note the breadth of `None`: it is emphatically NOT just "unknown extension".
+/// A missing tool, a crash, and a scanned PDF whose text layer is empty all land
+/// here too. Callers must therefore treat `None` as "deterministic conversion
+/// did not happen" and honour `allow_llm` before reaching for the agent — see
+/// [`convert_in_dir`].
 ///
 /// `pandoc` handles the office/markup formats; `pdftotext` (poppler) handles
 /// PDF. Both are baked into the enrich-worker image.
@@ -452,8 +550,9 @@ pub(crate) async fn try_deterministic_convert(
     input_file: &Path,
     ext: &str,
     output_path: &Path,
-) -> Option<String> {
-    let mut cmd = match deterministic_tool_for(ext)? {
+) -> Option<ConvertedDocument> {
+    let tool = deterministic_tool_for(ext)?;
+    let mut cmd = match tool {
         DeterministicTool::Pandoc => {
             let mut c = tokio::process::Command::new("pandoc");
             c.arg(input_file)
@@ -477,23 +576,61 @@ pub(crate) async fn try_deterministic_convert(
             if markdown.trim().is_empty() {
                 None
             } else {
-                Some(markdown)
+                Some(ConvertedDocument {
+                    markdown,
+                    route: ConversionRoute::from_tool(tool),
+                })
             }
         }
-        // Tool missing (spawn error) or a non-zero exit → let the agent try.
+        // Tool missing (spawn error) or a non-zero exit.
         _ => None,
     }
 }
 
+/// Why a conversion cannot continue without LLM permission. Ends up verbatim in
+/// the "Conversie mislukt: …"-taak, so it is Dutch, concrete about which of the
+/// two cases applies, and says out loud that no language model saw the document.
+///
+/// Bewust [`PipelineError::LlmNotPermitted`] en niet `Enrich`: de boodschap gaat
+/// ongewijzigd naar de gebruiker (geen `enrichment error:`-prefix voor iets dat
+/// juist niet verrijkt is), en ze bevat de bestandsnaam van de gebruiker — het
+/// type houdt die tekst weg bij de tekst-matchende foutclassificatie in de
+/// worker.
+fn no_llm_permission_error(ext: &str, filename: &str) -> PipelineError {
+    let format = if ext.is_empty() {
+        "dit bestand".to_string()
+    } else {
+        format!("een .{ext}-bestand")
+    };
+    let reason = if has_deterministic_converter(ext) {
+        "de omzetting zonder AI leverde geen bruikbare tekst op — bijvoorbeeld een gescande \
+         pdf zonder tekstlaag, of een leeg document"
+            .to_string()
+    } else {
+        format!("voor {format} bestaat geen omzetting zonder AI")
+    };
+    PipelineError::LlmNotPermitted(format!(
+        "Conversie van {filename} gestopt: {reason}. Er is geen taalmodel gebruikt en de inhoud \
+         is nergens naartoe gestuurd. Upload het bestand opnieuw met 'Omzetten met AI toestaan' \
+         aan, of lever een versie met een tekstlaag aan."
+    ))
+}
+
 /// The pure filesystem half of the conversion, split out so it can be unit-tested
 /// with a fake converter and a synthetic upload (no DB, no LLM).
+///
+/// `allow_llm` is the uploader's answer to "mag hier een taalmodel aan te pas
+/// komen?". With `false` this function must never call `converter` — not for an
+/// unknown format, and not when the deterministic tool fell over. That is the
+/// whole promise the upload dialog makes.
 async fn convert_in_dir(
     work_dir: &Path,
     upload: &Upload,
     target_path: &str,
+    allow_llm: bool,
     config: &EnrichConfig,
     converter: &dyn DocumentConverter,
-) -> Result<String> {
+) -> Result<ConvertedDocument> {
     let ext = extension_for(&upload.filename, &upload.content_type);
     let input_file = work_dir.join(format!("input.{ext}"));
     tokio::fs::write(&input_file, &upload.bytes).await?;
@@ -510,8 +647,16 @@ async fn convert_in_dir(
     // crucially — keeps the untrusted document away from the Bash-enabled LLM,
     // shrinking the prompt-injection surface. The agentic path stays as a
     // fallback for formats the tools don't handle (or when they are absent).
-    if let Some(markdown) = try_deterministic_convert(&input_file, &ext, &output_path).await {
-        return Ok(markdown);
+    if let Some(converted) = try_deterministic_convert(&input_file, &ext, &output_path).await {
+        return Ok(converted);
+    }
+
+    // Geen deterministisch resultaat. Dat is méér dan "onbekend formaat": ook
+    // een ontbrekende tool, een crash of lege output (gescande pdf) belandt
+    // hier. Zonder toestemming stopt het hier — één centrale poort, zodat geen
+    // enkel van die gevallen alsnog bij het taalmodel uitkomt.
+    if !allow_llm {
+        return Err(no_llm_permission_error(&ext, &upload.filename));
     }
 
     converter
@@ -529,7 +674,10 @@ async fn convert_in_dir(
             "conversion produced empty markdown".to_string(),
         ));
     }
-    Ok(markdown)
+    Ok(ConvertedDocument {
+        markdown,
+        route: ConversionRoute::Llm,
+    })
 }
 
 #[cfg(test)]
@@ -546,6 +694,7 @@ mod tests {
             provider: Some("claude".to_string()),
             requested_by: None,
             deliver: None,
+            allow_llm: true,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert_eq!(json["upload_id"], "00000000-0000-0000-0000-000000000000");
@@ -564,6 +713,7 @@ mod tests {
             provider: None,
             requested_by: None,
             deliver: None,
+            allow_llm: false,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert!(json.get("provider").is_none());
@@ -594,6 +744,7 @@ mod tests {
             provider: None,
             requested_by: Some(account),
             deliver: Some("task".to_string()),
+            allow_llm: true,
         };
         let roundtrip: DocumentConvertPayload =
             serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
@@ -614,6 +765,7 @@ mod tests {
             provider: None,
             requested_by,
             deliver: deliver.map(str::to_string),
+            allow_llm: false,
         }
     }
 
@@ -713,10 +865,11 @@ mod tests {
         let converter = FakeConverter {
             markdown: "# Report\n\nBody.\n".to_string(),
         };
-        let md = convert_in_dir(
+        let converted = convert_in_dir(
             dir.path(),
             &upload,
             "report.md",
+            true,
             &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
                 path: "claude".into(),
                 model: None,
@@ -725,7 +878,8 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(md, "# Report\n\nBody.\n");
+        assert_eq!(converted.markdown, "# Report\n\nBody.\n");
+        assert_eq!(converted.route, ConversionRoute::Llm);
     }
 
     #[tokio::test]
@@ -743,6 +897,7 @@ mod tests {
             dir.path(),
             &upload,
             "report.md",
+            true,
             &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
                 path: "claude".into(),
                 model: None,
@@ -805,10 +960,11 @@ mod tests {
         let converter = FakeConverter {
             markdown: "# Deck\n\nSlide one.\n".to_string(),
         };
-        let md = convert_in_dir(
+        let converted = convert_in_dir(
             dir.path(),
             &upload,
             "deck.md",
+            true,
             &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
                 path: "claude".into(),
                 model: None,
@@ -817,7 +973,8 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(md, "# Deck\n\nSlide one.\n");
+        assert_eq!(converted.markdown, "# Deck\n\nSlide one.\n");
+        assert_eq!(converted.route, ConversionRoute::Llm);
     }
 
     /// End-to-end deterministic route for a newly-accepted format (`.html`): when
@@ -858,10 +1015,11 @@ mod tests {
             content_type: "text/html".to_string(),
             bytes: b"<h1>Titel</h1><p>Inhoud.</p>".to_vec(),
         };
-        let md = convert_in_dir(
+        let converted = convert_in_dir(
             dir.path(),
             &upload,
             "page.md",
+            true,
             &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
                 path: "claude".into(),
                 model: None,
@@ -872,8 +1030,130 @@ mod tests {
         .unwrap();
         // pandoc turns the <h1> into an ATX heading.
         assert!(
-            md.contains("Titel"),
-            "expected converted markdown, got: {md}"
+            converted.markdown.contains("Titel"),
+            "expected converted markdown, got: {}",
+            converted.markdown
         );
+        assert_eq!(converted.route, ConversionRoute::Pandoc);
+    }
+
+    /// Converter die luid faalt zodra hij wordt aangeroepen: elk gebruik ervan
+    /// betekent dat de inhoud bij een taalmodel terecht was gekomen.
+    struct ForbiddenConverter;
+
+    #[async_trait::async_trait]
+    impl DocumentConverter for ForbiddenConverter {
+        async fn convert(
+            &self,
+            _input_file: &Path,
+            _work_dir: &Path,
+            _output_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            panic!("zonder allow_llm mag de agent nooit draaien");
+        }
+    }
+
+    fn test_config() -> EnrichConfig {
+        EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        })
+    }
+
+    /// De kern van de belofte: zonder toestemming faalt de conversie in ELK
+    /// geval waarin `try_deterministic_convert` niets oplevert — niet alleen bij
+    /// een onbekende extensie. De `.pdf`/`.docx`-gevallen dekken juist de stille
+    /// valstrik: een formaat mét converter waarvan de tool ontbreekt, crasht of
+    /// (gescande pdf) lege tekst geeft. Elke variant moet op de foutregel
+    /// eindigen in plaats van bij `ForbiddenConverter` uit te komen.
+    #[tokio::test]
+    async fn convert_in_dir_refuses_llm_fallback_without_permission() {
+        for (filename, content_type, bytes) in [
+            // Geen deterministische converter voor dit formaat.
+            ("brief.doc", "application/msword", &b"oud word-formaat"[..]),
+            ("aantekening.txt", "text/plain", &b"platte tekst"[..]),
+            // Wél een converter, maar onbruikbare input: pdftotext/pandoc geven
+            // hierop non-zero of lege output (en op een host zonder de tools
+            // faalt de spawn) — precies de stille terugval die dicht moet.
+            ("scan.pdf", "application/pdf", &b"niet echt een pdf"[..]),
+            (
+                "rapport.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                &b"niet echt een docx"[..],
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let upload = Upload {
+                filename: filename.to_string(),
+                content_type: content_type.to_string(),
+                bytes: bytes.to_vec(),
+            };
+            let err = convert_in_dir(
+                dir.path(),
+                &upload,
+                "doel.md",
+                false,
+                &test_config(),
+                &ForbiddenConverter,
+            )
+            .await
+            .unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Er is geen taalmodel gebruikt"),
+                "{filename} moet zichtbaar en met uitleg falen, kreeg: {msg}"
+            );
+            assert!(
+                msg.contains(filename),
+                "de fout moet het bestand noemen, kreeg: {msg}"
+            );
+        }
+    }
+
+    /// Tegenproef bij de test hierboven: mét toestemming loopt hetzelfde
+    /// bestand wél door naar de agent, zodat de weigering aantoonbaar aan
+    /// `allow_llm` hangt en niet aan iets anders in het pad.
+    #[tokio::test]
+    async fn convert_in_dir_runs_llm_fallback_with_permission() {
+        let dir = tempfile::tempdir().unwrap();
+        let upload = Upload {
+            filename: "brief.doc".to_string(),
+            content_type: "application/msword".to_string(),
+            bytes: b"oud word-formaat".to_vec(),
+        };
+        let converted = convert_in_dir(
+            dir.path(),
+            &upload,
+            "brief.md",
+            true,
+            &test_config(),
+            &FakeConverter {
+                markdown: "# Brief\n".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(converted.route, ConversionRoute::Llm);
+    }
+
+    /// De lijst die de editor aan de gebruiker toont komt uit dezelfde tabel als
+    /// de routeringsbeslissing — geen tweede lijst die kan gaan afwijken.
+    #[test]
+    fn deterministic_extensions_match_the_predicate() {
+        let listed = deterministic_extensions();
+        assert!(!listed.is_empty());
+        for ext in &listed {
+            assert!(
+                has_deterministic_converter(ext),
+                "{ext} staat in de lijst maar heeft geen converter"
+            );
+        }
+        for ext in ["doc", "txt", "png", "pptx", ""] {
+            assert!(
+                !listed.contains(&ext),
+                "{ext} heeft geen converter en hoort niet in de lijst"
+            );
+        }
     }
 }

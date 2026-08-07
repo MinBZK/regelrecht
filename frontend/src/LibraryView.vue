@@ -16,12 +16,14 @@ import InviteMembersSheet from './components/InviteMembersSheet.vue';
 import TasksCategoriesPane from './components/TasksCategoriesPane.vue';
 import TasksListPane from './components/TasksListPane.vue';
 import TasksSidebarItem from './components/TasksSidebarItem.vue';
+import UploadConfirmDialog from './components/UploadConfirmDialog.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useCorpusLaws } from './composables/useCorpusLaws.js';
-// useTaskActions, niet useTasks: LibraryView heeft alleen de refresh nodig na
-// een geannuleerde job en mag daarvoor niet de 30s-poll aanzetten (die hoort
-// bij de taken-componenten, en anonieme bezoekers pollen nooit).
-import { useTaskActions } from './composables/useTasks.js';
+// useEnrichState (bovenop useTaskActions), niet useTasks: LibraryView heeft
+// alleen gerichte refreshes nodig - na een geannuleerde job, na een eigen
+// aanvraag - en mag daarvoor niet de 30s-poll aanzetten (die hoort bij de
+// taken-componenten, en anonieme bezoekers pollen nooit).
+import { useEnrichState } from './composables/useEnrichState.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl } from './composables/corpusUrls.js';
@@ -100,7 +102,35 @@ function goToAccountRequest() {
 // so it can reserve converting target names against create/rename collisions.
 const docJobs = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs, cancelJob: cancelConversionJob } = docJobs;
-const { refresh: refreshTasks } = useTaskActions();
+// Verrijken kan ook vanuit de corpusweergave, met dezelfde twee knoppen als in
+// een traject. De knop staat er dus altijd zodra er een wet is; ontbreekt de
+// login of het traject, dan routeert hij net als "Bewerken" ernaast in plaats
+// van te verdwijnen. Zonder traject is er namelijk niets om het voorstel ín te
+// landen: het endpoint hangt onder /api/trajects/{ref}/.
+const canEnrich = computed(() => !!selectedLawId.value);
+
+const enrichError = ref('');
+
+async function enrichSelectedLaw(anchorEl) {
+  if (!selectedLawId.value) return;
+  if (!authenticated.value || !activeTrajectRef.value) {
+    // openEditor regelt beide: login-popover op deze knop, of de editor-route
+    // die de trajectkiezer toont.
+    openEditor(anchorEl);
+    return;
+  }
+  enrichError.value = '';
+  try {
+    // requestEnrich ververst zelf de takenlijst, dus de pane staat daarna in de
+    // bezig-staat. alreadyRunning heeft daarom geen eigen melding nodig: dat is
+    // precies wat de pane dan toont.
+    const { alreadyRunning, tooMany } = await requestEnrich();
+    if (tooMany) enrichError.value = 'Je hebt te veel verrijkingen tegelijk lopen.';
+    else if (!alreadyRunning) enrichError.value = '';
+  } catch {
+    enrichError.value = 'Verrijking aanvragen mislukt.';
+  }
+}
 
 const docsMgr = useDocumentsManager(
   activeTrajectRef,
@@ -191,14 +221,24 @@ function showWerkdocPath(p) {
   viewingJobPath.value = null;
   if (openDocPath.value !== p) openDoc(p);
 }
+// `confirm: true`: het gekozen bestand wacht in `pendingDocUpload` op de
+// bevestigingsdialoog, die vertelt of er AI aan te pas komt en (waar er iets te
+// kiezen valt) om toestemming vraagt.
 const {
   fileInput: docFileInput,
   uploadError: docUploadError,
   uploadRetryable: docUploadRetryable,
+  pendingFile: pendingDocUpload,
   onUpload: onDocUpload,
   onFileChange: onDocFileChange,
+  confirmUpload: confirmDocUpload,
+  cancelUpload: cancelDocUpload,
 } = useDocumentUpload(docsMgr.uploadDocument, (result) => {
   docJobs.refresh();
+  // De conversie is ook een wacht-taak. Zonder deze refresh wacht de takenlijst
+  // op zijn eigen 30s-poll en staat de taak die je zojuist in gang zette er nog
+  // niet in als je er meteen naartoe navigeert.
+  refreshTasks();
   if (!result?.targetPath) return;
   // Vanuit de takenlijst ("Probeer opnieuw") staan we niet in werkdoc-modus, en
   // `showUploadedJob` zet alleen state die dáár rendert - de gebruiker zou dan
@@ -215,7 +255,7 @@ const {
     return;
   }
   showUploadedJob(result.targetPath);
-});
+}, { confirm: true });
 // Poll conversion jobs only while the werkdocumenten sidebar is open.
 watch(
   isWerkdocMode,
@@ -280,6 +320,7 @@ const {
   onFileChange: onLawFileChange,
 } = useDocumentUpload(uploadLawDocument, () => {
   lawUploadStarted.value = true;
+  refreshTasks();
 });
 // Zelfde modal-behandeling als de werkdocument-upload, met een eigen modal
 // zodat de retry-actie de juiste picker heropent.
@@ -436,6 +477,16 @@ const takenTitle = computed(() => {
 // --- Instellingen (traject details + leden, folded into Home) ---------------
 const isInstellingenMode = computed(() => route.name === 'instellingen-traject');
 const instellingenTab = computed(() => route.params.tab || null);
+
+// True on the library routes proper (/trajecten/{ref} and /corpus/…) - i.e.
+// none of the sibling non-corpus modes that LibraryView also hosts. Kept as one
+// computed so the "no usable content" states below (initial-loading,
+// empty-library and, crucially, the index-error takeover) can't drift apart:
+// a failed corpus index must only take over the library itself, never /taken,
+// /instellingen or /werkdocumenten, which don't read the wettenindex at all.
+const isLibraryMode = computed(
+  () => !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+);
 function goToInstellingen(tab) {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
@@ -756,9 +807,22 @@ async function onDocSaved(savedPath) {
 }
 
 const docReviewBannerVariant = computed(() => (docReviewLoadError.value ? 'critical' : 'neutral'));
-const docReviewBannerSupportingText = computed(() =>
-  docReviewLoadError.value || 'Opslaan keurt het voorstel goed, Verwerpen wijst af.',
-);
+// Hoe het voorstel tot stand kwam. Dit is nadrukkelijk iets anders dan het
+// vinkje bij de upload: dat zei wat mócht, dit zegt wat er is gebeurd - alleen
+// de pipeline weet dat (een .docx die pandoc niet aankon kan alsnog via het
+// taalmodel zijn gegaan). Een oudere taak draagt het veld niet; dan zwijgen we
+// erover in plaats van iets te beweren.
+const DOC_CONVERSION_ORIGIN = {
+  llm: 'Omgezet met AI.',
+  pandoc: 'Omgezet met pandoc, zonder AI.',
+  pdftotext: 'Omgezet met pdftotext, zonder AI.',
+};
+const docReviewBannerSupportingText = computed(() => {
+  if (docReviewLoadError.value) return docReviewLoadError.value;
+  const origin = DOC_CONVERSION_ORIGIN[docReviewTask.value?.payload?.converted_with];
+  const action = 'Opslaan keurt het voorstel goed, Verwerpen wijst af.';
+  return origin ? `${origin} ${action}` : action;
+});
 
 // Keep the user's traject scope across in-app navigations. A traject with a law
 // stays on `library-traject`, a traject without one on `traject-home`; publicly,
@@ -800,28 +864,64 @@ const selectedSection = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
+
 const selectedArticleNumber = ref(null);
+
+// De verrijk-/beoordeel-staat van de geselecteerde wet, gedeeld met EditorView:
+// wat de lege Machine-/YAML-pane meldt en waar zijn knoppen heen gaan. Hier en
+// niet bovenaan het bestand: de composable legt meteen een watch op zijn bron,
+// dus selectedLawId/selectedArticleNumber moeten al bestaan - eerder aanroepen
+// gooit een ReferenceError in setup en dan rendert de hele view niets.
+const {
+  isEnriching,
+  reviewReady,
+  reviewArticleForPane,
+  openReviewForLaw,
+  openTasksForLaw,
+  requestEnrich,
+  refreshTasks,
+} = useEnrichState({
+  trajectRef: activeTrajectRef,
+  lawId: selectedLawId,
+  articleNumber: selectedArticleNumber,
+});
 
 // Recently-viewed laws (most-recent-first), persisted across sessions. Stored
 // as { law_id, name } so a law that fails to load in the active traject - and
 // therefore never enters the corpus index - still stays reachable + labelled.
+//
+// One list per traject, plus one for the global corpus. Two trajects hold
+// different laws, so a law you opened in the one has no business turning up
+// under "Recent bekeken" in the other - it would point at something that
+// corpus may not even have.
 const RECENT_LAWS_KEY = 'regelrecht-recent-laws';
 const MAX_RECENT_LAWS = 12;
-function loadRecentLaws() {
+function recentLawsKey(trajectRef) {
+  return `${RECENT_LAWS_KEY}:${trajectRef || 'corpus'}`;
+}
+function loadRecentLaws(trajectRef) {
   try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_LAWS_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(recentLawsKey(trajectRef)) || '[]');
     return Array.isArray(raw) ? raw.filter(r => r && r.law_id) : [];
   } catch {
     return [];
   }
 }
-const recentLaws = ref(loadRecentLaws());
+// The list from before this was scoped mixed every traject together, so there
+// is nothing to migrate it into. Drop it instead of leaving it behind forever.
+try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+const recentLaws = ref(loadRecentLaws(activeTrajectRef.value));
+// Switching traject keeps this view mounted (same route, other param), so the
+// list has to follow the switch itself; there is no remount to reload it.
+watch(activeTrajectRef, (trajectRef) => {
+  recentLaws.value = loadRecentLaws(trajectRef);
+});
 function recordRecentLaw(lawId, name) {
   if (!lawId) return;
   const entry = { law_id: lawId, name: name || humanizeLawId(lawId) };
   recentLaws.value = [entry, ...recentLaws.value.filter(r => r.law_id !== lawId)].slice(0, MAX_RECENT_LAWS);
   try {
-    localStorage.setItem(RECENT_LAWS_KEY, JSON.stringify(recentLaws.value));
+    localStorage.setItem(recentLawsKey(activeTrajectRef.value), JSON.stringify(recentLaws.value));
   } catch { /* storage unavailable - keep the in-memory list */ }
 }
 // Detail view (tekst/machine/yaml) is reflected in the URL hash so the
@@ -918,23 +1018,35 @@ const sidebarSections = computed(() => {
 // width rather than the narrow sidebar. isInitialLoading covers the first load
 // before anything resolves; indexError is handled at the same top level.
 const isInitialLoading = computed(
-  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && isLibraryMode.value,
 );
 const isEmptyLibrary = computed(
-  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && isLibraryMode.value,
 );
 
-// Supporting text for the index-error pane: prefer the backend's own
-// (Dutch) explanation — e.g. "De bibliotheek van dit traject is niet
-// beschikbaar: de traject-repo kon niet worden gescand (…)" — over the
-// generic fallback. Length-capped so an unexpected HTML/stack body from
-// an intermediary never floods the dialog.
+// Longest backend explanation we'll surface verbatim before clamping. The real
+// 502 body is the backend's own Dutch sentence ("De bibliotheek van dit traject
+// is niet beschikbaar: de traject-repo kon niet worden gescand (…)") with
+// GitHub's Trees error interpolated, which comfortably exceeds a few hundred
+// chars; the old 300 cap silently dropped the whole thing to the useless
+// generic fallback. Clamp-with-ellipsis instead so the reason still reaches the
+// user while a runaway body can't flood the dialog.
+const INDEX_ERROR_MAX_CHARS = 600;
+
+// Supporting text for the index-error surfaces (fullscreen pane + non-library
+// warning banner): prefer the backend's own (Dutch) explanation over the
+// generic fallback. The `<`/`{` guard still rejects an HTML/JSON body from an
+// intermediary proxy (those start with those chars) so a raw proxy dump never
+// leaks; a human-readable sentence with JSON interpolated *inside* it does not
+// start with either and comes through, clamped to a clean length.
 const indexErrorSupportingText = computed(() => {
   const body = indexError.value?.body;
   if (typeof body === 'string') {
     const text = body.trim();
-    if (text && text.length <= 300 && !text.startsWith('<') && !text.startsWith('{')) {
-      return text;
+    if (text && !text.startsWith('<') && !text.startsWith('{')) {
+      return text.length <= INDEX_ERROR_MAX_CHARS
+        ? text
+        : `${text.slice(0, INDEX_ERROR_MAX_CHARS).trimEnd()}…`;
     }
   }
   return 'De gegevens konden niet worden opgehaald.';
@@ -1003,10 +1115,20 @@ const lawTitle = computed(() =>
 // so the sidebar reflects what the user is looking at even when nothing is
 // curated yet. Re-runs as the name resolves to upgrade the label from the
 // humanized id to the real name.
+//
+// Switching traject keeps the open law on screen and re-resolves its name, so
+// this watch fires again. That is a switch and not a visit: without the guard
+// below, every switch prepends the law you were already looking at to the list
+// of the corpus you just moved into, and the two lists converge again.
+let lastRecorded = { trajectRef: null, lawId: null };
 watch([selectedLawId, lawName, indexedLawName], () => {
-  if (selectedLawId.value) {
-    recordRecentLaw(selectedLawId.value, lawName.value || indexedLawName.value);
-  }
+  const lawId = selectedLawId.value;
+  if (!lawId) return;
+  const trajectRef = activeTrajectRef.value ?? null;
+  const switchedContext = lawId === lastRecorded.lawId && trajectRef !== lastRecorded.trajectRef;
+  lastRecorded = { trajectRef, lawId };
+  if (switchedContext) return;
+  recordRecentLaw(lawId, lawName.value || indexedLawName.value);
 }, { immediate: true });
 
 const selectedArticle = computed(() => {
@@ -1235,6 +1357,14 @@ const claimLoadIndex = useLatest();
 
 async function loadIndex() {
   const isCurrent = claimLoadIndex();
+  // Drop any previous scope's failure before we start. The error describes one
+  // specific index load, so it must not outlive the run that produced it:
+  // besides `retryLoadCorpus`, `loadIndex` is also reached from the
+  // `activeTrajectRef` watcher, and without this a broken traject's error would
+  // ride along to the next traject the user switches to - warning about (or,
+  // on the library routes, blocking) a traject whose wetten loaded fine. The
+  // `catch` below re-raises it for this run if this load fails too.
+  indexError.value = null;
   // Snapshot the traject so the changed-laws fetch and its assignment below
   // both refer to the scope this run started in.
   const trajectRef = activeTrajectRef.value;
@@ -1336,11 +1466,11 @@ function retryLoadLaw() {
 }
 
 function retryLoadCorpus() {
-  indexError.value = null;
-  // loadIndex only flips loading back to false in its finally block -
-  // it never sets it to true. So after the first failure (loading is
-  // false, indexError is truthy) we have to flip the spinner back on
-  // here, otherwise the retry shows the error pane until the next
+  // Clearing indexError is loadIndex's job (it does so for every caller, not
+  // just this one). loading is not: loadIndex only flips it back to false in
+  // its finally block, it never sets it to true. So after the first failure
+  // (loading is false, indexError is truthy) we have to flip the spinner back
+  // on here, otherwise the retry shows the error pane until the next
   // round-trip resolves.
   loading.value = true;
   loadIndex();
@@ -1630,7 +1760,7 @@ function clearRecent() {
               (changedLawIds.value && changedLawIds.value.has(sel)));
   const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
   recentLaws.value = [];
-  try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(recentLawsKey(activeTrajectRef.value)); } catch { /* ignore */ }
   if (deselect) {
     // Clear the open law up front so the article sidebar + main reflow to the
     // empty state now. `selectedLawId` is a manual ref, not route-derived; a
@@ -1698,14 +1828,34 @@ onBeforeRouteLeave(async (to) => {
 // (traject-home / corpus home) via the back button or a tab switch - a
 // different route record - leaves the ref set and the article list lingers
 // until refresh. Sync it reactively so the view reflows on any such navigation.
+// Symmetrisch: een wet die uit de route verdwijnt ruimt op, een wet die erin
+// verschijnt wordt geopend. Dat tweede stond alleen in de initiële load
+// hieronder, en die draait niet opnieuw wanneer je vanuit de takenlijst hierheen
+// navigeert: `taken-traject` en `library-traject` worden door dezelfde
+// LibraryView gerenderd, dus Vue hergebruikt de instantie. Zonder deze tak bleef
+// de view op "Geen selectie" staan terwijl de URL de wet wél noemde.
+//
+// Niet via selectLaw(): die doet een router.push naar de route waar we al zijn.
 watch(() => route.params.lawId, (lawId) => {
-  if (!lawId && selectedLawId.value) {
-    selectedLawId.value = null;
-    selectedLaw.value = null;
-    selectedArticleNumber.value = null;
-    activeAction.value = null;
-    lawError.value = null;
+  if (!lawId) {
+    if (selectedLawId.value) {
+      selectedLawId.value = null;
+      selectedLaw.value = null;
+      selectedArticleNumber.value = null;
+      activeAction.value = null;
+      lawError.value = null;
+    }
+    return;
   }
+  if (lawId === selectedLawId.value && !lawError.value) return;
+  selectedSection.value = null;
+  selectedLawId.value = lawId;
+  selectedArticleNumber.value = route.params.articleNumber
+    ? String(route.params.articleNumber)
+    : null;
+  activeAction.value = null;
+  lawError.value = null;
+  loadLaw(lawId);
 });
 
 // When a harvested law becomes available, reload the corpus and select it.
@@ -1770,10 +1920,33 @@ watch(activeTrajectRef, () => {
              back as a reviewable markdown werkdocument. -->
         <input ref="docFileInput" type="file" hidden @change="onDocFileChange" />
 
+        <!-- Non-blocking corpus warning for the non-library modes (/taken,
+             /instellingen, /werkdocumenten): those don't read the wettenindex,
+             so a corpus 502 leaves their panes standing (the fullscreen page
+             below is gated to library mode) and they get this banner instead.
+             Rendered as a sibling above the split-view so it spans all panes
+             rather than sitting in the narrow sidebar; the .corpus-warning rule
+             keeps it auto-height (the app main pane slots its children flex:1).
+             It clears itself the moment any index load starts over - a retry
+             here, or a switch to another traject - and stays gone unless that
+             load fails too (loadIndex resets indexError up front). -->
+        <nldd-banner
+          v-if="indexError && !isLibraryMode"
+          class="corpus-warning"
+          variant="warning"
+          text="Wetten en regels van dit traject zijn niet geladen"
+          :supporting-text="indexErrorSupportingText"
+        >
+          <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
+        </nldd-banner>
+
         <!-- Full-page "no usable content" states (matching EditorView): shown
              instead of the split-view so the error / CTA spans the full width,
-             not the narrow sidebar. -->
-        <nldd-page v-if="indexError">
+             not the narrow sidebar. The index-error takeover is gated to
+             library mode: /taken, /instellingen and /werkdocumenten don't read
+             the wettenindex, so a corpus 502 must leave them standing (they get
+             the non-blocking warning banner above instead). -->
+        <nldd-page v-if="indexError && isLibraryMode">
           <nldd-simple-section width="full">
             <nldd-inline-dialog
               variant="alert"
@@ -2382,8 +2555,8 @@ watch(activeTrajectRef, () => {
                   <nldd-spacer size="24"></nldd-spacer>
                   <KeepAlive>
                     <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" centered />
-                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @open-action="activeAction = $event" />
-                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" />
+                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :review-article="reviewArticleForPane" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" @open-action="activeAction = $event" />
+                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :review-article="reviewArticleForPane" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" />
                   </KeepAlive>
                 </nldd-simple-section>
               </template>
@@ -2426,6 +2599,14 @@ watch(activeTrajectRef, () => {
       <nldd-button slot="actions" variant="destructive" text="Negeer wijzigingen en sluit" @click="confirmDocLeave"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
+
+  <!-- Tussen kiezen en versturen: wat er met dit bestand gaat gebeuren, en (waar
+       er te kiezen valt) of AI mee mag doen. -->
+  <UploadConfirmDialog
+    :file="pendingDocUpload"
+    @confirm="confirmDocUpload"
+    @cancel="cancelDocUpload"
+  />
 
   <Teleport to="body">
     <nldd-modal-dialog
@@ -2487,5 +2668,17 @@ nldd-navigation-split-view:not(.full-stack) .article-not-found__back-button {
    :not([hidden]) yields to the toolbar's own overflow hiding. */
 .job-back:not([hidden]) {
   display: var(--context-back-button-display, inline-flex);
+}
+
+/* The corpus-warning banner is a light-DOM sibling of the navigation-split-view,
+   so it is slotted straight into AppShell's main split-view-pane, whose
+   `::slotted(*)` sets `flex: 1` on every slotted child. Left as-is the banner
+   would grow to eat half the pane; pin it to its content height so it reads as
+   a thin bar above the panes and the split-view keeps the remaining space.
+   (Unlike the rules above this one would also work scoped - it targets an
+   element in this component's own template - but this whole block is global,
+   so it is stated plainly rather than singled out.) */
+nldd-banner.corpus-warning {
+  flex: 0 0 auto;
 }
 </style>

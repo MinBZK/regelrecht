@@ -51,7 +51,7 @@ Do not bypass hooks with `--no-verify`. If a hook fails, fix the underlying prob
 
 1. Create a feature branch and push your changes
 2. Open a PR - CI runs all relevant checks automatically
-3. A preview deployment is created (see [Deployment](./deployment))
+3. Add the `preview` label if reviewers need a running preview (see [Deployment](./deployment))
 4. Get a code review
 5. Merge to main - production deploys automatically
 
