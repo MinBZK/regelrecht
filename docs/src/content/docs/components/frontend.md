@@ -108,7 +108,7 @@ just dev             # Starts everything with hot reload
 The editor ships as a single Docker image (`regelrecht-editor`) that bundles the built Vue frontend together with the [editor-api](./editor-api) Rust binary, which serves the static assets and the REST API. It is deployed to RIG/ZAD:
 
 - **Production**: `editor.regelrecht.rijks.app`
-- **PR previews**: automatically deployed for each pull request
+- **PR previews**: deployed for a pull request that carries the `preview` label
 
 ## Admin Dashboard
 

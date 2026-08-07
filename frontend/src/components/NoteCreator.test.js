@@ -183,6 +183,78 @@ describe('NoteCreator', () => {
     expect(w.find('[data-testid="note-cancel"]').exists()).toBe(false);
   });
 
+  it('tells the user a skipped search was not searched, unlike an orphaned one', async () => {
+    // The resolver refused the scan (quote over the fuzzy budget). The user
+    // must see something different from "Niet teruggevonden": nothing was
+    // established about the text, and the lidnummer advice that belongs to
+    // a failed search would be misdirected here.
+    const skipped = mountCreator({
+      engine: {
+        resolveNote: () => ({
+          status: 'skipped',
+          matches: [],
+          skip_reason: 'quote_too_long',
+        }),
+      },
+    });
+    const orphaned = mountCreator({
+      engine: {
+        resolveNote: () => ({ status: 'orphaned', matches: [] }),
+      },
+    });
+    await nextTick();
+
+    const skippedBanner = skipped.find('[data-testid="note-creator-status"]');
+    const orphanedBanner = orphaned.find('[data-testid="note-creator-status"]');
+    expect(skippedBanner.exists()).toBe(true);
+    expect(skippedBanner.attributes('text')).toBe('Niet naar gezocht');
+    expect(orphanedBanner.attributes('text')).toBe('Niet teruggevonden');
+    expect(skippedBanner.attributes('text')).not.toBe(
+      orphanedBanner.attributes('text'),
+    );
+    expect(skippedBanner.attributes('supporting-text')).not.toContain(
+      'lidnummer',
+    );
+    // Still no save path: a skipped selection anchors nothing.
+    expect(skipped.find('[data-testid="note-save"]').exists()).toBe(false);
+  });
+
+  it('does not blame the selection length when the law text drained the budget', async () => {
+    // 'search_budget' means the law was too large or too repetitive to scan,
+    // which shortening the selection cannot fix. Telling the author to shorten
+    // sends them into the same skip again with no clue why.
+    const budget = mountCreator({
+      engine: {
+        resolveNote: () => ({
+          status: 'skipped',
+          matches: [],
+          skip_reason: 'search_budget',
+        }),
+      },
+    });
+    const tooLong = mountCreator({
+      engine: {
+        resolveNote: () => ({
+          status: 'skipped',
+          matches: [],
+          skip_reason: 'quote_too_long',
+        }),
+      },
+    });
+    await nextTick();
+
+    const budgetBanner = budget.find('[data-testid="note-creator-status"]');
+    const tooLongBanner = tooLong.find('[data-testid="note-creator-status"]');
+    expect(budgetBanner.attributes('text')).toBe('Niet naar gezocht');
+    expect(budgetBanner.attributes('supporting-text')).not.toBe(
+      tooLongBanner.attributes('supporting-text'),
+    );
+    expect(budgetBanner.attributes('supporting-text')).not.toContain(
+      'te lang',
+    );
+    expect(tooLongBanner.attributes('supporting-text')).toContain('te lang');
+  });
+
   it('shows the full form once the selection resolves uniquely', async () => {
     const w = mountCreator(); // engine returns a matching unique result
     await nextTick();

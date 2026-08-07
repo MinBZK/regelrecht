@@ -6,13 +6,14 @@
 //! live here — codegen carries no per-action knowledge. Bodies are ported from
 //! the hand-written `steps/{given,when,then,notes}.rs`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use regelrecht_engine::{
     annotation, Article, OutputProvenance, SelectorHint, TextQuoteSelector, Value,
 };
 use rust_decimal::Decimal;
 
+use crate::helpers::table::{rows_to_params, rows_to_records, Rows};
 use crate::helpers::value_conversion::{convert_gherkin_value, values_equal_with_tolerance};
 use crate::world::RegelrechtWorld;
 
@@ -46,10 +47,6 @@ impl ArgValue {
         }
     }
 }
-
-/// Table rows come straight from cucumber's `gherkin::Step.table.rows`:
-/// `Vec<Vec<String>>` where `row[0]` is the header row.
-type Rows = Vec<Vec<String>>;
 
 impl RegelrechtWorld {
     /// Execute one canonical grammar action. Panics (test assertion) on any
@@ -436,36 +433,6 @@ fn num_to_value(n: f64) -> Value {
                 .expect("numeric literal parses as Decimal"),
         )
     }
-}
-
-/// Parse a two-column key/value parameter table.
-fn rows_to_params(rows: &Rows) -> BTreeMap<String, Value> {
-    let mut params = BTreeMap::new();
-    for row in rows {
-        if row.len() >= 2 {
-            params.insert(row[0].trim().to_string(), convert_gherkin_value(&row[1]));
-        }
-    }
-    params
-}
-
-/// Parse a header-row table into a list of records (one per data row).
-fn rows_to_records(rows: &Rows) -> Vec<BTreeMap<String, Value>> {
-    if rows.len() < 2 {
-        return Vec::new();
-    }
-    let headers: Vec<String> = rows[0].iter().map(|s| s.trim().to_string()).collect();
-    let mut records = Vec::new();
-    for row in rows.iter().skip(1) {
-        let mut record = BTreeMap::new();
-        for (i, cell) in row.iter().enumerate() {
-            if let Some(header) = headers.get(i) {
-                record.insert(header.clone(), convert_gherkin_value(cell));
-            }
-        }
-        records.push(record);
-    }
-    records
 }
 
 /// Parse the untranslatable mode string into the engine enum. From `given.rs`.

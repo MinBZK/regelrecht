@@ -16,5 +16,6 @@ pub mod state;
 pub mod task_requests;
 pub mod traject_corpus;
 pub mod traject_index_diagnosis;
+pub mod traject_integrity;
 pub mod trajects;
 pub mod user_notes;

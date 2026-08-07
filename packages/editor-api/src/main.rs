@@ -33,6 +33,7 @@ mod task_requests;
 mod tasks_api;
 mod traject_corpus;
 mod traject_index_diagnosis;
+mod traject_integrity;
 mod trajects;
 mod user_notes;
 mod user_settings;
@@ -143,6 +144,7 @@ async fn main() {
         harvest_admin_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
         trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
+        integrity: Arc::new(traject_integrity::IntegrityCache::new()),
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -433,6 +435,13 @@ async fn main() {
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
             get(corpus_handlers::get_traject_document),
         )
+        // Integrity report over the traject's own corpus repo. A read, so
+        // reader-tier like its neighbours: seeing what is wrong with a
+        // traject you are a member of needs no write privilege.
+        .route(
+            "/api/trajects/{traject_ref}/integrity",
+            get(traject_integrity::get_traject_integrity),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             accounts::account_middleware,
@@ -639,9 +648,8 @@ async fn main() {
                 middleware::refresh_session_token::<AppState>,
             ))
             .layer(session_layer)
-            .layer(axum_middleware::from_fn(middleware::security_headers))
-            .layer(TraceLayer::new_for_http())
-            .fallback_service(static_service(&static_dir, &index_file));
+            .layer(TraceLayer::new_for_http());
+        let app = serve_static_and_secure(app, &static_dir, &index_file);
 
         serve(app, Some(deletion_handle)).await;
     } else {
@@ -671,9 +679,8 @@ async fn main() {
             // recorder wraps the routed handlers.
             .layer(axum_middleware::from_fn(middleware::server_timing))
             .layer(session_layer)
-            .layer(axum_middleware::from_fn(middleware::security_headers))
-            .layer(TraceLayer::new_for_http())
-            .fallback_service(static_service(&static_dir, index_file));
+            .layer(TraceLayer::new_for_http());
+        let app = serve_static_and_secure(app, &static_dir, index_file);
 
         serve(app, None).await;
     }
@@ -854,6 +861,26 @@ async fn init_backends(
     }
 
     backends
+}
+
+/// Close the router: hang the SPA off the fallback, then wrap everything in
+/// the security headers.
+///
+/// The order is the point. `Router::layer` covers the routes and fallback
+/// registered before it, so a `fallback_service` added afterwards answers
+/// without any of them — and the fallback is what serves `index.html` and
+/// the bundle, the only responses a browser renders as a document. Doing
+/// both steps here keeps the two calls from drifting apart in the two
+/// (auth-enabled / auth-disabled) router branches.
+fn serve_static_and_secure(
+    app: Router,
+    static_dir: &str,
+    index_file: impl AsRef<std::path::Path>,
+) -> Router {
+    app.fallback_service(static_service(static_dir, index_file))
+        .layer(axum_middleware::from_fn(middleware::security_headers(
+            middleware::EDITOR_CSP,
+        )))
 }
 
 /// Static-file service for the built editor frontend.
@@ -1419,6 +1446,111 @@ mod static_service_tests {
         assert_eq!(
             response.headers()["cache-control"],
             static_cache::REVALIDATE
+        );
+    }
+}
+
+/// Proves the editor ships the headers on the responses that matter. A test
+/// that only hits `/health` cannot: the JSON routes kept their headers the
+/// whole time the rendered document had none.
+#[cfg(test)]
+mod security_header_tests {
+    use super::{middleware, serve_static_and_secure};
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use axum::routing::get;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    /// The router shape both production branches end in: some API routes,
+    /// then `serve_static_and_secure` over a `dist`-like directory.
+    fn app(dir: &tempfile::TempDir) -> Router {
+        let static_dir = dir.path().to_string_lossy().to_string();
+        let index = dir.path().join("index.html");
+        let routes = Router::new().route("/health", get(|| async { "OK" }));
+        serve_static_and_secure(routes, &static_dir, index)
+    }
+
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("assets")).expect("mkdir");
+        std::fs::write(dir.path().join("assets").join("app-DkX9a2Bc.js"), b"js").expect("write");
+        std::fs::write(dir.path().join("index.html"), b"<!doctype html>").expect("write");
+        dir
+    }
+
+    async fn get_path(dir: &tempfile::TempDir, path: &str) -> axum::http::Response<Body> {
+        app(dir)
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response")
+    }
+
+    /// `/` and a deep link both resolve through the fallback, which is the
+    /// half that used to escape the middleware. A deep link answers with the
+    /// SPA index under a 404 (see [`static_cache`]); the headers are what
+    /// this asserts, not the status.
+    #[tokio::test]
+    async fn every_response_carries_the_headers() {
+        let dir = fixture();
+        for path in [
+            "/health",
+            "/",
+            "/library/wet_op_de_zorgtoeslag",
+            "/index.html",
+        ] {
+            let response = get_path(&dir, path).await;
+            let headers = response.headers();
+            assert_eq!(
+                headers["content-security-policy"],
+                middleware::EDITOR_CSP,
+                "no CSP on {path}"
+            );
+            assert_eq!(headers["x-frame-options"], "DENY", "{path}");
+            assert_eq!(headers["x-content-type-options"], "nosniff", "{path}");
+            assert_eq!(
+                headers["referrer-policy"], "strict-origin-when-cross-origin",
+                "{path}"
+            );
+            assert!(headers.contains_key("permissions-policy"), "{path}");
+            assert!(headers.contains_key("strict-transport-security"), "{path}");
+        }
+    }
+
+    /// The static layer sets `Cache-Control` from inside the fallback; the
+    /// header layer wraps it from outside. Neither may erase the other.
+    #[tokio::test]
+    async fn the_headers_do_not_displace_the_cache_policy() {
+        let dir = fixture();
+        let response = get_path(&dir, "/assets/app-DkX9a2Bc.js").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["cache-control"],
+            super::static_cache::IMMUTABLE
+        );
+        assert_eq!(
+            response.headers()["content-security-policy"],
+            middleware::EDITOR_CSP
+        );
+    }
+
+    /// A miss inside `/assets/` falls through to the SPA index — a rendered
+    /// document under an unexpected status, so it needs the headers too.
+    #[tokio::test]
+    async fn the_spa_fallback_response_is_covered() {
+        let dir = fixture();
+        let response = get_path(&dir, "/assets/gone-Zz9YxW01.js").await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers()["content-security-policy"],
+            middleware::EDITOR_CSP
         );
     }
 }
