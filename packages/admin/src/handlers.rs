@@ -8,6 +8,7 @@ use regelrecht_pipeline::job_queue::{create_enrich_job_if_not_exists, CreateJobR
 use regelrecht_pipeline::law_status::set_enrich_job;
 use regelrecht_pipeline::{EnrichPayload, JobType, Priority, ENRICH_PROVIDERS};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::error::ApiError;
 use crate::models::{Job, LawEntry, PaginatedResponse, Untranslatable};
@@ -18,6 +19,19 @@ use crate::state::AppState;
 /// tracing::error!(error = %e, "<op>"); ApiError::Internal("internal server
 /// error".into()) })` blocks. Internal-only — the user always sees the
 /// generic "internal server error" message.
+/// SQL predicate restricting `jobs` to the types whose `law_id` names a law.
+/// Built from [`JobType::law_id_names_a_law`], so a new job type is classified
+/// at the enum instead of in a string literal here. Literal names, no binds:
+/// they come from the enum, never from a request.
+fn law_scoped_job_types_sql() -> String {
+    let names: Vec<String> = JobType::ALL
+        .iter()
+        .filter(|t| t.law_id_names_a_law())
+        .map(|t| format!("'{}'", t.as_str()))
+        .collect();
+    format!("job_type::text IN ({})", names.join(", "))
+}
+
 fn db_err(op: &'static str) -> impl FnOnce(sqlx::Error) -> ApiError {
     move |e: sqlx::Error| {
         tracing::error!(error = %e, "{op}");
@@ -521,6 +535,13 @@ pub async fn list_jobs_summary(
         bind_index += 1;
     }
 
+    // This list is grouped by law, and two job types put a synthetic key in
+    // `law_id` (`doc:…`, `lawdoc:…`) because their real identity is only chosen
+    // by the conversion. Without this filter an uploaded `notitie.pdf` shows up
+    // as a law, raises the law count by one, and — because those jobs run with
+    // max_attempts 1 — sits at the top of the list when sorted by status.
+    where_clauses.push(law_scoped_job_types_sql());
+
     let where_sql = if where_clauses.is_empty() {
         String::new()
     } else {
@@ -645,37 +666,53 @@ impl StatusCounts {
     }
 }
 
-/// Job counts per type. The two fields are the full `job_type` enum.
-#[derive(Serialize, Default)]
-pub struct TypeCounts {
-    pub harvest: i64,
-    pub enrich: i64,
-}
+/// One bucket per `job_type`, keyed by the type's wire name.
+///
+/// This used to be a struct with a `harvest` and an `enrich` field, carrying a
+/// doc-comment claiming those two were the full enum. They were not: the enum
+/// grew to five, and the three newer types were dropped into a `warn!` arm, so
+/// the dashboard reported a total that was smaller than the number of rows.
+/// Keying on [`JobType::ALL`] means a sixth type appears as its own bucket
+/// without anyone editing this file.
+pub type ByJobType<T> = BTreeMap<String, T>;
 
-/// Per-type breakdown of the status counts.
-#[derive(Serialize, Default)]
-pub struct TypeStatus {
-    pub harvest: StatusCounts,
-    pub enrich: StatusCounts,
+/// A bucket per known job type, all at zero. Types with no rows must still be
+/// present, otherwise the dashboard silently hides an idle type.
+fn empty_by_type<T: Default>() -> ByJobType<T> {
+    JobType::ALL
+        .iter()
+        .map(|t| (t.as_str().to_string(), T::default()))
+        .collect()
 }
 
 #[derive(Serialize)]
 pub struct JobsBlock {
     pub total: i64,
-    pub by_type: TypeCounts,
+    pub by_type: ByJobType<i64>,
     pub by_status: StatusCounts,
-    pub by_type_status: TypeStatus,
+    pub by_type_status: ByJobType<StatusCounts>,
 }
 
 /// Count of jobs "executed" in a time window, split by type. A job's effective
 /// timestamp is `COALESCE(completed_at, created_at)`: terminal jobs
 /// (completed/failed) count on their completion date, non-terminal jobs
 /// (pending/processing) on their creation date.
-#[derive(Serialize, Default)]
+#[derive(Serialize)]
 pub struct WindowCounts {
     pub total: i64,
-    pub harvest: i64,
-    pub enrich: i64,
+    /// Per type, flattened next to `total` so the JSON shape is unchanged:
+    /// `{ "total": n, "harvest": n, "enrich": n, … }`.
+    #[serde(flatten)]
+    pub by_type: ByJobType<i64>,
+}
+
+impl Default for WindowCounts {
+    fn default() -> Self {
+        Self {
+            total: 0,
+            by_type: empty_by_type(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -709,8 +746,9 @@ pub struct DailyCounts {
 #[derive(Serialize)]
 pub struct DailyEntry {
     pub date: String,
-    pub harvest: DailyCounts,
-    pub enrich: DailyCounts,
+    /// Per type, flattened next to `date`, same shape as before.
+    #[serde(flatten)]
+    pub by_type: ByJobType<DailyCounts>,
 }
 
 #[derive(Serialize)]
@@ -740,21 +778,30 @@ pub async fn dashboard_stats(
     .await
     .map_err(db_err("dashboard jobs-by-type-status query failed"))?;
 
-    let mut by_type_status = TypeStatus::default();
+    let mut by_type_status: ByJobType<StatusCounts> = empty_by_type();
     for (job_type, status, count) in type_status_rows {
-        match job_type.as_str() {
-            "harvest" => by_type_status.harvest.add(&status, count),
-            "enrich" => by_type_status.enrich.add(&status, count),
-            other => tracing::warn!(job_type = other, "unknown job type in dashboard stats"),
+        // A name the enum does not know means the DB migrated ahead of this
+        // binary. Keep the bucket rather than dropping the rows: an unnamed
+        // type is a visible oddity, a missing one is a silent undercount.
+        if JobType::from_str_name(&job_type).is_none() {
+            tracing::warn!(job_type = %job_type, "job type unknown to this build");
         }
+        by_type_status
+            .entry(job_type)
+            .or_default()
+            .add(&status, count);
     }
-    let by_type = TypeCounts {
-        harvest: by_type_status.harvest.total(),
-        enrich: by_type_status.enrich.total(),
-    };
-    let by_status = StatusCounts::merge(&by_type_status.harvest, &by_type_status.enrich);
+    let by_type: ByJobType<i64> = by_type_status
+        .iter()
+        .map(|(name, counts)| (name.clone(), counts.total()))
+        .collect();
+    let by_status = by_type_status
+        .values()
+        .fold(StatusCounts::default(), |acc, c| {
+            StatusCounts::merge(&acc, c)
+        });
     let jobs = JobsBlock {
-        total: by_type.harvest + by_type.enrich,
+        total: by_type.values().sum(),
         by_type,
         by_status,
         by_type_status,
@@ -778,20 +825,11 @@ pub async fn dashboard_stats(
     let mut today = WindowCounts::default();
     let mut last_7d = WindowCounts::default();
     for (job_type, today_count, week_count) in executed_rows {
-        match job_type.as_str() {
-            "harvest" => {
-                today.harvest = today_count;
-                last_7d.harvest = week_count;
-            }
-            "enrich" => {
-                today.enrich = today_count;
-                last_7d.enrich = week_count;
-            }
-            other => tracing::warn!(job_type = other, "unknown job type in dashboard stats"),
-        }
+        today.by_type.insert(job_type.clone(), today_count);
+        last_7d.by_type.insert(job_type, week_count);
     }
-    today.total = today.harvest + today.enrich;
-    last_7d.total = last_7d.harvest + last_7d.enrich;
+    today.total = today.by_type.values().sum();
+    last_7d.total = last_7d.by_type.values().sum();
     let executed = ExecutedBlock { today, last_7d };
 
     // 3. Open (unaccepted) untranslatables.
@@ -823,7 +861,11 @@ pub async fn dashboard_stats(
     //    O(days × rows) nested loop. The 15-day cutoffs give slack for the
     //    UTC↔Amsterdam offset; at most 6 aggregate rows join per day, so the
     //    SUM FILTER never double-counts.
-    let daily_rows = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(
+    // The pivot used to sit in the SQL as six hardcoded `FILTER (WHERE job_type
+    // = 'harvest' | 'enrich')` columns, which is where three of the five types
+    // fell out of the chart. The query now returns one row per (day, type,
+    // kind) and the pivot happens below, over whatever types come back.
+    let daily_rows = sqlx::query_as::<_, (String, String, String, i64)>(
         "WITH days AS ( \
              SELECT ((now() AT TIME ZONE 'Europe/Amsterdam')::date - offs) AS day \
              FROM generate_series(13, 0, -1) AS offs \
@@ -844,39 +886,42 @@ pub async fn dashboard_stats(
              GROUP BY 1, 2, 3 \
          ) \
          SELECT to_char(days.day, 'YYYY-MM-DD'), \
-             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'added'), 0)::bigint, \
-             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'succeeded'), 0)::bigint, \
-             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'harvest' AND e.kind = 'failed'), 0)::bigint, \
-             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'added'), 0)::bigint, \
-             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'succeeded'), 0)::bigint, \
-             COALESCE(SUM(e.n) FILTER (WHERE e.job_type = 'enrich' AND e.kind = 'failed'), 0)::bigint \
+             COALESCE(e.job_type, ''), COALESCE(e.kind, ''), \
+             COALESCE(SUM(e.n), 0)::bigint \
          FROM days \
          LEFT JOIN events e ON e.day = days.day \
-         GROUP BY days.day \
+         GROUP BY days.day, e.job_type, e.kind \
          ORDER BY days.day",
     )
     .fetch_all(pool)
     .await
     .map_err(db_err("dashboard daily-series query failed"))?;
 
-    let daily: Vec<DailyEntry> = daily_rows
-        .into_iter()
-        .map(
-            |(date, h_added, h_succeeded, h_failed, e_added, e_succeeded, e_failed)| DailyEntry {
+    // Days without activity come back as one row with empty type/kind (the
+    // LEFT JOIN's null side); they still need their zero entry per type, so the
+    // skeleton is built first and rows only fill it in.
+    let mut daily: Vec<DailyEntry> = Vec::new();
+    for (date, job_type, kind, n) in daily_rows {
+        if daily.last().map(|d: &DailyEntry| d.date.as_str()) != Some(date.as_str()) {
+            daily.push(DailyEntry {
                 date,
-                harvest: DailyCounts {
-                    added: h_added,
-                    succeeded: h_succeeded,
-                    failed: h_failed,
-                },
-                enrich: DailyCounts {
-                    added: e_added,
-                    succeeded: e_succeeded,
-                    failed: e_failed,
-                },
-            },
-        )
-        .collect();
+                by_type: empty_by_type(),
+            });
+        }
+        if job_type.is_empty() {
+            continue; // day with no events; the zero skeleton above is the answer
+        }
+        let Some(entry) = daily.last_mut() else {
+            continue;
+        };
+        let counts = entry.by_type.entry(job_type).or_default();
+        match kind.as_str() {
+            "added" => counts.added += n,
+            "succeeded" => counts.succeeded += n,
+            "failed" => counts.failed += n,
+            other => tracing::warn!(kind = other, "unknown daily-series kind"),
+        }
+    }
 
     Ok(Json(DashboardStats {
         jobs,

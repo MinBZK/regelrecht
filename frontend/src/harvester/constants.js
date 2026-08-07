@@ -8,7 +8,12 @@ export const LAW_STATUSES = [
 
 export const JOB_STATUSES = ['pending', 'processing', 'completed', 'failed'];
 
-export const JOB_TYPES = ['harvest', 'enrich'];
+// Mirrors the `job_type` database enum (packages/pipeline/src/models.rs).
+// The dashboard no longer reads this list — it takes the buckets the API
+// returns — but the jobs-table filter does.
+export const JOB_TYPES = [
+  'harvest', 'enrich', 'document_convert', 'law_convert', 'traject_harvest',
+];
 
 export const ENRICHABLE_STATUSES = ['harvested', 'enriched', 'enrich_failed'];
 export const RE_HARVESTABLE_STATUSES = ['unknown', 'queued', 'harvest_failed', 'harvested', 'enriched', 'enrich_failed', 'not_harvestable'];
