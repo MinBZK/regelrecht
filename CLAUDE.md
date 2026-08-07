@@ -7,12 +7,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **regelrecht** is a platform for machine-readable Dutch law execution. The repo is a monorepo with multiple components:
 
 - `packages/engine/` - Rust law execution engine
-- `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
+- `packages/law-model/` - Canonical Rust representation of the law-YAML document model. Dependency-light leaf crate; every consumer of the law format depends on it instead of redefining the shape. Must conform to `schema/latest/schema.json` (see `just conformance`).
+- `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking. Ships three binaries: `regelrecht-harvest-worker`, `regelrecht-enrich-worker` and `regelrecht-pipeline-api` (the harvest API the editor proxies to).
 - `packages/harvester/` - Law corpus harvesting from BWB (Basis Wettelijke Regelgeving)
 - `packages/admin/` - Harvester-admin API (Rust; standalone harvest job/corpus API). Its dashboard UI now lives in the editor as the "Corpusinwinning" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy; the API stays independently addressable for scripts/services.
 - `packages/editor-api/` - Rust backend API for the editor frontend
 - `packages/corpus/` - Shared library for working with YAML regulation files
+- `packages/github/` - One hand-rolled GitHub REST client shared by every service that reads or writes a corpus repository
+- `packages/auth/` - Shared OIDC/SSO authentication (fail-closed authorization middleware)
 - `packages/shared/` - Common types/utilities across packages
+- `packages/arch-extract/` - Generates the code-derived architecture model from the cargo graph, and serves the local explorer for it
+- `packages/frontend-shared/` - `@regelrecht/frontend-shared`, the JS shared by editor, admin and lawmaking (`apiFetch` and friends)
 - `packages/tui/` - Terminal UI dashboard
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)

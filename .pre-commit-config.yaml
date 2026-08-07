@@ -93,6 +93,13 @@ repos:
         # Ook op een schemawijziging: die verandert wat de geldende URL is.
         files: ^(\.claude/skills/|script/(check-skill-references(\.test)?\.sh|\.skill-path-exceptions)$|schema/)
 
+      - id: documented-crates
+        name: CLAUDE.md noemt elke workspace-crate
+        entry: script/check-documented-crates.mjs
+        language: system
+        pass_filenames: false
+        files: ^(CLAUDE\.md|packages/Cargo\.toml|script/check-documented-crates\.mjs)$
+
       - id: skill-references-tests
         name: De skill-poort doet wat hij belooft
         entry: script/check-skill-references.test.sh
