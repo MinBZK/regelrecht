@@ -141,34 +141,40 @@ pub fn resolve_candidate<'a>(
             std::cmp::Ordering::Greater => {
                 // Build the reason before moving `best`: it must describe the
                 // loser's layer and date, not repeat the winner's.
-                let best_rank = layer_rank(&best.law.regulatory_layer);
-                let cand_rank = layer_rank(&candidate.law.regulatory_layer);
-                reason = if cand_rank < best_rank {
-                    format!(
-                        "lex superior: {} ({:?}) outranks {} ({:?})",
-                        candidate.law.id,
-                        candidate.law.regulatory_layer,
-                        best.law.id,
-                        best.law.regulatory_layer,
-                    )
-                } else {
-                    format!(
-                        "lex posterior: {} (valid_from {}) is newer than {} (valid_from {})",
-                        candidate.law.id,
-                        candidate.law.valid_from.as_deref().unwrap_or("?"),
-                        best.law.id,
-                        best.law.valid_from.as_deref().unwrap_or("?"),
-                    )
-                };
+                reason = comparison_reason(candidate.law, best.law);
                 best = candidate;
             }
-            std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
-                // Equal is unreachable: compare_law_priority returns Err for ambiguous
+            std::cmp::Ordering::Less => {
+                // The incumbent kept its seat, but the decision is the same
+                // legal one and deserves the same sentence.
+                reason = comparison_reason(best.law, candidate.law);
+            }
+            std::cmp::Ordering::Equal => {
+                // Unreachable: compare_law_priority returns Err for ambiguous
             }
         }
     }
 
     Ok(Some((best.law, reason)))
+}
+
+/// Human-readable sentence naming which rule decided between two laws, and who
+/// lost.
+fn comparison_reason(winner: &ArticleBasedLaw, loser: &ArticleBasedLaw) -> String {
+    if layer_rank(&winner.regulatory_layer) < layer_rank(&loser.regulatory_layer) {
+        format!(
+            "lex superior: {} ({:?}) outranks {} ({:?})",
+            winner.id, winner.regulatory_layer, loser.id, loser.regulatory_layer,
+        )
+    } else {
+        format!(
+            "lex posterior: {} (valid_from {}) is newer than {} (valid_from {})",
+            winner.id,
+            winner.valid_from.as_deref().unwrap_or("?"),
+            loser.id,
+            loser.valid_from.as_deref().unwrap_or("?"),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -548,8 +554,13 @@ articles:
 
         let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "newer_regulation");
-        // The incumbent kept its seat, so no comparison sentence was written.
-        assert_eq!(reason, "only candidate (newer_regulation)");
+        // Same legal decision as when the order is reversed, so the same
+        // sentence — the reason must not depend on candidate order.
+        assert_eq!(
+            reason,
+            "lex posterior: newer_regulation (valid_from 2025-01-01) is newer than \
+             older_regulation (valid_from 2024-01-01)"
+        );
     }
 
     #[test]
