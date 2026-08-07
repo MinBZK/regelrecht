@@ -16,6 +16,7 @@ import InviteMembersSheet from './components/InviteMembersSheet.vue';
 import TasksCategoriesPane from './components/TasksCategoriesPane.vue';
 import TasksListPane from './components/TasksListPane.vue';
 import TasksSidebarItem from './components/TasksSidebarItem.vue';
+import UploadConfirmDialog from './components/UploadConfirmDialog.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useCorpusLaws } from './composables/useCorpusLaws.js';
 // useEnrichState (bovenop useTaskActions), niet useTasks: LibraryView heeft
@@ -220,12 +221,18 @@ function showWerkdocPath(p) {
   viewingJobPath.value = null;
   if (openDocPath.value !== p) openDoc(p);
 }
+// `confirm: true`: het gekozen bestand wacht in `pendingDocUpload` op de
+// bevestigingsdialoog, die vertelt of er AI aan te pas komt en (waar er iets te
+// kiezen valt) om toestemming vraagt.
 const {
   fileInput: docFileInput,
   uploadError: docUploadError,
   uploadRetryable: docUploadRetryable,
+  pendingFile: pendingDocUpload,
   onUpload: onDocUpload,
   onFileChange: onDocFileChange,
+  confirmUpload: confirmDocUpload,
+  cancelUpload: cancelDocUpload,
 } = useDocumentUpload(docsMgr.uploadDocument, (result) => {
   docJobs.refresh();
   // De conversie is ook een wacht-taak. Zonder deze refresh wacht de takenlijst
@@ -248,7 +255,7 @@ const {
     return;
   }
   showUploadedJob(result.targetPath);
-});
+}, { confirm: true });
 // Poll conversion jobs only while the werkdocumenten sidebar is open.
 watch(
   isWerkdocMode,
@@ -800,9 +807,22 @@ async function onDocSaved(savedPath) {
 }
 
 const docReviewBannerVariant = computed(() => (docReviewLoadError.value ? 'critical' : 'neutral'));
-const docReviewBannerSupportingText = computed(() =>
-  docReviewLoadError.value || 'Opslaan keurt het voorstel goed, Verwerpen wijst af.',
-);
+// Hoe het voorstel tot stand kwam. Dit is nadrukkelijk iets anders dan het
+// vinkje bij de upload: dat zei wat mócht, dit zegt wat er is gebeurd - alleen
+// de pipeline weet dat (een .docx die pandoc niet aankon kan alsnog via het
+// taalmodel zijn gegaan). Een oudere taak draagt het veld niet; dan zwijgen we
+// erover in plaats van iets te beweren.
+const DOC_CONVERSION_ORIGIN = {
+  llm: 'Omgezet met AI.',
+  pandoc: 'Omgezet met pandoc, zonder AI.',
+  pdftotext: 'Omgezet met pdftotext, zonder AI.',
+};
+const docReviewBannerSupportingText = computed(() => {
+  if (docReviewLoadError.value) return docReviewLoadError.value;
+  const origin = DOC_CONVERSION_ORIGIN[docReviewTask.value?.payload?.converted_with];
+  const action = 'Opslaan keurt het voorstel goed, Verwerpen wijst af.';
+  return origin ? `${origin} ${action}` : action;
+});
 
 // Keep the user's traject scope across in-app navigations. A traject with a law
 // stays on `library-traject`, a traject without one on `traject-home`; publicly,
@@ -2579,6 +2599,14 @@ watch(activeTrajectRef, () => {
       <nldd-button slot="actions" variant="destructive" text="Negeer wijzigingen en sluit" @click="confirmDocLeave"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
+
+  <!-- Tussen kiezen en versturen: wat er met dit bestand gaat gebeuren, en (waar
+       er te kiezen valt) of AI mee mag doen. -->
+  <UploadConfirmDialog
+    :file="pendingDocUpload"
+    @confirm="confirmDocUpload"
+    @cancel="cancelDocUpload"
+  />
 
   <Teleport to="body">
     <nldd-modal-dialog

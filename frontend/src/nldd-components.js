@@ -18,6 +18,7 @@ import '@nldd/design-system/button-group';
 import '@nldd/design-system/byline';
 import '@nldd/design-system/card';
 import '@nldd/design-system/cell';
+import '@nldd/design-system/checkbox-field';
 import '@nldd/design-system/code-editor';
 import '@nldd/design-system/code-viewer';
 import '@nldd/design-system/collection';
