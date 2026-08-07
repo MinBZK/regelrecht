@@ -130,6 +130,9 @@ Feature: Params
     ]);
   });
 
+  // A parameter table has no header row, so its first row is a parameter too.
+  // Shape taken verbatim from
+  // corpus/regulation/nl/wet/burgerlijk_wetboek_boek_5/scenarios/erfgrensbeplanting.feature.
   it('maps parameter table', () => {
     const parsed = parseFeature(`
 Feature: Param table
@@ -137,18 +140,54 @@ Feature: Param table
   Scenario: Bulk params
     Given the calculation date is "2025-01-01"
     Given the following parameters:
-      | name   | value |
-      | bsn    | 123   |
-      | amount | 500   |
-    When I evaluate "x" of "law"
+      | gemeente_code   | GM0363 |
+      | type_beplanting | boom   |
+      | postcode        | 1012   |
+    When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
 `);
 
     const form = mapFeatureToForm(parsed);
     const params = form.scenarios[0].setup.parameters;
     expect(params).toEqual([
-      { name: 'bsn', value: 123 },
-      { name: 'amount', value: 500 },
+      { name: 'gemeente_code', value: 'GM0363' },
+      { name: 'type_beplanting', value: 'boom' },
+      { name: 'postcode', value: 1012 },
     ]);
+  });
+
+  it('keeps a single-row parameter table', () => {
+    const parsed = parseFeature(`
+Feature: One param
+
+  Scenario: Single row
+    Given the following parameters:
+      | indieningsdatum | 2025-01-01 |
+    When I evaluate "tijdig_ingediend" of "test_date_operations"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    expect(form.scenarios[0].setup.parameters).toEqual([
+      { name: 'indieningsdatum', value: '2025-01-01' },
+    ]);
+  });
+
+  // Round-trip guard: saving from the visual form rewrites the table as
+  // individual `Given parameter ...` steps, so a row lost on read is lost
+  // in the .feature file for good.
+  it('keeps every parameter through a table load/save round-trip', () => {
+    const parsed = parseFeature(`
+Feature: Round trip
+
+  Scenario: Bulk params
+    Given the following parameters:
+      | gemeente_code   | GM0363 |
+      | type_beplanting | boom   |
+    When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
+`);
+
+    const gherkin = formStateToGherkin(mapFeatureToForm(parsed));
+    expect(gherkin).toContain('Given parameter "gemeente_code" is "GM0363"');
+    expect(gherkin).toContain('Given parameter "type_beplanting" is "boom"');
   });
 
   it('puts unrecognized steps in unmatchedSteps', () => {
