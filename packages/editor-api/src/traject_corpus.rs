@@ -3404,7 +3404,7 @@ mod tests {
         compare_calls: Arc<AtomicUsize>,
         compare_hold: Option<Arc<Semaphore>>,
     ) -> Arc<TrajectCorpus> {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_eigen", "own");
         Arc::new(test_corpus(
             map,

@@ -5188,7 +5188,7 @@ mod tests {
     /// gefedereerde centrale corpus. Bewust geanonimiseerde ids — dit is een
     /// publieke repo.
     fn two_source_map() -> SourceMap {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         for (law_id, source_id, priority) in [
             ("wet_alpha", "own", 0),
             ("wet_beta", "own", 0),
