@@ -151,14 +151,31 @@ const outputs = computed(() =>
 
 const actions = computed(() => execution.value?.actions ?? []);
 
+// Duration units render with the noun spelled out; a bare number leaves the
+// reader guessing which of years/months/weeks/days it is.
+const DURATION_NOUNS = {
+  years: ['jaar', 'jaar'],
+  months: ['maand', 'maanden'],
+  weeks: ['week', 'weken'],
+  days: ['dag', 'dagen'],
+};
+
+// Render per `type_spec.unit` (schema: euro, eurocent, ratio, percentage,
+// years, weeks, months, days). RFC-023: the unit is a label, never a
+// computational instruction, so nothing here scales a value except eurocent -
+// which is stored in cents and shown in euros, an explicit conversion the
+// label names. A value without a unit is a number we cannot interpret, so it
+// is shown verbatim; guessing from its magnitude turned every stored ratio
+// into a percentage.
 function formatValue(val, unit) {
   if (typeof val === 'number') {
-    if (unit === 'eurocent') {
-      return (val / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
-    }
-    if (val > 0 && val < 1 && !unit) {
-      return (val * 100).toLocaleString('nl-NL', { maximumFractionDigits: 3 }) + '%';
-    }
+    const nl = (v, opts) => v.toLocaleString('nl-NL', opts);
+    if (unit === 'eurocent') return nl(val / 100, { style: 'currency', currency: 'EUR' });
+    if (unit === 'euro') return nl(val, { style: 'currency', currency: 'EUR' });
+    if (unit === 'percentage') return nl(val, { maximumFractionDigits: 3 }) + '%';
+    if (unit === 'ratio') return nl(val, { maximumFractionDigits: 6 });
+    const noun = DURATION_NOUNS[unit];
+    if (noun) return `${nl(val)} ${Math.abs(val) === 1 ? noun[0] : noun[1]}`;
   }
   // A list definition value (YAML sequence) renders here; String([...])
   // joins with a bare comma ("a,b,c") which has no break opportunity and

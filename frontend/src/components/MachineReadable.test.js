@@ -129,12 +129,48 @@ describe('MachineReadable', () => {
       expect(wrapper.find('nldd-inline-dialog').attributes('text')).toContain('Geen machine-leesbare gegevens');
     });
 
-    it('formats percentage values (0 < v < 1)', () => {
-      const wrapper = mountEditable();
+    // RFC-023 / schema `type_spec.unit`: the label decides the rendering, and
+    // the label alone. `ratio` (0-1) and `percentage` (0-100) are distinct, so
+    // neither may be inferred from the size of the number.
+    function cellsFor(definitions) {
+      const wrapper = mountEditable({ definitions });
       // The value sits in the `text` attribute (read-only cells) or as
       // slot text next to BreakableName (editable definition rows).
-      const cells = wrapper.findAll('nldd-text-cell').map(c => `${c.attributes('text') || ''} ${c.text()}`);
-      expect(cells.some(t => /1,896\s*%/.test(t))).toBe(true);
+      return wrapper.findAll('nldd-text-cell').map(c => `${c.attributes('text') || ''} ${c.text()}`);
+    }
+
+    it('renders every unit the schema allows', () => {
+      const cells = cellsFor({
+        as_ratio: { value: 0.01896, type_spec: { unit: 'ratio' } },
+        as_percentage: { value: 1.896, type_spec: { unit: 'percentage' } },
+        as_euro: { value: 1500, type_spec: { unit: 'euro' } },
+        as_eurocent: { value: 150000, type_spec: { unit: 'eurocent' } },
+        as_years: { value: 18, type_spec: { unit: 'years' } },
+        as_months: { value: 3, type_spec: { unit: 'months' } },
+        as_weeks: { value: 1, type_spec: { unit: 'weeks' } },
+        as_days: { value: 30, type_spec: { unit: 'days' } },
+      });
+      const joined = cells.join('\n');
+      // A ratio keeps its own scale - showing it as 1,896% would be a division
+      // the label never asked for.
+      expect(joined).toMatch(/as_ratio\s*=\s*0,01896/);
+      expect(joined).toMatch(/as_percentage\s*=\s*1,896%/);
+      expect(joined).toMatch(/as_euro\s*=\s*€\s*1\.500,00/);
+      expect(joined).toMatch(/as_eurocent\s*=\s*€\s*1\.500,00/);
+      expect(joined).toMatch(/as_years\s*=\s*18 jaar/);
+      expect(joined).toMatch(/as_months\s*=\s*3 maanden/);
+      expect(joined).toMatch(/as_weeks\s*=\s*1 week/);
+      expect(joined).toMatch(/as_days\s*=\s*30 dagen/);
+    });
+
+    it('leaves an unlabelled value unscaled', () => {
+      // The pre-RFC-023 shape: a bare number between 0 and 1. Without a unit we
+      // do not know what it means, so it must not become a percentage.
+      const cells = cellsFor({ percentage_drempel: { value: 0.01896 } });
+      const joined = cells.join('\n');
+      expect(joined).toMatch(/percentage_drempel\s*=\s*0\.01896/);
+      expect(joined).not.toMatch(/1,896/);
+      expect(joined).not.toContain('%');
     });
 
     it('formats eurocent values as currency', () => {
