@@ -1,6 +1,6 @@
 ---
 name: merge-train
-description: Mergt één pull request of een reeks achter elkaar op main, met bijwerken zonder handtekeningverlies, wachten op de juiste checks, en verifiëren dat main groen blijft. Gebruik dit bij "merge PR N", "laat de trein rijden" of het wegwerken van een stapel mergebare PR's.
+description: Mergt één pull request of een reeks achter elkaar op main, met bijwerken zonder handtekeningverlies, wachten op de juiste checks, en controleren dat de uitrol geslaagd is. Gebruik dit bij "merge PR N", "laat de trein rijden" of het wegwerken van een stapel mergebare PR's.
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob
 ---
@@ -46,9 +46,19 @@ het resultaat níét; een ondertekende branch wordt dan `unsigned` en strandt op
 `required_signatures`. Squash-merge platst die merge-commits alsnog, dus `main`
 houdt een vlakke historie.
 
-**Documenten die een mens zelf beoordeelt gaan nooit automatisch mee.** RFC's,
-rapporten en substantieel proza onder `docs/src/content/rfcs/` sla je over, ook
-als ze groen zijn. Meld ze aan het eind als klaar en wachtend op een oordeel.
+**Wat een mens hoort te beoordelen gaat nooit automatisch mee.** Deze repo kent
+nul verplichte reviewers, dus een merge door deze skill is de enige beoordeling
+die een wijziging krijgt. Voor drie soorten is dat niet genoeg, en die sla je
+over, ook als ze groen zijn:
+
+- `corpus/regulation/**` en `schema/**`. Dit is de machine-leesbare weergave van
+  Nederlandse wetgeving en het schema waar die aan hangt. Een fout hier levert
+  een verkeerde rechtsuitkomst op, en geen enkele poort in CI ziet dat.
+- `.github/workflows/**`. Wie de workflows wijzigt kan de poorten wijzigen
+  waarop deze skill zelf afgaat.
+- RFC's, rapporten en substantieel proza onder `docs/src/content/rfcs/`.
+
+Meld ze aan het eind als klaar en wachtend op een oordeel.
 
 **Blijf van andermans werk af.** Fork-PR's en PR's van externe bijdragers merge
 je niet; die liggen bij hun auteur.
@@ -112,13 +122,18 @@ gh pr merge <nr> -R MinBZK/regelrecht --squash --delete-branch
 Squash is de enige toegestane methode in deze repo. De titel is de commit-titel,
 dus die moet aan Conventional Commits voldoen; `Validate PR title` bewaakt dat al.
 
-### 5. Main controleren voor je doorgaat
+### 5. De deploy controleren, niet de CI-herhaling
 
-Na de merge draait CI opnieuw op `main`, en `deploy-production` hangt daaraan
-vast. Wacht tot de CI-run van de nieuwe `main`-commit klaar is en groen.
+Wacht **niet** op de CI-run van de nieuwe `main`-commit. Met `strict: true` is de
+boom die op main landt identiek aan wat de PR net getest heeft, dus die run is
+een herhaling. Daar kan alleen nog iets flaky of tijdsafhankelijks omvallen, een
+nieuwe advisory die `Security Audit` raakt bijvoorbeeld, en dat blokkeert de
+volgende PR toch al, want dat is een verplichte check.
 
-Is hij rood, **stop dan de trein** en meld het. Doorgaan met de volgende PR
-bovenop een kapotte `main` maakt de oorzaak alleen moeilijker terug te vinden.
+Controleer in plaats daarvan de uitrol, want daar bestaat geen PR-check voor.
+Kijk of `Build and Deploy` voor deze commit is afgerond en of `deploy-production`
+is geslaagd. Is die rood, **stop dan de trein** en meld het; de volgende merge
+zet er alleen maar meer bovenop.
 
 ### 6. Terug naar stap 1
 
@@ -127,7 +142,7 @@ merge dat de gekozen PR `behind_by = 0` heeft; anders eerst stap 2.
 
 ## Wanneer je stopt
 
-- `main` is rood na een merge.
+- De productie-deploy van de vorige merge is mislukt.
 - Een PR heeft een echt conflict (`DIRTY`).
 - Een required check faalt inhoudelijk. Repareren hoort niet bij deze skill;
   meld welke check op welke PR en wat het log zegt.
