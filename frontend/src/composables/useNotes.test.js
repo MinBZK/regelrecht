@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ref } from 'vue';
-import { useResolvedDraftNotes } from './useNotes.js';
+import { useNotes, useResolvedDraftNotes } from './useNotes.js';
 
 // Capture what useResolvedDraftNotes hands the WASM engine. The mock replaces
 // the singleton engine bootstrap.
 const engineCalls = vi.hoisted(() => []);
+// What the mocked engine returns from resolveNotes; per-test.
+const resolveNotesResult = vi.hoisted(() => ({ value: [] }));
 vi.mock('./useEngine.js', () => ({
   useEngine: () => ({
     initEngine: async () => ({
@@ -15,10 +17,59 @@ vi.mock('./useEngine.js', () => ({
           matches: [{ article_number: '1', start: 0, end: 3 }],
         };
       },
+      resolveNotes: () => resolveNotesResult.value,
     }),
     loadDependency: async () => {},
   }),
 }));
+
+vi.mock('../lib/apiFetch.js', () => ({
+  apiFetch: async () => ({ status: 200, text: async () => 'annotations: []' }),
+}));
+
+describe('useNotes issues', () => {
+  async function issuesFor(lawId, match) {
+    resolveNotesResult.value = [{ note: { id: 'n1' }, match }];
+    const { issues } = useNotes(
+      ref(lawId),
+      ref({ number: '1' }),
+      ref(null),
+      ref('2024-01-01'),
+    );
+    await vi.waitFor(() => expect(issues.value).toHaveLength(1));
+    return issues.value[0].reason;
+  }
+
+  it('blames the quote length only when the quote length caused the skip', async () => {
+    // 'skipped' has three causes; "kort het citaat in" fixes exactly one of
+    // them. On a drained scan budget that advice is wrong: the author
+    // shortens the quote, nothing changes, and the real cause stays hidden.
+    const quote = await issuesFor('wet_skip_quote', {
+      status: 'skipped',
+      matches: [],
+      skip_reason: 'quote_too_long',
+    });
+    expect(quote).toContain('citaat te lang');
+    expect(quote).toContain('kort het citaat in');
+
+    const budget = await issuesFor('wet_skip_budget', {
+      status: 'skipped',
+      matches: [],
+      skip_reason: 'search_budget',
+    });
+    expect(budget).not.toContain('kort het citaat in');
+    expect(budget).toContain('niet volledig doorzocht');
+  });
+
+  it('keeps a skipped note distinguishable from an orphaned one', async () => {
+    const orphaned = await issuesFor('wet_orphaned', {
+      status: 'orphaned',
+      matches: [],
+    });
+    expect(orphaned).toContain('orphaned');
+    expect(orphaned).not.toContain('niet naar gezocht');
+  });
+});
 
 describe('useResolvedDraftNotes', () => {
   it('resolves drafts against the viewed law version, not the newest', async () => {
