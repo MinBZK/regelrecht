@@ -368,12 +368,18 @@ jobs:
         needs.build-lawmaking.result == 'success' ||
         needs.build-docs.result == 'success'
       )
-    permissions: {}
+    permissions:
+      # Voor script/check-deployed-urls.sh onderaan.
+      contents: read
     environment:
       name: production
       url: ${{ steps.editor-url.outputs.url }}
 
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
       # Faalt één gevraagd image, dan gaat er niets. De conditie hierboven laat
       # de deploy al door zodra één build slaagt, en de lijst hieronder neemt
       # alleen de geslaagde mee: het gevolg was dat een component stil op zijn
@@ -457,6 +463,14 @@ jobs:
         env:
           URLS: ${{ steps.deploy.outputs.urls }}
         run: echo "url=$(jq -r '.editor // empty' <<<"$URLS")" >> "$GITHUB_OUTPUT"
+
+      # De poort vooraan bewaakt dat er niets van een rood commit uitgaat en dat
+      # er geen halve uitrol plaatsvindt. Geen van beide zegt iets over de
+      # uitkomst, en daar bestond verder geen enkele controle voor.
+      - name: Controleer of productie antwoordt
+        env:
+          URLS: ${{ steps.deploy.outputs.urls }}
+        run: script/check-deployed-urls.sh
 
       - name: Verklaar een mislukte deploy
         if: failure() && steps.deploy.outcome == 'failure'
