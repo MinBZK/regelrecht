@@ -22,10 +22,18 @@
  * and drawn as nesting, not a line; the rest are aggregated per
  * `kind|from->to` into one weighted line. Expanding a node refines the lines
  * that touched it. See packages/arch-extract/README.md.
+ *
+ * That lifting/aggregation step now lives in `../lib/archRollup.js`, because the
+ * Map / Radiaal / Matrix prototypes need exactly the same rollup — sharing it is
+ * what makes the four views comparable. What stayed here is the part that is
+ * specific to this view: the expand/collapse state and the nested grid layout.
+ * This whole file goes away with the comparison rig; see ui/EVALUATIE.md.
  */
 import { computed, ref, shallowRef } from 'vue';
 import { MarkerType } from '@vue-flow/core';
 import { useEdgeFilters } from './useEdgeFilters.js';
+import { sortChildren } from '../lib/archIndex.js';
+import { rollupRelations } from '../lib/archRollup.js';
 
 // --- Layout constants -------------------------------------------------------
 const NODE_W = 220; // width of a collapsed / leaf node
@@ -45,25 +53,6 @@ const ROOT_MAX_PER_COL = 4; // wrap a layer into a new sub-column past this many
 // level instead of every ancestor chain, so one click never opens hundreds of
 // nodes. Repeated clicks refine step by step. (Acceptance criterion 7.)
 export const REVEAL_LIMIT = 25;
-
-// Sort order for children: coarse kinds first, then alphabetically. Keeps a
-// crate's modules above its loose fns, types above their methods, etc. The
-// roots (Rust `crate`s and JS `app`s) are grouped so the two tiers do not
-// interleave; below an app, directories sort above the files they group.
-const KIND_RANK = {
-  crate: 0,
-  app: 1,
-  binary: 2,
-  dir: 3,
-  module: 4,
-  component: 5,
-  composable: 6,
-  trait: 7,
-  struct: 8,
-  enum: 9,
-  fn: 10,
-  method: 11,
-};
 
 // Per-edge-kind styling. Visually distinct so `depends-on` / `impl` / `uses`
 // are told apart at a glance (acceptance criterion). `strokeWidth` is the
@@ -86,17 +75,6 @@ export { EDGE_STYLE };
 function scaledStrokeWidth(base, weight) {
   const w = base + Math.log2(Math.max(1, weight)) * 1.2;
   return Math.min(9, Math.max(1.5, Math.round(w * 10) / 10));
-}
-
-function sortChildren(byId) {
-  return (a, b) => {
-    const na = byId.get(a);
-    const nb = byId.get(b);
-    const ra = KIND_RANK[na?.kind] ?? 9;
-    const rb = KIND_RANK[nb?.kind] ?? 9;
-    if (ra !== rb) return ra - rb;
-    return (na?.name || a).localeCompare(nb?.name || b);
-  };
 }
 
 /**
@@ -333,14 +311,6 @@ function buildFlow(model, expanded, enabledKinds) {
 
   const visibleIds = new Set(flowNodes.map((n) => n.id));
 
-  // Lift an id to its nearest visible ancestor. Roots are always visible, so
-  // the walk always terminates; returns undefined only for an id not in the
-  // tree at all (a dangling edge endpoint).
-  const lift = (id) => {
-    let cur = id;
-    while (cur && !visibleIds.has(cur)) cur = parentOf(cur);
-    return cur;
-  };
   // Is `anc` a (strict) ancestor of `desc`?
   const isAncestor = (anc, desc) => {
     let cur = parentOf(desc);
@@ -352,41 +322,17 @@ function buildFlow(model, expanded, enabledKinds) {
   };
 
   // --- Edge lifting + aggregation ------------------------------------------
-  const aggregates = new Map(); // `${kind}|${from}->${to}` -> aggregate
-  const internal = new Map(); // nodeId -> internal relation count
-  let totalRelations = 0;
-  let visibleRelations = 0;
-
-  for (const e of model.edges) {
-    if (!enabledKinds.has(e.kind)) continue;
-    const from = lift(e.from);
-    const to = lift(e.to);
-    if (!from || !to) continue; // dangling endpoint, nothing to draw
-    totalRelations += 1;
-
-    if (from === to) {
-      // Both ends roll up to the same visible node: an internal relation. It
-      // becomes a counter on that node, not a line. (Criterion 2.)
-      internal.set(from, (internal.get(from) || 0) + 1);
-      visibleRelations += 1;
-      continue;
-    }
-    if (isAncestor(from, to) || isAncestor(to, from)) {
-      // One lifted end contains the other: that is containment (nesting), not a
-      // relation. No line, and it is not "visible" as a relation. (Criterion 3.)
-      continue;
-    }
-
-    const key = `${e.kind}|${from}->${to}`;
-    let agg = aggregates.get(key);
-    if (!agg) {
-      agg = { kind: e.kind, from, to, weight: 0, pairs: [] };
-      aggregates.set(key, agg);
-    }
-    agg.weight += 1;
-    agg.pairs.push({ from: e.from, to: e.to });
-    visibleRelations += 1;
-  }
+  // Shared with the Map / Radial / Matrix prototypes (see lib/archRollup.js).
+  // In this nested view containment *is* drawn — as nesting — so those
+  // relations must not also become a line.
+  const { aggregates, internal, stats } = rollupRelations({
+    edges: model.edges,
+    visibleIds,
+    parentOf,
+    enabledKinds,
+    isAncestor,
+    containmentAsNesting: true,
+  });
 
   // Publish internal counters onto their nodes.
   for (const n of flowNodes) {
@@ -439,7 +385,7 @@ function buildFlow(model, expanded, enabledKinds) {
     nodes: flowNodes,
     edges: flowEdges,
     childrenMap,
-    stats: { visible: visibleRelations, total: totalRelations },
+    stats: { visible: stats.visible, total: stats.total },
   };
 }
 

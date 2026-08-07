@@ -1,51 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { buildFlow, computeReveal, REVEAL_LIMIT } from './useArchGraph.js';
+// The synthetic model lives in src/test/fixtures.js so the prototype layout
+// tests exercise exactly the same graph.
+import { ALL_KINDS, makeModel } from '../test/fixtures.js';
 
-// A small synthetic model that exercises every lifting case. Three crates; one
-// (`a`) has a two-level inner tree so lifting has somewhere to travel to.
-//
-//   crate:a
-//     mod:a::m1  → type T1, type T2
-//     mod:a::m2  → type U1
-//   crate:b      → type V1
-//   crate:c      → type W1
-function makeModel() {
-  const node = (id, kind, level, parent) => ({
-    id,
-    kind,
-    level,
-    lang: 'rust',
-    name: id.split('::').pop(),
-    path: 'x',
-    ...(parent ? { parent } : {}),
-  });
-  return {
-    schemaVersion: '1',
-    nodes: [
-      node('crate:a', 'crate', 'container'),
-      node('crate:b', 'crate', 'container'),
-      node('crate:c', 'crate', 'container'),
-      node('mod:a::m1', 'module', 'component', 'crate:a'),
-      node('mod:a::m2', 'module', 'component', 'crate:a'),
-      node('type:a::m1::T1', 'struct', 'code', 'mod:a::m1'),
-      node('type:a::m1::T2', 'struct', 'code', 'mod:a::m1'),
-      node('type:a::m2::U1', 'struct', 'code', 'mod:a::m2'),
-      node('type:b::V1', 'struct', 'code', 'crate:b'),
-      node('type:c::W1', 'struct', 'code', 'crate:c'),
-    ],
-    edges: [
-      { from: 'type:a::m1::T1', to: 'type:b::V1', kind: 'uses' }, // E1 cross-crate
-      { from: 'type:a::m1::T2', to: 'type:b::V1', kind: 'uses' }, // E2 cross-crate (aggregates with E1)
-      { from: 'type:a::m1::T1', to: 'type:a::m2::U1', kind: 'uses' }, // E3 crate-internal / cross-module
-      { from: 'type:a::m1::T1', to: 'type:c::W1', kind: 'impl' }, // E4 cross-crate impl
-      { from: 'type:a::m1::T1', to: 'crate:a', kind: 'uses' }, // E5 points at own ancestor
-      { from: 'crate:a', to: 'crate:b', kind: 'depends-on' }, // E6 root depends-on
-      { from: 'crate:a', to: 'crate:c', kind: 'depends-on' }, // E7 root depends-on
-    ],
-  };
-}
 
-const ALL_KINDS = new Set(['depends-on', 'impl', 'uses']);
 
 function parentMap(model) {
   return new Map(model.nodes.map((n) => [n.id, n.parent || null]));
