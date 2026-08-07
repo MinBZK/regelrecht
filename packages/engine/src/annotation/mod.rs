@@ -11,7 +11,7 @@ pub mod resolver;
 pub mod types;
 
 pub use resolver::resolve;
-pub use types::{MatchResult, MatchStatus, SelectorHint, TextMatch, TextQuoteSelector};
+pub use types::{MatchResult, MatchStatus, SelectorHint, SkipReason, TextMatch, TextQuoteSelector};
 
 /// Extract the law `$id` from a note's `target.source` URI.
 ///

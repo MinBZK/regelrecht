@@ -181,7 +181,7 @@ export function useNotes(lawId, selectedArticle, trajectRef, lawValidFrom) {
     return out;
   });
 
-  /** Orphaned / ambiguous / parse-failed notes, for a status list. */
+  /** Orphaned / ambiguous / skipped / parse-failed notes, for a status list. */
   const issues = computed(() =>
     resolved.value
       .filter(
@@ -193,7 +193,16 @@ export function useNotes(lawId, selectedArticle, trajectRef, lawValidFrom) {
           ? `parsefout: ${e.error}`
           : e.match.status === 'orphaned'
             ? 'niet gevonden in de wettekst (orphaned)'
-            : 'meerdere matches (ambigu) - voeg context toe',
+            : e.match.status === 'skipped'
+              ? // The resolver hit a scan bound (config.rs): the law was not
+                // (fully) searched. Distinct from orphaned, which asserts
+                // the text is absent. skip_reason names the bound that was
+                // hit, so the advice matches the cause instead of always
+                // blaming the quote length.
+                e.match.skip_reason === 'quote_too_long'
+                ? 'niet naar gezocht: citaat te lang voor de zoekbegrenzing - kort het citaat in'
+                : 'niet volledig doorzocht: de wettekst overschrijdt de zoekbegrenzing'
+              : 'meerdere matches (ambigu) - voeg context toe',
       })),
   );
 

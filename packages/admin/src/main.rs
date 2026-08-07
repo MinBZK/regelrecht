@@ -226,7 +226,9 @@ async fn main() {
             middleware::refresh_session_token::<AppState>,
         ))
         .layer(session_layer)
-        .layer(axum_middleware::from_fn(middleware::security_headers))
+        .layer(axum_middleware::from_fn(middleware::security_headers(
+            middleware::API_CSP,
+        )))
         .layer(TraceLayer::new_for_http());
     // API-only service: the harvester-admin dashboard UI now lives in the
     // editor (frontend/src/harvester), which reaches this API through the

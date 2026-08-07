@@ -1380,6 +1380,52 @@ mod tests {
     }
 
     #[test]
+    fn test_box_drawing_continuation_between_siblings_of_one_cross_law_ref() {
+        // The original bug (#471): several children under a *single*
+        // CrossLawReference inside an Article. The test above restructured to
+        // two references, which exercises a different column; the case with one
+        // reference and multiple children is only covered by the zorgtoeslag
+        // trace snapshot, so this is its unit-level regression anchor (#474).
+        let uri = PathNode::new(PathNodeType::CrossLawReference, "other_law#out")
+            .with_message("Reference: other_law#out")
+            .with_child(PathNode::new(PathNodeType::Resolve, "a").with_result(Value::Int(1)))
+            .with_child(PathNode::new(PathNodeType::Resolve, "b").with_result(Value::Int(2)))
+            .with_child(PathNode::new(PathNodeType::Resolve, "c").with_result(Value::Int(3)));
+        let article = PathNode::new(PathNodeType::Article, "test (out)")
+            .with_message("test (2025-01-01 {} out)")
+            .with_child(uri)
+            .with_result(Value::Int(42));
+
+        let rendered = article.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+
+        // Every non-last child of the reference is joined with ╟── and the last
+        // one with ╙──: the continuation must not break between a and b.
+        let joins = lines
+            .iter()
+            .filter(|l| l.contains("╟──Resolving $A") || l.contains("╟──Resolving $B"))
+            .count();
+        assert_eq!(
+            joins, 2,
+            "children a and b are not last and should use ╟── in:\n{rendered}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("╙──Resolving $C")),
+            "last child c should use ╙── in:\n{rendered}"
+        );
+        // And the reference's own subtree stays inside the double-line scope of
+        // the Article: every child line carries the ║ continuation column.
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|l| l.contains("║       ╟──") || l.contains("║       ╙──"))
+                .count(),
+            3,
+            "all three children should sit under the ║ continuation in:\n{rendered}"
+        );
+    }
+
+    #[test]
     fn test_box_drawing_cached_node() {
         let cached =
             PathNode::new(PathNodeType::Cached, "some_law#output").with_result(Value::Bool(false));
