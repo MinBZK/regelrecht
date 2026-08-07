@@ -297,6 +297,34 @@ describe('formStateToGherkin round-trip', () => {
     expect(reformatted.scenarios[0].assertions).toEqual(form.scenarios[0].assertions);
   });
 
+  // Een opslagronde die de tags kwijtraakt zet een bewust overgeslagen scenario
+  // weer aan. `@wip` markeert in het corpus een gewenste uitkomst die de engine
+  // nog niet levert (eligibility.feature:43), dus terugschrijven is niet
+  // cosmetisch: zonder de tag claimt het bestand iets wat niet waar is.
+  it('keeps scenario tags through a save round-trip', () => {
+    const original = `Feature: Tags
+
+  @wip
+  Scenario: Minderjarige heeft geen recht
+    When I evaluate "heeft_recht" of "wet_op_de_zorgtoeslag"
+    Then output "heeft_recht" is false
+
+  Scenario: Meerderjarige heeft wel recht
+    When I evaluate "heeft_recht" of "wet_op_de_zorgtoeslag"
+    Then output "heeft_recht" is true
+`;
+
+    const form = mapFeatureToForm(parseFeature(original));
+    expect(form.scenarios[0].tags).toEqual(['@wip']);
+    expect(form.scenarios[1].tags).toEqual([]);
+
+    const regenerated = formStateToGherkin(form);
+    expect(regenerated).toContain('  @wip\n  Scenario: Minderjarige heeft geen recht');
+
+    const reformatted = mapFeatureToForm(parseFeature(regenerated));
+    expect(reformatted.scenarios.map((s) => s.tags)).toEqual([['@wip'], []]);
+  });
+
   it('round-trips a feature with background and data sources', () => {
     const original = `Feature: Complex round trip
 

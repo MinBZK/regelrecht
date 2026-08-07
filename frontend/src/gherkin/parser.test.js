@@ -57,6 +57,28 @@ Feature: Data tables
     expect(step.dataTable[1]).toEqual(['123', 'Alice']);
   });
 
+  // `@wip` is niet decoratief: zo'n scenario wordt overgeslagen, en het corpus
+  // gebruikt het om een gewenste uitkomst vast te leggen die de engine nog niet
+  // levert (wet_op_de_zorgtoeslag/scenarios/eligibility.feature:43). Valt de tag
+  // bij het inlezen weg, dan gaat een scenario dat bewust niet meedoet weer
+  // meedoen - en faalt de suite op een uitkomst die niemand claimde.
+  it('parses scenario tags', () => {
+    const text = `
+Feature: Tagged
+
+  @wip @issue-375
+  Scenario: Nog niet waar
+    When I evaluate "x" of "y"
+
+  Scenario: Wel waar
+    When I evaluate "x" of "y"
+`;
+
+    const result = parseFeature(text);
+    expect(result.scenarios[0].tags).toEqual(['@wip', '@issue-375']);
+    expect(result.scenarios[1].tags).toEqual([]);
+  });
+
   it('returns empty result for empty feature', () => {
     const text = 'Feature: Empty';
     const result = parseFeature(text);
