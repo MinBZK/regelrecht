@@ -943,6 +943,10 @@ async fn resolve_writable_target(
             // second time here would reintroduce the failure mode this fix
             // exists to close: mint branch A, store branch B, traject still
             // dead-on-arrival.
+            // The bool says whether this call minted the branch; here it
+            // is only of interest to `persist`, which uses it to refuse
+            // blind overwrites of base content. Minting it now is exactly
+            // what makes that case not arise on the write path.
             regelrecht_corpus::GitHubApiBackend::ensure_branch(
                 &client,
                 &format!("{owner}/{repo}"),
@@ -951,6 +955,7 @@ async fn resolve_writable_target(
                 Some(&token),
             )
             .await
+            .map(|_created| ())
             .map_err(|e| {
                 // Push access was just confirmed by the preflight, so a
                 // failure here is genuinely exceptional (an upstream GitHub

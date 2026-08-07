@@ -6,7 +6,9 @@ COPY package.json package-lock.json .npmrc ./
 COPY packages/frontend-shared/package.json packages/frontend-shared/
 COPY frontend/package.json frontend/
 COPY frontend-lawmaking/package.json frontend-lawmaking/
-RUN npm ci
+# --ignore-scripts: een gekaapte release mag zijn install-hooks hier niet
+# draaien; de build eronder heeft ze niet nodig.
+RUN npm ci --ignore-scripts
 # Source: the shared package + this frontend.
 COPY packages/frontend-shared/ packages/frontend-shared/
 COPY frontend-lawmaking/ frontend-lawmaking/
@@ -15,6 +17,7 @@ RUN npm run build -w frontend-lawmaking
 # Stage 2: Production (unprivileged nginx for Kubernetes/OpenShift)
 FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
 COPY frontend-lawmaking/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=builder /app/frontend-lawmaking/dist /usr/share/nginx/html
 EXPOSE 8000
 CMD ["nginx", "-g", "daemon off;"]

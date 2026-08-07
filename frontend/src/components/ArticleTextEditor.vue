@@ -138,7 +138,7 @@ defineExpose({
 <template>
   <!-- Empty state as the component root (no wrappers), so it lands as a direct
        child of the pane's nldd-simple-section and centers like the other panes
-       (AnnotatedText/ArticleText do the same). -->
+       (ArticleText does the same). -->
   <nldd-inline-dialog v-if="!article" text="Geen artikel geselecteerd"></nldd-inline-dialog>
   <div v-else class="article-text-editor" data-testid="article-text-editor">
     <nldd-text-editor

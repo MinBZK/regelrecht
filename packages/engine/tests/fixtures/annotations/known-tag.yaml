@@ -1,17 +1,19 @@
 ---
 # Fixture for tests/validate_annotations_cli.rs: schema-valid, and the tag value
 # is in corpus/annotations/_vocabulary/ambiguity.yaml. The target points at a law
-# that is deliberately not in the corpus, so the selector is never resolved and
-# this file produces no warnings at all.
+# that is really in the corpus and the selector resolves to exactly one place,
+# so every validation step runs and this file produces no warnings at all.
 annotations:
   - type: Annotation
     motivation: questioning
     creator: fictieve-annotator
     target:
-      source: regelrecht://wet_die_niet_bestaat
+      source: regelrecht://wet_op_de_zorgtoeslag
       selector:
         type: TextQuoteSelector
-        exact: verzekerde
+        exact: zorgtoeslag
+        prefix: 'heeft de verzekerde aanspraak op een '
+        suffix: ' ter grootte van dat verschil'
     body:
       type: TextualBody
       value: open-norm-not-filled

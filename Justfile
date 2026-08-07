@@ -40,13 +40,21 @@ wasm-build:
 format:
     cd packages && cargo fmt --check --all
 
+# The features a deployed artefact or a `just` recipe actually turns on.
+# Deliberately not --all-features: that also builds `engine/otel` (the whole
+# OpenTelemetry stack, enabled by no Dockerfile, CI job or recipe),
+# `engine/wasm` and the two `test-utils` features, together 46 crates. Those
+# three still get compiled by `just test`, which does run --all-features, so
+# leaving them out here costs clippy coverage on that code and nothing else.
+check_features := "regelrecht-engine/validate,regelrecht-corpus/annotation-validation"
+
 # Run clippy lints
 lint:
-    cd packages && {{ci_flags}} cargo clippy --all-features
+    cd packages && {{ci_flags}} cargo clippy --workspace --features {{check_features}}
 
 # Run cargo check
 build-check:
-    cd packages && {{ci_flags}} cargo check --all-features
+    cd packages && {{ci_flags}} cargo check --workspace --features {{check_features}}
 
 # Validate regulation YAML files
 validate *FILES:
@@ -72,11 +80,31 @@ conformance:
 deploy-filters-test:
     node --test script/deploy-filters.test.mjs
 
+# Pins the build-time asset precompression the editor image relies on. Same
+# reasoning as deploy-filters-test: node's built-in runner, no dependency.
+[doc("Check the editor's build-time asset precompression")]
+precompress-test:
+    node --test frontend/scripts/precompress.test.mjs
+
+# Holds the Rust services, the nginx images and Grafana to the same header
+# set. Same reasoning as deploy-filters-test: node's built-in runner, no
+# dependency.
+[doc("Check that every domain sends the same security headers")]
+security-headers-test:
+    node --test script/security-headers.test.mjs
+
+# Pins the first-load guard against fixture dists. The guard itself only runs
+# inside `npm run build`, so without this a broken chunk match surfaces as a
+# failing image build — or worse, as a green one that ships echarts eagerly.
+[doc("Check the editor's first-load guard")]
+first-load-test:
+    node --test frontend/scripts/check-first-load.test.mjs
+
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test test
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test test
 
 # --- Tests ---
 

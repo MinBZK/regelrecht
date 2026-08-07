@@ -77,10 +77,6 @@ function exampleImage(key: string): ImageMetadata {
         <nldd-title size="2">
           <h1>{t.signup.pageTitle}</h1>
         </nldd-title>
-        <nldd-spacer size="8" />
-        <nldd-rich-text>
-          <p>{t.signup.lede}</p>
-        </nldd-rich-text>
         <nldd-spacer size="24" />
         <SignupForm lang={lang} />
         <noscript>
@@ -100,10 +96,7 @@ function exampleImage(key: string): ImageMetadata {
           lg-padding-top="24"
         >
           <nldd-title size="1" color="inherit">
-            <h1>RegelRecht</h1>
-          </nldd-title>
-          <nldd-title size="2" color="inherit">
-            <p>{t.hero.titleSmall}</p>
+            <h1>{t.hero.title}</h1>
           </nldd-title>
           <nldd-spacer size="16" />
           <nldd-rich-text color="inherit">
@@ -130,23 +123,6 @@ function exampleImage(key: string): ImageMetadata {
               text={t.feedback.cta}
             />
           </nldd-button-group>
-          <nldd-spacer size="16" />
-          <nldd-rich-text color="inherit">
-            <p>
-              {t.partners.label}{' '}
-              {t.partners.items.map((p, i) => {
-                const sep =
-                  i === 0
-                    ? ''
-                    : i === t.partners.items.length - 1
-                      ? lang === 'en'
-                        ? ', and '
-                        : ' en '
-                      : ', ';
-                return (<Fragment>{sep}<a href={p.href}>{p.label}</a></Fragment>);
-              })}
-            </p>
-          </nldd-rich-text>
         </nldd-hero>
 
         <nldd-simple-section

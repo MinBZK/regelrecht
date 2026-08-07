@@ -888,16 +888,6 @@ dependencies = [
 
 [[package]]
 name = "core-foundation"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91e195e091a93c46f7102ec7818a2aa394e1e1771c3ab4825963fa03e45afb8f"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
-name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
@@ -2164,11 +2154,9 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "socket2",
- "system-configuration",
  "tokio",
  "tower-service",
  "tracing",
- "windows-registry",
 ]
 
 [[package]]
@@ -2531,8 +2519,6 @@ dependencies = [
  "percent-encoding",
  "referencing",
  "regex",
- "reqwest 0.13.2",
- "rustls",
  "serde",
  "serde_json",
  "strum",
@@ -4030,10 +4016,8 @@ name = "regelrecht-admin"
 version = "0.1.0"
 dependencies = [
  "axum",
- "base64 0.23.0",
  "chrono",
  "http-body-util",
- "openidconnect",
  "pretty_assertions",
  "prometheus-client",
  "regelrecht-auth",
@@ -4042,7 +4026,6 @@ dependencies = [
  "regelrecht-pipeline",
  "regelrecht-shared",
  "reqwest 0.12.28",
- "rsa",
  "serde",
  "serde_json",
  "sha2",
@@ -4058,9 +4041,7 @@ dependencies = [
  "tower-sessions-sqlx-store",
  "tracing",
  "url",
- "urlencoding",
  "uuid",
- "wiremock",
 ]
 
 [[package]]
@@ -4086,25 +4067,18 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64 0.23.0",
- "chrono",
- "http-body-util",
  "openidconnect",
  "reqwest 0.12.28",
- "rsa",
+ "rustls",
  "serde",
  "serde_json",
- "sha2",
  "subtle",
  "tokio",
  "tower",
- "tower-http 0.7.0",
  "tower-sessions",
  "tower-sessions-memory-store",
  "tracing",
  "url",
- "urlencoding",
- "uuid",
- "wiremock",
 ]
 
 [[package]]
@@ -4139,10 +4113,12 @@ dependencies = [
  "base64 0.23.0",
  "chacha20poly1305",
  "chrono",
+ "http-body-util",
  "pretty_assertions",
  "regelrecht-auth",
  "regelrecht-corpus",
  "regelrecht-github",
+ "regelrecht-law-model",
  "regelrecht-pipeline",
  "regelrecht-shared",
  "reqwest 0.12.28",
@@ -4155,6 +4131,7 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
+ "tower",
  "tower-http 0.7.0",
  "tower-sessions",
  "tower-sessions-memory-store",
@@ -4180,7 +4157,6 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "regelrecht-law-model",
- "regelrecht-shared",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
@@ -4366,7 +4342,6 @@ dependencies = [
  "log",
  "percent-encoding",
  "pin-project-lite",
- "quinn",
  "rustls",
  "rustls-pki-types",
  "serde",
@@ -4393,11 +4368,9 @@ checksum = "ab3f43e3283ab1488b624b44b0e988d0acea0b3214e694730a055cb6b2efa801"
 dependencies = [
  "base64 0.22.1",
  "bytes",
- "encoding_rs",
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2",
  "http",
  "http-body",
  "http-body-util",
@@ -4406,7 +4379,6 @@ dependencies = [
  "hyper-util",
  "js-sys",
  "log",
- "mime",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
@@ -4627,7 +4599,7 @@ version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d99feebc72bae7ab76ba994bb5e121b8d83d910ca40b36e0921f53becc41784"
 dependencies = [
- "core-foundation 0.10.1",
+ "core-foundation",
  "core-foundation-sys",
  "jni",
  "log",
@@ -4758,7 +4730,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7f4bc775c73d9a02cde8bf7b2ec4c9d12743edf609006c7facc23998404cd1d"
 dependencies = [
  "bitflags 2.13.0",
- "core-foundation 0.10.1",
+ "core-foundation",
  "core-foundation-sys",
  "libc",
  "security-framework-sys",
@@ -5458,27 +5430,6 @@ dependencies = [
  "quote",
  "sealed",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "system-configuration"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a13f3d0daba03132c0aa9767f98351b3488edc2c100cda2d2ec2b04f3d8d3c8b"
-dependencies = [
- "bitflags 2.13.0",
- "core-foundation 0.9.4",
- "system-configuration-sys",
-]
-
-[[package]]
-name = "system-configuration-sys"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
-dependencies = [
- "core-foundation-sys",
- "libc",
 ]
 
 [[package]]
@@ -6323,12 +6274,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "urlencoding"
-version = "2.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
-
-[[package]]
 name = "utf8-zero"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6745,17 +6690,6 @@ name = "windows-link"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
-
-[[package]]
-name = "windows-registry"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02752bf7fbdcce7f2a27a742f798510f3e5ad88dbe84871e5168e2120c3d5720"
-dependencies = [
- "windows-link",
- "windows-result",
- "windows-strings",
-]
 
 [[package]]
 name = "windows-result"

@@ -411,6 +411,38 @@ where
     Ok(())
 }
 
+/// Ruim de blobs van een job op, maar alleen als er geen open taak meer aan
+/// hangt. Levert het aantal verwijderde rijen.
+///
+/// Een verrijking levert één review-taak per gewijzigd artikel, allemaal op
+/// dezelfde job en dus op dezelfde resultaat-blobs. Wie de eerste taak
+/// afhandelt is daarmee nog niet klaar met de job: onvoorwaardelijk wissen
+/// zou de andere beoordelaars hun voorstel onder de voeten weghalen.
+///
+/// De check zit in het statement zelf, niet in een aparte telling ervoor:
+/// twee gebruikers die tegelijk hun laatste taak afronden zouden anders
+/// allebei kunnen concluderen dat de ander nog openstaat, en dan blijven de
+/// blobs tot de GC liggen.
+pub async fn delete_blobs_for_finished_job<'e, E>(executor: E, job_id: Uuid) -> Result<u64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let result = sqlx::query(
+        r#"
+        DELETE FROM job_blobs jb
+        WHERE jb.job_id = $1
+          AND NOT EXISTS (
+              SELECT 1 FROM tasks t
+              WHERE t.job_id = jb.job_id AND t.status = 'open'
+          )
+        "#,
+    )
+    .bind(job_id)
+    .execute(executor)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 /// GC: verwijder blobs ouder dan 7 dagen waarvan de job geen open taak meer
 /// heeft (patroon `cleanup_orphaned_uploads`). De grace is ruim: een open
 /// taak houdt zijn blobs onbeperkt vast — dit vangt alleen wezen af van

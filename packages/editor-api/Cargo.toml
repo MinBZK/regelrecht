@@ -21,14 +21,16 @@ regelrecht-auth = { path = "../auth" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 regelrecht-corpus = { path = "../corpus", features = ["github", "annotation-validation"] }
 regelrecht-github = { path = "../github" }
+regelrecht-law-model = { path = "../law-model" }
 regelrecht-pipeline = { path = "../pipeline" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower = { workspace = true, features = ["util"] }
 tower-http = { workspace = true, features = ["fs", "trace"] }
 tower-sessions.workspace = true
 tower-sessions-sqlx-store.workspace = true
 tower-sessions-memory-store.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots-no-provider", "json"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono", "json"] }
 chrono.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 base64.workspace = true
@@ -45,7 +47,9 @@ url.workspace = true
 [dev-dependencies]
 regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
 async-trait.workspace = true
+http-body-util.workspace = true
 pretty_assertions.workspace = true
+tower = { workspace = true, features = ["util"] }
 tempfile.workspace = true
 wiremock.workspace = true
 

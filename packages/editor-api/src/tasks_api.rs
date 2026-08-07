@@ -141,9 +141,14 @@ pub async fn resolve(
         .map_err(db_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
     if let Some(job_id) = task.job_id {
+        // Alleen als deze taak de laatste open taak van de job was: een
+        // verrijking levert er één per gewijzigd artikel, allemaal op dezelfde
+        // resultaat-blobs, en die moeten blijven staan zolang iemand nog een
+        // voorstel te beoordelen heeft.
+        //
         // Best-effort: een cleanup-fout mag de afhandeling niet terugdraaien;
         // de 7-dagen-GC vangt het restje.
-        if let Err(e) = tasks::delete_blobs_for_job(pool, job_id).await {
+        if let Err(e) = tasks::delete_blobs_for_finished_job(pool, job_id).await {
             tracing::warn!(error = %e, task_id = %task.id, "blob-cleanup na resolve mislukt");
         }
     }

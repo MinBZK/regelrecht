@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
-use axum::routing::get;
+use axum::routing::{get, MethodRouter};
 use axum::Router;
 use tokio::sync::{Mutex, RwLock};
+use tower::ServiceExt;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tower_sessions::ExpiredDeletion;
@@ -27,10 +28,12 @@ mod github_oauth;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod static_cache;
 mod task_requests;
 mod tasks_api;
 mod traject_corpus;
 mod traject_index_diagnosis;
+mod traject_integrity;
 mod trajects;
 mod user_notes;
 mod user_settings;
@@ -44,6 +47,7 @@ async fn main() {
     // `true`), while the shared subscriber leaves them off by default for
     // the hot-path workers. `LOG_SPAN_EVENTS` still overrides at runtime.
     regelrecht_shared::telemetry::init_subscriber_with_spans("info", true);
+    regelrecht_auth::install_crypto_provider();
 
     let app_config = config::AppConfig::from_env();
 
@@ -140,6 +144,7 @@ async fn main() {
         harvest_admin_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
         trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
+        integrity: Arc::new(traject_integrity::IntegrityCache::new()),
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -438,6 +443,13 @@ async fn main() {
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
             get(corpus_handlers::get_traject_document),
         )
+        // Integrity report over the traject's own corpus repo. A read, so
+        // reader-tier like its neighbours: seeing what is wrong with a
+        // traject you are a member of needs no write privilege.
+        .route(
+            "/api/trajects/{traject_ref}/integrity",
+            get(traject_integrity::get_traject_integrity),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             accounts::account_middleware,
@@ -644,11 +656,8 @@ async fn main() {
                 middleware::refresh_session_token::<AppState>,
             ))
             .layer(session_layer)
-            .layer(axum_middleware::from_fn(middleware::security_headers))
-            .layer(TraceLayer::new_for_http())
-            .fallback_service(
-                ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index_file)),
-            );
+            .layer(TraceLayer::new_for_http());
+        let app = serve_static_and_secure(app, &static_dir, &index_file);
 
         serve(app, Some(deletion_handle)).await;
     } else {
@@ -678,11 +687,8 @@ async fn main() {
             // recorder wraps the routed handlers.
             .layer(axum_middleware::from_fn(middleware::server_timing))
             .layer(session_layer)
-            .layer(axum_middleware::from_fn(middleware::security_headers))
-            .layer(TraceLayer::new_for_http())
-            .fallback_service(
-                ServeDir::new(&static_dir).not_found_service(ServeFile::new(index_file)),
-            );
+            .layer(TraceLayer::new_for_http());
+        let app = serve_static_and_secure(app, &static_dir, index_file);
 
         serve(app, None).await;
     }
@@ -863,6 +869,86 @@ async fn init_backends(
     }
 
     backends
+}
+
+/// Close the router: hang the SPA off the fallback, then wrap everything in
+/// the security headers.
+///
+/// The order is the point. `Router::layer` covers the routes and fallback
+/// registered before it, so a `fallback_service` added afterwards answers
+/// without any of them — and the fallback is what serves `index.html` and
+/// the bundle, the only responses a browser renders as a document. Doing
+/// both steps here keeps the two calls from drifting apart in the two
+/// (auth-enabled / auth-disabled) router branches.
+fn serve_static_and_secure(
+    app: Router,
+    static_dir: &str,
+    index_file: impl AsRef<std::path::Path>,
+) -> Router {
+    app.fallback_service(static_service(static_dir, index_file))
+        .layer(axum_middleware::from_fn(middleware::security_headers(
+            middleware::EDITOR_CSP,
+        )))
+}
+
+/// Static-file service for the built editor frontend.
+///
+/// The editor image has no nginx in front of it — this binary is the web
+/// server for `frontend/dist` as well as the API — so compression has to
+/// happen here or not at all.
+///
+/// `precompressed_br` / `precompressed_gzip` make `ServeDir` look for
+/// `foo.js.br` and `foo.js.gz` beside `foo.js` and serve one of those when
+/// the client's `Accept-Encoding` allows it. The variants are written at
+/// build time by `frontend/scripts/precompress.mjs`, so the container spends
+/// no CPU compressing per request, and a client that accepts neither still
+/// gets the plain file. `ServeDir` sets `Vary: accept-encoding` itself once a
+/// precompressed variant is configured, so shared caches stay correct.
+///
+/// Which encoding wins is the client's call, not ours: `ServeDir` picks the
+/// highest q-value from `Accept-Encoding` and breaks ties in favour of
+/// brotli. Builder order here is cosmetic. Note that a future
+/// `precompressed_zstd()` would outrank brotli in that tie-break — worth
+/// knowing before adding one.
+///
+/// Compression stops at the static files on purpose: the JSON API keeps
+/// serving uncompressed bodies. See the SPA fallback below for why the
+/// index gets the same treatment.
+///
+/// Compression makes the bytes smaller; the `Cache-Control` added on the
+/// way out ([`static_cache`]) stops most of them being sent a second time
+/// at all. That header has to be set per request, because the policy
+/// depends on the URL — hence the wrapping handler rather than a plain
+/// `SetResponseHeaderLayer`. `ServeDir` sets no `Cache-Control` of its
+/// own, and the ETag and `Vary` it does set are left untouched: they are
+/// what makes the `no-cache` half cheap.
+fn static_service(static_dir: &str, index_file: impl AsRef<std::path::Path>) -> MethodRouter {
+    // The SPA fallback (`/library/...`, `/editor/...` deep links) returns
+    // index.html, which is itself precompressed — hence the same flags on the
+    // not-found service.
+    let index = ServeFile::new(index_file)
+        .precompressed_br()
+        .precompressed_gzip();
+    let files = ServeDir::new(static_dir)
+        .precompressed_br()
+        .precompressed_gzip()
+        .not_found_service(index);
+
+    get(move |request: axum::extract::Request| {
+        let files = files.clone();
+        async move {
+            let uri = request.uri().clone();
+            // `ServeDir`'s error type is `Infallible` once a not-found
+            // service is set, so this cannot fail.
+            let mut response = files
+                .oneshot(request)
+                .await
+                .unwrap_or_else(|e| match e {})
+                .map(axum::body::Body::new);
+            static_cache::apply(&uri, &mut response);
+            response
+        }
+    })
 }
 
 /// Read favorites.json from the static directory.
@@ -1103,5 +1189,376 @@ mod http_localhost_tests {
     #[test]
     fn unparseable_base_url_defaults_to_secure() {
         assert!(!is_http_localhost(Some("not a url")));
+    }
+}
+
+/// The editor image serves its own static files, so the only place
+/// compression can happen is `static_service`. These tests pin that the
+/// precompressed variants written by `frontend/scripts/precompress.mjs` are
+/// actually picked up, and that a client which cannot decompress still gets
+/// the plain file.
+#[cfg(test)]
+mod static_service_tests {
+    use super::{static_cache, static_service};
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    const PLAIN: &[u8] = b"plain bytes";
+    const GZIPPED: &[u8] = b"pretend gzip bytes";
+    const BROTLIED: &[u8] = b"pretend brotli bytes";
+
+    /// A static dir shaped like a real build: a content-hashed
+    /// `assets/app-DkX9a2Bc.js` with both variants beside it, plus the
+    /// `index.html` that sits at a fixed name and doubles as the SPA
+    /// fallback. Both halves are present on purpose — the caching tests
+    /// below are only meaningful if the fixture can tell them apart.
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("assets")).expect("mkdir");
+        let asset = dir.path().join("assets").join("app-DkX9a2Bc.js");
+        std::fs::write(&asset, PLAIN).expect("write");
+        std::fs::write(asset.with_extension("js.gz"), GZIPPED).expect("write");
+        std::fs::write(asset.with_extension("js.br"), BROTLIED).expect("write");
+        std::fs::write(dir.path().join("index.html"), PLAIN).expect("write");
+        std::fs::write(dir.path().join("index.html.br"), BROTLIED).expect("write");
+        dir
+    }
+
+    /// Path of the hashed asset in [`fixture`].
+    const ASSET: &str = "/assets/app-DkX9a2Bc.js";
+
+    async fn get(dir: &tempfile::TempDir, path: &str, accept_encoding: Option<&str>) -> Response {
+        let static_dir = dir.path().to_string_lossy().to_string();
+        let index = dir.path().join("index.html");
+        let mut request = Request::builder().uri(path);
+        if let Some(encoding) = accept_encoding {
+            request = request.header("accept-encoding", encoding);
+        }
+        static_service(&static_dir, index)
+            .oneshot(request.body(Body::empty()).expect("request"))
+            .await
+            .expect("response")
+    }
+
+    type Response = axum::http::Response<Body>;
+
+    async fn body(response: Response) -> Vec<u8> {
+        response
+            .into_body()
+            .collect()
+            .await
+            .expect("body")
+            .to_bytes()
+            .to_vec()
+    }
+
+    /// Browsers send a bare `gzip, deflate, br`, and brotli wins that tie —
+    /// the smaller encoding, which is what makes registering both worthwhile.
+    #[tokio::test]
+    async fn brotli_wins_when_the_client_accepts_both() {
+        let dir = fixture();
+        let response = get(&dir, ASSET, Some("gzip, deflate, br")).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["content-encoding"], "br");
+        assert_eq!(response.headers()["vary"], "accept-encoding");
+        assert_eq!(body(response).await, BROTLIED);
+    }
+
+    /// q-values are the client's, not ours: a client that explicitly ranks
+    /// gzip above brotli gets gzip.
+    #[tokio::test]
+    async fn client_q_values_decide_over_our_preference() {
+        let dir = fixture();
+        let response = get(&dir, ASSET, Some("br;q=0.5, gzip;q=1.0")).await;
+
+        assert_eq!(response.headers()["content-encoding"], "gzip");
+        assert_eq!(body(response).await, GZIPPED);
+    }
+
+    #[tokio::test]
+    async fn gzip_is_served_when_brotli_is_not_accepted() {
+        let dir = fixture();
+        let response = get(&dir, ASSET, Some("gzip")).await;
+
+        assert_eq!(response.headers()["content-encoding"], "gzip");
+        assert_eq!(body(response).await, GZIPPED);
+    }
+
+    /// The ETag is taken from the variant actually opened, so it must differ
+    /// per encoding — otherwise a revalidation could swap a gzip body in
+    /// under a brotli client's cached entry.
+    #[tokio::test]
+    async fn etag_differs_per_encoding() {
+        let dir = fixture();
+        let br = get(&dir, ASSET, Some("br")).await;
+        let gz = get(&dir, ASSET, Some("gzip")).await;
+
+        assert_ne!(
+            br.headers().get("etag").expect("etag on br"),
+            gz.headers().get("etag").expect("etag on gzip"),
+        );
+    }
+
+    /// A HEAD must advertise the length of the body a GET would return, or a
+    /// client sizing the download gets the uncompressed number.
+    #[tokio::test]
+    async fn head_reports_the_compressed_length() {
+        let dir = fixture();
+        let static_dir = dir.path().to_string_lossy().to_string();
+        let index = dir.path().join("index.html");
+        let request = Request::builder()
+            .method("HEAD")
+            .uri(ASSET)
+            .header("accept-encoding", "br")
+            .body(Body::empty())
+            .expect("request");
+        let response = static_service(&static_dir, index)
+            .oneshot(request)
+            .await
+            .expect("response");
+
+        assert_eq!(response.headers()["content-encoding"], "br");
+        assert_eq!(
+            response.headers()["content-length"],
+            BROTLIED.len().to_string()
+        );
+    }
+
+    /// The uncompressed file stays on disk and stays reachable: a client
+    /// without `Accept-Encoding` must not be handed a body it cannot read.
+    #[tokio::test]
+    async fn plain_file_is_served_without_accept_encoding() {
+        let dir = fixture();
+        let response = get(&dir, ASSET, None).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("content-encoding").is_none());
+        assert_eq!(body(response).await, PLAIN);
+    }
+
+    /// `Vary` must be present even on the uncompressed answer, or a shared
+    /// cache could hand the plain body to a client that asked for brotli
+    /// (and vice versa).
+    #[tokio::test]
+    async fn vary_is_set_on_the_uncompressed_answer_too() {
+        let dir = fixture();
+        let response = get(&dir, ASSET, None).await;
+
+        assert_eq!(response.headers()["vary"], "accept-encoding");
+    }
+
+    /// Deep links like `/library/foo` are SPA routes with no file behind
+    /// them; they fall through to index.html, which is precompressed as well.
+    ///
+    /// The 404 is pre-existing and deliberately left alone here:
+    /// `not_found_service` is `fallback` wrapped in `SetStatus(404)`, so the
+    /// editor has always answered deep links with the index body under a 404
+    /// status. The browser runs the SPA regardless. Changing that is a
+    /// separate decision from compressing the body.
+    #[tokio::test]
+    async fn spa_fallback_serves_the_precompressed_index() {
+        let dir = fixture();
+        let response = get(&dir, "/library/some-law", Some("br")).await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.headers()["content-encoding"], "br");
+        assert_eq!(body(response).await, BROTLIED);
+    }
+
+    /// A file with no precompressed variant beside it (fonts, images —
+    /// deliberately skipped by the build step) is served as-is.
+    #[tokio::test]
+    async fn file_without_variants_is_served_as_is() {
+        let dir = fixture();
+        std::fs::write(dir.path().join("font.woff2"), PLAIN).expect("write");
+        let response = get(&dir, "/font.woff2", Some("gzip, br")).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("content-encoding").is_none());
+        assert_eq!(body(response).await, PLAIN);
+    }
+
+    /// The caching half of the story, end to end through the real service.
+    ///
+    /// Both cases are asserted together because either one alone proves
+    /// nothing: "assets get a year" is satisfied by a blanket header on
+    /// everything, and "the index revalidates" is satisfied by no header
+    /// at all. It is the *difference* between the two that is the policy.
+    #[tokio::test]
+    async fn hashed_assets_are_immutable_and_the_index_is_not() {
+        let dir = fixture();
+
+        let asset = get(&dir, ASSET, Some("br")).await;
+        assert_eq!(asset.status(), StatusCode::OK);
+        assert_eq!(asset.headers()["cache-control"], static_cache::IMMUTABLE);
+
+        let index = get(&dir, "/index.html", Some("br")).await;
+        assert_eq!(index.status(), StatusCode::OK);
+        assert_eq!(index.headers()["cache-control"], static_cache::REVALIDATE);
+    }
+
+    /// The SPA fallback is the index under another URL, so it must carry
+    /// the index's policy — otherwise a visitor caches a deep link with
+    /// yesterday's HTML in it.
+    #[tokio::test]
+    async fn the_spa_fallback_revalidates() {
+        let dir = fixture();
+        let response = get(&dir, "/library/some-law", Some("br")).await;
+
+        assert_eq!(
+            response.headers()["cache-control"],
+            static_cache::REVALIDATE
+        );
+    }
+
+    /// A request for an asset that is not on disk is answered with the
+    /// index HTML. Marking that immutable would pin a broken page under
+    /// a bundle URL for a year.
+    #[tokio::test]
+    async fn a_missing_asset_is_not_cached_as_one() {
+        let dir = fixture();
+        let response = get(&dir, "/assets/gone-Zz9YxW01.js", Some("br")).await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers()["cache-control"],
+            static_cache::REVALIDATE
+        );
+    }
+
+    /// Caching sits beside compression, it does not replace it: the ETag
+    /// and `Vary` that make the `no-cache` half cheap must survive.
+    #[tokio::test]
+    async fn caching_leaves_the_compression_headers_alone() {
+        let dir = fixture();
+        let response = get(&dir, ASSET, Some("br")).await;
+
+        assert_eq!(response.headers()["content-encoding"], "br");
+        assert_eq!(response.headers()["vary"], "accept-encoding");
+        assert!(response.headers().get("etag").is_some());
+        assert_eq!(response.headers()["cache-control"], static_cache::IMMUTABLE);
+    }
+
+    /// Files at the root of `dist` that are not the index — the icon,
+    /// `favorites.json` — sit at fixed names too and must revalidate.
+    #[tokio::test]
+    async fn fixed_name_root_files_revalidate() {
+        let dir = fixture();
+        std::fs::write(dir.path().join("favorites.json"), PLAIN).expect("write");
+        let response = get(&dir, "/favorites.json", None).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["cache-control"],
+            static_cache::REVALIDATE
+        );
+    }
+}
+
+/// Proves the editor ships the headers on the responses that matter. A test
+/// that only hits `/health` cannot: the JSON routes kept their headers the
+/// whole time the rendered document had none.
+#[cfg(test)]
+mod security_header_tests {
+    use super::{middleware, serve_static_and_secure};
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use axum::routing::get;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    /// The router shape both production branches end in: some API routes,
+    /// then `serve_static_and_secure` over a `dist`-like directory.
+    fn app(dir: &tempfile::TempDir) -> Router {
+        let static_dir = dir.path().to_string_lossy().to_string();
+        let index = dir.path().join("index.html");
+        let routes = Router::new().route("/health", get(|| async { "OK" }));
+        serve_static_and_secure(routes, &static_dir, index)
+    }
+
+    fn fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("assets")).expect("mkdir");
+        std::fs::write(dir.path().join("assets").join("app-DkX9a2Bc.js"), b"js").expect("write");
+        std::fs::write(dir.path().join("index.html"), b"<!doctype html>").expect("write");
+        dir
+    }
+
+    async fn get_path(dir: &tempfile::TempDir, path: &str) -> axum::http::Response<Body> {
+        app(dir)
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response")
+    }
+
+    /// `/` and a deep link both resolve through the fallback, which is the
+    /// half that used to escape the middleware. A deep link answers with the
+    /// SPA index under a 404 (see [`static_cache`]); the headers are what
+    /// this asserts, not the status.
+    #[tokio::test]
+    async fn every_response_carries_the_headers() {
+        let dir = fixture();
+        for path in [
+            "/health",
+            "/",
+            "/library/wet_op_de_zorgtoeslag",
+            "/index.html",
+        ] {
+            let response = get_path(&dir, path).await;
+            let headers = response.headers();
+            assert_eq!(
+                headers["content-security-policy"],
+                middleware::EDITOR_CSP,
+                "no CSP on {path}"
+            );
+            assert_eq!(headers["x-frame-options"], "DENY", "{path}");
+            assert_eq!(headers["x-content-type-options"], "nosniff", "{path}");
+            assert_eq!(
+                headers["referrer-policy"], "strict-origin-when-cross-origin",
+                "{path}"
+            );
+            assert!(headers.contains_key("permissions-policy"), "{path}");
+            assert!(headers.contains_key("strict-transport-security"), "{path}");
+        }
+    }
+
+    /// The static layer sets `Cache-Control` from inside the fallback; the
+    /// header layer wraps it from outside. Neither may erase the other.
+    #[tokio::test]
+    async fn the_headers_do_not_displace_the_cache_policy() {
+        let dir = fixture();
+        let response = get_path(&dir, "/assets/app-DkX9a2Bc.js").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["cache-control"],
+            super::static_cache::IMMUTABLE
+        );
+        assert_eq!(
+            response.headers()["content-security-policy"],
+            middleware::EDITOR_CSP
+        );
+    }
+
+    /// A miss inside `/assets/` falls through to the SPA index — a rendered
+    /// document under an unexpected status, so it needs the headers too.
+    #[tokio::test]
+    async fn the_spa_fallback_response_is_covered() {
+        let dir = fixture();
+        let response = get_path(&dir, "/assets/gone-Zz9YxW01.js").await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers()["content-security-policy"],
+            middleware::EDITOR_CSP
+        );
     }
 }

@@ -14,7 +14,7 @@ export interface NavLink {
 export interface LandingContent {
   meta: { title: string; description: string }
   nav: {
-    brandTagline: string
+    brandMinistry: string
     home: string
     what: string
     how: string
@@ -25,8 +25,7 @@ export interface LandingContent {
     signup: string
     docs: string
   }
-  hero: { titleSmall: string; intro: string; cta: string }
-  partners: { label: string; items: NavLink[] }
+  hero: { title: string; intro: string; cta: string }
   whatIsIt: { title: string; lede: string; cards: { h: string; p: string }[] }
   whyImportant: {
     title: string
@@ -99,12 +98,11 @@ export interface LandingContent {
   }
   signup: {
     pageTitle: string
-    lede: string
+    metaDescription: string
     noscript: string
     legend: string
     radioYes: string
     radioNo: string
-    updates: string
     emailLabel: string
     nameLabel: string
     orgLabel: string
@@ -141,7 +139,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'Een verkenning van het Ministerie van BZK naar transparante, machine-uitvoerbare wetgeving.',
     },
     nav: {
-      brandTagline: 'Verkenning van Ministerie van BZK',
+      brandMinistry: 'Ministerie van Economische Zaken en Klimaat',
       home: 'Home',
       what: 'Wat',
       how: 'Hoe',
@@ -153,21 +151,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       docs: 'Documentatie',
     },
     hero: {
-      titleSmall: 'van wet naar digitale werking',
+      title: 'Van wet naar digitale werking',
       intro:
         'RegelRecht verkent of wetgeving als uitvoerbare code geschreven kan worden, zodat verschillende organisaties dezelfde wet ook hetzelfde toepassen en burgers kunnen volgen hoe een besluit tot stand komt.',
       cta: 'Verken de mogelijkheden',
-    },
-    partners: {
-      label: 'Een initiatief van',
-      items: [
-        {
-          label: 'Ministerie van BZK',
-          href: 'https://www.rijksoverheid.nl/ministeries/ministerie-van-binnenlandse-zaken-en-koninkrijksrelaties',
-        },
-        { label: 'Bureau Architectuur', href: 'https://minbzk.github.io/BASE/' },
-        { label: 'Digilab', href: 'https://digilab.overheid.nl/' },
-      ],
     },
     whatIsIt: {
       title: 'Wetten uitvoeren zonder te programmeren',
@@ -538,12 +525,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'Een verkenning van Bureau Architectuur van het Ministerie van Binnenlandse Zaken naar de mogelijkheden van transparante, uitvoerbare wetgeving.',
+        'Een verkenning van Bureau Architectuur van het Ministerie van Economische Zaken en Klimaat naar de mogelijkheden van transparante, uitvoerbare wetgeving.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Onderdeel van',
       copyright:
-        '© 2026 Ministerie van Binnenlandse Zaken en Koninkrijksrelaties. Alle rechten voorbehouden.',
+        '© 2026 Ministerie van Economische Zaken en Klimaat. Alle rechten voorbehouden.',
       links: [
         { label: 'GitHub-repository', href: GITHUB },
         { label: 'Hoe het werkt', href: '/#how-it-works' },
@@ -552,18 +539,17 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
       partOf: [
         'Bureau Architectuur',
-        'Ministerie van Binnenlandse Zaken en Koninkrijksrelaties',
+        'Ministerie van Economische Zaken en Klimaat',
       ],
     },
     signup: {
-      pageTitle: 'Op de hoogte blijven of bijdragen aan RegelRecht?',
-      lede: 'Laat je gegevens achter als je updates wilt ontvangen of wilt meedenken over de (juridische) validatie van RegelRecht.',
+      pageTitle: 'Op de hoogte blijven of meedenken',
+      metaDescription: 'Laat je gegevens achter als je updates wilt ontvangen of wilt meedenken over de juridische validatie van RegelRecht.',
       noscript:
         'Dit formulier heeft JavaScript nodig. Stuur in plaats daarvan een e-mail naar regelrecht@minbzk.nl.',
-      legend: 'Wil je bijdragen?',
-      radioYes: 'Ja, ik wil bijdragen aan de validatie van RegelRecht',
-      radioNo: 'Nee, ik wil niet bijdragen',
-      updates: 'Updates ontvangen over de ontwikkelingen van RegelRecht',
+      legend: 'Wil je meedenken over de juridische validatie?',
+      radioYes: 'Ja, ik wil meedenken en updates ontvangen',
+      radioNo: 'Nee, alleen updates ontvangen',
       emailLabel: 'E-mailadres',
       nameLabel: 'Volledige naam',
       orgLabel: 'Organisatie',
@@ -575,9 +561,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       submit: 'Meld me aan',
       submitting: 'Bezig met versturen…',
       companyHoneypot: 'Bedrijf (niet invullen)',
-      errEmailEmpty: 'Vul je e-mailadres in.',
-      errEmailInvalid: 'Vul een geldig e-mailadres in.',
-      errName: 'Vul je volledige naam in.',
+      errEmailEmpty: 'Vul je e-mailadres in. Hiermee sturen we je updates en kunnen we contact opnemen.',
+      errEmailInvalid: 'Controleer je e-mailadres, er lijkt een @ of een punt te ontbreken.',
+      errName: 'Vul je volledige naam in. Zodat we weten wie zich aanmeldt.',
       successTitle: 'Bedankt voor je aanmelding!',
       successBody:
         'We hebben je gegevens verstuurd. Je ontvangt bevestiging per e-mail zodra je aanmelding is verwerkt. Klopt er iets niet? Mail ons.',
@@ -596,7 +582,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.',
     },
     nav: {
-      brandTagline: 'Exploration by the Dutch Ministry of the Interior',
+      brandMinistry: 'Ministry of Economic Affairs and Climate Policy',
       home: 'Home',
       what: 'What',
       how: 'How',
@@ -608,21 +594,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       docs: 'Documentation',
     },
     hero: {
-      titleSmall: 'from statute to digital execution',
+      title: 'From statute to digital execution',
       intro:
         'RegelRecht explores whether legislation can be written as executable code, so that different organisations apply the same law the same way and citizens can follow how a decision is reached.',
       cta: 'Explore the possibilities',
-    },
-    partners: {
-      label: 'An initiative of',
-      items: [
-        {
-          label: 'Ministry of the Interior and Kingdom Relations',
-          href: 'https://www.rijksoverheid.nl/ministeries/ministerie-van-binnenlandse-zaken-en-koninkrijksrelaties',
-        },
-        { label: 'Bureau Architectuur', href: 'https://minbzk.github.io/BASE/' },
-        { label: 'Digilab', href: 'https://digilab.overheid.nl/' },
-      ],
     },
     whatIsIt: {
       title: 'Running laws without programming',
@@ -992,12 +967,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'An exploration by Bureau Architectuur of the Dutch Ministry of the Interior into the possibilities of transparent, executable legislation.',
+        'An exploration by Bureau Architectuur of the Dutch Ministry of Economic Affairs and Climate Policy into the possibilities of transparent, executable legislation.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Part of',
       copyright:
-        '© 2026 Ministry of the Interior and Kingdom Relations. All rights reserved.',
+        '© 2026 Ministry of Economic Affairs and Climate Policy. All rights reserved.',
       links: [
         { label: 'GitHub repository', href: GITHUB },
         { label: 'How it works', href: '/en/#how-it-works' },
@@ -1006,18 +981,17 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       ],
       partOf: [
         'Bureau Architectuur',
-        'Ministry of the Interior and Kingdom Relations',
+        'Ministry of Economic Affairs and Climate Policy',
       ],
     },
     signup: {
-      pageTitle: 'Stay informed or contribute to RegelRecht?',
-      lede: 'Leave your details if you want to receive updates or help think about the (legal) validation of RegelRecht.',
+      pageTitle: 'Stay informed or help think along',
+      metaDescription: 'Leave your details to receive updates, or to help think about the legal validation of RegelRecht.',
       noscript:
         'This form needs JavaScript. Please send an email to regelrecht@minbzk.nl instead.',
-      legend: 'Want to contribute?',
-      radioYes: 'Yes, I want to contribute to the validation of RegelRecht',
-      radioNo: 'No, I do not want to contribute',
-      updates: 'Receive updates about the development of RegelRecht',
+      legend: 'Want to help think about the legal validation?',
+      radioYes: 'Yes, I want to help think along and receive updates',
+      radioNo: 'No, only receive updates',
       emailLabel: 'Email address',
       nameLabel: 'Full name',
       orgLabel: 'Organisation',
@@ -1029,9 +1003,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       submit: 'Sign me up',
       submitting: 'Sending…',
       companyHoneypot: 'Company (do not fill in)',
-      errEmailEmpty: 'Enter your email address.',
-      errEmailInvalid: 'Enter a valid email address.',
-      errName: 'Enter your full name.',
+      errEmailEmpty: 'Enter your email address. We use this to send you updates and to get in touch.',
+      errEmailInvalid: 'Check your email address, an @ or a dot seems to be missing.',
+      errName: 'Enter your full name. So we know who is signing up.',
       successTitle: 'Thank you for signing up!',
       successBody:
         'We have sent your details. You will receive confirmation by email once your registration is processed. Something not right? Email us.',

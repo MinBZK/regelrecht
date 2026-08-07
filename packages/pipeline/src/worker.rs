@@ -1872,6 +1872,99 @@ pub async fn materialize_task_workdir(
     Ok(dir)
 }
 
+/// Reden waarmee een geslaagde run die niets beoordeelbaars opleverde alsnog
+/// als mislukking bij de aanvrager landt. Zonder deze stap zou de review-taak
+/// gewoon worden aangemaakt en zou de gebruiker een taak openen die per
+/// definitie niet af te maken is.
+pub(crate) const NO_REVIEWABLE_LAW: &str =
+    "de verrijking leverde geen wet-YAML op om te beoordelen";
+
+/// Whether an enrich run wrote something the review UI can actually open.
+///
+/// Mirrors how `useTaskReview` picks the law out of the result blobs: the
+/// exact `yaml_path` from the payload, else a file whose basename is neither
+/// dot-prefixed nor a sidecar. The worker stages `features/*.feature` files
+/// alongside the law, and those are not a proposal on their own — a run that
+/// produced only those has nothing to review.
+///
+/// Pure so the contract can be pinned without a live database or workdir.
+pub(crate) fn produced_reviewable_law(
+    workdir: &Path,
+    written_files: &[std::path::PathBuf],
+    yaml_path: &str,
+) -> bool {
+    written_files.iter().any(|abs| {
+        let rel = abs.strip_prefix(workdir).unwrap_or(abs);
+        if rel.to_string_lossy() == yaml_path {
+            return true;
+        }
+        rel.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| !name.starts_with('.') && name.ends_with(".yaml"))
+    })
+}
+
+/// Article numbers whose content differs between the source snapshot and the
+/// proposal, in the proposal's own order.
+///
+/// The enrichment writes `machine_readable` per article, so a run typically
+/// touches a handful of them while leaving the rest byte-identical. Splitting
+/// the review per article means a reviewer decides on what actually changed
+/// instead of on the whole law at once.
+///
+/// Compared as untyped YAML rather than through the law model on purpose: the
+/// only question here is "did this article change", and an untyped compare
+/// keeps answering that when the schema grows a field this crate does not know
+/// about yet. An article the source does not have at all counts as changed.
+///
+/// A parse failure yields None, and the caller then falls back to one task for
+/// the whole law — a proposal we cannot read is still reviewable by hand.
+pub(crate) fn changed_articles(source_yaml: &str, proposal_yaml: &str) -> Option<Vec<String>> {
+    /// `number:` als string, of de YAML hem nu quootte of niet.
+    ///
+    /// Een ongequote `number: 2` parset als YAML-integer. Alleen `as_str()`
+    /// lezen liet zo'n artikel stil uit beide lijsten vallen: geen review-taak
+    /// voor een wél gewijzigd artikel, en ook geen parse-fout die de
+    /// hele-wet-fallback aanzet. De frontend normaliseert hetzelfde veld op
+    /// dezelfde manier (`String(a.number)` in `proposalDivergence`), en de
+    /// taak-payload draagt het nummer als string, dus dat is hier de eenheid.
+    fn article_number(article: &serde_yaml_ng::Value) -> Option<String> {
+        match article.get("number")? {
+            serde_yaml_ng::Value::String(s) => Some(s.clone()),
+            serde_yaml_ng::Value::Number(n) => Some(n.to_string()),
+            // Alles anders (ontbrekend, null, een lijst) is geen artikelnummer
+            // waar een reviewer iets aan heeft; die artikelen blijven buiten
+            // de diff.
+            _ => None,
+        }
+    }
+
+    fn articles(yaml: &str) -> Option<Vec<(String, serde_yaml_ng::Value)>> {
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).ok()?;
+        let list = doc.get("articles")?.as_sequence()?;
+        Some(
+            list.iter()
+                .filter_map(|a| Some((article_number(a)?, a.clone())))
+                .collect(),
+        )
+    }
+
+    let source = articles(source_yaml)?;
+    let proposal = articles(proposal_yaml)?;
+    Some(
+        proposal
+            .into_iter()
+            .filter(|(number, article)| {
+                source
+                    .iter()
+                    .find(|(n, _)| n == number)
+                    .is_none_or(|(_, before)| before != article)
+            })
+            .map(|(number, _)| number)
+            .collect(),
+    )
+}
+
 /// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
 /// result-blobs, verwijder de input-blobs, complete de job en maak de
 /// review-taak aan — alles in één transactie.
@@ -1885,8 +1978,17 @@ pub async fn finish_enrich_task_job(
     let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
         .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
 
+    // Vóór de transactie, want delete_blobs_for_job hieronder gooit de
+    // input-blobs weg: dit is de bronsnapshot waartegen we de proposal diffen.
+    let source_yaml = crate::tasks::load_blobs(pool, job.id, crate::tasks::BlobKind::Input)
+        .await?
+        .into_iter()
+        .find(|b| b.path == payload.yaml_path)
+        .map(|b| b.content);
+
     let mut tx = pool.begin().await?;
     crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    let mut proposal_yaml: Option<String> = None;
     for abs in written_files {
         let rel = abs
             .strip_prefix(workdir)
@@ -1899,6 +2001,9 @@ pub async fn finish_enrich_task_job(
             .to_string_lossy()
             .to_string();
         let content = tokio::fs::read_to_string(abs).await?;
+        if rel == payload.yaml_path {
+            proposal_yaml = Some(content.clone());
+        }
         crate::tasks::insert_blob(
             &mut *tx,
             job.id,
@@ -1923,23 +2028,81 @@ pub async fn finish_enrich_task_job(
     if new_law {
         task_payload["kind"] = serde_json::json!("law_create");
     }
-    let title = if new_law {
-        format!("Nieuwe wet beoordelen: {}", payload.law_id)
+
+    // Eén taak per gewijzigd artikel. Een verrijking raakt doorgaans een
+    // handvol artikelen en laat de rest ongemoeid; per artikel beslissen laat de
+    // beoordelaar zich uitspreken over wat er werkelijk veranderd is.
+    //
+    // Terug naar één taak voor de hele wet wanneer we niet kunnen diffen: bij
+    // een nieuwe wet is er geen bron om tegen af te zetten, en bij een
+    // onleesbare YAML weten we het simpelweg niet. Beide zijn met de hand nog
+    // prima te beoordelen, dus dat is een terugval en geen fout.
+    let per_article = if new_law {
+        None
     } else {
-        format!("Verrijking beoordelen: {}", payload.law_id)
+        match (source_yaml.as_deref(), proposal_yaml.as_deref()) {
+            (Some(before), Some(after)) => changed_articles(before, after),
+            _ => None,
+        }
     };
-    crate::tasks::create_task(
-        &mut *tx,
-        crate::tasks::NewTask {
-            task_type: crate::tasks::TaskType::JobReview,
-            assignee_account_id: payload.requested_by,
-            traject_id: payload.traject_id,
-            job_id: Some(job.id),
-            title,
-            payload: Some(task_payload),
-        },
-    )
-    .await?;
+
+    match per_article {
+        Some(articles) if !articles.is_empty() => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %payload.law_id,
+                articles = articles.len(),
+                "review-taken per artikel aangemaakt"
+            );
+            for number in articles {
+                let mut article_payload = task_payload.clone();
+                article_payload["article"] = serde_json::json!(number);
+                crate::tasks::create_task(
+                    &mut *tx,
+                    crate::tasks::NewTask {
+                        task_type: crate::tasks::TaskType::JobReview,
+                        assignee_account_id: payload.requested_by,
+                        traject_id: payload.traject_id,
+                        job_id: Some(job.id),
+                        title: format!(
+                            "Verrijking beoordelen: {} artikel {}",
+                            payload.law_id, number
+                        ),
+                        payload: Some(article_payload),
+                    },
+                )
+                .await?;
+            }
+        }
+        // Leeg betekent: de proposal verschilt nergens van de bron. Dan valt er
+        // niets te beoordelen en hoort er geen taak te komen; de job is klaar.
+        Some(_) => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %payload.law_id,
+                "verrijking leverde geen wijziging op, geen review-taak"
+            );
+        }
+        None => {
+            let title = if new_law {
+                format!("Nieuwe wet beoordelen: {}", payload.law_id)
+            } else {
+                format!("Verrijking beoordelen: {}", payload.law_id)
+            };
+            crate::tasks::create_task(
+                &mut *tx,
+                crate::tasks::NewTask {
+                    task_type: crate::tasks::TaskType::JobReview,
+                    assignee_account_id: payload.requested_by,
+                    traject_id: payload.traject_id,
+                    job_id: Some(job.id),
+                    title,
+                    payload: Some(task_payload),
+                },
+            )
+            .await?;
+        }
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -2178,6 +2341,21 @@ async fn process_enrich_task_job(
             }
         }
         Ok(Ok((result, written_files))) => {
+            // De run meldde succes, maar zonder wet-YAML valt er niets te
+            // beoordelen. Een review-taak aanmaken zou de aanvrager een
+            // onmogelijke taak geven; met retry-semantiek krijgt hij in plaats
+            // daarvan een nieuwe poging, en pas na de laatste een
+            // `job_failed`-taak met deze reden erin.
+            if !produced_reviewable_law(workdir.path(), &written_files, &payload.yaml_path) {
+                tracing::warn!(
+                    job_id = %job.id,
+                    law_id = %job.law_id,
+                    files = written_files.len(),
+                    "enrich-run zonder beoordeelbare wet-YAML"
+                );
+                fail_enrich_task_job_with_retry(pool, job, NO_REVIEWABLE_LAW).await?;
+                return Ok(JobOutcome::Processed);
+            }
             let result_json = match serde_json::to_value(&result) {
                 Ok(v) => Some(v),
                 Err(e) => {
@@ -3081,6 +3259,7 @@ async fn handle_enrich_exhausted_or_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn hourly_cap_day_vs_night() {
@@ -3160,6 +3339,164 @@ mod tests {
         assert!(!is_resource_exhaustion(
             "YAML error: did not find expected key at line 5 column 3"
         ));
+    }
+
+    const SOURCE: &str = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output: []
+"#;
+
+    #[test]
+    fn reports_only_the_articles_that_differ() {
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+"#;
+        assert_eq!(
+            changed_articles(SOURCE, proposal),
+            Some(vec!["2".to_string()])
+        );
+    }
+
+    #[test]
+    fn reports_nothing_when_the_proposal_matches_the_source() {
+        assert_eq!(changed_articles(SOURCE, SOURCE), Some(Vec::new()));
+    }
+
+    #[test]
+    fn counts_an_article_the_source_does_not_have_as_changed() {
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output: []
+  - number: "3"
+    text: Nieuw artikel
+"#;
+        assert_eq!(
+            changed_articles(SOURCE, proposal),
+            Some(vec!["3".to_string()])
+        );
+    }
+
+    // Een ongequote `number: 2` is geldige YAML en komt in de praktijk voor.
+    // Vroeger viel zo'n artikel stil uit de diff (as_str() op een integer), dus
+    // kreeg een wél gewijzigd artikel geen review-taak - en zonder parse-fout
+    // sloeg de hele-wet-fallback ook niet aan: het voorstel verdween geruisloos.
+    #[test]
+    fn reports_a_changed_article_with_an_unquoted_number() {
+        let source = r#"
+$id: wet_x
+articles:
+  - number: 1
+    text: Eerste artikel
+  - number: 2
+    text: Tweede artikel
+"#;
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: 1
+    text: Eerste artikel
+  - number: 2
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+"#;
+        assert_eq!(
+            changed_articles(source, proposal),
+            Some(vec!["2".to_string()])
+        );
+        assert_eq!(changed_articles(source, source), Some(Vec::new()));
+    }
+
+    #[test]
+    fn yields_none_on_unreadable_yaml_so_the_caller_falls_back() {
+        // Geen paniek en geen lege lijst: "ik weet het niet" is iets anders dan
+        // "er is niets veranderd", en de caller maakt er één taak van.
+        assert_eq!(
+            changed_articles(SOURCE, "dit is: [geen: geldige yaml"),
+            None
+        );
+        assert_eq!(changed_articles("zonder articles-sleutel: 1", SOURCE), None);
+    }
+
+    #[test]
+    fn accepts_a_run_that_wrote_the_law_yaml() {
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![
+            PathBuf::from("/tmp/wd/features/zorgtoeslag.feature"),
+            PathBuf::from("/tmp/wd/laws/wet_op_de_zorgtoeslag/law.yaml"),
+        ];
+        assert!(produced_reviewable_law(
+            workdir,
+            &files,
+            "laws/wet_op_de_zorgtoeslag/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_run_that_only_wrote_feature_files() {
+        // De worker staged features naast de wet. Alleen features betekent dat
+        // er niets te beoordelen is, ook al meldde de run succes.
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![
+            PathBuf::from("/tmp/wd/features/zorgtoeslag.feature"),
+            PathBuf::from("/tmp/wd/features/premie.feature"),
+        ];
+        assert!(!produced_reviewable_law(
+            workdir,
+            &files,
+            "laws/wet_op_de_zorgtoeslag/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_run_that_only_wrote_sidecars() {
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![PathBuf::from("/tmp/wd/laws/x/.enrichment.yaml")];
+        assert!(!produced_reviewable_law(workdir, &files, "laws/x/law.yaml"));
+    }
+
+    #[test]
+    fn rejects_a_run_that_wrote_nothing() {
+        assert!(!produced_reviewable_law(
+            Path::new("/tmp/wd"),
+            &[],
+            "laws/x/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn accepts_a_law_yaml_on_a_path_other_than_the_payload_one() {
+        // Fallback, gelijk aan die van useTaskReview: schrijft het model de wet
+        // ergens anders neer, dan is er nog steeds iets te beoordelen. Alleen
+        // een run zonder énige wet-YAML faalt.
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![PathBuf::from("/tmp/wd/regulation/nl/wet/anders.yaml")];
+        assert!(produced_reviewable_law(workdir, &files, "laws/x/law.yaml"));
     }
 
     #[test]

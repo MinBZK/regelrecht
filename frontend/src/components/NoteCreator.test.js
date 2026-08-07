@@ -183,6 +183,78 @@ describe('NoteCreator', () => {
     expect(w.find('[data-testid="note-cancel"]').exists()).toBe(false);
   });
 
+  it('tells the user a skipped search was not searched, unlike an orphaned one', async () => {
+    // The resolver refused the scan (quote over the fuzzy budget). The user
+    // must see something different from "Niet teruggevonden": nothing was
+    // established about the text, and the lidnummer advice that belongs to
+    // a failed search would be misdirected here.
+    const skipped = mountCreator({
+      engine: {
+        resolveNote: () => ({
+          status: 'skipped',
+          matches: [],
+          skip_reason: 'quote_too_long',
+        }),
+      },
+    });
+    const orphaned = mountCreator({
+      engine: {
+        resolveNote: () => ({ status: 'orphaned', matches: [] }),
+      },
+    });
+    await nextTick();
+
+    const skippedBanner = skipped.find('[data-testid="note-creator-status"]');
+    const orphanedBanner = orphaned.find('[data-testid="note-creator-status"]');
+    expect(skippedBanner.exists()).toBe(true);
+    expect(skippedBanner.attributes('text')).toBe('Niet naar gezocht');
+    expect(orphanedBanner.attributes('text')).toBe('Niet teruggevonden');
+    expect(skippedBanner.attributes('text')).not.toBe(
+      orphanedBanner.attributes('text'),
+    );
+    expect(skippedBanner.attributes('supporting-text')).not.toContain(
+      'lidnummer',
+    );
+    // Still no save path: a skipped selection anchors nothing.
+    expect(skipped.find('[data-testid="note-save"]').exists()).toBe(false);
+  });
+
+  it('does not blame the selection length when the law text drained the budget', async () => {
+    // 'search_budget' means the law was too large or too repetitive to scan,
+    // which shortening the selection cannot fix. Telling the author to shorten
+    // sends them into the same skip again with no clue why.
+    const budget = mountCreator({
+      engine: {
+        resolveNote: () => ({
+          status: 'skipped',
+          matches: [],
+          skip_reason: 'search_budget',
+        }),
+      },
+    });
+    const tooLong = mountCreator({
+      engine: {
+        resolveNote: () => ({
+          status: 'skipped',
+          matches: [],
+          skip_reason: 'quote_too_long',
+        }),
+      },
+    });
+    await nextTick();
+
+    const budgetBanner = budget.find('[data-testid="note-creator-status"]');
+    const tooLongBanner = tooLong.find('[data-testid="note-creator-status"]');
+    expect(budgetBanner.attributes('text')).toBe('Niet naar gezocht');
+    expect(budgetBanner.attributes('supporting-text')).not.toBe(
+      tooLongBanner.attributes('supporting-text'),
+    );
+    expect(budgetBanner.attributes('supporting-text')).not.toContain(
+      'te lang',
+    );
+    expect(tooLongBanner.attributes('supporting-text')).toContain('te lang');
+  });
+
   it('shows the full form once the selection resolves uniquely', async () => {
     const w = mountCreator(); // engine returns a matching unique result
     await nextTick();
@@ -240,5 +312,45 @@ describe('NoteCreator', () => {
     await nextTick();
     expect(w.vm.shareWithTraject).toBe(true);
     expect(w.find('[data-testid="note-share-warning"]').exists()).toBe(true);
+  });
+
+  // The open form holds `range` offsets into the article it was opened on. If
+  // the user switches article (tab click, browser back) while it is open,
+  // buildSelector would slice the NEW article's text at those stale offsets
+  // and could anchor a note on text the user never selected. The form must
+  // cancel itself on any article/law switch (the guard the retired
+  // AnnotatedText view carried as must-fix 2c).
+  it('emits cancel when the article changes underneath the open form', async () => {
+    const w = mountCreator();
+    await nextTick();
+    // Premise check: the form is genuinely open against article 1.
+    expect(w.vm.selectorResult?.status).toBe('found');
+    expect(w.emitted('cancel')).toBeUndefined();
+    await w.setProps({
+      article: { number: '2', machine_readable: null },
+    });
+    expect(w.emitted('cancel')).toHaveLength(1);
+  });
+
+  it('emits cancel when the law changes underneath the open form', async () => {
+    const w = mountCreator();
+    await nextTick();
+    await w.setProps({ lawId: 'participatiewet' });
+    expect(w.emitted('cancel')).toHaveLength(1);
+  });
+
+  it('does not cancel when the same article object is merely replaced (reload after save)', async () => {
+    const w = mountCreator();
+    await nextTick();
+    // Same law, same article number, new object identity: offsets stay valid.
+    await w.setProps({
+      article: {
+        number: '1',
+        machine_readable: {
+          execution: { output: [{ name: 'hoogte_zorgtoeslag' }] },
+        },
+      },
+    });
+    expect(w.emitted('cancel')).toBeUndefined();
   });
 });

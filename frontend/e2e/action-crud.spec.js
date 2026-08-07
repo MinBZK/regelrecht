@@ -7,7 +7,8 @@ import {
   setYamlPane,
   openSheet,
   openActionEditor,
-  saveActionSheet,
+  saveActionSheet, pane,
+
 } from './helpers.js';
 
 test.describe('Action CRUD', () => {
@@ -20,7 +21,7 @@ test.describe('Action CRUD', () => {
     await selectArticle(page, '5');
 
     // Init machine_readable
-    await page.locator('[data-testid="init-mr-btn"]').click();
+    await pane(page, 'machine').locator('[data-testid="init-mr-btn"]').click();
     await page.waitForTimeout(300);
 
     // Click "Actie toevoegen" - a new action opens the sheet seeded with an
@@ -77,7 +78,7 @@ test.describe('Action CRUD', () => {
     // Init machine_readable, then author a literal-value action through the
     // YAML pane - the editor's manual escape hatch for shapes the structured
     // form does not build (a bare literal output value).
-    await page.locator('[data-testid="init-mr-btn"]').click();
+    await pane(page, 'machine').locator('[data-testid="init-mr-btn"]').click();
     await page.waitForTimeout(300);
 
     await setYamlPane(page, `definitions: {}
@@ -107,7 +108,7 @@ execution:
     await selectArticle(page, '2');
 
     // Init machine_readable
-    await page.locator('[data-testid="init-mr-btn"]').click();
+    await pane(page, 'machine').locator('[data-testid="init-mr-btn"]').click();
     await page.waitForTimeout(300);
 
     // Add an action and set only its output - the seeded EQUALS operation is
