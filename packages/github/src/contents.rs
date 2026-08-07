@@ -223,6 +223,12 @@ impl GithubClient {
     /// unreadable repo 404s *every* read, and re-probing each one would
     /// double the traffic of the worst case instead of halving it.
     ///
+    /// "Once" holds under concurrency too: readers that all miss the
+    /// remembered answer queue behind one gate per (repo, token identity),
+    /// and every one after the first finds the answer already there. A
+    /// snapshot rebuild reads many paths at once, which is precisely when
+    /// an uncoordinated probe-per-miss would be at its worst.
+    ///
     /// It is a snapshot: access changed mid-process stays as first
     /// observed until the client is rebuilt, which is the price of not
     /// paying a lookup per miss. A token that gains access later comes
@@ -233,17 +239,29 @@ impl GithubClient {
             Some(true) => RepoAccess::Readable,
             Some(false) => RepoAccess::NoSuchRepo,
             None => {
-                let access = self.repo_access(repo, token).await?;
-                // Only a settled answer is worth remembering. "Readable"
-                // and "no such repo" don't change under us; a refusal can
-                // — an org OAuth-App restriction or SAML sign-in is
-                // authorised in the GitHub UI in seconds, with the same
-                // token — and pinning that for the client's lifetime would
-                // keep failing long after the user fixed it.
-                if !matches!(access, RepoAccess::Denied) {
-                    self.remember_repo_readable(&key, access == RepoAccess::Readable);
+                // Nobody has answered yet — take the gate for this
+                // (repo, token) and look again behind it, so a burst of
+                // concurrent misses costs one lookup rather than one each.
+                let gate = self.repo_probe_gate(&key);
+                let _probing = gate.lock().await;
+                match self.known_repo_readable(&key) {
+                    Some(true) => return Ok(()),
+                    Some(false) => RepoAccess::NoSuchRepo,
+                    None => {
+                        let access = self.repo_access(repo, token).await?;
+                        // Only a settled answer is worth remembering.
+                        // "Readable" and "no such repo" don't change under
+                        // us; a refusal can — an org OAuth-App restriction
+                        // or SAML sign-in is authorised in the GitHub UI in
+                        // seconds, with the same token — and pinning that
+                        // for the client's lifetime would keep failing long
+                        // after the user fixed it.
+                        if !matches!(access, RepoAccess::Denied) {
+                            self.remember_repo_readable(&key, access == RepoAccess::Readable);
+                        }
+                        access
+                    }
                 }
-                access
             }
         };
         if access == RepoAccess::Readable {
@@ -945,6 +963,54 @@ mod tests {
                 .unwrap()
                 .is_none());
         }
+    }
+
+    /// Concurrent misses are the case the memo alone does not cover: none
+    /// of them sees a remembered answer, so without coalescing they each
+    /// probe. A snapshot rebuild reads many paths at once, which is exactly
+    /// this shape.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_misses_share_one_readability_probe() {
+        let server = MockServer::start().await;
+        // Delayed so the readers genuinely overlap on the probe rather
+        // than finishing one after another by luck of scheduling.
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(std::time::Duration::from_millis(150))
+                    .set_body_json(serde_json::json!({"full_name": "acme/corpus"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        for name in ["a", "b", "c", "d"] {
+            Mock::given(method("GET"))
+                .and(path_matcher(&format!(
+                    "/repos/acme/corpus/contents/wet/{name}.yaml"
+                )))
+                .respond_with(ResponseTemplate::new(404).set_body_string(MISSING_PATH_BODY))
+                .mount(&server)
+                .await;
+        }
+
+        let c = std::sync::Arc::new(client(&server));
+        let reads = ["a", "b", "c", "d"].map(|name| {
+            let c = std::sync::Arc::clone(&c);
+            tokio::spawn(async move {
+                c.fetch_file_with_sha(
+                    "acme/corpus",
+                    "main",
+                    &format!("wet/{name}.yaml"),
+                    Some("tok"),
+                )
+                .await
+            })
+        });
+        for read in reads {
+            assert!(read.await.unwrap().unwrap().is_none());
+        }
+        // `expect(1)` on the probe mock is verified when the server drops.
     }
 
     /// A probe that cannot answer (rate limit) leaves absence unproven, so

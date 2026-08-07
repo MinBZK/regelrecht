@@ -23,9 +23,11 @@
 //!   what makes the 304 path safe: there is never an ETag whose body was
 //!   dropped, so a 304 can never degrade into "empty" or "does not exist".
 //!
-//! Both caches are keyed per (url, token identity): a conditional request
-//! authenticated as a different principal must not be answered from another
-//! principal's cache entry. The token itself is never stored — only a hash.
+//! Both caches are keyed per (url, token identity), so one principal's
+//! entries do not answer another principal's reads. The token itself is
+//! never stored, only a 64-bit non-cryptographic hash of it; what actually
+//! keeps a body away from a credential that may not read it is GitHub
+//! revalidating every hit — see [`cache_key`](GithubClient::cache_key).
 //!
 //! The response cache never serves content without asking GitHub first: it
 //! only turns a 200 into a 304, which costs no rate-limit quota. It can
@@ -37,7 +39,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, USER_AGENT};
@@ -57,6 +59,60 @@ use crate::error::{GithubError, Result};
 /// session re-reads across snapshot rebuilds, which is where the
 /// rate-limit saving is.
 pub const RESPONSE_CACHE_BUDGET_BYTES: usize = 8 * 1024 * 1024;
+
+/// Entry cap for the two small key→flag/ETag maps. Both are keyed per
+/// `(url or repo, token identity)`, and the token identity is what makes
+/// the key space grow: a long-lived editor process reads on behalf of
+/// every user that opens a traject, so each new user opens a new set of
+/// keys for the same handful of URLs. The entries themselves are tiny
+/// (an ETag, a bool), so the cap is about the key space, not the payload —
+/// hence a count rather than the byte budget the response cache uses.
+/// Oldest-inserted entries are dropped first; both maps are caches whose
+/// miss path is a plain request.
+pub const KEY_CACHE_MAX_ENTRIES: usize = 4096;
+
+/// A `String`-keyed map with a hard entry cap, oldest insertion evicted
+/// first. Re-inserting a key updates its value and leaves its place in the
+/// eviction order alone — an entry that keeps being refreshed still ages
+/// out, which for these two caches costs one request.
+struct BoundedMap<V> {
+    entries: HashMap<String, V>,
+    order: VecDeque<String>,
+    cap: usize,
+}
+
+impl<V> Default for BoundedMap<V> {
+    fn default() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            cap: KEY_CACHE_MAX_ENTRIES,
+        }
+    }
+}
+
+impl<V> BoundedMap<V> {
+    fn get(&self, key: &str) -> Option<&V> {
+        self.entries.get(key)
+    }
+
+    fn insert(&mut self, key: &str, value: V) {
+        if self.entries.insert(key.to_string(), value).is_some() {
+            return;
+        }
+        self.order.push_back(key.to_string());
+        while self.order.len() > self.cap {
+            if let Some(oldest) = self.order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
 
 /// User-Agent sent on every request, so GitHub audit logs attribute reads and
 /// writes to this client uniformly (the three hand-rolled predecessors each
@@ -127,7 +183,7 @@ pub(crate) struct CachedResponse {
 struct ClientState {
     /// ETag cache: cache key → last ETag value. Feeds `If-None-Match` on
     /// the Trees read so an unchanged tree comes back as a cheap 304.
-    etag_cache: HashMap<String, String>,
+    etag_cache: BoundedMap<String>,
     /// Conditional-GET cache for the Contents reads: cache key → ETag +
     /// the payload it belongs to.
     response_cache: HashMap<String, CachedResponse>,
@@ -142,7 +198,12 @@ struct ClientState {
     /// see `GithubClient::confirm_absence`. Both answers are remembered:
     /// the negative one especially, because that is the case where every
     /// single read 404s and would otherwise re-probe forever.
-    repo_readable: HashMap<String, bool>,
+    repo_readable: BoundedMap<bool>,
+    /// One gate per `(repo, token identity)` for the readability probe, so
+    /// callers that miss the answer at the same moment queue behind one
+    /// lookup instead of each issuing their own. Entries are dropped once
+    /// nobody holds them any more.
+    repo_probe_gates: HashMap<String, Arc<tokio::sync::Mutex<()>>>,
     /// Most recent `x-ratelimit-remaining` seen on any response.
     rate_limit_remaining: Option<u32>,
 }
@@ -292,8 +353,16 @@ impl GithubClient {
     /// Cache key for a conditional GET: the URL, the representation asked
     /// for, and the identity of the token it is made with.
     ///
-    /// The token is part of the key so a 304 can never hand one principal a
-    /// body fetched under another's credential; it is hashed, never stored.
+    /// The token is part of the key so one principal's entries do not
+    /// answer another principal's reads; it is hashed, never stored. The
+    /// hash is `DefaultHasher` — 64 bits, unkeyed, not cryptographic — so
+    /// the separation it gives is compartmenting, not a security boundary:
+    /// two distinct tokens colliding into one key is astronomically
+    /// unlikely but not excluded. What does bound the damage is that the
+    /// entry is never served on its own. Every hit is revalidated against
+    /// GitHub with the caller's own credential, so a credential that may
+    /// not read the resource gets a 404 or 403 there, not a cached body.
+    ///
     /// The representation is part of it because the Contents API serves the
     /// same URL as JSON or raw depending on `Accept`, and those two bodies
     /// must not share an entry.
@@ -318,10 +387,24 @@ impl GithubClient {
             .and_then(|s| s.repo_readable.get(key).copied())
     }
 
+    /// The gate that serialises readability probes for one `(repo, token)`
+    /// pair. Gates nobody is waiting on are dropped here rather than kept
+    /// for the client's lifetime: the map is keyed by token identity too,
+    /// so it would otherwise grow with every user the process serves.
+    pub(crate) fn repo_probe_gate(&self, key: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let Ok(mut state) = self.state.lock() else {
+            return Arc::new(tokio::sync::Mutex::new(()));
+        };
+        state
+            .repo_probe_gates
+            .retain(|k, gate| k == key || Arc::strong_count(gate) > 1);
+        Arc::clone(state.repo_probe_gates.entry(key.to_string()).or_default())
+    }
+
     /// Record what a repo lookup said about a `(repo, token)` pair.
     pub(crate) fn remember_repo_readable(&self, key: &str, readable: bool) {
         if let Ok(mut state) = self.state.lock() {
-            state.repo_readable.insert(key.to_string(), readable);
+            state.repo_readable.insert(key, readable);
         }
     }
 
@@ -336,7 +419,7 @@ impl GithubClient {
     /// Store the ETag observed for `key`. Guard scope is this call only.
     pub(crate) fn store_etag(&self, key: &str, etag: &str) {
         if let Ok(mut state) = self.state.lock() {
-            state.etag_cache.insert(key.to_string(), etag.to_string());
+            state.etag_cache.insert(key, etag.to_string());
         }
     }
 
@@ -361,12 +444,12 @@ impl GithubClient {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
-        // A payload larger than the whole budget would be inserted and
-        // immediately evicted; skip the churn.
-        let size = payload.size_bytes();
-        if size > budget {
-            return;
-        }
+        // The previous entry for this key goes first, and unconditionally:
+        // what we just observed supersedes it, so keeping it around when
+        // the new payload does not fit would leave an ETag for content
+        // that has since changed. Harmless on the wire (it revalidates and
+        // gets a 200) but it is dead state, and it would sit there until
+        // unrelated LRU pressure happened to reach it.
         if let Some(previous) = state.response_cache.remove(key) {
             state.response_bytes = state
                 .response_bytes
@@ -374,6 +457,12 @@ impl GithubClient {
             if let Some(pos) = state.response_order.iter().position(|k| k == key) {
                 state.response_order.remove(pos);
             }
+        }
+        // A payload larger than the whole budget would be inserted and
+        // immediately evicted; skip the churn.
+        let size = payload.size_bytes();
+        if size > budget {
+            return;
         }
         state.response_bytes += size;
         state.response_cache.insert(
@@ -475,6 +564,57 @@ mod tests {
                 .contains("not valid in an HTTP header value"),
             "message must name the real cause: {err}"
         );
+    }
+
+    #[test]
+    fn the_key_caches_stop_growing_at_their_cap() {
+        let client = GithubClient::new().unwrap();
+        // One key per (url, token identity): the same URL read on behalf
+        // of ever more users is exactly how this map grows in a
+        // long-running editor process.
+        let url = "https://api.github.test/repos/example-org/corpus-example";
+        for i in 0..(KEY_CACHE_MAX_ENTRIES + 50) {
+            let key = GithubClient::cache_key(url, None, Some(&format!("token-{i}")));
+            client.store_etag(&key, "\"etag\"");
+            client.remember_repo_readable(&key, true);
+        }
+
+        let first = GithubClient::cache_key(url, None, Some("token-0"));
+        let last = GithubClient::cache_key(
+            url,
+            None,
+            Some(&format!("token-{}", KEY_CACHE_MAX_ENTRIES + 49)),
+        );
+        let state = client.state.lock().unwrap();
+        assert_eq!(state.etag_cache.len(), KEY_CACHE_MAX_ENTRIES);
+        assert_eq!(state.repo_readable.len(), KEY_CACHE_MAX_ENTRIES);
+        assert!(state.etag_cache.get(&first).is_none());
+        assert!(state.repo_readable.get(&first).is_none());
+        assert!(state.etag_cache.get(&last).is_some());
+        assert!(state.repo_readable.get(&last).is_some());
+    }
+
+    #[test]
+    fn an_over_budget_payload_drops_the_entry_it_supersedes() {
+        let mut client = GithubClient::new().unwrap();
+        client.set_cache_budget_bytes(64);
+
+        client.store_response(
+            "key",
+            "\"old\"",
+            CachedPayload::Raw("small".repeat(2).to_string()),
+        );
+        assert!(client.cached_response("key").is_some());
+
+        // The same path, now too big to cache. Keeping the old ETag would
+        // leave the cache pointing at content that has been superseded.
+        client.store_response("key", "\"new\"", CachedPayload::Raw("x".repeat(500)));
+        assert!(
+            client.cached_response("key").is_none(),
+            "the superseded entry must be gone, not waiting for LRU pressure"
+        );
+        let state = client.state.lock().unwrap();
+        assert_eq!(state.response_bytes, 0);
     }
 
     #[tokio::test]

@@ -17,6 +17,9 @@ categories = ["api-bindings"]
 # TLS stack.
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 bytes = "1"
+# `sync`: the per-repo probe gate is held across an await, which a
+# `std::sync::Mutex` cannot be. No runtime, no macros.
+tokio = { workspace = true, features = ["sync"] }
 base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true
