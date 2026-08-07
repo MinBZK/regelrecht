@@ -8,9 +8,13 @@
  * Keep both sides in step: a change to the Rust rule belongs here too.
  */
 
-/** Today as YYYY-MM-DD, matching the server's UTC `today_str()`. */
+/**
+ * Today as YYYY-MM-DD in Europe/Amsterdam, the one clock the server reads a
+ * calendar date off (`regelrecht_shared::dates`). `toLocaleDateString` with the
+ * `en-CA` locale yields ISO order.
+ */
 export function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' });
 }
 
 /**
@@ -23,7 +27,8 @@ export function extractDateFromPath(path) {
   const filename = String(path ?? '').split('/').pop();
   if (!filename.endsWith('.yaml')) return null;
   const stem = filename.slice(0, -'.yaml'.length);
-  return /^\d{4}-\d{2}-\d{2}$/.test(stem) ? stem : null;
+  if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(stem)) return null;
+  return stem;
 }
 
 /**
