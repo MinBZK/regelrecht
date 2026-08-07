@@ -2,9 +2,11 @@
 //!
 //! The contract this suite pins down is the one RFC-018 gives the tool and the
 //! one `just validate-annotations` relies on in `just check`: a schema
-//! violation fails the build, and nothing else does. Orphaned notes, ambiguous
-//! selectors and tag values outside the controlled vocabulary are reported as
-//! warnings and leave the exit code at zero (RFC-018 Decisions 8 and 9).
+//! violation fails the build, and no note finding does. Orphaned notes,
+//! ambiguous selectors and tag values outside the controlled vocabulary are
+//! reported as warnings and leave the exit code at zero (RFC-018 Decisions 8
+//! and 9). A run that cannot see the corpus at all is a misconfiguration and
+//! exits 2 — it must never pass for a clean corpus.
 //!
 //! Only built with the `validate` feature, which is what gates the binary.
 #![cfg(feature = "validate")]
@@ -27,6 +29,38 @@ fn run_on(fixture_name: &str) -> Output {
 
 fn stderr_of(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+/// The binary used to bake the build machine's repo path into itself; run
+/// anywhere else it scanned nothing, printed "No note files found." and exited
+/// 0 — indistinguishable from a clean corpus. Point it at a corpus-less root
+/// and it must refuse, not succeed.
+#[test]
+fn without_a_findable_corpus_the_run_fails_instead_of_looking_clean() {
+    let empty = std::env::temp_dir().join(format!(
+        "validate-annotations-cli-no-corpus-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&empty).expect("temp dir");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_validate-annotations"))
+        .current_dir(&empty)
+        .env("REGELRECHT_REPO_ROOT", &empty)
+        .output()
+        .expect("validate-annotations runs");
+    let stderr = stderr_of(&output);
+    let _ = std::fs::remove_dir_all(&empty);
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a run without a corpus must exit 2, stderr:\n{stderr}"
+    );
+    assert!(stderr.contains("FATAL"), "stderr:\n{stderr}");
+    assert!(
+        !stderr.contains("No note files found"),
+        "must not report an empty scan as the outcome, stderr:\n{stderr}"
+    );
 }
 
 #[test]

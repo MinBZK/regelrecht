@@ -139,16 +139,16 @@ pub fn resolve_candidate<'a>(
     for candidate in &candidates[1..] {
         match compare_law_priority(candidate.law, best.law)? {
             std::cmp::Ordering::Greater => {
-                let prev_id = best.law.id.clone();
+                // Build the reason before moving `best`: it must describe the
+                // loser's layer and date, not repeat the winner's.
                 let best_rank = layer_rank(&best.law.regulatory_layer);
                 let cand_rank = layer_rank(&candidate.law.regulatory_layer);
-                best = candidate;
                 reason = if cand_rank < best_rank {
                     format!(
                         "lex superior: {} ({:?}) outranks {} ({:?})",
                         candidate.law.id,
                         candidate.law.regulatory_layer,
-                        prev_id,
+                        best.law.id,
                         best.law.regulatory_layer,
                     )
                 } else {
@@ -156,10 +156,11 @@ pub fn resolve_candidate<'a>(
                         "lex posterior: {} (valid_from {}) is newer than {} (valid_from {})",
                         candidate.law.id,
                         candidate.law.valid_from.as_deref().unwrap_or("?"),
-                        prev_id,
+                        best.law.id,
                         best.law.valid_from.as_deref().unwrap_or("?"),
                     )
                 };
+                best = candidate;
             }
             std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
                 // Equal is unreachable: compare_law_priority returns Err for ambiguous
@@ -231,7 +232,7 @@ articles:
 
         let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "test_regulation");
-        assert!(reason.contains("only candidate"));
+        assert_eq!(reason, "only candidate (test_regulation)");
     }
 
     #[test]
@@ -273,7 +274,13 @@ articles:
 
         let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "higher_law");
-        assert!(reason.contains("lex superior"));
+        // The full sentence matters: the loser's layer must be the loser's,
+        // not a repeat of the winner's — that distinction is what lex
+        // superior is about.
+        assert_eq!(
+            reason,
+            "lex superior: higher_law (Wet) outranks lower_regulation (MinisterieleRegeling)"
+        );
     }
 
     #[test]
@@ -317,7 +324,13 @@ articles:
 
         let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "newer_regulation");
-        assert!(reason.contains("lex posterior"));
+        // Full-sentence assert: the loser's date must be the loser's own
+        // valid_from, not a repeat of the winner's.
+        assert_eq!(
+            reason,
+            "lex posterior: newer_regulation (valid_from 2025-01-01) is newer than \
+             older_regulation (valid_from 2024-01-01)"
+        );
     }
 
     /// Lex superior beats lex posterior: a lower layer loses even when its
@@ -533,8 +546,10 @@ articles:
             },
         ];
 
-        let (winner, _reason) = resolve_candidate(&candidates).unwrap().unwrap();
+        let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "newer_regulation");
+        // The incumbent kept its seat, so no comparison sentence was written.
+        assert_eq!(reason, "only candidate (newer_regulation)");
     }
 
     #[test]
