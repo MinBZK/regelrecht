@@ -96,7 +96,13 @@ fn state_with_user_token_mode(pool: PgPool, oauth: GithubOAuth) -> AppState {
             github_oauth: Some(oauth),
             task_enrich_provider: "claude".to_string(),
         }),
-        http_client: reqwest::Client::new(),
+        // regelrecht_auth::http_client(), niet reqwest::Client::new(): editor-api
+        // bouwt reqwest met `rustls-tls-webpki-roots-no-provider`, dus rustls
+        // kiest geen backend uit zichzelf. Een test heeft geen `main` die de
+        // provider installeert, dus doet deze helper dat - anders paniekt de
+        // eerste client met "No provider set". Zo doen de andere editor-api
+        // integratietests het ook.
+        http_client: regelrecht_auth::http_client(),
         pool: Some(pool),
         pipeline_api_url: None,
         harvest_admin_url: None,
