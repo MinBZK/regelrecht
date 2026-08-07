@@ -492,6 +492,15 @@ jobs:
       - name: Run lawmaking tests
         run: npm test -w frontend-lawmaking
 
+      # packages/arch-extract/ui is geen workspace-member (eigen package.json en
+      # lockfile), dus `npm test -w` bereikt het niet en de test die er ligt
+      # draaide nergens.
+      - name: Run arch-explorer tests
+        working-directory: packages/arch-extract/ui
+        run: |
+          npm ci --ignore-scripts
+          npm test
+
       - name: Run shared-package tests
         run: npm test -w packages/frontend-shared
 
