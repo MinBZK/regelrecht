@@ -25,9 +25,9 @@
 //!
 //! Both caches are keyed per (url, token identity), so one principal's
 //! entries do not answer another principal's reads. The token itself is
-//! never stored, only a 64-bit non-cryptographic hash of it; what actually
-//! keeps a body away from a credential that may not read it is GitHub
-//! revalidating every hit — see [`cache_key`](GithubClient::cache_key).
+//! never stored, only a non-cryptographic digest of it — see
+//! [`cache_key`](GithubClient::cache_key) for what that does and does not
+//! guarantee.
 //!
 //! The response cache never serves content without asking GitHub first: it
 //! only turns a 200 into a 304, which costs no rate-limit quota. It can
@@ -92,11 +92,22 @@ impl<V> Default for BoundedMap<V> {
 }
 
 impl<V> BoundedMap<V> {
+    #[cfg(test)]
+    fn with_cap(cap: usize) -> Self {
+        Self {
+            cap,
+            ..Self::default()
+        }
+    }
+
     fn get(&self, key: &str) -> Option<&V> {
         self.entries.get(key)
     }
 
     fn insert(&mut self, key: &str, value: V) {
+        // Returning here is what keeps `order` free of duplicates. With a
+        // duplicate in it, an eviction pops a key that is still live in
+        // `entries` and removes an entry that was nowhere near the oldest.
         if self.entries.insert(key.to_string(), value).is_some() {
             return;
         }
@@ -113,6 +124,18 @@ impl<V> BoundedMap<V> {
         self.entries.len()
     }
 }
+
+/// Salt for the second token digest in [`GithubClient::cache_key`], so the
+/// two halves of the key's token identity are not the same function of the
+/// same input.
+const TOKEN_HASH_SALT: u64 = 0x9e37_79b9_7f4a_7c15;
+
+/// Serialises the repo-readability probe for one `(repo, token identity)`
+/// and holds what it found, so whoever queues behind it reads the answer
+/// instead of asking again. `None` means nobody has answered yet — either
+/// the first probe is still running, or it failed to answer at all and the
+/// next in the queue should try.
+pub(crate) type ProbeGate = Arc<tokio::sync::Mutex<Option<crate::contents::RepoAccess>>>;
 
 /// User-Agent sent on every request, so GitHub audit logs attribute reads and
 /// writes to this client uniformly (the three hand-rolled predecessors each
@@ -201,9 +224,10 @@ struct ClientState {
     repo_readable: BoundedMap<bool>,
     /// One gate per `(repo, token identity)` for the readability probe, so
     /// callers that miss the answer at the same moment queue behind one
-    /// lookup instead of each issuing their own. Entries are dropped once
-    /// nobody holds them any more.
-    repo_probe_gates: HashMap<String, Arc<tokio::sync::Mutex<()>>>,
+    /// lookup instead of each issuing their own, and read its answer
+    /// instead of repeating it. Entries are dropped once nobody holds them
+    /// any more.
+    repo_probe_gates: HashMap<String, ProbeGate>,
     /// Most recent `x-ratelimit-remaining` seen on any response.
     rate_limit_remaining: Option<u32>,
 }
@@ -355,13 +379,15 @@ impl GithubClient {
     ///
     /// The token is part of the key so one principal's entries do not
     /// answer another principal's reads; it is hashed, never stored. The
-    /// hash is `DefaultHasher` — 64 bits, unkeyed, not cryptographic — so
-    /// the separation it gives is compartmenting, not a security boundary:
-    /// two distinct tokens colliding into one key is astronomically
-    /// unlikely but not excluded. What does bound the damage is that the
-    /// entry is never served on its own. Every hit is revalidated against
-    /// GitHub with the caller's own credential, so a credential that may
-    /// not read the resource gets a 404 or 403 there, not a cached body.
+    /// hash is `DefaultHasher` — unkeyed, not cryptographic — so what it
+    /// gives is compartmenting, not a security boundary. Two independent
+    /// 64-bit digests of the token go into the key rather than one,
+    /// because the answer this key guards is not always rechecked: an ETag
+    /// entry is only ever revalidated against GitHub with the caller's own
+    /// credential, but `repo_readable` (same key shape) is *believed*, and
+    /// a token that inherited another's "readable" would read a 404 as
+    /// absence. 128 bits puts that beyond arithmetic rather than beyond
+    /// worry.
     ///
     /// The representation is part of it because the Contents API serves the
     /// same URL as JSON or raw depending on `Accept`, and those two bodies
@@ -370,9 +396,18 @@ impl GithubClient {
         let representation = accept.unwrap_or("default");
         match token {
             Some(token) => {
-                let mut hasher = DefaultHasher::new();
-                token.hash(&mut hasher);
-                format!("{url}#{representation}#{:016x}", hasher.finish())
+                // Two digests of the same token, salted apart, read as one
+                // 128-bit value. `DefaultHasher` is fixed-seed, so the
+                // salt is the only thing making the halves independent.
+                let mut low = DefaultHasher::new();
+                token.hash(&mut low);
+                let mut high = DefaultHasher::new();
+                (TOKEN_HASH_SALT, token).hash(&mut high);
+                format!(
+                    "{url}#{representation}#{:016x}{:016x}",
+                    high.finish(),
+                    low.finish()
+                )
             }
             None => format!("{url}#{representation}#anon"),
         }
@@ -391,13 +426,17 @@ impl GithubClient {
     /// pair. Gates nobody is waiting on are dropped here rather than kept
     /// for the client's lifetime: the map is keyed by token identity too,
     /// so it would otherwise grow with every user the process serves.
-    pub(crate) fn repo_probe_gate(&self, key: &str) -> Arc<tokio::sync::Mutex<()>> {
+    pub(crate) fn repo_probe_gate(&self, key: &str) -> ProbeGate {
         let Ok(mut state) = self.state.lock() else {
-            return Arc::new(tokio::sync::Mutex::new(()));
+            return ProbeGate::default();
         };
+        // A gate nobody holds any more takes its answer with it, this
+        // key's included. That is what keeps a refusal from outliving the
+        // burst it answered: the next caller to arrive alone builds a
+        // fresh gate and asks GitHub again.
         state
             .repo_probe_gates
-            .retain(|k, gate| k == key || Arc::strong_count(gate) > 1);
+            .retain(|_, gate| Arc::strong_count(gate) > 1);
         Arc::clone(state.repo_probe_gates.entry(key.to_string()).or_default())
     }
 
@@ -564,6 +603,26 @@ mod tests {
                 .contains("not valid in an HTTP header value"),
             "message must name the real cause: {err}"
         );
+    }
+
+    #[test]
+    fn a_bounded_map_evicts_in_insertion_order_and_keeps_its_order_intact() {
+        let mut map = BoundedMap::with_cap(3);
+        for key in ["a", "b", "c"] {
+            map.insert(key, key.to_string());
+        }
+        // Refreshing an existing key updates it without queueing it again.
+        map.insert("a", "a2".to_string());
+        assert_eq!(map.order.len(), map.entries.len());
+        assert_eq!(map.get("a"), Some(&"a2".to_string()));
+
+        map.insert("d", "d".to_string());
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.order.len(), map.entries.len());
+        assert!(map.get("a").is_none(), "the oldest insertion goes first");
+        for key in ["b", "c", "d"] {
+            assert!(map.get(key).is_some(), "{key} was evicted out of turn");
+        }
     }
 
     #[test]

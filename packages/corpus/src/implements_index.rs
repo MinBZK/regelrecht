@@ -106,7 +106,7 @@ impl ImplementsIndex {
         // verify. Such a file can only be a mistake; refuse it here so a
         // consumer falls back instead of reasoning about it. The generator
         // refuses to produce one for the same reason.
-        if index.root.trim_matches('/').is_empty() {
+        if normalise_root(&index.root).is_empty() {
             return Err(CorpusError::Config(
                 "implements index is rooted at the repo root, where its own file \
                  invalidates the tree sha it records"
@@ -194,6 +194,7 @@ pub struct ScanFailure {
     pub path: String,
     /// The error, for the generator's failure report.
     pub error: String,
+    /// Whether one file was lost or a whole directory went unseen.
     pub kind: ScanFailureKind,
 }
 
@@ -217,17 +218,7 @@ pub struct ScanOutcome {
 /// consistent with the backend tree walks and the tarball extraction
 /// (which only reads regular entries).
 pub fn scan_tree(repo_root: &Path, scan_root: &str) -> Result<ScanOutcome> {
-    // Normalised before it is joined: `Path::join` with an absolute path
-    // discards `repo_root` entirely, so a `--root /regulation` would scan
-    // an absolute filesystem path outside the checkout. `covers` and
-    // `to_source_relative` treat a leading slash as decorative, and this
-    // has to agree with them.
-    let scan_root = normalise_root(scan_root);
-    if scan_root.split('/').any(|segment| segment == "..") {
-        return Err(CorpusError::Config(format!(
-            "scan root must stay inside the repository, not climb out of it: '{scan_root}'"
-        )));
-    }
+    let scan_root = normalised_scan_root(scan_root)?;
     let abs_root = repo_root.join(&scan_root);
     if !abs_root.is_dir() {
         return Err(CorpusError::Config(format!(
@@ -298,6 +289,24 @@ pub fn scan_tree(repo_root: &Path, scan_root: &str) -> Result<ScanOutcome> {
     }
 
     Ok(ScanOutcome { files, failures })
+}
+
+/// The scan root in the one spelling everything downstream assumes:
+/// normalised, and inside the repository.
+///
+/// Normalising before the root is joined onto the checkout is what keeps
+/// the scan there at all — `Path::join` with an absolute path discards
+/// what it was joined to, so an unnormalised `/regulation` would walk an
+/// absolute filesystem path. A `..` cannot be normalised away without
+/// changing which directory is meant, so it is refused instead.
+pub fn normalised_scan_root(root: &str) -> Result<String> {
+    let root = normalise_root(root);
+    if root.split('/').any(|segment| segment == "..") {
+        return Err(CorpusError::Config(format!(
+            "scan root must stay inside the repository, not climb out of it: '{root}'"
+        )));
+    }
+    Ok(root)
 }
 
 /// Collapse a scan root to the form the consumer compares and strips with:
@@ -430,16 +439,30 @@ articles:
             .contains_key("regulation/nl/wet/wet_ok/2025-01-01.yaml"));
     }
 
-    /// Make `path` unreadable for the duration of `body`, restoring the
-    /// mode afterwards so `TempDir::drop` can still clean up.
+    /// Restores the mode of a directory the test made unreadable. A
+    /// `Drop` guard rather than a call after the body: a failing assertion
+    /// inside the body would otherwise leave a 0o000 directory that
+    /// `TempDir` cannot clean up.
     #[cfg(unix)]
-    pub(super) fn while_unreadable<T>(path: &Path, body: impl FnOnce() -> T) -> T {
+    pub(super) struct Unreadable<'a> {
+        path: &'a Path,
+        original: fs::Permissions,
+    }
+
+    #[cfg(unix)]
+    impl Drop for Unreadable<'_> {
+        fn drop(&mut self) {
+            let _ = fs::set_permissions(self.path, self.original.clone());
+        }
+    }
+
+    /// Make `path` unreadable until the returned guard is dropped.
+    #[cfg(unix)]
+    pub(super) fn make_unreadable(path: &Path) -> Unreadable<'_> {
         use std::os::unix::fs::PermissionsExt;
         let original = fs::metadata(path).unwrap().permissions();
         fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
-        let out = body();
-        fs::set_permissions(path, original).unwrap();
-        out
+        Unreadable { path, original }
     }
 
     /// Whether mode bits actually keep *this* process out of a directory.
@@ -447,17 +470,19 @@ articles:
     /// the unreadable-directory tests would assert a failure that cannot
     /// occur, so they skip instead of failing for the wrong reason.
     #[cfg(unix)]
-    pub(super) fn directory_permissions_bite(scratch: &Path) -> bool {
-        let probe = scratch.join("permission-probe");
+    pub(super) fn directory_permissions_bite() -> bool {
+        let scratch = TempDir::new().unwrap();
+        let probe = scratch.path().join("probe");
         fs::create_dir_all(&probe).unwrap();
-        while_unreadable(&probe, || fs::read_dir(&probe).is_err())
+        let _locked = make_unreadable(&probe);
+        fs::read_dir(&probe).is_err()
     }
 
     #[cfg(unix)]
     #[test]
     fn an_unreadable_directory_is_a_scan_failure_not_a_silent_hole() {
         let dir = TempDir::new().unwrap();
-        if !directory_permissions_bite(dir.path()) {
+        if !directory_permissions_bite() {
             eprintln!("skipped: this process reads directories regardless of mode bits");
             return;
         }
@@ -473,33 +498,32 @@ articles:
         );
 
         let locked = dir.path().join("regulation/nl/geheim");
-        while_unreadable(&locked, || {
-            let outcome = scan_tree(dir.path(), "regulation").unwrap();
+        let _guard = make_unreadable(&locked);
+        let outcome = scan_tree(dir.path(), "regulation").unwrap();
 
-            // The laws behind the locked directory are gone from the index
-            // either way; what must not happen is that they go quietly.
-            assert!(!outcome.files.keys().any(|k| k.contains("wet_weg")));
-            let walk: Vec<&ScanFailure> = outcome
-                .failures
-                .iter()
-                .filter(|f| f.kind == ScanFailureKind::Walk)
-                .collect();
-            assert_eq!(
-                walk.len(),
-                1,
-                "an unreadable directory must surface as a failure, got {:?}",
-                outcome.failures
-            );
-            assert!(
-                walk[0].path.contains("geheim"),
-                "the failure must name the directory: {:?}",
-                walk[0]
-            );
-            // The readable half is still indexed.
-            assert!(outcome
-                .files
-                .contains_key("regulation/nl/wet/wet_ok/2025-01-01.yaml"));
-        });
+        // The laws behind the locked directory are gone from the index
+        // either way; what must not happen is that they go quietly.
+        assert!(!outcome.files.keys().any(|k| k.contains("wet_weg")));
+        let walk: Vec<&ScanFailure> = outcome
+            .failures
+            .iter()
+            .filter(|f| f.kind == ScanFailureKind::Walk)
+            .collect();
+        assert_eq!(
+            walk.len(),
+            1,
+            "an unreadable directory must surface as a failure, got {:?}",
+            outcome.failures
+        );
+        assert!(
+            walk[0].path.contains("geheim"),
+            "the failure must name the directory: {:?}",
+            walk[0]
+        );
+        // The readable half is still indexed.
+        assert!(outcome
+            .files
+            .contains_key("regulation/nl/wet/wet_ok/2025-01-01.yaml"));
     }
 
     #[test]

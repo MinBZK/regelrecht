@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::{
-    normalise_root, scan_tree, ImplementsIndex, ScanFailure, ScanFailureKind,
+    normalised_scan_root, scan_tree, ImplementsIndex, ScanFailure, ScanFailureKind,
     IMPLEMENTS_INDEX_FILENAME, IMPLEMENTS_INDEX_VERSION,
 };
 
@@ -119,16 +119,16 @@ fn git(repo_root: &Path, args: &[&str]) -> Result<String, String> {
 /// tree, git error, unreadable index, an unreadable directory, systematic
 /// parse breakage); the caller maps it to exit code 2.
 pub fn run(args: &Args) -> Result<Outcome, String> {
+    // Normalised once, here: this is what git is asked about, what the
+    // scan walks, and what the index records for the consumer to compare
+    // and strip. All four have to agree on one spelling.
+    let scan_root = normalised_scan_root(&args.scan_root).map_err(|e| e.to_string())?;
     // An index over the repo root contains its own file, so writing it
     // changes the tree sha it just recorded and no consumer would ever
     // accept it. Refuse here rather than in the CLI's argument parsing:
-    // `Args` is public, so a library caller reaches this too. Normalised
-    // first, so `.` — which names the repo root just as `/` does — is
-    // caught by the same gate.
-    // Normalised once here: it is what gets recorded in the index (the
-    // consumer compares and strips it as a path prefix) and what git and
-    // the scan are asked about, so all four agree on one spelling.
-    let scan_root = normalise_root(&args.scan_root);
+    // `Args` is public, so a library caller reaches this too. `.` names
+    // that root as much as `/` does, and normalising is what makes both
+    // meet this gate.
     if scan_root.is_empty() {
         return Err(
             "scan root must name a subtree: an index rooted at the repo root contains \
@@ -337,13 +337,13 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn an_unwalkable_directory_is_fatal_however_few_files_it_hides() {
-        use super::super::tests::{directory_permissions_bite, while_unreadable};
+        use super::super::tests::{directory_permissions_bite, make_unreadable};
 
         // 20 readable laws against one locked directory: far under
         // `MAX_UNPARSEABLE_RATIO`, which is exactly why the ratio net
         // cannot be what catches this.
         let dir = fixture(20, 0);
-        if !directory_permissions_bite(dir.path()) {
+        if !directory_permissions_bite() {
             eprintln!("skipped: this process reads directories regardless of mode bits");
             return;
         }
@@ -355,7 +355,10 @@ mod tests {
         commit_all(dir.path(), "add a law that will be locked away");
 
         let locked = dir.path().join("regulation/nl/geheim");
-        let result = while_unreadable(&locked, || run(&Args::new(dir.path())));
+        let result = {
+            let _guard = make_unreadable(&locked);
+            run(&Args::new(dir.path()))
+        };
 
         let err = result.expect_err("an unwalkable directory must not yield an index");
         assert!(err.contains("could not be walked"), "unexpected: {err}");
@@ -366,9 +369,26 @@ mod tests {
     }
 
     #[test]
+    fn a_root_that_climbs_out_of_the_checkout_is_refused() {
+        let dir = TempDir::new().unwrap();
+        // `regulation/..` is the repo root, `../elders` is outside it
+        // entirely. Neither can be normalised into a subtree, so both are
+        // refused before git or the scan sees them.
+        for root in ["../elders", "regulation/.."] {
+            let args = Args {
+                scan_root: root.to_string(),
+                ..Args::new(dir.path())
+            };
+            let err = run(&args).expect_err("a scan may not climb out of the checkout");
+            assert!(err.contains("inside the repository"), "unexpected: {err}");
+        }
+    }
+
+    #[test]
     fn a_repo_root_scan_is_refused() {
         let dir = TempDir::new().unwrap();
-        // `.` names the repo root just as `""` and `/` do.
+        // `.` names the repo root as much as `""` and `/` do, and a root
+        // that names it can never verify.
         for root in ["", "/", ".", "./"] {
             let args = Args {
                 repo_root: dir.path().to_path_buf(),
