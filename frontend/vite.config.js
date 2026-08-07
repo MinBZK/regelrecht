@@ -50,7 +50,11 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['src/**/*.test.js'],
+    // `e2e/` holds Playwright specs (`*.spec.js`) plus plain Node helpers those
+    // specs share; the helpers' own unit tests are `*.test.js` and run here.
+    // Playwright's `testMatch` is narrowed to `*.spec.js` so the two never
+    // collect each other's files.
+    include: ['src/**/*.test.js', 'e2e/**/*.test.js'],
     pool: 'vmThreads',
     testTimeout: 10000,
     server: {
@@ -68,6 +72,36 @@ export default defineConfig({
   build: {
     cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: 'dist',
+    rolldownOptions: {
+      output: {
+        // Without this group, rolldown parks its shared module-namespace
+        // runtime helper inside the OverviewView chunk (the only chunk that
+        // needs CJS interop, via echarts). Several design-system chunks in the
+        // static entry graph import that helper, which drags the ~550 KB
+        // echarts payload into index.html's modulepreload list even though the
+        // route itself is lazy. Grouping echarts into its own chunk makes
+        // rolldown emit a separate tiny runtime chunk, and echarts is then
+        // only fetched when a harvester view actually opens.
+        //
+        // `includeDependenciesRecursively: false` is required: the default
+        // (true) pulls the captured modules' dependencies (Vue's runtime-core,
+        // reactivity, tslib) into the echarts chunk, which puts it right back
+        // in the entry graph.
+        //
+        // `scripts/check-first-load.mjs` (postbuild) guards this: if the
+        // option stops working the build fails instead of echarts silently
+        // rejoining the first load.
+        codeSplitting: {
+          groups: [
+            {
+              name: 'echarts',
+              test: /node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/,
+              includeDependenciesRecursively: false,
+            },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: 3000,

@@ -2931,7 +2931,11 @@ pub async fn reload_corpus(
     }
 
     let new_map = registry
-        .load_favorites_async(&law_ids, auth_file.as_deref())
+        .load_favorites_async(
+            &law_ids,
+            auth_file.as_deref(),
+            &regelrecht_shared::dates::today_str(),
+        )
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "corpus reload failed");
@@ -3276,6 +3280,59 @@ const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
 /// of going through a `document_convert` job.
 const MARKDOWN_PASSTHROUGH_EXTENSIONS: &[&str] = &["md", "markdown"];
 
+/// Welke formaten de werkdocument-upload hoe behandelt. Puur afgeleid van de
+/// twee bronnen die het gedrag ook echt bepalen — de pass-through-lijst
+/// hierboven en de convertertabel in de pipeline — zodat de editor de gebruiker
+/// per bestand kan vertellen of er AI aan te pas komt zonder daarvoor een eigen
+/// (en dus af te drijven) lijst bij te houden.
+#[derive(Debug, Serialize)]
+pub struct DocumentUploadFormats {
+    /// Wordt zonder conversie opgeslagen; er gebeurt niets met de inhoud.
+    pub passthrough: Vec<&'static str>,
+    /// Heeft een deterministische converter (pandoc/pdftotext): om te zetten
+    /// zonder taalmodel. Elk formaat dat in géén van beide lijsten staat kan
+    /// alleen met een taalmodel worden omgezet.
+    pub deterministic: Vec<&'static str>,
+}
+
+/// GET /api/document-upload-formats
+///
+/// Statische indeling voor de upload-bevestiging in de editor. Geen
+/// traject-scope en niets gevoeligs: het is dezelfde informatie die een
+/// gebruiker ook uit proberen zou afleiden.
+pub async fn list_document_upload_formats() -> Json<DocumentUploadFormats> {
+    Json(DocumentUploadFormats {
+        passthrough: MARKDOWN_PASSTHROUGH_EXTENSIONS.to_vec(),
+        deterministic: regelrecht_pipeline::document_convert::deterministic_extensions(),
+    })
+}
+
+/// Query-parameters van de werkdocument-upload.
+///
+/// Bewust een query-parameter en geen multipart-veld: [`read_upload_multipart`]
+/// breekt de veldenlus af zodra het `file`-veld voorbijkomt, dus een extra
+/// multipart-veld zou alleen werken bij de juiste veldvolgorde — een stille
+/// valstrik precies op de plek waar stilte het gevaarlijkst is.
+#[derive(Debug, Default, Deserialize)]
+pub struct UploadDocumentQuery {
+    /// `?llm=1` ⇒ de uploader staat toe dat een taalmodel het document leest.
+    /// Afwezig is nee: geen toestemming is de veilige uitkomst, ook wanneer een
+    /// oudere client de parameter niet meestuurt.
+    #[serde(default)]
+    pub llm: Option<String>,
+}
+
+impl UploadDocumentQuery {
+    /// Alleen een uitdrukkelijke bevestiging telt als toestemming; al het
+    /// andere (afwezig, leeg, `0`, onzin) is nee.
+    fn allow_llm(&self) -> bool {
+        matches!(
+            self.llm.as_deref().map(str::trim),
+            Some("1") | Some("true") | Some("yes")
+        )
+    }
+}
+
 /// Enforce the optional upload allow-list on `filename`. `None` accepts any
 /// format (the werkdocument upload — the conversion pipeline routes it), while
 /// `Some(list)` rejects any extension outside the list with a 415 (the
@@ -3457,11 +3514,18 @@ async fn write_markdown_passthrough(
 /// markdown upload needs no conversion: its bytes are written straight to the
 /// target `.md` (pass-through, responds `201 Created`). Either way the response
 /// carries the target `.md` path the document appears at.
+///
+/// `?llm=1` is de toestemming van de uploader om een taalmodel te gebruiken.
+/// Zonder die toestemming én zonder deterministische converter voor dit formaat
+/// zou er alleen een job ontstaan die niets anders kán dan falen; dat weigeren
+/// we hier meteen met een 400 die uitlegt waarom, in plaats van de gebruiker
+/// later een mislukte-conversie-taak te sturen.
 pub async fn upload_traject_document(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    Query(query): Query<UploadDocumentQuery>,
     headers: axum::http::HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadDocumentResponse>), (StatusCode, String)> {
@@ -3480,6 +3544,37 @@ pub async fn upload_traject_document(
     // or the agentic enricher fallback otherwise, returning reviewable markdown.
     let (filename, content_type, data) = read_upload_multipart(&mut multipart, None).await?;
     let ext = lowercase_extension(&filename);
+    let allow_llm = query.allow_llm();
+
+    // Weiger vóór al het werk hieronder wat toch niet kan: geen toestemming voor
+    // een taalmodel, geen deterministische converter, en het is geen markdown
+    // (die gaat ongemoeid door). De uitleg is de belofte zelf — er is niets
+    // gelezen en niets verstuurd.
+    //
+    // De extensie komt hier uit de bestandsnaam, terwijl de pipeline bij een
+    // naam zonder extensie nog op het content-type terugvalt. Die grens loopt
+    // dus één kant op scheef: een naamloos-formaat bestand wordt hier geweigerd
+    // terwijl de conversie het misschien had gekund. Dat is de goede kant —
+    // strenger dan de pipeline, nooit ruimer — en het is dezelfde extensie die
+    // de uploadbevestiging de gebruiker liet zien.
+    if !allow_llm
+        && !MARKDOWN_PASSTHROUGH_EXTENSIONS.contains(&ext.as_str())
+        && !regelrecht_pipeline::document_convert::has_deterministic_converter(&ext)
+    {
+        let format = if ext.is_empty() {
+            "Dit bestand".to_string()
+        } else {
+            format!("Een .{ext}-bestand")
+        };
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{format} kan alleen met AI worden omgezet. Het bestand is niet opgeslagen en \
+                 niet omgezet. Upload het opnieuw met 'Omzetten met AI toestaan' aan, of lever \
+                 het aan als PDF, Word (.docx) of markdown."
+            ),
+        ));
+    }
 
     // Derive a collision-safe target markdown path against the existing docs.
     // A failed listing must NOT be swallowed: an empty `existing` set would let
@@ -3600,6 +3695,10 @@ pub async fn upload_traject_document(
         // committen gebeurt pas bij goedkeuren in de request-context van de
         // gebruiker (met diens token wanneer enforcement aan staat).
         deliver: Some("task".to_string()),
+        // De keuze van de uploader reist mee de pipeline in; dáár wordt hij
+        // afgedwongen (de deterministische route kan óók stuklopen, en dan mag
+        // de agent alleen draaien als dit waar is).
+        allow_llm,
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;

@@ -226,7 +226,9 @@ async fn main() {
             middleware::refresh_session_token::<AppState>,
         ))
         .layer(session_layer)
-        .layer(axum_middleware::from_fn(middleware::security_headers))
+        .layer(axum_middleware::from_fn(middleware::security_headers(
+            middleware::API_CSP,
+        )))
         .layer(TraceLayer::new_for_http());
     // API-only service: the harvester-admin dashboard UI now lives in the
     // editor (frontend/src/harvester), which reaches this API through the
@@ -308,14 +310,14 @@ fn init_corpus() -> state::CorpusState {
         regelrecht_corpus::CorpusRegistry::empty()
     };
 
-    let source_map = match registry.load_local_sources() {
+    let source_map = match registry.load_local_sources(&regelrecht_shared::dates::today_str()) {
         Ok(map) => {
             tracing::info!(laws = map.len(), "Loaded corpus laws");
             map
         }
         Err(e) => {
             tracing::warn!(error = %e, "Failed to load corpus sources");
-            regelrecht_corpus::SourceMap::new()
+            regelrecht_corpus::SourceMap::new(regelrecht_shared::dates::today_str())
         }
     };
 

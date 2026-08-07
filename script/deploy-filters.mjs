@@ -21,6 +21,11 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+// De nginx-images kopiëren dit bestand alle twee mee. Het valt buiten hun
+// eigen map, dus zonder deze regel levert een aangescherpte header een groene
+// build op die niets uitrolt.
+const NGINX_SHARED = 'deploy/nginx/';
+
 // Per component: de crate waar het image aan hangt (of null), plus de paden
 // buiten de graaf die het image beïnvloeden.
 export const COMPONENTS = {
@@ -52,9 +57,9 @@ export const COMPONENTS = {
   grafana: { crate: null, paths: ['packages/grafana/'] },
   lawmaking: {
     crate: null,
-    paths: ['frontend-lawmaking/', 'packages/frontend-shared/'],
+    paths: ['frontend-lawmaking/', 'packages/frontend-shared/', NGINX_SHARED],
   },
-  docs: { crate: null, paths: ['docs/'] },
+  docs: { crate: null, paths: ['docs/', NGINX_SHARED] },
 };
 
 // Raakt elk component met een Rust-image: de workspace zelf.

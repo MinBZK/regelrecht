@@ -423,7 +423,7 @@ defineExpose({ show });
           <template v-else>
             <nldd-form-field
               label="Upload een document"
-              supporting-label="PDF of Word. De conversie-naar-wet-keten zet het om naar een basis-wet en verrijkt het; het resultaat komt terug als review-taak bij Taken."
+              supporting-label="PDF of Word. Bij deze conversie leest AI het document: er is geen route naar een wet zonder taalmodel. De keten zet het om naar een basis-wet en verrijkt het; het resultaat komt terug als review-taak bij Taken."
             >
               <nldd-button
                 size="md"

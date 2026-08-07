@@ -51,7 +51,7 @@ Feature: With background
     expect(form.background.dependencies).toEqual(['law_a', 'law_b']);
 
     const s = form.scenarios[0];
-    expect(s.setup.parameters).toEqual([{ name: 'bsn', value: '999993653' }]);
+    expect(s.setup.parameters).toEqual([{ name: 'bsn', value: 999993653 }]);
     expect(s.assertions[0]).toEqual({ assertionType: 'boolean', outputName: 'output', value: false });
   });
 
@@ -124,7 +124,7 @@ Feature: Params
     const form = mapFeatureToForm(parsed);
     const params = form.scenarios[0].setup.parameters;
     expect(params).toEqual([
-      { name: 'bsn', value: '999993653' },
+      { name: 'bsn', value: 999993653 },
       { name: 'amount', value: 1500 },
       { name: 'rate', value: 3.14 },
     ]);
@@ -251,7 +251,7 @@ Feature: Merge test
 
     expect(effective.calculationDate).toBe('2025-01-01');
     expect(effective.dependencies).toEqual(['dep_a', 'dep_b']);
-    expect(effective.parameters).toEqual([{ name: 'bsn', value: '123' }]);
+    expect(effective.parameters).toEqual([{ name: 'bsn', value: 123 }]);
   });
 
   it('scenario date overrides background date', () => {
@@ -443,5 +443,46 @@ Feature: Typed values
     );
     expect(parseValue(reparams.is_verzekerde)).toBe(true);
     expect(reparams.inkomen).toBe(150000);
+  });
+});
+
+// The canonical rule (bdd/grammar.yaml `value_typing`) is that the quotes do
+// not change what a value is — the content decides, on both sides of the
+// language. The editor used to keep the quoted form as a raw string, so it ran
+// a scenario with different types than the Rust runner did (#1160). A save may
+// normalise a quoted number to its bare form; what it may not do is leave the
+// two engines reading the same line differently.
+describe('a quoted value carries its content, not its quotes', () => {
+  const feature = `
+Feature: Round trip
+
+  Scenario: Test
+    Given parameter "bsn" is "999993653"
+    Given parameter "is_verzekerde" is "true"
+    Given parameter "gemeente" is "GM0384"
+    When I evaluate "result" of "law"
+`;
+
+  it('reads a quoted value by its content', () => {
+    const form = mapFeatureToForm(parseFeature(feature));
+    const params = Object.fromEntries(
+      form.scenarios[0].setup.parameters.map((p) => [p.name, p.value]),
+    );
+    expect(params.bsn).toBe(999993653);
+    expect(params.is_verzekerde).toBe(true);
+    expect(params.gemeente).toBe('GM0384');
+  });
+
+  it('round-trips every form to the same values', () => {
+    const form = mapFeatureToForm(parseFeature(feature));
+    syncEditedValues(form, 0, {
+      parameterValues: { bsn: '999993653', is_verzekerde: 'true', gemeente: 'GM0384' },
+      calculationDate: null,
+    });
+    const reform = mapFeatureToForm(parseFeature(formStateToGherkin(form)));
+    const params = Object.fromEntries(
+      reform.scenarios[0].setup.parameters.map((p) => [p.name, p.value]),
+    );
+    expect(params).toEqual({ bsn: 999993653, is_verzekerde: true, gemeente: 'GM0384' });
   });
 });

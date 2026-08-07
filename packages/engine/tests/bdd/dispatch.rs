@@ -69,21 +69,21 @@ impl RegelrechtWorld {
             "set_parameter" => {
                 let name = args[0].as_str().to_string();
                 let value = match &args[1] {
-                    ArgValue::Num(n) => num_to_value(*n),
-                    ArgValue::Str(s) => convert_gherkin_value(s),
+                    ArgValue::Num(n) => bare_value(*n),
+                    ArgValue::Str(s) => quoted_value(s),
                     ArgValue::Bool(b) => Value::Bool(*b),
                 };
                 self.parameters.insert(name, value);
             }
             "set_parameters_table" => {
-                for (k, v) in rows_to_params(&table.expect("parameters table")) {
+                for (k, v) in rows_to_params(&table.expect("parameters table"), table_cell_value) {
                     self.parameters.insert(k, v);
                 }
             }
             "set_data_source" => {
                 let source = args[0].as_str().to_string();
                 let key = args[1].as_str().to_string();
-                let rows = rows_to_records(&table.expect("data source table"));
+                let rows = rows_to_records(&table.expect("data source table"), table_cell_value);
                 self.data_sources.insert(source, (key, rows));
             }
 
@@ -133,8 +133,8 @@ impl RegelrechtWorld {
             }
             "assert_equals" => {
                 let expected = match &args[1] {
-                    ArgValue::Num(n) => num_to_value(*n),
-                    ArgValue::Str(s) => convert_gherkin_value(s),
+                    ArgValue::Num(n) => bare_value(*n),
+                    ArgValue::Str(s) => quoted_value(s),
                     ArgValue::Bool(b) => Value::Bool(*b),
                 };
                 let actual = self.output_value(args[0].as_str());
@@ -290,13 +290,28 @@ impl RegelrechtWorld {
 
     // ----- note helpers (ported verbatim from notes.rs) -----
 
+    /// Reads the article table by header name, like `rows_to_records` does for
+    /// data-source tables. It used to read `row[0]`/`row[1]` positionally while
+    /// carrying a `number | text` header that nothing checked, so swapping the
+    /// two columns (header included) silently changed what the scenario meant.
+    /// One convention for every table in this language: the header is the
+    /// contract.
     fn note_set_articles(&mut self, table: &Rows) {
         self.note_articles.clear();
-        // First row is the header (number | text).
+        let headers: Vec<String> = table
+            .first()
+            .map(|row| row.iter().map(|s| s.trim().to_string()).collect())
+            .unwrap_or_default();
+        let column = |name: &str| -> usize {
+            headers.iter().position(|h| h == name).unwrap_or_else(|| {
+                panic!("article table needs a '{name}' column; header is {headers:?}")
+            })
+        };
+        let (number_at, text_at) = (column("number"), column("text"));
         for row in table.iter().skip(1) {
             self.note_articles.push(Article {
-                number: row[0].trim().to_string(),
-                text: row[1].trim().to_string(),
+                number: row[number_at].trim().to_string(),
+                text: row[text_at].trim().to_string(),
                 url: None,
                 machine_readable: None,
             });
@@ -417,6 +432,34 @@ fn num_to_value(n: f64) -> Value {
                 .parse::<Decimal>()
                 .expect("numeric literal parses as Decimal"),
         )
+    }
+}
+
+/// Type a quoted capture. The rule lives in `bdd/grammar.yaml`
+/// (`value_typing.quoted`) and reaches both dispatchers through codegen, so
+/// neither engine can hold its own opinion about what quotes mean.
+fn quoted_value(raw: &str) -> Value {
+    match crate::generated_steps::QUOTED_VALUE_TYPING {
+        "literal" => Value::String(raw.to_string()),
+        "inferred" => convert_gherkin_value(raw),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.quoted '{other}'"),
+    }
+}
+
+/// Type a bare (unquoted) capture; see [`quoted_value`] for where the rule lives.
+fn bare_value(n: f64) -> Value {
+    match crate::generated_steps::BARE_VALUE_TYPING {
+        "number" => num_to_value(n),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.bare '{other}'"),
+    }
+}
+
+/// Type a data-table cell; see [`quoted_value`] for where the rule lives.
+fn table_cell_value(raw: &str) -> Value {
+    match crate::generated_steps::TABLE_CELL_VALUE_TYPING {
+        "inferred" => convert_gherkin_value(raw),
+        "literal" => Value::String(raw.trim().to_string()),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.table_cell '{other}'"),
     }
 }
 

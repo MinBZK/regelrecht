@@ -9,16 +9,20 @@
  */
 
 import { GRAMMAR } from './grammar.generated.js';
-import { dispatch } from './actions.js';
+import { dispatch, bareValue, quotedValue } from './actions.js';
 
 /** Tiers the editor's WASM engine can execute. */
 export const SUPPORTED_TIERS = ['core'];
 
-/** Parse a regex match's captures into typed args, then append the grammar literals. */
+/**
+ * Parse a regex match's captures into typed args, then append the grammar
+ * literals. Which capture becomes what is `value_typing` in bdd/grammar.yaml;
+ * the Rust dispatcher reads the same three keys.
+ */
 function buildArgs(entry, match) {
   const args = entry.argTypes.map((t, i) => {
     const raw = match[i + 1];
-    return t === 'number' ? Number(raw) : raw;
+    return t === 'number' ? bareValue(raw) : quotedValue(raw);
   });
   return [...args, ...entry.literals];
 }
@@ -42,5 +46,6 @@ export function createStepDefinitions({ loadDependency }) {
   }));
 }
 
-// Keep the public re-export ScenarioForm.vue relies on (single home in actions.js).
+// parseValue has a single home in actions.js; re-exported for the tests that
+// pin which literals it recognises.
 export { parseValue } from './actions.js';

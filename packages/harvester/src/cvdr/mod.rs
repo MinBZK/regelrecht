@@ -78,7 +78,7 @@ pub async fn download_cvdr_law(client: &Client, cvdr_id: &str, date: Option<&str
     let effective_date = date
         .map(String::from)
         .or_else(|| metadata_result.effective_date.clone())
-        .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+        .unwrap_or_else(regelrecht_shared::dates::today_str);
 
     let base_url = lokaleregelgeving_url(cvdr_id);
     let parsed = parse_cvdr_articles(&xml_content, &base_url)?;

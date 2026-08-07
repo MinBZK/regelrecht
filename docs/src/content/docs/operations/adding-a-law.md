@@ -74,7 +74,7 @@ just bdd
 
 ## Step 6: Open a pull request
 
-Commit the new law file, any BDD scenarios, and open a PR. CI will run schema validation, BDD tests, and all other checks automatically. A preview deployment lets reviewers try the law in the editor.
+Commit the new law file, any BDD scenarios, and open a PR. CI will run schema validation, BDD tests, and all other checks automatically. Add the `preview` label to the PR if reviewers should be able to try the law in a running editor.
 
 ## Further reading
 

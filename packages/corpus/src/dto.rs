@@ -162,7 +162,7 @@ mod tests {
             "GitHub Trees API returned 404".to_string(),
         )]);
 
-        let summaries = build_source_summaries(&registry, &SourceMap::new(), &failures);
+        let summaries = build_source_summaries(&registry, &SourceMap::new("2026-06-01"), &failures);
 
         let broken = summaries.iter().find(|s| s.id == "broken").unwrap();
         assert_eq!(broken.law_count, 0);

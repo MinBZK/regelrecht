@@ -1950,9 +1950,10 @@ async fn build_traject_corpus(
         source_id: &writable_own_source_id,
         token,
     });
+    let today = regelrecht_shared::dates::today_str();
     let (source_map, index_failures) = match timing::measure(
         "index",
-        registry.index_all_sources_with_override(auth_file, scan_override),
+        registry.index_all_sources_with_override(auth_file, scan_override, &today),
     )
     .await
     {
@@ -1991,8 +1992,8 @@ async fn build_traject_corpus(
                 .collect();
             (
                 registry
-                    .load_local_sources()
-                    .unwrap_or_else(|_| SourceMap::new()),
+                    .load_local_sources(&today)
+                    .unwrap_or_else(|_| SourceMap::new(regelrecht_shared::dates::today_str())),
                 failures,
             )
         }
@@ -2077,7 +2078,11 @@ async fn refresh_traject_corpus(
         token,
     });
     let (source_map, failed) = registry
-        .index_all_sources_with_override(auth_file.as_deref(), scan_override)
+        .index_all_sources_with_override(
+            auth_file.as_deref(),
+            scan_override,
+            &regelrecht_shared::dates::today_str(),
+        )
         .await?;
     if !failed.is_empty() {
         let details: Vec<String> = failed
@@ -2543,7 +2548,7 @@ mod tests {
     #[test]
     fn cached_corpus_freshness_respects_ttl() {
         let cached = CachedCorpus {
-            corpus: Arc::new(test_corpus(SourceMap::new(), HashMap::new())),
+            corpus: Arc::new(test_corpus(SourceMap::new("2026-06-01"), HashMap::new())),
             built_at: Instant::now(),
         };
         // A just-built snapshot is fresh under the production TTL…
@@ -2556,7 +2561,7 @@ mod tests {
 
     #[tokio::test]
     async fn law_yaml_caches_lazy_fetch_and_prefers_overlay() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "seed");
         let stub = StubBackend::with_files(&[("wet/wet_a/2025-01-01.yaml", "$id: wet_a\n")]);
         let reads = stub.reads.clone();
@@ -2671,7 +2676,7 @@ mod tests {
 
     #[tokio::test]
     async fn law_yaml_forwards_the_read_token_only_to_the_writable_own_source() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_eigen", "own");
         metadata_entry(&mut map, "wet_seed", "seed");
         let backends = HashMap::from([
@@ -2745,7 +2750,7 @@ mod tests {
 
     #[tokio::test]
     async fn implementors_of_builds_index_once_and_reverse_looks_up() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_hoger", "seed");
         let stub = StubBackend::with_files(&[
@@ -2779,7 +2784,7 @@ mod tests {
 
     #[tokio::test]
     async fn implementors_of_reports_fetch_failures_as_skipped() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_kapot", "broken");
         let stub = StubBackend::with_files(&[(
@@ -2808,7 +2813,7 @@ mod tests {
         // must be pulled in ONE bulk request, not one fetch per law — this
         // is what stops the cold build 504-ing on large GitHub trajects.
         let n = BULK_FETCH_THRESHOLD;
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let mut files: Vec<(String, String)> = Vec::new();
         for i in 0..n {
             let law_id = format!("reg_{i}");
@@ -2844,7 +2849,7 @@ mod tests {
 
     #[tokio::test]
     async fn record_save_updates_built_implements_index_in_place() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         let stub = StubBackend::with_files(&[(
             "wet/regeling_a/2025-01-01.yaml",
@@ -2905,7 +2910,7 @@ mod tests {
             strict_auth: false,
         };
         let registry = CorpusRegistry::from_sources(vec![source.clone()]);
-        let source_map = registry.load_local_sources().unwrap();
+        let source_map = registry.load_local_sources("2026-06-01").unwrap();
         let mut backend = create_backend(&source, None).unwrap();
         backend.ensure_ready().await.unwrap();
         let writable = backend.is_writable();
@@ -3048,7 +3053,7 @@ mod tests {
         // implementor lookups from it while another task holds the build
         // lock — the post-refresh lookup herd must never queue behind the
         // rescan (the federated-panel hang of PR #762).
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3087,7 +3092,7 @@ mod tests {
 
     #[tokio::test]
     async fn rebuild_after_refresh_skips_unchanged_bodies_via_memo() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_hoger", "seed");
         let stub = StubBackend::with_files(&[
@@ -3116,7 +3121,7 @@ mod tests {
         // TTL refresh with an UNCHANGED enumeration (same blob shas):
         // the post-refresh rebuild must answer entirely from the memo —
         // zero body fetches.
-        let mut same_map = SourceMap::new();
+        let mut same_map = SourceMap::new("2026-06-01");
         metadata_entry(&mut same_map, "regeling_a", "seed");
         metadata_entry(&mut same_map, "wet_hoger", "seed");
         let refreshed = next_snapshot(&old, same_map).await;
@@ -3132,7 +3137,7 @@ mod tests {
 
         // Next refresh where ONE law's sha moved: only that body is
         // refetched.
-        let mut changed_map = SourceMap::new();
+        let mut changed_map = SourceMap::new("2026-06-01");
         metadata_entry_with_sha(
             &mut changed_map,
             "regeling_a",
@@ -3301,7 +3306,7 @@ mod tests {
 
     #[tokio::test]
     async fn expired_changed_cache_serves_stale_and_recomputes_in_background() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3342,7 +3347,7 @@ mod tests {
 
     #[tokio::test]
     async fn failed_changed_recompute_rearms_stale_and_releases_the_flag() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3588,7 +3593,7 @@ mod tests {
 
     #[tokio::test]
     async fn record_changed_law_folds_a_save_into_the_cached_diff() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3623,7 +3628,7 @@ mod tests {
 
     #[tokio::test]
     async fn sidecar_cache_round_trips_and_resets_per_snapshot() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3716,7 +3721,7 @@ mod tests {
         corpus
             .store_sidecar("scn:wet_a/y.feature".to_string(), None)
             .await;
-        let mut next_map = SourceMap::new();
+        let mut next_map = SourceMap::new("2026-06-01");
         metadata_entry(&mut next_map, "wet_a", "own");
         let next = next_snapshot(&corpus, next_map).await;
         assert!(next.cached_sidecar("scn:wet_a/y.feature").await.is_none());
@@ -3724,7 +3729,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_read_store_is_dropped_after_a_write_bumps_the_generation() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,

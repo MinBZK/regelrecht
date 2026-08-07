@@ -102,15 +102,6 @@ impl RuleContext {
         })
     }
 
-    /// Create a context with a default date (today).
-    ///
-    /// Useful for testing.
-    #[allow(clippy::expect_used)]
-    pub fn with_defaults(parameters: BTreeMap<String, Value>) -> Self {
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        Self::new(parameters, &today).expect("today's date should always be valid")
-    }
-
     /// Set definitions from an article's definitions section.
     ///
     /// Processes the Definition enum to extract actual values.
@@ -799,7 +790,7 @@ mod tests {
 
     #[test]
     fn test_empty_context() {
-        let ctx = RuleContext::with_defaults(BTreeMap::new());
+        let ctx = RuleContext::new(BTreeMap::new(), "2025-01-01").unwrap();
         let result = ctx.resolve("anything");
         assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
     }

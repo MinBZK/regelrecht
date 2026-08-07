@@ -213,7 +213,7 @@ async fn list_scenarios_global_returns_target_law_ids() {
     )
     .unwrap();
     let registry = regelrecht_corpus::CorpusRegistry::load(&manifest, None).unwrap();
-    let source_map = registry.load_local_sources().unwrap();
+    let source_map = registry.load_local_sources("2026-06-01").unwrap();
 
     let mut backends = HashMap::new();
     for source in registry.sources() {

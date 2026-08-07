@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, closed, labeled]
+    types: [opened, synchronize, reopened, closed, labeled, unlabeled]
 
 permissions: {}
 
@@ -14,16 +14,28 @@ env:
   ZAD_PROJECT: regel-k4c
 
 jobs:
-  # De fork-voorwaarde schakelt via `needs: changes` de hele build- en
-  # deploy-keten uit. Een fork-PR krijgt geen secrets en een read-only
-  # GITHUB_TOKEN, dus de push naar GHCR faalt daar per definitie.
+  # Deze job is de poort van de hele keten: alles wat bouwt of deployt hangt er
+  # via `needs: changes` aan, dus wat hier niet doorkomt kost geen runner.
+  #
+  # Een PR bouwt alleen met het label `preview` erop. Getoetst op aanwezigheid
+  # van het label, niet op het soort gebeurtenis, zodat dezelfde regel geldt bij
+  # openen, bij elke volgende commit en op het moment dat het label erbij komt.
+  # Bij `unlabeled` bouwt de keten nooit; dat event bestaat hier alleen om
+  # cleanup-preview af te trappen.
+  #
+  # Een fork-PR krijgt geen secrets en een read-only GITHUB_TOKEN, dus de push
+  # naar GHCR faalt daar per definitie.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: >-
       github.event.action != 'closed' &&
+      github.event.action != 'unlabeled' &&
       github.event.pull_request.head.repo.fork != true &&
-      (github.event.action != 'labeled' || startsWith(github.event.label.name, 'deploy:'))
+      (
+        github.event_name == 'push' ||
+        contains(github.event.pull_request.labels.*.name, 'preview')
+      )
     permissions:
       contents: read
     outputs:
@@ -398,11 +410,20 @@ jobs:
   cleanup-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Het label eraf halen ruimt op, net als het sluiten van de PR: een preview
+    # waar niemand meer naar kijkt hoort niet te blijven draaien. Sluiten ruimt
+    # ook op zonder dat het label er ooit op zat, want dan valt er niets te
+    # verwijderen en prunet deze job alsnog de verweesde sha-images.
+    #
     # Een fork-PR heeft nooit gebouwd of gedeployd, dus er valt niets op te
     # ruimen en de GHCR-aanroepen zouden alleen maar op rechten stuklopen.
     if: >-
-      github.event_name == 'pull_request' && github.event.action == 'closed' &&
-      github.event.pull_request.head.repo.fork != true
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.fork != true &&
+      (
+        github.event.action == 'closed' ||
+        (github.event.action == 'unlabeled' && github.event.label.name == 'preview')
+      )
     permissions:
       packages: write
       deployments: write

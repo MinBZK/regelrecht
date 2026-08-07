@@ -96,12 +96,19 @@ export function documentFileUrl(trajectRef, docPath) {
   return `${corpusBase(trajectRef)}/documents/${encoded}`;
 }
 
-// Multipart upload of a PDF/Word document; the backend stores the bytes
-// and enqueues an async conversion-to-markdown job. Traject-scoped only,
-// like the other document builders.
-export function documentUploadUrl(trajectRef) {
+// Multipart upload of a document; the backend stores the bytes and enqueues
+// an async conversion-to-markdown job. Traject-scoped only, like the other
+// document builders.
+//
+// `allowLlm` is de keuze van de gebruiker in de uploadbevestiging en gaat mee
+// als query-parameter, niet als multipart-veld: de backend leest het
+// multipart-body maar tot en met het `file`-veld, dus een extra veld zou
+// stilzwijgend van de veldvolgorde afhangen. Weglaten = geen toestemming; de
+// parameter alleen zetten wanneer hij `true` is houdt de URL eerlijk kort.
+export function documentUploadUrl(trajectRef, { allowLlm = false } = {}) {
   requireTraject(trajectRef, 'document upload');
-  return `${corpusBase(trajectRef)}/documents/upload`;
+  const base = `${corpusBase(trajectRef)}/documents/upload`;
+  return allowLlm ? `${base}?llm=1` : base;
 }
 
 // Upload a source document that becomes a NEW law in the traject: the

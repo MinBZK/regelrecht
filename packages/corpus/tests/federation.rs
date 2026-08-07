@@ -38,7 +38,7 @@ fn test_single_source_loads_all_laws() {
     let central_dir = fixtures_dir().join("central");
     let source = make_local_source("central", "Central", central_dir, 1);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     let count = map.load_source(&source).unwrap();
 
     assert_eq!(count, 1);
@@ -56,7 +56,7 @@ fn test_multi_source_no_overlap() {
     let source_central = make_local_source("central", "Central", central_dir, 1);
     let source_a = make_local_source("gemeente-a", "Gemeente A", gemeente_a_dir, 10);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source_central).unwrap();
     map.load_source(&source_a).unwrap();
 
@@ -81,7 +81,7 @@ fn test_multi_source_multiple_gemeenten() {
     let source_a = make_local_source("gemeente-a", "Gemeente A", gemeente_a_dir, 10);
     let source_b = make_local_source("gemeente-b", "Gemeente B", gemeente_b_dir, 10);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source_a).unwrap();
     map.load_source(&source_b).unwrap();
 
@@ -106,7 +106,7 @@ fn test_priority_conflict_central_wins() {
     let source_central = make_local_source("central", "Central", central_dir, 1);
     let source_overlap = make_local_source("overlap", "Overlap", overlap_dir, 10);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source_central).unwrap();
     map.load_source(&source_overlap).unwrap();
 
@@ -133,7 +133,7 @@ fn test_equal_priority_conflict_is_error() {
     let source_a = make_local_source("source-a", "Source A", central_dir, 5);
     let source_b = make_local_source("source-b", "Source B", overlap_dir, 5);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source_a).unwrap();
     let result = map.load_source(&source_b);
 
@@ -173,7 +173,7 @@ sources:
 
     let registry = CorpusRegistry::from_yaml(&yaml).unwrap();
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     for source in registry.sources() {
         map.load_source(source).unwrap();
     }
@@ -190,7 +190,7 @@ fn test_empty_source_no_error() {
     let empty_dir = tempfile::TempDir::new().unwrap();
     let source = make_local_source("empty", "Empty", empty_dir.path().to_path_buf(), 1);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     let count = map.load_source(&source).unwrap();
 
     assert_eq!(count, 0);
@@ -207,7 +207,7 @@ fn test_invalid_yaml_skipped() {
     std::fs::write(&bad_file, "this is not valid regulation yaml").unwrap();
 
     let source = make_local_source("bad", "Bad", dir.path().to_path_buf(), 1);
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
 
     // Should not error — files without $id are just skipped
     let count = map.load_source(&source).unwrap();
@@ -278,7 +278,7 @@ fn test_multi_repo_only_repo1() {
     let repo1 = make_test_source("repo1");
     let source = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 1);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source).unwrap();
 
     let service = load_into_engine(&map);
@@ -299,7 +299,7 @@ fn test_multi_repo_only_repo2() {
     let repo2 = make_test_source("repo2");
     let source = make_local_source("repo2", "Repo 2", repo2.path().to_path_buf(), 1);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source).unwrap();
 
     let service = load_into_engine(&map);
@@ -323,7 +323,7 @@ fn test_multi_repo_both_repos_priority_wins() {
     let source1 = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 1);
     let source2 = make_local_source("repo2", "Repo 2", repo2.path().to_path_buf(), 10);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source1).unwrap();
     map.load_source(&source2).unwrap();
 
@@ -367,7 +367,7 @@ fn test_multi_repo_reversed_priority() {
     let source1 = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 10);
     let source2 = make_local_source("repo2", "Repo 2", repo2.path().to_path_buf(), 1);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source1).unwrap();
     map.load_source(&source2).unwrap();
 
@@ -407,7 +407,7 @@ fn test_source_map_to_engine() {
     let source_central = make_local_source("central", "Central", central_dir, 1);
     let source_a = make_local_source("gemeente-a", "Gemeente A", gemeente_a_dir, 10);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source_central).unwrap();
     map.load_source(&source_a).unwrap();
 
@@ -468,7 +468,7 @@ fn test_priority_conflict_correct_law_executes() {
     let source_central = make_local_source("central", "Central", central_dir, 1);
     let source_overlap = make_local_source("overlap", "Overlap", overlap_dir, 10);
 
-    let mut map = SourceMap::new();
+    let mut map = SourceMap::new("2026-06-01");
     map.load_source(&source_central).unwrap();
     map.load_source(&source_overlap).unwrap();
 
