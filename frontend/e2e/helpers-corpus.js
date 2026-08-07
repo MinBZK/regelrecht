@@ -31,6 +31,32 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const CORPUS_ROOT = resolve(__dirname, '../../corpus/regulation/nl');
 
 /**
+ * Recursively walk a corpus directory, parsing every YAML that carries an
+ * `$id`, and hand each one to `onLaw({ lawId, content, path, pubDate })`.
+ * The two loaders below differ only in what they do with that call.
+ */
+function walkCorpus(rootDir, onLaw) {
+  for (const entry of readdirSync(rootDir)) {
+    const full = resolve(rootDir, entry);
+    if (statSync(full).isDirectory()) {
+      walkCorpus(full, onLaw);
+      continue;
+    }
+    if (!entry.endsWith('.yaml')) continue;
+    const content = readFileSync(full, 'utf-8');
+    const idMatch = content.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
+    if (!idMatch) continue;
+    const pubMatch = content.match(/^publication_date:\s*['"]?([^'"\n]+)['"]?$/m);
+    onLaw({
+      lawId: idMatch[1].trim(),
+      content,
+      path: full,
+      pubDate: pubMatch ? pubMatch[1].trim() : '',
+    });
+  }
+}
+
+/**
  * Recursively walk a corpus directory and pick one YAML per `$id`,
  * preferring the latest publication date. Returns a Map<lawId,
  * { content, path, pubDate }>.
@@ -46,28 +72,12 @@ export const CORPUS_ROOT = resolve(__dirname, '../../corpus/regulation/nl');
  */
 export function loadCorpus(rootDir = CORPUS_ROOT) {
   const byId = new Map();
-
-  function visit(dir) {
-    for (const entry of readdirSync(dir)) {
-      const full = resolve(dir, entry);
-      if (statSync(full).isDirectory()) {
-        visit(full);
-      } else if (entry.endsWith('.yaml')) {
-        const content = readFileSync(full, 'utf-8');
-        const idMatch = content.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
-        if (!idMatch) continue;
-        const lawId = idMatch[1].trim();
-        const pubMatch = content.match(/^publication_date:\s*['"]?([^'"\n]+)['"]?$/m);
-        const pubDate = pubMatch ? pubMatch[1].trim() : '';
-        const existing = byId.get(lawId);
-        if (!existing || pubDate > existing.pubDate) {
-          byId.set(lawId, { content, path: full, pubDate });
-        }
-      }
+  walkCorpus(rootDir, ({ lawId, content, path, pubDate }) => {
+    const existing = byId.get(lawId);
+    if (!existing || pubDate > existing.pubDate) {
+      byId.set(lawId, { content, path, pubDate });
     }
-  }
-
-  visit(rootDir);
+  });
   return byId;
 }
 
@@ -83,27 +93,11 @@ export function loadCorpus(rootDir = CORPUS_ROOT) {
  */
 export function loadCorpusVersions(rootDir = CORPUS_ROOT) {
   const byId = new Map();
-
-  function visit(dir) {
-    for (const entry of readdirSync(dir)) {
-      const full = resolve(dir, entry);
-      if (statSync(full).isDirectory()) {
-        visit(full);
-      } else if (entry.endsWith('.yaml')) {
-        const content = readFileSync(full, 'utf-8');
-        const idMatch = content.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
-        if (!idMatch) continue;
-        const lawId = idMatch[1].trim();
-        const pubMatch = content.match(/^publication_date:\s*['"]?([^'"\n]+)['"]?$/m);
-        const pubDate = pubMatch ? pubMatch[1].trim() : '';
-        const list = byId.get(lawId) ?? [];
-        list.push({ content, pubDate });
-        byId.set(lawId, list);
-      }
-    }
-  }
-
-  visit(rootDir);
+  walkCorpus(rootDir, ({ lawId, content, pubDate }) => {
+    const list = byId.get(lawId) ?? [];
+    list.push({ content, pubDate });
+    byId.set(lawId, list);
+  });
   // Newest-first, matching the editor-api `/versions` contract.
   for (const [id, list] of byId) {
     list.sort((a, b) => (a.pubDate < b.pubDate ? 1 : a.pubDate > b.pubDate ? -1 : 0));
