@@ -1584,8 +1584,26 @@ async fn resolve_backend_for_law(
             continue;
         }
         let backend = entry.backend.lock().await;
-        let exists = backend.read_file(law_rel).await.ok().flatten().is_some();
+        let read = backend.read_file(law_rel).await;
         drop(backend);
+        // A failed read is not "this source doesn't hold the law". The
+        // candidate is still skipped — another one may serve the write,
+        // and failing the whole resolve on one unreachable source would be
+        // worse — but the reason has to reach the logs, or a fallback that
+        // silently stopped matching is undiagnosable.
+        let exists = match read {
+            Ok(found) => found.is_some(),
+            Err(e) => {
+                tracing::warn!(
+                    law_id = %law_id,
+                    candidate_source = %source_id,
+                    error = %e,
+                    "could not read the law from a candidate source; skipping it as a \
+                     write target without knowing whether it holds the law"
+                );
+                false
+            }
+        };
         if exists {
             tracing::warn!(
                 law_id = %law_id,

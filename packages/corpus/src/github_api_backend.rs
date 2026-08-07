@@ -25,6 +25,25 @@
 //! surfaced as [`CorpusError::Conflict`] for the caller to deal with.
 //! For `save_annotations`'s append-only flow this is safe because dedup
 //! happens against the freshly-read base before re-writing.
+//!
+//! ### Known gap: a branch minted by someone else
+//!
+//! A read that lands before the traject branch exists is told "absent",
+//! and the branch is then seeded from base, so the file may hold base
+//! content the read never saw. `persist` refuses to adopt such a file
+//! (`may_adopt_existing` in [`try_put`]) — but only when *this* backend
+//! instance minted the branch. A second replica or session minting it
+//! between this instance's read and its persist leaves the same window
+//! open, and nothing here notices.
+//!
+//! Closing it takes a compare-and-set against the branch tip, which the
+//! Contents API does not offer: its `sha` parameter guards the blob, not
+//! the ref. That means moving writes to the Git Data API (blob → tree →
+//! commit → `PATCH /git/refs` with the expected old sha), the same rework
+//! the multi-file atomicity gap above needs. Until then the gap is real
+//! and unguarded; it is narrow (the branch is minted on first activation,
+//! by whoever gets there first) and it fails loudly on the far more
+//! common single-instance path.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -773,10 +792,9 @@ impl RepoBackend for GitHubApiBackend {
         // (notes) would come back holding only the new entry. So a write
         // whose own read saw absence is create-only here.
         //
-        // Residual: this catches the branch *we* mint. Another replica
-        // minting it between our read and our persist leaves the same
-        // window open, which only a compare-and-set against the branch
-        // tip would close.
+        // This catches the branch *we* mint, and only that one — see the
+        // "known gap" section in the module docs for the window a branch
+        // minted elsewhere leaves open, and what it takes to close it.
         let mut branch_just_created = false;
         if !inner.branch_ready {
             branch_just_created = Self::ensure_branch(
@@ -942,6 +960,10 @@ impl RepoBackend for GitHubApiBackend {
 /// on it). It is refused when the branch was just seeded from base,
 /// because then "already there" means base content the caller never read,
 /// and adopting it replaces that content instead of building on it.
+///
+/// The caller derives that flag from its own `ensure_branch` call, so a
+/// branch minted by another instance does not set it — the module docs'
+/// "known gap" section names what that leaves open.
 #[allow(clippy::too_many_arguments)]
 async fn try_put(
     client: &GithubClient,
@@ -994,7 +1016,8 @@ async fn try_put(
                 "refusing to overwrite base content on a freshly created branch"
             );
             Err(CorpusError::Conflict(format!(
-                "'{path}' already exists on the branch that was just created from base;                  the write was prepared against a branch that did not exist yet"
+                "'{path}' already exists on the branch that was just created from base; \
+                 the write was prepared against a branch that did not exist yet"
             )))
         }
         Err(e) if is_unsigned_existing_file(&e) => {
