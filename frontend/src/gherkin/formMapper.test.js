@@ -208,6 +208,38 @@ Feature: Custom steps
     expect(s.unmatchedSteps[0].text).toBe('the healthcare allowance law is executed');
   });
 
+  // Overgeslagen tot issue 1158: het formuliermodel houdt één `execution` vast
+  // (formMapper.js:183 neemt `executions[0]`), terwijl de classifier ze alle
+  // verzamelt. Elke tweede en volgende `When I evaluate` verdwijnt dus bij
+  // opslaan - in bijstand.feature van 22 naar 11 evaluatiestappen. De fix
+  // verbouwt `execution` naar `executions` en raakt de vorm waar de rest van
+  // deze suite op rust, dus die hoort bij dat issue; deze test legt vast wat
+  // hij moet opleveren. Scenario letterlijk uit
+  // corpus/regulation/nl/wet/participatiewet/scenarios/bijstand.feature:26-40.
+  it.skip('keeps a second evaluate step through a save round-trip (issue 1158)', () => {
+    const original = `Feature: Twee evaluaties
+
+  Scenario: Alleenstaande burger krijgt volledige bijstand
+    Given the following parameters:
+      | bsn                                        | 123456789 |
+      | gemeente_code                              | GM0384    |
+      | leeftijd                                   | 35        |
+      | is_alleenstaande                           | true      |
+      | heeft_kostendelende_medebewoners           | false     |
+      | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+      | gedragscategorie                           | 0         |
+    When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+    Then the execution succeeds
+    Then output "heeft_recht_op_bijstand" is true
+    When I evaluate "uitkering_bedrag" of "participatiewet"
+    Then output "uitkering_bedrag" equals 109171
+`;
+
+    const gherkin = formStateToGherkin(mapFeatureToForm(parseFeature(original)));
+    expect(gherkin).toContain('When I evaluate "heeft_recht_op_bijstand" of "participatiewet"');
+    expect(gherkin).toContain('When I evaluate "uitkering_bedrag" of "participatiewet"');
+  });
+
   it('handles multiple scenarios', () => {
     const parsed = parseFeature(`
 Feature: Multi scenario
@@ -295,6 +327,34 @@ describe('formStateToGherkin round-trip', () => {
     expect(reformatted.scenarios[0].setup.parameters).toEqual(form.scenarios[0].setup.parameters);
     expect(reformatted.scenarios[0].execution).toEqual(form.scenarios[0].execution);
     expect(reformatted.scenarios[0].assertions).toEqual(form.scenarios[0].assertions);
+  });
+
+  // Een opslagronde die de tags kwijtraakt zet een bewust overgeslagen scenario
+  // weer aan. `@wip` markeert in het corpus een gewenste uitkomst die de engine
+  // nog niet levert (eligibility.feature:43), dus terugschrijven is niet
+  // cosmetisch: zonder de tag claimt het bestand iets wat niet waar is.
+  it('keeps scenario tags through a save round-trip', () => {
+    const original = `Feature: Tags
+
+  @wip
+  Scenario: Minderjarige heeft geen recht
+    When I evaluate "heeft_recht" of "wet_op_de_zorgtoeslag"
+    Then output "heeft_recht" is false
+
+  Scenario: Meerderjarige heeft wel recht
+    When I evaluate "heeft_recht" of "wet_op_de_zorgtoeslag"
+    Then output "heeft_recht" is true
+`;
+
+    const form = mapFeatureToForm(parseFeature(original));
+    expect(form.scenarios[0].tags).toEqual(['@wip']);
+    expect(form.scenarios[1].tags).toEqual([]);
+
+    const regenerated = formStateToGherkin(form);
+    expect(regenerated).toContain('  @wip\n  Scenario: Minderjarige heeft geen recht');
+
+    const reformatted = mapFeatureToForm(parseFeature(regenerated));
+    expect(reformatted.scenarios.map((s) => s.tags)).toEqual([['@wip'], []]);
   });
 
   it('round-trips a feature with background and data sources', () => {

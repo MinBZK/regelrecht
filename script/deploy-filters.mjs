@@ -21,6 +21,11 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+// De npm-workspace-wortel. Beide frontend-images doen `npm ci` over de hele
+// workspace, dus ze kopiëren deze drie bestanden plus het package.json van
+// elke workspace-member - ook die van de frontend die ze zelf niet bouwen.
+const NPM_WORKSPACE = ['package.json', 'package-lock.json', '.npmrc'];
+
 // Per component: de crate waar het image aan hangt (of null), plus de paden
 // buiten de graaf die het image beïnvloeden.
 export const COMPONENTS = {
@@ -29,6 +34,8 @@ export const COMPONENTS = {
     paths: [
       'frontend/',
       'packages/frontend-shared/',
+      'frontend-lawmaking/package.json',
+      ...NPM_WORKSPACE,
       'corpus-registry.yaml',
       'corpus/regulation/',
     ],
@@ -52,7 +59,12 @@ export const COMPONENTS = {
   grafana: { crate: null, paths: ['packages/grafana/'] },
   lawmaking: {
     crate: null,
-    paths: ['frontend-lawmaking/', 'packages/frontend-shared/'],
+    paths: [
+      'frontend-lawmaking/',
+      'packages/frontend-shared/',
+      'frontend/package.json',
+      ...NPM_WORKSPACE,
+    ],
   },
   docs: { crate: null, paths: ['docs/'] },
 };

@@ -214,6 +214,25 @@ describe('TasksCategoriesPane', () => {
     ]);
   });
 
+  it('geeft een lopende wetconversie aan Werkdocumenten, niet aan een lawdoc:-wet', async () => {
+    // Een law_convert maakt pas een wet; tot die tijd is het lawdoc:-law_id een
+    // sleutel naar het geüploade document. Zonder deze regel krijgt de lijst
+    // een wet-ingang die "Lawdoc:Zorgtoeslag-Ab12cd34/Notitie.Pdf" heet.
+    const wrapper = await mountPane([], [
+      {
+        job_id: 'j3',
+        job_type: 'law_convert',
+        law_id: 'lawdoc:zorgtoeslag-ab12cd34/notitie.pdf',
+        target_path: 'notitie.pdf',
+      },
+    ]);
+    expect(labelsOf(wrapper)).toEqual([
+      'Wachten op',
+      'Alle taken',
+      'Werkdocumenten',
+    ]);
+  });
+
   it('markeert de gekozen categorie als geselecteerd', async () => {
     // Mét een werkdocument-taak: zonder werk bestaat die context niet meer.
     const wrapper = await mountPane([DOC_TASK], [], { categorie: 'werkdocumenten' });

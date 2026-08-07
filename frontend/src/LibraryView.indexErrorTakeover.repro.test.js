@@ -45,7 +45,7 @@ vi.mock('./composables/useTrajects.js', () => {
   return {
     useTrajects: () => ({
       activeTrajectRef: trajectScope.activeTrajectRef,
-      activeTraject: ref({ name: 'Afgeschermde test Kandidaatstellingsprocedure Kieswet' }),
+      activeTraject: ref({ name: 'Voorbeeldtraject Fietsvergoeding' }),
     }),
     refreshTrajects: vi.fn(),
   };
@@ -68,7 +68,7 @@ const { ApiErrorStub, apiFetch, apiFetchJson } = vi.hoisted(() => {
   }
   const BODY =
     'De bibliotheek van dit traject is niet beschikbaar: de traject-repo kon niet ' +
-    'worden gescand (Trees API for org/afgeschermd-traject@main: 409)';
+    'worden gescand (Trees API for example-org/regelrecht-corpus-example@main: 409)';
   const fail = () => {
     throw new ApiErrorStub('Failed to load corpus: 502', { status: 502, body: BODY });
   };

@@ -24,8 +24,10 @@ use crate::helpers::regulation_loader::load_all_regulations;
 pub struct RegelrechtWorld {
     /// Law execution service with all regulations loaded
     pub service: LawExecutionService,
-    /// Calculation date for the current scenario
-    pub calculation_date: String,
+    /// Calculation date for the current scenario. `None` until the scenario
+    /// sets it: laws are versioned per date, so a default would silently pick a
+    /// law version instead of failing.
+    pub calculation_date: Option<String>,
     /// Parameters for law execution
     pub parameters: BTreeMap<String, Value>,
     /// Last execution result (if successful)
@@ -77,7 +79,7 @@ impl RegelrechtWorld {
 
         Self {
             service,
-            calculation_date: "2024-01-01".to_string(),
+            calculation_date: None,
             parameters: BTreeMap::new(),
             result: None,
             error: None,
@@ -92,7 +94,7 @@ impl RegelrechtWorld {
     /// Clear state between scenarios (but keep service loaded)
     #[allow(dead_code)]
     pub fn reset_scenario_state(&mut self) {
-        self.calculation_date = "2024-01-01".to_string();
+        self.calculation_date = None;
         self.parameters.clear();
         self.result = None;
         self.error = None;
@@ -108,24 +110,33 @@ impl RegelrechtWorld {
         std::env::var("TRACE").is_ok_and(|v| !v.is_empty() && v != "0")
     }
 
+    /// The scenario's calculation date, or a loud failure when the scenario
+    /// never declared one.
+    pub fn calculation_date(&self) -> String {
+        match &self.calculation_date {
+            Some(date) => date.clone(),
+            None => panic!(
+                "no calculation date set — a scenario must declare \
+                 'Given the calculation date is <date>' before executing a law"
+            ),
+        }
+    }
+
     /// Execute a law for multiple specific outputs.
     pub fn execute_law_multi(&mut self, law_id: &str, output_names: &[&str]) {
         let trace = Self::trace_enabled();
+        let date = self.calculation_date();
 
         let outcome = if trace {
             self.service.evaluate_law_with_trace(
                 law_id,
                 output_names,
                 self.parameters.clone(),
-                &self.calculation_date,
+                &date,
             )
         } else {
-            self.service.evaluate_law(
-                law_id,
-                output_names,
-                self.parameters.clone(),
-                &self.calculation_date,
-            )
+            self.service
+                .evaluate_law(law_id, output_names, self.parameters.clone(), &date)
         };
 
         match outcome {
@@ -159,7 +170,10 @@ impl RegelrechtWorld {
         let safe_output = output_name.replace('/', "_");
         let filename = format!(
             "{:03}_{}_{}_{}.txt",
-            seq, safe_law_id, safe_output, self.calculation_date
+            seq,
+            safe_law_id,
+            safe_output,
+            self.calculation_date()
         );
         let path = dir.join(&filename);
 

@@ -22,6 +22,15 @@ use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
 use crate::models::{Job, JobType, LawStatusValue, Priority};
 
+/// Law statuses a harvest request must not overwrite with `queued`.
+///
+/// These are the states where a worker is actively operating on the law:
+/// re-queueing would make the status lie about what is running. Completed
+/// states (`harvested`, `enriched`) are deliberately absent — a re-harvest
+/// request of a finished law does put it back in the queue.
+pub const IN_PROGRESS_STATUSES: &[LawStatusValue] =
+    &[LawStatusValue::Harvesting, LawStatusValue::Enriching];
+
 /// Options for a harvest request. `Default` gives the standard pipeline
 /// priority (50) and no date/name/slug.
 #[derive(Debug, Default)]
@@ -136,7 +145,7 @@ pub async fn request_harvest(
     law_status::update_status_unless_any(
         &mut *tx,
         law_id,
-        &[LawStatusValue::Harvesting, LawStatusValue::Enriching],
+        IN_PROGRESS_STATUSES,
         LawStatusValue::Queued,
     )
     .await?;

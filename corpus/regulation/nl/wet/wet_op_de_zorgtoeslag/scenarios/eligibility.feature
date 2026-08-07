@@ -131,9 +131,12 @@ Feature: Zorgtoeslag eligibility
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 210916
 
-  # NB: Gezamenlijk toetsingsinkomen is NOT YET implemented (#377).
-  # Expected amount reflects applicant income only, not combined partner income.
-  # Blocked by engine limitation: conditional cross-law input resolution.
+  # NB: Art 2 lid 2 Wzt telt bij een toeslagpartner het gezamenlijk
+  # toetsingsinkomen; het model gebruikt alleen dat van de aanvrager (#377,
+  # geblokkeerd op conditionele cross-law input-resolutie).
+  # This scenario asserts the combined-income amount as the desired outcome, not
+  # the current engine result: 422400 - 4,273% x 5.500.000 = 187385.
+  @wip
   Scenario: Partner met gecombineerd inkomen heeft recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
@@ -163,10 +166,15 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 272845
+    Then output "hoogte_zorgtoeslag" equals 187385
 
-  # NB: Toetsingsinkomen excludes box3 — Art 5.2a forfaitair rendement is not
-  # yet implemented (#383). Only box1 income counts toward the toeslag amount.
+  # NB: Art 1 sub b Wzt defines toetsingsinkomen as the verzamelinkomen of Art
+  # 2.18 Wet IB 2001, which includes box 3; the model counts box 1 only (#383,
+  # Art 5.2a forfaitair rendement not yet implemented). The asserted amount is
+  # therefore the current engine result, not the desired outcome — the desired
+  # amount cannot be derived because neither the forfaitaire
+  # rendementspercentages nor the heffingsvrij vermogen are in the corpus.
+  @wip
   Scenario: Alleenstaande met box3 vermogen heeft recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |

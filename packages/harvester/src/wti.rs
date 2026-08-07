@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_wti_metadata_koninklijk_besluit_maps_to_amvb_with_warning() {
+    fn test_parse_wti_metadata_koninklijk_besluit_keeps_own_layer() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <wti-metagegevens bwb-id="BWBR0000001">
   <citeertitel status="officieel">Test KB</citeertitel>
@@ -245,9 +245,11 @@ mod tests {
         let doc = Document::parse(xml).unwrap();
         let result = parse_wti_metadata(&doc);
 
-        assert_eq!(result.metadata.regulatory_layer, RegulatoryLayer::Amvb);
-        assert_eq!(result.warnings.len(), 1);
-        assert!(result.warnings[0].contains("koninklijk besluit"));
+        assert_eq!(
+            result.metadata.regulatory_layer,
+            RegulatoryLayer::KoninklijkBesluit
+        );
+        assert!(result.warnings.is_empty(), "{:?}", result.warnings);
     }
 
     #[test]

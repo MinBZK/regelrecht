@@ -93,7 +93,16 @@ mod tests {
 
     #[test]
     fn test_version() {
-        assert_eq!(VERSION, "0.3.0");
+        assert_eq!(VERSION, env!("CARGO_PKG_VERSION"));
+        assert!(!VERSION.is_empty());
+        let parts: Vec<&str> = VERSION.split('.').collect();
+        assert_eq!(parts.len(), 3, "version is not semver-shaped: {VERSION}");
+        for part in parts {
+            assert!(
+                !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()),
+                "version component is not numeric: {VERSION}"
+            );
+        }
     }
 
     #[test]

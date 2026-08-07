@@ -65,19 +65,34 @@ export function taskLawId(task) {
 }
 
 /**
+ * Draagt dit law_id een echte wet, of een synthetische sleutel?
+ *
+ * Een conversie heeft nog geen wet om naar te wijzen en zet daar een sleutel
+ * met een schema-prefix neer: `doc:{traject_ref}/{target_path}` voor een
+ * werkdocument (corpus_handlers.rs:3502) en `lawdoc:{traject_ref}/{filename}`
+ * voor een geüploade wet (corpus_handlers.rs:3594). Een echte identificatie
+ * kent zo'n prefix niet: een wet-$id is snake_case (`wet_op_de_zorgtoeslag`) en
+ * een traject_harvest draagt een BWB-id (`BWBR0018450`). De prefix is daarmee
+ * het onderscheid zelf, en niet een lijst jobtypen die achter elk nieuw
+ * conversietype aan moet lopen.
+ */
+function isSyntheticLawId(lawId) {
+  return typeof lawId === 'string' && /^[a-z]+:/.test(lawId);
+}
+
+/**
  * De context van een lopende job. Andere vorm dan een taak (jobs komen uit de
  * jobs-tabel, zie RunningTaskJob in tasks.rs), dus een eigen functie - maar
  * dezelfde contexten, zodat "waar gaat dit over" één antwoord houdt.
  *
- * De val zit in `law_id`: een document_convert-job draagt daar een synthetische
- * `doc:{traject_ref}/{target_path}`-sleutel (corpus_handlers.rs:2943), géén
- * wet. Vandaar dat het job_type beslist en niet de aanwezigheid van law_id -
- * anders zou elke lopende conversie als "wet" tellen, met een `doc:`-string als
- * naam in het panel.
+ * De val zit in `law_id`: bij een conversie staat daar een synthetische sleutel
+ * en géén wet. Zonder die check krijgt elke lopende conversie een eigen
+ * wet-ingang, met de sleutel als naam en een "Bekijk wet" die naar een wet
+ * navigeert die niet bestaat.
  */
 export function jobContext(job) {
   if (!job) return null;
-  if (job.job_type === 'document_convert') return WERKDOCUMENTEN;
+  if (isSyntheticLawId(job.law_id)) return WERKDOCUMENTEN;
   return job.law_id ? WET : null;
 }
 

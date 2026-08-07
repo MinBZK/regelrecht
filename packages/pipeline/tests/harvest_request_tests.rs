@@ -218,6 +218,27 @@ async fn does_not_downgrade_in_progress_status() {
 }
 
 #[tokio::test]
+async fn does_not_downgrade_enriching_status() {
+    let db = TestDb::new().await;
+
+    // Enrichment runs on a harvested law, so a re-harvest request can arrive
+    // while a worker is enriching. The job is created, but the status must
+    // keep reporting the work in flight instead of dropping back to 'queued'.
+    law_status::upsert_law(&db.pool, LAW_ID, None, None)
+        .await
+        .unwrap();
+    law_status::update_status(&db.pool, LAW_ID, LawStatusValue::Enriching)
+        .await
+        .unwrap();
+
+    let outcome = request_harvest(&db.pool, LAW_ID, opts()).await.unwrap();
+    assert!(matches!(outcome, HarvestRequestOutcome::Created(_)));
+
+    let entry = law_status::get_law(&db.pool, LAW_ID).await.unwrap();
+    assert_eq!(entry.status, LawStatusValue::Enriching);
+}
+
+#[tokio::test]
 async fn resets_completed_status_to_queued() {
     let db = TestDb::new().await;
 

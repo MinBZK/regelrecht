@@ -34,13 +34,8 @@ pub fn regulatory_layer_from_soort_regeling(text: &str) -> (RegulatoryLayer, Opt
         "gemeentelijke verordening" => (RegulatoryLayer::GemeentelijkeVerordening, None),
         "provinciale verordening" => (RegulatoryLayer::ProvincialeVerordening, None),
         "waterschapsverordening" => (RegulatoryLayer::WaterschapsVerordening, None),
+        "koninklijk besluit" | "kb" => (RegulatoryLayer::KoninklijkBesluit, None),
         // Ambiguous mappings - produce warnings
-        "koninklijk besluit" | "kb" => (
-            RegulatoryLayer::Amvb,
-            Some(format!(
-                "Mapped soort-regeling '{text}' to AMVB (closest schema match)"
-            )),
-        ),
         "regeling" => (
             RegulatoryLayer::MinisterieleRegeling,
             Some(format!(
@@ -436,11 +431,16 @@ mod tests {
             (RegulatoryLayer::Verdrag, None)
         );
 
-        // Ambiguous mappings - produce warnings
-        let (layer, warning) = regulatory_layer_from_soort_regeling("koninklijk besluit");
-        assert_eq!(layer, RegulatoryLayer::Amvb);
-        assert!(warning.is_some());
+        assert_eq!(
+            regulatory_layer_from_soort_regeling("koninklijk besluit"),
+            (RegulatoryLayer::KoninklijkBesluit, None)
+        );
+        assert_eq!(
+            regulatory_layer_from_soort_regeling("kb"),
+            (RegulatoryLayer::KoninklijkBesluit, None)
+        );
 
+        // Ambiguous mappings - produce warnings
         let (layer, warning) = regulatory_layer_from_soort_regeling("regeling");
         assert_eq!(layer, RegulatoryLayer::MinisterieleRegeling);
         assert!(warning.is_some());

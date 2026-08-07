@@ -50,6 +50,13 @@ Feature: Untranslatables — RFC-012
     Then the execution succeeds
     Then output "afgerond_bedrag" equals 1234
 
+  Scenario: A single numeric parameter reaches the engine like a table row does
+    Given the untranslatable mode is "warn"
+    Given parameter "bedrag" is 1234
+    When I evaluate "afgerond_bedrag" of "test_untranslatables"
+    Then the execution succeeds
+    Then output "afgerond_bedrag" equals 1234
+
   # === Ignore mode ===
 
   Scenario: Ignore mode rejects unaccepted untranslatable
