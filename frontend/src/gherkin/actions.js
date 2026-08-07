@@ -9,8 +9,9 @@
  * feature can never silently no-op in the editor.
  *
  * `args` is the ordered capture list (typed per the grammar's argTypes) with any
- * grammar `literals` appended. `table` is the step's dataTable rows (string[][],
- * header row first) or null.
+ * grammar `literals` appended. `table` is the step's dataTable rows (string[][])
+ * or null. Whether row 0 is a header depends on the step: a data-source table
+ * has one, a parameter table does not.
  */
 
 /**
@@ -115,11 +116,12 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
       ctx.parameters[args[0]] = args[1];
       break;
 
+    // No header row on a parameter table (mirror of Rust `rows_to_params`);
+    // every row is a name/value pair.
     case 'set_parameters_table':
-      if (table) {
-        for (const row of table.slice(1)) {
-          ctx.parameters[row[0]] = parseValue(row[1] || '');
-        }
+      for (const row of table || []) {
+        if (row.length < 2) continue;
+        ctx.parameters[row[0].trim()] = parseValue(row[1] || '');
       }
       break;
 
