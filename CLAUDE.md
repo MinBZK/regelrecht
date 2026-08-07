@@ -213,6 +213,57 @@ After completing significant code changes, proactively use the `code-reviewer` s
 All components are deployed to ZAD (RIG/Quattro/rijksapps) via `.github/workflows/deploy.yml`.
 CI runs via `.github/workflows/ci.yml`.
 
+### The Claude review merge gate
+
+`claude-code-review.yml` posts its findings as review comments and takes about
+ten minutes, roughly twice as long as the required checks. Merging on green
+therefore used to be possible before the review had said anything. The
+`review-gate` job (check name **Claude review completed**) closes that window:
+it waits for the `claude-review` job **inside its own workflow run** and only
+passes once that job is `completed` with `success` or `neutral`. It looks the
+job up by run id rather than by head SHA, because `ready_for_review` and
+`reopened` keep the same SHA and a SHA lookup can then read a leftover check-run
+from the previous run.
+
+Drive the wait off the job's `status`, never off the number of review comments —
+zero comments is equally consistent with "still running".
+
+`claude-review` itself cannot be a required check, because it does not run on
+cross-repo (fork) PRs, where no secrets exist and `CLAUDE_CODE_OAUTH_TOKEN` is
+absent, and a required check that never reports blocks such a PR forever.
+`review-gate` always runs and always reports; it derives "not applicable" from
+the PR itself (cross-repo, draft, dependabot) rather than from `claude-review`'s
+conclusion, so a failed or skipped review can never pass as an inapplicable one.
+
+Dependabot is a deliberate exemption, not an oversight: those PRs go through
+`claude-dependabot.yml`, and that workflow decides for itself whether to merge.
+The gate does not verify that it ran.
+
+A green job is not enough on its own. `claude-code-action` exits with conclusion
+`success` **without reviewing anything** when the workflow file differs from the
+version on the default branch ("Exiting due to workflow validation skip"). The
+gate therefore also requires that `claude[bot]` posted a comment or review after
+the job started. Practical consequence: a PR that edits
+`.github/workflows/claude-code-review.yml` cannot get a green gate, and needs a
+human review plus an admin merge. Every other PR is unaffected.
+
+The gate runs the copy of its own script from the base branch, not the one in
+the PR — otherwise a PR could turn the script into `exit 0` and be green by
+construction. If that copy cannot be fetched or checked out, the gate blocks
+rather than falling back to the PR's version.
+
+It looks the review job up with `filter=all`, because the run id survives a
+"Re-run this job" and `claude-review` is then absent from the newest attempt's
+job list.
+
+The gate proves the review ran to completion for this commit and produced
+output. It says nothing about the content of the findings or whether they were
+addressed.
+
+The logic lives in `script/await-claude-review.sh`, with
+`script/await-claude-review.test.sh` (a `gh` stub) covering every path that
+decides green versus red; the tests run as a pre-commit hook.
+
 ### Deployed Components
 
 | Component | Image | Production URL |

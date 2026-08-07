@@ -9,8 +9,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A cross-repo PR gets no secrets, so CLAUDE_CODE_OAUTH_TOKEN is empty there and
+  # the action can only fail. Skip instead, and let review-gate report that.
+  # Compare full_name rather than reading `head.repo.fork`: inside a fork of this
+  # repo its own PRs are not cross-repo and do have secrets.
   claude-review:
-    if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'dependabot[bot]' }}
+    if: >-
+      ${{ !github.event.pull_request.draft &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.user.login != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -98,3 +105,62 @@ jobs:
             Also leave inline comments on specific lines where possible.
 
             If there are no issues, say so briefly. Do not pad the review with praise or filler.
+
+  # The merge gate. Unlike claude-review this job has no `if:` — it must run and
+  # report on every PR, cross-repo and dependabot included, because a required
+  # check that never reports blocks such a PR forever.
+  review-gate:
+    name: Claude review completed
+    runs-on: ubuntu-latest
+    # Ruim boven de ~10 minuten die de review kost, zodat een trage run niet
+    # onterecht rood wordt; het script stopt zelf eerder met een duidelijke melding.
+    timeout-minutes: 40
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # De poort mag niet draaien op de versie van zichzelf die in de PR staat:
+      # een PR die het script naar `exit 0` verandert zou anders per definitie
+      # groen zijn. Draai daarom de versie van de base-branch, en blokkeer als
+      # die niet te krijgen is — terugvallen op de PR-versie is precies de
+      # bypass die deze stap moet dichten.
+      - name: Take the gate script from the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GATE: script/await-claude-review.sh
+        run: |
+          set -uo pipefail
+          fail() {
+            echo "::error title=Claude review gate::$1"
+            exit 1
+          }
+          git fetch --depth=1 origin "$BASE_SHA" ||
+            fail "base-commit ${BASE_SHA} is niet op te halen, dus de versie van de poort is niet vast te stellen. Draai deze job opnieuw."
+          git cat-file -e "${BASE_SHA}:${GATE}" 2>/dev/null ||
+            fail "${GATE} bestaat niet op de base-branch (${BASE_SHA}). De poort kan dan niet voor zichzelf instaan; deze PR moet met de hand gereviewd worden."
+          git checkout "$BASE_SHA" -- "$GATE" ||
+            fail "${GATE} is niet uit ${BASE_SHA} te checkouten, dus de poort zou de versie uit deze PR draaien. Draai deze job opnieuw."
+          echo "Poort draait de versie van ${BASE_SHA}."
+
+      - name: Wait for the Claude review of this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IS_CROSS_REPO: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          JOB_NAME: claude-review
+          MAX_WAIT_SECONDS: '2100'
+          POLL_SECONDS: '20'
+        run: script/await-claude-review.sh
