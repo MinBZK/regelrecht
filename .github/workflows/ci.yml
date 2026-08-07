@@ -503,18 +503,39 @@ jobs:
   # relevante wijziging) gelden hier als geslaagd.
   test:
     name: Test
-    needs: [rust-tests, frontend-tests]
+    needs:
+      - rust-tests
+      - frontend-tests
+      # Deze vier draaiden al bij elke PR maar blokkeerden niets. Ze hier
+      # aanhangen kost geen runnerminuut en geen nieuwe required context bij
+      # branch protection.
+      - e2e
+      - cross-law-integrity
+      - provenance-checks
+      - docs-a11y
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Elke voorganger krijgt een eigen `check`-regel; script/ci-gate.test.mjs
+      # rekent na dat de lijst hieronder en `needs` niet uiteenlopen, en dat
+      # skipped geslaagd blijft.
       - name: Gate
         run: |
-          echo "rust-tests: ${{ needs.rust-tests.result }}"
-          echo "frontend-tests: ${{ needs.frontend-tests.result }}"
-          case "${{ needs.rust-tests.result }} ${{ needs.frontend-tests.result }}" in
-            *failure*|*cancelled*) echo "::error::een testbeen faalde"; exit 1 ;;
-          esac
+          status=0
+          check() {
+            case "$2" in
+              failure|cancelled) echo "::error::$1 gaf $2"; status=1 ;;
+              *) echo "$1: $2" ;;
+            esac
+          }
+          check rust-tests "${{ needs.rust-tests.result }}"
+          check frontend-tests "${{ needs.frontend-tests.result }}"
+          check e2e "${{ needs.e2e.result }}"
+          check cross-law-integrity "${{ needs.cross-law-integrity.result }}"
+          check provenance-checks "${{ needs.provenance-checks.result }}"
+          check docs-a11y "${{ needs.docs-a11y.result }}"
+          exit "$status"
 
   wasm:
     name: WASM Build
