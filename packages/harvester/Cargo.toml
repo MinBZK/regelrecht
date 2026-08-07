@@ -28,7 +28,14 @@ chrono.workspace = true
 regex.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-reqwest = "0.13"
+# Same shape as github and pipeline, which already talk to the outside world
+# this way. The reqwest defaults add `charset` (encoding_rs, for transcoding
+# non-UTF-8 response bodies), `http2` and `system-proxy` (the platform proxy
+# lookup, not the HTTP_PROXY env vars). BWB and CVDR serve UTF-8 XML over a
+# direct HTTP/1.1 connection. Trust anchors are unaffected: the `rustls`
+# feature keeps rustls-platform-verifier, so the system trust store is still
+# what verifies the peer.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 async-trait.workspace = true
 tokio = { workspace = true, features = ["time", "rt-multi-thread", "macros"] }
 roxmltree.workspace = true
