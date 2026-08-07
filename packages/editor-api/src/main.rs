@@ -767,21 +767,25 @@ async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
         None
     };
 
-    let source_map = match registry.load_favorites_async(favorites, auth_file).await {
+    let today = regelrecht_shared::dates::today_str();
+    let source_map = match registry
+        .load_favorites_async(favorites, auth_file, &today)
+        .await
+    {
         Ok(map) => {
             tracing::info!(laws = map.len(), "loaded corpus laws");
             map
         }
         Err(e) => {
             tracing::warn!(error = %e, "failed to load favorites from GitHub, falling back to local-only");
-            match registry.load_local_sources() {
+            match registry.load_local_sources(&today) {
                 Ok(map) => {
                     tracing::info!(laws = map.len(), "loaded corpus laws (local-only fallback)");
                     map
                 }
                 Err(e2) => {
                     tracing::warn!(error = %e2, "failed to load local sources");
-                    regelrecht_corpus::SourceMap::new()
+                    regelrecht_corpus::SourceMap::new(regelrecht_shared::dates::today_str())
                 }
             }
         }

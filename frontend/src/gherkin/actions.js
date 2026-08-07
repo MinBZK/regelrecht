@@ -14,6 +14,8 @@
  * has one, a parameter table does not.
  */
 
+import { VALUE_TYPING } from './grammar.generated.js';
+
 /**
  * Parse a string value to a typed value, mirroring Rust value_conversion.rs.
  * - "true"/"false" → boolean
@@ -40,9 +42,39 @@ export function parseValue(str) {
 }
 
 /**
+ * Type a quoted capture. The three `value_typing` rules live in
+ * bdd/grammar.yaml and reach both dispatchers through codegen, so neither
+ * engine can hold its own opinion about what a quote means.
+ */
+export function quotedValue(raw) {
+  switch (VALUE_TYPING.quoted) {
+    case 'literal': return raw;
+    case 'inferred': return parseValue(raw);
+    default:
+      throw new Error(`bdd/grammar.yaml: unknown value_typing.quoted '${VALUE_TYPING.quoted}'`);
+  }
+}
+
+/** Type a bare (unquoted) capture; see [quotedValue] for where the rule lives. */
+export function bareValue(raw) {
+  if (VALUE_TYPING.bare !== 'number') {
+    throw new Error(`bdd/grammar.yaml: unknown value_typing.bare '${VALUE_TYPING.bare}'`);
+  }
+  return Number(raw);
+}
+
+/** Type a data-table cell; see [quotedValue] for where the rule lives. */
+export function tableCellValue(raw) {
+  switch (VALUE_TYPING.table_cell) {
+    case 'inferred': return parseValue(raw);
+    case 'literal': return raw.trim();
+    default:
+      throw new Error(`bdd/grammar.yaml: unknown value_typing.table_cell '${VALUE_TYPING.table_cell}'`);
+  }
+}
+
+/**
  * Parse a data table into record objects using the header row.
- * Values are auto-typed via parseValue() so the engine receives correctly
- * typed numbers, booleans, and nulls.
  *
  * A row that does not match the header row is rejected rather than filled with
  * undefined: today the Gherkin parser already rejects a varying cell count, but
@@ -61,7 +93,7 @@ export function tableToRecords(dataTable) {
     }
     const record = {};
     headers.forEach((h, i) => {
-      record[h] = parseValue(row[i]);
+      record[h] = tableCellValue(row[i]);
     });
     return record;
   });
@@ -123,8 +155,7 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
     }
 
     case 'set_parameter':
-      // String form keeps the raw string (preserves identifiers like BSNs);
-      // numeric form arrives already typed as a Number from the grammar.
+      // Already typed by the grammar's `value_typing` rule in buildArgs.
       ctx.parameters[args[0]] = args[1];
       break;
 
@@ -133,7 +164,7 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
     case 'set_parameters_table':
       for (const row of table || []) {
         if (row.length < 2) continue;
-        ctx.parameters[row[0].trim()] = parseValue(row[1] || '');
+        ctx.parameters[row[0].trim()] = tableCellValue(row[1] || '');
       }
       break;
 

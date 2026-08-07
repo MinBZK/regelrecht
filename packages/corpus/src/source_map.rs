@@ -93,6 +93,12 @@ pub struct SourceMap {
     versions: HashMap<String, Vec<LoadedLaw>>,
     /// Conflicts that were resolved (for reporting).
     resolved_conflicts: Vec<ConflictResolution>,
+    /// The date "currently in force" is measured against when collapsing a
+    /// law's versions to one. Supplied by the caller rather than read off a
+    /// clock here: this crate deliberately carries no time dependency, and the
+    /// answer is a Dutch calendar date (`regelrecht_shared::dates`), not the
+    /// timezone of whichever machine happens to run the scan.
+    reference_date: String,
 }
 
 /// Record of a conflict that was resolved by priority.
@@ -107,12 +113,18 @@ pub struct ConflictResolution {
 
 impl SourceMap {
     /// Create an empty source map.
-    pub fn new() -> Self {
+    pub fn new(reference_date: impl Into<String>) -> Self {
         Self {
             laws: HashMap::new(),
             versions: HashMap::new(),
             resolved_conflicts: Vec::new(),
+            reference_date: reference_date.into(),
         }
+    }
+
+    /// The date this map resolves "currently in force" against.
+    pub fn reference_date(&self) -> &str {
+        &self.reference_date
     }
 
     /// Load laws from a single source directory.
@@ -226,10 +238,12 @@ impl SourceMap {
                 if existing.source_id == law.source_id {
                     let existing_date = extract_date_from_path(&existing.file_path);
                     let new_date = extract_date_from_path(&law.file_path);
-                    let today = today_str();
 
-                    let new_wins =
-                        pick_best_version(existing_date.as_deref(), new_date.as_deref(), &today);
+                    let new_wins = pick_best_version(
+                        existing_date.as_deref(),
+                        new_date.as_deref(),
+                        &self.reference_date,
+                    );
 
                     if new_wins {
                         tracing::debug!(
@@ -512,57 +526,30 @@ impl SourceMap {
     }
 }
 
-impl Default for SourceMap {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Extract a YYYY-MM-DD date from the filename component of a path.
 ///
-/// Matches the convention `…/law_id/2025-01-01.yaml`.
-fn extract_date_from_path(path: &str) -> Option<String> {
+/// Matches the convention `…/law_id/2025-01-01.yaml`. The single extractor for
+/// every route that feeds [`pick_best_version`] — local scan and GitHub tree
+/// alike. That comparison is lexicographic, so any stem that is not a date
+/// sorts against real dates by accident: `2025-01-01-concept` is greater than
+/// `2025-01-01` and would win. Returning `None` keeps such a file out of the
+/// running instead.
+pub(crate) fn extract_date_from_path(path: &str) -> Option<String> {
     let filename = path.rsplit('/').next().unwrap_or(path);
     let stem = filename.strip_suffix(".yaml")?;
-    // Validate YYYY-MM-DD pattern
-    if stem.len() == 10
-        && stem.as_bytes()[4] == b'-'
-        && stem.as_bytes()[7] == b'-'
-        && stem.bytes().filter(|b| b.is_ascii_digit()).count() == 8
-    {
-        Some(stem.to_string())
-    } else {
-        None
+    let bytes = stem.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
     }
-}
-
-/// Return today's date as "YYYY-MM-DD".
-pub(crate) fn today_str() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    // 86400 seconds per day, epoch is 1970-01-01
-    let days = now / 86400;
-    // Simple conversion: count years/months/days from epoch
-    let (y, m, d) = days_to_ymd(days);
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
-/// Convert days since Unix epoch to (year, month, day).
-fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
-    // Algorithm from https://howardhinnant.github.io/date_algorithms.html
-    days += 719_468;
-    let era = days / 146_097;
-    let doe = days - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
+    if !(0..10).all(|i| i == 4 || i == 7 || bytes[i].is_ascii_digit()) {
+        return None;
+    }
+    let month: u32 = stem.get(5..7)?.parse().ok()?;
+    let day: u32 = stem.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some(stem.to_string())
 }
 
 /// Decide whether `new_date` should replace `existing_date`.
@@ -1046,7 +1033,7 @@ mod tests {
         write_yaml(dir.path(), "wet/test_wet/2025-01-01.yaml", "test_wet");
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let original = map.get_law("test_wet").unwrap().clone();
@@ -1083,7 +1070,7 @@ mod tests {
         .unwrap();
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
         assert_eq!(
             map.get_law("test_wet").unwrap().name.as_deref(),
@@ -1099,7 +1086,7 @@ mod tests {
 
     #[test]
     fn test_update_yaml_content_missing_law_returns_false() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let updated = map.update_yaml_content("nonexistent_law", "$id: foo\n".to_string());
         assert!(!updated, "update should report failure for missing law");
         assert_eq!(map.len(), 0, "missing law should not be inserted");
@@ -1126,7 +1113,7 @@ mod tests {
         write_yaml(dir.path(), "wet/test_wet/2025-01-01.yaml", "test_wet");
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let count = map.load_source(&source).unwrap();
 
         assert_eq!(count, 1);
@@ -1140,7 +1127,7 @@ mod tests {
 
     #[test]
     fn test_metadata_entry_is_unloaded_with_stripped_path() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         // `file_path` is the in-repo path; the source is rooted at
         // `regulation/nl`, so the stored relative_path drops that prefix.
         map.load_metadata_entry(
@@ -1178,7 +1165,7 @@ mod tests {
         let source_a = make_source("central", "Central", dir_a.path(), 1);
         let source_b = make_source("gemeente", "Gemeente", dir_b.path(), 10);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source_a).unwrap();
         map.load_source(&source_b).unwrap();
 
@@ -1198,7 +1185,7 @@ mod tests {
         let source_a = make_source("central", "Central", dir_a.path(), 1);
         let source_b = make_source("overlap", "Overlap", dir_b.path(), 10);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source_a).unwrap();
         map.load_source(&source_b).unwrap();
 
@@ -1221,7 +1208,7 @@ mod tests {
         let source_a = make_source("source-a", "Source A", dir_a.path(), 5);
         let source_b = make_source("source-b", "Source B", dir_b.path(), 5);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source_a).unwrap();
         let result = map.load_source(&source_b);
 
@@ -1240,7 +1227,7 @@ mod tests {
         write_yaml(dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
 
         let source = make_source("local", "Local", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let count = map.load_source(&source).unwrap();
 
         // Both files are loaded but only one law in the map
@@ -1261,7 +1248,7 @@ mod tests {
         write_yaml(dir.path(), "wet/my_law/2099-01-01.yaml", "my_law");
 
         let source = make_source("local", "Local", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let law = map.get_law("my_law").unwrap();
@@ -1277,7 +1264,7 @@ mod tests {
         write_yaml(dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
 
         let source = make_source("local", "Local", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         // `get_law` still collapses to one (the today's-best entry)...
@@ -1308,7 +1295,7 @@ mod tests {
         let local = make_source("local", "Local", local_dir.path(), 1);
         let central = make_source("central", "Central", central_dir.path(), 2);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&local).unwrap();
         map.load_source(&central).unwrap();
 
@@ -1346,7 +1333,7 @@ mod tests {
         let local = make_source("local", "Local", local_dir.path(), 1);
         let central = make_source("central", "Central", central_dir.path(), 2);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&central).unwrap();
         map.load_source(&local).unwrap();
 
@@ -1368,7 +1355,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let source = make_source("empty", "Empty", dir.path(), 1);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let count = map.load_source(&source).unwrap();
 
         assert_eq!(count, 0);
@@ -1379,7 +1366,7 @@ mod tests {
     fn test_nonexistent_directory() {
         let source = make_source("missing", "Missing", Path::new("/nonexistent"), 1);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let count = map.load_source(&source).unwrap();
 
         assert_eq!(count, 0);
@@ -1397,7 +1384,7 @@ mod tests {
         let source_low = make_source("low", "Low Priority", dir_a.path(), 100);
         let source_high = make_source("high", "High Priority", dir_b.path(), 1);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source_low).unwrap();
         map.load_source(&source_high).unwrap();
 
@@ -1469,7 +1456,7 @@ articles:
         fs::write(&path, DERIVED_FIELDS_YAML).unwrap();
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let law = map.get_law("regeling_zorgtoeslag").unwrap();
@@ -1482,7 +1469,7 @@ articles:
 
     #[test]
     fn test_load_fetched_file_precomputes_display_name_and_implements() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_fetched_file(
             DERIVED_FIELDS_YAML,
             "regulation/nl/regeling/regeling_zorgtoeslag/2025-01-01.yaml",
@@ -1506,7 +1493,7 @@ articles:
         fs::write(&path, "$id: kieswet\nname: Kieswet\narticles: []\n").unwrap();
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let law = map.get_law("kieswet").unwrap();
@@ -1520,7 +1507,7 @@ articles:
         // Metadata-only entries have no body to derive from — the fields
         // stay empty until the body is fetched and (in the editor flow)
         // a snapshot rebuild or `update_yaml_content` recomputes them.
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_metadata_entry(
             "some_wet",
             "regulation/nl/wet/some_wet/2025-01-01.yaml",
@@ -1546,7 +1533,7 @@ articles:
         fs::write(&path, DERIVED_FIELDS_YAML).unwrap();
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         // Edit drops the implements block and switches to a literal name:

@@ -214,7 +214,7 @@ mod tests {
             10,
         );
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let warnings = validate_scopes(&map, &[source]);
@@ -237,7 +237,7 @@ mod tests {
             10,
         );
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let warnings = validate_scopes(&map, &[source]);
@@ -254,7 +254,7 @@ mod tests {
         // Empty scopes = unrestricted
         let source = make_scoped_source("central", dir.path(), vec![], 1);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let warnings = validate_scopes(&map, &[source]);
@@ -276,7 +276,7 @@ mod tests {
             10,
         );
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let warnings = validate_scopes(&map, &[source]);
@@ -298,7 +298,7 @@ mod tests {
             10,
         );
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let warnings = validate_scopes(&map, &[source]);
@@ -329,7 +329,7 @@ mod tests {
             10,
         );
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let warnings = validate_scopes(&map, &[source]);

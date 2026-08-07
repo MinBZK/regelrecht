@@ -88,15 +88,14 @@ const KNOWN_GAPS: &[&str] = &[
 /// Corpus laws whose re-serialized model is not value-stable, with the measured
 /// cause. Same discipline as `KNOWN_GAPS`: an unlisted drift fails the suite and
 /// a listed law that no longer drifts fails it too, so the check reports a set
-/// instead of a count. Measured 2026-08-07.
+/// instead of a count. Remeasured 2026-08-07 on this branch: `articles[].references`
+/// and `source.description` now exist on the model, so the two entries that were
+/// listed for dropped fields are gone and only a numeric-formatting drift remains.
 const KNOWN_VALUE_DRIFT: &[&str] = &[
-    // `articles[].references` (31 entries here) survives the schema and is
-    // dropped by the model: `law-model` has no field for it, so serde discards
-    // it on load and cannot write it back.
+    // `37.0` in the source, `37` after the round trip: the model holds numbers as
+    // `Decimal`, which does not carry the written trailing zero. The value is
+    // equal, the spelling is not, and no field is lost.
     "corpus/regulation/nl/ministeriele_regeling/subsidieregeling_bekostiging_plafond_energietarieven_kleinverbruikers_2023/2022-12-15.yaml",
-    // `machine_readable.execution.input[].source.description` — same shape:
-    // `Source` in `law-model` carries only regulation/output/parameters.
-    "corpus/regulation/nl/wet/kieswet/2025-01-01.yaml",
 ];
 
 /// First path at which two JSON values differ, as a `/`-separated pointer, with

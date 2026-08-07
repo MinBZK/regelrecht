@@ -52,7 +52,7 @@ regelrecht-corpus = { path = "../corpus" }
 regelrecht-engine = { path = "../engine", features = ["validate"] }
 regelrecht-harvester = { path = "../harvester", default-features = false }
 regelrecht-law-model = { path = "../law-model" }
-regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+regelrecht-shared = { path = "../shared", features = ["telemetry", "dates"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono", "json", "migrate"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs", "net", "io-util"] }
 serde.workspace = true

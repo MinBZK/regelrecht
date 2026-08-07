@@ -54,7 +54,7 @@ impl CorpusState {
     pub fn empty() -> Self {
         Self {
             registry: regelrecht_corpus::CorpusRegistry::empty(),
-            source_map: SourceMap::new(),
+            source_map: SourceMap::new(regelrecht_shared::dates::today_str()),
         }
     }
 }

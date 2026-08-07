@@ -15,7 +15,6 @@
 
 use std::path::Path;
 
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -220,7 +219,7 @@ fn build_structure_prompt(source_file: &str, source_is_text: bool, source_url: &
     .map(|(k, v)| format!("   - `{k}`: {v}"))
     .collect::<Vec<_>>()
     .join("\n");
-    let today = Utc::now().format("%Y-%m-%d");
+    let today = regelrecht_shared::dates::today_str();
     format!(
         "You are converting a source document into a regelrecht base-law YAML file — the same \
          article-based format the BWB harvester produces. The document is not necessarily a \
