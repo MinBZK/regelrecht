@@ -65,6 +65,26 @@ pub enum RegulatoryLayer {
 }
 
 impl RegulatoryLayer {
+    /// Every variant, for callers that must enumerate the whole set rather
+    /// than match on one — the document-conversion prompt in
+    /// `regelrecht-pipeline` is the live case. Add a variant above and add it
+    /// here too; `all_variants_is_exhaustive` below fails otherwise.
+    pub const ALL_VARIANTS: &'static [Self] = &[
+        Self::Grondwet,
+        Self::Wet,
+        Self::Amvb,
+        Self::MinisterieleRegeling,
+        Self::Beleidsregel,
+        Self::KoninklijkBesluit,
+        Self::EuVerordening,
+        Self::EuRichtlijn,
+        Self::Verdrag,
+        Self::Uitvoeringsbeleid,
+        Self::GemeentelijkeVerordening,
+        Self::ProvincialeVerordening,
+        Self::WaterschapsVerordening,
+    ];
+
     /// Get the string value for YAML/JSON output.
     #[must_use]
     pub fn as_str(&self) -> &'static str {
@@ -109,6 +129,40 @@ impl RegulatoryLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The enum declaration is the ground truth: every variant carries a
+    /// `#[serde(rename = …)]`, so counting those in this file's own source
+    /// catches a variant that was added to the enum and forgotten in
+    /// `ALL_VARIANTS`. A `match` cannot do that — the compiler forces an arm,
+    /// not a list entry.
+    #[test]
+    fn all_variants_lists_every_variant() {
+        let source = include_str!("regulatory_layer.rs");
+        let body = source
+            .split_once("pub enum RegulatoryLayer {")
+            .expect("enum declaration must be present")
+            .1
+            .split_once("\n}")
+            .expect("enum declaration must be closed")
+            .0;
+        let declared = body.matches("#[serde(rename = ").count();
+
+        assert_eq!(
+            RegulatoryLayer::ALL_VARIANTS.len(),
+            declared,
+            "the enum declares {declared} variants, ALL_VARIANTS lists {}",
+            RegulatoryLayer::ALL_VARIANTS.len()
+        );
+
+        let mut names: Vec<&str> = RegulatoryLayer::ALL_VARIANTS
+            .iter()
+            .map(RegulatoryLayer::as_str)
+            .collect();
+        names.sort_unstable();
+        let unique = names.len();
+        names.dedup();
+        assert_eq!(names.len(), unique, "ALL_VARIANTS contains a duplicate");
+    }
 
     #[test]
     fn test_as_str() {
