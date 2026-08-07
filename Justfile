@@ -277,7 +277,7 @@ bench-compare BASE:
 
 # Run security audit on all dependencies (vulnerabilities, licenses, sources)
 audit:
-    cd packages && cargo deny check --config ../deny.toml
+    script/cargo-deny.sh
     script/npm-audit-all.sh
     # license-checker draait alleen over de workspace in de root; die drops
     # --production omdat de root geen eigen productie-deps heeft, en de
