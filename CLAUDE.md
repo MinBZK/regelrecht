@@ -235,6 +235,10 @@ absent, and a required check that never reports blocks such a PR forever.
 the PR itself (cross-repo, draft, dependabot) rather than from `claude-review`'s
 conclusion, so a failed or skipped review can never pass as an inapplicable one.
 
+Dependabot is a deliberate exemption, not an oversight: those PRs go through
+`claude-dependabot.yml`, and that workflow decides for itself whether to merge.
+The gate does not verify that it ran.
+
 A green job is not enough on its own. `claude-code-action` exits with conclusion
 `success` **without reviewing anything** when the workflow file differs from the
 version on the default branch ("Exiting due to workflow validation skip"). The
@@ -245,7 +249,12 @@ human review plus an admin merge. Every other PR is unaffected.
 
 The gate runs the copy of its own script from the base branch, not the one in
 the PR — otherwise a PR could turn the script into `exit 0` and be green by
-construction.
+construction. If that copy cannot be fetched or checked out, the gate blocks
+rather than falling back to the PR's version.
+
+It looks the review job up with `filter=all`, because the run id survives a
+"Re-run this job" and `claude-review` is then absent from the newest attempt's
+job list.
 
 The gate proves the review ran to completion for this commit and produced
 output. It says nothing about the content of the findings or whether they were

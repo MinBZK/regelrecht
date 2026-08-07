@@ -67,14 +67,22 @@ echo "Wachten op job '${JOB_NAME}' in workflow-run ${RUN_ID} (commit ${HEAD_SHA}
 deadline=$(($(date +%s) + MAX_WAIT_SECONDS))
 job=''
 status=''
+last_error=''
 
+# `filter=all` is essentieel: het run-id blijft gelijk over attempts heen, dus na
+# "Re-run this job" op alleen de poort zit `claude-review` niet in de joblijst van
+# de nieuwste attempt. Over meerdere attempts is de volgorde niet gespecificeerd,
+# vandaar `max_by(.id)`.
 while :; do
-  if ! response=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" 2>&1); then
-    echo "API-aanroep mislukt, opnieuw proberen: ${response}"
+  if response=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs?filter=all&per_page=100" 2>/dev/null); then
+    last_error=''
+  else
+    last_error="de jobs van workflow-run ${RUN_ID} waren niet op te halen"
+    echo "API-aanroep mislukt, opnieuw proberen."
     response='{"jobs":[]}'
   fi
 
-  job=$(jq -c --arg name "$JOB_NAME" '[.jobs[] | select(.name == $name)] | last // empty' <<<"$response" 2>/dev/null)
+  job=$(jq -c --arg name "$JOB_NAME" '[.jobs[] | select(.name == $name)] | max_by(.id) // empty' <<<"$response" 2>/dev/null)
   status=''
   [ -n "$job" ] && status=$(jq -r '.status // ""' <<<"$job" 2>/dev/null)
 
@@ -83,8 +91,11 @@ while :; do
   fi
 
   if [ "$(date +%s)" -ge "$deadline" ]; then
+    if [ -n "$last_error" ]; then
+      blocked "Na ${MAX_WAIT_SECONDS}s is nog steeds niet vast te stellen of \`${JOB_NAME}\` klaar is: ${last_error}. Dat is geen uitspraak over de review zelf; draai deze job opnieuw."
+    fi
     if [ -z "$job" ]; then
-      blocked "Na ${MAX_WAIT_SECONDS}s zit er geen job \`${JOB_NAME}\` in workflow-run ${RUN_ID}. De review is niet gestart; start de workflow opnieuw via de Actions-tab."
+      blocked "Na ${MAX_WAIT_SECONDS}s zit er geen job \`${JOB_NAME}\` in workflow-run ${RUN_ID}. De review is niet gestart; start de hele workflow opnieuw via de Actions-tab (\"Re-run all jobs\")."
     fi
     blocked "Na ${MAX_WAIT_SECONDS}s is \`${JOB_NAME}\` nog niet klaar (status \`${status}\`). Draai deze job opnieuw zodra de review af is."
   fi
@@ -109,12 +120,18 @@ assert_review_output() {
     blocked "\`${JOB_NAME}\` levert geen \`started_at\`, dus is niet vast te stellen of een spoor van claude[bot] uit deze run komt of van een eerdere. Daar gokt de poort niet op. ${url}"
   fi
 
-  local endpoint payload stamps='' newest
+  # stderr apart houden: een waarschuwing van `gh` op een verder geslaagde
+  # aanroep zou de payload anders onparseerbaar maken, en dat kwam dan als
+  # "geen review" naar buiten in plaats van als leesprobleem.
+  local endpoint payload found stamps='' newest
   for endpoint in "issues/${PR_NUMBER}/comments" "pulls/${PR_NUMBER}/reviews"; do
-    if ! payload=$(gh api "repos/${REPO}/${endpoint}?per_page=100" --paginate 2>&1); then
-      blocked "\`repos/${REPO}/${endpoint}\` is niet te lezen, dus of claude[bot] iets heeft geplaatst is onbekend. Dat is geen uitspraak over de review zelf; draai deze job opnieuw. Foutmelding: ${payload}"
+    if ! payload=$(gh api "repos/${REPO}/${endpoint}?per_page=100" --paginate 2>"${TMPDIR:-/tmp}/gate-stderr"); then
+      blocked "\`repos/${REPO}/${endpoint}\` is niet te lezen, dus of claude[bot] iets heeft geplaatst is onbekend. Dat is geen uitspraak over de review zelf; draai deze job opnieuw. Foutmelding: $(cat "${TMPDIR:-/tmp}/gate-stderr")"
     fi
-    stamps+=$(jq -rs '.[] | arrays | .[] | select(.user.login == "claude[bot]") | (.updated_at // .submitted_at) | select(. != null)' <<<"$payload" 2>/dev/null)$'\n'
+    if ! found=$(jq -rs '.[] | arrays | .[] | select(.user.login == "claude[bot]") | (.updated_at // .submitted_at) | select(. != null)' <<<"$payload"); then
+      blocked "Het antwoord van \`repos/${REPO}/${endpoint}\` is geen bruikbare JSON, dus of claude[bot] iets heeft geplaatst is onbekend. Dat is geen uitspraak over de review zelf; draai deze job opnieuw."
+    fi
+    stamps+="${found}"$'\n'
   done
   newest=$(printf '%s' "$stamps" | grep -v '^$' | sort | tail -1)
 

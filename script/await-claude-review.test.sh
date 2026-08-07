@@ -38,12 +38,24 @@ case "$url" in
     echo "gh: HTTP 403" >&2
     exit 1
   fi
+  # WARN: geslaagde aanroep die ook naar stderr schrijft.
+  if [ "$(cat "$STUB_COMMENTS")" = "WARN" ]; then
+    echo "gh: warning: this API is deprecated" >&2
+    cat "$STUB_WARN_BODY"
+    exit 0
+  fi
   cat "$STUB_COMMENTS"
   ;;
 */reviews*)
   if [ "$(cat "$STUB_REVIEWS")" = "ERROR" ]; then
     echo "gh: HTTP 403" >&2
     exit 1
+  fi
+  # WARN: geslaagde aanroep die ook naar stderr schrijft.
+  if [ "$(cat "$STUB_REVIEWS")" = "WARN" ]; then
+    echo "gh: warning: this API is deprecated" >&2
+    cat "$STUB_WARN_BODY"
+    exit 0
   fi
   cat "$STUB_REVIEWS"
   ;;
@@ -60,6 +72,7 @@ export STUB_COUNTER="${WORK}/counter"
 export STUB_JOBS="${WORK}/jobs"
 export STUB_COMMENTS="${WORK}/comments"
 export STUB_REVIEWS="${WORK}/reviews"
+export STUB_WARN_BODY="${WORK}/warn-body"
 
 STARTED='2026-01-01T12:00:00Z'
 
@@ -76,6 +89,11 @@ DONE_CANCELLED=$(job completed '"cancelled"')
 DONE_SKIPPED=$(job completed '"skipped"')
 DONE_NO_START=$(job completed '"success"' null)
 NO_JOB='{"jobs":[{"name":"iets-anders","status":"completed","conclusion":"success"}]}'
+# Na "Re-run this job" op de poort staan er meerdere attempts van dezelfde job
+# op één run-id; de hoogste id is de meest recente.
+ATTEMPTS='{"jobs":[{"name":"claude-review","status":"completed","conclusion":"success","started_at":"2026-01-01T12:00:00Z","id":9,"html_url":"http://example.invalid/9"},{"name":"claude-review","status":"completed","conclusion":"failure","started_at":"2026-01-01T10:00:00Z","id":1,"html_url":"http://example.invalid/1"}]}'
+GARBAGE='dit is geen JSON'
+
 
 NONE='[]'
 STICKY='[{"user":{"login":"claude[bot]"},"created_at":"2026-01-01T12:00:30Z","updated_at":"2026-01-01T12:00:30Z"}]'
@@ -97,6 +115,7 @@ reset_fixtures() {
   jobs_are "$DONE_OK"
   comments_are "$STICKY"
   reviews_are "$NONE"
+  printf '%s\n' "$STICKY" >"$STUB_WARN_BODY"
   echo 0 >"$STUB_COUNTER"
   : >"${WORK}/summary.md"
 }
@@ -151,19 +170,19 @@ check "dependabot-PR wacht niet en blokkeert niet" 0 "niet van toepassing" "depe
 echo "== de poort sluit =="
 reset_fixtures
 jobs_are "$RUNNING"
-check "review loopt nog bij deadline: rood" 1 "nog niet klaar" "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "review loopt nog bij deadline: rood" 1 "nog niet klaar" "nog niet klaar" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are "$NO_JOB"
-check "review-job zit niet in de run: rood" 1 "zit er geen job" "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "review-job zit niet in de run: rood" 1 "zit er geen job" "zit er geen job" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are "$DONE_FAIL"
-check "review gefaald: rood" 1 'eindigde op `failure`' "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "review gefaald: rood" 1 'eindigde op `failure`' 'eindigde op `failure`' -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are "$DONE_CANCELLED"
-check "review geannuleerd: rood" 1 'eindigde op `cancelled`' "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "review geannuleerd: rood" 1 'eindigde op `cancelled`' 'eindigde op `cancelled`' -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are "$DONE_SKIPPED"
-check "review overgeslagen zonder geldige reden: rood" 1 "is overgeslagen" "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "review overgeslagen zonder geldige reden: rood" 1 "is overgeslagen" "is overgeslagen" -- MAX_WAIT_SECONDS=0
 
 echo "== groen vraagt ook een spoor van de review zelf =="
 # De claude-code-action stapt uit met conclusie success, zonder te reviewen en
@@ -171,22 +190,28 @@ echo "== groen vraagt ook een spoor van de review zelf =="
 # branch. Een groene job alleen is dus geen bewijs.
 reset_fixtures
 comments_are "$NONE"
-check "groen zonder enig spoor van claude[bot]: rood" 1 "niets geplaatst" "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "groen zonder enig spoor van claude[bot]: rood" 1 "niets geplaatst" "niets geplaatst" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 comments_are "$HUMAN_ONLY"
-check "alleen comments van mensen: rood" 1 "niets geplaatst" "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "alleen comments van mensen: rood" 1 "niets geplaatst" "niets geplaatst" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 comments_are "$STICKY_STALE"
-check "spoor van vóór deze run telt niet: rood" 1 "niets geplaatst" "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "spoor van vóór deze run telt niet: rood" 1 "niets geplaatst" "niets geplaatst" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are "$DONE_NO_START"
-check "job zonder started_at: rood, want versheid is onbepaalbaar" 1 'geen `started_at`' "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "job zonder started_at: rood, want versheid is onbepaalbaar" 1 'geen `started_at`' 'geen `started_at`' -- MAX_WAIT_SECONDS=0
 reset_fixtures
 comments_are ERROR
-check "comments-API onleesbaar: rood, niet als 'geen review' gemeld" 1 "is niet te lezen" "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "comments-API onleesbaar: rood, niet als 'geen review' gemeld" 1 "is niet te lezen" "is niet te lezen" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 reviews_are ERROR
-check "reviews-API onleesbaar: rood, niet als 'geen review' gemeld" 1 "is niet te lezen" "geblokkeerd" -- MAX_WAIT_SECONDS=0
+check "reviews-API onleesbaar: rood, niet als 'geen review' gemeld" 1 "is niet te lezen" "is niet te lezen" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+comments_are "$GARBAGE"
+check "onparseerbaar antwoord: rood met een eigen melding" 1 "geen bruikbare JSON" "geen bruikbare JSON" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+jobs_are ERROR
+check "jobs-API blijft onleesbaar tot de deadline: rood, niet als 'job ontbreekt'" 1 "niet op te halen" "niet op te halen" -- MAX_WAIT_SECONDS=0
 
 echo "== de poort opent =="
 reset_fixtures
@@ -198,6 +223,12 @@ reset_fixtures
 comments_are "$NONE"
 reviews_are "$CLAUDE_REVIEW"
 check "een geplaatste review telt ook als spoor: groen" 0 "review afgerond (success)" "groen" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+comments_are WARN
+check "waarschuwing op stderr bederft een geslaagde aanroep niet: groen" 0 "review afgerond (success)" "groen" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+jobs_are "$ATTEMPTS"
+check "meerdere attempts: de nieuwste job telt" 0 "review afgerond (success)" "groen" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are "$RUNNING" "$RUNNING" "$DONE_OK"
 check "wacht door tot de review klaar is" 0 "review afgerond (success)" "groen" -- MAX_WAIT_SECONDS=60

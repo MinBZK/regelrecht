@@ -129,25 +129,26 @@ jobs:
 
       # De poort mag niet draaien op de versie van zichzelf die in de PR staat:
       # een PR die het script naar `exit 0` verandert zou anders per definitie
-      # groen zijn. Draai daarom de versie van de base-branch. Zolang die er nog
-      # niet is (de PR die dit script introduceert) valt hij terug op de PR-versie
-      # met een waarschuwing.
+      # groen zijn. Draai daarom de versie van de base-branch, en blokkeer als
+      # die niet te krijgen is — terugvallen op de PR-versie is precies de
+      # bypass die deze stap moet dichten.
       - name: Take the gate script from the base branch
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GATE: script/await-claude-review.sh
         run: |
           set -uo pipefail
-          if ! git fetch --depth=1 origin "$BASE_SHA"; then
-            echo "::error title=Claude review gate::base-commit ${BASE_SHA} is niet op te halen, dus de versie van de poort is niet vast te stellen. Draai deze job opnieuw."
+          fail() {
+            echo "::error title=Claude review gate::$1"
             exit 1
-          fi
-          if git cat-file -e "${BASE_SHA}:${GATE}" 2>/dev/null; then
-            git checkout "$BASE_SHA" -- "$GATE"
-            echo "Poort draait de versie van ${BASE_SHA}."
-          else
-            echo "::warning title=Claude review gate::${GATE} bestaat nog niet op de base-branch; de poort draait de versie uit deze PR."
-          fi
+          }
+          git fetch --depth=1 origin "$BASE_SHA" ||
+            fail "base-commit ${BASE_SHA} is niet op te halen, dus de versie van de poort is niet vast te stellen. Draai deze job opnieuw."
+          git cat-file -e "${BASE_SHA}:${GATE}" 2>/dev/null ||
+            fail "${GATE} bestaat niet op de base-branch (${BASE_SHA}). De poort kan dan niet voor zichzelf instaan; deze PR moet met de hand gereviewd worden."
+          git checkout "$BASE_SHA" -- "$GATE" ||
+            fail "${GATE} is niet uit ${BASE_SHA} te checkouten, dus de poort zou de versie uit deze PR draaien. Draai deze job opnieuw."
+          echo "Poort draait de versie van ${BASE_SHA}."
 
       - name: Wait for the Claude review of this commit
         env:
