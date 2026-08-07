@@ -27,7 +27,7 @@ regelrecht-corpus = { path = "../corpus" }
 # `validate` voor de JSON-schema-validatie van gegenereerde basis-wet-YAML
 # (law_convert); de engine hangt alleen aan shared + law-model, geen cyclus.
 regelrecht-engine = { path = "../engine", features = ["validate"] }
-regelrecht-harvester = { path = "../harvester" }
+regelrecht-harvester = { path = "../harvester", default-features = false }
 regelrecht-law-model = { path = "../law-model" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }

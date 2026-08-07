@@ -13,6 +13,7 @@ categories = ["command-line-utilities", "parsing"]
 [[bin]]
 name = "regelrecht-harvester"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [lib]
 name = "regelrecht_harvester"
@@ -31,11 +32,21 @@ reqwest = "0.13"
 async-trait.workspace = true
 tokio = { workspace = true, features = ["time", "rt-multi-thread", "macros"] }
 roxmltree.workspace = true
-clap = { version = "4.6", features = ["derive"] }
-indicatif = "0.18"
-console = "0.16"
+# CLI-only, behind the `cli` feature: the library consumers (pipeline, admin,
+# and editor-api through pipeline) have no use for an argument parser or a
+# progress bar, and these three drag in 15 crates.
+clap = { version = "4.6", features = ["derive"], optional = true }
+indicatif = { version = "0.18", optional = true }
+console = { version = "0.16", optional = true }
 textwrap = "0.16"
 unicode-normalization = "0.1"
+
+[features]
+# On by default so `cargo run -p regelrecht-harvester` and the binary build
+# keep working unchanged. Library consumers switch it off with
+# `default-features = false`.
+default = ["cli"]
+cli = ["dep:clap", "dep:indicatif", "dep:console"]
 
 [dev-dependencies]
 regelrecht-law-model = { path = "../law-model" }

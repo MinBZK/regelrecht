@@ -21,7 +21,7 @@ regelrecht-auth = { path = "../auth" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono"] }
 regelrecht-corpus = { path = "../corpus", default-features = false }
-regelrecht-harvester = { path = "../harvester" }
+regelrecht-harvester = { path = "../harvester", default-features = false }
 regelrecht-pipeline = { path = "../pipeline" }
 chrono.workspace = true
 uuid.workspace = true
