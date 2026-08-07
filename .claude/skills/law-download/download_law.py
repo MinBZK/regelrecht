@@ -201,7 +201,7 @@ def generate_yaml(metadata, articles, effective_date):
 
     # Create YAML structure matching schema v0.5.6
     law_data = {
-        "$schema": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.6/schema.json",
+        "$schema": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json",
         "$id": law_id,
         "name": metadata.get("title", law_id),
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),

@@ -84,3 +84,18 @@ repos:
         language: system
         pass_filenames: false
         files: ^\.claude/skills/
+
+      - id: skill-references
+        name: Skills wijzen naar bestaande paden en de geldende schemaversie
+        entry: script/check-skill-references.sh
+        language: system
+        pass_filenames: false
+        # Ook op een schemawijziging: die verandert wat de geldende URL is.
+        files: ^(\.claude/skills/|script/(check-skill-references(\.test)?\.sh|\.skill-path-exceptions)$|schema/)
+
+      - id: skill-references-tests
+        name: De skill-poort doet wat hij belooft
+        entry: script/check-skill-references.test.sh
+        language: system
+        pass_filenames: false
+        files: ^script/check-skill-references(\.test)?\.sh$

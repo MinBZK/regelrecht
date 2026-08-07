@@ -143,7 +143,7 @@ See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a worki
 
 ## Frontend / UI Components
 
-**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NDD `ndd-*` web components). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NLDD `nldd-*` web components, npm package `@nldd/design-system`). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
 
 ### Icon names
 
@@ -182,7 +182,7 @@ RFC metadata lives in YAML **frontmatter**, not a bold-labelled body preamble.
 The fields are `title`, `status`, `implementation`, `date`, `authors`,
 optional `depends_on`, and optional `short_title`. The docs site
 (`docs/src/pages/rfcs/`, parsed by `docs/src/lib/rfcs.ts`) renders `status` and
-`implementation` as NDD tags and the rest as a header line — there is no rehype
+`implementation` as NLDD tags and the rest as a header line — there is no rehype
 preamble plugin.
 
 Two orthogonal fields, both required on every RFC so an absent tag never reads

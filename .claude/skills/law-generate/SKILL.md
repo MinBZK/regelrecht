@@ -27,8 +27,8 @@ working examples in the corpus.
 1. Read the target law YAML file
 2. Read reference examples as few-shot context:
    - `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` — basic patterns, IF/cases, cross-law references
-   - `corpus/regulation/nl/wet/algemene_wet_bestuursrecht/2026-01-01.yaml` — hooks, procedures, DATE_ADD
-   - `corpus/regulation/nl/wet/vreemdelingenwet_2000/2026-01-01.yaml` — overrides (lex specialis)
+   - `corpus/regulation/nl/wet/algemene_wet_bestuursrecht/1994-01-01.yaml` — hooks, procedures, DATE_ADD
+   - `corpus/regulation/nl/wet/vreemdelingenwet_2000/2000-11-23.yaml` — overrides (lex specialis)
 3. Read the schema reference: `.claude/skills/law-generate/reference.md`
 4. Read the examples: `.claude/skills/law-generate/examples.md`
 5. Read an existing feature file as Gherkin reference:
@@ -713,14 +713,16 @@ fn assert_has_right(world: &mut RegelrechtWorld) {
 
 #### Prefer Reusing Existing Steps
 
-Before creating new steps, check if existing patterns cover your case. Read the
-existing step files first:
-- `packages/engine/tests/bdd/steps/given.rs`
-- `packages/engine/tests/bdd/steps/when.rs`
-- `packages/engine/tests/bdd/steps/then.rs`
+Before creating new steps, check if existing patterns cover your case. The step
+vocabulary is code-generated from a single source of truth; read that, not the
+generated bindings:
+- `bdd/grammar.yaml` — every Given/When/Then the language knows
+- `packages/engine/tests/bdd/dispatch.rs` — how an argument reaches the engine
 
 Many scenarios can be expressed using the existing generic steps. Only add new steps
-when the law requires a genuinely different execution pattern or data source.
+when the law requires a genuinely different execution pattern or data source, and
+then change `bdd/grammar.yaml` and run `just bdd-codegen` — never hand-edit a
+generated file.
 
 ### If no MvT feature file was generated
 
