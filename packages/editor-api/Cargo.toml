@@ -28,8 +28,8 @@ tower-http = { workspace = true, features = ["fs", "trace"] }
 tower-sessions.workspace = true
 tower-sessions-sqlx-store.workspace = true
 tower-sessions-memory-store.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots-no-provider", "json"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "uuid", "chrono", "json"] }
 chrono.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 base64.workspace = true

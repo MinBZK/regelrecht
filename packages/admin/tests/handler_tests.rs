@@ -33,7 +33,7 @@ fn test_app(pool: sqlx::PgPool) -> Router {
             metrics_token_hash: None,
         }),
         metrics_cache: Arc::new(metrics::new_cache()),
-        http_client: reqwest::Client::new(),
+        http_client: regelrecht_auth::http_client(),
         corpus: Arc::new(tokio::sync::RwLock::new(
             regelrecht_admin::state::CorpusState::empty(),
         )),

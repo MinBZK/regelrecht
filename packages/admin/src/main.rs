@@ -42,6 +42,7 @@ async fn health(State(state): State<AppState>) -> Result<&'static str, StatusCod
 #[tokio::main]
 async fn main() {
     regelrecht_shared::telemetry::init_subscriber("info");
+    regelrecht_auth::install_crypto_provider();
 
     let app_config = AppConfig::from_env();
 

@@ -13,6 +13,7 @@ categories = ["command-line-utilities", "parsing"]
 [[bin]]
 name = "regelrecht-harvester"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [lib]
 name = "regelrecht_harvester"
@@ -27,15 +28,32 @@ chrono.workspace = true
 regex.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-reqwest = "0.13"
+# Same shape as github and pipeline, which already talk to the outside world
+# this way. The reqwest defaults add `charset` (encoding_rs, for transcoding
+# non-UTF-8 response bodies), `http2` and `system-proxy` (the platform proxy
+# lookup, not the HTTP_PROXY env vars). BWB and CVDR serve UTF-8 XML over a
+# direct HTTP/1.1 connection. Trust anchors are unaffected: the `rustls`
+# feature keeps rustls-platform-verifier, so the system trust store is still
+# what verifies the peer.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 async-trait.workspace = true
 tokio = { workspace = true, features = ["time", "rt-multi-thread", "macros"] }
 roxmltree.workspace = true
-clap = { version = "4.6", features = ["derive"] }
-indicatif = "0.18"
-console = "0.16"
+# CLI-only, behind the `cli` feature: the library consumers (pipeline, admin,
+# and editor-api through pipeline) have no use for an argument parser or a
+# progress bar, and these three drag in 15 crates.
+clap = { version = "4.6", features = ["derive"], optional = true }
+indicatif = { version = "0.18", optional = true }
+console = { version = "0.16", optional = true }
 textwrap = "0.16"
 unicode-normalization = "0.1"
+
+[features]
+# On by default so `cargo run -p regelrecht-harvester` and the binary build
+# keep working unchanged. Library consumers switch it off with
+# `default-features = false`.
+default = ["cli"]
+cli = ["dep:clap", "dep:indicatif", "dep:console"]
 
 [dev-dependencies]
 regelrecht-law-model = { path = "../law-model" }

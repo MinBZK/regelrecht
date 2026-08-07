@@ -180,7 +180,7 @@ mod tests {
             end_session_url: None,
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
-            http_client: reqwest::Client::new(),
+            http_client: regelrecht_auth::http_client(),
             corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }
@@ -527,7 +527,7 @@ mod tests {
             end_session_url: None,
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
-            http_client: reqwest::Client::new(),
+            http_client: regelrecht_auth::http_client(),
             corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }

@@ -44,7 +44,7 @@ fn empty_state(pool: PgPool) -> AppState {
             github_oauth: None,
             task_enrich_provider: "claude".to_string(),
         }),
-        http_client: reqwest::Client::new(),
+        http_client: regelrecht_auth::http_client(),
         pool: Some(pool),
         pipeline_api_url: None,
         harvest_admin_url: None,

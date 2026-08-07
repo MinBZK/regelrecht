@@ -34,10 +34,11 @@
 //! - [`registry`]: Extensible element handler system
 //! - [`splitting`]: Article splitting logic
 //! - [`yaml`]: YAML output generation
-//! - [`cli`]: Command-line interface
+//! - `cli`: Command-line interface (feature `cli`, on by default)
 //! - [`harvester`]: Main harvester service
 //! - [`source`]: Strategy trait for law sources (BWB, CVDR)
 
+#[cfg(feature = "cli")]
 pub mod cli;
 pub mod config;
 pub mod content;

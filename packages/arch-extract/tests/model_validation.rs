@@ -129,9 +129,11 @@ fn layer_graph_matches_known_dependencies() {
     assert!(depends_on(model, "github").is_empty());
 
     // Spot-check the documented layers.
+    // The engine sits on law-model alone; it has no telemetry or config of
+    // its own to get from shared.
     assert_eq!(
         depends_on(model, "engine"),
-        std::collections::BTreeSet::from(["shared".to_string(), "law-model".to_string()])
+        std::collections::BTreeSet::from(["law-model".to_string()])
     );
     assert_eq!(
         depends_on(model, "law-model"),
