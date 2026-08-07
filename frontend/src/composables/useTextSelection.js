@@ -155,7 +155,15 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber, vali
     // flattening it to orphaned here would hand the user the wrong message
     // and the wrong advice.
     if (result?.status === 'skipped') {
-      return { selector, exact, status: 'skipped', reason: 'not-searched' };
+      // skip_reason travels along: 'quote_too_long' and 'search_budget' need
+      // different advice, and the caller cannot recover it from 'not-searched'.
+      return {
+        selector,
+        exact,
+        status: 'skipped',
+        reason: 'not-searched',
+        skipReason: result.skip_reason ?? null,
+      };
     }
     if ((result?.matches?.length ?? 0) > 1) sawMultiple = true;
     // A unique `found` that is NOT our selection is a mis-anchor: treat it as
