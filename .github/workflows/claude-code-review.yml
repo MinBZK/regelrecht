@@ -106,6 +106,28 @@ jobs:
 
             If there are no issues, say so briefly. Do not pad the review with praise or filler.
 
+      # Het bewijs waar review-gate op afgaat. `execution_file` wijst naar het
+      # uitvoerbestand van Claude en wordt pas gezet nadat de CLI gedraaid heeft;
+      # stapt de actie er eerder uit — de workflow-validation-skip, wanneer dit
+      # bestand afwijkt van de versie op de default branch — dan blijft die
+      # output leeg en wordt deze stap overgeslagen. De poort leest de uitkomst
+      # van deze stap uit de jobs van déze run, dus het bewijs is per constructie
+      # run-gebonden, en het bestaat ook wanneer de review nul bevindingen had.
+      # Hernoem deze stap niet zonder `PROOF_STEP` in review-gate mee te nemen.
+      - name: Record that the review ran
+        if: steps.claude-review.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "De review-actie is uitgevoerd; uitvoerbestand: ${EXECUTION_FILE}"
+          {
+            echo "### Claude review uitgevoerd"
+            echo
+            echo "De review-actie heeft gedraaid voor commit \`${HEAD_SHA}\`."
+            echo "Nul bevindingen is hier een geldige uitkomst; deze stap zegt alleen dat er gereviewd is."
+          } >>"$GITHUB_STEP_SUMMARY"
+
   # The merge gate. Unlike claude-review this job has no `if:` — it must run and
   # report on every PR, cross-repo and dependabot included, because a required
   # check that never reports blocks such a PR forever.
@@ -118,7 +140,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      issues: read
       pull-requests: read
 
     steps:
@@ -151,16 +172,14 @@ jobs:
           echo "Poort draait de versie van ${BASE_SHA}."
 
       - name: Wait for the Claude review of this commit
+        # Alleen de coördinaten van deze run. Wat de poort als feit behandelt —
+        # fork, draft, auteur, de versie van dit workflowbestand — haalt zij zelf
+        # op, want dit env-blok staat in de PR die gereviewd wordt.
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          IS_CROSS_REPO: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
-          IS_DRAFT: ${{ github.event.pull_request.draft }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          JOB_NAME: claude-review
           MAX_WAIT_SECONDS: '2100'
           POLL_SECONDS: '20'
         run: script/await-claude-review.sh
