@@ -52,10 +52,10 @@ const MIN_HASH_LEN: usize = 8;
 ///
 /// Takes the *request* URI rather than reading the response, because the
 /// decision is about the URL's stability, not about the bytes. The
-/// status is consulted for one reason: a request for a missing
-/// `/assets/…` file falls through to the SPA index, and that HTML must
-/// never be cached for a year under an asset URL. Only a response that
-/// actually delivered (or confirmed) the asset may be marked immutable.
+/// status is consulted so that only a response which actually delivered
+/// (or confirmed) the asset may be marked immutable; a missing
+/// `/assets/…` file must never leave an error body pinned for a year
+/// under an asset URL.
 pub fn apply<B>(uri: &Uri, response: &mut Response<B>) {
     let immutable = response_is_authoritative(response.status()) && is_hashed_asset(uri.path());
     let value = if immutable { IMMUTABLE } else { REVALIDATE };
@@ -63,8 +63,8 @@ pub fn apply<B>(uri: &Uri, response: &mut Response<B>) {
 }
 
 /// `200`, `304` and `206` mean the URL resolved to the file it names.
-/// Anything else (notably the `404` the SPA fallback carries) is some
-/// other resource wearing this URL and must stay revalidated.
+/// Anything else is some other resource wearing this URL and must stay
+/// revalidated.
 fn response_is_authoritative(status: StatusCode) -> bool {
     matches!(
         status,
