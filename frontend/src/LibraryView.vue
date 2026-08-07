@@ -828,19 +828,24 @@ const favorites = ref(null);
 // Law ids edited in the active traject (branch-vs-base diff). `null` until
 // loaded / when no traject is active; a Set once the endpoint resolves.
 const changedLawIds = ref(null);
-// Boven dit aantal wetten wordt de traject-sectie één hint-regel met een
-// zoekknop in plaats van een lijst. Een traject-repo is een gecureerde set
-// (een handvol wetten); een traject waarvan de eigen bron het centrale
-// corpus is zit in de duizenden - en die horen niet in het linkermenu.
-const TRAJECT_LAWS_MAX = 25;
+// De traject-sectie zakt in twee stappen terug naarmate de eigen bron groeit:
+// tot TRAJECT_LAWS_COLLAPSED staat alles uitgeschreven, daarboven de eerste
+// twintig met een uitklapknop, en boven TRAJECT_LAWS_MAX is een lijst geen
+// lijst meer maar een muur tekst - dan alleen een hint met een zoekknop. Een
+// traject-repo is een gecureerde set (een handvol wetten); een traject
+// waarvan de eigen bron het centrale corpus is zit in de duizenden.
+const TRAJECT_LAWS_COLLAPSED = 20;
+const TRAJECT_LAWS_MAX = 200;
 // De wetten uit de eigen bron van het actieve traject (source_priority 0),
 // alfabetisch op weergavenaam. `null` buiten een traject, bij een bron die
-// niet gescand kon worden, en boven de drempel - dan draagt
+// niet gescand kon worden, en boven de bovengrens - dan draagt
 // `trajectLawCount` de hint.
 const trajectLaws = ref(null);
 // Aantal wetten in die eigen bron, zoals `/sources` het telt. Alleen boven
-// de drempel doet het ertoe: dan vervangt de hint de lijst.
+// de bovengrens doet het ertoe: dan vervangt de hint de lijst.
 const trajectLawCount = ref(0);
+// Staat de lijst uitgeklapt? Per traject, dus gereset bij een wissel.
+const trajectLawsExpanded = ref(false);
 const loading = ref(true);
 const indexError = ref(null);
 const searchPopoverRef = ref(null);
@@ -966,10 +971,12 @@ const activeAction = ref(null);
 //   - "Bewerkt in dit traject" comes first: it's the small, high-signal,
 //     context-specific set, so it sits above favorites.
 //     Only present when a traject is active and the diff is non-empty.
-//   - "Traject": what's left of the traject's own repo after "Bewerkt".
-//     Without it a fresh traject - or someone else's - shows an empty menu:
-//     the diff is empty, and favorites/recent are personal.
 //   - "Favorieten": the user's personal favorites.
+//   - "Recent bekeken": the view history.
+//   - "Traject" comes LAST: the full contents of the traject's own repo. It is
+//     the longest and least selective of the four, so it belongs at the bottom
+//     - but without it a fresh traject, or someone else's, shows an empty menu,
+//     because the diff is empty and favorites/recent are personal.
 //
 // There is deliberately NO full-corpus fallback: the central corpus is the
 // full BWB corpus (thousands of laws), so dumping it into the sidebar isn't
@@ -984,17 +991,6 @@ const sidebarSections = computed(() => {
     const changed = list.filter(law => changedLawIds.value.has(law.law_id));
     if (changed.length > 0) {
       sections.push({ key: 'changed', title: 'Bewerkt', laws: changed });
-    }
-  }
-
-  // The traject's own laws, minus whatever "Bewerkt" already shows.
-  // Deliberately NOT deduplicated against Favorieten: a law would then jump
-  // out of this list the moment you star it. A favorite may appear in both
-  // sections - exactly how "Recent bekeken" already behaves.
-  if (activeTrajectRef.value && trajectLaws.value?.length) {
-    const rest = trajectLaws.value.filter(law => !changedLawIds.value?.has(law.law_id));
-    if (rest.length > 0) {
-      sections.push({ key: 'traject', title: 'Traject', laws: rest });
     }
   }
 
@@ -1017,7 +1013,27 @@ const sidebarSections = computed(() => {
     sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
   }
 
+  // Everything the traject's own repo holds, deduplicated against NOTHING. A
+  // law that is edited, starred or recently viewed is still a law in this
+  // traject, so it appears here as well - the same stance "Recent bekeken"
+  // already takes. Filtering against "Bewerkt" would make a law jump out of
+  // this list the moment you edit it.
+  if (activeTrajectRef.value && trajectLaws.value?.length) {
+    const all = trajectLaws.value;
+    const shown = trajectLawsExpanded.value ? all : all.slice(0, TRAJECT_LAWS_COLLAPSED);
+    sections.push({ key: 'traject', title: 'Traject', laws: shown });
+  }
+
   return sections;
+});
+
+// Label of the collapse toggle under the traject section, or `null` when the
+// list fits and there is nothing to fold. Counts the FETCHED laws rather than
+// `trajectLawCount`: the button must promise exactly what clicking it reveals.
+const trajectExpanderText = computed(() => {
+  const total = trajectLaws.value?.length ?? 0;
+  if (!activeTrajectRef.value || total <= TRAJECT_LAWS_COLLAPSED) return null;
+  return trajectLawsExpanded.value ? 'Toon minder' : `Toon alle ${total}`;
 });
 
 // "No usable content" states, shown full-page (like EditorView's no-content
@@ -1965,6 +1981,9 @@ watch(activeTrajectRef, () => {
   changedLawIds.value = null;
   trajectLaws.value = null;
   trajectLawCount.value = 0;
+  // Ook de uitklapstand hoort bij het vórige traject: zonder deze reset opent
+  // het volgende traject uitgeklapt omdat je hier ooit op de knop drukte.
+  trajectLawsExpanded.value = false;
   loadIndex();
   if (selectedLawId.value) {
     lawError.value = null;
@@ -2109,8 +2128,20 @@ watch(activeTrajectRef, () => {
                         </nldd-icon-cell>
                       </nldd-list-item>
                     </nldd-list>
+                    <!-- Uitklapknop onder de traject-sectie: die is de enige
+                         die lang genoeg wordt om in te vouwen. -->
+                    <template v-if="section.key === 'traject' && trajectExpanderText">
+                      <nldd-spacer size="8"></nldd-spacer>
+                      <nldd-button
+                        data-testid="traject-laws-expander"
+                        size="xs"
+                        variant="accent-transparent"
+                        :text="trajectExpanderText"
+                        @click="trajectLawsExpanded = !trajectLawsExpanded"
+                      ></nldd-button>
+                    </template>
                   </template>
-                  <!-- Boven de drempel is een lijst geen lijst meer maar een
+                  <!-- Boven de bovengrens is een lijst geen lijst meer maar een
                        muur tekst: één regel met het aantal, plus de knop naar
                        het bestaande zoekvenster. -->
                   <template v-if="trajectLawsHint">

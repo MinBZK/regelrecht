@@ -199,6 +199,19 @@ const SEVEN_LAWS = [
   source_priority: 0,
 }));
 
+/// `n` wetten met oplopende weergavenamen (`Wet 001` … `Wet 0nn`), zodat de
+/// alfabetische volgorde gelijkloopt met de nummering en een test aan de eerste
+/// en laatste regel kan zien hoeveel er zijn uitgeklapt.
+function manyLaws(n) {
+  return Array.from({ length: n }, (_, i) => ({
+    law_id: `wet_${String(i + 1).padStart(3, '0')}`,
+    display_name: `Wet ${String(i + 1).padStart(3, '0')}`,
+    source_id: OWN_SOURCE,
+    source_name: 'Eigen traject-repo',
+    source_priority: 0,
+  }));
+}
+
 function ownSource(overrides = {}) {
   return [
     {
@@ -234,6 +247,21 @@ function sectionLaws(wrapper, key) {
     .map((item) => item.find('nldd-text-cell').attributes('text'));
 }
 
+// De sleutels van de secties met wetten, in renderorde, ontdubbeld.
+function sectionOrder(wrapper) {
+  const seen = [];
+  for (const item of wrapper.findAll('nldd-list-item[data-section]')) {
+    const key = item.attributes('data-section');
+    if (!seen.includes(key)) seen.push(key);
+  }
+  return seen;
+}
+
+// De uitklapknop onder de traject-sectie ('Toon alle 21' / 'Toon minder').
+function expander(wrapper) {
+  return wrapper.find('nldd-button[data-testid="traject-laws-expander"]');
+}
+
 const TRAJECT_SECTION_TITLE = 'Traject';
 
 beforeEach(() => {
@@ -266,23 +294,38 @@ describe('LibraryView - wetten van het traject in het linkermenu', () => {
       'Zorgverzekeringswet',
     ]);
 
-    // Precies de afgesproken aanroep: alleen de eigen bron, met de drempel
+    // Precies de afgesproken aanroep: alleen de eigen bron, met de bovengrens
     // als limiet.
     expect(apiFetchJson).toHaveBeenCalledWith(
-      `/api/trajects/traject-abcd1234/corpus/laws?source=${OWN_SOURCE}&limit=25`,
+      `/api/trajects/traject-abcd1234/corpus/laws?source=${OWN_SOURCE}&limit=200`,
     );
   });
 
-  it('laat een bewerkte wet alleen in Bewerkt staan, zonder er één kwijt te raken', async () => {
+  it('zet de sectie onderaan, na Recent bekeken', async () => {
+    // Recent bekeken wordt per traject bewaard; de platte sleutel is legacy en
+    // wordt bij het laden juist opgeruimd.
+    localStorage.setItem(
+      'regelrecht-recent-laws:traject-abcd1234',
+      JSON.stringify([{ law_id: 'wet_a', name: 'Zorgverzekeringswet' }]),
+    );
+    server.favorites = ['wet_f'];
+    server.changed = ['wet_c'];
+    const wrapper = await mountLibrary();
+
+    expect(sectionOrder(wrapper)).toEqual(['changed', 'favorites', 'recent', 'traject']);
+  });
+
+  it('laat een bewerkte wet in Bewerkt én in de traject-lijst staan', async () => {
+    // Geen ontdubbeling: de traject-lijst is "alles wat in dit traject zit",
+    // niet "de rest". Zou hij tegen Bewerkt filteren, dan springt een wet
+    // eruit op het moment dat je hem bewerkt.
     server.changed = ['wet_c']; // Wet langdurige zorg
     const wrapper = await mountLibrary();
 
     expect(sectionLaws(wrapper, 'changed')).toEqual(['Wet langdurige zorg']);
     const traject = sectionLaws(wrapper, 'traject');
-    expect(traject).not.toContain('Wet langdurige zorg');
-    // Zes in de nieuwe sectie plus één in Bewerkt: het totaal blijft zeven.
-    expect(traject).toHaveLength(6);
-    expect(traject.length + 1).toBe(SEVEN_LAWS.length);
+    expect(traject).toContain('Wet langdurige zorg');
+    expect(traject).toHaveLength(SEVEN_LAWS.length);
   });
 
   it('laat een favoriet in beide secties staan (geen ontdubbeling tegen Favorieten)', async () => {
@@ -295,16 +338,51 @@ describe('LibraryView - wetten van het traject in het linkermenu', () => {
     expect(sectionLaws(wrapper, 'traject')).toContain('Kieswet');
   });
 
-  it('vervangt de lijst boven de drempel door een hint met zoekknop', async () => {
-    server.sources = ownSource({ law_count: 26 });
+  it('toont bij precies 20 wetten alles, zonder uitklapknop', async () => {
+    server.sources = ownSource({ law_count: 20 });
+    server.sourceLaws = manyLaws(20);
+    const wrapper = await mountLibrary();
+
+    expect(sectionLaws(wrapper, 'traject')).toHaveLength(20);
+    expect(expander(wrapper).exists()).toBe(false);
+  });
+
+  it('klapt boven de 20 in, en de knop klapt heen en weer', async () => {
+    server.sources = ownSource({ law_count: 21 });
+    server.sourceLaws = manyLaws(21);
+    const wrapper = await mountLibrary();
+
+    let shown = sectionLaws(wrapper, 'traject');
+    expect(shown).toHaveLength(20);
+    expect(shown.at(-1)).toBe('Wet 020');
+    expect(expander(wrapper).attributes('text')).toBe('Toon alle 21');
+
+    await expander(wrapper).trigger('click');
+    await nextTick();
+    shown = sectionLaws(wrapper, 'traject');
+    expect(shown).toHaveLength(21);
+    expect(shown.at(-1)).toBe('Wet 021');
+    expect(expander(wrapper).attributes('text')).toBe('Toon minder');
+
+    await expander(wrapper).trigger('click');
+    await nextTick();
+    expect(sectionLaws(wrapper, 'traject')).toHaveLength(20);
+    expect(expander(wrapper).attributes('text')).toBe('Toon alle 21');
+  });
+
+  it('vervangt de lijst boven de bovengrens door een hint met zoekknop', async () => {
+    // Uitklappen naar duizenden regels is geen lijst maar een muur tekst;
+    // daar verwijzen we naar het zoekvenster.
+    server.sources = ownSource({ law_count: 201 });
     const wrapper = await mountLibrary();
 
     const html = wrapper.html();
     expect(html).not.toContain(TRAJECT_SECTION_TITLE);
     expect(sectionLaws(wrapper, 'traject')).toEqual([]);
-    expect(html).toContain('Dit traject bevat 26 wetten.');
+    expect(expander(wrapper).exists()).toBe(false);
+    expect(html).toContain('Dit traject bevat 201 wetten.');
     expect(html).toContain('Zoek een wet');
-    // Boven de drempel wordt de wettenlijst niet eens opgehaald.
+    // Boven de bovengrens wordt de wettenlijst niet eens opgehaald.
     expect(
       apiFetchJson.mock.calls.some(([url]) => String(url).includes('source=')),
     ).toBe(false);
@@ -321,13 +399,13 @@ describe('LibraryView - wetten van het traject in het linkermenu', () => {
     // secties. Zou `isEmptyLibrary` de hint niet meetellen, dan verving de
     // lege staat de split-view en zag de gebruiker de hint nooit - precies
     // het scenario dat dit repareert.
-    server.sources = ownSource({ law_count: 26 });
+    server.sources = ownSource({ law_count: 201 });
     server.favorites = [];
     server.changed = [];
     const wrapper = await mountLibrary();
 
     expect(wrapper.find('nldd-navigation-split-view').exists()).toBe(true);
-    expect(wrapper.html()).toContain('Dit traject bevat 26 wetten.');
+    expect(wrapper.html()).toContain('Dit traject bevat 201 wetten.');
   });
 
   it('toont niets bij een lege eigen bron', async () => {
