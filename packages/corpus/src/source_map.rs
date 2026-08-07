@@ -520,20 +520,28 @@ impl Default for SourceMap {
 
 /// Extract a YYYY-MM-DD date from the filename component of a path.
 ///
-/// Matches the convention `…/law_id/2025-01-01.yaml`.
-fn extract_date_from_path(path: &str) -> Option<String> {
+/// Matches the convention `…/law_id/2025-01-01.yaml`. The single extractor for
+/// every route that feeds [`pick_best_version`] — local scan and GitHub tree
+/// alike. That comparison is lexicographic, so any stem that is not a date
+/// sorts against real dates by accident: `2025-01-01-concept` is greater than
+/// `2025-01-01` and would win. Returning `None` keeps such a file out of the
+/// running instead.
+pub(crate) fn extract_date_from_path(path: &str) -> Option<String> {
     let filename = path.rsplit('/').next().unwrap_or(path);
     let stem = filename.strip_suffix(".yaml")?;
-    // Validate YYYY-MM-DD pattern
-    if stem.len() == 10
-        && stem.as_bytes()[4] == b'-'
-        && stem.as_bytes()[7] == b'-'
-        && stem.bytes().filter(|b| b.is_ascii_digit()).count() == 8
-    {
-        Some(stem.to_string())
-    } else {
-        None
+    let bytes = stem.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
     }
+    if !(0..10).all(|i| i == 4 || i == 7 || bytes[i].is_ascii_digit()) {
+        return None;
+    }
+    let month: u32 = stem.get(5..7)?.parse().ok()?;
+    let day: u32 = stem.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some(stem.to_string())
 }
 
 /// Return today's date as "YYYY-MM-DD".
