@@ -1,86 +1,92 @@
 ---
 title: CI-doorlooptijd bij één pull request
-description: Wat er draait op één pull request, hoe lang elke job wacht en werkt, en waar de doorlooptijd heen gaat.
+description: Wat er draait op één pull request, waar elke job op wacht, en waar de doorlooptijd heen gaat.
 lang: nl
 ---
 
 import CiGantt from '~/components/CiGantt.astro';
 
 Een pull request op MinBZK/regelrecht start drie workflows met samen ruim
-twintig jobs. De mediane doorlooptijd is 12,8 minuten. Iets meer dan de helft
-daarvan is wachten op een runner. Het langst wacht je bovendien op checks die de
-merge helemaal niet tegenhouden.
+twintig jobs. Hieronder staat er één echt gelopen: commit `afa1408c` op PR 1179,
+7 augustus 2026 om 16:14 UTC. CI was klaar op 5,8 minuut; de hele run duurde
+17,6, en die staart hangt aan een preview die de merge niet tegenhoudt.
 
-De grafiek hieronder splitst dat uit per job. Wat er in de CI draait en waarom
-staat in [CI/CD Pipeline](/operations/ci-cd); hier gaat het alleen over de tijd.
+Wat er in de CI draait en waarom staat in
+[CI/CD Pipeline](/operations/ci-cd); hier gaat het alleen over de tijd.
 
 ## Elke job, van aanmaak tot klaar
 
-Elke balk is een mediaan. Het gestreepte deel is wachten, het volle deel is
-werken. De tijd loopt vanaf het aanmaken van de run, dus bij een job met
-`needs` zit de looptijd van zijn voorgangers in het gestreepte deel.
+Nul is het moment waarop de runs zijn aangemaakt. Pijlen zijn `needs`: een balk
+begint niet voordat de pijl bij hem aankomt. Het gestreepte stukje ervoor is de
+tijd dat de job klaar stond zonder vrije runner.
 
 <CiGantt />
 
-## Waar de 12,8 minuten heen gaan
+## Wat deze run laat zien
 
-### 5,7 minuten wachten op een runner
+### 17,6 minuten, waarvan de preview de staart is
 
-De run zelf begint binnen zes seconden, maar dat is de goedkope
-`Detect changes`. De echte jobs staan daarna vier tot acht minuten stil. Het
-kritieke pad is `changes` → `Rust tests` → `Test`: samen 7,1 minuut werk in een
-run die 12,8 minuut duurt. De rest is wachten op capaciteit die je met de hele
-organisatie deelt.
+CI was klaar op 5,8. Daarna liep er nog twaalf minuten door aan iets wat de merge
+niet tegenhoudt: vijf docker-images waarvan `build` er 12,5 minuut over doet, en
+een `deploy-preview` die pas op 13,9 mag beginnen. Twee images bleven deze keer
+achterwege omdat de wijziging hun paden niet raakte, dus de filter in `changes`
+werkt wel.
 
-### 8,0 minuten wachten op checks die niets tegenhouden
+### 4,5 minuten voor het testbeen met de database
 
-De vijf verplichte checks zijn juist de snelle. Wie wacht tot er niets meer
-draait, wacht op E2E, provenance en de docker-builds, en die blokkeren de merge
-niet. Bij vijftien pull requests is dat twee uur.
+`Rust tests (db)` loopt van 1,1 tot 5,6 en houdt de verplichte poort `Test`
+tegen, die er zelf vier seconden over doet. Het andere been is na 3,0 klaar en
+staat dus tweeënhalve minuut te niksen.
 
-### 3,4 minuten door drie deelbouwen die de rest ophouden
+### 1,8 minuut, de langste keer wachten op een runner
 
-`deploy-preview` wacht op zeven build-jobs. Vier van de zeven images zijn na 4,4
-minuut klaar. `enrich-worker` doet er 9,7 over, `harvester-worker` en
-`pipeline-api` 8,2. Zij bepalen wanneer `deploy-preview` mag beginnen, en die
-begint dus pas op 13,9.
+De langste runnerwachttijd in deze run is 1,8 minuut, bij `build-admin`. Verder
+blijft het onder de minuut. De pijplijn is lang door het werk zelf; capaciteit
+speelt hier geen rol.
 
 ## Verplicht en niet verplicht
 
 Branch protection op `main` eist vijf checks en draait met `strict: true`: een
-pull request die achterloopt kan niet mergen, hoe groen hij ook is. `Test` is
-zelf een poort van een paar seconden die wacht op `rust-tests` en
-`frontend-tests`.
+pull request die achterloopt kan niet mergen, hoe groen hij ook is.
 
 | Check | Rol | Duur |
 | --- | --- | --: |
+| Test | verplicht; poort op de testbenen, draait zelf niets | 0,1 |
+| Protect schema versions | verplicht | 0,2 |
+| WASM Build | verplicht | 0,5 |
+| Security Audit | verplicht; geen `needs`, start meteen | 0,7 |
 | Pre-commit | verplicht | 1,1 |
-| Security Audit | verplicht | 0,9 |
-| Protect schema versions | verplicht | 0,4 |
-| WASM Build | verplicht | 6,2 |
-| Test | verplicht, poort op beide testbenen | 0,1 |
-| Rust tests (unit) en (db) | niet verplicht, maar `Test` hangt eraan | 6,9 |
-| Claude review completed | niet verplicht; besluit staat nog open | 6,2 |
-| E2E, provenance, cross-law, a11y | niet verplicht | 0,4 – 6,9 |
-| Build and Deploy | niet verplicht | 12,7 |
+| Rust tests (unit) en (db) | niet verplicht, maar `Test` hangt eraan | 2,5 en 4,5 |
+| E2E (mocked) | niet verplicht; test niet tegen de preview | 2,6 |
+| Claude review completed | niet verplicht; besluit staat nog open | 5,3 |
+| Build and Deploy | niet verplicht | 17,6 |
 
-## Meetwijze
+## Waarom één run en geen gemiddelde
 
-Gemeten op 7 augustus 2026 over 60 afgeronde runs van het type
-`pull_request` op MinBZK/regelrecht. Elk getal is een mediaan. Wachttijd is
-gerekend vanaf het aanmaken van de run, niet vanaf het starten van de job.
-Overgeslagen jobs tellen niet mee. CodeQL draait via de standaardconfiguratie
-van GitHub en zat niet in deze steekproef.
+Een gemiddelde ligt voor de hand en kan hier niet. Medianen per job komen uit
+verschillende uitvoeringen, en zodra je die naast elkaar zet met `needs`-pijlen
+ertussen ontstaat een schema dat nergens zo gelopen heeft: een opvolger die
+eerder begint dan zijn voorganger eindigt. Op medianen eindigde `build` op 19,7
+terwijl `deploy-preview` op 17,4 begon, en die laatste wacht op de eerste.
 
-De cijfers verouderen zodra een workflow verandert. `script/meet-ci.sh` in de
-repo-root meet ze opnieuw via de GitHub-API en schrijft het resultaat in het
-formaat van de dataset:
+De cijfers hierboven zijn dus wat er die ene keer echt gebeurde. Een andere run
+ziet er anders uit; deze is representatief voor de vorm, niet voor elk getal.
+`cleanup-preview` hoort bij een latere run, aangezwengeld door het sluiten van de
+PR, en staat er niet bij. CodeQL draait via de standaardconfiguratie van GitHub
+en liep hier niet mee.
+
+## Bijwerken
+
+`script/meet-ci.sh` in de repo-root haalt één run op (standaard de nieuwste
+volledig geslaagde, of een run bij een commit die je meegeeft), leest de
+`needs`-graaf uit de workflow-bestanden en schrijft het resultaat in het formaat
+van de dataset:
 
 ```bash
 just meet-ci
+just meet-ci afa1408c
 ```
 
-Bijwerken is het `ciWorkflows`-blok in `docs/src/lib/ci-pipeline.ts` vervangen
-door wat het script uitspuugt, en `measuredOn` in datzelfde bestand op de nieuwe
-meetdatum zetten. Astro rendert de grafiek op bouwtijd uit die array; verder is
-er niets aan te passen.
+Vervang de `ciWorkflows`-array in `docs/src/lib/ci-pipeline.ts` door wat het
+script uitspuugt en werk `ciRun` en `ciScaleMinutes` bij. Astro rekent de balken
+en de pijlen op bouwtijd uit die array uit; verder is er niets aan te passen.

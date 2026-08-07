@@ -1,64 +1,138 @@
 ---
 /*
- * Gantt van één pull request: per job een gestreepte balk voor wachten en een
- * volle balk voor werken. Alles staat na de build in de HTML: de posities zijn
- * inline percentages, berekend hier in de frontmatter. Er hoort geen
- * client-side JavaScript bij; de docs draaien richting een CSP zonder
- * `script-src unsafe-inline`.
+ * Gantt van één echte uitvoering van de CI. Een balk loopt van de start tot het
+ * einde van de job; de `needs`-relaties zijn pijlen in een SVG-laag over de
+ * rijen heen. Het gestreepte stukje vóór een balk is de tijd dat de job klaar
+ * stond zonder vrije runner: het einde van zijn laatste voorganger tot zijn
+ * eigen start.
+ *
+ * Alles staat na de build in de HTML: de balkposities zijn inline percentages
+ * en de pijlen zijn uitgerekende SVG-paden, allebei berekend hier in de
+ * frontmatter. Er hoort geen client-side JavaScript bij; de docs draaien
+ * richting een CSP zonder `script-src unsafe-inline`.
+ *
+ * De SVG heeft viewBox="0 0 100 <hoogte>" met preserveAspectRatio="none": x is
+ * een percentage van de tijdas en y telt in rijhoogtes. De horizontale rek die
+ * dat oplevert wordt met vector-effect="non-scaling-stroke" van de lijndikte
+ * weggehouden.
  */
 import {
   ciWorkflows,
   ciScaleMinutes,
   ciTickMinutes,
+  ciRowHeight,
+  ciMinimumBar,
   nlNumber,
 } from '~/lib/ci-pipeline';
 
 const ticks: number[] = [];
 for (let m = 0; m <= ciScaleMinutes; m += ciTickMinutes) ticks.push(m);
 
-const pct = (minutes: number) => `${(minutes / ciScaleMinutes) * 100}%`;
+const x = (minutes: number) => (minutes / ciScaleMinutes) * 100;
+const pct = (minutes: number) => `${x(minutes)}%`;
 
-// Een job van een paar seconden zou anders als onzichtbare streep renderen.
-const minimumBar = 0.18;
+// Een gestreept stukje van minder dan drie seconden is geen streep meer.
+const waitThreshold = 0.05;
 
-const rows = ciWorkflows.map((wf) => ({
-  ...wf,
-  jobs: wf.jobs.map((job) => {
-    const work = Math.max(job.work, minimumBar);
-    const roles = [
-      job.required ? 'verplicht voor de merge' : null,
-      job.gate ? 'poort die op andere jobs wacht' : null,
-    ].filter(Boolean);
-    return {
-      ...job,
-      waitLeft: '0',
-      waitWidth: pct(job.wait),
-      workLeft: pct(job.wait),
-      workWidth: pct(work),
-      numberLeft: pct(job.wait + work),
-      description:
-        `wacht ${nlNumber(job.wait)} minuten, draait ${nlNumber(job.work)} minuten` +
-        (roles.length ? `, ${roles.join(', ')}` : ''),
-    };
-  }),
-}));
+const groups = ciWorkflows.map((wf) => {
+  const index = new Map(wf.jobs.map((job, i) => [job.id, i]));
+  const byId = new Map(wf.jobs.map((job) => [job.id, job]));
+  const rowY = (id: string) => (index.get(id) ?? 0) * ciRowHeight + ciRowHeight / 2;
+
+  // Klaarstaan is het einde van de laatste voorganger; zonder voorgangers is
+  // dat het aanmaken van de run.
+  const ready = new Map<string, number>();
+  const predecessors = new Map<string, string[]>();
+  for (const edge of wf.edges) {
+    const from = byId.get(edge.from)!;
+    for (const to of edge.to) {
+      ready.set(to, Math.max(ready.get(to) ?? 0, from.end));
+      predecessors.set(to, [...(predecessors.get(to) ?? []), from.name]);
+    }
+  }
+  const readyAt = (id: string) => ready.get(id) ?? 0;
+
+  const paths: { d: string; arrow: boolean }[] = [];
+  for (const edge of wf.edges) {
+    const ex = x(byId.get(edge.from)!.end);
+    const ey = rowY(edge.from);
+    if (edge.spine) {
+      const lowest = Math.max(...edge.to.map(rowY));
+      paths.push({ d: `M ${ex} ${ey} L ${ex} ${lowest}`, arrow: false });
+      for (const to of edge.to) {
+        paths.push({ d: `M ${ex} ${rowY(to)} L ${x(readyAt(to))} ${rowY(to)}`, arrow: true });
+      }
+    } else {
+      for (const to of edge.to) {
+        const tx = x(readyAt(to));
+        const ty = rowY(to);
+        const knee = Math.max(ex, tx - 0.5);
+        paths.push({
+          d: `M ${ex} ${ey} L ${knee} ${ey} L ${knee} ${ty} L ${tx} ${ty}`,
+          arrow: true,
+        });
+      }
+    }
+  }
+
+  return {
+    name: wf.name,
+    note: wf.note,
+    slug: wf.name.replace(/\W/g, '').toLowerCase(),
+    height: wf.jobs.length * ciRowHeight,
+    paths,
+    jobs: wf.jobs.map((job) => {
+      const work = Math.max(job.end - job.start, ciMinimumBar);
+      const wait = job.start - readyAt(job.id);
+      const showWait = wait > waitThreshold;
+      const preds = predecessors.get(job.id) ?? [];
+      const roles = [
+        job.required ? 'verplicht voor de merge' : null,
+        job.gate ? 'poort die alleen wacht' : null,
+      ].filter(Boolean);
+      return {
+        ...job,
+        showWait,
+        waitLeft: pct(readyAt(job.id)),
+        waitWidth: pct(wait),
+        workLeft: pct(job.start),
+        workWidth: pct(work),
+        numberLeft: pct(job.start + work),
+        duration: nlNumber(job.end - job.start),
+        description:
+          (preds.length ? `wacht op ${preds.join(', ')}, ` : '') +
+          `van ${nlNumber(job.start)} tot ${nlNumber(job.end)} minuten` +
+          (showWait ? `, met ${nlNumber(wait)} minuten wachten op een runner` : '') +
+          (roles.length ? `, ${roles.join(', ')}` : ''),
+      };
+    }),
+  };
+});
 ---
 
 <figure class="rr-gantt" data-width="full">
   <ul class="rr-gantt-legend">
+    <li>
+      <span class="rr-gantt-swatch is-arrow"></span><code>needs</code>
+    </li>
     <li><span class="rr-gantt-swatch is-wait"></span>wachten op een runner</li>
-    <li><span class="rr-gantt-swatch is-work"></span>draaiend, niet verplicht</li>
+    <li><span class="rr-gantt-swatch is-work"></span>werken, niet verplicht</li>
     <li>
       <span class="rr-gantt-swatch is-required"></span>verplicht voor de merge
       (<span aria-hidden="true">&#9679;</span>)
     </li>
     <li>
-      <span class="rr-gantt-swatch is-gate"></span>poort die op anderen wacht
+      <span class="rr-gantt-swatch is-gate"></span>poort die alleen wacht
       (<span aria-hidden="true">&#9670;</span>)
     </li>
   </ul>
 
-  <div class="rr-gantt-scroll" tabindex="0" role="group" aria-label="Gantt van de jobs per workflow">
+  <div
+    class="rr-gantt-scroll"
+    tabindex="0"
+    role="group"
+    aria-label="Gantt van de jobs per workflow"
+  >
     <div class="rr-gantt-inner">
       <div class="rr-gantt-axis" aria-hidden="true">
         {
@@ -74,52 +148,89 @@ const rows = ciWorkflows.map((wf) => ({
       </div>
 
       {
-        rows.map((wf) => (
+        groups.map((wf) => (
           <section class="rr-gantt-group">
             <h3 class="rr-gantt-group-head">
               <span class="rr-gantt-group-name">{wf.name}</span>
-              {wf.total !== null && (
-                <span class="rr-gantt-group-total">
-                  mediaan {nlNumber(wf.total)} min van aanmaak tot klaar
-                </span>
-              )}
+              {wf.note && <span class="rr-gantt-group-note">{wf.note}</span>}
             </h3>
-            {wf.jobs.map((job) => (
-              <div class="rr-gantt-row">
-                <div class="rr-gantt-label">
-                  {job.required && (
-                    <span class="rr-gantt-mark is-required" aria-hidden="true">
-                      &#9679;
-                    </span>
-                  )}
-                  {job.gate && (
-                    <span class="rr-gantt-mark is-gate" aria-hidden="true">
-                      &#9670;
-                    </span>
-                  )}
-                  {job.name}
-                  <span class="rr-gantt-sr">: {job.description}</span>
-                </div>
-                <div class="rr-gantt-track" aria-hidden="true">
-                  <span
-                    class="rr-gantt-bar is-wait"
-                    style={`left: ${job.waitLeft}; width: ${job.waitWidth}`}
-                  />
-                  <span
-                    class:list={[
-                      'rr-gantt-bar',
-                      'is-work',
-                      job.required && 'is-required',
-                      job.gate && 'is-gate',
-                    ]}
-                    style={`left: ${job.workLeft}; width: ${job.workWidth}`}
-                  />
-                  <span class="rr-gantt-number" style={`left: ${job.numberLeft}`}>
-                    {nlNumber(job.work)}
+            <div class="rr-gantt-plot">
+              <div class="rr-gantt-labels">
+                {wf.jobs.map((job) => (
+                  <span class="rr-gantt-label">
+                    {job.required && (
+                      <span class="rr-gantt-mark is-required" aria-hidden="true">
+                        &#9679;
+                      </span>
+                    )}
+                    {job.gate && (
+                      <span class="rr-gantt-mark is-gate" aria-hidden="true">
+                        &#9670;
+                      </span>
+                    )}
+                    {job.name}
+                    <span class="rr-gantt-sr">: {job.description}</span>
                   </span>
-                </div>
+                ))}
               </div>
-            ))}
+              <div class="rr-gantt-tracks" aria-hidden="true">
+                {wf.jobs.map((job) => (
+                  <div class="rr-gantt-row">
+                    {job.showWait && (
+                      <span
+                        class="rr-gantt-bar is-wait"
+                        style={`left: ${job.waitLeft}; width: ${job.waitWidth}`}
+                      />
+                    )}
+                    <span
+                      class:list={[
+                        'rr-gantt-bar',
+                        'is-work',
+                        job.required && 'is-required',
+                        job.gate && 'is-gate',
+                        job.showWait && 'has-lead',
+                      ]}
+                      style={`left: ${job.workLeft}; width: ${job.workWidth}`}
+                    />
+                    <span class="rr-gantt-number" style={`left: ${job.numberLeft}`}>
+                      {job.duration}
+                    </span>
+                  </div>
+                ))}
+                {wf.paths.length > 0 && (
+                  <svg
+                    class="rr-gantt-arrows"
+                    viewBox={`0 0 100 ${wf.height}`}
+                    preserveAspectRatio="none"
+                    focusable="false"
+                  >
+                    <defs>
+                      <marker
+                        id={`rr-gantt-arrow-${wf.slug}`}
+                        viewBox="0 0 6 6"
+                        refX="5"
+                        refY="3"
+                        markerWidth="5"
+                        markerHeight="5"
+                        orient="auto"
+                        markerUnits="strokeWidth"
+                      >
+                        <path class="rr-gantt-arrowhead" d="M0,0 L6,3 L0,6 z" />
+                      </marker>
+                    </defs>
+                    {wf.paths.map((p) => (
+                      <path
+                        class="rr-gantt-arrow"
+                        d={p.d}
+                        marker-end={
+                          p.arrow ? `url(#rr-gantt-arrow-${wf.slug})` : undefined
+                        }
+                      />
+                    ))}
+                  </svg>
+                )}
+              </div>
+            </div>
           </section>
         ))
       }
@@ -134,6 +245,9 @@ const rows = ciWorkflows.map((wf) => ({
      nldd-rich-text geeft figure/ul/li/h3 een eigen font, marge en opsomming;
      die worden hieronder teruggezet omdat de grafiek geen lopende tekst is. */
   .rr-gantt {
+    --rr-gantt-label-width: 15rem;
+    --rr-gantt-row-height: 26px;
+    --rr-gantt-arrow-color: var(--primitives-color-coolgray-300);
     display: flex;
     flex-direction: column;
     gap: var(--primitives-space-12);
@@ -166,6 +280,28 @@ const rows = ciWorkflows.map((wf) => ({
     border-radius: 2px;
     flex: none;
   }
+  /* Pijl-swatch: een lijntje met een driehoekje, opgebouwd uit pseudo-elementen
+     omdat een tweede SVG voor één legenda-item niet loont. */
+  .rr-gantt-swatch.is-arrow {
+    position: relative;
+    border-radius: 0;
+  }
+  .rr-gantt-swatch.is-arrow::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0 4px;
+    top: 5px;
+    block-size: 1px;
+    background: var(--rr-gantt-arrow-color);
+  }
+  .rr-gantt-swatch.is-arrow::after {
+    content: '';
+    position: absolute;
+    inset-inline-end: 0;
+    top: 2.5px;
+    border: 3px solid transparent;
+    border-inline-start-color: var(--rr-gantt-arrow-color);
+  }
   .rr-gantt-swatch.is-wait,
   .rr-gantt-bar.is-wait {
     background: repeating-linear-gradient(
@@ -192,7 +328,7 @@ const rows = ciWorkflows.map((wf) => ({
      tabindex op de scroller maakt hem met het toetsenbord bereikbaar. */
   .rr-gantt-scroll {
     overflow-x: auto;
-    /* Zonder dit duwt de 44rem-brede grafiek de flex-container open en scrollt
+    /* Zonder dit duwt de 52rem-brede grafiek de flex-container open en scrollt
        de pagina zijwaarts mee. */
     min-inline-size: 0;
     border: var(--semantics-surfaces-border-width) solid
@@ -201,13 +337,13 @@ const rows = ciWorkflows.map((wf) => ({
     padding: var(--primitives-space-16);
   }
   .rr-gantt-inner {
-    min-inline-size: 44rem;
+    min-inline-size: 52rem;
   }
 
   .rr-gantt-axis {
     position: relative;
     block-size: 1.35rem;
-    margin-inline-start: var(--rr-gantt-label-width, 13rem);
+    margin-inline-start: var(--rr-gantt-label-width);
     border-bottom: 1px solid var(--semantics-dividers-color);
     font: var(--primitives-font-body-xs-regular-snug);
     color: var(--semantics-content-secondary-color);
@@ -240,25 +376,29 @@ const rows = ciWorkflows.map((wf) => ({
   .rr-gantt-group-name {
     font: var(--primitives-font-body-sm-bold-snug);
   }
-  .rr-gantt-group-total {
+  .rr-gantt-group-note {
     font: var(--primitives-font-body-xs-regular-snug);
     color: var(--semantics-content-secondary-color);
-    font-variant-numeric: tabular-nums;
   }
 
-  .rr-gantt-row {
+  .rr-gantt-plot {
     display: grid;
-    grid-template-columns: var(--rr-gantt-label-width, 13rem) 1fr;
-    align-items: center;
-    block-size: 1.85rem;
+    grid-template-columns: var(--rr-gantt-label-width) 1fr;
+  }
+  .rr-gantt-labels {
+    display: flex;
+    flex-direction: column;
   }
   .rr-gantt-label {
+    block-size: var(--rr-gantt-row-height);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
     padding-inline-end: var(--primitives-space-12);
-    text-align: end;
+    color: var(--semantics-content-secondary-color);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--semantics-content-secondary-color);
   }
   .rr-gantt-mark {
     margin-inline-end: 0.3em;
@@ -270,9 +410,12 @@ const rows = ciWorkflows.map((wf) => ({
     color: var(--primitives-color-paars-500);
   }
 
-  .rr-gantt-track {
+  .rr-gantt-tracks {
     position: relative;
-    block-size: 100%;
+  }
+  .rr-gantt-row {
+    position: relative;
+    block-size: var(--rr-gantt-row-height);
   }
   .rr-gantt-bar {
     position: absolute;
@@ -284,6 +427,9 @@ const rows = ciWorkflows.map((wf) => ({
   .rr-gantt-bar.is-wait {
     border-radius: 2px 0 0 2px;
   }
+  .rr-gantt-bar.is-work.has-lead {
+    border-radius: 0 2px 2px 0;
+  }
   .rr-gantt-number {
     position: absolute;
     top: 50%;
@@ -293,6 +439,27 @@ const rows = ciWorkflows.map((wf) => ({
     color: var(--semantics-content-secondary-color);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+
+  /* De pijlenlaag ligt over de rijen heen. De viewBox rekent in procenten op de
+     x-as en in pixels op de y-as; preserveAspectRatio="none" laat die twee los
+     van elkaar schalen, non-scaling-stroke houdt de lijn 1px. */
+  .rr-gantt-arrows {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .rr-gantt-arrow {
+    fill: none;
+    stroke: var(--rr-gantt-arrow-color);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+  .rr-gantt-arrowhead {
+    fill: var(--rr-gantt-arrow-color);
   }
 
   /* De balken zijn aria-hidden; deze tekst geeft dezelfde cijfers aan een
@@ -308,7 +475,7 @@ const rows = ciWorkflows.map((wf) => ({
 
   @media (max-width: 40rem) {
     .rr-gantt {
-      --rr-gantt-label-width: 9rem;
+      --rr-gantt-label-width: 10rem;
     }
   }
 </style>

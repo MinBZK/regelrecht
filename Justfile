@@ -670,10 +670,10 @@ docs-preview:
 docs-a11y:
     cd docs && npm run a11y
 
-# Meet de CI-doorlooptijd opnieuw; vervang het ciWorkflows-blok in
+# Haal één CI-uitvoering op (leeg = nieuwste groene commit); vervang de blokken in
 # docs/src/lib/ci-pipeline.ts door de uitvoer (zie /operations/ci-doorlooptijd)
-meet-ci:
-    ./script/meet-ci.sh
+meet-ci sha="":
+    ./script/meet-ci.sh {{sha}}
 
 # --- Architecture model ---
 
