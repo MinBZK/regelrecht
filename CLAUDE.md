@@ -111,6 +111,25 @@ When using git worktrees, create them **inside the project folder** (e.g., `.wor
 git worktree add .worktrees/feature-branch feature-branch
 ```
 
+### Rebasing open PRs
+
+Branch protection on `main` runs with `strict: true`: a PR that is behind cannot
+merge, no matter how green its checks are. Every merge invalidates the checks of
+every other open PR.
+
+So rebase **one** PR at a time, the one that is merged next, right after the
+previous merge landed. Leave the rest alone. Rebasing ten branches at once
+queues dozens of runs that can never lead to a merge, and the PR at the front of
+the line ends up waiting behind them for a runner.
+
+Always fetch first and rebase onto `origin/main` — a local `main` ref is
+usually stale, and the rebase then quietly produces a branch that is still
+behind. Verify before pushing:
+
+```bash
+gh api repos/MinBZK/regelrecht/compare/main...<branch> --jq .behind_by   # must be 0
+```
+
 ## Architecture Notes
 
 ### Law Format
