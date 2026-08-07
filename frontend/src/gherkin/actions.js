@@ -43,14 +43,25 @@ export function parseValue(str) {
  * Parse a data table into record objects using the header row.
  * Values are auto-typed via parseValue() so the engine receives correctly
  * typed numbers, booleans, and nulls.
+ *
+ * A row that does not match the header row is rejected rather than filled with
+ * undefined: today the Gherkin parser already rejects a varying cell count, but
+ * that guarantee lives in a dependency we bump, and the Rust mirror
+ * (`rows_to_records`) leans on a different parser. The explicit check keeps
+ * both sides failing the same way if either parser ever loosens.
  */
 export function tableToRecords(dataTable) {
   if (!dataTable || dataTable.length < 2) return [];
   const headers = dataTable[0];
-  return dataTable.slice(1).map((row) => {
+  return dataTable.slice(1).map((row, rowIndex) => {
+    if (row.length !== headers.length) {
+      throw new Error(
+        `data table row ${rowIndex + 1} has ${row.length} cells, header row has ${headers.length}`,
+      );
+    }
     const record = {};
     headers.forEach((h, i) => {
-      record[h] = parseValue(row[i] || '');
+      record[h] = parseValue(row[i]);
     });
     return record;
   });
