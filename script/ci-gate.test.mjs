@@ -88,7 +88,9 @@ function runGate(results) {
     assert.ok(job in results, `geen resultaat opgegeven voor ${job}`);
     return results[job];
   });
-  return spawnSync('bash', ['-c', filled], { encoding: 'utf8' });
+  // Dezelfde shellvlaggen als de standaardshell van Actions (`bash -e -o
+  // pipefail`), anders bewijst een groene test niets over de echte run.
+  return spawnSync('bash', ['-e', '-o', 'pipefail', '-c', filled], { encoding: 'utf8' });
 }
 
 const withAll = (value) => Object.fromEntries(NEEDS.map((job) => [job, value]));
