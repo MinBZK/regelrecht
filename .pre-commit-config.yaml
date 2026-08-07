@@ -93,6 +93,13 @@ repos:
         # Ook op een schemawijziging: die verandert wat de geldende URL is.
         files: ^(\.claude/skills/|script/(check-skill-references(\.test)?\.sh|\.skill-path-exceptions)$|schema/)
 
+      - id: target-dir-tests
+        name: De target-dir-schakelaar doet wat hij belooft
+        entry: script/target-dir.test.sh
+        language: system
+        pass_filenames: false
+        files: ^script/target-dir(\.test)?\.sh$
+
       - id: documented-crates
         name: CLAUDE.md noemt elke workspace-crate
         entry: script/check-documented-crates.mjs

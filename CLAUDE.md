@@ -45,6 +45,19 @@ installs `mold` (required by `packages/.cargo/config.toml`) + `sccache`.
 (`CARGO_INCREMENTAL=0`), which slows the `just dev` hot-reload loop. CI uses
 mold + sccache.
 
+**Sharing that target dir costs something when two agents work at once.** Cargo
+takes an exclusive lock on a target dir for the whole build, so a second worktree
+waits: measured here, `just validate` runs in 2 seconds alone and 38 seconds
+alongside a 45-second `just lint` in another worktree. Sharing still wins on the
+single-agent case by a wide margin (a first `just build-check` in a fresh
+worktree: 1 second shared, 170 seconds with its own target dir). A worktree that
+is about to run long builds can step out of the queue with `just
+target-isolated`, and `just target-shared` puts it back.
+
+Do not reach for sccache to get both: it hashes the working directory, so two
+worktrees on different paths share no Rust compilation at all. Measured over a
+cold `just build-check` with a warm cache: 480 misses, 0 hits.
+
 ### Just Commands
 
 **IMPORTANT FOR CLAUDE CODE:** All `just` commands have pre-authorized permissions configured in the project settings. Always use `just` commands to avoid unnecessary permission prompts.
