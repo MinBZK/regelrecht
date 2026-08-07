@@ -2,7 +2,6 @@ use regelrecht_engine::{ArticleResult, LawExecutionService, LawInfo, PathNode, V
 use std::collections::BTreeMap;
 use std::path::Path;
 use tokio::sync::mpsc;
-use walkdir::WalkDir;
 
 /// Commands sent to the engine thread.
 pub enum EngineCommand {
@@ -122,31 +121,13 @@ fn engine_thread(
 }
 
 fn load_corpus(service: &mut LawExecutionService, project_root: &Path) -> usize {
-    let candidates = [
-        project_root.join("corpus/regulation/nl"),
-        project_root.join("corpus/regulation"),
-        project_root.join("corpus/central/nl"),
-        project_root.join("corpus/central"),
-    ];
-
-    let corpus_dir = candidates.iter().find(|p| p.is_dir());
-    let corpus_dir = match corpus_dir {
-        Some(d) => d,
-        None => return 0,
-    };
-
     let mut count = 0;
-    for entry in WalkDir::new(corpus_dir).into_iter().flatten().filter(|e| {
-        e.file_type().is_file()
-            && e.path()
-                .extension()
-                .is_some_and(|ext| ext == "yaml" || ext == "yml")
-    }) {
-        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+    for path in super::corpus_scanner::corpus_yaml_files(project_root) {
+        if let Ok(content) = std::fs::read_to_string(&path) {
             match service.load_law(&content) {
                 Ok(_) => count += 1,
                 Err(e) => {
-                    tracing::warn!("Failed to load {}: {}", entry.path().display(), e);
+                    tracing::warn!("Failed to load {}: {}", path.display(), e);
                 }
             }
         }
