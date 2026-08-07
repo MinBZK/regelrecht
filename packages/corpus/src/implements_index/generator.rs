@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::{
-    scan_tree, ImplementsIndex, ScanFailure, IMPLEMENTS_INDEX_FILENAME, IMPLEMENTS_INDEX_VERSION,
+    normalise_root, scan_tree, ImplementsIndex, ScanFailure, ScanFailureKind,
+    IMPLEMENTS_INDEX_FILENAME, IMPLEMENTS_INDEX_VERSION,
 };
 
 /// Default subtree to scan, relative to the repo root.
@@ -115,23 +116,20 @@ fn git(repo_root: &Path, args: &[&str]) -> Result<String, String> {
 }
 
 /// Generate or verify the index. `Err` is an operational failure (dirty
-/// tree, git error, unreadable index, systematic parse breakage); the
-/// caller maps it to exit code 2.
-/// Collapse a scan root to the form the consumer compares and strips
-/// with: no leading or trailing slash, no empty interior segment.
-fn normalise_root(root: &str) -> String {
-    root.split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
+/// tree, git error, unreadable index, an unreadable directory, systematic
+/// parse breakage); the caller maps it to exit code 2.
 pub fn run(args: &Args) -> Result<Outcome, String> {
     // An index over the repo root contains its own file, so writing it
     // changes the tree sha it just recorded and no consumer would ever
     // accept it. Refuse here rather than in the CLI's argument parsing:
-    // `Args` is public, so a library caller reaches this too.
-    if args.scan_root.trim_matches('/').is_empty() {
+    // `Args` is public, so a library caller reaches this too. Normalised
+    // first, so `.` — which names the repo root just as `/` does — is
+    // caught by the same gate.
+    // Normalised once here: it is what gets recorded in the index (the
+    // consumer compares and strips it as a path prefix) and what git and
+    // the scan are asked about, so all four agree on one spelling.
+    let scan_root = normalise_root(&args.scan_root);
+    if scan_root.is_empty() {
         return Err(
             "scan root must name a subtree: an index rooted at the repo root contains \
              its own file and so invalidates the tree sha it records"
@@ -143,24 +141,47 @@ pub fn run(args: &Args) -> Result<Outcome, String> {
     // has no uncommitted changes. Refuse a dirty subtree — no bypass.
     let dirty = git(
         &args.repo_root,
-        &["status", "--porcelain", "--", &args.scan_root],
+        &["status", "--porcelain", "--", &scan_root],
     )?;
     if !dirty.is_empty() {
         return Err(format!(
-            "scan subtree '{}' has uncommitted changes; commit or stash them first \
-             (the recorded tree sha must describe exactly what was scanned):\n{dirty}",
-            args.scan_root
+            "scan subtree '{scan_root}' has uncommitted changes; commit or stash them \
+             first (the recorded tree sha must describe exactly what was scanned):\n{dirty}"
         ));
     }
 
     let tree_sha = git(
         &args.repo_root,
-        &["rev-parse", &format!("HEAD:{}", args.scan_root)],
+        &["rev-parse", &format!("HEAD:{scan_root}")],
     )
-    .map_err(|e| format!("cannot resolve tree sha of '{}': {e}", args.scan_root))?;
+    .map_err(|e| format!("cannot resolve tree sha of '{scan_root}': {e}"))?;
 
     let outcome =
-        scan_tree(&args.repo_root, &args.scan_root).map_err(|e| format!("scan failed: {e}"))?;
+        scan_tree(&args.repo_root, &scan_root).map_err(|e| format!("scan failed: {e}"))?;
+
+    // A directory the walk could not enter is not corpus noise: how many
+    // laws it holds is unknown, so no ratio over the files we *did* see
+    // bounds the hole. Refuse rather than emit an index that omits a
+    // subtree while reporting success.
+    let unwalkable: Vec<&ScanFailure> = outcome
+        .failures
+        .iter()
+        .filter(|f| f.kind == ScanFailureKind::Walk)
+        .collect();
+    if !unwalkable.is_empty() {
+        let listed = unwalkable
+            .iter()
+            .map(|f| format!("  {}: {}", f.path, f.error))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "{} director{} under '{scan_root}' could not be walked, so an unknown number \
+             of laws was never seen; refusing to emit an index that would look \
+             complete:\n{listed}",
+            unwalkable.len(),
+            if unwalkable.len() == 1 { "y" } else { "ies" }
+        ));
+    }
 
     let scanned = outcome.files.len() + outcome.failures.len();
     let failed = outcome.failures.len();
@@ -172,10 +193,9 @@ pub fn run(args: &Args) -> Result<Outcome, String> {
     };
     if ratio > MAX_UNPARSEABLE_RATIO {
         return Err(format!(
-            "{failed} of {scanned} files under '{}' failed to parse ({:.1}%, limit {:.0}%) — \
-             that is a systematic failure, not corpus noise; refusing to emit an index \
-             that would omit them all",
-            args.scan_root,
+            "{failed} of {scanned} files under '{scan_root}' failed to parse \
+             ({:.1}%, limit {:.0}%) — that is a systematic failure, not corpus noise; \
+             refusing to emit an index that would omit them all",
             ratio * 100.0,
             MAX_UNPARSEABLE_RATIO * 100.0
         ));
@@ -184,12 +204,7 @@ pub fn run(args: &Args) -> Result<Outcome, String> {
     let declaring = outcome.files.values().filter(|v| !v.is_empty()).count();
     let index = ImplementsIndex {
         version: IMPLEMENTS_INDEX_VERSION,
-        // Normalised, because the consumer compares this root against a
-        // source root and strips it as a path prefix. A stored `foo//bar`
-        // or `/foo/bar` would pass the coverage check and then strip
-        // nothing, projecting to an empty map that reads as "this corpus
-        // holds no laws".
-        root: normalise_root(&args.scan_root),
+        root: scan_root,
         tree_sha,
         files: outcome.files,
     };
@@ -309,15 +324,52 @@ mod tests {
 
     #[test]
     fn the_recorded_root_is_normalised() {
-        assert_eq!(normalise_root("regulation"), "regulation");
-        assert_eq!(normalise_root("/regulation/nl/"), "regulation/nl");
-        assert_eq!(normalise_root("regulation//nl"), "regulation/nl");
+        let dir = fixture(1, 0);
+        let args = Args {
+            scan_root: "/regulation/".to_string(),
+            ..Args::new(dir.path())
+        };
+        run(&args).unwrap();
+        let raw = fs::read_to_string(dir.path().join(IMPLEMENTS_INDEX_FILENAME)).unwrap();
+        assert_eq!(ImplementsIndex::parse(&raw).unwrap().root, "regulation");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unwalkable_directory_is_fatal_however_few_files_it_hides() {
+        use super::super::tests::{directory_permissions_bite, while_unreadable};
+
+        // 20 readable laws against one locked directory: far under
+        // `MAX_UNPARSEABLE_RATIO`, which is exactly why the ratio net
+        // cannot be what catches this.
+        let dir = fixture(20, 0);
+        if !directory_permissions_bite(dir.path()) {
+            eprintln!("skipped: this process reads directories regardless of mode bits");
+            return;
+        }
+        write(
+            dir.path(),
+            "regulation/nl/geheim/wet_weg/2025-01-01.yaml",
+            "$id: wet_weg\narticles: []\n",
+        );
+        commit_all(dir.path(), "add a law that will be locked away");
+
+        let locked = dir.path().join("regulation/nl/geheim");
+        let result = while_unreadable(&locked, || run(&Args::new(dir.path())));
+
+        let err = result.expect_err("an unwalkable directory must not yield an index");
+        assert!(err.contains("could not be walked"), "unexpected: {err}");
+        assert!(
+            !dir.path().join(IMPLEMENTS_INDEX_FILENAME).exists(),
+            "no index may be written when part of the tree was never seen"
+        );
     }
 
     #[test]
     fn a_repo_root_scan_is_refused() {
         let dir = TempDir::new().unwrap();
-        for root in ["", "/"] {
+        // `.` names the repo root just as `""` and `/` do.
+        for root in ["", "/", ".", "./"] {
             let args = Args {
                 repo_root: dir.path().to_path_buf(),
                 scan_root: root.to_string(),

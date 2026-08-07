@@ -170,14 +170,31 @@ impl ImplementsIndex {
     }
 }
 
-/// One file the scan could not parse. Recorded instead of silently
-/// indexing the file as "implements nothing".
+/// What kind of loss a [`ScanFailure`] represents. The two are gated
+/// differently by the generator: a per-file failure names exactly one path
+/// that stays out of the index, a walk failure names a directory whose
+/// contents were never enumerated at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanFailureKind {
+    /// A known `.yaml`/`.yml` file that could not be read or parsed. The
+    /// loss is exactly one path, and a path missing from the index means
+    /// "fetch and parse this law" — the behaviour without an index.
+    File,
+    /// A directory the walk could not enter (permissions, a vanished
+    /// path). How many laws are behind it is unknown, so the ratio net
+    /// over per-file failures says nothing about the size of this hole.
+    Walk,
+}
+
+/// One thing the scan could not take in. Recorded instead of silently
+/// indexing a file as "implements nothing" or dropping a subtree.
 #[derive(Debug)]
 pub struct ScanFailure {
-    /// Repo-relative path of the failing file.
+    /// Repo-relative path of the failing file or directory.
     pub path: String,
-    /// The parse error, for the generator's failure report.
+    /// The error, for the generator's failure report.
     pub error: String,
+    pub kind: ScanFailureKind,
 }
 
 /// Result of [`scan_tree`]: the per-file entries plus every file that
@@ -200,7 +217,18 @@ pub struct ScanOutcome {
 /// consistent with the backend tree walks and the tarball extraction
 /// (which only reads regular entries).
 pub fn scan_tree(repo_root: &Path, scan_root: &str) -> Result<ScanOutcome> {
-    let abs_root = repo_root.join(scan_root);
+    // Normalised before it is joined: `Path::join` with an absolute path
+    // discards `repo_root` entirely, so a `--root /regulation` would scan
+    // an absolute filesystem path outside the checkout. `covers` and
+    // `to_source_relative` treat a leading slash as decorative, and this
+    // has to agree with them.
+    let scan_root = normalise_root(scan_root);
+    if scan_root.split('/').any(|segment| segment == "..") {
+        return Err(CorpusError::Config(format!(
+            "scan root must stay inside the repository, not climb out of it: '{scan_root}'"
+        )));
+    }
+    let abs_root = repo_root.join(&scan_root);
     if !abs_root.is_dir() {
         return Err(CorpusError::Config(format!(
             "scan root does not exist or is not a directory: {}",
@@ -211,10 +239,26 @@ pub fn scan_tree(repo_root: &Path, scan_root: &str) -> Result<ScanOutcome> {
     let mut files = BTreeMap::new();
     let mut failures = Vec::new();
 
-    for entry in walkdir::WalkDir::new(&abs_root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for entry in walkdir::WalkDir::new(&abs_root) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                // A directory the walk cannot enter takes an unknown
+                // number of laws with it. Dropping it here would produce
+                // an index that looks complete, which is the one thing
+                // this scan must never hand its consumer.
+                let path = e
+                    .path()
+                    .and_then(|p| repo_relative(repo_root, p))
+                    .unwrap_or_else(|| scan_root.clone());
+                failures.push(ScanFailure {
+                    path,
+                    error: format!("walk failed: {e}"),
+                    kind: ScanFailureKind::Walk,
+                });
+                continue;
+            }
+        };
         if !entry.file_type().is_file() {
             continue;
         }
@@ -226,18 +270,9 @@ pub fn scan_tree(repo_root: &Path, scan_root: &str) -> Result<ScanOutcome> {
         if !is_yaml {
             continue;
         }
-        // Repo-relative with forward slashes, matching git/GitHub paths.
-        let Ok(rel) = path.strip_prefix(repo_root) else {
+        let Some(rel) = repo_relative(repo_root, path) else {
             continue;
         };
-        let rel = rel
-            .components()
-            .filter_map(|c| match c {
-                std::path::Component::Normal(s) => s.to_str(),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("/");
 
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
@@ -245,6 +280,7 @@ pub fn scan_tree(repo_root: &Path, scan_root: &str) -> Result<ScanOutcome> {
                 failures.push(ScanFailure {
                     path: rel,
                     error: format!("read failed: {e}"),
+                    kind: ScanFailureKind::File,
                 });
                 continue;
             }
@@ -256,11 +292,39 @@ pub fn scan_tree(repo_root: &Path, scan_root: &str) -> Result<ScanOutcome> {
             Err(e) => failures.push(ScanFailure {
                 path: rel,
                 error: e.to_string(),
+                kind: ScanFailureKind::File,
             }),
         }
     }
 
     Ok(ScanOutcome { files, failures })
+}
+
+/// Collapse a scan root to the form the consumer compares and strips with:
+/// no leading or trailing slash, no empty or `.` segment. Shared with the
+/// generator, which records the result in the index — the two must agree,
+/// or a root the index accepts strips no prefix and projects to an empty
+/// map that reads as "this corpus holds no laws".
+pub fn normalise_root(root: &str) -> String {
+    root.split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// `path` relative to `repo_root`, with forward slashes, matching
+/// git/GitHub paths. `None` when `path` lies outside `repo_root`.
+fn repo_relative(repo_root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(repo_root).ok()?;
+    Some(
+        rel.components()
+            .filter_map(|c| match c {
+                std::path::Component::Normal(s) => s.to_str(),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
 }
 
 #[cfg(test)]
@@ -364,6 +428,114 @@ articles:
         assert!(outcome
             .files
             .contains_key("regulation/nl/wet/wet_ok/2025-01-01.yaml"));
+    }
+
+    /// Make `path` unreadable for the duration of `body`, restoring the
+    /// mode afterwards so `TempDir::drop` can still clean up.
+    #[cfg(unix)]
+    pub(super) fn while_unreadable<T>(path: &Path, body: impl FnOnce() -> T) -> T {
+        use std::os::unix::fs::PermissionsExt;
+        let original = fs::metadata(path).unwrap().permissions();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
+        let out = body();
+        fs::set_permissions(path, original).unwrap();
+        out
+    }
+
+    /// Whether mode bits actually keep *this* process out of a directory.
+    /// They don't for uid 0, and some CI images run tests as root — there
+    /// the unreadable-directory tests would assert a failure that cannot
+    /// occur, so they skip instead of failing for the wrong reason.
+    #[cfg(unix)]
+    pub(super) fn directory_permissions_bite(scratch: &Path) -> bool {
+        let probe = scratch.join("permission-probe");
+        fs::create_dir_all(&probe).unwrap();
+        while_unreadable(&probe, || fs::read_dir(&probe).is_err())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_directory_is_a_scan_failure_not_a_silent_hole() {
+        let dir = TempDir::new().unwrap();
+        if !directory_permissions_bite(dir.path()) {
+            eprintln!("skipped: this process reads directories regardless of mode bits");
+            return;
+        }
+        write(
+            dir.path(),
+            "regulation/nl/wet/wet_ok/2025-01-01.yaml",
+            "$id: wet_ok\narticles: []\n",
+        );
+        write(
+            dir.path(),
+            "regulation/nl/geheim/wet_weg/2025-01-01.yaml",
+            "$id: wet_weg\narticles: []\n",
+        );
+
+        let locked = dir.path().join("regulation/nl/geheim");
+        while_unreadable(&locked, || {
+            let outcome = scan_tree(dir.path(), "regulation").unwrap();
+
+            // The laws behind the locked directory are gone from the index
+            // either way; what must not happen is that they go quietly.
+            assert!(!outcome.files.keys().any(|k| k.contains("wet_weg")));
+            let walk: Vec<&ScanFailure> = outcome
+                .failures
+                .iter()
+                .filter(|f| f.kind == ScanFailureKind::Walk)
+                .collect();
+            assert_eq!(
+                walk.len(),
+                1,
+                "an unreadable directory must surface as a failure, got {:?}",
+                outcome.failures
+            );
+            assert!(
+                walk[0].path.contains("geheim"),
+                "the failure must name the directory: {:?}",
+                walk[0]
+            );
+            // The readable half is still indexed.
+            assert!(outcome
+                .files
+                .contains_key("regulation/nl/wet/wet_ok/2025-01-01.yaml"));
+        });
+    }
+
+    #[test]
+    fn scan_root_is_normalised_before_it_is_joined() {
+        let dir = TempDir::new().unwrap();
+        write(
+            dir.path(),
+            "regulation/nl/wet/wet_ok/2025-01-01.yaml",
+            "$id: wet_ok\narticles: []\n",
+        );
+
+        // A leading slash is decorative for `covers`/`to_source_relative`,
+        // so it must be here too — `join` with an absolute path would drop
+        // `repo_root` and scan outside the checkout entirely.
+        for root in ["/regulation", "regulation/", "./regulation", "regulation//"] {
+            let outcome = scan_tree(dir.path(), root).unwrap();
+            assert_eq!(
+                outcome.files.len(),
+                1,
+                "root {root} must resolve inside the checkout"
+            );
+        }
+
+        assert!(scan_tree(dir.path(), "../etc").is_err());
+    }
+
+    #[test]
+    fn normalise_root_drops_decoration_and_current_dir() {
+        assert_eq!(normalise_root("regulation"), "regulation");
+        assert_eq!(normalise_root("/regulation/nl/"), "regulation/nl");
+        assert_eq!(normalise_root("regulation//nl"), "regulation/nl");
+        // `.` names the repo root exactly as `/` does; both must collapse
+        // to the empty root the generator refuses.
+        assert_eq!(normalise_root("."), "");
+        assert_eq!(normalise_root("./"), "");
+        assert_eq!(normalise_root("./regulation"), "regulation");
     }
 
     #[test]
