@@ -2,9 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { flattenTraceSteps, edgeIdsForStep, graphNodeIdsForStep } from './traceEdges.js';
 
 /**
- * Locks the contract between traceEdges and useLawGraph.js. Both files
- * encode the same edge/node ID formats; if either moves these tests
- * catch the drift.
+ * Covers traceEdges' own lookups: how a trace step is turned into edge and
+ * node IDs, given a set of IDs in the format useLawGraph.js emits.
+ *
+ * What this does NOT cover: whether useLawGraph still emits that format. The
+ * IDs below are hand-written literals, so a change on the graph side moves
+ * past them silently - only a test that builds a graph from real law YAML
+ * would catch that.
  */
 
 describe('flattenTraceSteps', () => {
@@ -110,6 +114,18 @@ describe('edgeIdsForStep', () => {
       source: 'algemene_wet_bestuursrecht-output-termijn',
       target: 'wet_A-output-x',
     },
+    // cross-law input under a local rename: the consumer calls the field
+    // `is_verzekerde`, the producer's output is `is_verzekerd`. Copied from
+    // corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml, where
+    // `name` and `source.output` differ - the common case, not the exception
+    // (algemene_wet_inkomensafhankelijke_regelingen does the same with
+    // `verzamelinkomen` ← `toetsingsinkomen`). useLawGraph names the source
+    // leaf after the consumer's own field and the target after the producer's.
+    {
+      id: 'wet_op_de_zorgtoeslag-input-is_verzekerde->zorgverzekeringswet-output-is_verzekerd',
+      source: 'wet_op_de_zorgtoeslag-input-is_verzekerde',
+      target: 'zorgverzekeringswet-output-is_verzekerd',
+    },
   ];
 
   it('matches a cross-law-reference step to its input→output edge', () => {
@@ -121,6 +137,21 @@ describe('edgeIdsForStep', () => {
     expect(edgeIdsForStep(step, edges)).toEqual([
       'wet_A-input-output_x->wet_B-output-output_x',
     ]);
+  });
+
+  // Known limitation, pinned here so it is visible instead of avoided: the
+  // lookup builds the source leaf from the PRODUCER's output name, so a
+  // consumer that renames the input locally matches nothing - no highlight,
+  // no error. See the `TODO(PR3)` in traceEdges.js; fixing it needs the graph
+  // side to index edges by refers-to-service plus the local input name.
+  it('finds no edge when the consumer renamed the input (TODO(PR3))', () => {
+    const step = {
+      nodeType: 'cross_law_reference',
+      lawId: 'wet_op_de_zorgtoeslag',
+      // The trace names the step after the producer's output.
+      name: 'zorgverzekeringswet#is_verzekerd',
+    };
+    expect(edgeIdsForStep(step, edges)).toEqual([]);
   });
 
   // open_term_resolution: step.lawId is ambiguous - flattenTraceSteps
