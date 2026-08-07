@@ -34,20 +34,19 @@ const topKpis = computed(() => {
   ];
 });
 
-// Harvest and enrich are treated as two separate kinds, each with its own
-// titled section: status breakdown + executed counts next to the daily chart.
+// One titled section per job type: status breakdown + executed counts next to
+// the daily chart. The list of types comes from `by_type` rather than from a
+// constant here, so a type the API knows can never be missing from the page —
+// that hardcoding is what hid three of the five types.
 // `daily` is absent while an older API is deployed - then chartEntries stays
 // empty and the chart simply doesn't render.
 const typePanels = computed(() => {
   const s = stats.value;
   if (!s) return [];
   const daily = s.daily ?? [];
-  return [
-    { key: 'harvest', label: 'Harvest' },
-    { key: 'enrich', label: 'Enrich' },
-  ].map(({ key, label }) => ({
+  return Object.keys(s.jobs.by_type ?? {}).map((key) => ({
     key,
-    label,
+    label: formatStatus(key),
     total: s.jobs.by_type[key] ?? 0,
     statuses: JOB_STATUSES.map((status) => ({
       status,
@@ -99,8 +98,7 @@ async function onFailureClick(row) {
       </nldd-card>
     </nldd-one-half-one-half-section>
 
-    <!-- Per type (harvest/enrich) one titled section: details next to the
-         daily chart -->
+    <!-- One titled section per job type: details next to the daily chart -->
     <nldd-one-half-one-half-section v-for="panel in typePanels" :key="panel.key">
       <nldd-title slot="header" size="6"><h3>{{ panel.label }}</h3></nldd-title>
 

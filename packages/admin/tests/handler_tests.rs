@@ -41,6 +41,7 @@ fn test_app(pool: sqlx::PgPool) -> Router {
     Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
+        .route("/api/jobs/summary", get(handlers::list_jobs_summary))
         .route("/api/untranslatables", get(handlers::list_untranslatables))
         .route("/api/dashboard-stats", get(handlers::dashboard_stats))
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
@@ -676,6 +677,21 @@ async fn get_dashboard_stats(pool: &sqlx::PgPool) -> Value {
     body_json(response).await
 }
 
+async fn get_jobs_summary(pool: &sqlx::PgPool) -> Value {
+    let app = test_app(pool.clone());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/jobs/summary")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    body_json(response).await
+}
+
 /// Force a job into `failed` with a given result JSON and completion time.
 async fn mark_job_failed(pool: &sqlx::PgPool, job_id: uuid::Uuid, result: Value, completed: &str) {
     sqlx::query(
@@ -744,16 +760,94 @@ async fn dashboard_stats_counts_by_type_and_status() {
         .await
         .unwrap();
 
+    // And one document-convert job, a type the dashboard used to drop into a
+    // warn! arm: its row existed, counted nowhere, and made `total` smaller
+    // than the number of rows in `jobs`.
+    job_queue::create_job(
+        &pool,
+        CreateJobRequest::new(
+            JobType::DocumentConvert,
+            "doc:zorgtoeslag-ab12cd34/notitie.md",
+        ),
+    )
+    .await
+    .unwrap();
+
     let json = get_dashboard_stats(&pool).await;
 
-    assert_eq!(json["jobs"]["total"], 3);
+    assert_eq!(json["jobs"]["total"], 4);
     assert_eq!(json["jobs"]["by_type"]["harvest"], 2);
     assert_eq!(json["jobs"]["by_type"]["enrich"], 1);
-    assert_eq!(json["jobs"]["by_status"]["pending"], 2);
+    assert_eq!(json["jobs"]["by_type"]["document_convert"], 1);
+    assert_eq!(json["jobs"]["by_status"]["pending"], 3);
     assert_eq!(json["jobs"]["by_status"]["completed"], 1);
     assert_eq!(json["jobs"]["by_type_status"]["harvest"]["pending"], 2);
     assert_eq!(json["jobs"]["by_type_status"]["enrich"]["completed"], 1);
     assert_eq!(json["jobs"]["by_type_status"]["enrich"]["pending"], 0);
+    assert_eq!(
+        json["jobs"]["by_type_status"]["document_convert"]["pending"],
+        1
+    );
+
+    // `total` is the sum over the buckets, and the buckets cover the whole
+    // enum: no row in `jobs` may fall outside them.
+    let by_type = json["jobs"]["by_type"].as_object().unwrap();
+    let summed: i64 = by_type.values().map(|v| v.as_i64().unwrap()).sum();
+    assert_eq!(summed, json["jobs"]["total"].as_i64().unwrap());
+    for job_type in regelrecht_pipeline::JobType::ALL {
+        assert!(
+            by_type.contains_key(job_type.as_str()),
+            "job type {} has no bucket in by_type",
+            job_type.as_str()
+        );
+    }
+
+    // The daily series carries the same buckets; it used to pivot on two
+    // hardcoded types inside the SQL.
+    let today = json["daily"].as_array().unwrap().last().unwrap();
+    assert_eq!(today["document_convert"]["added"], 1);
+    assert_eq!(today["harvest"]["added"], 2);
+}
+
+/// The law-grouped overview must leave out the job types whose `law_id` is a
+/// synthetic key: an uploaded document is not a law (#1162).
+#[tokio::test]
+async fn jobs_summary_excludes_synthetic_law_ids() {
+    let db = TestDb::new().await;
+    let pool = db.pool.clone();
+
+    job_queue::create_job(
+        &pool,
+        CreateJobRequest::new(JobType::Harvest, "wet_op_de_zorgtoeslag"),
+    )
+    .await
+    .unwrap();
+    job_queue::create_job(
+        &pool,
+        CreateJobRequest::new(
+            JobType::DocumentConvert,
+            "doc:zorgtoeslag-ab12cd34/notitie.md",
+        ),
+    )
+    .await
+    .unwrap();
+    job_queue::create_job(
+        &pool,
+        CreateJobRequest::new(JobType::LawConvert, "lawdoc:zorgtoeslag-ab12cd34/wet.pdf"),
+    )
+    .await
+    .unwrap();
+
+    let json = get_jobs_summary(&pool).await;
+
+    assert_eq!(json["total"], 1, "only the harvest job names a law");
+    let ids: Vec<&str> = json["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["law_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["wet_op_de_zorgtoeslag"]);
 }
 
 #[tokio::test]
