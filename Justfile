@@ -291,14 +291,12 @@ bench-compare BASE:
 
 # Run security audit on all dependencies (vulnerabilities, licenses, sources)
 audit:
-    cd packages && cargo deny check --config ../deny.toml
-    # One npm workspace at the repo root covers all three frontends + the shared
-    # package, so audit/license-check the whole hoisted tree once. (license-checker
-    # drops --production because the workspace root has no production deps of its
-    # own; the whole-tree scan is strictly broader coverage.)
-    npm audit
+    script/cargo-deny.sh
+    script/npm-audit-all.sh
+    # license-checker draait alleen over de workspace in de root; die drops
+    # --production omdat de root geen eigen productie-deps heeft, en de
+    # hele-boom-scan is strikt ruimer.
     npx license-checker --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
-    cd docs && npm audit
 
 # --- Admin ---
 
