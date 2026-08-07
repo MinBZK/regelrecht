@@ -72,6 +72,25 @@ fn outcome_for_error(err: &str) -> JobOutcome {
     }
 }
 
+/// [`outcome_for_error`] voor een mislukte document-convert-job, met één
+/// uitzondering die het verschil maakt.
+///
+/// `is_resource_exhaustion` herkent echte fork/EAGAIN/OOM-uitputting aan
+/// tekstmarkers ("cannot fork", "os error 11", …) in de foutmelding. Dat werkt
+/// alleen zolang die foutmelding niet door een buitenstaander te kiezen is: de
+/// weigering-zonder-toestemming noemt de geüploade bestandsnaam, dus een
+/// document dat `cannot fork.pdf` heet zou anders als resource-uitputting tellen
+/// en — na `WORKER_MAX_CONSECUTIVE_RESOURCE_FAILURES` van zulke uploads op rij —
+/// de breaker laten afgaan die de worker afsluit. Die mislukking is per
+/// definitie een gewoon, afgehandeld geval: we classificeren 'm op het
+/// fouttype in plaats van op de tekst.
+fn document_convert_outcome(err: &PipelineError, msg: &str) -> JobOutcome {
+    match err {
+        PipelineError::LlmNotPermitted(_) => JobOutcome::Processed,
+        _ => outcome_for_error(msg),
+    }
+}
+
 /// Returns true when an error indicates the container has exhausted the OS
 /// resources needed to spawn processes or threads — `fork()` returning EAGAIN
 /// ("cannot fork() ... Resource temporarily unavailable"), thread-create
@@ -1486,7 +1505,7 @@ async fn process_next_document_convert_job(
             }
             fail_result?;
 
-            Ok(outcome_for_error(&msg))
+            Ok(document_convert_outcome(&e, &msg))
         }
     }
 }
@@ -1507,7 +1526,7 @@ async fn run_document_convert(
     // Buitenste begrenzing ónder de reaper-window (zie de aanroeper): de
     // gedropte future komt niet meer aan zijn eigen tempdir-cleanup toe, dus
     // die doen we hier; kill_on_drop ruimt het agent-subprocess op.
-    let markdown = match tokio::time::timeout(
+    let converted = match tokio::time::timeout(
         convert_deadline,
         document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter),
     )
@@ -1525,7 +1544,7 @@ async fn run_document_convert(
         }
         Ok(r) => r?,
     };
-    finish_document_convert_task_job(pool, job, payload, &markdown).await?;
+    finish_document_convert_task_job(pool, job, payload, &converted).await?;
     Ok(())
 }
 
@@ -2092,11 +2111,18 @@ pub async fn finish_enrich_task_job(
 /// als result-blob en maak de review-taak aan - atomair met complete_job.
 /// De worker pusht niets; goedkeuren gebeurt in de request-context van de
 /// gebruiker (met diens token wanneer enforcement aan staat).
+///
+/// De genomen route (`pandoc` / `pdftotext` / `llm`) reist mee als
+/// `converted_with`. Twee plekken, met opzet: in `jobs.result` als duurzaam
+/// spoor van wat er gebeurd is, en in de taak-payload omdat dát is wat de
+/// reviewbanner leest (`job_blobs` heeft geen metadata-kolom om het aan de
+/// result-blob zelf te hangen). Dit is expliciet iets anders dan het vinkje bij
+/// de upload: dat zegt wat mócht, dit zegt wat er is gebeurd.
 pub async fn finish_document_convert_task_job(
     pool: &PgPool,
     job: &crate::models::Job,
     payload: &DocumentConvertPayload,
-    markdown: &str,
+    converted: &document_convert::ConvertedDocument,
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
     // Hygiëne: er zijn geen input-blobs voor document-convert (de bytes
@@ -2108,10 +2134,15 @@ pub async fn finish_document_convert_task_job(
         job.id,
         crate::tasks::BlobKind::Result,
         &payload.target_path,
-        markdown,
+        &converted.markdown,
     )
     .await?;
-    job_queue::complete_job(&mut *tx, job.id, None).await?;
+    job_queue::complete_job(
+        &mut *tx,
+        job.id,
+        Some(serde_json::json!({ "converted_with": converted.route.as_str() })),
+    )
+    .await?;
     crate::tasks::create_task(
         &mut *tx,
         crate::tasks::NewTask {
@@ -2124,6 +2155,7 @@ pub async fn finish_document_convert_task_job(
                 "kind": "document",
                 "traject_ref": payload.traject_ref,
                 "target_path": payload.target_path,
+                "converted_with": converted.route.as_str(),
             })),
         },
     )
@@ -3558,6 +3590,50 @@ articles:
         assert_eq!(counter, 2);
     }
 
+    /// De uitputtings-breaker sluit de worker af, dus mag een gebruiker hem niet
+    /// kunnen laten afgaan. De weigering-zonder-toestemming noemt de geüploade
+    /// bestandsnaam; heet die `cannot fork.pdf`, dan matcht de tekst-classificatie
+    /// een fork-marker. Het fouttype moet daar dwars doorheen gaan.
+    #[test]
+    fn document_convert_refusal_never_counts_as_resource_exhaustion() {
+        let err = PipelineError::LlmNotPermitted(
+            "Conversie van cannot fork.pdf gestopt: de omzetting zonder AI leverde geen \
+             bruikbare tekst op. Er is geen taalmodel gebruikt."
+                .to_string(),
+        );
+        let msg = err.to_string();
+        // De tekst zou de breaker wél laten aanslaan — daarom classificeren we
+        // deze mislukking op type.
+        assert!(is_resource_exhaustion(&msg));
+        assert_eq!(outcome_for_error(&msg), JobOutcome::ResourceExhausted);
+        assert_eq!(
+            document_convert_outcome(&err, &msg),
+            JobOutcome::Processed,
+            "een geweigerde conversie is een gewone mislukking, geen resource-uitputting"
+        );
+    }
+
+    /// De tegenproef: echte fork/OOM-uitputting op deze zelfde job moet de
+    /// breaker nog steeds voeden.
+    #[test]
+    fn document_convert_real_exhaustion_still_trips_the_breaker() {
+        let err =
+            PipelineError::Enrich("cannot fork: Resource temporarily unavailable".to_string());
+        let msg = err.to_string();
+        assert_eq!(
+            document_convert_outcome(&err, &msg),
+            JobOutcome::ResourceExhausted
+        );
+    }
+
+    /// De uitleg gaat ongewijzigd naar de gebruiker (taak-payload, `jobs.result`),
+    /// dus zonder `enrichment error:`-voorvoegsel voor iets dat niet verrijkt is.
+    #[test]
+    fn llm_not_permitted_displays_without_prefix() {
+        let err = PipelineError::LlmNotPermitted("Conversie van brief.doc gestopt.".to_string());
+        assert_eq!(err.to_string(), "Conversie van brief.doc gestopt.");
+    }
+
     #[test]
     fn is_valid_bwb_id_matches_bwbr_seven_digits() {
         assert!(is_valid_bwb_id("BWBR0018451"));
@@ -3721,6 +3797,87 @@ mod contract_tests {
 
         process_one(&db).await;
         assert_rejected_without_delivery(&db, job_id).await;
+    }
+
+    /// Een account + traject om een echte taak aan te kunnen hangen (de
+    /// `tasks`-FK's eisen bestaande rijen). De contract-tests hierboven hebben
+    /// dit niet nodig omdat daar juist géén taak ontstaat.
+    async fn seed_account_and_traject(db: &TestDb) -> (uuid::Uuid, uuid::Uuid) {
+        let (account_id,): (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO accounts (person_sub, email, name) \
+             VALUES ('sub-uploader', 'uploader@example.test', 'Uploader') RETURNING id",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("insert account");
+        let (traject_id,): (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO trajects (name, description, scope, created_by) \
+             VALUES ('Testtraject', '', '', $1) RETURNING id",
+        )
+        .bind(account_id)
+        .fetch_one(&db.pool)
+        .await
+        .expect("insert traject");
+        (account_id, traject_id)
+    }
+
+    /// De belofte end-to-end door de worker heen: zonder `allow_llm` faalt een
+    /// conversie die de deterministische route niet haalt terminaal, mét de
+    /// bestaande "Conversie mislukt"-taak — en zonder ooit de agent te starten.
+    /// De seed-upload is een `.pdf` met onzin-bytes: een formaat dát een
+    /// converter heeft, waarvan de tool op deze input stukloopt. Precies de
+    /// stille terugval die dit ticket dichtzet (en die niet zichtbaar zou zijn
+    /// als we alleen een onbekende extensie zouden testen).
+    #[tokio::test]
+    async fn document_convert_without_llm_permission_fails_terminally_with_task() {
+        let db = TestDb::new().await;
+        let (account_id, traject_id) = seed_account_and_traject(&db).await;
+        let (job_id, _upload) = seed_job(
+            &db,
+            json!({
+                "traject_id": traject_id,
+                "traject_ref": "testtraject-abcd1234",
+                "target_path": "report.md",
+                "deliver": "task",
+                "requested_by": account_id,
+                "allow_llm": false,
+            }),
+        )
+        .await;
+
+        process_one(&db).await;
+
+        let (status, error): (String, Option<String>) =
+            sqlx::query_as("SELECT status::text, result->>'error' FROM jobs WHERE id = $1")
+                .bind(job_id)
+                .fetch_one(&db.pool)
+                .await
+                .expect("job row");
+        assert_eq!(status, "failed", "de job faalt terminaal, zonder retry");
+        let error = error.unwrap_or_default();
+        assert!(
+            error.contains("Er is geen taalmodel gebruikt"),
+            "de fout legt uit waarom er niets is omgezet, kreeg: {error}"
+        );
+
+        // Het bestaande faal-pad levert 'm af als taak; geen nieuw mechanisme.
+        let (task_type, title): (String, String) =
+            sqlx::query_as("SELECT task_type, title FROM tasks WHERE job_id = $1")
+                .bind(job_id)
+                .fetch_one(&db.pool)
+                .await
+                .expect("taak-rij");
+        assert_eq!(task_type, "job_failed");
+        assert_eq!(title, "Conversie mislukt: report.md");
+
+        let (uploads, blobs): (i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM document_uploads), (SELECT COUNT(*) FROM job_blobs)",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("counts");
+        assert_eq!(uploads, 0, "de upload-bytes zijn opgeruimd");
+        assert_eq!(blobs, 0, "er is niets opgeleverd");
     }
 
     #[tokio::test]
