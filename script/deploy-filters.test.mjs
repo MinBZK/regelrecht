@@ -137,6 +137,18 @@ test('de handmatige paden buiten de graaf blijven werken', () => {
   assert.equal(shared.lawmaking, true);
 });
 
+test('de gedeelde nginx-headers raken beide nginx-images', () => {
+  // Het bestand ligt buiten docs/ en frontend-lawmaking/, terwijl beide images
+  // het meekopiëren. Zonder deze regel scherpt iemand een header aan, wordt de
+  // build groen, en rolt er niets uit — precies de stille overslag waarvoor
+  // dit script bestaat.
+  const hit = namesOf(['deploy/nginx/security-headers.conf']);
+  assert.equal(hit.docs, true);
+  assert.equal(hit.lawmaking, true);
+  assert.equal(hit.editor, false);
+  assert.equal(hit.grafana, false);
+});
+
 test('de skills raken alleen de enrich-worker', () => {
   // Drie componenten hangen aan dezelfde crate; alleen de enrich-worker neemt
   // de skills mee in zijn image.

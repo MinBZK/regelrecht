@@ -9,6 +9,7 @@ pub mod config;
 pub mod handlers;
 pub mod middleware;
 pub mod oidc;
+pub mod security_headers;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils;
@@ -19,10 +20,13 @@ pub use handlers::{
     SESSION_KEY_EMAIL_VERIFIED, SESSION_KEY_NAME, SESSION_KEY_ROLES, SESSION_KEY_SUB,
 };
 pub use middleware::{
-    check_session_role, refresh_session_token, require_role, require_session_auth,
-    security_headers, RoleCheck,
+    check_session_role, refresh_session_token, require_role, require_session_auth, RoleCheck,
 };
 pub use oidc::{discover_client, ConfiguredClient, DiscoveryResult};
+// De middleware zelf wordt bewust niet hier heruitgevoerd: hij heet net als
+// zijn module, en dan wordt `regelrecht_auth::security_headers::…` een
+// dubbelzinnig pad.
+pub use security_headers::{API_CSP, EDITOR_CSP};
 
 /// Install aws-lc-rs as the process-wide rustls crypto provider.
 ///
