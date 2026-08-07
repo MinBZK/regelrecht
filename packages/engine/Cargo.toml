@@ -107,6 +107,8 @@ rust_decimal_macros.workspace = true
 # re-declared here to be in scope for the integration-test crate.
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
+# tests/bdd_discovery.rs builds throwaway corpus/bdd trees.
+tempfile.workspace = true
 
 [[bench]]
 name = "uri_parsing"

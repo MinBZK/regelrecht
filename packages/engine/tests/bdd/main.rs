@@ -28,6 +28,7 @@
 
 #[path = "../common/mod.rs"]
 mod common;
+mod discovery;
 mod dispatch;
 mod helpers;
 mod world;
@@ -47,7 +48,6 @@ use std::path::{Path, PathBuf};
 use cucumber::feature::Ext as _;
 use cucumber::{cli, parser, World as _};
 use futures::stream;
-use walkdir::WalkDir;
 
 /// Parser that consumes an explicit, pre-collected list of feature file paths
 /// (the two buckets) instead of recursively walking a single root. This keeps
@@ -72,40 +72,6 @@ impl parser::Parser<Vec<PathBuf>> for ExplicitPaths {
     }
 }
 
-/// Collect every feature file from both buckets:
-/// - bucket A: any `*.feature` under a `scenarios/` directory in the corpus, and
-/// - bucket B: `bdd/conformance/*.feature`.
-fn collect_feature_paths(root: &Path) -> Vec<PathBuf> {
-    let mut features: Vec<PathBuf> = Vec::new();
-
-    // Bucket A — corpus scenarios.
-    for entry in WalkDir::new(root.join("corpus/regulation"))
-        .into_iter()
-        .flatten()
-    {
-        let p = entry.path();
-        let is_feature = p.extension().map(|e| e == "feature").unwrap_or(false);
-        let under_scenarios = p.components().any(|c| c.as_os_str() == "scenarios");
-        if is_feature && under_scenarios {
-            features.push(p.to_path_buf());
-        }
-    }
-
-    // Bucket B — engine conformance.
-    for entry in WalkDir::new(root.join("bdd/conformance"))
-        .into_iter()
-        .flatten()
-    {
-        let p = entry.path();
-        if p.extension().map(|e| e == "feature").unwrap_or(false) {
-            features.push(p.to_path_buf());
-        }
-    }
-
-    features.sort();
-    features
-}
-
 #[tokio::main]
 async fn main() {
     // Initialize tracing subscriber (respects RUST_LOG env var)
@@ -122,20 +88,24 @@ async fn main() {
         .expect("Could not resolve project root")
         .to_path_buf();
 
-    let features = collect_feature_paths(&root);
-    assert!(
-        !features.is_empty(),
-        "No feature files found under {} (corpus/regulation/**/scenarios or bdd/conformance)",
-        root.display()
-    );
+    let features = match discovery::collect_feature_paths(&root) {
+        Ok(features) => features,
+        Err(e) => panic!("BDD feature discovery failed under {}: {e}", root.display()),
+    };
 
     // Run cucumber over both buckets. `@wip` scenarios document genuine,
     // NB-annotated engine gaps (they assert the desired-but-not-yet-produced
     // outcome) — skip them so they neither run nor fail the suite.
     // `filter_run_and_exit` exits non-zero on test failures.
+    //
+    // `fail_on_skipped` covers the other way a scenario stops testing: cucumber
+    // counts a step without a matching definition as *skipped*, and
+    // `execution_has_failed()` only looks at failed steps. Without it a reworded
+    // `Then` passes green while asserting nothing.
     world::RegelrechtWorld::cucumber::<&std::path::Path>()
         .with_parser::<ExplicitPaths, Vec<PathBuf>>(ExplicitPaths)
         .max_concurrent_scenarios(1) // Run scenarios sequentially for predictable state
+        .fail_on_skipped()
         .with_default_cli()
         .filter_run_and_exit(features, |feature, _rule, scenario| {
             let is_wip = |tags: &[String]| tags.iter().any(|t| t == "wip");

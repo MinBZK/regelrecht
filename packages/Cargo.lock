@@ -4164,6 +4164,7 @@ dependencies = [
  "serde_yaml_ng",
  "sha2",
  "strsim",
+ "tempfile",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
