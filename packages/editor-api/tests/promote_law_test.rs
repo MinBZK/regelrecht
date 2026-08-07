@@ -123,8 +123,12 @@ async fn seeded_traject(
     traject_id
 }
 
+/// URL form of a traject reference, via the production helper. Rebuilding
+/// the shape by hand here would keep passing after a contract change,
+/// because `resolve_traject_ref` only reads the trailing eight hex chars.
+/// All trajects in this file are named `Test`.
 fn traject_ref(traject_id: Uuid) -> String {
-    format!("test-{}", &traject_id.to_string()[..8])
+    regelrecht_editor_api::trajects::traject_ref("Test", traject_id)
 }
 
 async fn session_for(sub: &str) -> Session {

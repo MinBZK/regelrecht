@@ -141,11 +141,12 @@ async fn session_for(sub: &str) -> Session {
     session
 }
 
-/// Build the URL-form traject ref used in path parameters.
-/// The resolver matches on `left(id::text, 8)` (first 8 hex chars of the
-/// hyphenated UUID), so `t-{8hex}` is a valid ref (slug="t", suffix=8hex).
+/// URL form of a traject reference, via the production helper. Rebuilding
+/// the shape by hand here would keep passing after a contract change,
+/// because `resolve_traject_ref` only reads the trailing eight hex chars.
+/// All trajects in this file are named `Test`.
 fn traject_ref(id: Uuid) -> String {
-    format!("t-{}", &id.to_string()[..8])
+    regelrecht_editor_api::trajects::traject_ref("Test", id)
 }
 
 // ---------------------------------------------------------------------------
