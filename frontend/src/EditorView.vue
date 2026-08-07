@@ -8,8 +8,7 @@ import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
-import { useTaskActions, usePollWhile } from './composables/useTasks.js';
-import { reviewTarget } from './lib/taskReview.js';
+import { useEnrichState } from './composables/useEnrichState.js';
 import { useTaskReview } from './composables/useTaskReview.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
@@ -1757,55 +1756,25 @@ async function rejectReview() {
 // --- Verrijken aanvragen (levert een job_review-taak op) -----------------
 // Fire-and-forget request; the resulting job_review task shows up in the
 // taken-lijst in Home on its next poll (TasksSidebarItem/TasksListPane poll
-// via useTasks() every 30s). Use the non-polling useTaskActions() here -
-// EditorView doesn't need the shared task list/badge count, and joining
-// useTasks() unconditionally in setup() would start that poll for every
-// editor visitor, including anonymous ones.
-const { requestEnrich, running: runningJobs, tasks: openTasks } = useTaskActions();
-// Staat er al een beoordeelbaar voorstel klaar voor deze wet? Dan meldt de lege
-// pane dat, in plaats van opnieuw te laten genereren.
-// Eén verrijking levert een taak per gewijzigd artikel, dus meestal staan er
-// meerdere open voor deze wet. Je kijkt naar één artikel, dus de taak van dát
-// artikel gaat voor; is die er niet, dan de eerste van de wet - beter naar een
-// naburig voorstel wijzen dan naar niets.
-const pendingReviewTask = computed(() => {
-  const forLaw = openTasks.value.filter(
-    (t) => t.task_type === 'job_review' && t.payload?.law_id === lawId.value,
-  );
-  if (!forLaw.length) return null;
-  const here = String(selectedArticleNumber.value ?? '');
-  return forLaw.find((t) => String(t.payload?.article ?? '') === here) ?? forLaw[0];
+// via useTasks() every 30s). Gedeeld met LibraryView, dat dezelfde wet in
+// dezelfde panes toont: useEnrichState houdt de bezig-/voorstel-staat bij en
+// ververst de gedeelde takenlijst waar dat nodig is (mount, na een aanvraag),
+// zonder de 30s-poll van useTasks() te starten voor elke editor-bezoeker.
+const {
+  isEnriching,
+  reviewReady,
+  reviewArticleForPane,
+  openReviewForLaw,
+  openTasksForLaw,
+  requestEnrich,
+} = useEnrichState({
+  trajectRef: activeTrajectRef,
+  lawId,
+  articleNumber: selectedArticleNumber,
+  // Niet melden dat er een voorstel klaarstaat terwijl je die taak al aan het
+  // beoordelen bent.
+  reviewActive,
 });
-// Niet melden terwijl je die taak al aan het beoordelen bent.
-const reviewReady = computed(() => !!pendingReviewTask.value && !reviewActive.value);
-const reviewArticleForPane = computed(() =>
-  pendingReviewTask.value?.payload?.article == null
-    ? ''
-    : String(pendingReviewTask.value.payload.article),
-);
-function openReviewForLaw() {
-  const target = reviewTarget(pendingReviewTask.value);
-  if (target) router.push(target);
-}
-// Loopt er al een verrijking voor deze wet? Dan meldt de lege pane dat in
-// plaats van opnieuw de knoppen aan te bieden.
-// Naar de takenlijst, gefilterd op deze wet: daar staat de lopende aanvraag.
-function openTasksForLaw() {
-  if (!activeTrajectRef.value || !lawId.value) return;
-  router.push({
-    name: 'taken-traject',
-    params: {
-      trajectRef: activeTrajectRef.value,
-      categorie: 'wet',
-      contextLawId: lawId.value,
-    },
-  });
-}
-// Alleen pollen zolang je naar de bezig-staat kijkt; zie usePollWhile.
-const isEnriching = computed(() =>
-  runningJobs.value.some((job) => job.job_type === 'enrich' && job.law_id === lawId.value),
-);
-usePollWhile(isEnriching);
 const enrichFeedback = ref(null); // { variant, text } | null
 // An actual traject open (write access implies a traject, see `canEdit`
 // above) and a law loaded - mirrors the gates other write actions in this
@@ -1824,7 +1793,7 @@ const isEnrichPane = (view) => view === 'machine' || view === 'yaml';
 async function enrichLaw() {
   if (!activeTrajectRef.value || !lawId.value) return;
   try {
-    const { alreadyRunning, tooMany } = await requestEnrich(activeTrajectRef.value, lawId.value);
+    const { alreadyRunning, tooMany } = await requestEnrich();
     if (alreadyRunning) {
       enrichFeedback.value = { variant: 'warning', text: 'Er loopt al een verrijking voor deze wet.' };
     } else if (tooMany) {

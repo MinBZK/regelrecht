@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef, nextTick, watch, watchEffect, onMounted, onBeforeUnmount, inject } from 'vue';
+import { ref, computed, shallowRef, nextTick, watch, watchEffect, onBeforeUnmount, inject } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate, onBeforeRouteLeave } from 'vue-router';
 import * as yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -18,11 +18,11 @@ import TasksListPane from './components/TasksListPane.vue';
 import TasksSidebarItem from './components/TasksSidebarItem.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useCorpusLaws } from './composables/useCorpusLaws.js';
-// useTaskActions, niet useTasks: LibraryView heeft alleen de refresh nodig na
-// een geannuleerde job en mag daarvoor niet de 30s-poll aanzetten (die hoort
-// bij de taken-componenten, en anonieme bezoekers pollen nooit).
-import { useTaskActions, usePollWhile } from './composables/useTasks.js';
-import { reviewTarget } from './lib/taskReview.js';
+// useEnrichState (bovenop useTaskActions), niet useTasks: LibraryView heeft
+// alleen gerichte refreshes nodig - na een geannuleerde job, na een eigen
+// aanvraag - en mag daarvoor niet de 30s-poll aanzetten (die hoort bij de
+// taken-componenten, en anonieme bezoekers pollen nooit).
+import { useEnrichState } from './composables/useEnrichState.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
 import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl } from './composables/corpusUrls.js';
@@ -101,39 +101,6 @@ function goToAccountRequest() {
 // so it can reserve converting target names against create/rename collisions.
 const docJobs = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs, cancelJob: cancelConversionJob } = docJobs;
-const { refresh: refreshTasks, requestEnrich, running: runningJobs, tasks: openTasks } = useTaskActions();
-
-// Loopt er al een verrijking voor deze wet? Dan toont de lege pane dat in
-// plaats van de knoppen; een tweede aanvraag zou toch op een 409 stuiten.
-const isEnriching = computed(() =>
-  runningJobs.value.some(
-    (job) => job.job_type === 'enrich' && job.law_id === selectedLawId.value,
-  ),
-);
-// Alleen pollen zolang je naar de bezig-staat kijkt; zie usePollWhile.
-
-// Staat er al een beoordeelbaar voorstel klaar voor deze wet? Een verrijking
-// levert een taak per gewijzigd artikel, dus die van het geopende artikel gaat
-// voor; anders de eerste van de wet.
-const pendingReviewTask = computed(() => {
-  const forLaw = openTasks.value.filter(
-    (t) => t.task_type === 'job_review' && t.payload?.law_id === selectedLawId.value,
-  );
-  if (!forLaw.length) return null;
-  const here = String(selectedArticleNumber.value ?? '');
-  return forLaw.find((t) => String(t.payload?.article ?? '') === here) ?? forLaw[0];
-});
-const reviewReady = computed(() => !!pendingReviewTask.value);
-const reviewArticleForPane = computed(() =>
-  pendingReviewTask.value?.payload?.article == null
-    ? ''
-    : String(pendingReviewTask.value.payload.article),
-);
-function openReviewForLaw() {
-  const target = reviewTarget(pendingReviewTask.value);
-  if (target) router.push(target);
-}
-
 // Verrijken kan ook vanuit de corpusweergave, met dezelfde twee knoppen als in
 // een traject. De knop staat er dus altijd zodra er een wet is; ontbreekt de
 // login of het traject, dan routeert hij net als "Bewerken" ernaast in plaats
@@ -142,25 +109,6 @@ function openReviewForLaw() {
 const canEnrich = computed(() => !!selectedLawId.value);
 
 const enrichError = ref('');
-
-// `running` wordt alleen door een refresh gevuld; deze view pollt niet. Eén keer
-// bij mount is genoeg om na een herlaad te weten of er al iets loopt.
-onMounted(() => {
-  if (authenticated.value) refreshTasks();
-});
-// Naar de takenlijst, gefilterd op deze wet: dezelfde context waar de lopende
-// aanvraag als rij met activity-indicator staat.
-function openTasksForLaw() {
-  if (!activeTrajectRef.value || !selectedLawId.value) return;
-  router.push({
-    name: 'taken-traject',
-    params: {
-      trajectRef: activeTrajectRef.value,
-      categorie: 'wet',
-      contextLawId: selectedLawId.value,
-    },
-  });
-}
 
 async function enrichSelectedLaw(anchorEl) {
   if (!selectedLawId.value) return;
@@ -172,15 +120,12 @@ async function enrichSelectedLaw(anchorEl) {
   }
   enrichError.value = '';
   try {
-    const { alreadyRunning, tooMany } = await requestEnrich(
-      activeTrajectRef.value,
-      selectedLawId.value,
-    );
+    // requestEnrich ververst zelf de takenlijst, dus de pane staat daarna in de
+    // bezig-staat. alreadyRunning heeft daarom geen eigen melding nodig: dat is
+    // precies wat de pane dan toont.
+    const { alreadyRunning, tooMany } = await requestEnrich();
     if (tooMany) enrichError.value = 'Je hebt te veel verrijkingen tegelijk lopen.';
-    // alreadyRunning heeft geen melding nodig: de refresh hieronder zet de pane
-    // in de bezig-staat, en dat is precies wat er aan de hand is.
     else if (!alreadyRunning) enrichError.value = '';
-    await refreshTasks();
   } catch {
     enrichError.value = 'Verrijking aanvragen mislukt.';
   }
@@ -900,12 +845,26 @@ const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
 
-// Hier en niet bij isEnriching hierboven: watch() leest zijn bron meteen om de
-// dependency te leggen, en die computed gebruikt selectedLawId - dat staat een
-// paar regels hierboven pas. Eerder aanroepen gooit een ReferenceError in setup
-// en dan rendert de hele view niets.
-usePollWhile(isEnriching);
 const selectedArticleNumber = ref(null);
+
+// De verrijk-/beoordeel-staat van de geselecteerde wet, gedeeld met EditorView:
+// wat de lege Machine-/YAML-pane meldt en waar zijn knoppen heen gaan. Hier en
+// niet bovenaan het bestand: de composable legt meteen een watch op zijn bron,
+// dus selectedLawId/selectedArticleNumber moeten al bestaan - eerder aanroepen
+// gooit een ReferenceError in setup en dan rendert de hele view niets.
+const {
+  isEnriching,
+  reviewReady,
+  reviewArticleForPane,
+  openReviewForLaw,
+  openTasksForLaw,
+  requestEnrich,
+  refreshTasks,
+} = useEnrichState({
+  trajectRef: activeTrajectRef,
+  lawId: selectedLawId,
+  articleNumber: selectedArticleNumber,
+});
 
 // Recently-viewed laws (most-recent-first), persisted across sessions. Stored
 // as { law_id, name } so a law that fails to load in the active traject - and
