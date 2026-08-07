@@ -29,19 +29,39 @@ fail() {
     exit 1
 }
 
-# Status en conclusie van de nieuwste run van $WORKFLOW voor deze commit.
-# Leeg wanneer er geen run is.
+# Foutuitvoer van de laatste API-aanroep. Een bestand en geen variabele: de
+# aanroep hieronder staat in een command-substitution, dus een variabele die de
+# functie zet gaat met die subshell verloren.
+ERRFILE=$(mktemp)
+trap 'rm -f "$ERRFILE"' EXIT
+
+# Status en conclusie van de nieuwste run van $WORKFLOW voor deze commit. Leeg
+# wanneer er geen run is; exitcode 1 wanneer de aanroep zelf mislukte. Dat
+# onderscheid is nodig: een tokenfout, rate limit of netwerkstoring mag niet als
+# "er is geen run" gelezen worden, want dan noemt de poort een oorzaak die hij
+# niet getoetst heeft.
 latest_run() {
     gh api "repos/${REPO}/actions/runs?head_sha=${SHA}&per_page=100" \
         --jq "[.workflow_runs[] | select(.name == \"${WORKFLOW}\")]
               | sort_by(.run_started_at) | last
               | select(. != null)
-              | \"\(.status)\t\(.conclusion // \"\")\t\(.html_url)\"" 2>/dev/null
+              | \"\(.status)\t\(.conclusion // \"\")\t\(.html_url)\"" 2>"$ERRFILE"
 }
 
 waited=0
 while :; do
-    run="$(latest_run)"
+    if ! run="$(latest_run)"; then
+        melding=$(tr '\n' ' ' <"$ERRFILE")
+        # Blijven proberen zolang er tijd is: een rate limit trekt vanzelf bij.
+        # Blijft het mislukken, dan is dat de melding, en niet "geen run".
+        if [ "$waited" -ge "$MAX_WAIT_SECONDS" ]; then
+            fail "de GitHub-API blijft fouten geven, dus of CI geslaagd is voor ${SHA} is niet vast te stellen: ${melding}"
+        fi
+        echo "API-fout, opnieuw proberen: ${melding}"
+        sleep "$POLL_SECONDS"
+        waited=$((waited + POLL_SECONDS))
+        continue
+    fi
 
     if [ -z "$run" ]; then
         # Kan een race zijn met het aanmaken van de run, dus even wachten mag.

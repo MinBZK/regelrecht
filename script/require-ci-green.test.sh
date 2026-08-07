@@ -104,6 +104,31 @@ check "een rerun die groen werd laat alsnog door" 0 \
     "[$(run completed '"failure"' 2026-08-07T10:00:00Z),$(run completed '"success"' 2026-08-07T11:00:00Z)]" \
     "is geslaagd"
 
+# Een mislukte API-aanroep is iets anders dan een ontbrekende run. Zonder dit
+# onderscheid meldt de poort een oorzaak die hij niet getoetst heeft.
+stub_gh_fails() {
+    cat >"$tmp/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "gh: HTTP 401: Bad credentials" >&2
+exit 1
+STUB
+    chmod +x "$tmp/gh"
+}
+
+stub_gh_fails
+out=$(PATH="$tmp:$PATH" REPO=o/r SHA=deadbeef MAX_WAIT_SECONDS=0 POLL_SECONDS=0 \
+    bash "$gate" 2>&1)
+status=$?
+if [ "$status" -eq 1 ] && grep -qF "Bad credentials" <<<"$out" \
+    && ! grep -qF "geen enkele CI-run" <<<"$out"; then
+    echo "ok: een API-fout wordt niet gemeld als een ontbrekende run"
+    pass=$((pass + 1))
+else
+    echo "FAIL: een API-fout wordt niet gemeld als een ontbrekende run — exit $status"
+    echo "$out" | sed 's/^/    /'
+    fail=$((fail + 1))
+fi
+
 echo
 echo "$pass geslaagd, $fail mislukt"
 [ "$fail" -eq 0 ]
