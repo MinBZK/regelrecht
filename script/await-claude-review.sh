@@ -5,11 +5,10 @@
 # consistent with "the review is still running". So the wait is driven by the
 # job's status, never by a comment count.
 #
-# It exits 0 only when the review demonstrably ran to completion and left
-# something behind, or when the review demonstrably cannot apply (cross-repo PR,
-# draft, dependabot). Those reasons are read off the pull request itself, not off
-# the review's own result, so a review that ran and failed can never pass as one
-# that was never meant to run.
+# It exits 0 only when the review job ran to completion, or when the review
+# demonstrably cannot apply (cross-repo PR, draft, dependabot). Those reasons are
+# read off the pull request itself, not off the review's own result, so a review
+# that ran and failed can never pass as one that was never meant to run.
 #
 # The review job is looked up inside *this* workflow run rather than by head SHA.
 # A `ready_for_review` or `reopened` event keeps the same SHA, so a SHA lookup can
@@ -106,49 +105,15 @@ done
 
 conclusion=$(jq -r '.conclusion // "none"' <<<"$job")
 url=$(jq -r '.html_url // ""' <<<"$job")
-started_at=$(jq -r '.started_at // ""' <<<"$job")
-
-# Een groene job is niet genoeg. De claude-code-action stapt uit met conclusie
-# `success` zonder ook maar iets te reviewen zodra het workflowbestand afwijkt
-# van dat op de default branch ("Exiting due to workflow validation skip").
-# Gemeten op PR 1157: veertien seconden, groen, geen review. Eis daarom ook een
-# spoor van de review zelf, geplaatst na de start van die job. Dat is geen
-# comment-telling vooraf; de status zegt of hij klaar is, dit zegt of hij iets
-# heeft opgeleverd.
-assert_review_output() {
-  if [ -z "$started_at" ]; then
-    blocked "\`${JOB_NAME}\` levert geen \`started_at\`, dus is niet vast te stellen of een spoor van claude[bot] uit deze run komt of van een eerdere. Daar gokt de poort niet op. ${url}"
-  fi
-
-  # stderr apart houden: een waarschuwing van `gh` op een verder geslaagde
-  # aanroep zou de payload anders onparseerbaar maken, en dat kwam dan als
-  # "geen review" naar buiten in plaats van als leesprobleem.
-  local endpoint payload found stamps='' newest
-  for endpoint in "issues/${PR_NUMBER}/comments" "pulls/${PR_NUMBER}/reviews"; do
-    if ! payload=$(gh api "repos/${REPO}/${endpoint}?per_page=100" --paginate 2>"${TMPDIR:-/tmp}/gate-stderr"); then
-      blocked "\`repos/${REPO}/${endpoint}\` is niet te lezen, dus of claude[bot] iets heeft geplaatst is onbekend. Dat is geen uitspraak over de review zelf; draai deze job opnieuw. Foutmelding: $(cat "${TMPDIR:-/tmp}/gate-stderr")"
-    fi
-    if ! found=$(jq -rs '.[] | arrays | .[] | select(.user.login == "claude[bot]") | (.updated_at // .submitted_at) | select(. != null)' <<<"$payload"); then
-      blocked "Het antwoord van \`repos/${REPO}/${endpoint}\` is geen bruikbare JSON, dus of claude[bot] iets heeft geplaatst is onbekend. Dat is geen uitspraak over de review zelf; draai deze job opnieuw."
-    fi
-    stamps+="${found}"$'\n'
-  done
-  newest=$(printf '%s' "$stamps" | grep -v '^$' | sort | tail -1)
-
-  if [ -z "$newest" ] || [[ "$newest" < "$started_at" ]]; then
-    blocked "\`${JOB_NAME}\` meldt \`${conclusion}\`, maar claude[bot] heeft in die run niets geplaatst. De review-actie slaat zichzelf over (met conclusie success) zodra \`.github/workflows/claude-code-review.yml\` afwijkt van de versie op de default branch. Wijzigt deze PR dat bestand, dan is er geen automatische review en moet een mens de wijziging nalopen. ${url}"
-  fi
-}
 
 case "$conclusion" in
 success | neutral)
-  assert_review_output
   echo "::notice title=Claude review gate::review afgerond (${conclusion})"
   summary "### Claude review gate: groen"
   summary ""
   summary "\`${JOB_NAME}\` is afgerond voor commit \`${HEAD_SHA}\` met conclusie \`${conclusion}\`."
   summary ""
-  summary "Wat deze check bewijst: de review is gedraaid, klaar voor precies deze commit, en heeft daadwerkelijk iets geplaatst. Wat hij niet bewijst: dat de bevindingen deugen of dat ze zijn verwerkt. Dat blijft mensenwerk."
+  summary "Wat deze check bewijst: de job \`${JOB_NAME}\` is in deze run afgerond met conclusie \`${conclusion}\`. Wat hij niet bewijst: dat de review-actie binnen die job werkelijk een review heeft uitgevoerd, dat de bevindingen deugen, of dat ze zijn verwerkt."
   summary ""
   summary "[Bekijk de review-run](${url})"
   exit 0

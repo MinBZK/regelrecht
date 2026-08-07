@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Tests voor script/await-claude-review.sh.
 #
-# `gh` wordt vervangen door een stub die per endpoint antwoordt: de jobs van de
-# workflow-run uit een reeks (één antwoord per aanroep, zodat een lopende review
-# die later klaar is te simuleren valt), comments en reviews uit fixtures. Zo is
-# elk pad deterministisch te bewijzen zonder GitHub.
+# `gh` wordt vervangen door een stub die de jobs van de workflow-run uit een
+# reeks antwoordt: één antwoord per aanroep, zodat een lopende review die later
+# klaar is te simuleren valt. Zo is elk pad deterministisch te bewijzen zonder
+# GitHub. Elk ander endpoint laat de stub falen; de poort hoort niets anders te
+# raadplegen dan de jobs van deze run.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,32 +34,6 @@ case "$url" in
   fi
   printf '%s\n' "$line"
   ;;
-*/comments*)
-  if [ "$(cat "$STUB_COMMENTS")" = "ERROR" ]; then
-    echo "gh: HTTP 403" >&2
-    exit 1
-  fi
-  # WARN: geslaagde aanroep die ook naar stderr schrijft.
-  if [ "$(cat "$STUB_COMMENTS")" = "WARN" ]; then
-    echo "gh: warning: this API is deprecated" >&2
-    cat "$STUB_WARN_BODY"
-    exit 0
-  fi
-  cat "$STUB_COMMENTS"
-  ;;
-*/reviews*)
-  if [ "$(cat "$STUB_REVIEWS")" = "ERROR" ]; then
-    echo "gh: HTTP 403" >&2
-    exit 1
-  fi
-  # WARN: geslaagde aanroep die ook naar stderr schrijft.
-  if [ "$(cat "$STUB_REVIEWS")" = "WARN" ]; then
-    echo "gh: warning: this API is deprecated" >&2
-    cat "$STUB_WARN_BODY"
-    exit 0
-  fi
-  cat "$STUB_REVIEWS"
-  ;;
 *)
   echo "gh: onverwachte URL: $url" >&2
   exit 1
@@ -70,15 +45,10 @@ export PATH="${WORK}/bin:${PATH}"
 
 export STUB_COUNTER="${WORK}/counter"
 export STUB_JOBS="${WORK}/jobs"
-export STUB_COMMENTS="${WORK}/comments"
-export STUB_REVIEWS="${WORK}/reviews"
-export STUB_WARN_BODY="${WORK}/warn-body"
-
-STARTED='2026-01-01T12:00:00Z'
 
 job() {
-  printf '{"jobs":[{"name":"claude-review","status":"%s","conclusion":%s,"started_at":%s,"html_url":"http://example.invalid/job"}]}\n' \
-    "$1" "$2" "${3:-\"$STARTED\"}"
+  printf '{"jobs":[{"name":"claude-review","status":"%s","conclusion":%s,"html_url":"http://example.invalid/job"}]}\n' \
+    "$1" "$2"
 }
 
 RUNNING=$(job in_progress null)
@@ -87,35 +57,21 @@ DONE_NEUTRAL=$(job completed '"neutral"')
 DONE_FAIL=$(job completed '"failure"')
 DONE_CANCELLED=$(job completed '"cancelled"')
 DONE_SKIPPED=$(job completed '"skipped"')
-DONE_NO_START=$(job completed '"success"' null)
 NO_JOB='{"jobs":[{"name":"iets-anders","status":"completed","conclusion":"success"}]}'
 # Na "Re-run this job" op de poort staan er meerdere attempts van dezelfde job
 # op één run-id; de hoogste id is de meest recente.
-ATTEMPTS='{"jobs":[{"name":"claude-review","status":"completed","conclusion":"success","started_at":"2026-01-01T12:00:00Z","id":9,"html_url":"http://example.invalid/9"},{"name":"claude-review","status":"completed","conclusion":"failure","started_at":"2026-01-01T10:00:00Z","id":1,"html_url":"http://example.invalid/1"}]}'
-GARBAGE='dit is geen JSON'
-
-
-NONE='[]'
-STICKY='[{"user":{"login":"claude[bot]"},"created_at":"2026-01-01T12:00:30Z","updated_at":"2026-01-01T12:00:30Z"}]'
-STICKY_STALE='[{"user":{"login":"claude[bot]"},"created_at":"2026-01-01T09:00:00Z","updated_at":"2026-01-01T09:00:00Z"}]'
-HUMAN_ONLY='[{"user":{"login":"someone"},"created_at":"2026-01-01T12:00:30Z","updated_at":"2026-01-01T12:00:30Z"}]'
-CLAUDE_REVIEW='[{"user":{"login":"claude[bot]"},"state":"COMMENTED","submitted_at":"2026-01-01T12:00:40Z"}]'
+ATTEMPTS='{"jobs":[{"name":"claude-review","status":"completed","conclusion":"success","id":9,"html_url":"http://example.invalid/9"},{"name":"claude-review","status":"completed","conclusion":"failure","id":1,"html_url":"http://example.invalid/1"}]}'
 
 passed=0
 failed=0
 
 jobs_are() { printf '%s\n' "$@" >"$STUB_JOBS"; }
-comments_are() { printf '%s\n' "$1" >"$STUB_COMMENTS"; }
-reviews_are() { printf '%s\n' "$1" >"$STUB_REVIEWS"; }
 
-# Elke test start van dezelfde grond: één afgeronde geslaagde review met een
-# verse sticky comment. Een test zet alleen wat hij zelf wil bewijzen en kan niet
-# per ongeluk slagen op de fixtures van zijn voorganger.
+# Elke test start van dezelfde grond: één afgeronde, geslaagde review. Een test
+# zet alleen wat hij zelf wil bewijzen en kan niet per ongeluk slagen op de
+# fixtures van zijn voorganger.
 reset_fixtures() {
   jobs_are "$DONE_OK"
-  comments_are "$STICKY"
-  reviews_are "$NONE"
-  printf '%s\n' "$STICKY" >"$STUB_WARN_BODY"
   echo 0 >"$STUB_COUNTER"
   : >"${WORK}/summary.md"
 }
@@ -184,48 +140,20 @@ reset_fixtures
 jobs_are "$DONE_SKIPPED"
 check "review overgeslagen zonder geldige reden: rood" 1 "is overgeslagen" "is overgeslagen" -- MAX_WAIT_SECONDS=0
 
-echo "== groen vraagt ook een spoor van de review zelf =="
-# De claude-code-action stapt uit met conclusie success, zonder te reviewen en
-# zonder iets te plaatsen, zodra het workflowbestand afwijkt van de default
-# branch. Een groene job alleen is dus geen bewijs.
-reset_fixtures
-comments_are "$NONE"
-check "groen zonder enig spoor van claude[bot]: rood" 1 "niets geplaatst" "niets geplaatst" -- MAX_WAIT_SECONDS=0
-reset_fixtures
-comments_are "$HUMAN_ONLY"
-check "alleen comments van mensen: rood" 1 "niets geplaatst" "niets geplaatst" -- MAX_WAIT_SECONDS=0
-reset_fixtures
-comments_are "$STICKY_STALE"
-check "spoor van vóór deze run telt niet: rood" 1 "niets geplaatst" "niets geplaatst" -- MAX_WAIT_SECONDS=0
-reset_fixtures
-jobs_are "$DONE_NO_START"
-check "job zonder started_at: rood, want versheid is onbepaalbaar" 1 'geen `started_at`' 'geen `started_at`' -- MAX_WAIT_SECONDS=0
-reset_fixtures
-comments_are ERROR
-check "comments-API onleesbaar: rood, niet als 'geen review' gemeld" 1 "is niet te lezen" "is niet te lezen" -- MAX_WAIT_SECONDS=0
-reset_fixtures
-reviews_are ERROR
-check "reviews-API onleesbaar: rood, niet als 'geen review' gemeld" 1 "is niet te lezen" "is niet te lezen" -- MAX_WAIT_SECONDS=0
-reset_fixtures
-comments_are "$GARBAGE"
-check "onparseerbaar antwoord: rood met een eigen melding" 1 "geen bruikbare JSON" "geen bruikbare JSON" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are ERROR
 check "jobs-API blijft onleesbaar tot de deadline: rood, niet als 'job ontbreekt'" 1 "niet op te halen" "niet op te halen" -- MAX_WAIT_SECONDS=0
 
 echo "== de poort opent =="
+# Het geval uit issue 1178: de review draaide volledig af en had niets aan te
+# merken, dus claude[bot] plaatste geen enkele comment. Dat is een schone PR,
+# geen ontbrekende review. De stub faalt op elk endpoint buiten de jobs van deze
+# run, dus deze test slaagt alleen als de poort geen comments raadpleegt.
 reset_fixtures
-check "review afgerond met sticky comment: groen" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+check "review af met nul bevindingen: groen" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are "$DONE_NEUTRAL"
 check "conclusie neutral telt als afgerond: groen" 0 "review afgerond (neutral)" "groen" -- MAX_WAIT_SECONDS=0
-reset_fixtures
-comments_are "$NONE"
-reviews_are "$CLAUDE_REVIEW"
-check "een geplaatste review telt ook als spoor: groen" 0 "review afgerond (success)" "groen" -- MAX_WAIT_SECONDS=0
-reset_fixtures
-comments_are WARN
-check "waarschuwing op stderr bederft een geslaagde aanroep niet: groen" 0 "review afgerond (success)" "groen" -- MAX_WAIT_SECONDS=0
 reset_fixtures
 jobs_are "$ATTEMPTS"
 check "meerdere attempts: de nieuwste job telt" 0 "review afgerond (success)" "groen" -- MAX_WAIT_SECONDS=0

@@ -242,10 +242,11 @@ The gate does not verify that it ran.
 A green job is not enough on its own. `claude-code-action` exits with conclusion
 `success` **without reviewing anything** when the workflow file differs from the
 version on the default branch ("Exiting due to workflow validation skip"). The
-gate therefore also requires that `claude[bot]` posted a comment or review after
-the job started. Practical consequence: a PR that edits
-`.github/workflows/claude-code-review.yml` cannot get a green gate, and needs a
-human review plus an admin merge. Every other PR is unaffected.
+gate used to close that hole by requiring a comment from `claude[bot]` after the
+job started, but a review that finishes with nothing to report posts nothing, so
+every clean PR went red on a cause that had not been established (issue #1178).
+That requirement is gone; until the run-bound replacement lands, a self-skipped
+review passes the gate.
 
 The gate runs the copy of its own script from the base branch, not the one in
 the PR — otherwise a PR could turn the script into `exit 0` and be green by
