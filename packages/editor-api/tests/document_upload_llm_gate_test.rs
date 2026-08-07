@@ -54,6 +54,7 @@ fn empty_state(pool: PgPool) -> AppState {
         harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
         trajects: Arc::new(TrajectCorpusCache::new()),
+        integrity: Default::default(),
     }
 }
 
