@@ -489,6 +489,9 @@ jobs:
         # rename of the `name` field can't silently skip the tests.
         run: npm test -w frontend
 
+      - name: Run lawmaking tests
+        run: npm test -w frontend-lawmaking
+
       - name: Run shared-package tests
         run: npm test -w packages/frontend-shared
 
