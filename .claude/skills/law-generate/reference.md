@@ -501,8 +501,8 @@ This is the opposite of English. So `€1.234,56` means one thousand two hundred
 - **Schema**: `schema/latest/schema.json`
 - **Working examples**:
   - `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` — basic patterns
-  - `corpus/regulation/nl/wet/algemene_wet_bestuursrecht/2026-01-01.yaml` — hooks, procedures
-  - `corpus/regulation/nl/wet/vreemdelingenwet_2000/2026-01-01.yaml` — overrides
+  - `corpus/regulation/nl/wet/algemene_wet_bestuursrecht/1994-01-01.yaml` — hooks, procedures
+  - `corpus/regulation/nl/wet/vreemdelingenwet_2000/2000-11-23.yaml` — overrides
   - `corpus/regulation/nl/wet/wet_open_overheid/2025-02-12.yaml` — AGE, complex IF
 - **Engine source**: `packages/engine/src/`
 - **Validation binary**: `packages/engine/src/bin/validate.rs`

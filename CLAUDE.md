@@ -7,12 +7,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **regelrecht** is a platform for machine-readable Dutch law execution. The repo is a monorepo with multiple components:
 
 - `packages/engine/` - Rust law execution engine
-- `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
+- `packages/law-model/` - Canonical Rust representation of the law-YAML document model. Dependency-light leaf crate; every consumer of the law format depends on it instead of redefining the shape. Must conform to `schema/latest/schema.json` (see `just conformance`).
+- `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking. Ships three binaries: `regelrecht-harvest-worker`, `regelrecht-enrich-worker` and `regelrecht-pipeline-api` (the harvest API the editor proxies to).
 - `packages/harvester/` - Law corpus harvesting from BWB (Basis Wettelijke Regelgeving)
 - `packages/admin/` - Harvester-admin API (Rust; standalone harvest job/corpus API). Its dashboard UI now lives in the editor as the "Corpusinwinning" section (`frontend/src/harvester/`), reached through the editor-api `/api/harvest-admin/*` proxy; the API stays independently addressable for scripts/services.
 - `packages/editor-api/` - Rust backend API for the editor frontend
 - `packages/corpus/` - Shared library for working with YAML regulation files
+- `packages/github/` - One hand-rolled GitHub REST client shared by every service that reads or writes a corpus repository
+- `packages/auth/` - Shared OIDC/SSO authentication (fail-closed authorization middleware)
 - `packages/shared/` - Common types/utilities across packages
+- `packages/arch-extract/` - Generates the code-derived architecture model from the cargo graph, and serves the local explorer for it
+- `packages/frontend-shared/` - `@regelrecht/frontend-shared`, the JS shared by editor, admin and lawmaking (`apiFetch` and friends)
 - `packages/tui/` - Terminal UI dashboard
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)
@@ -39,6 +44,19 @@ installs `mold` (required by `packages/.cargo/config.toml`) + `sccache`.
 `sccache` is left off locally because it disables incremental compilation
 (`CARGO_INCREMENTAL=0`), which slows the `just dev` hot-reload loop. CI uses
 mold + sccache.
+
+**Sharing that target dir costs something when two agents work at once.** Cargo
+takes an exclusive lock on a target dir for the whole build, so a second worktree
+waits: measured here, `just validate` runs in 2 seconds alone and 38 seconds
+alongside a 45-second `just lint` in another worktree. Sharing still wins on the
+single-agent case by a wide margin (a first `just build-check` in a fresh
+worktree: 1 second shared, 170 seconds with its own target dir). A worktree that
+is about to run long builds can step out of the queue with `just
+target-isolated`, and `just target-shared` puts it back.
+
+Do not reach for sccache to get both: it hashes the working directory, so two
+worktrees on different paths share no Rust compilation at all. Measured over a
+cold `just build-check` with a warm cache: 480 misses, 0 hits.
 
 ### Just Commands
 
@@ -111,6 +129,25 @@ When using git worktrees, create them **inside the project folder** (e.g., `.wor
 git worktree add .worktrees/feature-branch feature-branch
 ```
 
+### Rebasing open PRs
+
+Branch protection on `main` runs with `strict: true`: a PR that is behind cannot
+merge, no matter how green its checks are. Every merge invalidates the checks of
+every other open PR.
+
+So rebase **one** PR at a time, the one that is merged next, right after the
+previous merge landed. Leave the rest alone. Rebasing ten branches at once
+queues dozens of runs that can never lead to a merge, and the PR at the front of
+the line ends up waiting behind them for a runner.
+
+Always fetch first and rebase onto `origin/main` — a local `main` ref is
+usually stale, and the rebase then quietly produces a branch that is still
+behind. Verify before pushing:
+
+```bash
+gh api repos/MinBZK/regelrecht/compare/main...<branch> --jq .behind_by   # must be 0
+```
+
 ## Architecture Notes
 
 ### Law Format
@@ -143,7 +180,7 @@ See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a worki
 
 ## Frontend / UI Components
 
-**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NDD `ndd-*` web components). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NLDD `nldd-*` web components, npm package `@nldd/design-system`). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
 
 ### Icon names
 
@@ -182,7 +219,7 @@ RFC metadata lives in YAML **frontmatter**, not a bold-labelled body preamble.
 The fields are `title`, `status`, `implementation`, `date`, `authors`,
 optional `depends_on`, and optional `short_title`. The docs site
 (`docs/src/pages/rfcs/`, parsed by `docs/src/lib/rfcs.ts`) renders `status` and
-`implementation` as NDD tags and the rest as a header line — there is no rehype
+`implementation` as NLDD tags and the rest as a header line — there is no rehype
 preamble plugin.
 
 Two orthogonal fields, both required on every RFC so an absent tag never reads

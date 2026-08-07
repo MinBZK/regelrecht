@@ -26,13 +26,24 @@ When `machine_readable` sections are added or changed:
 - Do `source.regulation` values reference valid law `$id` slugs that exist in `corpus/regulation/`?
 - Do `source.output` values match actual `output.name` fields in the referenced law?
 - Are `source.parameters` passed correctly (matching the referenced law's parameter names)?
-- Are `regelrecht://` URIs well-formed: `regelrecht://{law_id}/{output_name}#{field}`?
+- In annotation sidecars (`corpus/annotations/**`), are `regelrecht://` URIs well-formed:
+  `regelrecht://{law_id}`, `regelrecht://{law_id}/{output_name}`, optionally with `#{field}`?
+  Regulation YAML itself does not carry these URIs — it binds through `source:`.
 
 ### Schema and format compliance (regulation YAML changes)
 
-- Does the YAML structure conform to the schema (v0.4.0)?
-- Are required fields present (`$schema`, `$id`, `regulatory_layer`, `valid_from`, etc.)?
-- Are operation names valid (`IF`, `AND`, `OR`, `ADD`, `SUBTRACT`, `MULTIPLY`, etc.)?
+- Does the YAML structure conform to the schema? `schema/latest` is the current
+  version; `packages/engine/src/schema.rs` lists every version the engine loads.
+  Review the file against the version it declares in `$schema` — the wrong version
+  flags correct constructs and misses real ones.
+- Are the schema's required top-level fields present (`regulatory_layer`,
+  `publication_date`, `url`, `articles`)? `$schema` is not required by the schema
+  itself, but a corpus file without it is rejected downstream
+  (`packages/pipeline/src/law_convert.rs`), and RFC-013 requires an immutable tag URL:
+  `https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-vX.Y.Z/schema/vX.Y.Z/schema.json`.
+- Are operation names valid? The schema is the list and `just validate` decides.
+  Rounding deserves its own look: the schema requires it to be explicit
+  (`ROUND`/`CEIL`/`FLOOR` with a `precision`), so an implicitly rounded amount is a finding.
 - Are type declarations correct (`string`, `number`, `boolean`, `amount` with `type_spec.unit`)?
 
 ### Engine correctness (engine Rust changes)
@@ -53,7 +64,13 @@ When `machine_readable` sections are added or changed:
 
 - Does XML-to-YAML conversion preserve legal text faithfully (no dropped articles, no mangled Unicode)?
 - Job queue operations: correct use of `FOR UPDATE SKIP LOCKED`, proper state transitions, retry logic with backoff, no lost jobs on worker crash.
-- Law status transitions must be valid (unknown → queued → harvesting → harvested → enriching → enriched).
+- Law status transitions must be valid. The happy path is
+  unknown → queued → harvesting → harvested → enriching → enriched, but
+  `LawStatusValue` (`packages/pipeline/src/models.rs`) has eleven values, and the
+  five that are missing here are the ones a change tends to drop:
+  `harvest_failed`, `harvest_exhausted`, `enrich_failed`, `enrich_exhausted` and
+  the terminal `not_harvestable`. A transition that cannot reach a failure state
+  is a finding, not a simplification.
 - Are BWB API interactions robust (retries, error handling for network failures)?
 - Git corpus operations: handle merge conflicts, network failures, and concurrent pushes.
 - Database migrations must be backwards-compatible and idempotent.
@@ -73,6 +90,7 @@ When `machine_readable` sections are added or changed:
 
 ## Skip
 
-- Generated files under `packages/harvester/test-output/`
+- `frontend/src/gherkin/grammar.generated.js` — code-generated from `bdd/grammar.yaml`.
+  Review the grammar, not the output; CI fails on a stale copy.
 - Lock files (`Cargo.lock`, `package-lock.json`) unless dependencies were intentionally changed
 - Formatting-only changes caught by `cargo fmt` or pre-commit hooks

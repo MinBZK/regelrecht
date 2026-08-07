@@ -66,28 +66,6 @@ test = false
 [features]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
 validate = ["dep:jsonschema"]
-otel = ["dep:tracing-opentelemetry", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-subscriber"]
-
-[dependencies.tracing-subscriber]
-version = "0.3"
-features = ["env-filter", "fmt", "registry"]
-optional = true
-
-[dependencies.tracing-opentelemetry]
-version = "0.33"
-optional = true
-
-[dependencies.opentelemetry]
-version = "0.32"
-optional = true
-
-[dependencies.opentelemetry_sdk]
-version = "0.32"
-optional = true
-
-[dependencies.opentelemetry-otlp]
-version = "0.32"
-optional = true
 
 [build-dependencies]
 serde = { workspace = true }
@@ -107,6 +85,8 @@ rust_decimal_macros.workspace = true
 # re-declared here to be in scope for the integration-test crate.
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
+# tests/bdd_discovery.rs builds throwaway corpus/bdd trees.
+tempfile.workspace = true
 
 [[bench]]
 name = "uri_parsing"

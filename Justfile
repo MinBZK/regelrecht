@@ -41,11 +41,10 @@ format:
     cd packages && cargo fmt --check --all
 
 # The features a deployed artefact or a `just` recipe actually turns on.
-# Deliberately not --all-features: that also builds `engine/otel` (the whole
-# OpenTelemetry stack, enabled by no Dockerfile, CI job or recipe),
-# `engine/wasm` and the two `test-utils` features, together 46 crates. Those
-# three still get compiled by `just test`, which does run --all-features, so
-# leaving them out here costs clippy coverage on that code and nothing else.
+# Deliberately not --all-features: that also builds `engine/wasm` and the two
+# `test-utils` features. Those still get compiled by `just test`, which does run
+# --all-features, so leaving them out here costs clippy coverage on that code
+# and nothing else.
 check_features := "regelrecht-engine/validate,regelrecht-corpus/annotation-validation"
 
 # Run clippy lints
@@ -341,6 +340,19 @@ compose-local := compose + " -f dev/compose.local.yaml"
 compose-native := compose + " -f dev/compose.native.yaml"
 pidfile := ".dev-pids"
 
+# Geef deze worktree een eigen cargo-target-dir. Kost een koude build (~40 s voor
+# `just validate`, ~170 s voor `just build-check`) en levert op dat een lange build
+# hier geen andere worktree meer laat wachten op de build-lock. De meting waarop
+# die afweging rust staat bovenin script/target-dir.sh.
+[doc("Geef deze worktree een eigen cargo-target-dir (geen gedeelde build-lock)")]
+target-isolated:
+    script/target-dir.sh isolated
+
+# Terug naar de gedeelde target-dir van de hoofdcheckout.
+[doc("Zet deze worktree terug op de gedeelde cargo-target-dir")]
+target-shared:
+    script/target-dir.sh shared
+
 # One-time build-speed setup: install mold + sccache, share one target dir across worktrees
 dev-setup:
     #!/usr/bin/env bash
@@ -385,6 +397,13 @@ dev-setup:
     # checkout, so cargo's upward config search finds this root .cargo/config.toml
     # from every worktree. It is gitignored (machine-specific absolute path), so
     # CI keeps its own packages/target.
+    #
+    # The sharing is worth it — a first `just build-check` in a fresh worktree
+    # takes 1 second instead of 170 — but cargo locks a target dir exclusively
+    # for the length of a build, so concurrent worktrees serialize: a `just
+    # validate` measured 2 s alone and 38 s next to a 45 s `just lint`. A worktree
+    # that runs long builds can opt out with `just target-isolated`; the numbers
+    # behind the trade-off are in script/target-dir.sh.
     root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 
     # A Rust build writes tens of thousands of small files. On a slow/remote

@@ -62,6 +62,8 @@ test-utils = ["dep:testcontainers", "dep:testcontainers-modules"]
 regelrecht-pipeline = { path = ".", features = ["test-utils"] }
 pretty_assertions.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs"] }
+# Lokale SRU-server voor de statuspoort in api/bwb_search.rs.
+wiremock.workspace = true
 
 [lints]
 workspace = true

@@ -217,3 +217,89 @@ describe('useScenarios auto-select', () => {
     expect(s.selectedScenario.value).toBe('a.feature');
   });
 });
+
+describe('useScenarios list-read failures', () => {
+  function mockListStatus(status) {
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      if (String(url).endsWith('/scenarios')) {
+        return res({ ok: false, status, body: '' });
+      }
+      return res({ body: 'Feature: x\n', etag: '"v1"' });
+    });
+  }
+
+  it('shows an empty list only when the backend says so', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async () => res({ json: [] }));
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+
+    expect(s.scenarios.value).toEqual([]);
+    expect(s.error.value).toBeNull();
+  });
+
+  it('surfaces a backend failure instead of showing an empty list', async () => {
+    mockListStatus(502);
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+
+    expect(s.scenarios.value).toEqual([]);
+    expect(s.error.value?.status).toBe(502);
+  });
+
+  it('surfaces a server error on the traject scope too', async () => {
+    mockListStatus(500);
+
+    const s = useScenarios(ref('wet_a'), ref('tr-12345678'));
+    await s.fetchScenarios();
+
+    expect(s.error.value?.status).toBe(500);
+  });
+
+  it('does not read 404 as a law without scenarios', async () => {
+    mockListStatus(404);
+
+    const s = useScenarios(ref('wet_a'));
+    await s.fetchScenarios();
+
+    expect(s.error.value?.status).toBe(404);
+    expect(s.error.value.message).toMatch(/niet gevonden/);
+  });
+
+  it('drops a failure that arrives after the user switched law', async () => {
+    const lawId = ref('wet_a');
+    let release;
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      if (String(url).endsWith('/scenarios')) {
+        await new Promise((r) => { release = r; });
+        return res({ ok: false, status: 502, body: '' });
+      }
+      return res({ json: [] });
+    });
+
+    const s = useScenarios(lawId);
+    const inFlight = s.fetchScenarios();
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+
+    lawId.value = 'wet_b';
+    release();
+    await inFlight;
+
+    expect(s.error.value).toBeNull();
+  });
+
+  it('clears a previous error when no law is selected', async () => {
+    const lawId = ref('wet_a');
+    mockListStatus(502);
+
+    const s = useScenarios(lawId);
+    await s.fetchScenarios();
+    expect(s.error.value).toBeTruthy();
+
+    lawId.value = '';
+    await s.fetchScenarios();
+
+    expect(s.error.value).toBeNull();
+  });
+});
