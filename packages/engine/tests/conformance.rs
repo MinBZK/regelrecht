@@ -136,10 +136,16 @@ fn tier_a_corpus_differential() {
             not_revalid.push(rel.clone());
         }
         // (4) value-stability (reported): compare modulo $schema meta + key order.
+        // The model re-emits `$schema` (it is a `#[serde(rename)]`d field), so
+        // both sides must be stripped or the comparison can never hold.
         if let Value::Object(map) = &mut value {
             map.remove("$schema");
         }
-        if normalize(&value) != reserialized {
+        let mut reserialized_body = reserialized;
+        if let Value::Object(map) = &mut reserialized_body {
+            map.remove("$schema");
+        }
+        if normalize(&value) != reserialized_body {
             value_drift.push(rel);
         }
     }
