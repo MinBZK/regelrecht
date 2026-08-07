@@ -45,7 +45,7 @@ latest_run() {
         --jq "[.workflow_runs[] | select(.name == \"${WORKFLOW}\")]
               | sort_by(.run_started_at) | last
               | select(. != null)
-              | \"\(.status)\t\(.conclusion // \"\")\t\(.html_url)\"" 2>"$ERRFILE"
+              | \"\(.status)\n\(.conclusion // \"\")\n\(.html_url)\"" 2>"$ERRFILE"
 }
 
 waited=0
@@ -69,7 +69,12 @@ while :; do
             fail "geen enkele ${WORKFLOW}-run gevonden voor ${SHA} binnen ${MAX_WAIT_SECONDS}s. Zonder run is er niets nagekeken; er gaat niets naar productie."
         fi
     else
-        IFS=$'\t' read -r status conclusion url <<<"$run"
+        # Eén veld per regel, en met `read` per regel in plaats van veldsplitsing
+        # op een scheidingsteken. Een tab telt voor IFS als whitespace, dus een
+        # lege conclusie (bij een lopende run) klapte weg en schoof de URL een
+        # veld op. Dat bleef vandaag cosmetisch, maar bij een afgeronde run
+        # zonder conclusie zou de poort blokkeren met de URL als reden.
+        { read -r status; read -r conclusion; read -r url; } <<<"$run"
 
         if [ "$status" = "completed" ]; then
             case "$conclusion" in
