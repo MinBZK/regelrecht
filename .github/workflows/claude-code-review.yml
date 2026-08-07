@@ -9,8 +9,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A fork PR gets no secrets, so CLAUDE_CODE_OAUTH_TOKEN is empty there and the
+  # action can only fail. Skip instead, and let review-gate report that.
   claude-review:
-    if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'dependabot[bot]' }}
+    if: >-
+      ${{ !github.event.pull_request.draft &&
+          github.event.pull_request.head.repo.fork != true &&
+          github.event.pull_request.user.login != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -98,3 +103,35 @@ jobs:
             Also leave inline comments on specific lines where possible.
 
             If there are no issues, say so briefly. Do not pad the review with praise or filler.
+
+  # The merge gate. Unlike claude-review this job has no `if:` — it must run and
+  # report on every PR, forks and dependabot included, because a required check
+  # that never reports blocks such a PR forever.
+  review-gate:
+    name: Claude review completed
+    runs-on: ubuntu-latest
+    # Ruim boven de ~10 minuten die de review kost, zodat een trage run niet
+    # onterecht rood wordt; het script stopt zelf eerder met een duidelijke melding.
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      checks: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Wait for the Claude review of this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          CHECK_NAME: claude-review
+          MAX_WAIT_SECONDS: '2100'
+          POLL_SECONDS: '20'
+        run: script/await-claude-review.sh

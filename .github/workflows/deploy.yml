@@ -14,11 +14,15 @@ env:
   ZAD_PROJECT: regel-k4c
 
 jobs:
+  # De fork-voorwaarde schakelt via `needs: changes` de hele build- en
+  # deploy-keten uit. Een fork-PR krijgt geen secrets en een read-only
+  # GITHUB_TOKEN, dus de push naar GHCR faalt daar per definitie.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: >-
       github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.fork != true &&
       (github.event.action != 'labeled' || startsWith(github.event.label.name, 'deploy:'))
     permissions:
       contents: read
@@ -394,7 +398,11 @@ jobs:
   cleanup-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    # Een fork-PR heeft nooit gebouwd of gedeployd, dus er valt niets op te
+    # ruimen en de GHCR-aanroepen zouden alleen maar op rechten stuklopen.
+    if: >-
+      github.event_name == 'pull_request' && github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.fork != true
     permissions:
       packages: write
       deployments: write
