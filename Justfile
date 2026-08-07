@@ -100,11 +100,25 @@ security-headers-test:
 first-load-test:
     node --test frontend/scripts/check-first-load.test.mjs
 
+# Draait het shellfragment van de `Test`-poort uit ci.yml met echte
+# resultaatwaarden. Zonder dit is een voorganger die wel in `needs` staat maar
+# niet gelezen wordt niet van een werkende poort te onderscheiden.
+[doc("Check that the Test gate in ci.yml blocks on a failed predecessor")]
+ci-gate-test:
+    node --test script/ci-gate.test.mjs
+
+# Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
+# of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
+# bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
+[doc("Check the Rust Dockerfiles against the cargo workspace")]
+dockerfile-consistency-test:
+    node --test script/dockerfile-consistency.test.mjs
+
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test test
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test test
 
 # --- Tests ---
 
@@ -277,14 +291,12 @@ bench-compare BASE:
 
 # Run security audit on all dependencies (vulnerabilities, licenses, sources)
 audit:
-    cd packages && cargo deny check --config ../deny.toml
-    # One npm workspace at the repo root covers all three frontends + the shared
-    # package, so audit/license-check the whole hoisted tree once. (license-checker
-    # drops --production because the workspace root has no production deps of its
-    # own; the whole-tree scan is strictly broader coverage.)
-    npm audit
+    script/cargo-deny.sh
+    script/npm-audit-all.sh
+    # license-checker draait alleen over de workspace in de root; die drops
+    # --production omdat de root geen eigen productie-deps heeft, en de
+    # hele-boom-scan is strikt ruimer.
     npx license-checker --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
-    cd docs && npm audit
 
 # --- Admin ---
 
