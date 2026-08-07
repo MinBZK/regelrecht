@@ -69,21 +69,21 @@ impl RegelrechtWorld {
             "set_parameter" => {
                 let name = args[0].as_str().to_string();
                 let value = match &args[1] {
-                    ArgValue::Num(n) => num_to_value(*n),
-                    ArgValue::Str(s) => convert_gherkin_value(s),
+                    ArgValue::Num(n) => bare_value(*n),
+                    ArgValue::Str(s) => quoted_value(s),
                     ArgValue::Bool(b) => Value::Bool(*b),
                 };
                 self.parameters.insert(name, value);
             }
             "set_parameters_table" => {
-                for (k, v) in rows_to_params(&table.expect("parameters table")) {
+                for (k, v) in rows_to_params(&table.expect("parameters table"), table_cell_value) {
                     self.parameters.insert(k, v);
                 }
             }
             "set_data_source" => {
                 let source = args[0].as_str().to_string();
                 let key = args[1].as_str().to_string();
-                let rows = rows_to_records(&table.expect("data source table"));
+                let rows = rows_to_records(&table.expect("data source table"), table_cell_value);
                 self.data_sources.insert(source, (key, rows));
             }
 
@@ -133,8 +133,8 @@ impl RegelrechtWorld {
             }
             "assert_equals" => {
                 let expected = match &args[1] {
-                    ArgValue::Num(n) => num_to_value(*n),
-                    ArgValue::Str(s) => convert_gherkin_value(s),
+                    ArgValue::Num(n) => bare_value(*n),
+                    ArgValue::Str(s) => quoted_value(s),
                     ArgValue::Bool(b) => Value::Bool(*b),
                 };
                 let actual = self.output_value(args[0].as_str());
@@ -432,6 +432,34 @@ fn num_to_value(n: f64) -> Value {
                 .parse::<Decimal>()
                 .expect("numeric literal parses as Decimal"),
         )
+    }
+}
+
+/// Type a quoted capture. The rule lives in `bdd/grammar.yaml`
+/// (`value_typing.quoted`) and reaches both dispatchers through codegen, so
+/// neither engine can hold its own opinion about what quotes mean.
+fn quoted_value(raw: &str) -> Value {
+    match crate::generated_steps::QUOTED_VALUE_TYPING {
+        "literal" => Value::String(raw.to_string()),
+        "inferred" => convert_gherkin_value(raw),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.quoted '{other}'"),
+    }
+}
+
+/// Type a bare (unquoted) capture; see [`quoted_value`] for where the rule lives.
+fn bare_value(n: f64) -> Value {
+    match crate::generated_steps::BARE_VALUE_TYPING {
+        "number" => num_to_value(n),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.bare '{other}'"),
+    }
+}
+
+/// Type a data-table cell; see [`quoted_value`] for where the rule lives.
+fn table_cell_value(raw: &str) -> Value {
+    match crate::generated_steps::TABLE_CELL_VALUE_TYPING {
+        "inferred" => convert_gherkin_value(raw),
+        "literal" => Value::String(raw.trim().to_string()),
+        other => panic!("bdd/grammar.yaml: unknown value_typing.table_cell '{other}'"),
     }
 }
 

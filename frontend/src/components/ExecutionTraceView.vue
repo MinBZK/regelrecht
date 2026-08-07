@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 
 const props = defineProps({
   /** Execution result with outputs */
@@ -15,12 +15,21 @@ const props = defineProps({
   running: { type: Boolean, default: false },
   /** Whether a re-run action is available */
   canReload: { type: Boolean, default: false },
+  /** Declared output types from buildOutputTypeMap(): name -> { type, unit } */
+  outputTypes: { type: Object, default: null },
 });
 
 const emit = defineEmits(['reload']);
 
 function matchStatus(outputName, actualValue) {
   return _matchStatus(outputName, actualValue, props.expectations);
+}
+
+function outputParts(name) {
+  return formatOutputValueParts(
+    props.result?.outputs?.[name],
+    props.outputTypes?.get(name)?.unit ?? null,
+  );
 }
 
 const hasContent = computed(() =>
@@ -91,8 +100,8 @@ const overallStatus = computed(() => {
             size="md"
             horizontal-alignment="right"
             width="100px"
-            :text="humanize(formatOutputValueParts(result.outputs?.[name], name).text)"
-            :supporting-text="formatOutputValueParts(result.outputs?.[name], name).supportingText"
+            :text="humanize(outputParts(name).text)"
+            :supporting-text="outputParts(name).supportingText"
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-text-cell

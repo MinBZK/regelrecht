@@ -2881,7 +2881,11 @@ pub async fn reload_corpus(
     }
 
     let new_map = registry
-        .load_favorites_async(&law_ids, auth_file.as_deref())
+        .load_favorites_async(
+            &law_ids,
+            auth_file.as_deref(),
+            &regelrecht_shared::dates::today_str(),
+        )
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "corpus reload failed");
