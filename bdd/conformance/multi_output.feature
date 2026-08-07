@@ -37,4 +37,5 @@ Feature: Multi-output evaluation
     Then output "motivering_vereist" is true
     Then output "motivering_vereist" has reactive provenance
     Then output "bezwaartermijn_weken" equals 4
-    Then output "bezwaartermijn_weken" has reactive provenance
+    # Vw 2000 art. 69 overrides Awb 6:7 — lex specialis, not the plain hook (RFC-007)
+    Then output "bezwaartermijn_weken" has override provenance

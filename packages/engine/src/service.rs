@@ -1338,13 +1338,20 @@ impl LawExecutionService {
 
             // If a hook fires (stage matches), it must succeed.
             // A missing variable means the law cannot be applied — that's an error.
-            let result = hook_result?;
+            let mut result = hook_result?;
+            let inner_provenance = std::mem::take(&mut result.output_provenance);
 
             for (name, value) in result.outputs {
-                let prov = OutputProvenance::Reactive {
-                    law_id: hook_law.id.clone(),
-                    article: hook_article.number.to_string(),
-                    hook_point: hook_point_str.to_string(),
+                // A lex specialis override inside the hook article already says
+                // where the value came from (RFC-007); stamping Reactive over it
+                // would throw that away and leave Override unobservable.
+                let prov = match inner_provenance.get(&name) {
+                    Some(inner @ OutputProvenance::Override { .. }) => inner.clone(),
+                    _ => OutputProvenance::Reactive {
+                        law_id: hook_law.id.clone(),
+                        article: hook_article.number.to_string(),
+                        hook_point: hook_point_str.to_string(),
+                    },
                 };
                 if let Some(existing_law) = output_sources.get(&name) {
                     // Conflict: two hooks produce same output.
