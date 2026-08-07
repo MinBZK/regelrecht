@@ -11,13 +11,21 @@
 // een verschoven `dirOf` gooit niets, maar levert `false` op voor een component
 // die had moeten uitrollen. Dat is precies de klasse fouten waarvoor het script
 // bestaat.
+//
+// De handmatige helft van de tabel heeft geen cargo-graaf om tegen te rekenen,
+// en die helft is met de hand teruglezen even weerloos als de lijst die dit
+// script verving. De sectie onderaan geeft hem een eigen bron: de `COPY`-regels
+// van de Dockerfiles, gelezen uit de workflow die ze bouwt. Wat een image
+// binnenhaalt moet dat image kunnen laten bouwen.
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT = fileURLToPath(new URL('./deploy-filters.mjs', import.meta.url));
+const REPO = fileURLToPath(new URL('..', import.meta.url));
 
 import { COMPONENTS, componentsFor, prefixesFor, workspaceGraph } from './deploy-filters.mjs';
 
@@ -237,4 +245,150 @@ test('een Dockerfile raakt alleen de images die hem gebruiken', () => {
   const source = namesOf(['packages/pipeline/src/worker.rs']);
   assert.equal(source.editor, true);
   assert.equal(source.admin, true);
+});
+
+test('een npm-bump in de wortel bouwt beide frontend-images', () => {
+  // `npm ci` in frontend/Dockerfile en frontend-lawmaking/Dockerfile draait over
+  // de hele workspace, dus beide images kopiëren deze drie bestanden.
+  for (const path of ['package.json', 'package-lock.json', '.npmrc']) {
+    const hit = namesOf([path]);
+    assert.equal(hit.editor, true, path);
+    assert.equal(hit.lawmaking, true, path);
+  }
+});
+
+// --- De handmatige helft, tegen de Dockerfiles ---
+
+// Welke Dockerfile (en welk --target en welke buildcontext) hoort bij welk
+// component: uit deploy.yml, niet uit een tweede handgeschreven tabel. Elke
+// build-job roept build-image.yml aan met een `cache-scope` die de componentnaam
+// is - dezelfde naam die dit script emit.
+function workflowImages() {
+  const text = readFileSync(`${REPO}.github/workflows/deploy.yml`, 'utf8');
+  const blocks = text.split(/\n {2}(?=[\w-]+:\n)/);
+  const images = {};
+  for (const block of blocks) {
+    if (!block.includes('build-image.yml')) continue;
+    const pick = (key) => block.match(new RegExp(`^\\s+${key}:\\s*(\\S+)\\s*$`, 'm'))?.[1];
+    const name = pick('cache-scope');
+    const dockerfile = pick('dockerfile');
+    assert.ok(name && dockerfile, `build-job zonder cache-scope of dockerfile:\n${block.slice(0, 200)}`);
+    // De context is repo-relatief; './packages/grafana' wordt 'packages/grafana/'.
+    const rawContext = pick('context');
+    const context = rawContext ? `${rawContext.replace(/^\.\/?/, '').replace(/\/$/, '')}/` : '';
+    images[name] = { dockerfile, target: pick('target') ?? null, context };
+  }
+  return images;
+}
+
+// Een Dockerfile als stages: per stage de basis (`FROM x AS y`), de stages
+// waaruit hij kopieert (`COPY --from=`), en de bronpaden die uit de repo komen.
+// Regels die niet in die vorm passen komen als `unparsed` terug: die horen
+// zichtbaar overgeslagen te worden, niet stil.
+function parseDockerfile(text) {
+  const stages = [];
+  const unparsed = [];
+  let current = null;
+  // Een instructie mag over meerdere regels lopen met een backslash; plak die
+  // eerst terug tot één logische regel.
+  const logical = [];
+  let pending = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    const continues = line.endsWith('\\');
+    const body = continues ? line.slice(0, -1).trim() : line;
+    if (pending !== null) {
+      pending = `${pending} ${body}`;
+      if (!continues) {
+        logical.push(pending);
+        pending = null;
+      }
+    } else if (continues) {
+      pending = body;
+    } else {
+      logical.push(line);
+    }
+  }
+  if (pending !== null) logical.push(pending);
+
+  for (const line of logical) {
+    if (line.startsWith('#') || line === '') continue;
+    const from = line.match(/^FROM\s+(\S+)(?:\s+AS\s+(\S+))?/i);
+    if (from) {
+      current = { name: from[2] ?? `#${stages.length}`, base: from[1], fromStages: [], sources: [] };
+      stages.push(current);
+      continue;
+    }
+    if (!/^COPY\s/i.test(line)) continue;
+    if (!current) {
+      unparsed.push(line);
+      continue;
+    }
+    const tokens = line.slice('COPY'.length).trim().split(/\s+/);
+    const flags = tokens.filter((t) => t.startsWith('--'));
+    const args = tokens.filter((t) => !t.startsWith('--'));
+    const fromFlag = flags.find((f) => f.startsWith('--from='));
+    if (fromFlag) {
+      // Kopie uit een eerdere buildfase, niet uit de repo.
+      current.fromStages.push(fromFlag.slice('--from='.length));
+      continue;
+    }
+    if (args.length < 2 || line.includes('"') || line.includes('[')) {
+      unparsed.push(line);
+      continue;
+    }
+    // Een glob dekt alles onder zijn vaste kop; die kop is wat een filter moet raken.
+    for (const src of args.slice(0, -1)) current.sources.push(src.split(/[*?]/)[0]);
+  }
+
+  return { stages, unparsed };
+}
+
+// De bronpaden die dit image echt binnenhaalt: het doelstadium plus alles waar
+// het via `FROM` en `COPY --from=` op leunt.
+function sourcesForTarget(stages, target) {
+  const byName = new Map(stages.map((s) => [s.name, s]));
+  const start = target ? byName.get(target) : stages[stages.length - 1];
+  assert.ok(start, `stage ${target} niet gevonden`);
+
+  const seen = new Set();
+  const walk = (stage) => {
+    if (!stage || seen.has(stage.name)) return;
+    seen.add(stage.name);
+    walk(byName.get(stage.base));
+    for (const dep of stage.fromStages) walk(byName.get(dep));
+  };
+  walk(start);
+
+  return [...seen].flatMap((name) => byName.get(name).sources);
+}
+
+test('de bouwjobs in deploy.yml dekken precies de componenten uit de tabel', () => {
+  assert.deepEqual(Object.keys(workflowImages()).sort(), allComponents.sort());
+});
+
+test('elk bronpad dat een image kopieert laat dat image ook bouwen', (t) => {
+  // De structurele tegenhanger van de cargo-graaf: de Dockerfile zegt wat het
+  // image binnenhaalt, dus dat is de lijst die de filters moeten dekken. Blijft
+  // er één achter, dan bouwt een wijziging in dat pad een verouderd image - of
+  // helemaal geen image, en dan wordt er niets rood.
+  for (const [name, image] of Object.entries(workflowImages())) {
+    const text = readFileSync(`${REPO}${image.dockerfile}`, 'utf8');
+    const { stages, unparsed } = parseDockerfile(text);
+    for (const line of unparsed) {
+      t.diagnostic(`${image.dockerfile}: COPY-regel overgeslagen, niet te lezen: ${line}`);
+    }
+
+    const prefixes = prefixesFor(COMPONENTS[name], graph);
+    const sources = sourcesForTarget(stages, image.target);
+    assert.ok(sources.length > 0, `${name}: geen bronpaden gelezen uit ${image.dockerfile}`);
+
+    for (const src of sources) {
+      const path = `${image.context}${src}`;
+      assert.ok(
+        prefixes.some((p) => path.startsWith(p)),
+        `${name} kopieert ${path} (${image.dockerfile}) maar geen enkele filter dekt dat pad`,
+      );
+    }
+  }
 });
