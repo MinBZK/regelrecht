@@ -56,9 +56,6 @@ jobs:
               # copy-laws.js leest het register om te bepalen welke wetten in
               # de bundel meegaan.
               - corpus-registry.yaml
-              # De Dockerfile-consistentietest in de Pre-commit-baan leest de
-              # BIN-build-args hieruit.
-              - .github/workflows/deploy.yml
               # The schema reference doc is version-locked to schema/latest by
               # provenance-checks; edit it and that guard must re-run.
               - docs/src/content/docs/reference/schema.md
