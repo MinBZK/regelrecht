@@ -2,26 +2,26 @@
 /**
  * NoteCreator - the note authoring form (RFC-018 write path, steps 3-5).
  *
- * Opened by AnnotatedText when the user selects text and clicks "Notitie".
- * Receives the raw [start,end) range the selection mapped to (selectionToRaw
- * already did the DOM->raw work). This component builds the TextQuoteSelector
+ * Rendered by EditorView in the notes sheet, opened from the toolbar comment
+ * button on an editor selection or from a note group's "Notitie toevoegen".
+ * Receives the raw [start,end) code-point range the selection mapped to.
+ * This component builds the TextQuoteSelector
  * (growing context until it is unique), lets the user pick a motivation and
  * fill the matching body, and emits a complete W3C Annotation object. It does
  * not persist - useDraftNotes (owned by EditorApp) does, so the new note
  * highlights live alongside committed ones.
  */
 import { ref, computed, watch, onMounted } from 'vue';
-import { buildSelector } from '../composables/useTextSelection.js';
+import { buildSelector, cpToUtf16 } from '../composables/useTextSelection.js';
 import { useAmbiguityVocabulary } from '../composables/useAmbiguityVocabulary.js';
 import { documentsListUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 import { useAuth } from '../composables/useAuth.js';
 import { quoteContext } from '../lib/quoteContext.js';
-import { cpToUtf16 } from '../composables/useNotesHighlight.js';
 import QuotedFragment from './QuotedFragment.vue';
 
 const props = defineProps({
-  // Raw char range from selectionToRawRange(), or null when closed.
+  // Raw (code-point) char range into rawText, or null when closed.
   range: { type: Object, default: null },
   rawText: { type: String, default: '' },
   lawId: { type: String, default: '' },
@@ -211,6 +211,21 @@ function applyRange(range) {
   }
 }
 watch(() => props.range, applyRange);
+// The selected article can change while the form is open (tab click, browser
+// back). `range` holds offsets into the OLD article's text; buildSelector
+// would slice a garbage substring of the new text at stale offsets and could
+// anchor a note on text the user never selected. Cancel the whole flow on any
+// article/law switch instead. Keyed on lawId + article number, not object
+// identity: a save/reload of the same article swaps the object but keeps the
+// offsets valid, and must not slam the form shut mid-edit.
+watch(
+  () => [props.lawId, props.article?.number],
+  ([lawId, nr], [prevLawId, prevNr]) => {
+    if (String(lawId) !== String(prevLawId) || String(nr) !== String(prevNr)) {
+      emit('cancel');
+    }
+  },
+);
 // v-if mounts this fresh when editing starts, so the range is already set - run
 // the setup once on mount (the non-immediate watch alone would miss it).
 onMounted(() => {

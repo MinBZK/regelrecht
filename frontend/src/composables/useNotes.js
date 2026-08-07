@@ -5,7 +5,8 @@
  * (RFC-005). The Rust resolver runs in WASM (`engine.resolveNotes`) so the
  * editor shows exactly what the engine and CI validate. Match offsets are
  * `char` offsets into the article text, not UTF-16 code units (see the WASM
- * binding docs); `markRanges` converts them when slicing.
+ * binding docs); consumers convert with cpToUtf16 (useTextSelection) where
+ * the DOM needs UTF-16.
  */
 import { ref, computed, watch } from 'vue';
 import { useEngine } from './useEngine.js';
@@ -288,56 +289,4 @@ export function useResolvedDraftNotes(
   });
 
   return { draftNotesForArticle };
-}
-
-/**
- * Slice `text` into segments around resolved note spans, for rendering.
- *
- * Returns an ordered array of `{ text, note }` segments where `note` is null
- * for plain text and the annotating note for a highlighted span. The result is
- * a gap-free partition of `text` (every character emitted exactly once).
- *
- * Overlap handling: marks are sorted by start (longest first on ties); a mark
- * that starts inside an already-emitted mark is dropped. The resolver
- * de-duplicates a single selector's matches, but two *different* notes
- * annotating overlapping spans is a legitimate RFC-018 case - the later one
- * is silently not rendered here (it is not surfaced in `issues` either, since
- * it resolved fine). Acceptable for display-only; the note-editing phase will
- * need layered rendering instead of a flat partition.
- *
- * @param {string} text          article text (the same string the resolver saw)
- * @param {Array<{note:object,spans:Array}>} notesForArticle
- */
-export function markRanges(text, notesForArticle) {
-  const chars = Array.from(text); // char (code-point) array: offsets are char-based
-  const marks = [];
-  for (const { note, spans } of notesForArticle) {
-    for (const s of spans) {
-      marks.push({ start: s.start, end: s.end, note });
-    }
-  }
-  marks.sort((a, b) => a.start - b.start || b.end - a.end);
-
-  const segments = [];
-  let cursor = 0;
-  for (const m of marks) {
-    // A zero-length span (start === end) would emit an empty, styled <mark>.
-    // The Rust resolver never produces this for a TextQuoteSelector, but a
-    // malformed hand-authored sidecar could; drop it so the contract is
-    // explicit and the partition stays clean.
-    if (m.end <= m.start) continue;
-    if (m.start < cursor) continue; // skip overlap with an already-emitted mark
-    if (m.start > cursor) {
-      segments.push({ text: chars.slice(cursor, m.start).join(''), note: null });
-    }
-    segments.push({
-      text: chars.slice(m.start, m.end).join(''),
-      note: m.note,
-    });
-    cursor = m.end;
-  }
-  if (cursor < chars.length) {
-    segments.push({ text: chars.slice(cursor).join(''), note: null });
-  }
-  return segments;
 }

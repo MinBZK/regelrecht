@@ -241,4 +241,44 @@ describe('NoteCreator', () => {
     expect(w.vm.shareWithTraject).toBe(true);
     expect(w.find('[data-testid="note-share-warning"]').exists()).toBe(true);
   });
+
+  // The open form holds `range` offsets into the article it was opened on. If
+  // the user switches article (tab click, browser back) while it is open,
+  // buildSelector would slice the NEW article's text at those stale offsets
+  // and could anchor a note on text the user never selected. The form must
+  // cancel itself on any article/law switch (the guard the retired
+  // AnnotatedText view carried as must-fix 2c).
+  it('emits cancel when the article changes underneath the open form', async () => {
+    const w = mountCreator();
+    await nextTick();
+    // Premise check: the form is genuinely open against article 1.
+    expect(w.vm.selectorResult?.status).toBe('found');
+    expect(w.emitted('cancel')).toBeUndefined();
+    await w.setProps({
+      article: { number: '2', machine_readable: null },
+    });
+    expect(w.emitted('cancel')).toHaveLength(1);
+  });
+
+  it('emits cancel when the law changes underneath the open form', async () => {
+    const w = mountCreator();
+    await nextTick();
+    await w.setProps({ lawId: 'participatiewet' });
+    expect(w.emitted('cancel')).toHaveLength(1);
+  });
+
+  it('does not cancel when the same article object is merely replaced (reload after save)', async () => {
+    const w = mountCreator();
+    await nextTick();
+    // Same law, same article number, new object identity: offsets stay valid.
+    await w.setProps({
+      article: {
+        number: '1',
+        machine_readable: {
+          execution: { output: [{ name: 'hoogte_zorgtoeslag' }] },
+        },
+      },
+    });
+    expect(w.emitted('cancel')).toBeUndefined();
+  });
 });
