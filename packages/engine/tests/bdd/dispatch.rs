@@ -290,13 +290,28 @@ impl RegelrechtWorld {
 
     // ----- note helpers (ported verbatim from notes.rs) -----
 
+    /// Reads the article table by header name, like `rows_to_records` does for
+    /// data-source tables. It used to read `row[0]`/`row[1]` positionally while
+    /// carrying a `number | text` header that nothing checked, so swapping the
+    /// two columns (header included) silently changed what the scenario meant.
+    /// One convention for every table in this language: the header is the
+    /// contract.
     fn note_set_articles(&mut self, table: &Rows) {
         self.note_articles.clear();
-        // First row is the header (number | text).
+        let headers: Vec<String> = table
+            .first()
+            .map(|row| row.iter().map(|s| s.trim().to_string()).collect())
+            .unwrap_or_default();
+        let column = |name: &str| -> usize {
+            headers.iter().position(|h| h == name).unwrap_or_else(|| {
+                panic!("article table needs a '{name}' column; header is {headers:?}")
+            })
+        };
+        let (number_at, text_at) = (column("number"), column("text"));
         for row in table.iter().skip(1) {
             self.note_articles.push(Article {
-                number: row[0].trim().to_string(),
-                text: row[1].trim().to_string(),
+                number: row[number_at].trim().to_string(),
+                text: row[text_at].trim().to_string(),
                 url: None,
                 machine_readable: None,
             });
