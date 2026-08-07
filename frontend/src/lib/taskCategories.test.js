@@ -148,14 +148,28 @@ describe('lawContexts', () => {
   });
 });
 
-// De twee vormen zoals RunningTaskJob ze levert (tasks.rs:128).
+// De vier jobtypen die de query ophaalt (tasks.rs:151-158), in de vorm die
+// RunningTaskJob levert (tasks.rs:128).
 const enrichJob = { job_id: 'j1', job_type: 'enrich', law_id: 'kieswet' };
 const convertJob = {
   job_id: 'j2',
   job_type: 'document_convert',
-  // Synthetische sleutel (corpus_handlers.rs:2943) - géén wet.
+  // Synthetische sleutel (corpus_handlers.rs:3502) - géén wet.
   law_id: 'doc:traject-1/nota-van-wijziging.md',
   target_path: 'nota-van-wijziging.md',
+};
+const lawConvertJob = {
+  job_id: 'j3',
+  job_type: 'law_convert',
+  // Ook synthetisch, met een eigen prefix (corpus_handlers.rs:3594).
+  law_id: 'lawdoc:zorgtoeslag-ab12cd34/notitie.pdf',
+  target_path: 'notitie.pdf',
+};
+const harvestJob = {
+  job_id: 'j4',
+  job_type: 'traject_harvest',
+  // Een echt BWB-id (task_requests.rs:240): dit gaat wél over een wet.
+  law_id: 'BWBR0018450',
 };
 
 describe('jobContext', () => {
@@ -168,6 +182,19 @@ describe('jobContext', () => {
     expect(jobContext(convertJob)).toBe(WERKDOCUMENTEN);
     // Het doc:-law_id mag nooit als wet naar buiten lekken.
     expect(jobLawId(convertJob)).toBeNull();
+  });
+
+  it('houdt ook een lopende wetconversie buiten de wetten', () => {
+    // Een law_convert maakt een wet, maar heeft er nog geen: het lawdoc:-law_id
+    // wijst nergens heen, dus een wet-ingang zou een lege bestemming zijn.
+    expect(jobContext(lawConvertJob)).toBe(WERKDOCUMENTEN);
+    expect(jobLawId(lawConvertJob)).toBeNull();
+  });
+
+  it('houdt een lopende traject-harvest wél bij een wet', () => {
+    // Die draagt een echt BWB-id van de wet die opgehaald wordt.
+    expect(jobContext(harvestJob)).toBe(WET);
+    expect(jobLawId(harvestJob)).toBe('BWBR0018450');
   });
 
   it('overleeft een lege job', () => {

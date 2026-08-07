@@ -467,6 +467,40 @@ describe('TasksListPane', () => {
     expect(pushMock).toHaveBeenCalled();
   });
 
+  // Een law_convert draagt een lawdoc:-sleutel in law_id, dus "Bekijk wet" zou
+  // naar een wet navigeren die nog niet bestaat.
+  it('biedt bij een lopende wetconversie de conversie-acties, geen Bekijk wet', async () => {
+    const lawConvertJob = {
+      job_id: 'j3',
+      job_type: 'law_convert',
+      law_id: 'lawdoc:zorgtoeslag-ab12cd34/notitie.pdf',
+      target_path: 'notitie.pdf',
+      status: 'processing',
+    };
+    const wrapper = await mountPane([], [lawConvertJob], { categorie: 'wachten' });
+    expect(itemLabels(wrapper)).toEqual(['Bekijk document', 'Annuleer conversie']);
+
+    await selectItem(wrapper, 'Bekijk document');
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('toont een lopende wetconversie onder Werkdocumenten, niet onder een wet', async () => {
+    const lawConvertJob = {
+      job_id: 'j3',
+      job_type: 'law_convert',
+      law_id: 'lawdoc:zorgtoeslag-ab12cd34/notitie.pdf',
+      target_path: 'notitie.pdf',
+    };
+    const werkdoc = await mountPane([], [lawConvertJob], { categorie: 'werkdocumenten' });
+    expect(werkdoc.findAll('nldd-activity-indicator')).toHaveLength(1);
+
+    const wet = await mountPane([], [lawConvertJob], {
+      categorie: 'wet',
+      lawId: 'lawdoc:zorgtoeslag-ab12cd34/notitie.pdf',
+    });
+    expect(wet.findAll('nldd-activity-indicator')).toHaveLength(0);
+  });
+
   it('houdt lopende jobs buiten Prioriteit - er valt niets te doen', async () => {
     const failed = {
       id: 't7',
