@@ -260,6 +260,25 @@ const router = createRouter({
       ],
     },
     {
+      // Analyse: hoe ver de machine-leesbare vertaling van dit traject is en
+      // waar zij rammelt. De afgeleide cijfers komen uit `corpusMetrics()` in
+      // de engine, de verklaarde bevindingen uit de notitie-sidecars.
+      //
+      // Top-level route met eigen chrome, zoals /harvesting en /trajecten, en
+      // NADRUKKELIJK geen child
+      // van AppShell/LibraryView: als de pagina in LibraryView's `main` zou
+      // renderen moesten daar de leeg/laden-guards, de titelopbouw en de
+      // terugknop alle drie een vierde sectie leren kennen. Zo blijft de
+      // wijziging aan bestaande bestanden additief.
+      //
+      // De ref is op `{slug}-{8hex}` gepind, net als de traject-routes in de
+      // shell, zodat een wet-id deze route nooit kan matchen.
+      path: '/analyse/:trajectRef([a-z0-9-]+-[0-9a-f]{8})',
+      name: 'analyse',
+      component: () => import('./AnalyseView.vue'),
+      meta: { title: 'Analyse', requiresAuth: true },
+    },
+    {
       // Account aanvragen - publieke uitlegpagina (geen requiresAuth),
       // bereikbaar vanaf de login-warning-popover. Top-level route met een
       // eigen top-title-bar, geen app-chrome (net als de trajecten-pagina's).
