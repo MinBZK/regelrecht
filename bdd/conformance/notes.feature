@@ -14,6 +14,18 @@ Feature: Note resolution (RFC-005, RFC-018)
     Then the note resolves to article "2"
     And the note is an exact match
 
+  Scenario: Column order of the article table is read from the header
+    # The header names the columns; their order carries no meaning. Reading the
+    # table positionally made a swapped-but-correctly-headed table resolve the
+    # note against an article number instead of against the article text.
+    Given a law with the following articles:
+      | text                                                                         | number |
+      | heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil | 2      |
+    And a note selecting "zorgtoeslag" with prefix "op een " and suffix " ter grootte"
+    When the note is resolved
+    Then the note resolves to article "2"
+    And the note is an exact match
+
   Scenario: Article renumbered keeps the note anchored to the text
     # A new article 1a is inserted; the annotated text moves to article 4a.
     # The content-addressed selector still finds it.
