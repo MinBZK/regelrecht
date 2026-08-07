@@ -3625,12 +3625,16 @@ articles:
     }
 
     #[tokio::test]
-    async fn test_execute_enrich_chunk_stale_report_is_no_proof_of_review() {
+    async fn test_execute_enrich_chunk_strips_stale_report_keeping_rest_of_envelope() {
         // The envelope is committed to the enrich branch as provenance, so a
         // continuation chunk's checkout still contains the PREVIOUS chunk's
-        // chunk_report. A run that produces nothing must not pass the no-op
-        // guard on that stale report — the worker strips it pre-run, keeping
-        // the rest of the envelope (related_legislation) intact.
+        // chunk_report. The pre-run strip removes only that key; the rest of
+        // the envelope (related_legislation) survives the run.
+        //
+        // The window here (articles 3-4) does not overlap the stale report, so
+        // the no-op failure below would also occur without the strip; the
+        // overlapping case is
+        // test_execute_enrich_chunk_reset_cursor_stale_report_is_no_proof.
         let dir = tempfile::tempdir().unwrap();
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
@@ -3682,6 +3686,58 @@ articles:
         assert_eq!(
             envelope.related_legislation[0].bwb_id.as_deref(),
             Some("BWBR0037841")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_chunk_reset_cursor_stale_report_is_no_proof() {
+        // A cursor reset (new law version, out-of-range cursor, manual
+        // re-enrichment) puts the window back at articles 1-2 while chunk 1's
+        // committed chunk_report — naming exactly those articles — is still on
+        // the branch. Without the pre-run strip that report would satisfy
+        // report_references_window and advance the cursor past a window this
+        // session never reviewed.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2026-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+        // Cursor 2, but recorded for the previous law version → resets to 0.
+        tokio::fs::write(
+            law_dir.join(".enrichment.yaml"),
+            "law_id: BWBR0000001\ntimestamp: '2026-01-01T00:00:00Z'\nprovider: opencode\nmodel: m\nprompt_hash: p\ncode_commit: c\ncoverage_score: 1.0\narticles_total: 4\narticles_with_machine_readable: 0\nenrich_cursor: 2\nenrich_cursor_path: regulation/nl/wet/test_law/2025-01-01.yaml\n",
+        )
+        .await
+        .unwrap();
+        // Chunk 1's committed envelope: its report overlaps the reset window.
+        tokio::fs::write(
+            law_dir.join(".enrichment-result.yaml"),
+            "related_legislation:\n  - name: Some Law\n    bwb_id: BWBR0037841\nchunk_report:\n  articles_reviewed: [\"1\", \"2\"]\n",
+        )
+        .await
+        .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let err = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &NoopLlmRunner,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(CHUNK_NO_OUTPUT_MARKER),
+            "a report from an earlier run over the same articles must not count \
+             as this session's proof: {err}"
         );
     }
 
