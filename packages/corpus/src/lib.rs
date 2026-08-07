@@ -10,6 +10,7 @@ pub mod error;
 pub mod github;
 #[cfg(feature = "github")]
 pub mod github_api_backend;
+pub mod implements_index;
 pub mod models;
 pub mod registry;
 pub mod source_map;

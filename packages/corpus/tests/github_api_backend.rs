@@ -41,6 +41,20 @@ fn backend(server: &MockServer) -> GitHubApiBackend {
     .with_api_base(server.uri())
 }
 
+/// A 404 only counts as absence once the repo has proven readable —
+/// GitHub answers a repo you cannot see with the same body as a missing
+/// path. Mount the repo lookup that settles it (asked once per
+/// repo+token, then remembered).
+async fn mount_readable_repo(server: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "full_name": "acme/corpus"
+        })))
+        .mount(server)
+        .await;
+}
+
 fn ctx() -> WriteContext {
     WriteContext::new("test commit".to_string(), None)
 }
@@ -406,6 +420,7 @@ async fn delete_path_resolves_sha_then_deletes() {
 async fn delete_already_gone_is_no_op() {
     let server = MockServer::start().await;
     mount_branch_exists(&server).await;
+    mount_readable_repo(&server).await;
 
     // GET 404 → file already gone → persist swallows the delete.
     Mock::given(method("GET"))
@@ -505,6 +520,7 @@ async fn list_files_filters_to_extension() {
 #[tokio::test]
 async fn list_files_missing_directory_returns_empty() {
     let server = MockServer::start().await;
+    mount_readable_repo(&server).await;
 
     Mock::given(method("GET"))
         .and(path("/repos/acme/corpus/contents/scenarios"))
@@ -607,4 +623,202 @@ async fn changed_files_without_token_is_empty_and_makes_no_request() {
         .unwrap()
         .with_api_base(server.uri());
     assert!(b.changed_files().await.unwrap().is_empty());
+}
+
+/// The collision check on document upload derives a free filename from the
+/// recursive listing of the traject's documents folder. An empty answer
+/// means "no name is taken", and the write that follows is unconditional —
+/// so a listing that failed must never come back empty. A repo this
+/// credential cannot read is exactly that case, and GitHub dresses it up
+/// as the same 404 a missing folder gets.
+#[tokio::test]
+async fn recursive_listing_on_an_unreadable_repo_fails_instead_of_reading_empty() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/documents"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found"}"#))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found"}"#))
+        .mount(&server)
+        .await;
+
+    let err = backend(&server)
+        .list_files_recursive(Path::new("documents"), None)
+        .await
+        .expect_err("an unreadable repo must not list as an empty folder");
+    assert!(
+        err.to_string().contains("not readable"),
+        "the cause must survive: {err}"
+    );
+}
+
+/// The same listing for a folder that simply has no documents yet stays an
+/// empty list — a fresh traject must not error its way out of its first
+/// upload.
+#[tokio::test]
+async fn recursive_listing_of_an_empty_folder_is_still_empty() {
+    let server = MockServer::start().await;
+    mount_readable_repo(&server).await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/documents"))
+        .respond_with(
+            ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found","status":"404"}"#),
+        )
+        .mount(&server)
+        .await;
+
+    let entries = backend(&server)
+        .list_files_recursive(Path::new("documents"), None)
+        .await
+        .unwrap();
+    assert!(entries.is_empty());
+}
+
+/// A save reads the law first (the If-Match precondition). If a failing
+/// read reported "no such file", the save would commit as a *create* over
+/// whatever is on the branch — so an unreadable repo errors here too.
+#[tokio::test]
+async fn read_on_an_unreadable_repo_fails_instead_of_reporting_no_such_file() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/wet/x.yaml"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found"}"#))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"message":"Not Found"}"#))
+        .mount(&server)
+        .await;
+
+    let err = backend(&server)
+        .read_file(Path::new("wet/x.yaml"))
+        .await
+        .expect_err("an unreadable repo must not read as a missing file");
+    assert!(
+        err.to_string().contains("not readable"),
+        "the cause must survive: {err}"
+    );
+}
+
+/// The counterpart: a traject branch that has not been created yet is not
+/// a failure. The promote flow reads the target law before writing it, and
+/// that read happens before the first persist mints the branch.
+#[tokio::test]
+async fn read_on_a_branch_that_does_not_exist_yet_is_a_plain_miss() {
+    let server = MockServer::start().await;
+    mount_readable_repo(&server).await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/wet/x.yaml"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(
+            r#"{"message":"No commit found for the ref traject/abc","status":"404"}"#,
+        ))
+        .mount(&server)
+        .await;
+
+    assert!(backend(&server)
+        .read_file(Path::new("wet/x.yaml"))
+        .await
+        .unwrap()
+        .is_none());
+}
+
+/// A read against a branch that does not exist answers "absent", and the
+/// persist that follows creates that branch **from base** — so the file the
+/// caller thought was absent may well be sitting there, carried over from
+/// base. Adopting it (PUT without sha → 422 → refetch → overwrite) replaces
+/// content the caller never read: an append-only notes sidecar would come
+/// back holding only the newly added note.
+///
+/// The write is therefore create-only on a freshly minted branch, and a
+/// collision surfaces as a conflict the caller can redo.
+#[tokio::test]
+async fn a_write_after_creating_the_branch_does_not_overwrite_base_content() {
+    let server = MockServer::start().await;
+    mount_readable_repo(&server).await;
+
+    // The branch does not exist yet…
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/git/ref/heads/traject/abc"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("missing"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/git/ref/heads/main"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ref": "refs/heads/main",
+            "object": { "sha": "base-sha" },
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/repos/acme/corpus/git/refs"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "ref": "refs/heads/traject/abc",
+        })))
+        .mount(&server)
+        .await;
+    // …so the sidecar read before the write finds nothing.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/notes/x.yaml"))
+        .respond_with(ResponseTemplate::new(404).set_body_string(
+            r#"{"message":"No commit found for the ref traject/abc","status":"404"}"#,
+        ))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    // Every later read of that path — the sha-refetch the 422 handler
+    // would do — finds the base sidecar with the notes already on it.
+    // That is what makes this test bite: without the fix the refetch
+    // succeeds and the second PUT replaces these notes with only the new.
+    Mock::given(method("GET"))
+        .and(path("/repos/acme/corpus/contents/notes/x.yaml"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "name": "x.yaml", "path": "notes/x.yaml",
+            "sha": "base-file-sha", "type": "file",
+            "content": b64("notes: [old]\n"), "encoding": "base64",
+        })))
+        .mount(&server)
+        .await;
+    // But after the branch is minted from base, the file IS there: GitHub
+    // refuses a create-shaped PUT with the 422 that means "supply a sha".
+    // Exactly one PUT may go out — the point is that no second one follows
+    // carrying a refetched sha, because that one replaces the base notes.
+    Mock::given(method("PUT"))
+        .and(path("/repos/acme/corpus/contents/notes/x.yaml"))
+        .respond_with(
+            ResponseTemplate::new(422)
+                .set_body_string(r#"{"message":"Invalid request.\n\n\"sha\" wasn't supplied."}"#),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let b = backend(&server);
+    assert!(
+        b.read_file(Path::new("notes/x.yaml"))
+            .await
+            .unwrap()
+            .is_none(),
+        "the branch does not exist yet, so the sidecar reads as absent"
+    );
+    b.write_file(Path::new("notes/x.yaml"), "notes: [new]\n")
+        .await
+        .unwrap();
+
+    let err = b
+        .persist(&ctx())
+        .await
+        .expect_err("base content must not be silently replaced");
+    assert!(
+        matches!(err, regelrecht_corpus::error::CorpusError::Conflict(_)),
+        "a caller can redo a conflict; it cannot undo a silent overwrite: {err}"
+    );
 }

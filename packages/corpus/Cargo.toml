@@ -22,7 +22,9 @@ regelrecht-law-model = { path = "../law-model" }
 # keeps only the domain layer (source enumeration, archive extraction). No
 # direct reqwest dependency any more.
 regelrecht-github = { path = "../github", optional = true }
-serde_json = { workspace = true, optional = true }
+# Non-optional: the implements-index artefact (module + generator binary)
+# is JSON and must build without the `github` feature.
+serde_json.workspace = true
 jsonschema = { version = "0.49", optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
@@ -32,12 +34,18 @@ walkdir.workspace = true
 default = ["github"]
 # The GitHub domain layer talks to the shared `regelrecht-github` client.
 # The implements-index bulk read downloads the repo archive (tarball) in one
-# request and extracts it here, so it needs gzip + tar. serde_json is used by
-# the feature's tests.
-github = ["dep:regelrecht-github", "dep:serde_json", "dep:flate2", "dep:tar"]
+# request and extracts it here, so it needs gzip + tar.
+github = ["dep:regelrecht-github", "dep:flate2", "dep:tar"]
 # Schema validation for note (annotation) YAML. Pulls in jsonschema; only
 # the editor-api write path needs it, so it stays optional.
-annotation-validation = ["dep:jsonschema", "dep:serde_json"]
+annotation-validation = ["dep:jsonschema"]
+
+[[bin]]
+# Generator for the precomputed implements-index committed at the root of
+# the corpus repo. Run by CI in the corpus repo against its own checkout:
+#   cargo run -p regelrecht-corpus --bin implements-indexer -- <checkout>
+name = "implements-indexer"
+path = "src/bin/implements_indexer.rs"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "process", "fs"] }

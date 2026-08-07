@@ -105,6 +105,25 @@ impl CorpusClient {
         self.config.git_token().is_some()
     }
 
+    /// Whether this checkout is a sparse (cone-mode) checkout. A sparse
+    /// working tree is *silently incomplete* for any filesystem-wide scan;
+    /// callers that would otherwise fall back to walking the tree use this
+    /// to refuse instead of returning partial results.
+    pub fn is_sparse(&self) -> bool {
+        self.config.sparse_paths.is_some()
+    }
+
+    /// Git tree sha of `subtree` at the checkout's `HEAD` (`git rev-parse
+    /// HEAD:<subtree>`). This is the content identity of that directory on
+    /// the checked-out commit — comparable across clones, branches and the
+    /// GitHub Trees API. Errors when the path does not exist in `HEAD` or
+    /// the directory is not a git repo.
+    pub async fn subtree_sha(&self, subtree: &str) -> Result<String> {
+        let spec = format!("HEAD:{subtree}");
+        let out = self.run_git_output(&["rev-parse", &spec]).await?;
+        Ok(out.trim().to_string())
+    }
+
     /// Create a local branch (no push).
     pub async fn create_local_branch(&self, branch: &str) -> Result<()> {
         self.run_git(&["checkout", "-b", branch]).await?;
