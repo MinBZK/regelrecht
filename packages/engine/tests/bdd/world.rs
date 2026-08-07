@@ -89,20 +89,6 @@ impl RegelrechtWorld {
         }
     }
 
-    /// Clear state between scenarios (but keep service loaded)
-    #[allow(dead_code)]
-    pub fn reset_scenario_state(&mut self) {
-        self.calculation_date = "2024-01-01".to_string();
-        self.parameters.clear();
-        self.result = None;
-        self.error = None;
-        self.note_articles.clear();
-        self.note_selector = None;
-        self.note_result = None;
-        self.data_sources.clear();
-        self.requested_outputs.clear();
-    }
-
     /// Returns true if trace output is enabled via the `TRACE` env var.
     fn trace_enabled() -> bool {
         std::env::var("TRACE").is_ok_and(|v| !v.is_empty() && v != "0")

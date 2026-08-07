@@ -42,58 +42,6 @@ struct TreeFile {
     sha: Option<String>,
 }
 
-/// Fetch all YAML regulation files from a GitHub source.
-///
-/// Returns [`FetchResult::NotModified`] when the tree has not changed (HTTP
-/// 304) so callers can preserve previously loaded data.
-pub async fn fetch_source(
-    client: &GithubClient,
-    source: &GitHubSource,
-    token: Option<&str>,
-) -> Result<FetchResult> {
-    let base_path = source.path.as_deref().unwrap_or("");
-
-    let yaml_paths = match list_yaml_files(
-        client,
-        &source.full_repo(),
-        source.effective_ref(),
-        base_path,
-        token,
-    )
-    .await?
-    {
-        Some(paths) => paths,
-        None => return Ok(FetchResult::NotModified),
-    };
-
-    if yaml_paths.is_empty() {
-        return Ok(FetchResult::Fetched(Vec::new()));
-    }
-
-    let mut files = Vec::new();
-    for file in &yaml_paths {
-        match client
-            .fetch_file_raw(
-                &source.full_repo(),
-                source.effective_ref(),
-                &file.path,
-                token,
-            )
-            .await
-        {
-            Ok(content) => files.push(FetchedFile {
-                path: file.path.clone(),
-                content,
-            }),
-            Err(e) => {
-                tracing::warn!(path = %file.path, error = %e, "Failed to fetch file, skipping");
-            }
-        }
-    }
-
-    Ok(FetchResult::Fetched(files))
-}
-
 /// Fetch only laws matching the given `$id` set from a GitHub source.
 ///
 /// Uses the Trees API (1 call) to discover file paths, matches them against
