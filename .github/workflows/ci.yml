@@ -317,6 +317,10 @@ jobs:
       - name: Check security headers
         run: just security-headers-test
 
+      - name: Check first-load guard
+        if: needs.changes.outputs.ci == 'true'
+        run: just first-load-test
+
       # Leak-guard laag 2: voorzie het git-ignored aanvulbestand met de casus-/
       # sector-specifieke patronen uit een secret, zodat de skills-no-casus hook in
       # CI op volle sterkte draait zonder die patronen in de publieke repo te zetten.
