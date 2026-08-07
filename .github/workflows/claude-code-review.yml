@@ -9,12 +9,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # A fork PR gets no secrets, so CLAUDE_CODE_OAUTH_TOKEN is empty there and the
-  # action can only fail. Skip instead, and let review-gate report that.
+  # A cross-repo PR gets no secrets, so CLAUDE_CODE_OAUTH_TOKEN is empty there and
+  # the action can only fail. Skip instead, and let review-gate report that.
+  # Compare full_name rather than reading `head.repo.fork`: inside a fork of this
+  # repo its own PRs are not cross-repo and do have secrets.
   claude-review:
     if: >-
       ${{ !github.event.pull_request.draft &&
-          github.event.pull_request.head.repo.fork != true &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.pull_request.user.login != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     permissions:
@@ -105,8 +107,8 @@ jobs:
             If there are no issues, say so briefly. Do not pad the review with praise or filler.
 
   # The merge gate. Unlike claude-review this job has no `if:` — it must run and
-  # report on every PR, forks and dependabot included, because a required check
-  # that never reports blocks such a PR forever.
+  # report on every PR, cross-repo and dependabot included, because a required
+  # check that never reports blocks such a PR forever.
   review-gate:
     name: Claude review completed
     runs-on: ubuntu-latest
@@ -114,8 +116,9 @@ jobs:
     # onterecht rood wordt; het script stopt zelf eerder met een duidelijke melding.
     timeout-minutes: 40
     permissions:
+      actions: read
       contents: read
-      checks: read
+      issues: read
       pull-requests: read
 
     steps:
@@ -124,16 +127,39 @@ jobs:
         with:
           fetch-depth: 1
 
+      # De poort mag niet draaien op de versie van zichzelf die in de PR staat:
+      # een PR die het script naar `exit 0` verandert zou anders per definitie
+      # groen zijn. Draai daarom de versie van de base-branch. Zolang die er nog
+      # niet is (de PR die dit script introduceert) valt hij terug op de PR-versie
+      # met een waarschuwing.
+      - name: Take the gate script from the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GATE: script/await-claude-review.sh
+        run: |
+          set -uo pipefail
+          if ! git fetch --depth=1 origin "$BASE_SHA"; then
+            echo "::error title=Claude review gate::base-commit ${BASE_SHA} is niet op te halen, dus de versie van de poort is niet vast te stellen. Draai deze job opnieuw."
+            exit 1
+          fi
+          if git cat-file -e "${BASE_SHA}:${GATE}" 2>/dev/null; then
+            git checkout "$BASE_SHA" -- "$GATE"
+            echo "Poort draait de versie van ${BASE_SHA}."
+          else
+            echo "::warning title=Claude review gate::${GATE} bestaat nog niet op de base-branch; de poort draait de versie uit deze PR."
+          fi
+
       - name: Wait for the Claude review of this commit
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IS_CROSS_REPO: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          CHECK_NAME: claude-review
+          JOB_NAME: claude-review
           MAX_WAIT_SECONDS: '2100'
           POLL_SECONDS: '20'
         run: script/await-claude-review.sh
