@@ -32,6 +32,7 @@ base64 = "0.23"
 # `OsRng` for nonce generation.
 chacha20poly1305 = { version = "0.10", features = ["getrandom"] }
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 # Every schema this workspace validates against is baked into the binary with
 # `include_str!` and every `$ref` in them is a local `#/definitions/...`
 # pointer, so no reference is ever resolved over the network or from disk.

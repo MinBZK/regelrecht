@@ -99,7 +99,7 @@ pub fn validate_date(date_str: &str) -> Result<()> {
         .map_err(|_| HarvesterError::InvalidDate(date_str.to_string()))?;
 
     // Reject future dates - BWB won't have consolidated versions for them
-    let today = chrono::Local::now().date_naive();
+    let today = regelrecht_shared::dates::today();
     if parsed_date > today {
         return Err(HarvesterError::InvalidDate(format!(
             "{date_str} is in the future (today is {today})"

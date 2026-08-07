@@ -105,6 +105,7 @@ pub async fn fetch_source_filtered(
     source: &GitHubSource,
     token: Option<&str>,
     law_ids: &HashSet<String>,
+    today: &str,
 ) -> Result<FetchResult> {
     if law_ids.is_empty() {
         return Ok(FetchResult::Fetched(Vec::new()));
@@ -125,7 +126,7 @@ pub async fn fetch_source_filtered(
         None => return Ok(FetchResult::NotModified),
     };
 
-    let best_per_law = group_best_versions(&all_paths, base_path, Some(law_ids));
+    let best_per_law = group_best_versions(&all_paths, base_path, Some(law_ids), today);
 
     tracing::info!(
         matched = best_per_law.len(),
@@ -167,6 +168,7 @@ pub async fn list_source_law_paths(
     client: &GithubClient,
     source: &GitHubSource,
     token: Option<&str>,
+    today: &str,
 ) -> Result<Vec<(String, String, Option<String>)>> {
     let base_path = source.path.as_deref().unwrap_or("");
     let all_paths = match list_yaml_files(
@@ -181,7 +183,7 @@ pub async fn list_source_law_paths(
         Some(paths) => paths,
         None => return Ok(Vec::new()),
     };
-    Ok(group_best_versions(&all_paths, base_path, None)
+    Ok(group_best_versions(&all_paths, base_path, None, today)
         .into_iter()
         .map(|(law_id, file)| (law_id, file.path, file.sha))
         .collect())
@@ -251,13 +253,13 @@ fn group_best_versions(
     all_paths: &[TreeFile],
     base_path: &str,
     filter: Option<&HashSet<String>>,
+    today: &str,
 ) -> HashMap<String, TreeFile> {
     let prefix = if base_path.is_empty() {
         String::new()
     } else {
         format!("{}/", base_path)
     };
-    let today = crate::source_map::today_str();
     let mut best_per_law: HashMap<String, TreeFile> = HashMap::new();
 
     for file in all_paths {
@@ -302,7 +304,7 @@ fn group_best_versions(
             let new_wins = crate::source_map::pick_best_version(
                 existing_date.as_deref(),
                 new_date.as_deref(),
-                &today,
+                today,
             );
 
             if new_wins {
@@ -392,7 +394,7 @@ mod tests {
                 sha: Some("def456".to_string()),
             },
         ];
-        let best = group_best_versions(&paths, "", None);
+        let best = group_best_versions(&paths, "", None, "2026-06-01");
         assert_eq!(sorted_ids(&best), vec!["wet_op_de_zorgtoeslag".to_string()]);
         assert!(
             !best.contains_key("zorgtoeslagwet"),
@@ -427,7 +429,7 @@ mod tests {
             auth_ref: None,
             strict_auth: false,
         };
-        let mut map = crate::source_map::SourceMap::new();
+        let mut map = crate::source_map::SourceMap::new("2026-06-01");
         map.load_source(&source).expect("load local source");
         let local_pick = map
             .get_law("test_wet")
@@ -442,7 +444,7 @@ mod tests {
                 sha: None,
             })
             .collect();
-        let tree_pick = group_best_versions(&paths, "", None)
+        let tree_pick = group_best_versions(&paths, "", None, "2026-06-01")
             .get("test_wet")
             .expect("law indexed")
             .path
