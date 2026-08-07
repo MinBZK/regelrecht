@@ -58,7 +58,7 @@ impl RegelrechtWorld {
         match action {
             // ----- core: setup -----
             "set_calculation_date" => {
-                self.calculation_date = args[0].as_str().to_string();
+                self.calculation_date = Some(args[0].as_str().to_string());
             }
             "load_law" => {
                 // All corpus laws are preloaded in Self::new(); verify presence so
@@ -107,11 +107,19 @@ impl RegelrechtWorld {
             }
 
             // ----- core: asserts -----
-            "assert_succeeds" => assert!(
-                self.error.is_none(),
-                "expected success, got {:?}",
-                self.error_message()
-            ),
+            "assert_succeeds" => {
+                assert!(
+                    self.error.is_none(),
+                    "expected success, got {:?}",
+                    self.error_message()
+                );
+                // Without this the step also passes on a fresh world, where no
+                // `When` ran at all and `error` is still its initial `None`.
+                assert!(
+                    self.is_success(),
+                    "expected success, but no execution was performed"
+                );
+            }
             "assert_fails" => assert!(
                 self.error.is_some(),
                 "expected failure, but succeeded with result: {:?}",
