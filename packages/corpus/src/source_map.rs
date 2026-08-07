@@ -882,6 +882,104 @@ fn collect_implements_from_doc(doc: &LawDoc) -> Vec<String> {
     out
 }
 
+/// How one law points at another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LawReferenceKind {
+    /// An input field resolved from another law's output
+    /// (`source: {regulation: …, output: …}`).
+    SourceRegulation,
+    /// The IoC link from a lower regulation to the higher law whose
+    /// `open_term` it fills (`machine_readable.implements[].law`).
+    Implements,
+}
+
+/// One `$id` a law body points at, with the kind of link it came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LawReference {
+    pub law_id: String,
+    pub kind: LawReferenceKind,
+}
+
+/// Collect every other law `$id` this body points at: the `source.regulation`
+/// targets of its input fields plus its `implements` declarations. Each
+/// `(kind, id)` pair appears at most once; order of first occurrence is kept.
+///
+/// Deliberately a **structural walk** over the parsed document rather than a
+/// path-pinned lookup: this feeds the integrity report, whose whole job is to
+/// find dangling references, so it must not silently miss one that sits at a
+/// nesting the schema grows later. A body that does not parse yields no
+/// references (the caller reports the parse failure separately) — same
+/// tolerance as [`collect_law_implements`].
+pub fn collect_law_references(yaml: &str) -> Vec<LawReference> {
+    let value: serde_yaml_ng::Value = match serde_yaml_ng::from_str(yaml) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    walk_law_references(&value, &mut seen, &mut out);
+    out
+}
+
+/// Record one reference, unless the same `(kind, id)` was already seen.
+fn push_law_reference(
+    kind: LawReferenceKind,
+    id: &str,
+    seen: &mut HashSet<(LawReferenceKind, String)>,
+    out: &mut Vec<LawReference>,
+) {
+    if !id.is_empty() && seen.insert((kind, id.to_string())) {
+        out.push(LawReference {
+            law_id: id.to_string(),
+            kind,
+        });
+    }
+}
+
+/// Recursive half of [`collect_law_references`].
+fn walk_law_references(
+    value: &serde_yaml_ng::Value,
+    seen: &mut HashSet<(LawReferenceKind, String)>,
+    out: &mut Vec<LawReference>,
+) {
+    match value {
+        serde_yaml_ng::Value::Mapping(map) => {
+            for (key, child) in map {
+                match key.as_str() {
+                    // `source: {regulation: "other_law", output: …}`
+                    Some("source") => {
+                        if let Some(id) = child.get("regulation").and_then(|v| v.as_str()) {
+                            push_law_reference(LawReferenceKind::SourceRegulation, id, seen, out);
+                        }
+                    }
+                    // `implements: [{law: "higher_law", …}]`
+                    Some("implements") => {
+                        if let Some(items) = child.as_sequence() {
+                            for item in items {
+                                if let Some(id) = item.get("law").and_then(|v| v.as_str()) {
+                                    push_law_reference(LawReferenceKind::Implements, id, seen, out);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            // Recurse after the direct matches so `out` follows the document
+            // order rather than the recursion's.
+            for (_, child) in map {
+                walk_law_references(child, seen, out);
+            }
+        }
+        serde_yaml_ng::Value::Sequence(items) => {
+            for item in items {
+                walk_law_references(item, seen, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -1591,5 +1689,71 @@ articles:
         // Malformed YAML: Err — the index generator must fail on this
         // instead of committing "implements nothing".
         assert!(try_collect_law_implements("not: [valid").is_err());
+    }
+
+    #[test]
+    fn test_collect_law_references_picks_up_both_link_kinds() {
+        let yaml = "\
+$id: wet_a
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: inkomen
+            type: amount
+            source:
+              regulation: wet_b
+              output: toetsingsinkomen
+          - name: verzekerd
+            type: boolean
+            source:
+              regulation: wet_c
+              output: is_verzekerd
+      implements:
+        - law: wet_d
+          article: '4'
+          open_term: tarief
+";
+        assert_eq!(
+            collect_law_references(yaml),
+            vec![
+                LawReference {
+                    law_id: "wet_d".to_string(),
+                    kind: LawReferenceKind::Implements,
+                },
+                LawReference {
+                    law_id: "wet_b".to_string(),
+                    kind: LawReferenceKind::SourceRegulation,
+                },
+                LawReference {
+                    law_id: "wet_c".to_string(),
+                    kind: LawReferenceKind::SourceRegulation,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_law_references_dedupes_and_tolerates_garbage() {
+        let yaml = "\
+$id: wet_a
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: een
+            source:
+              regulation: wet_b
+              output: x
+          - name: twee
+            source:
+              regulation: wet_b
+              output: y
+";
+        assert_eq!(collect_law_references(yaml).len(), 1);
+        assert!(collect_law_references("not: [valid").is_empty());
+        assert!(collect_law_references("$id: wet_a\narticles: []\n").is_empty());
     }
 }

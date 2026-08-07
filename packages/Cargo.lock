@@ -4118,6 +4118,7 @@ dependencies = [
  "regelrecht-auth",
  "regelrecht-corpus",
  "regelrecht-github",
+ "regelrecht-law-model",
  "regelrecht-pipeline",
  "regelrecht-shared",
  "reqwest 0.12.28",

@@ -79,6 +79,7 @@ fn state_with_user_token_mode(pool: PgPool, oauth: GithubOAuth) -> AppState {
         pipeline_api_url: None,
         harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
+        integrity: Default::default(),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }
 }

@@ -33,6 +33,7 @@ mod task_requests;
 mod tasks_api;
 mod traject_corpus;
 mod traject_index_diagnosis;
+mod traject_integrity;
 mod trajects;
 mod user_notes;
 mod user_settings;
@@ -143,6 +144,7 @@ async fn main() {
         harvest_admin_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
         trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
+        integrity: Arc::new(traject_integrity::IntegrityCache::new()),
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -432,6 +434,13 @@ async fn main() {
         .route(
             "/api/trajects/{traject_ref}/corpus/documents/{*doc_path}",
             get(corpus_handlers::get_traject_document),
+        )
+        // Integrity report over the traject's own corpus repo. A read, so
+        // reader-tier like its neighbours: seeing what is wrong with a
+        // traject you are a member of needs no write privilege.
+        .route(
+            "/api/trajects/{traject_ref}/integrity",
+            get(traject_integrity::get_traject_integrity),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

@@ -193,6 +193,19 @@ const router = createRouter({
       meta: { title: 'Trajecten', requiresAuth: true },
     },
     {
+      // Integriteit van een traject: de runtime-diagnose van het
+      // traject-corpus (mapnamen vs `$id`, dubbele id's, losse verwijzingen).
+      // Top-level route zoals de trajectkeuze: eigen chrome, geen app-shell -
+      // je pakt deze pagina erbij vanuit Instellingen en gaat daarna terug.
+      //
+      // `:trajectRef` is met hetzelfde `{slug}-{8hex}`-patroon gepind als de
+      // andere traject-routes, zodat een wet-slug hier nooit op matcht.
+      path: '/trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/integriteit',
+      name: 'traject-integriteit',
+      component: () => import('./TrajectIntegrityView.vue'),
+      meta: { title: 'Integriteit', requiresAuth: true },
+    },
+    {
       // Nieuw traject aanmaken - eigen pagina met het gedeelde aanmaakformulier
       // (TrajectCreateForm). Ook top-level (geen app-chrome). Het statische pad
       // `/editor/nieuw-traject` scoort boven de dynamische `/editor/...`-routes
