@@ -461,7 +461,13 @@ async fn walk_local_tree(
 }
 
 /// Reject paths that are absolute or contain `..` components.
-fn validate_relative_path(path: &Path) -> Result<()> {
+///
+/// Every `RepoBackend` implementation guards on this one, including the
+/// GitHub API backend in a sibling module — hence `pub(crate)`. A backend that
+/// rewrites separators must normalise *before* calling this: on Linux a
+/// backslash is an ordinary character, so `..\..\etc` passes as a single
+/// component and only becomes a traversal after the rewrite.
+pub(crate) fn validate_relative_path(path: &Path) -> Result<()> {
     if path.is_absolute() {
         return Err(CorpusError::Config(format!(
             "path must be relative: {}",
