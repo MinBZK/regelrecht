@@ -670,6 +670,11 @@ docs-preview:
 docs-a11y:
     cd docs && npm run a11y
 
+# Meet de CI-doorlooptijd opnieuw; vervang het ciWorkflows-blok in
+# docs/src/lib/ci-pipeline.ts door de uitvoer (zie /operations/ci-doorlooptijd)
+meet-ci:
+    ./script/meet-ci.sh
+
 # --- Architecture model ---
 
 # Generate the code-derived architecture model

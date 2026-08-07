@@ -110,6 +110,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       text: 'Deployment',
       items: [
         { text: 'CI/CD Pipeline', link: '/operations/ci-cd' },
+        { text: 'CI-doorlooptijd', link: '/operations/ci-doorlooptijd' },
         { text: 'Deployment', link: '/operations/deployment' },
       ],
     },

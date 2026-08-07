@@ -1,0 +1,314 @@
+---
+/*
+ * Gantt van één pull request: per job een gestreepte balk voor wachten en een
+ * volle balk voor werken. Alles staat na de build in de HTML: de posities zijn
+ * inline percentages, berekend hier in de frontmatter. Er hoort geen
+ * client-side JavaScript bij; de docs draaien richting een CSP zonder
+ * `script-src unsafe-inline`.
+ */
+import {
+  ciWorkflows,
+  ciScaleMinutes,
+  ciTickMinutes,
+  nlNumber,
+} from '~/lib/ci-pipeline';
+
+const ticks: number[] = [];
+for (let m = 0; m <= ciScaleMinutes; m += ciTickMinutes) ticks.push(m);
+
+const pct = (minutes: number) => `${(minutes / ciScaleMinutes) * 100}%`;
+
+// Een job van een paar seconden zou anders als onzichtbare streep renderen.
+const minimumBar = 0.18;
+
+const rows = ciWorkflows.map((wf) => ({
+  ...wf,
+  jobs: wf.jobs.map((job) => {
+    const work = Math.max(job.work, minimumBar);
+    const roles = [
+      job.required ? 'verplicht voor de merge' : null,
+      job.gate ? 'poort die op andere jobs wacht' : null,
+    ].filter(Boolean);
+    return {
+      ...job,
+      waitLeft: '0',
+      waitWidth: pct(job.wait),
+      workLeft: pct(job.wait),
+      workWidth: pct(work),
+      numberLeft: pct(job.wait + work),
+      description:
+        `wacht ${nlNumber(job.wait)} minuten, draait ${nlNumber(job.work)} minuten` +
+        (roles.length ? `, ${roles.join(', ')}` : ''),
+    };
+  }),
+}));
+---
+
+<figure class="rr-gantt" data-width="full">
+  <ul class="rr-gantt-legend">
+    <li><span class="rr-gantt-swatch is-wait"></span>wachten op een runner</li>
+    <li><span class="rr-gantt-swatch is-work"></span>draaiend, niet verplicht</li>
+    <li>
+      <span class="rr-gantt-swatch is-required"></span>verplicht voor de merge
+      (<span aria-hidden="true">&#9679;</span>)
+    </li>
+    <li>
+      <span class="rr-gantt-swatch is-gate"></span>poort die op anderen wacht
+      (<span aria-hidden="true">&#9670;</span>)
+    </li>
+  </ul>
+
+  <div class="rr-gantt-scroll" tabindex="0" role="group" aria-label="Gantt van de jobs per workflow">
+    <div class="rr-gantt-inner">
+      <div class="rr-gantt-axis" aria-hidden="true">
+        {
+          ticks.map((m) => (
+            <>
+              <span class="rr-gantt-grid" style={`left: ${pct(m)}`} />
+              <span class="rr-gantt-tick" style={`left: ${pct(m)}`}>
+                {m === 0 ? '0 min' : m}
+              </span>
+            </>
+          ))
+        }
+      </div>
+
+      {
+        rows.map((wf) => (
+          <section class="rr-gantt-group">
+            <h3 class="rr-gantt-group-head">
+              <span class="rr-gantt-group-name">{wf.name}</span>
+              {wf.total !== null && (
+                <span class="rr-gantt-group-total">
+                  mediaan {nlNumber(wf.total)} min van aanmaak tot klaar
+                </span>
+              )}
+            </h3>
+            {wf.jobs.map((job) => (
+              <div class="rr-gantt-row">
+                <div class="rr-gantt-label">
+                  {job.required && (
+                    <span class="rr-gantt-mark is-required" aria-hidden="true">
+                      &#9679;
+                    </span>
+                  )}
+                  {job.gate && (
+                    <span class="rr-gantt-mark is-gate" aria-hidden="true">
+                      &#9670;
+                    </span>
+                  )}
+                  {job.name}
+                  <span class="rr-gantt-sr">: {job.description}</span>
+                </div>
+                <div class="rr-gantt-track" aria-hidden="true">
+                  <span
+                    class="rr-gantt-bar is-wait"
+                    style={`left: ${job.waitLeft}; width: ${job.waitWidth}`}
+                  />
+                  <span
+                    class:list={[
+                      'rr-gantt-bar',
+                      'is-work',
+                      job.required && 'is-required',
+                      job.gate && 'is-gate',
+                    ]}
+                    style={`left: ${job.workLeft}; width: ${job.workWidth}`}
+                  />
+                  <span class="rr-gantt-number" style={`left: ${job.numberLeft}`}>
+                    {nlNumber(job.work)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </section>
+        ))
+      }
+    </div>
+  </div>
+</figure>
+
+<style>
+  /* De enige eigen CSS op deze pagina: er is geen designsysteem-component voor
+     een gantt. Kleuren, ruimtes en typografie komen uit de NLDD-tokens, die
+     light-dark()-paren zijn, dus de grafiek volgt het thema vanzelf.
+     nldd-rich-text geeft figure/ul/li/h3 een eigen font, marge en opsomming;
+     die worden hieronder teruggezet omdat de grafiek geen lopende tekst is. */
+  .rr-gantt {
+    display: flex;
+    flex-direction: column;
+    gap: var(--primitives-space-12);
+    margin: 0;
+    inline-size: 100%;
+    min-inline-size: 0;
+    font: var(--primitives-font-body-sm-regular-snug);
+    color: var(--semantics-content-color);
+  }
+
+  .rr-gantt-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--primitives-space-8) var(--primitives-space-20);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--semantics-content-secondary-color);
+  }
+  .rr-gantt-legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--primitives-space-6);
+    margin: 0;
+  }
+
+  .rr-gantt-swatch {
+    inline-size: 26px;
+    block-size: 11px;
+    border-radius: 2px;
+    flex: none;
+  }
+  .rr-gantt-swatch.is-wait,
+  .rr-gantt-bar.is-wait {
+    background: repeating-linear-gradient(
+      135deg,
+      var(--primitives-color-donkergeel-500) 0 3px,
+      transparent 3px 6px
+    );
+    border: 1px solid var(--primitives-color-donkergeel-500);
+  }
+  .rr-gantt-swatch.is-work,
+  .rr-gantt-bar.is-work {
+    background: var(--primitives-color-donkerblauw-500);
+  }
+  .rr-gantt-swatch.is-required,
+  .rr-gantt-bar.is-work.is-required {
+    background: var(--primitives-color-mosgroen-600);
+  }
+  .rr-gantt-swatch.is-gate,
+  .rr-gantt-bar.is-work.is-gate {
+    background: var(--primitives-color-paars-500);
+  }
+
+  /* De grafiek scrollt in zijn eigen venster; de pagina zelf blijft staan.
+     tabindex op de scroller maakt hem met het toetsenbord bereikbaar. */
+  .rr-gantt-scroll {
+    overflow-x: auto;
+    /* Zonder dit duwt de 44rem-brede grafiek de flex-container open en scrollt
+       de pagina zijwaarts mee. */
+    min-inline-size: 0;
+    border: var(--semantics-surfaces-border-width) solid
+      var(--semantics-surfaces-base-border-color);
+    border-radius: var(--semantics-surfaces-corner-radius);
+    padding: var(--primitives-space-16);
+  }
+  .rr-gantt-inner {
+    min-inline-size: 44rem;
+  }
+
+  .rr-gantt-axis {
+    position: relative;
+    block-size: 1.35rem;
+    margin-inline-start: var(--rr-gantt-label-width, 13rem);
+    border-bottom: 1px solid var(--semantics-dividers-color);
+    font: var(--primitives-font-body-xs-regular-snug);
+    color: var(--semantics-content-secondary-color);
+    font-variant-numeric: tabular-nums;
+  }
+  .rr-gantt-tick {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+  }
+  .rr-gantt-grid {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    inline-size: 1px;
+    background: var(--semantics-dividers-color);
+  }
+
+  .rr-gantt-group {
+    margin-top: var(--primitives-space-20);
+  }
+  .rr-gantt-group-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--primitives-space-8);
+    margin: 0 0 var(--primitives-space-6);
+    font: var(--primitives-font-body-sm-bold-snug);
+  }
+  .rr-gantt-group-name {
+    font: var(--primitives-font-body-sm-bold-snug);
+  }
+  .rr-gantt-group-total {
+    font: var(--primitives-font-body-xs-regular-snug);
+    color: var(--semantics-content-secondary-color);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rr-gantt-row {
+    display: grid;
+    grid-template-columns: var(--rr-gantt-label-width, 13rem) 1fr;
+    align-items: center;
+    block-size: 1.85rem;
+  }
+  .rr-gantt-label {
+    padding-inline-end: var(--primitives-space-12);
+    text-align: end;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--semantics-content-secondary-color);
+  }
+  .rr-gantt-mark {
+    margin-inline-end: 0.3em;
+  }
+  .rr-gantt-mark.is-required {
+    color: var(--primitives-color-mosgroen-600);
+  }
+  .rr-gantt-mark.is-gate {
+    color: var(--primitives-color-paars-500);
+  }
+
+  .rr-gantt-track {
+    position: relative;
+    block-size: 100%;
+  }
+  .rr-gantt-bar {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    block-size: 13px;
+    border-radius: 2px;
+  }
+  .rr-gantt-bar.is-wait {
+    border-radius: 2px 0 0 2px;
+  }
+  .rr-gantt-number {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    padding-inline-start: var(--primitives-space-6);
+    font: var(--primitives-font-body-xs-regular-snug);
+    color: var(--semantics-content-secondary-color);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* De balken zijn aria-hidden; deze tekst geeft dezelfde cijfers aan een
+     schermlezer. */
+  .rr-gantt-sr {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 40rem) {
+    .rr-gantt {
+      --rr-gantt-label-width: 9rem;
+    }
+  }
+</style>
