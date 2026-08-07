@@ -32,6 +32,13 @@ base64 = "0.23"
 # `OsRng` for nonce generation.
 chacha20poly1305 = { version = "0.10", features = ["getrandom"] }
 chrono = { version = "0.4", features = ["serde"] }
+# Every schema this workspace validates against is baked into the binary with
+# `include_str!` and every `$ref` in them is a local `#/definitions/...`
+# pointer, so no reference is ever resolved over the network or from disk.
+# The default features (`resolve-http`, `resolve-file`, `tls-aws-lc-rs`) drag
+# in reqwest, rustls and aws-lc-rs - roughly a hundred crates of HTTP stack
+# that is compiled but never called.
+jsonschema = { version = "0.49", default-features = false }
 openidconnect = "4.0"
 regex = "1.11"
 # Note: reqwest is intentionally NOT workspace-hoisted, and must stay that way.

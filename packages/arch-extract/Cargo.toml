@@ -44,7 +44,7 @@ tower-http = { workspace = true, features = ["fs"] }
 [dev-dependencies]
 # Validates the generated model against the JSON schema in a test, so drift in
 # the model shape is caught by `cargo test` (and thus `just check`).
-jsonschema = "0.49"
+jsonschema.workspace = true
 
 [lints]
 workspace = true
