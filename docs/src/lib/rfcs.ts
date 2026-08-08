@@ -1,8 +1,8 @@
 // Single source of truth for the RFC list.
 //
-// Both the docs sidebar (via sidebar.ts) and the RFC index table
-// (RfcIndexTable.astro) are generated from src/content/rfcs/rfc-*.md, so they
-// cannot drift apart. This module is pure Node, so it runs at build time.
+// Both the docs sidebar (via sidebar.ts) and the RFC index page
+// (src/pages/rfcs/index.astro) are generated from src/content/rfcs/rfc-*.md, so
+// they cannot drift apart. This module is pure Node, so it runs at build time.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'

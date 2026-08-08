@@ -21,7 +21,7 @@ crate is covered without anyone having to add it to a list; the pipeline and
 editor-api suites use testcontainers for PostgreSQL, so the runner needs Docker.
 
 `just test-no-docker` is the same coverage minus those container-backed suites,
-for a machine without Docker. It is what `just check` runs.
+for a machine without Docker. `just check` runs the full `test`.
 
 The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) covers two
 buckets and is **not** part of `just test`; the target carries `test = false` so
@@ -47,7 +47,7 @@ Builds the engine for the WebAssembly target to catch compilation issues early.
 ### Security audit (always runs)
 
 - **Rust** - `cargo-deny` checks for known vulnerabilities and license issues
-- **Frontend** - `npm ci` for the editor and admin dashboard
+- **Frontend** - `npm ci` over the npm workspace at the repo root
 
 ### Schema protection (on PRs)
 

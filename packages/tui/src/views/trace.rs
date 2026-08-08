@@ -48,11 +48,6 @@ impl TraceView {
         self.rebuild_flat();
     }
 
-    #[allow(dead_code)]
-    pub fn has_trace(&self) -> bool {
-        self.trace.is_some()
-    }
-
     pub fn handle_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {

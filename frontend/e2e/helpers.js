@@ -283,15 +283,6 @@ export function machineReadablePane(page) {
 }
 
 /**
- * Click a button by its visible text within a container.
- * @param {import('@playwright/test').Page|import('@playwright/test').Locator} container
- * @param {string} text
- */
-export async function clickButton(container, text) {
-  await container.locator(`nldd-button:has-text("${text}")`).click();
-}
-
-/**
  * Open the ActionSheet in edit mode for the machine-readable action whose
  * output name is `output`. The row's edit affordance moved from an inline
  * "Bewerk" button to a RowActionsMenu ("more" icon) whose Edit menu-item
@@ -326,27 +317,6 @@ export async function removeOpValue(page, index) {
 }
 
 /**
- * Fill an nldd-text-field by label within a container.
- * The nldd-text-field wraps a native <input> in shadow DOM.
- */
-export async function fillTextField(container, label, value) {
-  const listItem = container.locator(`nldd-list-item:has(nldd-text-cell:has-text("${label}"))`);
-  const textField = listItem.locator('nldd-text-field');
-  const input = textField.locator('input');
-  await input.fill(value);
-  await input.dispatchEvent('input');
-}
-
-/**
- * Select a value in an nldd-dropdown within a list item by label.
- */
-export async function selectDropdown(container, label, value) {
-  const listItem = container.locator(`nldd-list-item:has(nldd-text-cell:has-text("${label}"))`);
-  const select = listItem.locator('nldd-dropdown select');
-  await select.selectOption(value);
-}
-
-/**
  * The single open edit/action sheet. The editor keeps several `nldd-sheet`
  * hosts mounted at once (one per dialog kind), all but the open one hidden, so
  * a bare `nldd-sheet` locator is ambiguous. Filtering on visibility targets the
@@ -364,20 +334,6 @@ export function openSheet(page) {
 export async function waitForEditSheet(page) {
   await openSheet(page).first().waitFor({ state: 'visible', timeout: 5000 });
   await page.waitForTimeout(100);
-}
-
-/**
- * Click "Opslaan" in the EditSheet (definitions / parameters / inputs /
- * outputs). The footer save button carries a stable `edit-sheet-save-btn`
- * test-id; the label text lives in the web component's shadow DOM, so we
- * target the id and click through the DOM (robust against shadow visibility).
- * @param {import('@playwright/test').Page} page
- */
-export async function saveEditSheet(page) {
-  await openSheet(page)
-    .locator('[data-testid="edit-sheet-save-btn"]')
-    .evaluate((el) => el.click());
-  await page.waitForTimeout(200);
 }
 
 /**
