@@ -56,9 +56,13 @@ jobs:
       # Voor de melding: het issue aanmaken, sluiten en van een herinnering
       # voorzien.
       issues: write
-    env:
-      ADVISORY_OUT: ${{ runner.temp }}/advisories
     steps:
+      # De `runner`-context bestaat niet in een `env:` op jobniveau; Actions
+      # keurt het hele bestand dan af en er draait niets. Daarom hier, in de
+      # shell, waar $RUNNER_TEMP wel bestaat.
+      - name: Waar de uitslag landt
+        run: echo "ADVISORY_OUT=$RUNNER_TEMP/advisories" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust toolchain
