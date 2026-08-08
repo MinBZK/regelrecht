@@ -4,8 +4,8 @@
 # `ciWorkflows`.
 #
 # Bijwerken van de pagina /operations/ci-doorlooptijd:
-#   just meet-ci > /tmp/ci.ts          # nieuwste volledig geslaagde run
-#   just meet-ci afa1408c > /tmp/ci.ts # een specifieke commit
+#   just measure-ci > /tmp/ci.ts          # nieuwste volledig geslaagde run
+#   just measure-ci afa1408c > /tmp/ci.ts # een specifieke commit
 # en dan de drie blokken in docs/src/lib/ci-pipeline.ts vervangen.
 #
 # Eén run en geen gemiddelde: medianen per job komen uit verschillende

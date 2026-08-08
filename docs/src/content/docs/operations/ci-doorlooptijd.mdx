@@ -77,14 +77,14 @@ en liep hier niet mee.
 
 ## Bijwerken
 
-`script/meet-ci.sh` in de repo-root haalt één run op (standaard de nieuwste
+`script/measure-ci.sh` in de repo-root haalt één run op (standaard de nieuwste
 volledig geslaagde, of een run bij een commit die je meegeeft), leest de
 `needs`-graaf uit de workflow-bestanden en schrijft het resultaat in het formaat
 van de dataset:
 
 ```bash
-just meet-ci
-just meet-ci afa1408c
+just measure-ci
+just measure-ci afa1408c
 ```
 
 Vervang de `ciWorkflows`-array in `docs/src/lib/ci-pipeline.ts` door wat het

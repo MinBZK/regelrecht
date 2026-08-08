@@ -672,8 +672,8 @@ docs-a11y:
 
 # Haal één CI-uitvoering op (leeg = nieuwste groene commit); vervang de blokken in
 # docs/src/lib/ci-pipeline.ts door de uitvoer (zie /operations/ci-doorlooptijd)
-meet-ci sha="":
-    ./script/meet-ci.sh {{sha}}
+measure-ci sha="":
+    ./script/measure-ci.sh {{sha}}
 
 # --- Architecture model ---
 

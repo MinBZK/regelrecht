@@ -5,7 +5,7 @@
  * verschillende runs, en zodra je die naast elkaar zet met `needs`-pijlen
  * ertussen ontstaat een schema dat nergens zo gelopen heeft.
  *
- * `script/meet-ci.sh` in de repo-root haalt een nieuwe run op en spuugt exact
+ * `script/measure-ci.sh` in de repo-root haalt een nieuwe run op en spuugt exact
  * de `ciWorkflows`-array hieronder uit, inclusief de `needs`-graaf waar de
  * pijlen uit getekend worden.
  */
