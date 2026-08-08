@@ -441,6 +441,54 @@ jobs:
       - name: Run tests
         run: just ${{ matrix.recipe }}
 
+  bdd-conformance:
+    name: BDD conformance
+    needs: changes
+    if: needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
+
+      - name: Cache cargo registry (shared)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      # Alleen bucket B. Die bewijst dat de engine de hele BDD-taal spreekt
+      # tegen synthetische `test_*`-wetten, en hangt aan niets buiten de repo.
+      # Bucket A toetst de levende wetten: daar betekent rood dat een wet is
+      # veranderd of een scenario verouderd is, en dat is een oordeel van een
+      # mens, geen merge-blokkade.
+      #
+      # Het testtarget staat op `test = false` en loopt dus niet mee in
+      # `cargo test --workspace`; het wordt hier expliciet genoemd. RUSTFLAGS
+      # herhaalt de mold-link-arg uit packages/.cargo/config.toml, omdat een
+      # expliciete RUSTFLAGS die configuratie overschrijft.
+      - name: Run conformance bucket
+        working-directory: packages/engine
+        env:
+          BDD_BUCKET: conformance
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: cargo test --test bdd -- --nocapture
+
   frontend-tests:
     name: Frontend tests
     needs: changes
@@ -529,6 +577,7 @@ jobs:
       # hangt: valt `changes` om, dan slaan ze allemaal over.
       - changes
       - rust-tests
+      - bdd-conformance
       - frontend-tests
       # Deze vier draaiden al bij elke PR maar blokkeerden niets. Ze hier
       # aanhangen kost geen runnerminuut en geen nieuwe required context bij
@@ -569,6 +618,7 @@ jobs:
           }
           require changes "${{ needs.changes.result }}"
           check rust-tests "${{ needs.rust-tests.result }}"
+          check bdd-conformance "${{ needs.bdd-conformance.result }}"
           check frontend-tests "${{ needs.frontend-tests.result }}"
           check e2e "${{ needs.e2e.result }}"
           check cross-law-integrity "${{ needs.cross-law-integrity.result }}"

@@ -12,7 +12,12 @@ just bdd
 
 # Or directly via cargo
 cd packages/engine && cargo test --test bdd -- --nocapture
+
+# One bucket only (all | corpus | conformance)
+cd packages/engine && BDD_BUCKET=conformance cargo test --test bdd -- --nocapture
 ```
+
+CI runs the conformance bucket and blocks on it; the corpus bucket runs locally.
 
 ## Architecture
 
