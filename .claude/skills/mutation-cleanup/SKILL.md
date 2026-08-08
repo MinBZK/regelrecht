@@ -24,7 +24,7 @@ behaviour the tests actually pin down.
 Two workflows produce them:
 
 - `.github/workflows/mutation-testing.yml` runs the full set every Monday and
-  opens an issue labelled `mutation-testing` with the counts and a report.
+  opens an issue labelled `mbot:survivors` with the counts and a report.
 - `.github/workflows/mutation-diff.yml` runs on every pull request that touches
   `packages/engine/**`, over the changed lines only. That gate is why new gaps
   should not reach this backlog.

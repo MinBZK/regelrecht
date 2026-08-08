@@ -382,13 +382,13 @@ de job staat in het workflowbestand dat de PR meebrengt.
 
 ### How It Works
 
-1. **PR carrying the `preview` label, opened or pushed to**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
-2. **`preview` label removed, or PR closed**: Deletes ZAD deployment and GHCR images
+1. **PR carrying the `deploy:preview` label, opened or pushed to**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
+2. **`deploy:preview` label removed, or PR closed**: Deletes ZAD deployment and GHCR images
 3. **Push to main**: Deploys `regelrecht` (production) to ZAD
 
 ### Previews are opt-in
 
-A pull request builds and deploys nothing unless someone puts the **`preview`**
+A pull request builds and deploys nothing unless someone puts the **`deploy:preview`**
 label on it. Seven images plus a preview environment per PR was about half of
 the repository's runner consumption, and it held up no merge: none of those
 checks is required and nothing tests against the preview (`E2E (mocked)` runs
@@ -403,7 +403,7 @@ preview keeps running that nobody is looking at.
 The gate is the *presence* of the label on the PR, checked on every event, not
 the kind of event. The `deploy:<component>` labels are a separate, additive
 thing: they force a component to build that the change-detection did not flag,
-and they do nothing on a PR without `preview`.
+and they do nothing on a PR without `deploy:preview`.
 
 Fork PRs stay out of the chain regardless of labels; they have no secrets and a
 read-only `GITHUB_TOKEN`, so the push to GHCR could never succeed.

@@ -104,7 +104,7 @@ Test, Validate PR title, Claude review completed
 
 Wacht op precies deze zeven en op niets anders.
 
-- `Build and Deploy` is `skipped` zonder het `preview`-label. Dat is geen fout.
+- `Build and Deploy` is `skipped` zonder het `deploy:preview`-label. Dat is geen fout.
 - `CodeQL` en `Analyze (…)` rapporteren niet op een PR die alleen docs raakt.
   Nooit op wachten; ze zijn niet verplicht.
 - `Mutation Testing (diff)` draait alleen bij een wijziging in
