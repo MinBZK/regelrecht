@@ -29,7 +29,7 @@ generated bindings makes that drift impossible by construction:
 | Editor scenario doesn't run under `just bdd` | One scenario runs verbatim in editor, `just bdd`, and any future engine |
 | New law = new step sentences + engine code | New law = write scenarios only, zero engine code |
 | Step definitions hand-maintained 3×, silent drift | One `grammar.yaml`, bindings generated → drift impossible |
-| A law change breaks a scenario silently (editor-only) | Bucket A runs against the live law in CI → breaks visibly, a human decides |
+| A law change breaks a scenario silently (editor-only) | Bucket A runs against the live law under `just bdd` → breaks visibly, a human decides |
 
 ## Two buckets, one language
 
@@ -45,7 +45,12 @@ Both buckets use the same grammar and generated bindings; they differ only in
   `provenance` tiers) against synthetic `test_*` laws — deterministic, because
   this tests the engine, not a real law.
 
-`just bdd` runs both buckets.
+`just bdd` runs both buckets. `BDD_BUCKET` narrows the run to one of them:
+`BDD_BUCKET=conformance` for bucket B, `BDD_BUCKET=corpus` for bucket A.
+
+CI runs bucket B and blocks on it (the **BDD conformance** job, hung on the
+`Test` gate). Bucket A stays out of CI: a red scenario there is a question for a
+human, not a broken build.
 
 ## Grammar format
 

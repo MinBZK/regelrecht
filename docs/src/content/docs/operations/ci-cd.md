@@ -23,9 +23,22 @@ editor-api suites use testcontainers for PostgreSQL, so the runner needs Docker.
 `just test-no-docker` is the same coverage minus those container-backed suites,
 for a machine without Docker. It is what `just check` runs.
 
-The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) runs against the
-live corpus and is **not** part of `just test`; the target carries `test = false`
-so it only runs when called by name. Run it locally.
+The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) covers two
+buckets and is **not** part of `just test`; the target carries `test = false` so
+it only runs when called by name. `BDD_BUCKET` picks the bucket: `all` (the
+default, what `just bdd` runs), `corpus` or `conformance`.
+
+### BDD conformance (on relevant changes)
+
+The **BDD conformance** job runs bucket B — `bdd/conformance/*.feature` against
+the synthetic `test_*` laws — as `BDD_BUCKET=conformance cargo test --test bdd`,
+and hangs on the `Test` gate, so it blocks a merge. That bucket proves the engine
+speaks the whole feature language and depends on nothing outside the repo.
+
+Bucket A (`corpus/regulation/**/scenarios/*.feature`) stays out of CI. It asserts
+what the live laws currently produce, so a failure there means a law changed or a
+scenario went stale; a human decides what that is worth. Run it locally with
+`BDD_BUCKET=corpus`.
 
 ### WASM build (on engine changes)
 
