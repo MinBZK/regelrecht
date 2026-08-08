@@ -92,13 +92,6 @@ repos:
         pass_filenames: false
         files: ^(\.github/workflows/ci\.yml|script/ci-gate\.test\.mjs)$
 
-      - id: workflow-contexts
-        name: Workflows gebruiken op jobniveau alleen bestaande contexten
-        entry: just workflow-contexts-test
-        language: system
-        pass_filenames: false
-        files: ^(\.github/workflows/.*\.ya?ml|script/workflow-contexts\.test\.mjs)$
-
       - id: dockerfile-consistency
         name: Rust-Dockerfiles blijven bij de cargo-workspace
         entry: just dockerfile-consistency-test

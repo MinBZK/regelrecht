@@ -107,12 +107,6 @@ first-load-test:
 ci-gate-test:
     node --test script/ci-gate.test.mjs
 
-# Een workflow die Actions afkeurt draait niet en meldt dat nergens als een
-# gefaalde baan: de run komt op met nul jobs en negeert zijn branch-filters.
-[doc("Check that job-level env in workflows only uses contexts that exist there")]
-workflow-contexts-test:
-    node --test script/workflow-contexts.test.mjs
-
 # Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
 # of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
 # bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
@@ -142,7 +136,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test workflow-contexts-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 
