@@ -47,7 +47,6 @@ pub struct Arg {
     pub ty: String, // string|number
 }
 
-#[allow(dead_code)]
 pub fn load_grammar(path: &std::path::Path) -> Grammar {
     let raw = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("cannot read grammar {}: {e}", path.display()));

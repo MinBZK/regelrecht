@@ -67,7 +67,7 @@ Reviewers check for:
 
 Changes to the law format, engine architecture, or cross-cutting patterns require an RFC. See the [RFC process](/rfcs/rfc-000) for details.
 
-Use the template at `docs/rfcs/template.md` to draft your RFC, then open a PR for discussion.
+Use the template at `docs/src/content/rfcs/template.md` to draft your RFC, then open a PR for discussion.
 
 ## Further reading
 

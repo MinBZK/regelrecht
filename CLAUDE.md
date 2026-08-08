@@ -449,6 +449,7 @@ de job staat in het workflowbestand dat de PR meebrengt.
 | harvester-admin | `regelrecht-admin` | `harvester-admin.regelrecht.rijks.app` |
 | harvester-worker | `regelrecht-harvester-worker` | (no web UI) |
 | enrichworker | `regelrecht-enrich-worker` | (no web UI) |
+| pipeline-api | `regelrecht-pipeline-api` | (internal) |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |

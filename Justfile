@@ -192,9 +192,9 @@ github-test:
 harvester-test:
     cd packages/harvester && {{ci_flags}} cargo test
 
-# Run pipeline unit tests. Five of these are container-backed and carry
-# #[ignore]; add `-- --ignored` to run those instead.
-[doc("Run pipeline unit tests (the container-backed ones are #[ignore]d)")]
+# Run the pipeline unit tests in `src/`. The container-backed suites live in
+# `tests/` and run via `pipeline-integration-test`, not here.
+[doc("Run pipeline unit tests (src/ only, no Docker)")]
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
 
@@ -381,9 +381,8 @@ editor-api-fmt:
     cd packages && cargo fmt --check --package regelrecht-editor-api
 
 # Run ALL editor API tests: src unit tests + tests/*.rs integration tests
-# (the latter require Docker for testcontainers). This is what CI runs on
-# editor-api changes; excluded from `just check` for the same reason
-# `pipeline-integration-test` is.
+# (the latter require Docker for testcontainers). A shortcut for running this
+# crate alone; `just check` covers it through the workspace-wide `test`.
 [doc("Run ALL editor API tests, unit and integration (needs Docker)")]
 editor-api-test:
     cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api
