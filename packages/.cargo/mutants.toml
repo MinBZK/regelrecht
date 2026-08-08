@@ -15,7 +15,7 @@
 # Muteer met dezelfde features waarmee de suite draait. `just test` is
 # `cargo test --workspace --all-features`; een kale `cargo mutants` bouwt zonder
 # features, en dan valt alles achter een `#[cfg(feature = ...)]` buiten de
-# build: schema.rs (validate), wasm.rs (wasm), telemetry.rs (otel) en de
+# build: schema.rs (validate), wasm.rs (wasm) en de
 # binaries met `required-features`. Die code wordt niet gecompileerd, de
 # mutatie verandert dus niets, de tests blijven groen en de mutant "overleeft"
 # zonder dat er ooit iets is gedraaid. In de weekrun van 2026-08-01 waren dat
@@ -107,24 +107,6 @@ exclude_re = [
     # ertoe doet is de tekst van de fout, en die ligt vast in de Display-tests
     # in dit bestand.
     'error\.rs.*impl From<EngineError> for wasm_bindgen::JsValue',
-
-    # --- telemetry.rs ------------------------------------------------------
-
-    # De hele module is OTLP-bedrading. `init_otel_subscriber` installeert via
-    # `try_init` een procesbrede subscriber, die per testbinary maar één keer te
-    # zetten is en daarna alle andere tests beïnvloedt; `Drop for OtelGuard`
-    # roept `shutdown()` op de OTel-SDK aan en print een eventuele fout naar
-    # stderr. Beide zijn gedrag van de SDK en van de afsluitvolgorde van het
-    # proces, niet van de wetsuitvoering.
-    '^engine/src/telemetry\.rs:',
-
-    # --- bin/evaluate.rs ---------------------------------------------------
-
-    # De OTLP-endpointcheck (`!v.is_empty()`) bepaalt alleen of er een collector
-    # wordt aangesloten. Het verschil is uitsluitend zichtbaar tegen een
-    # draaiende OTLP-collector, en dat is geen unit-test. De afloopcodes van het
-    # binary zelf worden wel gedood.
-    'engine/src/bin/evaluate\.rs.*delete ! in main',
 
     # --- wasm.rs -----------------------------------------------------------
 

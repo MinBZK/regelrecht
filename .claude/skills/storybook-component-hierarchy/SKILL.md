@@ -1,59 +1,59 @@
 ---
 name: storybook-component-hierarchy
-description: Activeer bij het samenstellen van NDD Storybook web components tot pagina's en layouts — beschrijft de verplichte component-hiërarchie, nesting-regels en beschikbare layout-patronen
+description: Activeer bij het samenstellen van NLDD Storybook web components tot pagina's en layouts — beschrijft de verplichte component-hiërarchie, nesting-regels en beschikbare layout-patronen
 user-invocable: true
 argument-hint: <layout-type>
 ---
 
-Gebruik deze skill wanneer je NDD Storybook web components gaat samenstellen tot pagina's, views of layouts. Hij beschrijft welke componenten in welke volgorde genest moeten worden.
+Gebruik deze skill wanneer je NLDD Storybook web components gaat samenstellen tot pagina's, views of layouts. Hij beschrijft welke componenten in welke volgorde genest moeten worden.
 
 Context: $ARGUMENTS
 
 ## Overzicht
 
-Elke NDD applicatie volgt een vaste hiërarchie van layout-componenten. De buitenste laag is altijd `ndd-app-view`, de binnenste laag bevat content-componenten.
+Elke NLDD applicatie volgt een vaste hiërarchie van layout-componenten. De buitenste laag is altijd `nldd-app-view`, de binnenste laag bevat content-componenten.
 
 ### Met Split View
 
 ```
-ndd-app-view                              ← verplichte root
-  └── Split View                          ← layout keuze (kan genest worden)
-      └── Split View Pane                 ← paneel binnen split view
-          └── ndd-page OF ndd-container   ← page voor scrollbare content, container voor simpele content
-              ├── ndd-container slot="header"  ← navigatie, titelbalk (altijd in container)
-              ├── Page sections           ← content layout
-              │   └── Content-componenten ← tekst, lijsten, formulieren
-              └── ndd-container slot="footer"  ← footer content (altijd in container)
+nldd-app-view                                  ← verplichte root
+  └── Split View                               ← layout keuze (kan genest worden)
+      └── Split View Pane                      ← paneel binnen split view
+          └── nldd-page OF nldd-container      ← page voor scrollbare content, container voor simpele content
+              ├── nldd-container slot="header" ← navigatie, titelbalk (altijd in container)
+              ├── Page sections                ← content layout
+              │   └── Content-componenten      ← tekst, lijsten, formulieren
+              └── nldd-container slot="footer" ← footer content (altijd in container)
 ```
 
 ### Zonder Split View
 
 ```
-ndd-app-view                              ← verplichte root
-  └── ndd-page                            ← enkele pagina
-      ├── ndd-container slot="header"     ← navigatie, titelbalk (altijd in container)
-      ├── Page sections                   ← content layout
-      │   └── Content-componenten         ← tekst, lijsten, formulieren
-      └── ndd-container slot="footer"     ← footer content (altijd in container)
+nldd-app-view                          ← verplichte root
+  └── nldd-page                        ← enkele pagina
+      ├── nldd-container slot="header" ← navigatie, titelbalk (altijd in container)
+      ├── Page sections                ← content layout
+      │   └── Content-componenten      ← tekst, lijsten, formulieren
+      └── nldd-container slot="footer" ← footer content (altijd in container)
 ```
 
-**Let op:** Split views kunnen genest worden. Bijvoorbeeld een `ndd-navigation-split-view` in het main-slot van een `ndd-bar-split-view`.
+**Let op:** Split views kunnen genest worden. Bijvoorbeeld een `nldd-navigation-split-view` in het main-slot van een `nldd-bar-split-view`.
 
 ---
 
 ## Laag 1: App View (verplicht)
 
 ```html
-<ndd-app-view background="default|tinted">
-  <!-- Eén split view OF één ndd-page -->
-</ndd-app-view>
+<nldd-app-view background="default|tinted">
+  <!-- Eén split view OF één nldd-page -->
+</nldd-app-view>
 ```
 
 | Attribuut | Waarden | Beschrijving |
 |-----------|---------|--------------|
 | `background` | `default`, `tinted` | Cascade van `--context-parent-background-color` naar alle afstammelingen |
 
-**Regel:** `ndd-app-view` is altijd de root. Bevat exact één direct child: een split view of een `ndd-page`.
+**Regel:** `nldd-app-view` is altijd de root. Bevat exact één direct child: een split view of een `nldd-page`.
 
 ---
 
@@ -63,26 +63,26 @@ Kies één layout-type op basis van de applicatie:
 
 ### Optie A: Navigation Split View (meest gebruikt)
 
-Vier-koloms layout met sidebar, secundaire sidebar, main content en inspector. Panelen verschijnen automatisch wanneer content geslot wordt. Elk slot bevat een `ndd-split-view-pane`, die op zijn beurt een `ndd-page` of `ndd-container` bevat.
+Vier-koloms layout met sidebar, secundaire sidebar, main content en inspector. Panelen verschijnen automatisch wanneer content geslot wordt. Elk slot bevat een `nldd-split-view-pane`, die op zijn beurt een `nldd-page` of `nldd-container` bevat.
 
 ```html
-<ndd-navigation-split-view>
-  <ndd-split-view-pane slot="sidebar">
-    <ndd-page>...</ndd-page>
-  </ndd-split-view-pane>
-  <ndd-split-view-pane slot="secondary-sidebar">
-    <ndd-page>...</ndd-page>
-  </ndd-split-view-pane>
-  <ndd-split-view-pane slot="main">
-    <ndd-page>...</ndd-page>
-  </ndd-split-view-pane>
-  <ndd-split-view-pane slot="inspector">
-    <ndd-page>...</ndd-page>
-  </ndd-split-view-pane>
-</ndd-navigation-split-view>
+<nldd-navigation-split-view>
+  <nldd-split-view-pane slot="sidebar">
+    <nldd-page>...</nldd-page>
+  </nldd-split-view-pane>
+  <nldd-split-view-pane slot="secondary-sidebar">
+    <nldd-page>...</nldd-page>
+  </nldd-split-view-pane>
+  <nldd-split-view-pane slot="main">
+    <nldd-page>...</nldd-page>
+  </nldd-split-view-pane>
+  <nldd-split-view-pane slot="inspector">
+    <nldd-page>...</nldd-page>
+  </nldd-split-view-pane>
+</nldd-navigation-split-view>
 ```
 
-Split views kunnen genest worden. Bijvoorbeeld een `ndd-bar-split-view` in het main-slot van een `ndd-navigation-split-view`.
+Split views kunnen genest worden. Bijvoorbeeld een `nldd-bar-split-view` in het main-slot van een `nldd-navigation-split-view`.
 
 | Slot | Beschrijving | Verplicht |
 |------|--------------|-----------|
@@ -107,14 +107,14 @@ Split views kunnen genest worden. Bijvoorbeeld een `ndd-bar-split-view` in het m
 Verticale layout met een main-gebied en onbeperkt aantal bars (toolbars, statusbalken). Bars kunnen per breakpoint geordend worden.
 
 ```html
-<ndd-bar-split-view>
-  <ndd-container slot="toolbar" sm-order="1" md-order="1">...</ndd-container>
-  <ndd-page slot="main" sm-order="2" md-order="2">...</ndd-page>
-  <ndd-container slot="status-bar" sm-order="3" md-order="3">...</ndd-container>
-</ndd-bar-split-view>
+<nldd-bar-split-view>
+  <nldd-container slot="toolbar" sm-order="1" md-order="1">...</nldd-container>
+  <nldd-page slot="main" sm-order="2" md-order="2">...</nldd-page>
+  <nldd-container slot="status-bar" sm-order="3" md-order="3">...</nldd-container>
+</nldd-bar-split-view>
 ```
 
-Bars bevatten typisch een `ndd-container` (voor eenvoudige toolbars/statusbalken), het main-slot bevat een `ndd-page`.
+Bars bevatten typisch een `nldd-container` (voor eenvoudige toolbars/statusbalken), het main-slot bevat een `nldd-page`.
 
 | Attribuut (op children) | Beschrijving |
 |-------------------------|--------------|
@@ -130,11 +130,11 @@ Bars bevatten typisch een `ndd-container` (voor eenvoudige toolbars/statusbalken
 Horizontale gelijke panelen naast elkaar. Panelen die niet passen worden automatisch verborgen.
 
 ```html
-<ndd-side-by-side-split-view panes="3">
-  <ndd-page slot="pane-1">...</ndd-page>
-  <ndd-page slot="pane-2">...</ndd-page>
-  <ndd-page slot="pane-3">...</ndd-page>
-</ndd-side-by-side-split-view>
+<nldd-side-by-side-split-view panes="3">
+  <nldd-page slot="pane-1">...</nldd-page>
+  <nldd-page slot="pane-2">...</nldd-page>
+  <nldd-page slot="pane-3">...</nldd-page>
+</nldd-side-by-side-split-view>
 ```
 
 ### Optie D: Stacked Split View
@@ -142,10 +142,10 @@ Horizontale gelijke panelen naast elkaar. Panelen die niet passen worden automat
 Verticale gelijke panelen gestapeld. Panelen die niet passen worden automatisch verborgen.
 
 ```html
-<ndd-stacked-split-view panes="2">
-  <ndd-page slot="pane-1">...</ndd-page>
-  <ndd-page slot="pane-2">...</ndd-page>
-</ndd-stacked-split-view>
+<nldd-stacked-split-view panes="2">
+  <nldd-page slot="pane-1">...</nldd-page>
+  <nldd-page slot="pane-2">...</nldd-page>
+</nldd-stacked-split-view>
 ```
 
 ### Optie E: Enkele pagina (geen split view)
@@ -153,33 +153,33 @@ Verticale gelijke panelen gestapeld. Panelen die niet passen worden automatisch 
 Voor eenvoudige pagina's zonder navigatiepanelen.
 
 ```html
-<ndd-app-view>
-  <ndd-page sticky-header>...</ndd-page>
-</ndd-app-view>
+<nldd-app-view>
+  <nldd-page sticky-header>...</nldd-page>
+</nldd-app-view>
 ```
 
 ---
 
-## Laag 3: Pagina (ndd-page)
+## Laag 3: Pagina (nldd-page)
 
-Elk paneel in een split view bevat een `ndd-page`. Een page biedt scrollgedrag, optionele sticky header en footer.
+Elk paneel in een split view bevat een `nldd-page`. Een page biedt scrollgedrag, optionele sticky header en footer.
 
 ```html
-<ndd-page sticky-header sticky-footer background="inherit|default|tinted">
-  <ndd-container slot="header" padding="16">
+<nldd-page sticky-header sticky-footer background="inherit|default|tinted">
+  <nldd-container slot="header" padding="16">
     <!-- Navigatiebalk of titelbalk — altijd in een container -->
-  </ndd-container>
+  </nldd-container>
 
   <!-- Page sections met content -->
-  <ndd-simple-section>...</ndd-simple-section>
+  <nldd-simple-section>...</nldd-simple-section>
 
-  <ndd-container slot="footer" padding="16">
+  <nldd-container slot="footer" padding="16">
     <!-- Footer content — altijd in een container -->
-  </ndd-container>
-</ndd-page>
+  </nldd-container>
+</nldd-page>
 ```
 
-**Regel:** Header en footer content staan altijd in een `ndd-container` om items de juiste ruimte te geven.
+**Regel:** Header en footer content staan altijd in een `nldd-container` om items de juiste ruimte te geven.
 
 | Attribuut | Beschrijving |
 |-----------|--------------|
@@ -202,13 +202,13 @@ Elk paneel in een split view bevat een `ndd-page`. Een page biedt scrollgedrag, 
 De hoofdnavigatiebalk met logo, titel, menu en utility-items. Typisch in de header van de sidebar of bovenste page.
 
 ```html
-<ndd-top-navigation-bar
+<nldd-top-navigation-bar
   title="Mijn Applicatie"
   container="md"
   logo-has-wordmark
   logo-title="Rijksoverheid"
 >
-</ndd-top-navigation-bar>
+</nldd-top-navigation-bar>
 ```
 
 | Attribuut | Beschrijving |
@@ -225,14 +225,14 @@ De hoofdnavigatiebalk met logo, titel, menu en utility-items. Typisch in de head
 Titelbalk voor panelen met optionele terugknop en toolbar. Wanneer er een anchor-titel in de content staat (`collapse-anchor`), schakelt de title bar automatisch van default naar compact zodra dat element de bovenkant van de scroll-container bereikt.
 
 ```html
-<ndd-top-title-bar
+<nldd-top-title-bar
   text="Documenttitel"
   supporting-text="Ondertitel"
   back-text="Terug naar overzicht"
   collapse-anchor="content-heading"
 >
-  <ndd-icon-button slot="toolbar" icon="edit"></ndd-icon-button>
-</ndd-top-title-bar>
+  <nldd-icon-button slot="toolbar" icon="edit"></nldd-icon-button>
+</nldd-top-title-bar>
 ```
 
 | Attribuut | Beschrijving |
@@ -250,14 +250,14 @@ Titelbalk voor panelen met optionele terugknop en toolbar. Wanneer er een anchor
 ### Tab Bar (navigatie binnen paneel)
 
 ```html
-<ndd-tab-bar navigation responsive accessible-label="Hoofdnavigatie">
-  <ndd-tab-bar-item text="Overzicht" href="/overzicht" selected>
-    <ndd-icon slot="icon" name="home"></ndd-icon>
-  </ndd-tab-bar-item>
-  <ndd-tab-bar-item text="Instellingen" href="/instellingen">
-    <ndd-icon slot="icon" name="settings"></ndd-icon>
-  </ndd-tab-bar-item>
-</ndd-tab-bar>
+<nldd-tab-bar navigation responsive accessible-label="Hoofdnavigatie">
+  <nldd-tab-bar-item text="Overzicht" href="/overzicht" selected>
+    <nldd-icon slot="icon" name="home"></nldd-icon>
+  </nldd-tab-bar-item>
+  <nldd-tab-bar-item text="Instellingen" href="/instellingen">
+    <nldd-icon slot="icon" name="settings"></nldd-icon>
+  </nldd-tab-bar-item>
+</nldd-tab-bar>
 ```
 
 | Attribuut | Beschrijving |
@@ -271,11 +271,11 @@ Titelbalk voor panelen met optionele terugknop en toolbar. Wanneer er een anchor
 ### Menu Bar (horizontaal menu)
 
 ```html
-<ndd-menu-bar has-overflow-menu>
-  <ndd-menu-bar-item selected>Wetten</ndd-menu-bar-item>
-  <ndd-menu-bar-item>Regelingen</ndd-menu-bar-item>
-  <ndd-menu-bar-item>Besluiten</ndd-menu-bar-item>
-</ndd-menu-bar>
+<nldd-menu-bar has-overflow-menu>
+  <nldd-menu-bar-item selected>Wetten</nldd-menu-bar-item>
+  <nldd-menu-bar-item>Regelingen</nldd-menu-bar-item>
+  <nldd-menu-bar-item>Besluiten</nldd-menu-bar-item>
+</nldd-menu-bar>
 ```
 
 | Attribuut | Beschrijving |
@@ -286,11 +286,11 @@ Titelbalk voor panelen met optionele terugknop en toolbar. Wanneer er een anchor
 ### Document Tab Bar (document-tabs)
 
 ```html
-<ndd-document-tab-bar accessible-label="Open documenten">
-  <ndd-document-tab-bar-item text="Document 1" selected></ndd-document-tab-bar-item>
-  <ndd-document-tab-bar-item text="Document 2"></ndd-document-tab-bar-item>
-  <ndd-icon-button slot="end" icon="plus"></ndd-icon-button>
-</ndd-document-tab-bar>
+<nldd-document-tab-bar accessible-label="Open documenten">
+  <nldd-document-tab-bar-item text="Document 1" selected></nldd-document-tab-bar-item>
+  <nldd-document-tab-bar-item text="Document 2"></nldd-document-tab-bar-item>
+  <nldd-icon-button slot="end" icon="plus"></nldd-icon-button>
+</nldd-document-tab-bar>
 ```
 
 ---
@@ -303,36 +303,36 @@ Page sections organiseren content binnen een page. Ze bieden responsieve padding
 
 | Component | Layout | Beschrijving |
 |-----------|--------|--------------|
-| `ndd-simple-section` | Enkele kolom | Basis sectie met header/footer slots |
-| `ndd-full-bleed-section` | Volle breedte | Zonder horizontale padding (achtergrondkleuren, afbeeldingen) |
-| `ndd-one-third-two-thirds-section` | 1/3 + 2/3 | Sidebar links, content rechts |
-| `ndd-two-thirds-one-third-section` | 2/3 + 1/3 | Content links, sidebar rechts |
-| `ndd-one-half-one-half-section` | 1/2 + 1/2 | Twee gelijke kolommen |
+| `nldd-simple-section` | Enkele kolom | Basis sectie met header/footer slots |
+| `nldd-full-bleed-section` | Volle breedte | Zonder horizontale padding (achtergrondkleuren, afbeeldingen) |
+| `nldd-one-third-two-thirds-section` | 1/3 + 2/3 | Sidebar links, content rechts |
+| `nldd-two-thirds-one-third-section` | 2/3 + 1/3 | Content links, sidebar rechts |
+| `nldd-one-half-one-half-section` | 1/2 + 1/2 | Twee gelijke kolommen |
 
 ### Voorbeeld: Simple Section
 
 ```html
-<ndd-simple-section>
-  <ndd-rich-text slot="header"><h2>Titel</h2></ndd-rich-text>
-  <ndd-rich-text>
+<nldd-simple-section>
+  <nldd-rich-text slot="header"><h2>Titel</h2></nldd-rich-text>
+  <nldd-rich-text>
     <p>Inhoud van de sectie.</p>
-  </ndd-rich-text>
-  <ndd-rich-text slot="footer"><p>Voetnoot</p></ndd-rich-text>
-</ndd-simple-section>
+  </nldd-rich-text>
+  <nldd-rich-text slot="footer"><p>Voetnoot</p></nldd-rich-text>
+</nldd-simple-section>
 ```
 
 ### Voorbeeld: Twee-koloms sectie
 
 ```html
-<ndd-one-third-two-thirds-section>
-  <ndd-rich-text slot="header"><h2>Titel</h2></ndd-rich-text>
-  <ndd-rich-text slot="left">
+<nldd-one-third-two-thirds-section>
+  <nldd-rich-text slot="header"><h2>Titel</h2></nldd-rich-text>
+  <nldd-rich-text slot="left">
     <p>Zijbalk content</p>
-  </ndd-rich-text>
-  <ndd-rich-text>
+  </nldd-rich-text>
+  <nldd-rich-text>
     <p>Hoofdinhoud (2/3 breedte)</p>
-  </ndd-rich-text>
-</ndd-one-third-two-thirds-section>
+  </nldd-rich-text>
+</nldd-one-third-two-thirds-section>
 ```
 
 **Responsief:** Kolommen wrappen automatisch wanneer ze smaller worden dan 280px.
@@ -345,13 +345,13 @@ Binnen secties gebruik je content- en interactiecomponenten:
 
 | Categorie | Componenten | Beschrijving |
 |-----------|-------------|--------------|
-| **Content** | `ndd-rich-text`, `ndd-title`, `ndd-icon`, `ndd-tooltip` | Tekst en visuele content |
-| **Actions** | `ndd-button`, `ndd-icon-button`, `ndd-toolbar` | Knoppen en acties |
-| **Inputs** | `ndd-text-field`, `ndd-dropdown`, `ndd-checkbox`, `ndd-radio-button`, `ndd-switch` | Formulier-invoer |
-| **Forms** | `ndd-form-field` | Formulierveld wrapper met label en foutmelding |
-| **Lists** | `ndd-list`, `ndd-menu`, `ndd-cell` | Lijsten en menu's |
-| **Feedback** | `ndd-dialog`, `ndd-modal` | Dialogen en modals |
-| **Layout** | `ndd-container`, `ndd-box`, `ndd-spacer`, `ndd-divider` | Spacing en groepering |
+| **Content** | `nldd-rich-text`, `nldd-title`, `nldd-icon`, `nldd-tooltip` | Tekst en visuele content |
+| **Actions** | `nldd-button`, `nldd-icon-button`, `nldd-toolbar` | Knoppen en acties |
+| **Inputs** | `nldd-text-field`, `nldd-dropdown`, `nldd-checkbox`, `nldd-radio-button`, `nldd-switch` | Formulier-invoer |
+| **Forms** | `nldd-form-field` | Formulierveld wrapper met label en foutmelding |
+| **Lists** | `nldd-list`, `nldd-menu`, `nldd-cell` | Lijsten en menu's |
+| **Feedback** | `nldd-dialog`, `nldd-modal` | Dialogen en modals |
+| **Layout** | `nldd-container`, `nldd-box`, `nldd-spacer`, `nldd-divider` | Spacing en groepering |
 
 ---
 
@@ -360,9 +360,9 @@ Binnen secties gebruik je content- en interactiecomponenten:
 ### Container (padding wrapper)
 
 ```html
-<ndd-container padding="16" md-padding="24" lg-padding="32">
+<nldd-container padding="16" md-padding="24" lg-padding="32">
   <!-- Content met responsieve padding -->
-</ndd-container>
+</nldd-container>
 ```
 
 Geldige padding-waarden: `0`, `2`, `4`, `6`, `8`, `10`, `12`, `16`, `20`, `24`, `28`, `32`, `40`, `44`, `48`, `56`, `64`, `80`, `96`
@@ -370,17 +370,17 @@ Geldige padding-waarden: `0`, `2`, `4`, `6`, `8`, `10`, `12`, `16`, `20`, `24`, 
 ### Box (visuele groepering)
 
 ```html
-<ndd-box>
+<nldd-box>
   <!-- Gerelateerde componenten in een visueel afgebakend gebied -->
-</ndd-box>
+</nldd-box>
 ```
 
 ### Sheet (overlay paneel)
 
 ```html
-<ndd-sheet placement="right|left|bottom" accessible-label="Details">
+<nldd-sheet placement="right|left|bottom" accessible-label="Details">
   <!-- Sheet content -->
-</ndd-sheet>
+</nldd-sheet>
 ```
 
 Methoden: `show()`, `hide()`
@@ -388,7 +388,7 @@ Methoden: `show()`, `hide()`
 ### Spacer
 
 ```html
-<ndd-spacer size="32"></ndd-spacer>
+<nldd-spacer size="32"></nldd-spacer>
 ```
 
 Sizes: `2`, `4`, `6`, `8`, `12`, `16`, `20`, `24`, `32`, `40`, `44`, `48`, `64`, `80`, `96`, `m`, `flexible`
@@ -399,25 +399,25 @@ Sizes: `2`, `4`, `6`, `8`, `12`, `16`, `20`, `24`, `32`, `40`, `44`, `48`, `64`,
 
 Achtergrondkleur wordt gecascade via `--context-parent-background-color`:
 
-1. Stel `background` in op `ndd-app-view` voor de hele applicatie
-2. Of stel `background` in op individuele `ndd-page` componenten per paneel
+1. Stel `background` in op `nldd-app-view` voor de hele applicatie
+2. Of stel `background` in op individuele `nldd-page` componenten per paneel
 3. Kinderen lezen de variabele automatisch
 
 ```html
 <!-- Hele app tinted -->
-<ndd-app-view background="tinted">...</ndd-app-view>
+<nldd-app-view background="tinted">...</nldd-app-view>
 
 <!-- Per paneel -->
-<ndd-app-view>
-  <ndd-navigation-split-view>
-    <ndd-split-view-pane slot="sidebar">
-      <ndd-page background="tinted">...</ndd-page>
-    </ndd-split-view-pane>
-    <ndd-split-view-pane slot="main">
-      <ndd-page background="default">...</ndd-page>
-    </ndd-split-view-pane>
-  </ndd-navigation-split-view>
-</ndd-app-view>
+<nldd-app-view>
+  <nldd-navigation-split-view>
+    <nldd-split-view-pane slot="sidebar">
+      <nldd-page background="tinted">...</nldd-page>
+    </nldd-split-view-pane>
+    <nldd-split-view-pane slot="main">
+      <nldd-page background="default">...</nldd-page>
+    </nldd-split-view-pane>
+  </nldd-navigation-split-view>
+</nldd-app-view>
 ```
 
 ---
@@ -427,120 +427,120 @@ Achtergrondkleur wordt gecascade via `--context-parent-background-color`:
 ### Voorbeeld 1: Applicatie met navigatie
 
 ```html
-<ndd-app-view background="default">
-  <ndd-navigation-split-view>
+<nldd-app-view background="default">
+  <nldd-navigation-split-view>
     <!-- Sidebar met navigatie -->
-    <ndd-split-view-pane slot="sidebar">
-      <ndd-page sticky-header background="tinted">
-        <ndd-container slot="header" padding="16">
-          <ndd-top-title-bar text="Navigatie"></ndd-top-title-bar>
-        </ndd-container>
-        <ndd-simple-section>
-          <ndd-list>
+    <nldd-split-view-pane slot="sidebar">
+      <nldd-page sticky-header background="tinted">
+        <nldd-container slot="header" padding="16">
+          <nldd-top-title-bar text="Navigatie"></nldd-top-title-bar>
+        </nldd-container>
+        <nldd-simple-section>
+          <nldd-list>
             <!-- Navigatie-items -->
-          </ndd-list>
-        </ndd-simple-section>
-      </ndd-page>
-    </ndd-split-view-pane>
+          </nldd-list>
+        </nldd-simple-section>
+      </nldd-page>
+    </nldd-split-view-pane>
 
     <!-- Hoofdinhoud -->
-    <ndd-split-view-pane slot="main">
-      <ndd-page sticky-header>
-        <ndd-container slot="header" padding="16">
-          <ndd-top-title-bar text="Documenttitel" supporting-text="Laatst bewerkt: vandaag">
-            <ndd-icon-button slot="toolbar" icon="edit"></ndd-icon-button>
-          </ndd-top-title-bar>
-        </ndd-container>
-        <ndd-simple-section>
-          <ndd-rich-text>
+    <nldd-split-view-pane slot="main">
+      <nldd-page sticky-header>
+        <nldd-container slot="header" padding="16">
+          <nldd-top-title-bar text="Documenttitel" supporting-text="Laatst bewerkt: vandaag">
+            <nldd-icon-button slot="toolbar" icon="edit"></nldd-icon-button>
+          </nldd-top-title-bar>
+        </nldd-container>
+        <nldd-simple-section>
+          <nldd-rich-text>
             <h2>Inhoud</h2>
             <p>Primaire content van de pagina.</p>
-          </ndd-rich-text>
-        </ndd-simple-section>
-      </ndd-page>
-    </ndd-split-view-pane>
+          </nldd-rich-text>
+        </nldd-simple-section>
+      </nldd-page>
+    </nldd-split-view-pane>
 
     <!-- Inspector voor details -->
-    <ndd-split-view-pane slot="inspector">
-      <ndd-page sticky-header>
-        <ndd-container slot="header" padding="16">
-          <ndd-top-title-bar text="Eigenschappen"></ndd-top-title-bar>
-        </ndd-container>
-        <ndd-simple-section>
-          <ndd-rich-text>
+    <nldd-split-view-pane slot="inspector">
+      <nldd-page sticky-header>
+        <nldd-container slot="header" padding="16">
+          <nldd-top-title-bar text="Eigenschappen"></nldd-top-title-bar>
+        </nldd-container>
+        <nldd-simple-section>
+          <nldd-rich-text>
             <p>Details over het geselecteerde item.</p>
-          </ndd-rich-text>
-        </ndd-simple-section>
-      </ndd-page>
-    </ndd-split-view-pane>
-  </ndd-navigation-split-view>
-</ndd-app-view>
+          </nldd-rich-text>
+        </nldd-simple-section>
+      </nldd-page>
+    </nldd-split-view-pane>
+  </nldd-navigation-split-view>
+</nldd-app-view>
 ```
 
 ### Voorbeeld 2: Eenvoudige pagina
 
 ```html
-<ndd-app-view>
-  <ndd-page sticky-header>
-    <ndd-top-navigation-bar
+<nldd-app-view>
+  <nldd-page sticky-header>
+    <nldd-top-navigation-bar
       slot="header"
       title="Rijksoverheid"
       logo-has-wordmark
       logo-title="Rijksoverheid"
     >
-    </ndd-top-navigation-bar>
+    </nldd-top-navigation-bar>
 
-    <ndd-simple-section>
-      <ndd-rich-text>
+    <nldd-simple-section>
+      <nldd-rich-text>
         <h1>Welkom</h1>
         <p>Een eenvoudige pagina zonder split view.</p>
-      </ndd-rich-text>
-    </ndd-simple-section>
+      </nldd-rich-text>
+    </nldd-simple-section>
 
-    <ndd-two-thirds-one-third-section>
-      <ndd-rich-text>
+    <nldd-two-thirds-one-third-section>
+      <nldd-rich-text>
         <h2>Hoofdartikel</h2>
         <p>Content in 2/3 breedte.</p>
-      </ndd-rich-text>
-      <ndd-rich-text slot="right">
+      </nldd-rich-text>
+      <nldd-rich-text slot="right">
         <h3>Gerelateerd</h3>
         <p>Sidebar content in 1/3 breedte.</p>
-      </ndd-rich-text>
-    </ndd-two-thirds-one-third-section>
+      </nldd-rich-text>
+    </nldd-two-thirds-one-third-section>
 
-    <ndd-container slot="footer" padding="16">
-      <ndd-rich-text>
+    <nldd-container slot="footer" padding="16">
+      <nldd-rich-text>
         <p>Footer informatie</p>
-      </ndd-rich-text>
-    </ndd-container>
-  </ndd-page>
-</ndd-app-view>
+      </nldd-rich-text>
+    </nldd-container>
+  </nldd-page>
+</nldd-app-view>
 ```
 
 ### Voorbeeld 3: Applicatie met toolbar
 
 ```html
-<ndd-app-view>
-  <ndd-bar-split-view>
-    <ndd-container slot="toolbar" sm-order="1" md-order="1">
-      <ndd-tab-bar navigation responsive>
-        <ndd-tab-bar-item text="Start" selected></ndd-tab-bar-item>
-        <ndd-tab-bar-item text="Zoeken"></ndd-tab-bar-item>
-      </ndd-tab-bar>
-    </ndd-container>
+<nldd-app-view>
+  <nldd-bar-split-view>
+    <nldd-container slot="toolbar" sm-order="1" md-order="1">
+      <nldd-tab-bar navigation responsive>
+        <nldd-tab-bar-item text="Start" selected></nldd-tab-bar-item>
+        <nldd-tab-bar-item text="Zoeken"></nldd-tab-bar-item>
+      </nldd-tab-bar>
+    </nldd-container>
 
-    <ndd-page slot="main" sm-order="2" md-order="2" sticky-header>
-      <ndd-container slot="header" padding="16">
-        <ndd-top-title-bar text="Overzicht"></ndd-top-title-bar>
-      </ndd-container>
-      <ndd-simple-section>
-        <ndd-rich-text>
+    <nldd-page slot="main" sm-order="2" md-order="2" sticky-header>
+      <nldd-container slot="header" padding="16">
+        <nldd-top-title-bar text="Overzicht"></nldd-top-title-bar>
+      </nldd-container>
+      <nldd-simple-section>
+        <nldd-rich-text>
           <p>Content onder de toolbar.</p>
-        </ndd-rich-text>
-      </ndd-simple-section>
-    </ndd-page>
-  </ndd-bar-split-view>
-</ndd-app-view>
+        </nldd-rich-text>
+      </nldd-simple-section>
+    </nldd-page>
+  </nldd-bar-split-view>
+</nldd-app-view>
 ```
 
 ---
@@ -549,22 +549,22 @@ Achtergrondkleur wordt gecascade via `--context-parent-background-color`:
 
 ```
 Heeft de app een zijnavigatie?
-├── Ja → ndd-navigation-split-view
+├── Ja → nldd-navigation-split-view
 │   ├── Met details-paneel? → voeg inspector slot toe
 │   ├── Met subnavigatie? → voeg secondary-sidebar slot toe
-│   └── Met toolbars in main? → nest ndd-bar-split-view in main slot
+│   └── Met toolbars in main? → nest nldd-bar-split-view in main slot
 │
 ├── Nee, maar wel toolbars/statusbalken?
-│   └── ndd-bar-split-view
+│   └── nldd-bar-split-view
 │
 ├── Nee, maar meerdere gelijke panelen naast elkaar?
-│   └── ndd-side-by-side-split-view
+│   └── nldd-side-by-side-split-view
 │
 ├── Nee, maar meerdere gelijke panelen gestapeld?
-│   └── ndd-stacked-split-view
+│   └── nldd-stacked-split-view
 │
 └── Nee, gewoon één pagina
-    └── ndd-page direct in ndd-app-view
+    └── nldd-page direct in nldd-app-view
 ```
 
-**Nesting:** Split views kunnen in elkaar genest worden. Plaats een geneste split view in een `ndd-split-view-pane` binnen het gewenste slot.
+**Nesting:** Split views kunnen in elkaar genest worden. Plaats een geneste split view in een `nldd-split-view-pane` binnen het gewenste slot.

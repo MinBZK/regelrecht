@@ -34,17 +34,18 @@ except ImportError:
     sys.exit(1)
 
 
+# RFC-013: het doel is altijd een onveranderlijke tag-URL, nooit een branch-URL.
+TAG_SCHEMA_URL = (
+    "https://raw.githubusercontent.com/MinBZK/regelrecht/"
+    "refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json"
+)
+
 OLD_SCHEMA_PATTERNS = [
     "schema/v0.3.0/schema.json",
     "schema/v0.3.1/schema.json",
     "schema/v0.3.2/schema.json",
     "schema/v0.4.0/schema.json",
 ]
-NEW_SCHEMA_URL = (
-    "https://raw.githubusercontent.com/MinBZK/regelrecht/"
-    "refs/heads/main/schema/v0.5.0/schema.json"
-)
-
 # Also fix old repo name
 OLD_REPO = "MinBZK/regelrecht-mvp"
 NEW_REPO = "MinBZK/regelrecht"
@@ -60,7 +61,7 @@ def migrate_schema_url(data):
         # Fix old schema version
         for old in OLD_SCHEMA_PATTERNS:
             if old in schema:
-                schema = schema.replace(old, "schema/v0.5.0/schema.json")
+                schema = TAG_SCHEMA_URL
                 break
         data["$schema"] = schema
 

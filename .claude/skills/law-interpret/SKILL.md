@@ -61,7 +61,7 @@ the pipeline.
 Before generating, verify the target file's `$schema` URL points to v0.5.6. If it points
 to an older version (e.g., v0.3.2, v0.4.0, or v0.5.0), update it to:
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.6/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
 ```
 This prevents generating v0.5.6 logic against an old schema declaration.
 

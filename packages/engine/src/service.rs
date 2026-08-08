@@ -689,7 +689,6 @@ impl LawExecutionService {
     ///
     /// Convenience wrapper around [`evaluate_law`](Self::evaluate_law).
     /// Returns the requested output plus any causally-entailed outputs (hooks, overrides).
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
     pub fn evaluate_law_output(
         &self,
         law_id: &str,
@@ -762,7 +761,6 @@ impl LawExecutionService {
     /// # Returns
     /// `ExecutionOutcome::Complete` if all stages are done, or
     /// `ExecutionOutcome::Yielded` if waiting for external input.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, state, parameters), fields(law_id = %law_id, output = %output_name)))]
     pub fn execute_stage(
         &self,
         law_id: &str,
@@ -1096,7 +1094,6 @@ impl LawExecutionService {
     }
 
     /// Internal method with cycle tracking (single-output).
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters, res_ctx), fields(law_id = %law_id, output = %output_name, depth = res_ctx.depth)))]
     fn evaluate_law_output_internal(
         &self,
         law_id: &str,
@@ -1236,7 +1233,6 @@ impl LawExecutionService {
     /// * `stage` - The lifecycle stage (e.g., "BESLUIT", "BEKENDMAKING")
     /// * `parameters` - Parameters available to hook articles
     /// * `res_ctx` - Resolution context for cycle detection and tracing
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, _law, parameters, res_ctx), fields(hook_point = ?hook_point, law_id = %_law.id, article = %article.number)))]
     fn fire_hooks(
         &self,
         hook_point: HookPoint,
@@ -1454,7 +1450,6 @@ impl LawExecutionService {
     ///
     /// For each output in the result, checks if an override exists from the contextual law.
     /// If found, executes the overriding article and replaces the output value.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, result, article, law, parameters, res_ctx), fields(law_id = %law.id, article = %article.number)))]
     fn apply_overrides(
         &self,
         result: &mut ArticleResult,
@@ -1736,7 +1731,6 @@ impl LawExecutionService {
     /// 3. If not found + has default: execute the default actions
     /// 4. If not found + required + no default: error
     /// 5. If not found + not required + no default: skip
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, law, context, res_ctx), fields(law_id = %law.id, article = %article.number)))]
     fn resolve_open_terms(
         &self,
         article: &Article,
@@ -2496,7 +2490,6 @@ impl ServiceProvider for LawExecutionService {
         self.resolver.get_law(law_id)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, source_parameters, context), fields(regulation = %regulation, output = %output)))]
     fn resolve_external_input(
         &self,
         regulation: &str,

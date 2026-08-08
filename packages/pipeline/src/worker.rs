@@ -1192,8 +1192,29 @@ enum RelatedResolution {
     Resolved(String),
     /// SRU search matched more than one law — a human must pick; skip for now.
     NeedsConfirmation,
-    /// No candidate (unknown slug, zero SRU hits, or a lookup error). Skip.
+    /// No candidate: unknown slug or zero SRU hits. Skip.
     Unresolved,
+    /// The source could not be asked — a throttle or an outage at
+    /// wetten.overheid.nl. Distinct from `Unresolved` on purpose: the law may
+    /// well exist, so counting this as "not found" hides an incomplete
+    /// enrichment behind a normal-looking number.
+    LookupFailed,
+}
+
+/// Map an SRU search outcome onto a resolution. Only an unambiguous single hit
+/// with a well-formed BWB id resolves; a malformed id must not slip into a
+/// harvest payload.
+fn classify_sru_result(
+    results: std::result::Result<Vec<crate::api::bwb_search::BwbSearchResult>, String>,
+) -> RelatedResolution {
+    match results {
+        Ok(results) if results.len() == 1 && is_valid_bwb_id(&results[0].bwb_id) => {
+            RelatedResolution::Resolved(results[0].bwb_id.clone())
+        }
+        Ok(results) if results.len() > 1 => RelatedResolution::NeedsConfirmation,
+        Ok(_) => RelatedResolution::Unresolved,
+        Err(_) => RelatedResolution::LookupFailed,
+    }
 }
 
 /// Resolve a related-legislation entry to a BWB id via the hybrid order:
@@ -1237,17 +1258,11 @@ async fn resolve_related_bwb_id(
     // (c) SRU search by name — accept only an unambiguous single hit, and only
     // if it is a well-formed BWB id (paths a/b validate too; don't let a
     // malformed SRU id slip into a harvest payload).
-    match crate::api::bwb_search::search_bwb_by_name(http_client, &entry.name).await {
-        Ok(results) if results.len() == 1 && is_valid_bwb_id(&results[0].bwb_id) => {
-            RelatedResolution::Resolved(results[0].bwb_id.clone())
-        }
-        Ok(results) if results.len() > 1 => RelatedResolution::NeedsConfirmation,
-        Ok(_) => RelatedResolution::Unresolved,
-        Err(e) => {
-            tracing::warn!(name = %entry.name, error = %e, "SRU search failed for related legislation");
-            RelatedResolution::Unresolved
-        }
+    let results = crate::api::bwb_search::search_bwb_by_name(http_client, &entry.name).await;
+    if let Err(e) = &results {
+        tracing::warn!(name = %entry.name, error = %e, "SRU search failed for related legislation");
     }
+    classify_sru_result(results)
 }
 
 /// Resolve every related-legislation entry declared by an enrichment and enqueue
@@ -1275,6 +1290,7 @@ async fn harvest_related_legislation(
     let mut exhausted = 0u32;
     let mut needs_confirmation = 0u32;
     let mut unresolved = 0u32;
+    let mut lookup_failed = 0u32;
 
     for entry in related {
         let bwb_id = match resolve_related_bwb_id(pool, http_client, entry).await {
@@ -1290,6 +1306,15 @@ async fn harvest_related_legislation(
             }
             RelatedResolution::Unresolved => {
                 unresolved += 1;
+                continue;
+            }
+            RelatedResolution::LookupFailed => {
+                lookup_failed += 1;
+                tracing::warn!(
+                    parent_law_id = %parent_law_id,
+                    name = %entry.name,
+                    "related legislation could not be looked up: enrichment is incomplete for this entry"
+                );
                 continue;
             }
         };
@@ -1343,6 +1368,7 @@ async fn harvest_related_legislation(
         exhausted,
         needs_confirmation,
         unresolved,
+        lookup_failed,
         "related-legislation harvest summary"
     );
 }
@@ -3258,6 +3284,58 @@ async fn handle_enrich_exhausted_or_retry(
 
 #[cfg(test)]
 mod tests {
+    use crate::api::bwb_search::BwbSearchResult;
+
+    fn hit(bwb_id: &str) -> BwbSearchResult {
+        BwbSearchResult {
+            bwb_id: bwb_id.to_string(),
+            title: "Een wet".to_string(),
+            law_type: "wet".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_throttled_sru_lookup_is_not_a_law_that_does_not_exist() {
+        assert!(matches!(
+            classify_sru_result(Err(
+                "BWB search returned HTTP 429 Too Many Requests".to_string()
+            )),
+            RelatedResolution::LookupFailed
+        ));
+    }
+
+    #[test]
+    fn zero_hits_stays_unresolved() {
+        assert!(matches!(
+            classify_sru_result(Ok(vec![])),
+            RelatedResolution::Unresolved
+        ));
+    }
+
+    #[test]
+    fn one_well_formed_hit_resolves() {
+        assert!(matches!(
+            classify_sru_result(Ok(vec![hit("BWBR0018451")])),
+            RelatedResolution::Resolved(id) if id == "BWBR0018451"
+        ));
+    }
+
+    #[test]
+    fn one_malformed_hit_does_not_resolve() {
+        assert!(matches!(
+            classify_sru_result(Ok(vec![hit("CVDR123456")])),
+            RelatedResolution::Unresolved
+        ));
+    }
+
+    #[test]
+    fn several_hits_need_a_human() {
+        assert!(matches!(
+            classify_sru_result(Ok(vec![hit("BWBR0018451"), hit("BWBR0000001")])),
+            RelatedResolution::NeedsConfirmation
+        ));
+    }
+
     use super::*;
     use std::path::PathBuf;
 

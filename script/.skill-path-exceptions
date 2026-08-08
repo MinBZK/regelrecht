@@ -1,0 +1,12 @@
+# Paden die een skill noemt en die met opzet niet in deze repo bestaan.
+# Eén pad per regel, met de reden erachter. script/check-skill-references.sh
+# leest dit bestand en faalt ook op een verouderde regel: bestaat het pad
+# inmiddels wél, of noemt geen enkele skill het nog, dan moet de regel weg.
+
+# Sidecar die de enrich-pipeline zelf wegschrijft; hij hoort niet in het corpus
+# van deze repo te staan.
+corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/.enrichment-result.yaml
+
+# Ligt in de corpus-repo, niet hier. De skill noemt het pad relatief aan
+# <corpus-root>.
+docs/drift-ijkpunten.md
