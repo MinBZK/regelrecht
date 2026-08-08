@@ -402,7 +402,7 @@ jobs:
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          gh label create mutation-testing \
+          gh label create mbot:survivors \
             --color FBCA04 \
             --description "Overlevende mutanten uit de wekelijkse mutatierun" \
             --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
@@ -451,13 +451,13 @@ jobs:
           new_issue=$(gh issue create \
             --repo "$GITHUB_REPOSITORY" \
             --title "Mutatietesten: ${MISSED} overlevende mutanten (${today})" \
-            --label mutation-testing \
+            --label mbot:survivors \
             --body-file body.md)
           echo "Aangemaakt: $new_issue"
 
           # Het vorige issue is een momentopname van dezelfde voorraad en wordt
           # door dit issue vervangen. Wat er nog in stond, staat er opnieuw in.
-          gh issue list --repo "$GITHUB_REPOSITORY" --label mutation-testing \
+          gh issue list --repo "$GITHUB_REPOSITORY" --label mbot:survivors \
             --state open --json number --jq '.[].number' \
             | while read -r n; do
                 if [ "${new_issue##*/}" != "$n" ]; then
