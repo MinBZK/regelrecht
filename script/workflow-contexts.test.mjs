@@ -18,7 +18,20 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const DIR = fileURLToPath(new URL('../.github/workflows/', import.meta.url));
-const VERBODEN = /\$\{\{\s*(runner|steps|job|env)\.|hashFiles\s*\(/;
+const EXPRESSIE = /\$\{\{([\s\S]*?)\}\}/g;
+const VERBODEN = /\b(runner|steps|job|env)\.|\bhashFiles\s*\(/;
+
+/**
+ * Kijkt in de hele expressie en niet alleen naar het eerste woord erachter:
+ * `${{ format('{0}/x', runner.temp) }}` wordt door Actions net zo hard
+ * afgekeurd als `${{ runner.temp }}`.
+ */
+function verbodenContext(regel) {
+  for (const [, expressie] of regel.matchAll(EXPRESSIE)) {
+    if (VERBODEN.test(expressie)) return true;
+  }
+  return false;
+}
 
 /**
  * De regels van elk `env:`-blok dat direct onder een baan hangt, dus op inspring
@@ -77,13 +90,21 @@ jobs:
 `;
 
 test('een verboden context op jobniveau wordt gevonden', () => {
-  const geraakt = jobEnvRegels(FOUT).filter(([, regel]) => VERBODEN.test(regel));
+  const geraakt = jobEnvRegels(FOUT).filter(([, regel]) => verbodenContext(regel));
   assert.equal(geraakt.length, 1);
   assert.equal(geraakt[0][0], 6);
 });
 
+test('een verboden context verpakt in een functie wordt ook gevonden', () => {
+  const verpakt = FOUT.replace(
+    '${{ runner.temp }}/iets',
+    "${{ format('{0}/iets', runner.temp) }}",
+  );
+  assert.equal(jobEnvRegels(verpakt).filter(([, regel]) => verbodenContext(regel)).length, 1);
+});
+
 test('dezelfde context in een env onder een stap blijft ongemoeid', () => {
-  assert.equal(jobEnvRegels(GOED).filter(([, regel]) => VERBODEN.test(regel)).length, 0);
+  assert.equal(jobEnvRegels(GOED).filter(([, regel]) => verbodenContext(regel)).length, 0);
 });
 
 for (const naam of bestanden) {
@@ -91,7 +112,7 @@ for (const naam of bestanden) {
     const bron = readFileSync(DIR + naam, 'utf8');
     for (const [nummer, regel] of jobEnvRegels(bron)) {
       assert.ok(
-        !VERBODEN.test(regel),
+        !verbodenContext(regel),
         `${naam}:${nummer} gebruikt een context die op jobniveau niet bestaat, ` +
           `waardoor Actions het hele bestand afkeurt: ${regel.trim()}`,
       );
