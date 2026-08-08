@@ -33,7 +33,10 @@ use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
-use crate::resolver::{RuleResolver, SelectionReason};
+use crate::resolver::{
+    DeclarationKind, DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal,
+    ProcedureMiss, RuleResolver, SelectionReason,
+};
 use crate::trace::TraceBuilder;
 use crate::types::{
     Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
@@ -102,6 +105,17 @@ struct ResolutionContext<'a> {
     /// The law that initiated the current execution chain (for override scoping).
     /// Overrides only apply when declared by this law.
     contextual_law_id: Option<String>,
+    /// Implementations refused by the delegation gate during this execution.
+    /// Collected independently of tracing so the refusal reaches the receipt
+    /// even when no trace was requested.
+    delegation_refusals: Vec<DelegationRefusal>,
+    /// Laws whose declarations were answered from another version than the one
+    /// in force, recorded once per execution.
+    declaration_version_notes: Vec<DeclarationsFromOtherVersion>,
+    /// Hooks, overrides and implementations skipped during this execution
+    /// because their law had no version in force on the reference date.
+    /// Collected independently of tracing so the skip reaches the receipt.
+    declarations_not_in_force: Vec<DeclarationNotInForce>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -125,6 +139,20 @@ fn selection_error(law_id: &str, calculation_date: &str, reason: SelectionReason
             reference_date: calculation_date.to_string(),
             valid_to: valid_to.format("%Y-%m-%d").to_string(),
         },
+        // Also a data fact, not a verdict: the file does not say when this
+        // version commenced, so the engine cannot say it was in force.
+        SelectionReason::UndeterminedStart(reference) => EngineError::ResolutionError(format!(
+            "law '{law_id}': its valid_from is the internal reference '{reference}', so whether \
+             it was in force on {calculation_date} cannot be determined from the regulation"
+        )),
+        // A different fact, and it must read differently: the file carries
+        // something that is neither a date nor a reference, so there is nothing
+        // to resolve elsewhere and nothing to harvest. Saying "cannot be
+        // determined" here would dress corruption up as a known gap.
+        SelectionReason::UnreadableStart(raw) => EngineError::ResolutionError(format!(
+            "law '{law_id}': its valid_from is '{raw}', which is neither a date nor an internal \
+             reference, so this version cannot be placed in time at all"
+        )),
     }
 }
 
@@ -143,6 +171,9 @@ impl<'a> ResolutionContext<'a> {
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
+            delegation_refusals: Vec::new(),
+            declaration_version_notes: Vec::new(),
+            declarations_not_in_force: Vec::new(),
         })
     }
 
@@ -201,6 +232,36 @@ impl<'a> ResolutionContext<'a> {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_resolve_type(rt);
         }
+    }
+
+    /// Record a hook, override or implementation that the indexes offered but
+    /// that has no version in force on the reference date.
+    ///
+    /// It is skipped either way — a regulation that is not in force does not
+    /// apply — but the skip leaves no mark on the outcome, so it is stated
+    /// three times over: in the log, as a node in the trace under the kind it
+    /// belongs to, and on the result, which carries it to the receipt even when
+    /// no trace was requested.
+    fn note_not_in_force(&mut self, note: DeclarationNotInForce) {
+        tracing::warn!(
+            kind = note.kind.as_str(),
+            law_id = %note.law_id,
+            article = %note.article,
+            subject = %note.subject,
+            reason = %note.reason,
+            "Declaration not applied: no version in force on the reference date"
+        );
+        let node_type = match note.kind {
+            DeclarationKind::Hook => PathNodeType::HookResolution,
+            DeclarationKind::Override => PathNodeType::OverrideResolution,
+            DeclarationKind::Implementation => PathNodeType::OpenTermResolution,
+        };
+        let message = note.message();
+        {
+            let _guard = self.trace_guard(format!("{}:{}", note.law_id, note.article), node_type);
+            self.trace_set_message(message);
+        }
+        self.declarations_not_in_force.push(note);
     }
 
     /// Push a trace node and return a guard that auto-pops on drop.
@@ -287,6 +348,86 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
             article.hash(hasher);
             construct.hash(hasher);
         }
+    }
+}
+
+/// One construct an article flags as beyond what it can express (RFC-012).
+///
+/// Two channels say this, and the engine treats them alike: `untranslatables`
+/// on schema v0.5.x and `markings` from v0.6.0. Markings are read *beside*
+/// untranslatables, not instead of them, because the laws in the test suite are
+/// still on v0.5.x and an article that flags something must never be executed
+/// as if it had flagged nothing.
+struct FlaggedConstruct<'a> {
+    /// Which channel this came from, used verbatim in the trace.
+    label: &'static str,
+    /// The construct itself, in the words the article uses.
+    construct: &'a str,
+    /// What has to change before the article can be translated in full.
+    reason: String,
+    /// Whether a human has reviewed and acknowledged this gap.
+    accepted: bool,
+}
+
+impl FlaggedConstruct<'_> {
+    fn to_error(&self, law_id: &str, article_number: &str) -> EngineError {
+        EngineError::Untranslatable {
+            law_id: law_id.to_string(),
+            article: article_number.to_string(),
+            construct: self.construct.to_string(),
+            reason: self.reason.clone(),
+        }
+    }
+}
+
+/// Everything an article flags, both channels, in document order.
+fn flagged_constructs(machine_readable: &MachineReadable) -> Vec<FlaggedConstruct<'_>> {
+    let untranslatables = machine_readable
+        .untranslatables
+        .iter()
+        .flatten()
+        .map(|entry| FlaggedConstruct {
+            label: "Untranslatable",
+            construct: &entry.construct,
+            reason: entry.reason.clone(),
+            accepted: entry.accepted,
+        });
+    let markings = machine_readable
+        .markings
+        .iter()
+        .flatten()
+        .map(|marking| FlaggedConstruct {
+            label: "Marking",
+            construct: &marking.about,
+            reason: marking_reason(marking),
+            accepted: marking.accepted,
+        });
+    untranslatables.chain(markings).collect()
+}
+
+/// Why a marked article stopped, as one sentence.
+///
+/// A v0.5.x `untranslatables` entry carried a single free-text `reason`. A
+/// marking says the same thing in three fields, and the error message wants
+/// all of them: the diagnosis from `reason`, and behind it the layer that has
+/// to move (`resolution`) with the change that would move it (`resolved_by`).
+/// The diagnosis leads because it is the half that cannot be reconstructed
+/// from the other two — the change follows from the reading of the provision
+/// and never the other way round. `resolved_by` is required by schema v0.6.0
+/// but optional on the model, which must also read files written before it
+/// was; then the layer is the answer.
+fn marking_reason(marking: &crate::article::Marking) -> String {
+    let layer = match marking.resolution {
+        crate::article::MarkingResolution::Operation => "needs a new operation",
+        crate::article::MarkingResolution::Model => "needs a new shape in the format",
+    };
+    let change = match marking.resolved_by {
+        Some(ref resolved_by) => format!("{layer}: {resolved_by}"),
+        None => layer.to_string(),
+    };
+    match marking.reason.trim() {
+        "" => change,
+        diagnosis => format!("{diagnosis} ({change})"),
     }
 }
 
@@ -545,6 +686,9 @@ impl LawExecutionService {
                 outputs: result.outputs.clone(),
                 output_provenance: result.output_provenance.clone(),
                 trace: result.trace.clone(),
+                delegation_refusals: result.delegation_refusals.clone(),
+                declaration_version_notes: result.declaration_version_notes.clone(),
+                declarations_not_in_force: result.declarations_not_in_force.clone(),
             },
             accepted_values: Vec::new(),
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -744,7 +888,18 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace)?;
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
+        let mut result =
+            self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)?;
+        result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+        result
+            .declaration_version_notes
+            .clone_from(&res_ctx.declaration_version_notes);
+        result
+            .declarations_not_in_force
+            .clone_from(&res_ctx.declarations_not_in_force);
+        Ok(result)
     }
 
     /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
@@ -864,9 +1019,35 @@ impl LawExecutionService {
         let legal_character = produces.and_then(|p| p.legal_character.as_deref());
         let procedure_id = produces.and_then(|p| p.procedure_id.as_deref());
 
-        // Look up procedure definition
-        let procedure =
-            legal_character.and_then(|lc| self.resolver.find_procedure(lc, procedure_id));
+        // Look up the procedure definition. An article that produces nothing
+        // with a legal character has no lifecycle to begin with; beyond that,
+        // only "this legal character has no procedure in the corpus" may fall
+        // through to single-stage execution. A procedure that was asked for by
+        // name and not found must not: dropping it would drop the stages it
+        // imposes — the hearing, the notification, the objection period — and
+        // the decision would look complete while the person it is about never
+        // got what the procedure owes them.
+        let procedure = match legal_character {
+            None => None,
+            Some(lc) => match self.resolver.find_procedure_reported(lc, procedure_id) {
+                Ok(def) => Some(def),
+                Err(ProcedureMiss::NoneForCharacter) => None,
+                Err(ProcedureMiss::NamedNotFound(id)) => {
+                    return Err(EngineError::ResolutionError(format!(
+                        "{law_id} article {} asks for procedure '{id}' for legal character \
+                         '{lc}', which no loaded law defines. Executing without it would drop \
+                         the stages that procedure imposes.",
+                        article.number
+                    )));
+                }
+                Err(ProcedureMiss::DefaultDangling(id)) => {
+                    return Err(EngineError::ResolutionError(format!(
+                        "legal character '{lc}' has '{id}' registered as its default procedure, \
+                         but no definition of '{id}' is loaded"
+                    )));
+                }
+            },
+        };
 
         // If no procedure, fall through to normal single-stage execution
         let Some(procedure) = procedure else {
@@ -953,6 +1134,7 @@ impl LawExecutionService {
             ResolutionContext::new(calculation_date)?
         };
         res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
+        self.note_declaration_versions(&mut res_ctx);
 
         // Execute the article with stage-aware hook firing.
         let result = self.evaluate_article_with_service(
@@ -1009,7 +1191,47 @@ impl LawExecutionService {
         // All stages complete
         let mut final_result = result;
         final_result.outputs = stage_state.accumulated_outputs;
+        final_result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+        final_result
+            .declaration_version_notes
+            .clone_from(&res_ctx.declaration_version_notes);
+        final_result
+            .declarations_not_in_force
+            .clone_from(&res_ctx.declarations_not_in_force);
         Ok(ExecutionOutcome::Complete(Box::new(final_result)))
+    }
+
+    /// Record, once per execution, which laws had their hooks, overrides and
+    /// procedures answered from a version other than the one in force.
+    ///
+    /// The three indexes carry only the newest version of each law and their
+    /// lookups take no reference date. For a calculation on an older date that
+    /// makes "no hook, no override, no procedure" an answer about the wrong
+    /// version. The engine cannot silently pass that off as a finding, so it
+    /// says so: loudly in the log, in the trace, and on the receipt. Whoever
+    /// reads a decision that hinges on an absent motiveringsplicht can see that
+    /// its absence was not established.
+    fn note_declaration_versions(&self, res_ctx: &mut ResolutionContext<'_>) {
+        if !res_ctx.declaration_version_notes.is_empty() {
+            return; // already recorded for this execution
+        }
+        let notes = self
+            .resolver
+            .declarations_from_another_version(res_ctx.reference_date());
+        for note in &notes {
+            tracing::warn!(
+                law_id = %note.law_id,
+                indexed_version = ?note.indexed_version,
+                in_force_version = ?note.in_force_version,
+                "Hooks, overrides and procedures answered from a version that is not in force"
+            );
+            let message = note.message();
+            let _guard = res_ctx.trace_guard(&note.law_id, PathNodeType::CrossLawReference);
+            res_ctx.trace_set_message(message);
+        }
+        res_ctx.declaration_version_notes = notes;
     }
 
     /// Internal method for multi-output evaluation.
@@ -1029,6 +1251,8 @@ impl LawExecutionService {
             .resolver
             .get_law_for_date_reported(law_id, res_ctx.reference_date())
             .map_err(|reason| selection_error(law_id, res_ctx.calculation_date, reason))?;
+
+        self.note_declaration_versions(res_ctx);
 
         // Group outputs by their producing article number to avoid redundant evaluations
         let mut article_to_outputs: BTreeMap<String, Vec<&str>> = BTreeMap::new();
@@ -1092,6 +1316,18 @@ impl LawExecutionService {
         // causally-entailed outputs (hooks, overrides). A beschikking is legally
         // indivisible per AWB 1:3 — its consequences cannot be stripped.
 
+        // Every refusal seen anywhere in this execution chain, not just in the
+        // article that happened to be merged first.
+        result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+        result
+            .declaration_version_notes
+            .clone_from(&res_ctx.declaration_version_notes);
+        result
+            .declarations_not_in_force
+            .clone_from(&res_ctx.declarations_not_in_force);
+
         Ok(result)
     }
 
@@ -1138,6 +1374,11 @@ impl LawExecutionService {
                     schema_version: None,
                     regulation_hash: None,
                     regulation_valid_from: None,
+                    // Filled in by the outermost call from the resolution
+                    // context, which outlives this cached partial result.
+                    delegation_refusals: Vec::new(),
+                    declaration_version_notes: Vec::new(),
+                    declarations_not_in_force: Vec::new(),
                 });
             }
         }
@@ -1294,9 +1535,29 @@ impl LawExecutionService {
 
             // Look up the hook article
             let ref_date = res_ctx.reference_date();
-            let Some(hook_law) = self.resolver.get_law_for_date(hook_law_id, ref_date) else {
-                tracing::warn!(hook_law_id = %hook_law_id, "Hook law not found");
-                continue;
+            // A hook that does not fire leaves nothing behind: the decision
+            // simply comes out without its motivering, its bekendmaking or its
+            // bezwaartermijn, and nothing in the outcome says one was owed.
+            // "Hook law not found" was moreover untrue for the common case —
+            // the law is loaded, it is this date it has no version for — so the
+            // reason travels along, to the trace and to the receipt.
+            let hook_law = match self
+                .resolver
+                .get_law_for_date_reported(hook_law_id, ref_date)
+            {
+                Ok(law) => law,
+                Err(reason) => {
+                    res_ctx.note_not_in_force(DeclarationNotInForce {
+                        kind: DeclarationKind::Hook,
+                        law_id: hook_law_id.clone(),
+                        article: hook_article_number.clone(),
+                        subject: format!(
+                            "hook point {hook_point_str} on {legal_character} at stage {stage}"
+                        ),
+                        reason: reason.describe(),
+                    });
+                    continue;
+                }
             };
             let Some(hook_article) = hook_law.find_article_by_number(hook_article_number) else {
                 tracing::warn!(
@@ -1370,9 +1631,10 @@ impl LawExecutionService {
         Ok((hook_outputs, hook_provenance))
     }
 
-    /// Handle untranslatable constructs based on the configured mode (RFC-012).
+    /// Handle an article's flagged constructs based on the configured mode (RFC-012).
     ///
-    /// Called before article execution when the article has `untranslatables` annotations.
+    /// Called before article execution for every construct the article flags,
+    /// through `untranslatables` (v0.5.x) or `markings` (v0.6.0).
     /// Behavior depends on `self.untranslatable_mode`:
     /// - `Error`: hard error on unaccepted entries, accepted ones log to trace
     /// - `Propagate`: always log to trace (taint propagation happens at output level)
@@ -1381,21 +1643,21 @@ impl LawExecutionService {
     ///
     /// Returns a list of (article, construct) pairs that should taint outputs
     /// in propagate mode. Empty vec means no tainting.
-    fn handle_untranslatables(
+    fn handle_flagged_constructs(
         &self,
         law_id: &str,
         article_number: &str,
-        untranslatables: &[crate::article::UntranslatableEntry],
+        flagged: &[FlaggedConstruct<'_>],
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<Vec<(String, String)>> {
         let mut taints = Vec::new();
 
-        for entry in untranslatables {
+        for entry in flagged {
             // Always record in trace regardless of mode
-            let msg = format!("Untranslatable: {} — {}", entry.construct, entry.reason);
+            let msg = format!("{}: {} — {}", entry.label, entry.construct, entry.reason);
             {
                 let _guard = res_ctx.trace_guard(
-                    format!("untranslatable:{}", entry.construct),
+                    format!("{}:{}", entry.label.to_lowercase(), entry.construct),
                     PathNodeType::Article,
                 );
                 res_ctx.trace_set_message(msg.clone());
@@ -1404,18 +1666,13 @@ impl LawExecutionService {
             match self.untranslatable_mode {
                 UntranslatableMode::Error => {
                     if !entry.accepted {
-                        return Err(EngineError::Untranslatable {
-                            law_id: law_id.to_string(),
-                            article: article_number.to_string(),
-                            construct: entry.construct.clone(),
-                            reason: entry.reason.clone(),
-                        });
+                        return Err(entry.to_error(law_id, article_number));
                     }
                     tracing::info!(
                         law_id,
                         article = article_number,
                         construct = %entry.construct,
-                        "Accepted untranslatable, proceeding with partial logic"
+                        "Accepted flagged construct, proceeding with partial logic"
                     );
                 }
                 UntranslatableMode::Propagate => {
@@ -1423,26 +1680,21 @@ impl LawExecutionService {
                         law_id,
                         article = article_number,
                         construct = %entry.construct,
-                        "Untranslatable construct — tainting outputs (propagate mode)"
+                        "Flagged construct — tainting outputs (propagate mode)"
                     );
-                    taints.push((article_number.to_string(), entry.construct.clone()));
+                    taints.push((article_number.to_string(), entry.construct.to_string()));
                 }
                 UntranslatableMode::Warn => {
                     tracing::warn!(
                         law_id,
                         article = article_number,
                         construct = %entry.construct,
-                        "Untranslatable construct — executing partial logic"
+                        "Flagged construct — executing partial logic"
                     );
                 }
                 UntranslatableMode::Ignore => {
                     if !entry.accepted {
-                        return Err(EngineError::Untranslatable {
-                            law_id: law_id.to_string(),
-                            article: article_number.to_string(),
-                            construct: entry.construct.clone(),
-                            reason: entry.reason.clone(),
-                        });
+                        return Err(entry.to_error(law_id, article_number));
                     }
                 }
             }
@@ -1509,8 +1761,32 @@ impl LawExecutionService {
 
             // Look up overriding article
             let ref_date = res_ctx.reference_date();
-            let Some(ovr_law) = self.resolver.get_law_for_date(ovr_law_id, ref_date) else {
-                continue;
+            // The overrides index is built from the newest version of each law,
+            // so it offers a lex specialis that may not be in force on this
+            // date. Skipping it is right, staying silent about it is not: the
+            // output then carries the general rule's value and neither the
+            // provenance nor the trace mentions that a special rule addresses
+            // exactly this output. Same ground as the `voids` branch below,
+            // where an absence with a ground stays distinguishable from an
+            // absence nobody asked about.
+            let ovr_law = match self
+                .resolver
+                .get_law_for_date_reported(ovr_law_id, ref_date)
+            {
+                Ok(law) => law,
+                Err(reason) => {
+                    res_ctx.note_not_in_force(DeclarationNotInForce {
+                        kind: DeclarationKind::Override,
+                        law_id: ovr_law_id.clone(),
+                        article: ovr_article_number.clone(),
+                        subject: format!(
+                            "output '{}' of {} article {}",
+                            output_name, law.id, article.number
+                        ),
+                        reason: reason.describe(),
+                    });
+                    continue;
+                }
             };
             let Some(ovr_article) = ovr_law.find_article_by_number(ovr_article_number) else {
                 continue;
@@ -1527,6 +1803,35 @@ impl LawExecutionService {
             ));
 
             // Execute overriding article
+            // The declaration itself says whether this override replaces the
+            // value or removes it. Read it from the overriding article rather
+            // than from the index, which carries only the addressing.
+            let declaration = ovr_article.get_overrides().and_then(|decls| {
+                decls.iter().find(|d| {
+                    d.law == law.id && d.article == article.number && d.output == output_name
+                })
+            });
+            if let Some(decl) = declaration.filter(|d| d.voids) {
+                // "Bestaat geen aanspraak": the entitlement does not arise, so
+                // there is no value to compute or replace. The output leaves
+                // `outputs` and stays in the provenance, so an absence with a
+                // ground is distinguishable from an absence nobody asked about.
+                result.outputs.remove(&output_name);
+                result.output_provenance.insert(
+                    output_name.clone(),
+                    OutputProvenance::Voided {
+                        law_id: ovr_law_id.to_string(),
+                        article: ovr_article_number.to_string(),
+                        grounds: decl.legal_text_excerpt.clone(),
+                    },
+                );
+                res_ctx.trace_set_message(format!(
+                    "Lex specialis: {}:{} voids {}:{}.{}",
+                    ovr_law_id, ovr_article_number, law.id, article.number, output_name
+                ));
+                continue;
+            }
+
             let ovr_params = Self::filter_parameters_for_article(ovr_article, parameters);
             res_ctx.enter(ovr_key.clone());
 
@@ -1578,19 +1883,18 @@ impl LawExecutionService {
         stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
-        // RFC-012: Check for untranslatable constructs before execution
-        let taints = if let Some(untranslatables) = article
-            .machine_readable
-            .as_ref()
-            .and_then(|mr| mr.untranslatables.as_ref())
-        {
-            if !untranslatables.is_empty() {
-                self.handle_untranslatables(&law.id, &article.number, untranslatables, res_ctx)?
-            } else {
-                Vec::new()
+        // RFC-012: check what the article flags as beyond its expression —
+        // `untranslatables` (v0.5.x) and `markings` (v0.6.0) alike.
+        let taints = match article.machine_readable.as_ref() {
+            Some(mr) => {
+                let flagged = flagged_constructs(mr);
+                if flagged.is_empty() {
+                    Vec::new()
+                } else {
+                    self.handle_flagged_constructs(&law.id, &article.number, &flagged, res_ctx)?
+                }
             }
-        } else {
-            Vec::new()
+            None => Vec::new(),
         };
 
         // Create execution context — pass parameters by reference, only clone
@@ -1702,13 +2006,13 @@ impl LawExecutionService {
         // does so with an explicit ROUND/CEIL/FLOOR operation. Outputs flow
         // out as exact Decimals; `unit` is a label, never a rounding trigger (RFC-023).
 
-        // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
+        // RFC-012 Propagate mode: taint all outputs from articles that flag a construct
         if !taints.is_empty() {
             if taints.len() > 1 {
                 tracing::warn!(
                     article = %taints[0].0,
                     count = taints.len(),
-                    "Article has multiple untranslatable constructs; combining into single taint"
+                    "Article flags multiple constructs; combining into single taint"
                 );
             }
             let taint_article = taints[0].0.clone();
@@ -1792,14 +2096,14 @@ impl LawExecutionService {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
-            let implementations = match self.resolver.find_implementations(
+            let lookup = match self.resolver.find_implementations(
                 &law.id,
                 &article.number,
-                &term.id,
+                term,
                 res_ctx.reference_date(),
                 &scope,
             ) {
-                Ok(impls) => impls,
+                Ok(lookup) => lookup,
                 Err(e) => {
                     res_ctx.trace_set_message(format!(
                         "Open term '{}': implementation lookup failed: {}",
@@ -1810,24 +2114,46 @@ impl LawExecutionService {
                 }
             };
 
-            if let Some((impl_law, impl_article)) = implementations.first() {
-                // Validate that the implementing regulation's layer matches the
-                // delegation_type declared on the open term (if specified).
-                if let Some(ref expected_type) = term.delegation_type {
-                    let actual_layer = impl_law.regulatory_layer.as_str();
-                    if actual_layer != expected_type {
-                        res_ctx.trace_set_message(format!(
-                            "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
-                            term.id, impl_law.id, actual_layer, expected_type
-                        ));
-                        res_ctx.leave(&ot_key);
-                        return Err(EngineError::ResolutionError(format!(
-                            "Implementation {} for open term '{}' has regulatory_layer {} but delegation_type requires {}",
-                            impl_law.id, term.id, actual_layer, expected_type
-                        )));
-                    }
+            // A regulation that arrogates a term the law delegates elsewhere is
+            // skipped, so a competent regulation lower in the ranking can still
+            // win. But it is a defect in the corpus, not a property of this
+            // case, so it is recorded: it stands in the trace under this open
+            // term and travels to the receipt even when tracing is off. Without
+            // that record a citizen would read "no implementation found, using
+            // default" and never learn that a filling was offered and refused.
+            for refusal in &lookup.refusals {
+                tracing::warn!(
+                    law_id = %refusal.declaring_law,
+                    article = %refusal.declaring_article,
+                    open_term = %refusal.open_term,
+                    required_layer = %refusal.required_layer,
+                    refused_law = %refusal.refused_law,
+                    refused_layer = %refusal.refused_layer,
+                    "Implementation refused: regulatory_layer is not the delegated layer"
+                );
+                let message = refusal.message();
+                {
+                    let _refusal_guard =
+                        res_ctx.trace_guard(&refusal.refused_law, PathNodeType::OpenTermResolution);
+                    res_ctx.trace_set_message(message);
                 }
+            }
+            res_ctx
+                .delegation_refusals
+                .extend(lookup.refusals.iter().cloned());
 
+            // A regulation that fills this term but is not in force on this
+            // date is no candidate either. Without a record the branches below
+            // report "no implementation, using the default" or "resolved as
+            // null" — the same sentences they print when nobody ever wrote one.
+            for note in lookup.not_in_force {
+                res_ctx.note_not_in_force(note);
+            }
+
+            // Every candidate that survives `find_implementations` is competent:
+            // the resolver drops implementations whose regulatory_layer is not
+            // the layer the open term delegates to, before priority ranking.
+            if let Some((impl_law, impl_article)) = lookup.implementations.first() {
                 tracing::debug!(
                     open_term = %term.id,
                     implementing_law = %impl_law.id,
@@ -1893,8 +2219,8 @@ impl LawExecutionService {
                         number: format!("default:{}", term.id),
                         text: String::new(),
                         url: None,
+                        placement: None,
                         machine_readable: Some(MachineReadable {
-                            definitions: None,
                             execution: Some(Execution {
                                 produces: None,
                                 parameters: None,
@@ -1902,14 +2228,9 @@ impl LawExecutionService {
                                 output: None,
                                 actions: Some(actions.clone()),
                             }),
-                            requires: None,
-                            competent_authority: None,
-                            open_terms: None,
-                            implements: None,
-                            hooks: None,
-                            overrides: None,
-                            untranslatables: None,
+                            ..Default::default()
                         }),
+                        references: None,
                     };
 
                     let engine = ArticleEngine::new(&synthetic_article, law);
@@ -1938,11 +2259,28 @@ impl LawExecutionService {
                         }
                     };
 
-                    let default_value = default_result
-                        .outputs
-                        .get(&term.id)
-                        .cloned()
-                        .unwrap_or(Value::Null);
+                    // The default must produce the term it is the default for.
+                    // Reading a missing output as null let two different things
+                    // arrive as the same value: a default that says "null" and
+                    // a default that produced nothing at all — an action whose
+                    // `output` names something else, or none. Downstream null
+                    // is a signal in its own right ("no municipal verordening,
+                    // fall back to the statutory distance"), so the second case
+                    // handed the citizen the general rule under a trace saying
+                    // the default had been applied. The implementation branch
+                    // above refuses the same miss; so does this one.
+                    let Some(default_value) = default_result.outputs.get(&term.id).cloned() else {
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}': default produced no output named '{}'",
+                            term.id, term.id
+                        ));
+                        res_ctx.leave(&ot_key);
+                        return Err(EngineError::InvalidOperation(format!(
+                            "Default for open term '{}' on {}#{} did not produce output named \
+                             '{}', so there is no default value to apply",
+                            term.id, law.id, article.number, term.id
+                        )));
+                    };
 
                     res_ctx.trace_set_result(default_value.clone());
                     res_ctx
@@ -3907,6 +4245,58 @@ articles:
         );
     }
 
+    /// End to end: a beleidsregel that declares it fills a term the law reserves
+    /// for a ministeriële regeling leaves that term unresolved. The execution
+    /// fails on the required open term, not on the beleidsregel's value —
+    /// nobody the law authorised has spoken.
+    #[test]
+    fn test_ioc_unauthorised_layer_leaves_required_open_term_unresolved() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_law_with_open_term()).unwrap();
+        service
+            .load_law(
+                r#"
+$id: beleidsregel_sp_ioc
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 2500
+    machine_readable:
+      implements:
+        - law: zorgtoeslag_ioc
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 2500
+"#,
+            )
+            .unwrap();
+
+        let result = service.evaluate_law_output(
+            "zorgtoeslag_ioc",
+            "standaardpremie",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::ResolutionError(msg)) => {
+                assert!(
+                    msg.contains("standaardpremie") && msg.contains("no implementation"),
+                    "expected an unresolved-open-term error, got: {msg}"
+                );
+            }
+            other => panic!("expected ResolutionError, got: {other:?}"),
+        }
+    }
+
     #[test]
     fn test_ioc_required_no_implementation() {
         let mut service = LawExecutionService::new();
@@ -4002,6 +4392,117 @@ articles:
         assert_eq!(
             result.outputs.get("redelijk_percentage"),
             Some(&Value::Int(6))
+        );
+    }
+
+    /// The law reserves the term for a ministeriële regeling and carries last
+    /// year's amount as a default. A beleidsregel offers this year's amount and
+    /// is refused. The default runs — but the refusal is on the receipt and in
+    /// the trace, so someone contesting the decision can read that a filling
+    /// was offered and why it did not count. Before, the beleidsregel vanished
+    /// without a word and the trace said only "using default".
+    #[test]
+    fn test_ioc_refused_layer_is_recorded_while_the_default_runs() {
+        let law_yaml = r#"
+$id: wet_met_default
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: De standaardpremie wordt vastgesteld bij ministeriele regeling
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: standaardpremie
+                value: 1889
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: "$standaardpremie"
+"#;
+        let beleidsregel_yaml = r#"
+$id: beleidsregel_met_default
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 1928
+    machine_readable:
+      implements:
+        - law: wet_met_default
+          article: '4'
+          open_term: standaardpremie
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 1928
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law_yaml).unwrap();
+        service.load_law(beleidsregel_yaml).unwrap();
+
+        // Without a trace: the refusal still travels on the result, and from
+        // there onto the receipt.
+        let result = service
+            .evaluate_law_output(
+                "wet_met_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("standaardpremie"),
+            Some(&Value::Int(1889)),
+            "the default runs: no authorised regulation filled the term"
+        );
+        assert!(result.trace.is_none(), "this run asked for no trace");
+        assert_eq!(result.delegation_refusals.len(), 1);
+        let refusal = &result.delegation_refusals[0];
+        assert_eq!(refusal.refused_law, "beleidsregel_met_default");
+        assert_eq!(refusal.refused_layer, "BELEIDSREGEL");
+        assert_eq!(refusal.required_layer, "MINISTERIELE_REGELING");
+        assert_eq!(refusal.open_term, "standaardpremie");
+
+        let receipt = service.build_receipt(&result, &BTreeMap::new(), "2025-01-01");
+        assert_eq!(
+            receipt.results.delegation_refusals, result.delegation_refusals,
+            "the receipt carries the refusal even without a trace"
+        );
+
+        // With a trace: the refusal is a node under the open term, next to the
+        // default that ran in its place.
+        let traced = service
+            .evaluate_law_output_with_trace(
+                "wet_met_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(traced.delegation_refusals.len(), 1);
+        let rendered = traced
+            .trace
+            .as_ref()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("beleidsregel_met_default")
+                && rendered.contains("may not fill open term 'standaardpremie'"),
+            "the refusal must be readable in the trace:\n{rendered}"
         );
     }
 
@@ -4530,6 +5031,112 @@ articles:
     // -------------------------------------------------------------------------
 
     #[test]
+    fn a_voiding_override_removes_the_output_and_records_the_ground() {
+        // The shape of Wet op de zorgtoeslag articles 2 and 3. Article 2
+        // establishes an entitlement "ter grootte van dat verschil"; article 3
+        // says "bestaat geen aanspraak" above a wealth threshold. That is not
+        // an entitlement of zero: with zero there is a decision carrying legal
+        // remedies and a ground for recovery, with none there is neither.
+        //
+        // Measured before this existed: a millionaire received both
+        // `bestaat_aanspraak = false` and an amount of € 1.550,45, and nothing
+        // obliged a consumer to read the first.
+        let entitlement = r#"
+$id: voiding_target_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '2'
+    text: Indien de normpremie lager is dan de standaardpremie, bestaat aanspraak ter grootte van dat verschil.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+"#;
+        let exclusion = r#"
+$id: voiding_specialis_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Vraagt de aanspraak op.
+    machine_readable:
+      execution:
+        input:
+          - name: aanspraak
+            type: number
+            source:
+              regulation: voiding_target_law
+              output: aanspraak
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $aanspraak
+  - number: '3'
+    text: In afwijking daarvan bestaat geen aanspraak indien het vermogen de grens overschrijdt.
+    machine_readable:
+      overrides:
+        - law: voiding_target_law
+          article: '3'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        // Article 3 addresses article 2, where the entitlement is produced.
+        let addressed = exclusion.replace("article: '3'", "article: '2'");
+        let mut service = LawExecutionService::new();
+        service.load_law(entitlement).unwrap();
+        service.load_law(&addressed).unwrap();
+
+        // Asked through the law carrying the exclusion, because an override
+        // applies from the contextual law.
+        let result = service.evaluate_law_output(
+            "voiding_specialis_law",
+            "result",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        // The entitlement does not exist, so a consumer asking for it gets no
+        // number. Failing here is the point: an amount that the law does not
+        // recognise must not travel on quietly, and before this change the
+        // millionaire received € 1.550,45 without a word.
+        match result {
+            Err(EngineError::OutputNotFound { output, .. }) => {
+                assert_eq!(output, "aanspraak");
+            }
+            Ok(r) => panic!(
+                "a voided entitlement must not yield a value, got {:?}",
+                r.outputs
+            ),
+            Err(other) => panic!("expected OutputNotFound, got {other:?}"),
+        }
+
+        // Without the exclusion the same chain does produce the amount, which
+        // shows the void is doing the work rather than a broken binding.
+        let mut service = LawExecutionService::new();
+        service.load_law(entitlement).unwrap();
+        service
+            .load_law(&addressed.replace("voids: true", "voids: false"))
+            .unwrap();
+        let value = service
+            .evaluate_law_output(
+                "voiding_specialis_law",
+                "result",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("without the void the chain completes");
+        assert_eq!(value.outputs.get("result"), Some(&Value::Int(155045)));
+    }
+
+    #[test]
     fn test_conflicting_overrides_from_one_law_are_rejected() {
         // Two articles of the same law both claim to replace the same output.
         // There is no rule that picks between them, so the engine must refuse
@@ -4620,6 +5227,180 @@ articles:
                 );
             }
             other => panic!("Expected conflicting overrides to be rejected, got: {other:?}"),
+        }
+    }
+
+    /// Build the pair of laws for the mis-addressing tests.
+    ///
+    /// `stray` is an extra override declaration that the specialis article
+    /// carries *before* the one that really addresses the output under test. It
+    /// voids, and it names a target that differs from that output on exactly one
+    /// of the three addressing fields. An article may carry several override
+    /// declarations, so the engine has to read all three fields; matching on
+    /// fewer would let a void meant for one output take another one away.
+    fn misaddressed_void_laws(stray: &str) -> (String, String) {
+        let target = r#"
+$id: misaddress_target_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bedrag bedraagt 100.
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#
+        .to_string();
+        let specialis = format!(
+            r#"
+$id: misaddress_specialis_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Vraagt het bedrag op.
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: number
+            source:
+              regulation: misaddress_target_law
+              output: bedrag
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $bedrag
+  - number: '2'
+    text: In afwijking van het bedrag.
+    machine_readable:
+      overrides:
+{stray}        - law: misaddress_target_law
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 200
+"#
+        );
+        (target, specialis)
+    }
+
+    /// The stray declaration must not void: `result` is the replacement value,
+    /// not an absence.
+    fn assert_misaddressed_void_does_not_bite(stray: &str) {
+        let (target, specialis) = misaddressed_void_laws(stray);
+        let mut service = LawExecutionService::new();
+        service.load_law(&target).unwrap();
+        service.load_law(&specialis).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "misaddress_specialis_law",
+                "result",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("a void addressed elsewhere must leave this output standing");
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn a_void_for_another_law_does_not_remove_this_output() {
+        assert_misaddressed_void_does_not_bite(
+            "        - law: misaddress_other_law\n          article: '1'\n          output: bedrag\n          voids: true\n          legal_text_excerpt: bestaat geen aanspraak\n",
+        );
+    }
+
+    #[test]
+    fn a_void_for_another_article_does_not_remove_this_output() {
+        assert_misaddressed_void_does_not_bite(
+            "        - law: misaddress_target_law\n          article: '9'\n          output: bedrag\n          voids: true\n          legal_text_excerpt: bestaat geen aanspraak\n",
+        );
+    }
+
+    #[test]
+    fn a_void_for_another_output_does_not_remove_this_output() {
+        assert_misaddressed_void_does_not_bite(
+            "        - law: misaddress_target_law\n          article: '1'\n          output: ander_bedrag\n          voids: true\n          legal_text_excerpt: bestaat geen aanspraak\n",
+        );
+    }
+
+    /// The other side of the same coin: when all three fields address this
+    /// output, the value goes and the ground stays.
+    #[test]
+    fn a_void_that_addresses_this_output_removes_it_with_its_ground() {
+        let target = r#"
+$id: void_provenance_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Er bestaat aanspraak, en de toelichting hoort erbij.
+    machine_readable:
+      execution:
+        output:
+          - name: aanspraak
+            type: number
+          - name: toelichting
+            type: number
+        actions:
+          - output: aanspraak
+            value: 155045
+          - output: toelichting
+            value: 1
+  - number: '2'
+    text: In afwijking daarvan bestaat geen aanspraak.
+    machine_readable:
+      overrides:
+        - law: void_provenance_law
+          article: '1'
+          output: aanspraak
+          voids: true
+          legal_text_excerpt: bestaat geen aanspraak
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(target).unwrap();
+
+        // Asking for the neighbouring output keeps the result readable while
+        // the voided one is gone from it.
+        let result = service
+            .evaluate_law(
+                "void_provenance_law",
+                &["toelichting"],
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("the article still produces its other output");
+
+        assert_eq!(result.outputs.get("toelichting"), Some(&Value::Int(1)));
+        assert!(
+            !result.outputs.contains_key("aanspraak"),
+            "a voided entitlement must not carry a value: {:?}",
+            result.outputs
+        );
+        match result.output_provenance.get("aanspraak") {
+            Some(OutputProvenance::Voided {
+                law_id,
+                article,
+                grounds,
+            }) => {
+                assert_eq!(law_id, "void_provenance_law");
+                assert_eq!(article, "2");
+                assert_eq!(grounds.as_deref(), Some("bestaat geen aanspraak"));
+            }
+            other => panic!("expected a Voided provenance with its ground, got {other:?}"),
         }
     }
 
@@ -4885,6 +5666,665 @@ articles:
         }
     }
 
+    /// An article that names a procedure no loaded law defines must not be
+    /// executed as if it had none. Falling through would run the article once
+    /// and return a decision that looks complete, while every stage the
+    /// procedure imposes — the hearing, the notification, the objection period
+    /// — silently did not happen. Those are the rights of the person the
+    /// decision is about, so this is a refusal, not a warning.
+    #[test]
+    fn test_a_named_procedure_that_no_law_defines_stops_execution() {
+        // The law defines `test_procedure`; the article asks for another one.
+        let law = make_stage_law(
+            "stage_law_named",
+            &[("AANVRAAG", &[]), ("BESLUIT", &[])],
+            &["toekenning"],
+        )
+        .replace(
+            "        produces:\n          legal_character: TEST_BESCHIKKING\n",
+            "        produces:\n          legal_character: TEST_BESCHIKKING\n          \
+             procedure_id: uitgebreide_procedure\n",
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&law).unwrap();
+
+        let outcome = service.execute_stage(
+            "stage_law_named",
+            "toekenning",
+            None,
+            stage_params(&[]),
+            "2025-01-01",
+        );
+
+        match outcome {
+            Err(EngineError::ResolutionError(msg)) => {
+                assert!(
+                    msg.contains("uitgebreide_procedure") && msg.contains("TEST_BESCHIKKING"),
+                    "the error must name the procedure that was asked for: {msg}"
+                );
+            }
+            other => panic!("expected a refusal, got: {other:?}"),
+        }
+
+        // The contrast: load a law that does define that procedure, and the
+        // same article runs it. The refusal was about the missing definition,
+        // not about naming a procedure at all.
+        service
+            .load_law(
+                r#"
+$id: uitgebreide_procedurewet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+procedure:
+  - id: uitgebreide_procedure
+    applies_to:
+      legal_character: TEST_BESCHIKKING
+    stages:
+      - name: ZIENSWIJZE
+        requires:
+          - name: zienswijze_datum
+            type: string
+      - name: BESLUIT
+articles: []
+"#,
+            )
+            .unwrap();
+
+        let outcome = service
+            .execute_stage(
+                "stage_law_named",
+                "toekenning",
+                None,
+                stage_params(&[]),
+                "2025-01-01",
+            )
+            .expect("with the procedure defined, the article runs it");
+        match outcome {
+            ExecutionOutcome::Yielded {
+                state,
+                pending_inputs,
+                ..
+            } => {
+                assert_eq!(state.procedure_id, "uitgebreide_procedure");
+                assert_eq!(state.current_stage, "ZIENSWIJZE");
+                assert_eq!(pending_inputs, vec!["zienswijze_datum".to_string()]);
+            }
+            other => panic!("expected the procedure's first stage to yield, got: {other:?}"),
+        }
+    }
+
+    /// A legal character with no procedure anywhere is an ordinary fact, not a
+    /// defect: the article runs in one go. This is the answer the refusal above
+    /// must stay distinguishable from.
+    #[test]
+    fn test_a_legal_character_without_any_procedure_still_executes() {
+        let law = make_stage_law("stage_law_none", &[("BESLUIT", &[])], &["toekenning"]);
+        // Strip the procedure block: the article still produces a legal
+        // character, but nothing in the corpus gives it a lifecycle.
+        let without_procedure = law
+            .lines()
+            .skip_while(|line| !line.starts_with("articles:"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let yaml = format!(
+            "$id: stage_law_none\nregulatory_layer: WET\npublication_date: '2025-01-01'\n{without_procedure}\n"
+        );
+
+        let mut service = LawExecutionService::new();
+        service.load_law(&yaml).unwrap();
+
+        let outcome = service
+            .execute_stage(
+                "stage_law_none",
+                "toekenning",
+                None,
+                stage_params(&[]),
+                "2025-01-01",
+            )
+            .expect("an article without a procedure executes in one go");
+
+        match outcome {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(result.outputs.get("toekenning"), Some(&Value::Int(100)));
+            }
+            other => panic!("expected a completed execution, got: {other:?}"),
+        }
+    }
+
+    /// When the version in force on the calculation date is not the version the
+    /// hooks/overrides/procedure indexes were built from, the execution says so
+    /// — in the trace and on the receipt. Without that, "no motiveringsplicht"
+    /// reads as a finding while it is an answer about another version.
+    #[test]
+    fn test_declarations_from_another_version_reach_the_receipt() {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(
+                r#"
+$id: wet_versies
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Oude versie met een hook
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 1
+"#,
+            )
+            .unwrap();
+        service
+            .load_law(
+                r#"
+$id: wet_versies
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Nieuwe versie zonder hook
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 2
+"#,
+            )
+            .unwrap();
+
+        // On a date the indexed version covers, nothing is noted.
+        let current = service
+            .evaluate_law_output("wet_versies", "bedrag", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert!(current.declaration_version_notes.is_empty());
+
+        // On a date the older version covers, the answer is flagged.
+        let historic = service
+            .evaluate_law_output("wet_versies", "bedrag", BTreeMap::new(), "2024-06-01")
+            .unwrap();
+        assert_eq!(historic.outputs.get("bedrag"), Some(&Value::Int(1)));
+        assert_eq!(historic.declaration_version_notes.len(), 1);
+        let note = &historic.declaration_version_notes[0];
+        assert_eq!(note.law_id, "wet_versies");
+        assert_eq!(note.indexed_version.as_deref(), Some("2025-01-01"));
+        assert_eq!(note.in_force_version.as_deref(), Some("2024-01-01"));
+
+        let receipt = service.build_receipt(&historic, &BTreeMap::new(), "2024-06-01");
+        assert_eq!(
+            receipt.results.declaration_version_notes, historic.declaration_version_notes,
+            "the note belongs on the receipt, not only in the log"
+        );
+
+        let traced = service
+            .evaluate_law_output_with_trace("wet_versies", "bedrag", BTreeMap::new(), "2024-06-01")
+            .unwrap();
+        let rendered = traced
+            .trace
+            .as_ref()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("wet_versies") && rendered.contains("not established"),
+            "the trace must carry the note:\n{rendered}"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Declarations that exist but are not in force on the reference date
+    // -------------------------------------------------------------------------
+
+    /// A lex specialis that only commences next year is offered by the
+    /// overrides index today. It is rightly not applied — but before, it was
+    /// not applied *and* not mentioned: the citizen got the general rule's
+    /// amount on a receipt in which no special rule ever existed.
+    #[test]
+    fn test_an_override_not_in_force_is_recorded_while_the_general_rule_runs() {
+        let kaderwet = r#"
+$id: kaderwet_bedrag
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '2020-01-01'
+procedure:
+  - id: beschikking_procedure
+    default: true
+    applies_to:
+      legal_character: TEST_BESCHIKKING
+    stages:
+      - name: BESLUIT
+articles:
+  - number: '1'
+    text: Het bedrag bedraagt 100
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let bijzondere = r#"
+$id: bijzondere_regeling
+regulatory_layer: WET
+publication_date: '2026-01-01'
+valid_from: '2027-01-01'
+articles:
+  - number: '1'
+    text: In afwijking van artikel 1 van de kaderwet bedraagt het bedrag 250
+    machine_readable:
+      overrides:
+        - law: kaderwet_bedrag
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 250
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(kaderwet).unwrap();
+        service.load_law(bijzondere).unwrap();
+
+        // A procedure resumed on a date the special rule does not yet cover:
+        // the caller carries the contextual law in the state it persisted.
+        let state = |stage: &str| StageState {
+            procedure_id: "beschikking_procedure".to_string(),
+            contextual_law: "bijzondere_regeling".to_string(),
+            current_stage: stage.to_string(),
+            accumulated_outputs: BTreeMap::new(),
+            parameters: BTreeMap::new(),
+        };
+
+        let outcome = service
+            .execute_stage(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state("BESLUIT")),
+                BTreeMap::new(),
+                "2026-06-01",
+            )
+            .expect("the general rule is in force and executes");
+        let result = match outcome {
+            ExecutionOutcome::Complete(result) => result,
+            other => panic!("expected a completed execution, got: {other:?}"),
+        };
+        assert_eq!(
+            result.outputs.get("bedrag"),
+            Some(&Value::Int(100)),
+            "the special rule is not in force, so the general rule stands"
+        );
+        assert_eq!(
+            result.declarations_not_in_force.len(),
+            1,
+            "the skipped lex specialis must leave a mark"
+        );
+        let note = &result.declarations_not_in_force[0];
+        assert_eq!(note.kind, DeclarationKind::Override);
+        assert_eq!(note.law_id, "bijzondere_regeling");
+        assert_eq!(note.article, "1");
+        assert!(
+            note.subject.contains("output 'bedrag'") && note.subject.contains("kaderwet_bedrag"),
+            "the note must name what would have been overridden: {}",
+            note.subject
+        );
+        assert!(
+            note.reason.contains("in force yet"),
+            "the note must state the data fact, not a verdict: {}",
+            note.reason
+        );
+
+        let receipt = service.build_receipt(&result, &BTreeMap::new(), "2026-06-01");
+        assert_eq!(
+            receipt.results.declarations_not_in_force, result.declarations_not_in_force,
+            "the receipt carries the skip even without a trace"
+        );
+
+        // With a trace the same skip is a node next to the output it addresses.
+        // `execute_stage_with_trace` pops its own root on the success path, so
+        // the test holds a node underneath it to read the tree back.
+        let trace = Rc::new(RefCell::new(TraceBuilder::new()));
+        trace
+            .borrow_mut()
+            .push("test harness".to_string(), PathNodeType::Article);
+        service
+            .execute_stage_with_trace(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state("BESLUIT")),
+                BTreeMap::new(),
+                "2026-06-01",
+                Rc::clone(&trace),
+            )
+            .unwrap();
+        let rendered = trace
+            .borrow_mut()
+            .pop()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("bijzondere_regeling") && rendered.contains("Not applied: override"),
+            "the trace must carry the skipped override, and say it was an \
+             override rather than a hook or an implementation:\n{rendered}"
+        );
+
+        // Once it commences, the same call applies it — which shows the note
+        // above marks a date and not a broken binding.
+        let later = service
+            .execute_stage(
+                "kaderwet_bedrag",
+                "bedrag",
+                Some(state("BESLUIT")),
+                BTreeMap::new(),
+                "2027-06-01",
+            )
+            .unwrap();
+        match later {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(250)));
+                assert!(result.declarations_not_in_force.is_empty());
+            }
+            other => panic!("expected a completed execution, got: {other:?}"),
+        }
+    }
+
+    /// The motiveringsplicht commences next year. Today the beschikking comes
+    /// out without a motivering, and the engine used to log "Hook law not
+    /// found" — untrue, the law is loaded — and say nothing anywhere else.
+    #[test]
+    fn test_a_hook_not_in_force_is_recorded_instead_of_silently_skipped() {
+        let besluit = r#"
+$id: wet_beschikking
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let motivering = r#"
+$id: wet_motiveringsplicht
+regulatory_layer: WET
+publication_date: '2025-06-01'
+valid_from: '2026-01-01'
+articles:
+  - number: '3'
+    text: Een beschikking wordt gemotiveerd
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: TEST_BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: motivering
+            type: string
+        actions:
+          - output: motivering
+            value: "gemotiveerd"
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(besluit).unwrap();
+        service.load_law(motivering).unwrap();
+
+        let before = service
+            .evaluate_law_output("wet_beschikking", "bedrag", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert!(
+            !before.outputs.contains_key("motivering"),
+            "the duty to state reasons does not yet exist on this date"
+        );
+        assert_eq!(before.declarations_not_in_force.len(), 1);
+        let note = &before.declarations_not_in_force[0];
+        assert_eq!(note.kind, DeclarationKind::Hook);
+        assert_eq!(note.law_id, "wet_motiveringsplicht");
+        assert_eq!(note.article, "3");
+        assert!(
+            note.subject.contains("post_actions") && note.subject.contains("TEST_BESCHIKKING"),
+            "the note must name the hook point it would have fired at: {}",
+            note.subject
+        );
+        assert!(
+            note.reason.contains("in force yet"),
+            "'not found' was untrue: the law is loaded, this date is not covered: {}",
+            note.reason
+        );
+
+        let receipt = service.build_receipt(&before, &BTreeMap::new(), "2025-06-01");
+        assert_eq!(
+            receipt.results.declarations_not_in_force, before.declarations_not_in_force,
+            "a beschikking without its motivering must say so on the receipt"
+        );
+
+        // Once the duty commences the hook fires, so the note marks a date.
+        let after = service
+            .evaluate_law_output("wet_beschikking", "bedrag", BTreeMap::new(), "2026-06-01")
+            .unwrap();
+        assert_eq!(
+            after.outputs.get("motivering"),
+            Some(&Value::String("gemotiveerd".to_string()))
+        );
+        assert!(after.declarations_not_in_force.is_empty());
+    }
+
+    /// A ministeriële regeling fills the open term from 2026. A calculation over
+    /// 2025 finds no candidate and falls through to null — the same answer it
+    /// gives when nobody ever wrote one. The regeling now stands in the record.
+    #[test]
+    fn test_an_implementation_not_in_force_is_recorded_before_falling_through() {
+        let wet = r#"
+$id: wet_met_open_term
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '2'
+    text: Bij ministeriele regeling kan een afwijkende afstand worden vastgesteld
+    machine_readable:
+      open_terms:
+        - id: afwijkende_afstand
+          type: number
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: afstand
+            type: number
+        actions:
+          - output: afstand
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT_NULL
+                    subject: $afwijkende_afstand
+                  then: $afwijkende_afstand
+              default: 200
+"#;
+        let regeling = r#"
+$id: regeling_afstand
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-12-01'
+valid_from: '2026-01-01'
+articles:
+  - number: '1'
+    text: De afwijkende afstand bedraagt 50
+    machine_readable:
+      implements:
+        - law: wet_met_open_term
+          article: '2'
+          open_term: afwijkende_afstand
+      execution:
+        output:
+          - name: afwijkende_afstand
+            type: number
+        actions:
+          - output: afwijkende_afstand
+            value: 50
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(wet).unwrap();
+        service.load_law(regeling).unwrap();
+
+        let before = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert_eq!(
+            before.outputs.get("afstand"),
+            Some(&Value::Int(200)),
+            "the statutory distance stands while the regeling is not in force"
+        );
+        assert_eq!(before.declarations_not_in_force.len(), 1);
+        let note = &before.declarations_not_in_force[0];
+        assert_eq!(note.kind, DeclarationKind::Implementation);
+        assert_eq!(note.law_id, "regeling_afstand");
+        assert!(
+            note.subject.contains("open term 'afwijkende_afstand'"),
+            "the note must name the term it would have filled: {}",
+            note.subject
+        );
+        assert!(note.reason.contains("in force yet"), "{}", note.reason);
+
+        let receipt = service.build_receipt(&before, &BTreeMap::new(), "2025-06-01");
+        assert_eq!(
+            receipt.results.declarations_not_in_force,
+            before.declarations_not_in_force
+        );
+
+        let traced = service
+            .evaluate_law_output_with_trace(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        let rendered = traced
+            .trace
+            .as_ref()
+            .expect("a traced run has a trace")
+            .render_box_drawing();
+        assert!(
+            rendered.contains("regeling_afstand") && rendered.contains("Not applied"),
+            "the trace must show that a filling exists but not on this date:\n{rendered}"
+        );
+
+        let after = service
+            .evaluate_law_output(
+                "wet_met_open_term",
+                "afstand",
+                BTreeMap::new(),
+                "2026-06-01",
+            )
+            .unwrap();
+        assert_eq!(after.outputs.get("afstand"), Some(&Value::Int(50)));
+        assert!(after.declarations_not_in_force.is_empty());
+    }
+
+    /// A default whose actions never produce the term itself yielded null under
+    /// the message "using default value". Null is a signal downstream ("no
+    /// verordening, fall back to the statutory rule"), so the citizen got the
+    /// general rule while the default was supposed to apply.
+    #[test]
+    fn test_a_default_that_produces_nothing_is_not_reported_as_a_default_value() {
+        let yaml = r#"
+$id: wet_met_lege_default
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie wordt bij ministeriele regeling vastgesteld
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          default:
+            actions:
+              - output: standaardpremie_basis
+                value: 1889
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: $standaardpremie
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+
+        let error = service
+            .evaluate_law_output(
+                "wet_met_lege_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect_err("a default that produces nothing must not pass for a default value");
+        let message = error.to_string();
+        assert!(
+            message.contains("standaardpremie") && message.contains("did not produce output"),
+            "the error must name the term the default failed to produce: {message}"
+        );
+
+        // A default that does produce the term still applies, including when
+        // the value it produces is null: that is a default, not a miss.
+        let with_value = yaml.replace("standaardpremie_basis", "standaardpremie");
+        let mut service = LawExecutionService::new();
+        service.load_law(&with_value).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "wet_met_lege_default",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("standaardpremie"),
+            Some(&Value::Int(1889))
+        );
+    }
+
     // -------------------------------------------------------------------------
     // Law loading, provenance and inventory
     // -------------------------------------------------------------------------
@@ -5016,6 +6456,275 @@ articles:
             .expect("a loaded law must be reachable through the trait");
         assert_eq!(law.id, "base_law");
         assert!(ServiceProvider::get_law(&service, "unknown_law").is_none());
+    }
+
+    // -------------------------------------------------------------------------
+    // Flagged constructs: untranslatables (v0.5.x) and markings (v0.6.0)
+    // -------------------------------------------------------------------------
+
+    /// The RFC-012 modes read `markings` too. A marked article behaves exactly
+    /// as an article with an `untranslatables` entry does: unaccepted stops
+    /// execution, accepted runs partial logic.
+    #[test]
+    fn test_markings_drive_the_modes_like_untranslatables_do() {
+        let yaml = r#"
+$id: wet_met_markeringen
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De som van alle deeltoeslagen wordt berekend.
+    machine_readable:
+      markings:
+        - about: som van alle deeltoeslagen
+          reason: het model kent alleen regels over een waarde, niet over een verzameling
+          resolution: model
+          resolved_by: Een vorm voor een regel over een verzameling
+          target: []
+          legal_text_excerpt: De som van alle deeltoeslagen
+          accepted: true
+      execution:
+        output:
+          - name: som
+            type: number
+        actions:
+          - output: som
+            value: 0
+  - number: '2'
+    text: Het bedrag wordt naar boven afgerond op hele euro's.
+    machine_readable:
+      markings:
+        - about: afronden op hele euro's
+          reason: de motor kent geen wettelijke afronding op eurocenten
+          resolution: operation
+          resolved_by: Een CEIL-bewerking op eurocenten
+          target: []
+          legal_text_excerpt: naar boven afgerond
+      execution:
+        output:
+          - name: afgerond
+            type: number
+        actions:
+          - output: afgerond
+            value: 1234
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+
+        let accepted = service
+            .evaluate_law_output("wet_met_markeringen", "som", BTreeMap::new(), "2025-01-01")
+            .expect("an accepted marking executes with partial logic");
+        assert_eq!(accepted.outputs.get("som"), Some(&Value::Int(0)));
+
+        let unaccepted = service.evaluate_law_output(
+            "wet_met_markeringen",
+            "afgerond",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+        assert!(
+            matches!(unaccepted, Err(EngineError::Untranslatable { ref construct, .. })
+                if construct == "afronden op hele euro's"),
+            "an unaccepted marking must stop execution: {unaccepted:?}"
+        );
+
+        // Propagate mode taints the outputs of a marked article, exactly as it
+        // does for an untranslatable.
+        service.set_untranslatable_mode(UntranslatableMode::Propagate);
+        let tainted = service
+            .evaluate_law_output(
+                "wet_met_markeringen",
+                "afgerond",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("propagate mode executes and taints");
+        assert!(
+            matches!(tainted.outputs.get("afgerond"), Some(Value::Untranslatable { construct, .. })
+                if construct == "afronden op hele euro's"),
+            "the marked output must carry the taint: {:?}",
+            tainted.outputs.get("afgerond")
+        );
+    }
+
+    /// A marked article that errors must say which of the two has to move
+    /// before it can be translated: the engine's operation set, or the format.
+    /// A reader who only gets "cannot express this" learns nothing actionable.
+    #[test]
+    fn test_marking_error_names_the_layer_and_the_change() {
+        fn law_with(resolution: &str, resolved_by: Option<&str>) -> String {
+            let resolved_by_line = match resolved_by {
+                Some(text) => format!("\n          resolved_by: {text}"),
+                None => String::new(),
+            };
+            format!(
+                r#"
+$id: wet_met_markering
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bedrag wordt naar boven afgerond op hele euro's.
+    machine_readable:
+      markings:
+        - about: afronden op hele euro's
+          reason: de motor kent geen wettelijke afronding op eurocenten
+          resolution: {resolution}{resolved_by_line}
+          target: []
+          legal_text_excerpt: naar boven afgerond op hele euro's
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 1234
+"#
+            )
+        }
+
+        let run = |yaml: String| {
+            let mut service = LawExecutionService::new();
+            service.load_law(&yaml).unwrap();
+            service
+                .evaluate_law_output("wet_met_markering", "bedrag", BTreeMap::new(), "2025-01-01")
+                .unwrap_err()
+                .to_string()
+        };
+
+        let operation_side = run(law_with(
+            "operation",
+            Some("Een CEIL-bewerking op eurocenten"),
+        ));
+        assert!(
+            operation_side.contains("needs a new operation")
+                && operation_side.contains("Een CEIL-bewerking op eurocenten"),
+            "an operation marking must name the operation to build: {operation_side}"
+        );
+
+        let model_side = run(law_with(
+            "model",
+            Some("Een vorm voor een regel over een verzameling"),
+        ));
+        assert!(
+            model_side.contains("needs a new shape in the format")
+                && model_side.contains("Een vorm voor een regel over een verzameling"),
+            "a model marking must name the shape the format lacks: {model_side}"
+        );
+
+        // `resolved_by` is required by schema v0.6.0 but optional on the model,
+        // which also reads files written before it was. Then the layer alone is
+        // the answer, and the message must not trail off into an empty phrase.
+        let bare = run(law_with("model", None));
+        assert!(
+            bare.contains("needs a new shape in the format") && !bare.contains(": —"),
+            "without resolved_by the layer alone must read as a sentence: {bare}"
+        );
+    }
+
+    /// Ignore mode is the quiet one, and quiet is not the same as permissive:
+    /// it drops the logging, not the refusal. An unaccepted flagged construct
+    /// still stops execution, and only an accepted one runs. Without this the
+    /// mode name would read as "execute anyway", which is what it must not do.
+    #[test]
+    fn test_ignore_mode_still_refuses_an_unaccepted_construct() {
+        fn law(accepted: bool) -> String {
+            format!(
+                r#"
+$id: wet_stil
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bedrag wordt naar boven afgerond op hele euro's.
+    machine_readable:
+      markings:
+        - about: afronden op hele euro's
+          reason: de motor kent geen wettelijke afronding op eurocenten
+          resolution: operation
+          resolved_by: Een CEIL-bewerking op eurocenten
+          target: []
+          legal_text_excerpt: naar boven afgerond
+          accepted: {accepted}
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 1234
+"#
+            )
+        }
+
+        let run = |accepted: bool| {
+            let mut service = LawExecutionService::new();
+            service.load_law(&law(accepted)).unwrap();
+            service.set_untranslatable_mode(UntranslatableMode::Ignore);
+            service.evaluate_law_output("wet_stil", "bedrag", BTreeMap::new(), "2025-01-01")
+        };
+
+        let unaccepted = run(false);
+        assert!(
+            matches!(unaccepted, Err(EngineError::Untranslatable { .. })),
+            "ignore mode must still refuse an unaccepted construct: {unaccepted:?}"
+        );
+
+        let accepted = run(true).expect("an accepted construct executes silently");
+        assert_eq!(accepted.outputs.get("bedrag"), Some(&Value::Int(1234)));
+    }
+
+    /// Both channels on one article are handled, and neither hides the other:
+    /// the v0.5.x entry is not silently dropped now that markings exist, and a
+    /// marking is not ignored because an untranslatable came first.
+    #[test]
+    fn test_both_channels_on_one_article_are_handled() {
+        let yaml = r#"
+$id: wet_met_beide
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Twee dingen die dit artikel niet kan uitdrukken.
+    machine_readable:
+      untranslatables:
+        - construct: afronden op hele euro's
+          reason: geen CEIL-bewerking
+          accepted: true
+      markings:
+        - about: som van alle deeltoeslagen
+          reason: het model kent alleen regels over een waarde, niet over een verzameling
+          resolution: model
+          resolved_by: Een vorm voor een regel over een verzameling
+          target: []
+          legal_text_excerpt: De som van alle deeltoeslagen
+          accepted: true
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 1234
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        service.set_untranslatable_mode(UntranslatableMode::Propagate);
+
+        let result = service
+            .evaluate_law_output("wet_met_beide", "bedrag", BTreeMap::new(), "2025-01-01")
+            .expect("accepted entries execute with partial logic");
+
+        match result.outputs.get("bedrag") {
+            Some(Value::Untranslatable { construct, .. }) => {
+                assert!(
+                    construct.contains("afronden op hele euro's")
+                        && construct.contains("som van alle deeltoeslagen"),
+                    "both channels must show up in the taint: {construct}"
+                );
+            }
+            other => panic!("expected a tainted output, got: {other:?}"),
+        }
     }
 
     #[test]

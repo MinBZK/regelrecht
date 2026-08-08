@@ -7,7 +7,7 @@
 
 use serde_json::json;
 
-use regelrecht_pipeline::enrich::{EnrichPayload, EnrichResult};
+use regelrecht_pipeline::enrich::{EnrichPayload, EnrichResult, Pass};
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::models::{Job, JobStatus, JobType, LawStatusValue, Priority};
 use regelrecht_pipeline::test_utils::TestDb;
@@ -30,6 +30,10 @@ fn payload(provider: &str) -> EnrichPayload {
         new_law: None,
         chunk_articles: None,
         skip_mvt: None,
+        // Niet geserialiseerd; een payload uit de wachtrij is altijd een
+        // vertaalslag, en de terugkoppelpassen ontstaan binnen de run.
+        pass: Pass::Translate,
+        session: None,
     }
 }
 
@@ -44,8 +48,13 @@ fn chunk_result(provider: &str, law_complete: bool, enrich_cursor: usize) -> Enr
         branch: format!("enrich/{provider}"),
         related_legislation: Vec::new(),
         untranslatables: Vec::new(),
+        markings: Vec::new(),
         law_complete,
         enrich_cursor,
+        feedback: Vec::new(),
+        usage: None,
+        agent_calls: Vec::new(),
+        session_reuse: "off".into(),
     }
 }
 

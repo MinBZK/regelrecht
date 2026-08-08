@@ -562,12 +562,14 @@ pub enum Operation {
     In,
     List,
 
-    // Date operations (5)
+    // Date operations (7)
     Age,
     DateAdd,
     Date,
     DayOfWeek,
     DateDiff,
+    DatePart,
+    StartOf,
 
     // Engine-only compat aliases — accepted during deserialization but NOT in the
     // v0.5.0 schema operationType enum. YAML using these will execute correctly but
@@ -614,6 +616,8 @@ impl Operation {
         Operation::Date,
         Operation::DayOfWeek,
         Operation::DateDiff,
+        Operation::DatePart,
+        Operation::StartOf,
     ];
 
     /// Compat aliases accepted by the engine but not in the schema.
@@ -658,6 +662,8 @@ impl Operation {
         Operation::Date,
         Operation::DayOfWeek,
         Operation::DateDiff,
+        Operation::DatePart,
+        Operation::StartOf,
         Operation::NotEquals,
         Operation::IsNull,
         Operation::NotNull,
@@ -745,6 +751,8 @@ impl Operation {
             Operation::Date => "DATE",
             Operation::DayOfWeek => "DAY_OF_WEEK",
             Operation::DateDiff => "DATE_DIFF",
+            Operation::DatePart => "DATE_PART",
+            Operation::StartOf => "START_OF",
             Operation::NotEquals => "NOT_EQUALS",
             Operation::IsNull => "IS_NULL",
             Operation::NotNull => "NOT_NULL",

@@ -1,0 +1,36 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_input_without_source
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      Een input zonder `source` zegt dat een waarde ergens vandaan komt en
+      zwijgt over waar. Het schema eist `source` op elke input; een lege
+      `source: {}` betekent registry-lookup, dus het weglaten is geen
+      verkorte schrijfwijze van hetzelfde. Het model heeft het veld als
+      `Option` en laadt het bestand; bij resolutie wordt de bronloze input
+      overgeslagen (`resolve_inputs_with_service` in `service.rs`) en de
+      uitvoering strandt hard op "Variable not found: toetsingsinkomen". Er
+      wordt niets stil verkeerd berekend; de fout valt alleen pas bij
+      evaluatie, en de melding noemt de ontbrekende `source` niet als
+      oorzaak.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        input:
+          - name: toetsingsinkomen
+            type: amount
+        output:
+          - name: komt_in_aanmerking
+            type: boolean
+        actions:
+          - output: komt_in_aanmerking
+            value:
+              operation: LESS_THAN
+              subject: $toetsingsinkomen
+              value: 30000

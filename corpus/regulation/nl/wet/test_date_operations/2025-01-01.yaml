@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.4/schema/v0.5.4/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_date_operations
 name: Testwet datumoperaties
 regulatory_layer: WET
@@ -70,3 +70,94 @@ articles:
               from: $indieningsdatum
               to: $referencedate.iso
               in: years
+
+  - number: '2'
+    url: https://example.com/test_date_operations/2
+    text: >-
+      Het jaar en de maand van een wijziging zijn het jaartal en het
+      maandnummer van de wijzigingsdatum. Het begin van de maand is de eerste
+      dag van de maand waarin de wijzigingsdatum valt, en het begin van het
+      jaar de eerste dag van dat jaar. Een wijziging die zich voordoet na de
+      eerste dag van de maand wordt in aanmerking genomen vanaf de eerste dag
+      van de daaropvolgende maand, en een wijziging op de eerste dag van de
+      maand vanaf die dag zelf.
+    machine_readable:
+      execution:
+        parameters:
+          - name: wijzigingsdatum
+            type: date
+            required: true
+            description: Datum waarop de wijziging zich voordoet
+        output:
+          - name: wijzigingsjaar
+            type: number
+          - name: wijzigingsmaand
+            type: number
+          - name: begin_wijzigingsmaand
+            type: string
+          - name: begin_wijzigingsjaar
+            type: string
+          - name: eerste_dag_volgende_maand
+            type: string
+          - name: ingangsdatum_wijziging
+            type: string
+        actions:
+          # RFC-032: DATE_PART reads one component out of a date. The unit is
+          # singular, where DATE_DIFF above counts and writes it plural.
+          - output: wijzigingsjaar
+            value:
+              operation: DATE_PART
+              date: $wijzigingsdatum
+              in: year
+          - output: wijzigingsmaand
+            value:
+              operation: DATE_PART
+              date: $wijzigingsdatum
+              in: month
+          # RFC-032: START_OF truncates down to the start of a calendar unit.
+          - output: begin_wijzigingsmaand
+            value:
+              operation: START_OF
+              date: $wijzigingsdatum
+              in: month
+          - output: begin_wijzigingsjaar
+            value:
+              operation: START_OF
+              date: $wijzigingsdatum
+              in: year
+          # The canonical "eerste dag van de kalendermaand volgende op":
+          # truncate first, add afterwards, so the day-clamping of DATE_ADD
+          # never comes into play and 31 January yields 1 February.
+          - output: eerste_dag_volgende_maand
+            value:
+              operation: DATE_ADD
+              date:
+                operation: START_OF
+                date: $wijzigingsdatum
+                in: month
+              months: 1
+          # Awir art. 49: a change after the first of the month counts from the
+          # first of the next one, a change on the first counts in that month
+          # itself. The day number is what tells the two apart.
+          - output: ingangsdatum_wijziging
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject:
+                      operation: DATE_PART
+                      date: $wijzigingsdatum
+                      in: day
+                    value: 1
+                  then:
+                    operation: DATE_ADD
+                    date:
+                      operation: START_OF
+                      date: $wijzigingsdatum
+                      in: month
+                    months: 1
+              default:
+                operation: START_OF
+                date: $wijzigingsdatum
+                in: month

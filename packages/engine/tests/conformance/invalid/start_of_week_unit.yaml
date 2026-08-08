@@ -1,0 +1,31 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_start_of_week_unit
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      START_OF kapt een datum af op het begin van een kalendereenheid, en het
+      schema staat daarvoor alleen `year` en `month` toe: een weekbegin zou
+      een conventie vergen die geen wettekst oplegt. Het model leest de
+      eenheid als vrije string; de engine benoemt de fout pas op runtime,
+      zoals bij DATE_PART.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        parameters:
+          - name: peildatum
+            type: date
+        output:
+          - name: begin_van_de_week
+            type: date
+        actions:
+          - output: begin_van_de_week
+            value:
+              operation: START_OF
+              date: $peildatum
+              in: week

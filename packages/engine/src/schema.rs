@@ -3,7 +3,7 @@
 //!
 //! Only compiled with the `validate` feature (which pulls in `jsonschema`).
 //! Keeping the schema-loading list and version detection here means there is a
-//! single copy of the 12-version `include_str!` table — see the CI guard
+//! single copy of the 13-version `include_str!` table — see the CI guard
 //! "Check schema versions registered in schema.rs" which greps this file.
 
 use std::collections::HashMap;
@@ -23,8 +23,24 @@ macro_rules! with_schema_versions {
         $callback! {
             "v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0",
             "v0.5.1", "v0.5.2", "v0.5.3", "v0.5.4", "v0.5.5", "v0.5.6",
+            "v0.6.0",
         }
     };
+}
+
+/// The versions this engine embeds, as a runtime list.
+///
+/// The macro above is the source of truth because `include_str!` needs a
+/// literal, and this hands the same list to code that only needs the strings.
+/// It exists so the three places that must agree can be compared: the embedded
+/// schemas here, [`crate::config::SUPPORTED_SCHEMAS`] which decides what loads,
+/// and the `supported-schemas` metadata in `Cargo.toml` that RFC-013 declares.
+#[must_use]
+pub fn embedded_versions() -> Vec<&'static str> {
+    macro_rules! list {
+        ($($version:literal),* $(,)?) => {{ vec![$($version),*] }};
+    }
+    with_schema_versions!(list)
 }
 
 /// Embedded schemas keyed by their `$id` URL suffix (version path).
@@ -271,5 +287,54 @@ mod tests {
         let error = validation_errors_for("v9.9.9", &serde_json::json!({}))
             .expect_err("v9.9.9 is not embedded");
         assert!(error.contains("v9.9.9"), "unhelpful error: {error}");
+    }
+}
+
+#[cfg(test)]
+mod version_list_tests {
+    use super::*;
+
+    /// Three lists must agree and nothing compared them.
+    ///
+    /// Schema v0.6.0 was registered in this file and in `schema/`, and left out
+    /// of `config::SUPPORTED_SCHEMAS` and of the Cargo metadata. The schema
+    /// validator therefore passed every v0.6.0 file while the loader rejected
+    /// all of them, which reads as a corpus problem and is an engine one.
+    #[test]
+    fn config_supports_every_embedded_schema() {
+        for version in embedded_versions() {
+            assert!(
+                crate::config::SUPPORTED_SCHEMAS.contains(&version),
+                "{version} is embedded but config::SUPPORTED_SCHEMAS rejects it"
+            );
+        }
+    }
+
+    #[test]
+    fn config_supports_nothing_that_is_not_embedded() {
+        let embedded = embedded_versions();
+        for version in crate::config::SUPPORTED_SCHEMAS {
+            assert!(
+                embedded.contains(version),
+                "{version} is accepted by config but no schema is embedded for it"
+            );
+        }
+    }
+
+    #[test]
+    fn cargo_metadata_matches_the_engine() {
+        // RFC-013 makes this metadata the declaration a consumer reads, so a
+        // stale entry misleads outside this crate where no test can see it.
+        let manifest = include_str!("../Cargo.toml");
+        let line = manifest
+            .lines()
+            .find(|l| l.starts_with("supported-schemas"))
+            .expect("supported-schemas metadata is missing from Cargo.toml");
+        for version in embedded_versions() {
+            assert!(
+                line.contains(&format!("\"{version}\"")),
+                "{version} is embedded but Cargo.toml does not declare it"
+            );
+        }
     }
 }

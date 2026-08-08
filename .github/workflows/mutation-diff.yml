@@ -5,6 +5,11 @@
 # De twee vervangen elkaar niet: --in-diff kijkt alleen naar productiecode die
 # in de diff staat, en een wijziging hier kan code elders slechter getest maken
 # zonder dat deze job dat ziet.
+#
+# De poort dekt engine en pipeline. De pipeline stond er eerst buiten, terwijl
+# daar de deterministische poorten en de tellers zitten: de code die bepaalt of
+# een vertaling deugt. Twee keer bleek daar een test te staan die zijn eigen
+# regel niet vastpinde, en dat is precies wat een mutant vindt.
 name: Mutation Testing (diff)
 
 on:
@@ -12,6 +17,7 @@ on:
     branches: [main]
     paths:
       - 'packages/engine/**'
+      - 'packages/pipeline/**'
       - '.github/workflows/mutation-diff.yml'
 
 permissions:
@@ -84,7 +90,7 @@ jobs:
         # heeft aangeraakt, en kan hij rood worden op andermans werk.
         run: |
           git diff --relative "${{ github.event.pull_request.base.sha }}...HEAD" \
-            -- engine > "$RUNNER_TEMP/pr.diff"
+            -- engine pipeline > "$RUNNER_TEMP/pr.diff"
           if [ -s "$RUNNER_TEMP/pr.diff" ]; then
             echo "has-changes=true" >> "$GITHUB_OUTPUT"
           else
@@ -113,9 +119,9 @@ jobs:
             *) exit "$code" ;;
           esac
 
-      - name: Geen wijzigingen in de engine
+      - name: Geen wijzigingen om te muteren
         if: steps.diff.outputs.has-changes != 'true'
-        run: echo "Geen gewijzigde regels in packages/engine, niets te muteren."
+        run: echo "Geen gewijzigde regels in packages/engine of packages/pipeline."
 
       - name: Upload rapport
         if: always() && steps.diff.outputs.has-changes == 'true'
