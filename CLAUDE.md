@@ -227,7 +227,12 @@ from the previous run.
 
 Drive the wait off the job's `status`, never off the number of review comments —
 zero comments is equally consistent with "still running" and with "the review had
-nothing to report".
+nothing to report". The gate does read the comments, but only for what is written
+in them, and only once the proof step has established that the review ran to
+completion. That order is enforced rather than assumed: `assert_no_critical_finding`
+blocks with an internal-error message if it is reached before `assert_review_ran`
+has set `review_proven`, and the test suite asserts that the comment endpoints stay
+untouched on every path where the review is unproven.
 
 `claude-review` itself cannot be a required check, because it does not run on
 cross-repo (fork) PRs, where no secrets exist and `CLAUDE_CODE_OAUTH_TOKEN` is
@@ -303,13 +308,81 @@ It looks the review job up with `filter=all`, because the run id survives a
 "Re-run this job" and `claude-review` is then absent from the newest attempt's
 job list.
 
-The gate proves the review ran to completion for this commit. It says nothing
-about how many findings there were, whether they hold up, or whether they were
-addressed.
+A finished review is not the same as an acceptable one. On 8 August 2026 the
+review put a 🔴 Critical on PR 1234 at 10:11:31 and the PR merged at 10:11:54,
+green all the way, because the gate only asked whether a review had happened. It
+now searches what `claude[bot]` wrote for the exact string `🔴 **Critical**` and
+turns red on a hit, naming the comments it found it in. Three places count: the
+sticky comment, the inline comments, and the body of the submitted review. That
+last one is easy to forget and carries findings in practice that appear nowhere
+else.
 
-The logic lives in `script/await-claude-review.sh`, with
-`script/await-claude-review.test.sh` (a `gh` stub) covering every path that
-decides green versus red; the tests run as a pre-commit hook.
+Only what this run wrote counts, measured against the review job's `started_at`.
+An item by `claude[bot]` without a usable timestamp blocks rather than falling
+outside the window unnoticed; a `PENDING` review is the exception, since it was
+never submitted. One edge the window does not cover: `cancel-in-progress` does not
+stop a run instantly, so a comment written by the run being cancelled can land
+inside its successor's window and turn that one red. The next push clears it.
+Anything older came from an earlier run. Cleanup removes those comments, but a
+submitted review cannot be deleted at all, and a cleanup that fails would
+otherwise keep blocking a finding that has long been fixed. Without a readable
+`started_at` the gate blocks: it cannot tell the two apart.
+
+Only Critical blocks. Significant carries "likely" in its own definition and would
+often be a false positive, and an exception that becomes routine stops holding
+anything back. There is no override: fix the finding and push again, and since the
+review rewrites its comment every run, a finding that is gone is gone from the
+gate too. An escape hatch — a label, a magic comment, an environment variable —
+is something an agent operates as easily as a person, while it reads as a human
+judgement. Better none at all; if a case ever arises that needs one, it gets
+decided then. The marker lives in `CRITICAL_MARKER` and in the review prompt, and the
+test suite binds the two: change one without the other and the gate reads past
+every finding, invisibly.
+
+That marker is free text written by a language model, so the prompt says in as
+many words that a machine parses it and that it must be written exactly, and
+nowhere else. Fully closing that is not possible.
+
+Blocking on findings only works if a finding cannot be pushed away. The review job
+used to delete every `claude[bot]` comment at the start of its run, which meant a
+crash after the deletion took the previous finding with it, and a rerun that
+happened not to notice it again turned red into green. The order is reversed now:
+`script/claude-review-comments.sh snapshot` records the ids and the texts before
+the review, and `clean-up` removes them afterwards, under the same
+`execution_file` condition as the proof step. Cleanup deletes only what is still
+there with an unchanged `updated_at`. `use_sticky_comment` makes the action reuse
+the previous comment, so its id is in the snapshot and deleting by id alone would
+wipe the review that just ran.
+
+Snapshot and cleanup pick their comments by the line `<!-- claude-review -->`,
+which the prompt tells the review to end every comment with. The author is not
+enough: `claude.yml` answers `@claude` in the same thread as the same bot, and
+that conversation is neither a finding to hand to the next review nor something
+to delete. Cleanup itself never fails the step. A hiccup on one of its list calls
+counts as a failed cleanup and lands in the step summary; failing there would put
+`claude-review` on `failure` and have the gate report that there is no usable
+review, of a review that ran fine.
+
+The snapshotted texts go into the prompt as context, with the instruction that
+they describe an earlier version of the diff and that every one of them is to be
+re-checked against the current one: nothing carried over that has been fixed,
+nothing dropped that still stands. Without that, the gate would be an incentive to
+keep pushing until the review forgets, which is worse than no gate. The severity
+markers are rewritten to `[Critical]` and friends on the way in, so a review that
+quotes an old finding to say it has been fixed does not trip the gate with the
+quote.
+
+The gate needs `issues: read` on top of `pull-requests: read`: the summary comment
+is an issue comment, and that endpoint sits behind the issues API.
+
+The gate proves the review ran to completion for this commit and that it left no
+critical finding standing. It says nothing about findings of lower severity,
+whether the findings hold up, or whether they were addressed.
+
+The logic lives in `script/await-claude-review.sh` and
+`script/claude-review-comments.sh`, each with a test suite next to it (a `gh`
+stub) covering every path that decides green versus red, or what is kept and
+thrown away. Both run as a pre-commit hook.
 
 ### De goedkeuringspoort op security-updates
 

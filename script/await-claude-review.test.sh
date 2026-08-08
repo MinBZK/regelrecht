@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Tests voor script/await-claude-review.sh.
 #
-# `gh` wordt vervangen door een stub die drie endpoints kent: de pull request,
-# de blob-sha van het workflowbestand per ref, en de jobs van de workflow-run.
-# Die laatste komen uit een reeks — één antwoord per aanroep — zodat een lopende
-# review die later klaar is te simuleren valt. Zo is elk pad deterministisch te
-# bewijzen zonder GitHub. Elk ander endpoint laat de stub falen; comments tellen
-# hoort de poort niet te doen.
+# `gh` wordt vervangen door een stub die de endpoints kent die de poort gebruikt:
+# de pull request, de blob-sha van het workflowbestand per ref, de jobs van de
+# workflow-run en de comments van de PR. De jobs komen uit een reeks
+# — één antwoord per aanroep — zodat een lopende review die later klaar is te
+# simuleren valt. Zo is elk pad deterministisch te bewijzen zonder GitHub. Elk
+# ander endpoint laat de stub falen.
+#
+# De stub schrijft elke aanroep weg in `$STUB_CALLS`. Daarmee is niet alleen te
+# toetsen wát de poort besluit, maar ook in welke volgorde zij kijkt: de comments
+# mogen pas worden opgevraagd nadat vaststaat dat er gereviewd is.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +23,27 @@ mkdir -p "${WORK}/bin"
 cat >"${WORK}/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 url="$2"
+SLURP=0
+for arg in "$@"; do [ "$arg" = --slurp ] && SLURP=1; done
+
+# Zoals `gh api --paginate --slurp`: één array per pagina, gebundeld tot één
+# array van arrays. De fixture bevat de pagina's als losse documenten.
+fixture() {
+  body=$(cat "$1")
+  if [ "$body" = "ERROR" ]; then
+    echo "gh: simulated API failure" >&2
+    exit 1
+  fi
+  # Alleen bundelen als de aanroep erom vraagt, anders zou de stub een poort
+  # zonder `--slurp` niet van een mét kunnen onderscheiden. Onleesbare fixtures
+  # gaan ongemoeid door: die toetsen wat de poort doet met niet-JSON.
+  if [ "$SLURP" = 1 ]; then
+    printf '%s\n' "$body" | jq -s '.' 2>/dev/null || printf '%s\n' "$body"
+  else
+    printf '%s\n' "$body"
+  fi
+}
+
 case "$url" in
 */actions/runs/*/jobs*)
   n=$(cat "$STUB_COUNTER")
@@ -34,6 +59,18 @@ case "$url" in
     exit 1
   fi
   printf '%s\n' "$line"
+  ;;
+*/issues/*/comments*)
+  echo 'sticky-comments' >>"$STUB_CALLS"
+  fixture "$STUB_STICKY_COMMENTS"
+  ;;
+*/pulls/*/comments*)
+  echo 'inline-comments' >>"$STUB_CALLS"
+  fixture "$STUB_INLINE_COMMENTS"
+  ;;
+*/pulls/*/reviews*)
+  echo 'reviews' >>"$STUB_CALLS"
+  fixture "$STUB_REVIEWS"
   ;;
 */actions/runs/*)
   body=$(cat "$STUB_RUN")
@@ -96,8 +133,14 @@ export STUB_RUN="${WORK}/run"
 export STUB_REFS="${WORK}/refs"
 export STUB_WORKFLOW_RUN="${WORK}/workflow-run"
 export STUB_WORKFLOW_BASE="${WORK}/workflow-base"
+export STUB_STICKY_COMMENTS="${WORK}/sticky-comments"
+export STUB_INLINE_COMMENTS="${WORK}/inline-comments"
+export STUB_REVIEWS="${WORK}/reviews"
+export STUB_CALLS="${WORK}/calls"
 
 PROOF='Record that the review ran'
+CRITICAL='🔴 **Critical**'
+TAG='<!-- claude-review -->'
 HEAD_SHA='c0ffee0000000000000000000000000000000000'
 
 # pull_request <full_name van de head-repo> <draft> <auteur>
@@ -138,9 +181,15 @@ JOB_STAP_ZONDER_CONCLUSIE="{\"jobs\":[{\"name\":\"claude-review\",\"status\":\"c
 # Twee stappen met dezelfde naam: een decoy naast het echte bewijs.
 JOB_DUBBELE_STAP="{\"jobs\":[{\"name\":\"claude-review\",\"status\":\"completed\",\"conclusion\":\"success\",\"steps\":[{\"name\":\"${PROOF}\",\"conclusion\":\"skipped\"},{\"name\":\"${PROOF}\",\"conclusion\":\"success\"}],\"html_url\":\"http://example.invalid/job\"}]}"
 
+# De starttijd van de review-job scheidt wat déze review schreef van wat er van
+# een vorige is blijven staan.
+JOB_START='2026-08-08T10:00:00Z'
+TOEN='2026-08-08T09:00:00Z'
+NU='2026-08-08T10:05:00Z'
+
 job() {
-  printf '{"jobs":[{"name":"claude-review","status":"%s","conclusion":%s,"steps":%s,"html_url":"http://example.invalid/job"}]}\n' \
-    "$1" "$2" "$(steps_json "${3-success}")"
+  printf '{"jobs":[{"name":"claude-review","status":"%s","conclusion":%s,"steps":%s,"started_at":"%s","html_url":"http://example.invalid/job"}]}\n' \
+    "$1" "$2" "$(steps_json "${3-success}")" "$JOB_START"
 }
 
 RUNNING=$(job in_progress null)
@@ -155,10 +204,42 @@ DONE_NO_REVIEW=$(job completed '"success"' skipped)
 # Een workflow van vóór de bewijsstap; de job kent de stap niet.
 DONE_NO_PROOF_STEP=$(job completed '"success"' '')
 DONE_PROOF_FAILED=$(job completed '"success"' failure)
+# Zonder starttijd is niet uit elkaar te houden wat van deze review is.
+DONE_ZONDER_STARTTIJD="{\"jobs\":[{\"name\":\"claude-review\",\"status\":\"completed\",\"conclusion\":\"success\",\"steps\":$(steps_json success),\"html_url\":\"http://example.invalid/job\"}]}"
 NO_JOB='{"jobs":[{"name":"iets-anders","status":"completed","conclusion":"success"}]}'
 # Na "Re-run this job" op de poort staan er meerdere attempts van dezelfde job
 # op één run-id; de hoogste id is de meest recente.
-ATTEMPTS="{\"jobs\":[{\"name\":\"claude-review\",\"status\":\"completed\",\"conclusion\":\"success\",\"steps\":$(steps_json success),\"id\":9,\"html_url\":\"http://example.invalid/9\"},{\"name\":\"claude-review\",\"status\":\"completed\",\"conclusion\":\"failure\",\"steps\":$(steps_json skipped),\"id\":1,\"html_url\":\"http://example.invalid/1\"}]}"
+ATTEMPTS="{\"jobs\":[{\"name\":\"claude-review\",\"status\":\"completed\",\"conclusion\":\"success\",\"steps\":$(steps_json success),\"started_at\":\"${JOB_START}\",\"id\":9,\"html_url\":\"http://example.invalid/9\"},{\"name\":\"claude-review\",\"status\":\"completed\",\"conclusion\":\"failure\",\"steps\":$(steps_json skipped),\"started_at\":\"${JOB_START}\",\"id\":1,\"html_url\":\"http://example.invalid/1\"}]}"
+
+# De comments zoals de API ze teruggeeft.
+# `comment <auteur> <tekst> [tijdstip]`, standaard geschreven tijdens deze run.
+comment() {
+  printf '[{"user":{"login":"%s"},"body":"%s\\n\\n%s","updated_at":"%s","html_url":"http://example.invalid/comment"}]' \
+    "$1" "$2" "$TAG" "${3:-$NU}"
+}
+# Een ingediende review draagt `submitted_at` in plaats van `updated_at`.
+review() {
+  printf '[{"user":{"login":"%s"},"state":"COMMENTED","body":"%s\\n\\n%s","submitted_at":"%s","html_url":"http://example.invalid/review"}]' \
+    "$1" "$2" "$TAG" "${3:-$NU}"
+}
+GEEN_COMMENTS='[]'
+COMMENT_MINOR=$(comment 'claude[bot]' '## Kwaliteit\n\n🟡 **Minor** — deze naam dekt de lading niet.')
+COMMENT_CRITICAL=$(comment 'claude[bot]' "## Correctheid\n\n${CRITICAL} — hier gaat een uitkering de verkeerde kant op.")
+# Een bevinding uit een vorige run: geschreven vóór deze review-job begon. De
+# opruimstap haalt zulke comments weg, maar een ingediende review is niet te
+# verwijderen, en een mislukte opruiming mag geen gerepareerde bevinding voor
+# altijd blijven blokkeren.
+COMMENT_CRITICAL_VAN_TOEN=$(comment 'claude[bot]' "## Correctheid\n\n${CRITICAL} — dit is al gerepareerd." "$TOEN")
+REVIEW_CRITICAL=$(review 'claude[bot]' "## Correctheid\n\n${CRITICAL} — dit stond alleen in de body van de review.")
+# Zonder tijdstempel valt een comment buiten het venster en zou hij stil worden
+# overgeslagen: fail-open, en onzichtbaar.
+COMMENT_ZONDER_TIJD='[{"user":{"login":"claude[bot]"},"body":"iets\n\n<!-- claude-review -->","html_url":"http://example.invalid/comment"}]'
+# Een review die nog niet is ingediend heeft terecht geen `submitted_at`.
+REVIEW_PENDING='[{"user":{"login":"claude[bot]"},"state":"PENDING","body":"nog niet ingediend\n\n<!-- claude-review -->","html_url":"http://example.invalid/review"}]'
+REVIEW_CRITICAL_VAN_TOEN=$(review 'claude[bot]' "${CRITICAL} — uit een vorige run." "$TOEN")
+# Dezelfde markering, maar van een mens die de bevinding bespreekt. Wie erover
+# praat blokkeert de merge niet; alleen wat de review zelf schreef telt.
+COMMENT_CRITICAL_VAN_EEN_MENS=$(comment 'iemand' "Ik denk dat die ${CRITICAL} onterecht is.")
 
 passed=0
 failed=0
@@ -167,6 +248,10 @@ jobs_are() { printf '%s\n' "$@" >"$STUB_JOBS"; }
 pr_is() { printf '%s\n' "$1" >"$STUB_PR"; }
 run_is() { printf '%s\n' "$1" >"$STUB_RUN"; }
 workflow_is() { printf '%s\n' "$1" >"$STUB_WORKFLOW_RUN"; }
+sticky_is() { printf '%s\n' "$1" >"$STUB_STICKY_COMMENTS"; }
+inline_is() { printf '%s\n' "$1" >"$STUB_INLINE_COMMENTS"; }
+reviews_are() { printf '%s\n' "$1" >"$STUB_REVIEWS"; }
+comments_were_read() { grep -qxF 'sticky-comments' "$STUB_CALLS"; }
 
 # Elke test start van dezelfde grond: een gewone PR waarvan het workflowbestand
 # gelijk is aan dat op de default branch, en één afgeronde, geslaagde review
@@ -179,8 +264,12 @@ reset_fixtures() {
   run_is "$RUN_VAN_DEZE_PR"
   workflow_is 'blob-van-main'
   printf '%s\n' 'blob-van-main' >"$STUB_WORKFLOW_BASE"
+  sticky_is "$GEEN_COMMENTS"
+  inline_is "$GEEN_COMMENTS"
+  reviews_are "$GEEN_COMMENTS"
   echo 0 >"$STUB_COUNTER"
   : >"$STUB_REFS"
+  : >"$STUB_CALLS"
   : >"${WORK}/summary.md"
 }
 
@@ -345,13 +434,129 @@ reset_fixtures
 jobs_are "$JOB_STAP_ZONDER_CONCLUSIE"
 check "bewijsstap zonder conclusie: rood" 1 "geen leesbare conclusie" "draai deze job opnieuw" -- MAX_WAIT_SECONDS=0
 
+echo "== een kritieke bevinding =="
+reset_fixtures
+sticky_is "$COMMENT_CRITICAL"
+check "kritieke bevinding in de samenvattende review: rood" 1 "heeft op commit" "Repareer wat er staat" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+inline_is "$COMMENT_CRITICAL"
+check "kritieke bevinding in een inline comment: rood" 1 "heeft op commit" "Repareer wat er staat" -- MAX_WAIT_SECONDS=0
+# Er is geen uitweg, en de melding hoort er ook geen te suggereren.
+reset_fixtures
+sticky_is "$COMMENT_CRITICAL"
+check "de melding wijst naar repareren en pushen, niet naar een uitweg" 1 "Repareer wat er staat en push opnieuw" "Repareer wat er staat en push opnieuw" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+reviews_are "$REVIEW_CRITICAL"
+check "kritieke bevinding in de body van de ingediende review: rood" 1 "heeft op commit" "Repareer wat er staat" -- MAX_WAIT_SECONDS=0
+# De melding wijst aan waar de bevinding staat, anders is een onterechte rood
+# niet te vinden.
+reset_fixtures
+inline_is "$COMMENT_CRITICAL"
+check "de melding noemt waar de bevinding staat" 1 "http://example.invalid/comment" "http://example.invalid/comment" -- MAX_WAIT_SECONDS=0
+
+# Alleen wat déze run schreef telt. Een ingediende review is niet te verwijderen
+# en een mislukte opruiming laat comments staan; zonder deze grens zou een
+# gerepareerde bevinding voor altijd blijven blokkeren.
+reset_fixtures
+sticky_is "$COMMENT_CRITICAL_VAN_TOEN"
+check "kritieke bevinding van vóór deze review-job blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+reviews_are "$REVIEW_CRITICAL_VAN_TOEN"
+check "review-body uit een vorige run blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+sticky_is "$COMMENT_ZONDER_TIJD"
+check "comment zonder tijdstempel: rood, niet stil overgeslagen" 1 "zonder bruikbaar tijdstempel" "draai deze job opnieuw" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+reviews_are "$REVIEW_PENDING"
+check "een nog niet ingediende review blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+jobs_are "$DONE_ZONDER_STARTTIJD"
+sticky_is "$COMMENT_CRITICAL"
+check "job zonder starttijd: rood, want de grens ontbreekt" 1 "starttijd van" "draai deze job opnieuw" -- MAX_WAIT_SECONDS=0
+
+reset_fixtures
+sticky_is "$COMMENT_MINOR"
+check "bevinding van lagere ernst blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+sticky_is "$COMMENT_CRITICAL_VAN_EEN_MENS"
+check "een mens die de markering citeert blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+
+# `claude.yml` antwoordt als dezelfde bot op `@claude`. Zo'n antwoord draagt de
+# tag niet en is geen bevinding, ook niet als het de markering aanhaalt.
+reset_fixtures
+sticky_is '[{"user":{"login":"claude[bot]"},"body":"Die 🔴 **Critical** ging over regel 12.","updated_at":"'"$NU"'","html_url":"http://example.invalid/antwoord"}]'
+check "een @claude-antwoord zonder de tag blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+
+# `gh api --paginate --slurp` levert één array per pagina. Werd daar per pagina
+# geteld, dan las de poort "0\n0" als "niet nul" en blokkeerde hij een PR die
+# genoeg runs heeft gehad om over de honderd reviews te komen.
+reset_fixtures
+sticky_is '[]
+[]'
+check "meer dan één pagina blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+
+# Niet kunnen kijken is geen schone uitslag: dat is niet te onderscheiden van
+# "er staat niets", en dan hoort de poort dicht te blijven.
+reset_fixtures
+sticky_is ERROR
+check "samenvattende comments niet op te halen: rood" 1 "zijn niet op te halen" "draai deze job opnieuw" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+inline_is ERROR
+check "inline comments niet op te halen: rood" 1 "zijn niet op te halen" "draai deze job opnieuw" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+reviews_are ERROR
+check "ingediende reviews niet op te halen: rood" 1 "zijn niet op te halen" "draai deze job opnieuw" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+sticky_is "$GARBAGE"
+check "onleesbaar antwoord op de samenvattende comments: rood" 1 "geen leesbare lijst" "geen leesbare lijst" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+inline_is "$GARBAGE"
+check "onleesbaar antwoord op de inline comments: rood" 1 "geen leesbare lijst" "geen leesbare lijst" -- MAX_WAIT_SECONDS=0
+reset_fixtures
+reviews_are "$GARBAGE"
+check "onleesbaar antwoord op de ingediende reviews: rood" 1 "geen leesbare lijst" "geen leesbare lijst" -- MAX_WAIT_SECONDS=0
+
+echo "== de bevindingen worden pas gelezen als vaststaat dat er gereviewd is =="
+# De review-job wist eerst de comments van de vorige review en schrijft daarna de
+# nieuwe. Wie in dat venster gaat tellen leest nul en noemt dat schoon. De poort
+# mag de comments dus pas opvragen nadat de bewijsstap is vastgesteld, en deze
+# tests bewijzen dat aan de aanroepen die de stub optekent.
+reset_fixtures
+jobs_are "$DONE_NO_REVIEW"
+sticky_is "$COMMENT_CRITICAL"
+check "bewijsstap overgeslagen: rood op de bewijsstap, niet op de bevinding" 1 "is in die job overgeslagen" "verklaart dit niet" -- MAX_WAIT_SECONDS=0
+if comments_were_read; then
+  echo "FAIL de poort las de comments terwijl nog niet vaststond dat er gereviewd was"
+  failed=$((failed + 1))
+else
+  echo "ok   geen bewijs dat er gereviewd is: de comments blijven ongelezen"
+  passed=$((passed + 1))
+fi
+reset_fixtures
+jobs_are "$RUNNING"
+check "review loopt nog: de comments blijven ongelezen" 1 "nog niet klaar" "nog niet klaar" -- MAX_WAIT_SECONDS=0
+if comments_were_read; then
+  echo "FAIL de poort las de comments van een review die nog liep"
+  failed=$((failed + 1))
+else
+  echo "ok   review nog niet klaar: de comments blijven ongelezen"
+  passed=$((passed + 1))
+fi
+
 echo "== de poort opent =="
 # Het geval uit issue 1178: de review draaide volledig af en had niets aan te
 # merken, dus claude[bot] plaatste geen enkele comment. Dat is een schone PR,
-# geen ontbrekende review. De stub faalt op elk endpoint buiten de jobs van deze
-# run, dus deze test slaagt alleen als de poort geen comments raadpleegt.
+# geen ontbrekende review. Nul comments telt hier wél als nul bevindingen, juist
+# omdat de bewijsstap er al voor stond.
 reset_fixtures
 check "review af met nul bevindingen: groen" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+if comments_were_read; then
+  echo "ok   met bewijs van de review worden de comments wél gelezen"
+  passed=$((passed + 1))
+else
+  echo "FAIL de poort werd groen zonder de comments te lezen"
+  failed=$((failed + 1))
+fi
 reset_fixtures
 jobs_are "$DONE_NEUTRAL"
 check "conclusie neutral telt als afgerond: groen" 0 "review afgerond (neutral)" "groen" -- MAX_WAIT_SECONDS=0
@@ -390,6 +595,63 @@ if grep -qxF '  claude-review:' "$WORKFLOW" &&
   passed=$((passed + 1))
 else
   echo "FAIL de job \`claude-review\` ontbreekt in ${WORKFLOW} of heeft een eigen \`name:\`, waardoor de poort haar niet vindt"
+  failed=$((failed + 1))
+fi
+
+# Een kritieke bevinding kent geen uitweg. Een label, een commentaar-commando of
+# een omgevingsvariabele zou een uitweg zijn die een agent net zo makkelijk zet
+# als een mens, terwijl hij leest als een menselijk oordeel.
+if grep -qF '/labels' "$GATE"; then
+  echo "FAIL de poort leest labels, en dat kan alleen om er een uitweg aan op te hangen"
+  failed=$((failed + 1))
+else
+  echo "ok   de poort kent geen uitweg langs een kritieke bevinding"
+  passed=$((passed + 1))
+fi
+
+# De markering waarop de poort rood wordt, is de markering die de prompt de
+# review voorschrijft. Wijkt de een af, dan leest de poort langs elke bevinding
+# heen en is dat niet aan de uitslag te zien.
+if grep -qF -- "$CRITICAL" "$WORKFLOW" && grep -qF -- "$CRITICAL" "$GATE"; then
+  echo "ok   poort en prompt gebruiken dezelfde markering voor een kritieke bevinding"
+  passed=$((passed + 1))
+else
+  echo "FAIL de markering ${CRITICAL} staat niet in zowel ${WORKFLOW} als ${GATE}"
+  failed=$((failed + 1))
+fi
+
+# Opruimen ná de review. Staat het ervoor, dan is een bevinding uit een geklapte
+# run weg en is opnieuw pushen genoeg om de poort te laten vergeten.
+snapshot_line=$(grep -n -- '- name: Snapshot the previous review' "$WORKFLOW" | cut -d: -f1)
+review_line=$(grep -n -- '- name: Run Claude Code Review' "$WORKFLOW" | cut -d: -f1)
+cleanup_line=$(grep -n -- '- name: Clean up the superseded review' "$WORKFLOW" | cut -d: -f1)
+if [ -n "$snapshot_line" ] && [ -n "$review_line" ] && [ -n "$cleanup_line" ] &&
+  [ "$snapshot_line" -lt "$review_line" ] && [ "$review_line" -lt "$cleanup_line" ]; then
+  echo "ok   de momentopname staat vóór de review en het opruimen erna"
+  passed=$((passed + 1))
+else
+  echo "FAIL ${WORKFLOW} ruimt niet in de volgorde momentopname, review, opruimen"
+  failed=$((failed + 1))
+fi
+
+# Het opruimen mag alleen draaien als de review werkelijk gedraaid heeft; anders
+# gooit een geklapte run de vorige bevinding alsnog weg.
+if awk '/- name: Clean up the superseded review/ {inside = 1; next} /^      - name:/ {inside = 0} inside && /if: steps.claude-review.outputs.execution_file/ {found = 1} END {exit !found}' "$WORKFLOW"; then
+  echo "ok   het opruimen hangt aan hetzelfde bewijs als de bewijsstap"
+  passed=$((passed + 1))
+else
+  echo "FAIL de opruimstap in ${WORKFLOW} draait niet onder de conditie dat de review een uitvoerbestand opleverde"
+  failed=$((failed + 1))
+fi
+
+# De teksten uit de momentopname gaan als context de prompt in. Zonder die
+# koppeling weet de volgende review niets van de vorige bevinding, en dan is
+# blijven pushen genoeg om een blokkade kwijt te raken.
+if grep -qF -- 'steps.snapshot.outputs.context' "$WORKFLOW"; then
+  echo "ok   de vorige bevindingen gaan als context de prompt in"
+  passed=$((passed + 1))
+else
+  echo "FAIL de prompt in ${WORKFLOW} krijgt de bevindingen van de vorige review niet mee"
   failed=$((failed + 1))
 fi
 

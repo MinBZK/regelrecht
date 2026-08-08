@@ -71,6 +71,11 @@ When `machine_readable` sections are added or changed:
 - **Significant** — likely bug, broken reference, missing edge case, lost jobs
 - **Minor** — code quality, style, non-blocking improvement
 
+The merge gate `Claude review completed` searches the review for the exact string
+`🔴 **Critical**` and blocks the merge when it finds one. Reserve that marker for
+findings that really are critical, write it exactly like that, and do not use it
+anywhere you are not reporting one.
+
 ## Skip
 
 - Generated files under `packages/harvester/test-output/`

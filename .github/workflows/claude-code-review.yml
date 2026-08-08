@@ -31,34 +31,20 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Clean up stale review comments
+      # Opruimen gebeurt ná de review, niet ervoor. Wat hier gebeurt is alleen
+      # vastleggen wat er staat: de ids om straks op te ruimen, en de teksten om
+      # aan de review mee te geven. Klapt de run hierna, dan is er niets
+      # weggegooid en staat de vorige bevinding er nog. Dat is precies het geval
+      # waarin de oude opzet — eerst wissen, dan reviewen — hem kwijtraakte,
+      # terwijl de poort op een kritieke bevinding rood wordt: opnieuw pushen tot
+      # de review het niet meer opmerkt zou dan groen opleveren.
+      - name: Snapshot the previous review
+        id: snapshot
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          PR=${{ github.event.pull_request.number }}
-          REPO=${{ github.repository }}
-
-          # Dismiss all previous claude[bot] reviews
-          gh api "repos/${REPO}/pulls/${PR}/reviews" \
-            --paginate --jq '.[] | select(.user.login == "claude[bot]" and (.state == "CHANGES_REQUESTED" or .state == "COMMENTED")) | .id' \
-          | while read -r review_id; do
-              gh api -X PUT "repos/${REPO}/pulls/${PR}/reviews/${review_id}/dismissals" \
-                -f message="Superseded by new review" -f event="DISMISS" 2>/dev/null || true
-            done
-
-          # Delete all previous claude[bot] inline review comments
-          gh api "repos/${REPO}/pulls/${PR}/comments" \
-            --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
-          | while read -r comment_id; do
-              gh api -X DELETE "repos/${REPO}/pulls/comments/${comment_id}" 2>/dev/null || true
-            done
-
-          # Delete all previous claude[bot] issue comments (sticky comment is managed by the action)
-          gh api "repos/${REPO}/issues/${PR}/comments" \
-            --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
-          | while read -r comment_id; do
-              gh api -X DELETE "repos/${REPO}/issues/comments/${comment_id}" 2>/dev/null || true
-            done
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: script/claude-review-comments.sh snapshot
 
       - name: Run Claude Code Review
         id: claude-review
@@ -106,6 +92,28 @@ jobs:
 
             If there are no issues, say so briefly. Do not pad the review with praise or filler.
 
+            ## The Critical marker is read by a machine
+
+            The merge gate `Claude review completed` searches this comment, your inline
+            comments and the body of the review you submit for the exact string
+            `🔴 **Critical**`, and turns red when it finds one, which blocks the merge.
+            Write the marker exactly as it appears above — same
+            emoji, same bold, same word — and only on a finding that is genuinely critical.
+            Do not reword it, do not drop the emoji, and do not write it anywhere you are
+            not reporting a critical finding: not in a heading, not in a legend of the
+            scale, not in an example. A merge is held or let through on that string.
+
+            End every comment you write for this review — the summary comment and each
+            inline comment — with this line, exactly:
+
+            <!-- claude-review -->
+
+            It renders as nothing and it is how the workflow tells your review apart from
+            an ordinary `@claude` answer in the same thread. A comment without it is left
+            alone: it is not cleaned up after the next review, and it is not handed to that
+            review as context.
+            ${{ steps.snapshot.outputs.context }}
+
       # Het bewijs waar review-gate op afgaat. `execution_file` wijst naar het
       # uitvoerbestand van Claude en wordt pas gezet nadat de CLI gedraaid heeft;
       # stapt de actie er eerder uit — de workflow-validation-skip, wanneer dit
@@ -128,6 +136,18 @@ jobs:
             echo "Nul bevindingen is hier een geldige uitkomst; deze stap zegt alleen dat er gereviewd is."
           } >>"$GITHUB_STEP_SUMMARY"
 
+      # Nu de nieuwe review er staat, mag de vorige weg, en alleen de vorige:
+      # wat in de momentopname stond en sindsdien niet is aangeraakt. Deze stap
+      # draait onder dezelfde voorwaarde als de bewijsstap, dus een run die
+      # klapte voordat er iets geschreven was gooit niets weg.
+      - name: Clean up the superseded review
+        if: steps.claude-review.outputs.execution_file != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: script/claude-review-comments.sh clean-up
+
   # The merge gate. Unlike claude-review this job has no `if:` — it must run and
   # report on every PR, cross-repo and dependabot included, because a required
   # check that never reports blocks such a PR forever.
@@ -140,6 +160,10 @@ jobs:
     permissions:
       actions: read
       contents: read
+      # `issues: read` is voor de samenvattende comment: die is een issue-comment
+      # en komt van `issues/{n}/comments`. Zonder die scope leest de poort hem
+      # niet en blokkeert elke PR op "niet op te halen".
+      issues: read
       pull-requests: read
 
     steps:
