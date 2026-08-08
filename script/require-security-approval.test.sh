@@ -54,9 +54,14 @@ pr_json() { # $1 = auteur, $2 = titel, $3 = body
         '{head: {sha: "cafebabe1234567"}, user: {login: $u}, title: $t, body: $b}'
 }
 
+# Elke review krijgt een oplopend id, zoals de API ze ook geeft: de poort
+# bepaalt daarmee wiens laatste woord telt. Aanroepvolgorde is dus de volgorde
+# waarin er gereviewd is.
+review_id=0
 review() { # $1 = login, $2 = state, $3 = commit, $4 = association
-    jq -n --arg l "$1" --arg s "$2" --arg c "$3" --arg a "$4" \
-        '{user: {login: $l}, state: $s, commit_id: $c, author_association: $a}'
+    review_id=$((review_id + 1))
+    jq -n --arg l "$1" --arg s "$2" --arg c "$3" --arg a "$4" --argjson i "$review_id" \
+        '{id: $i, user: {login: $l}, state: $s, commit_id: $c, author_association: $a}'
 }
 
 # $1 = naam, $2 = verwachte exitcode, $3 = pr.json, $4 = alerts.json,
@@ -172,6 +177,30 @@ check "een ingetrokken goedkeuring telt niet" 1 \
     "$(pr_json 'dependabot[bot]' 'chore(deps): bump serde from 1.0.1 to 1.0.2' "$marker")" \
     "$no_alerts" "[$(review eelco DISMISSED cafebabe1234567 MEMBER)]" \
     'moet deze PR goedkeuren' 'approved=false'
+
+# De API herschrijft een eerdere review niet: wie goedkeurt en zich daarna
+# bedenkt, laat dat APPROVED-object gewoon staan. Filteren op APPROVED en dan de
+# laatste pakken vindt hem alsnog, en dan opent een ingetrokken goedkeuring de
+# poort.
+check "wie zich na zijn goedkeuring bedenkt, keurt niet meer goed" 1 \
+    "$(pr_json 'dependabot[bot]' 'chore(deps): bump serde from 1.0.1 to 1.0.2' "$marker")" \
+    "$no_alerts" \
+    "[$(review eelco APPROVED cafebabe1234567 MEMBER),$(review eelco CHANGES_REQUESTED cafebabe1234567 MEMBER)]" \
+    'moet deze PR goedkeuren' 'approved=false'
+
+# En andersom: wie eerst wijzigingen vroeg en daarna alsnog goedkeurt, telt wel.
+check "wie na wijzigingen alsnog goedkeurt, telt wel" 0 \
+    "$(pr_json 'dependabot[bot]' 'chore(deps): bump serde from 1.0.1 to 1.0.2' "$marker")" \
+    "$no_alerts" \
+    "[$(review eelco CHANGES_REQUESTED cafebabe1234567 MEMBER),$(review eelco APPROVED cafebabe1234567 MEMBER)]" \
+    'goedgekeurd door @eelco' 'approved=true'
+
+# Iemand anders die zich bedenkt mag een geldige goedkeuring niet wegnemen.
+check "de intrekking van de een raakt de goedkeuring van de ander niet" 0 \
+    "$(pr_json 'dependabot[bot]' 'chore(deps): bump serde from 1.0.1 to 1.0.2' "$marker")" \
+    "$no_alerts" \
+    "[$(review anne APPROVED cafebabe1234567 MEMBER),$(review eelco APPROVED cafebabe1234567 MEMBER),$(review eelco CHANGES_REQUESTED cafebabe1234567 MEMBER)]" \
+    'goedgekeurd door @anne' 'approved=true'
 
 check "onbereikbare alerts blokkeren niet, maar worden wel gemeld" 1 \
     "$(pr_json 'dependabot[bot]' 'chore(deps): bump serde from 1.0.1 to 1.0.2' "$marker")" \
