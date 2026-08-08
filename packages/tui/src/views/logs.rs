@@ -3,8 +3,6 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use std::collections::VecDeque;
 
-const MAX_LINES: usize = 10_000;
-
 #[derive(Clone, Copy, PartialEq)]
 enum LogLevel {
     All,
@@ -40,17 +38,6 @@ impl LogsView {
             filter: LogLevel::All,
             follow: true,
             scroll_offset: 0,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn push_line(&mut self, line: String) {
-        self.lines.push_back(line);
-        if self.lines.len() > MAX_LINES {
-            self.lines.pop_front();
-        }
-        if self.follow {
-            self.scroll_to_bottom();
         }
     }
 

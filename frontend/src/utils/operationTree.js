@@ -387,14 +387,3 @@ function findFirstVariable(node) {
   }
   return null;
 }
-
-export function formatValueLabel(v) {
-  if (v === null || v === undefined || v === '') return '(leeg)';
-  if (typeof v === 'string') return v;
-  if (typeof v === 'number') return String(v);
-  if (typeof v === 'boolean') return String(v);
-  if (isOperationNode(v)) {
-    return getReadableName(v) || '(leeg)';
-  }
-  return '(leeg)';
-}

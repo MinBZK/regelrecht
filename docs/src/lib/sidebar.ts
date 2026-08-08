@@ -162,21 +162,6 @@ export function sidebarForPath(pathname: string): SidebarGroup[] | null {
   return null;
 }
 
-/** Flatten the sidebar section that owns this pathname into ordered links. */
-export function flatSidebar(pathname: string): { text: string; link: string }[] {
-  const groups = sidebarForPath(pathname);
-  if (!groups) return [];
-  const out: { text: string; link: string }[] = [];
-  const walk = (items: SidebarItem[]) => {
-    for (const it of items) {
-      if (it.link) out.push({ text: it.text, link: it.link });
-      if (it.items) walk(it.items);
-    }
-  };
-  for (const g of groups) walk(g.items);
-  return out;
-}
-
 export interface DocsCategory {
   /** Section prefix, e.g. '/guide/'. Also the category page URL. */
   prefix: string;

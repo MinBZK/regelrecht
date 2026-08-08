@@ -49,7 +49,6 @@ pub fn convert_gherkin_value(val: &str) -> Value {
 /// absorb any literal-parsing noise; other types use exact equality. The
 /// comparison stays in `Decimal` (no f64 round-trip) so it doesn't reintroduce
 /// the float imprecision the engine deliberately avoids.
-#[allow(dead_code)]
 pub fn values_equal_with_tolerance(a: &Value, b: &Value) -> bool {
     match (a.as_decimal(), b.as_decimal()) {
         // Decimal::new(1, 9) == 1e-9
