@@ -3,15 +3,32 @@
 #
 # Zero review comments is not evidence of "no findings" — it is equally
 # consistent with "the review is still running" and with "the review had nothing
-# to report". The gate therefore never counts comments. It reads two things off
-# the review job itself: its status and conclusion, and the outcome of the step
-# that only runs when the review action really executed.
+# to report". Whether there was a review is therefore never derived from the
+# comments. It is read off the review job itself: its status and conclusion, and
+# the outcome of the step that only runs when the review action really executed.
 #
-# It exits 0 only when the review job ran to completion and that step ran with
-# it, or when the review demonstrably cannot apply (cross-repo PR, draft,
-# dependabot). Those reasons are read off the pull request itself, not off the
-# review's own result, so a review that ran and failed can never pass as one that
-# was never meant to run.
+# Only once that is established does the gate read the comments, and only for
+# what is in them: a `🔴 **Critical**` finding blocks the merge. It reads the
+# summary comment, the inline comments and the body of the submitted review, and
+# ignores anything written before the review job started, because that came from
+# an earlier run. At that point zero comments does mean zero findings, because
+# the review is known to have run to completion. The order is load-bearing, so it
+# is enforced rather than implied: `assert_no_critical_finding` refuses to run
+# before `assert_review_ran` has set `review_proven`. Turn the two around and the
+# gate reads the empty window between "cleaning up" and "writing the review" as a
+# clean bill.
+#
+# There is no override. The only way past a critical finding is to fix it and push
+# again; the review rewrites its comment on every run, so a finding that is gone
+# is gone from the gate too. A label or a magic comment would be an escape hatch
+# an agent can operate as easily as a person, and it would read as a human
+# judgement while being nothing of the sort.
+#
+# It exits 0 only when the review job ran to completion, that step ran with it and
+# no critical finding stands, or when the review demonstrably cannot apply
+# (cross-repo PR, draft, dependabot). Those reasons are read off the pull request
+# itself, not off the review's own result, so a review that ran and failed can
+# never pass as one that was never meant to run.
 #
 # What the gate treats as fact it fetches itself. The workflow that invokes it
 # lives in the pull request, so anything that workflow passes in is written by
@@ -46,6 +63,13 @@ GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 readonly JOB_NAME='claude-review'
 readonly PROOF_STEP='Record that the review ran'
 readonly WORKFLOW_FILE='.github/workflows/claude-code-review.yml'
+# De markering waar de review zijn kritieke bevindingen mee opschrijft, letterlijk
+# zoals de prompt in ${WORKFLOW_FILE} hem voorschrijft. Verandert de een, dan moet
+# de ander mee; de testsuite bindt de twee aan elkaar. Alleen Critical blokkeert:
+# Significant heeft "waarschijnlijk" in zijn eigen definitie staan en zou vaak
+# vals-positief zijn, en een uitzondering die routine wordt houdt niets tegen.
+readonly CRITICAL_MARKER='🔴 **Critical**'
+readonly REVIEW_AUTHOR='claude[bot]'
 
 summary() { printf '%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; }
 
@@ -196,6 +220,9 @@ done
 
 conclusion=$(jq -r '.conclusion // "none"' <<<"$job")
 url=$(jq -r '.html_url // ""' <<<"$job")
+# De starttijd van de job scheidt wat déze review schreef van wat er van een
+# vorige is blijven staan.
+job_started=$(jq -r '.started_at // ""' <<<"$job" 2>/dev/null)
 
 # Een groene job is geen bewijs dat er gereviewd is. Dat bewijs komt uit de
 # review-job zelf: een stap die alleen draait als de actie `execution_file` heeft
@@ -206,6 +233,8 @@ url=$(jq -r '.html_url // ""' <<<"$job")
 #
 # Precies één stap met die naam, niet de laatste die zo heet: twee stappen met
 # dezelfde naam is geen situatie waarin de poort een winnaar hoort te kiezen.
+review_proven=no
+
 assert_review_ran() {
   local matches proof
   matches=$(jq -r --arg step "$PROOF_STEP" '(.steps // []) | map(select(.name == $step)) | length' <<<"$job" 2>/dev/null)
@@ -226,6 +255,7 @@ assert_review_ran() {
   proof=$(jq -r --arg step "$PROOF_STEP" '(.steps // []) | map(select(.name == $step)) | .[0].conclusion // ""' <<<"$job" 2>/dev/null)
   case "$proof" in
   success)
+    review_proven=yes
     return
     ;;
   skipped)
@@ -244,15 +274,92 @@ assert_review_ran() {
   esac
 }
 
+# Waar de review zijn bevindingen achterlaat: de samenvattende comment, de inline
+# comments, en de body van de review zelf. Die laatste wordt makkelijk vergeten en
+# draagt in de praktijk bevindingen die nergens anders staan.
+#
+# Gekeken wordt alleen naar wat déze run schreef, afgemeten aan de starttijd van
+# de review-job. Wat er ouder is komt van een vorige run: die comments worden na
+# afloop opgeruimd, maar een submitted review is niet te verwijderen en een
+# mislukte opruiming zou een gerepareerde bevinding anders voor altijd blijven
+# blokkeren.
+#
+# Het resultaat komt in een globale variabele terug en niet uit een subshell:
+# `blocked` stapt uit het proces, en in `$(...)` zou dat alleen de subshell
+# beëindigen en de poort vrolijk verder laten lopen.
+critical_at=''
+collect_critical() {
+  local what="$1" path="$2" stamp="$3" payload found
+  if ! payload=$(gh api "repos/${REPO}/${path}?per_page=100" --paginate 2>"$gh_stderr"); then
+    blocked "De ${what} van pull request ${PR_NUMBER} zijn niet op te halen, dus of de review een kritieke bevinding heeft achtergelaten is niet vastgesteld. Dat is geen uitspraak over de review zelf; draai deze job opnieuw. Foutmelding: $(cat "$gh_stderr")"
+  fi
+  # `--paginate` levert één array per pagina; elke daarvan moet een lijst zijn,
+  # anders is er niets te doorzoeken en is stilzwijgend groen precies fout.
+  if ! jq -e 'type == "array"' <<<"$payload" >/dev/null 2>&1; then
+    blocked "Het antwoord op de ${what} van pull request ${PR_NUMBER} is geen leesbare lijst, dus of de review een kritieke bevinding heeft achtergelaten is niet vastgesteld. Dat is geen uitspraak over de review zelf; draai deze job opnieuw."
+  fi
+  # Een item zonder bruikbaar tijdstempel valt buiten het venster en zou stil
+  # worden overgeslagen: dat is dezelfde fail-open als "niet kunnen kijken",
+  # alleen onzichtbaar. Een `PENDING` review is de uitzondering; die is nooit
+  # ingediend en heeft dus terecht geen `submitted_at`.
+  local zonder_tijd
+  zonder_tijd=$(jq -r --arg author "$REVIEW_AUTHOR" --arg stamp "$stamp" '
+    [.[] | select(.user.login == $author) | select((.state // "") != "PENDING")
+         | select((.[$stamp] // "") == "")] | length' <<<"$payload" 2>/dev/null)
+  if [ "${zonder_tijd:-onbekend}" != 0 ]; then
+    blocked "In de ${what} van pull request ${PR_NUMBER} staat wat \`${REVIEW_AUTHOR}\` schreef zonder bruikbaar tijdstempel (\`${stamp}\`), dus of het van deze review is valt niet vast te stellen. Dat is geen uitspraak over de review zelf; draai deze job opnieuw."
+  fi
+
+  if ! found=$(jq -r --arg author "$REVIEW_AUTHOR" --arg since "$job_started" \
+    --arg stamp "$stamp" --arg marker "$CRITICAL_MARKER" '
+      .[]
+      | select(.user.login == $author)
+      | select((.[$stamp] // "") >= $since)
+      | select((.body // "") | contains($marker))
+      | .html_url // "(zonder url)"' <<<"$payload" 2>/dev/null); then
+    blocked "De ${what} van pull request ${PR_NUMBER} zijn niet te doorzoeken op \`${CRITICAL_MARKER}\`, dus of de review een kritieke bevinding heeft achtergelaten is niet vastgesteld. Draai deze job opnieuw."
+  fi
+  [ -n "$found" ] && critical_at="${critical_at}${found}"$'\n'
+  return 0
+}
+
+# Pas hier telt een leeg antwoord als "niets gevonden". Daarvoor stond nog open of
+# de review überhaupt gedraaid had, en dan is nul comments geen uitkomst maar een
+# open venster: de review-job schrijft zijn comments aan het eind van de job, en
+# daarvóór staat er niets.
+assert_no_critical_finding() {
+  local waar
+
+  if [ "$review_proven" != yes ]; then
+    blocked "Interne fout in de poort: de bevindingen zijn opgevraagd voordat vaststond dat \`${JOB_NAME}\` werkelijk gereviewd heeft. In die volgorde betekent \"geen kritieke bevinding\" niets. Dit is een fout in \`script/await-claude-review.sh\`, geen uitspraak over deze pull request."
+  fi
+
+  if [ -z "$job_started" ]; then
+    blocked "De starttijd van \`${JOB_NAME}\` staat niet in het antwoord van de jobs-API, dus welke comments van deze review zijn en welke van een vorige is niet uit elkaar te houden. Dat is geen uitspraak over de review zelf; draai deze job opnieuw. ${url}"
+  fi
+
+  collect_critical "samenvattende review-comments" "issues/${PR_NUMBER}/comments" updated_at
+  collect_critical "inline review-comments" "pulls/${PR_NUMBER}/comments" updated_at
+  collect_critical "ingediende reviews" "pulls/${PR_NUMBER}/reviews" submitted_at
+
+  if [ -z "$critical_at" ]; then
+    return
+  fi
+  waar=$(printf '%s' "$critical_at" | paste -sd' ' -)
+
+  blocked "De review heeft op commit \`${head_sha}\` een bevinding met \`${CRITICAL_MARKER}\` achtergelaten: ${waar}. Repareer wat er staat en push opnieuw: de review schrijft zijn comment bij elke run over, dus een bevinding die weg is, is daarna ook uit de poort weg. ${url}"
+}
+
 case "$conclusion" in
 success | neutral)
   assert_review_ran
+  assert_no_critical_finding
   echo "::notice title=Claude review gate::review afgerond (${conclusion})"
   summary "### Claude review gate: groen"
   summary ""
   summary "\`${JOB_NAME}\` is afgerond voor commit \`${head_sha}\` met conclusie \`${conclusion}\`."
   summary ""
-  summary "Wat deze check bewijst: \`${WORKFLOW_FILE}\` is gelijk aan de versie op \`${default_branch}\`, de job \`${JOB_NAME}\` is in deze run afgerond met conclusie \`${conclusion}\`, en de stap \`${PROOF_STEP}\` is in die job gedraaid, dus de review-actie heeft werkelijk gereviewd. Wat hij niet bewijst: dat de review iets gevonden heeft, dat de bevindingen deugen, of dat ze zijn verwerkt. Dat blijft mensenwerk."
+  summary "Wat deze check bewijst: \`${WORKFLOW_FILE}\` is gelijk aan de versie op \`${default_branch}\`, de job \`${JOB_NAME}\` is in deze run afgerond met conclusie \`${conclusion}\`, de stap \`${PROOF_STEP}\` is in die job gedraaid, dus de review-actie heeft werkelijk gereviewd, en in wat \`${REVIEW_AUTHOR}\` sinds de start van die job schreef staat geen \`${CRITICAL_MARKER}\`. Wat hij niet bewijst: dat de bevindingen deugen, dat ze zijn verwerkt, of dat een bevinding van lagere ernst er niet toe doet — daar kijkt de poort niet naar. Dat blijft mensenwerk."
   summary ""
   summary "[Bekijk de review-run](${url})"
   exit 0
