@@ -105,6 +105,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(script/check-deployed-urls(\.test)?\.sh|\.github/workflows/deploy\.yml)$
+      - id: preview-environments-tests
+        name: Controle op achtergebleven previews doet wat hij belooft
+        entry: script/check-preview-environments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-preview-environments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
 
       - id: skills-no-casus
         name: Skills blijven dossier-agnostisch (geen casus-inhoud)
