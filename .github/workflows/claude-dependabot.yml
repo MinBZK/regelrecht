@@ -13,6 +13,7 @@ jobs:
       pull-requests: write
       issues: read
       id-token: write
+      security-events: read
 
     steps:
       - name: Checkout repository
@@ -49,6 +50,20 @@ jobs:
               gh api -X DELETE "repos/${REPO}/issues/comments/${comment_id}" 2>/dev/null || true
             done
 
+      # Of dit een security-update is, wordt hier vastgesteld en niet aan het
+      # oordeel van de review overgelaten: het is een feit uit de API en de
+      # tekst van Dependabot, en de merge-beslissing hieronder hangt eraan.
+      # Handhaven doet deze stap niet — dat is de check `Security update
+      # approved` uit `security-update-gate.yml`.
+      - name: Is this a security update?
+        id: security
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ENFORCE: 'false'
+        run: script/require-security-approval.sh
+
       - name: Run Claude Dependabot Review
         id: claude-dependabot
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b  # v1
@@ -59,6 +74,19 @@ jobs:
           claude_args: "--allowedTools Bash,Read,Glob,Grep"
           prompt: |
             Review Dependabot PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+
+            SECURITY_UPDATE: ${{ steps.security.outputs.is_security }}
+
+            ## Hard rule
+
+            If SECURITY_UPDATE is `true`, you do NOT merge and you do NOT approve
+            this PR, whatever the rest of your assessment says. A security update
+            bypasses the five-day cooldown in `dependabot.yml`, so the new
+            version can be hours old and nobody has looked at it. The required
+            check `Security update approved` blocks the merge until an engineer
+            with write access approves. Your job on such a PR is to write the
+            assessment that engineer reads: what the advisory is, what the diff
+            actually changes, and whether anything about the release looks off.
 
             ## Task
 
@@ -86,6 +114,7 @@ jobs:
             5. **Decision**:
 
                **Auto-approve and merge** (squash) if ALL of these are true:
+               - SECURITY_UPDATE is `false`
                - It is a patch or minor version bump
                - CI checks all pass
                - No breaking changes indicated in the changelog
@@ -93,6 +122,7 @@ jobs:
                  warrant extra scrutiny even for minor bumps)
 
                **Flag for human review** if ANY of these are true:
+               - SECURITY_UPDATE is `true`
                - It is a major version bump
                - CI checks fail
                - Breaking changes are mentioned

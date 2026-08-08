@@ -311,6 +311,63 @@ The logic lives in `script/await-claude-review.sh`, with
 `script/await-claude-review.test.sh` (a `gh` stub) covering every path that
 decides green versus red; the tests run as a pre-commit hook.
 
+### De goedkeuringspoort op security-updates
+
+Dependabot-security-updates vallen buiten de `cooldown` van vijf dagen in
+`dependabot.yml`: ze komen binnen op het moment dat de versie verschijnt. De
+check **Security update approved** (`security-update-gate.yml`) laat zo'n PR pas
+mergen als een engineer met schrijfrechten hem heeft goedgekeurd.
+
+Dat het een check is en geen branch protection, is geen omweg maar de enige
+route. `required_approving_review_count` hangt aan een branch, niet aan een
+auteur of een label, ook niet in een ruleset, waar de condities alleen over
+refs gaan. Repobreed aanzetten zou betekenen dat niemand nog een eigen PR kan mergen,
+want GitHub laat de auteur zijn eigen wijziging niet goedkeuren. De voorwaarde
+hoort dus in de check, precies zoals bij `Claude review completed`.
+
+Wat een security-update is, staat in geen enkel API-veld. De poort leest drie
+onafhankelijke signalen: een open Dependabot-alert voor precies het pakket dat
+de PR bumpt, Dependabots eigen regel "This update includes a security fix", en
+een GHSA- of CVE-nummer in de aanhef van de PR-body, de tekst tot aan het
+eerste `<details>`-blok: daarachter staan geciteerde changelogs die net zo
+goed over een ander pakket kunnen gaan. Eén signaal is genoeg. Een vals positief
+kost een goedkeuring die niet nodig was; een vals negatief laat een
+security-patch ongezien door, dus de poort leunt naar het eerste.
+
+Een goedkeuring telt alleen op de commit waarop ze is gegeven. `dismiss_stale_reviews`
+werkt pas bij `required_approving_review_count > 0` en dat staat hier op 0, dus
+die binding zit in het script: na een rebase of een push is er niets meer
+goedgekeurd. Goedkeuringen van bots tellen niet, en van iemand zonder
+schrijfrechten (`author_association` buiten OWNER/MEMBER/COLLABORATOR) evenmin.
+
+`claude-dependabot.yml` stelt met hetzelfde script vast of een PR een
+security-update is en mergt die dan niet meer zelf; de review blijft er wel op
+draaien, als input voor de engineer die goedkeurt. Handhaven doet die workflow
+niet; dat doet de check.
+
+Er zit geen ouderdomsdrempel op. Die drempel bestaat omdat niemand naar een
+routinebump kijkt, en dat is precies wat de goedkeuring wegneemt; hem er
+bovenop zetten zou een actief misbruikte kwetsbaarheid vijf dagen laten liggen
+*plus* de wachttijd op een mens. De publicatiedatum van de nieuwe versie is een
+van de dingen waar de goedkeurder naar kijkt, niet iets wat de poort voor hem
+afkapt.
+
+De melding naar Mattermost zit in dezelfde workflow en gaat uit bij het openen
+en het mergen van een security-PR, over `MATTERMOST_WEBHOOK_URL`. Die run wordt
+door Dependabot gestart, en dan leest `secrets.*` uit de
+Dependabot-secretstore in plaats van die van Actions: staat de webhook-URL
+alleen bij Actions, dan valt de melding stil weg. De stap faalt daarom hard op
+een lege URL.
+
+De logica staat in `script/require-security-approval.sh`, met
+`script/require-security-approval.test.sh` (een `gh`-stub) over elk pad dat
+groen of rood beslist; de tests draaien als pre-commit-hook. De poort draait de
+kopie van dat script van de base-branch en niet die uit de pull request. Staat
+het er niet, dan is dat geen leesfout maar de pull request die de poort invoert
+of weghaalt; er is dan op main nog niets wat deze check beschermt, dus de job
+meldt dat en laat door. Dezelfde beperking als bij de review-poort geldt hier:
+de job staat in het workflowbestand dat de PR meebrengt.
+
 ### Deployed Components
 
 | Component | Image | Production URL |

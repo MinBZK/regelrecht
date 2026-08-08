@@ -78,6 +78,13 @@ repos:
         pass_filenames: false
         files: ^(script/await-claude-review(\.test)?\.sh|\.github/workflows/claude-code-review\.yml)$
 
+      - id: security-approval-gate-tests
+        name: Merge-poort op een goedgekeurde security-update doet wat hij belooft
+        entry: script/require-security-approval.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/require-security-approval(\.test)?\.sh|\.github/workflows/(security-update-gate|claude-dependabot)\.yml)$
+
       - id: ci-gate-tests
         name: Test-poort in ci.yml blokkeert op een gevallen voorganger
         entry: just ci-gate-test
