@@ -222,7 +222,7 @@ Verse `origin/main` ophalen en opnieuw beginnen. Verifieer voor elke volgende
 merge dat de gekozen PR bij is met `main`:
 
 ```bash
-gh api repos/MinBZK/regelrecht/compare/main...<branch> --jq .behind_by
+gh api repos/MinBZK/regelrecht/compare/main...<headRefName> --jq .behind_by
 ```
 
 `behind_by` staat niet in `gh pr list` of `gh pr view`; die kennen alleen
