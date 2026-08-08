@@ -17,7 +17,7 @@ jobs:
   # Deze job is de poort van de hele keten: alles wat bouwt of deployt hangt er
   # via `needs: changes` aan, dus wat hier niet doorkomt kost geen runner.
   #
-  # Een PR bouwt alleen met het label `preview` erop. Getoetst op aanwezigheid
+  # Een PR bouwt alleen met het label `deploy:preview` erop. Getoetst op aanwezigheid
   # van het label, niet op het soort gebeurtenis, zodat dezelfde regel geldt bij
   # openen, bij elke volgende commit en op het moment dat het label erbij komt.
   # Bij `unlabeled` bouwt de keten nooit; dat event bestaat hier alleen om
@@ -34,7 +34,7 @@ jobs:
       github.event.pull_request.head.repo.fork != true &&
       (
         github.event_name == 'push' ||
-        contains(github.event.pull_request.labels.*.name, 'preview')
+        contains(github.event.pull_request.labels.*.name, 'deploy:preview')
       )
     permissions:
       contents: read
@@ -499,7 +499,7 @@ jobs:
       github.event.pull_request.head.repo.fork != true &&
       (
         github.event.action == 'closed' ||
-        (github.event.action == 'unlabeled' && github.event.label.name == 'preview')
+        (github.event.action == 'unlabeled' && github.event.label.name == 'deploy:preview')
       )
     permissions:
       packages: write
