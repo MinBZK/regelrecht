@@ -76,18 +76,24 @@ je niet; die liggen bij hun auteur.
 ```bash
 git fetch origin main
 gh pr list -R MinBZK/regelrecht --state open --limit 200 \
-  --json number,title,isDraft,mergeStateStatus,author,labels
+  --json number,title,isDraft,mergeStateStatus,author,headRefName
 ```
 
 Kandidaat is een PR die niet in draft staat, van `ehotting` of een teamlid is, en
 `mergeStateStatus` heeft van `CLEAN`, `BEHIND` of `BLOCKED`. `DIRTY` betekent een
-echt conflict: overslaan en melden.
+echt conflict: overslaan en melden. Elke andere waarde, `UNKNOWN` voorop, is geen
+oordeel maar een nog niet berekende mergeability: vraag hem opnieuw op, en blijft
+hij anders dan die vier, sla dan over.
+
+PR's van `dependabot[bot]` horen niet in de trein. Die lopen via de `dependabot`-
+skill en `claude-dependabot.yml`, en de reviewpoort staat er groen zonder dat er
+een review is geweest, want `claude-review` slaat dependabot over.
 
 Welke bestanden een PR raakt staat niet in die lijst, en zonder die bestanden kun
 je de uitsluitingen uit "Vaste regels" niet toepassen. Haal ze per kandidaat op:
 
 ```bash
-gh pr view <nr> -R MinBZK/regelrecht --json files --jq '.files[].path'
+gh pr diff <nr> -R MinBZK/regelrecht --name-only
 ```
 
 Raakt er ook maar één pad `corpus/regulation/**`, `schema/**`,
@@ -99,12 +105,22 @@ snelst door de poort en zet de rest het minst op achterstand.
 
 ### 2. Bijwerken als hij achterloopt
 
+Stel eerst vast dát hij achterloopt. `update-branch` op een branch die al bij is
+geeft een fout, en die fout lijkt op de fout bij een conflict:
+
+```bash
+gh api repos/MinBZK/regelrecht/compare/main...<headRefName> --jq .behind_by
+```
+
+Is die `0`, sla deze stap dan over. Anders:
+
 ```bash
 gh api --method PUT repos/MinBZK/regelrecht/pulls/<nr>/update-branch
 ```
 
-Wacht daarna tot de nieuwe checks starten. Werkt de aanroep niet (conflict), dan
-is het een `DIRTY`-geval: overslaan en melden.
+Wacht daarna tot de nieuwe checks starten. Werkt de aanroep niet terwijl
+`behind_by` groter dan nul was, dan is het een `DIRTY`-geval: overslaan en
+melden.
 
 ### 3. Wachten op de juiste checks
 
@@ -122,10 +138,18 @@ groen op `Test` dekt ze.
 
 Wacht op precies deze zeven en op niets anders.
 
+```bash
+gh pr checks <nr> -R MinBZK/regelrecht
+```
+
+Die aanroep rapporteert over de actuele head-SHA, wat na een `update-branch` uit
+stap 2 een andere is dan daarvoor. Lees nooit een check-run van een oudere SHA.
+
 `Claude review completed` bewaakt twee dingen: dat de review gedraaid heeft, en
 dat er geen 🔴 Critical uit kwam. Een kritieke bevinding maakt die check rood, dus
-groen betekent hier dat je mag mergen. Wat de review verder meldt, lees je erna;
-dat staat onder "Reviewbevindingen".
+groen betekent hier dat er geen kritieke bevinding open staat. Wat de review
+verder meldt lees je zodra die check klaar is, en vóór je merget; dat staat onder
+"Reviewbevindingen".
 
 - `Build and Deploy` is `skipped` zonder het `deploy:preview`-label. Dat is geen fout.
 - `CodeQL` en `Analyze (…)` rapporteren niet op een PR die alleen docs raakt.
@@ -137,6 +161,10 @@ Reken op ongeveer zes minuten voor CI en tien voor de review; onder belasting
 loopt CI op tot een kwartier. Poll rustig, niet elke tien seconden.
 
 ### 4. Mergen
+
+De bevindingen uit de review beoordeel je vóór deze stap, niet erna. De afweging
+onder "Reviewbevindingen" gaat over de vraag of deze PR wel mag, en terugdraaien
+kan daarna alleen met een revert-PR die zelf weer een ronde door de trein moet.
 
 ```bash
 gh pr merge <nr> -R MinBZK/regelrecht --squash --delete-branch
@@ -165,21 +193,28 @@ gh api repos/MinBZK/regelrecht/actions/runs/<id>/jobs \
   --jq '.jobs[] | "\(.name)\t\(.conclusion)"'
 ```
 
-Beoordeel `deploy-production` en niet de run als geheel:
+De run bestaat vlak na de merge nog niet, en `Wacht op een groene CI` houdt hem
+tot twintig minuten op omdat die baan wacht tot de CI van deze commit groen is.
+Een lege runlijst of een `conclusion` van `null` betekent dus "nog bezig", niet
+"niets uitgerold". Poll tot `deploy-production` een conclusion heeft.
+
+Beoordeel dan die baan, en niet de run als geheel:
 
 - `success`: uitgerold, ga door.
 - `failure` of `cancelled`: **stop de trein** en meld het; de volgende merge zet
   er alleen maar meer bovenop.
-- `skipped`: er is niets uitgerold, en dat kan twee dingen betekenen. Is
-  `Wacht op een groene CI` geslaagd en heeft geen enkele build gedraaid, dan
-  raakte deze commit geen deploybaar component en is de skip in orde. In elk
-  ander geval, en zeker als die baan rood staat, is de CI op main omgevallen,
-  zijn alle builds daarachter overgeslagen en is er niets uitgerold. Dat is een
-  stopgrond, geen groen.
+- `skipped`: er is niets uitgerold, en dat kan twee dingen betekenen. Staan zowel
+  `changes` als `Wacht op een groene CI` op `success` en heeft geen enkele
+  build-baan gedraaid, dan raakte deze commit geen deploybaar component en is de
+  skip in orde. In elk ander geval is er iets vóór de builds omgevallen, meestal
+  de CI op main, en is er niets uitgerold. Dat is een stopgrond, geen groen.
 
 De skip is de gevaarlijke uitkomst: overgeslagen is niet rood, dus een
 oppervlakkige blik op de run ziet er niets aan. Kun je de twee gevallen niet uit
 elkaar houden, stop dan en meld wat je zag.
+
+`deploy-production` kan ook door ZAD opzij worden gezet voor een nieuwere taak op
+hetzelfde deployment; zie "Bekende ruis".
 
 ### 6. Terug naar stap 1
 
@@ -199,7 +234,8 @@ uitkomst niet `0`, dan eerst stap 2.
 De review deelt in drie: 🔴 Critical (verkeerde rechtsuitkomst, dataverlies,
 crash, beveiligingslek), 🟠 Significant (waarschijnlijke bug, kapotte verwijzing,
 gemist randgeval) en 🟡 Minor (codekwaliteit, stijl). De schaal staat in
-`REVIEW.md`.
+`REVIEW.md`; de bolletjes komen uit de prompt in `claude-code-review.yml` en niet
+uit `REVIEW.md`, dus zoek daar niet naar de markering zelf.
 
 De bevindingen staan op twee plekken: een sticky comment op de PR en losse
 inline comments bij de regels.
@@ -218,8 +254,9 @@ een 🔴 Critical op de head-SHA staat, dus de PR komt niet langs stap 3. Dat is
 een gefaalde verplichte check en valt onder "Wanneer je stopt"; repareren hoort
 niet bij deze skill, en de poort omzeilen al helemaal niet.
 
-Zie je een 🔴 terwijl de poort groen staat, dan is de poort stuk. Merge niet,
-stop de trein, en meld wat je gezien hebt.
+Zie je een 🔴 terwijl de poort groen staat, merge dan niet. Stop de trein en meld
+wat je gezien hebt: of de bevinding is aan de poort ontsnapt, of de poort leest
+hem niet, en beide zijn een oordeel voor een mens.
 
 **Significant.** Die blokkeert niet, en dat is opzet: "waarschijnlijk" zit in de
 definitie, dus vals-positieven zijn er genoeg. Doorgeven zonder oordeel is
@@ -267,7 +304,7 @@ Uitzondering: een Significant-bevinding krijgt de alinea uit
 
 ## Bekende ruis
 
-Een gefaalde `deploy-preview` met `"status": "superseded"` in de JSON betekent
+Een gefaalde `deploy-preview` of `deploy-production` met `"status": "superseded"` in de JSON betekent
 dat ZAD de taak opzij heeft gezet voor een nieuwere taak op hetzelfde deployment.
 Het werk is dan gedaan; alleen die job opnieuw draaien volstaat.
 
