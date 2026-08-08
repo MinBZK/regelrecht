@@ -136,7 +136,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test test
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 
@@ -307,14 +307,27 @@ bench-compare BASE:
 
 # --- Security ---
 
-# Run security audit on all dependencies (vulnerabilities, licenses, sources)
+# De deterministische helft van de security-audit, en de enige die een pull
+# request blokkeert. Bans, licenses en sources hangen alleen aan wat er in de
+# lockfiles staat: dezelfde commit geeft vandaag en over een maand dezelfde
+# uitslag. Kwetsbaarheden horen daar niet bij, want die komen van buiten en
+# maken een PR rood zonder dat er iets aan die PR veranderd is; die staan in
+# `just audit-advisories`.
 audit:
-    script/cargo-deny.sh
-    script/npm-audit-all.sh
+    script/cargo-deny.sh bans licenses sources
     # license-checker draait alleen over de workspace in de root; die drops
     # --production omdat de root geen eigen productie-deps heeft, en de
     # hele-boom-scan is strikt ruimer.
     npx license-checker --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
+
+# De tijdsafhankelijke helft: advisories uit RustSec en npm. Draait periodiek
+# in .github/workflows/security-advisories.yml en meldt zich daar als issue.
+audit-advisories:
+    script/audit-advisories.sh
+
+# De meldlogica van de advisory-controle
+advisories-report-test:
+    script/report-advisories.test.sh
 
 # --- Admin ---
 
