@@ -94,6 +94,14 @@ check "lopende CI laat de deploy niet door" 1 \
     "[$(run in_progress null 2026-08-07T10:00:00Z)]" \
     "nog niet klaar"
 
+# Bij een lopende run is de conclusie leeg. Ging de scheiding op tabs, dan klapte
+# dat lege veld weg (tab is whitespace voor IFS) en schoof de URL een veld op:
+# de melding verloor zijn link, en een afgeronde run zonder conclusie zou
+# blokkeren met die URL als reden.
+check "een lege conclusie schuift de url niet op" 1 \
+    "[$(run in_progress null 2026-08-07T10:00:00Z)]" \
+    "geduld: u"
+
 # De nieuwste run is de laatste uitspraak; een oudere groene run mag een
 # nieuwere rode niet overstemmen.
 check "de nieuwste run beslist, niet de eerste" 1 \
