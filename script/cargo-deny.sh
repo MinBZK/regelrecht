@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Draait cargo-deny op de versie die CI ook draait.
 #
+# Welke checks er draaien geef je mee als argument (`advisories`, `bans`,
+# `licenses`, `sources`, `all`); zonder argument draait `all`. De aanroepers
+# zijn `just audit` (deterministisch: bans, licenses, sources) en
+# `just audit-advisories` (tijdsafhankelijk), zie de Justfile.
+#
 # De aanroep verschilt per versie: 0.19 wil `check --config <pad>`, 0.20 wil
 # `--config <pad> check`. Eén aanroep die op beide werkt bestaat niet, dus wie
 # cargo-deny vers installeert kreeg `unexpected argument '--config' found` in
@@ -50,5 +55,10 @@ elif [ ! -x "$binary" ]; then
     install -m0755 "$tmp/cargo-deny" "$binary"
 fi
 
+checks=("$@")
+if [ "${#checks[@]}" -eq 0 ]; then
+    checks=(all)
+fi
+
 cd packages
-exec "$binary" check --config "${root}/deny.toml"
+exec "$binary" check --config "${root}/deny.toml" "${checks[@]}"

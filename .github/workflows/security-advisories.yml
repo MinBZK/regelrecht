@@ -1,0 +1,108 @@
+---
+# De tijdsafhankelijke helft van de security-audit, weg uit de PR-poort.
+#
+# `Security Audit` in ci.yml blijft verplicht, maar draait sinds deze splitsing
+# alleen nog wat deterministisch is: bans, licenses en sources uit deny.toml
+# plus license-checker. Dezelfde commit geeft daar altijd dezelfde uitslag, dus
+# rood betekent daar altijd dat de pull request zelf iets fout doet.
+#
+# Advisories werken anders. Ze verschijnen buiten de repo om en maken elke
+# openstaande pull request rood zonder dat iemand iets veranderde: op 7 augustus
+# 2026 gebeurde dat twee keer op een dag, met veertig openstaande PR's en de
+# runnerpool als knelpunt. Ze zijn wel echt signaal, dus ze verdwijnen niet —
+# ze verhuizen hierheen.
+#
+# Wat de melding hard maakt is niet dit ene mechanisme maar de stapeling:
+# de run zelf valt om (GitHub mailt bij een falende scheduled workflow, en
+# Actions zet een banner bij een workflow die op main faalt), de bevinding komt
+# als issue in de repo met een eigen label, en dat issue laat elke week van zich
+# horen zolang het open staat. Alleen een issue zou te makkelijk wegzakken;
+# alleen een rode run zou na een week niemand meer opvallen.
+name: Security Advisories
+
+on:
+  schedule:
+    - cron: '0 5 * * *'  # Elke ochtend om 5:00 UTC
+  workflow_dispatch:
+  # Ook op main, zodat een bump het issue binnen minuten sluit in plaats van
+  # bij de volgende nachtrun, en een advisory die met een merge binnenkomt
+  # meteen zichtbaar is.
+  push:
+    branches: [main]
+    paths:
+      - '**/package-lock.json'
+      - 'packages/Cargo.lock'
+      - 'deny.toml'
+      - 'script/audit-advisories.sh'
+      - 'script/report-advisories.sh'
+      - 'script/cargo-deny.sh'
+      - 'script/npm-audit-all.sh'
+      - '.github/workflows/security-advisories.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-advisories
+  cancel-in-progress: false
+
+jobs:
+  advisories:
+    name: Advisories in afhankelijkheden
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Voor de melding: het issue aanmaken, sluiten en van een herinnering
+      # voorzien.
+      issues: write
+    env:
+      ADVISORY_OUT: ${{ runner.temp }}/advisories
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust toolchain
+        # cargo-deny leest de crate-graph via `cargo metadata`.
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+
+      - name: Cache cargo registry (shared)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+          registry-url: https://npm.pkg.github.com
+
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+
+      # De versie van cargo-deny komt uit ci.yml; script/cargo-deny.sh haalt hem
+      # daar op met checksum, zodat deze workflow die pin niet dubbel opschrijft.
+      - name: Advisories opzoeken
+        id: audit
+        run: |
+          set +e
+          just audit-advisories
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+
+      - name: De uitkomst melden
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: script/report-advisories.sh
+
+      # Na de melding, niet ervoor: een rode stap hiervoor zou het issue laten
+      # liggen, en dan is er alleen een runlog dat niemand opent.
+      - name: Rood op openstaande advisories
+        if: steps.audit.outputs.status != '0'
+        run: |
+          echo "::error title=Advisories::Er staan advisories open in de afhankelijkheden. Ze blokkeren geen pull request; de bevinding staat in het issue met label security-advisory."
+          exit 1
