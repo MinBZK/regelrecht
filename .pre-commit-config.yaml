@@ -119,6 +119,13 @@ repos:
         pass_filenames: false
         files: ^(script/check-preview-environments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
 
+      - id: rejected-workflows-tests
+        name: Detector op afgekeurde workflows doet wat hij belooft
+        entry: script/check-rejected-workflows.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-rejected-workflows(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
       - id: advisories-report-tests
         name: Advisory-melding komt aan en niet dubbel
         entry: script/report-advisories.test.sh

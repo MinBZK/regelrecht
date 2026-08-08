@@ -132,11 +132,17 @@ deployed-urls-test:
 preview-environments-test:
     script/check-preview-environments.test.sh
 
+# De controle die afgekeurde workflowbestanden opspoort. `gh` staat in de test
+# als stub op PATH, dus er gaat geen verkeer naar GitHub.
+[doc("Check the detector for workflow files Actions rejected")]
+rejected-workflows-test:
+    script/check-rejected-workflows.test.sh
+
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test rejected-workflows-test advisories-report-test test
 
 # --- Tests ---
 
