@@ -148,8 +148,8 @@ stap 2 een andere is dan daarvoor. Lees nooit een check-run van een oudere SHA.
 `Claude review completed` bewaakt dat de review gedraaid heeft, niet wat eruit
 kwam. Groen zegt dus niets over de bevindingen. Die lees je zelf zodra de check
 klaar is en vóór je merget, en een 🔴 Critical stopt de trein ook als alles groen
-staat; dat staat onder "Reviewbevindingen". Issue #1248 maakt de check daarnaast
-rood op een Critical, als tweede net onder het lezen.
+staat; dat staat onder "Reviewbevindingen". Issue #1248 stelt voor de check ook
+rood te laten worden op een Critical, als tweede net onder het lezen.
 
 - `Build and Deploy` is `skipped` zonder het `deploy:preview`-label. Dat is geen fout.
 - `CodeQL` en `Analyze (…)` rapporteren niet op een PR die alleen docs raakt.
@@ -269,8 +269,8 @@ code en niet aan de tekst van de review:
 Beslis daarna zelf en voer die beslissing uit: mergen, of overslaan tot de
 bevinding gerepareerd is. Kom je er niet uit, neem dan aan dat hij klopt en sla
 over; dat is de goedkoopste van de twee vergissingen. Raakt de bevinding
-`corpus/regulation/**`, `schema/**` of een workflow, dan hoorde die PR sowieso
-al niet in de trein.
+`corpus/regulation/**`, `schema/**`, `.github/workflows/**` of
+`docs/src/content/rfcs/**`, dan hoorde die PR sowieso al niet in de trein.
 
 Beide takken laten iets achter, want anders beoordeelt de volgende ronde
 dezelfde bevinding opnieuw en misschien anders. Bij mergen maak je een issue aan
@@ -303,9 +303,10 @@ Uitzondering: een Significant-bevinding krijgt de alinea uit
 
 ## Bekende ruis
 
-Een gefaalde `deploy-preview` of `deploy-production` met `"status": "superseded"` in de JSON betekent
-dat ZAD de taak opzij heeft gezet voor een nieuwere taak op hetzelfde deployment.
-Het werk is dan gedaan; alleen die job opnieuw draaien volstaat.
+Een gefaalde `deploy-preview` of `deploy-production` met `"status": "superseded"`
+in de JSON betekent dat ZAD de taak opzij heeft gezet voor een nieuwere taak op
+hetzelfde deployment. Het werk is dan gedaan; alleen die job opnieuw draaien
+volstaat.
 
 Twee check-runs met dezelfde naam op één commit kan: twee PR's kunnen dezelfde
 head-SHA delen. De nieuwste telt.
