@@ -49,6 +49,9 @@ function jobEnvRegels(bron) {
     if (/^\S/.test(regel)) break;
 
     if (inEnv) {
+      // Een lege regel of een commentaarregel breekt het blok niet af; alleen
+      // een regel die minder ver inspringt doet dat.
+      if (/^\s*$/.test(regel) || /^ {6}\s*#/.test(regel)) continue;
       if (/^ {6}\S/.test(regel)) { gevonden.push([i + 1, regel]); continue; }
       inEnv = false;
     }
@@ -93,6 +96,22 @@ test('een verboden context op jobniveau wordt gevonden', () => {
   const geraakt = jobEnvRegels(FOUT).filter(([, regel]) => verbodenContext(regel));
   assert.equal(geraakt.length, 1);
   assert.equal(geraakt[0][0], 6);
+});
+
+test('een lege regel in het blok verbergt wat erachter staat niet', () => {
+  const metGat = `name: X
+jobs:
+  een:
+    runs-on: ubuntu-latest
+    env:
+      REPO: \${{ github.repository }}
+
+      # ook een commentaarregel mag ertussen
+      UIT: \${{ runner.temp }}/iets
+    steps:
+      - run: 'true'
+`;
+  assert.equal(jobEnvRegels(metGat).filter(([, regel]) => verbodenContext(regel)).length, 1);
 });
 
 test('een verboden context verpakt in een functie wordt ook gevonden', () => {
