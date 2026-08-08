@@ -23,14 +23,25 @@ mkdir -p "${WORK}/bin"
 cat >"${WORK}/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 url="$2"
+SLURP=0
+for arg in "$@"; do [ "$arg" = --slurp ] && SLURP=1; done
 
+# Zoals `gh api --paginate --slurp`: één array per pagina, gebundeld tot één
+# array van arrays. De fixture bevat de pagina's als losse documenten.
 fixture() {
   body=$(cat "$1")
   if [ "$body" = "ERROR" ]; then
     echo "gh: simulated API failure" >&2
     exit 1
   fi
-  printf '%s\n' "$body"
+  # Alleen bundelen als de aanroep erom vraagt, anders zou de stub een poort
+  # zonder `--slurp` niet van een mét kunnen onderscheiden. Onleesbare fixtures
+  # gaan ongemoeid door: die toetsen wat de poort doet met niet-JSON.
+  if [ "$SLURP" = 1 ]; then
+    printf '%s\n' "$body" | jq -s '.' 2>/dev/null || printf '%s\n' "$body"
+  else
+    printf '%s\n' "$body"
+  fi
 }
 
 case "$url" in
@@ -129,6 +140,7 @@ export STUB_CALLS="${WORK}/calls"
 
 PROOF='Record that the review ran'
 CRITICAL='🔴 **Critical**'
+TAG='<!-- claude-review -->'
 HEAD_SHA='c0ffee0000000000000000000000000000000000'
 
 # pull_request <full_name van de head-repo> <draft> <auteur>
@@ -202,13 +214,13 @@ ATTEMPTS="{\"jobs\":[{\"name\":\"claude-review\",\"status\":\"completed\",\"conc
 # De comments zoals de API ze teruggeeft.
 # `comment <auteur> <tekst> [tijdstip]`, standaard geschreven tijdens deze run.
 comment() {
-  printf '[{"user":{"login":"%s"},"body":"%s","updated_at":"%s","html_url":"http://example.invalid/comment"}]' \
-    "$1" "$2" "${3:-$NU}"
+  printf '[{"user":{"login":"%s"},"body":"%s\\n\\n%s","updated_at":"%s","html_url":"http://example.invalid/comment"}]' \
+    "$1" "$2" "$TAG" "${3:-$NU}"
 }
 # Een ingediende review draagt `submitted_at` in plaats van `updated_at`.
 review() {
-  printf '[{"user":{"login":"%s"},"state":"COMMENTED","body":"%s","submitted_at":"%s","html_url":"http://example.invalid/review"}]' \
-    "$1" "$2" "${3:-$NU}"
+  printf '[{"user":{"login":"%s"},"state":"COMMENTED","body":"%s\\n\\n%s","submitted_at":"%s","html_url":"http://example.invalid/review"}]' \
+    "$1" "$2" "$TAG" "${3:-$NU}"
 }
 GEEN_COMMENTS='[]'
 COMMENT_MINOR=$(comment 'claude[bot]' '## Kwaliteit\n\n🟡 **Minor** — deze naam dekt de lading niet.')
@@ -221,9 +233,9 @@ COMMENT_CRITICAL_VAN_TOEN=$(comment 'claude[bot]' "## Correctheid\n\n${CRITICAL}
 REVIEW_CRITICAL=$(review 'claude[bot]' "## Correctheid\n\n${CRITICAL} — dit stond alleen in de body van de review.")
 # Zonder tijdstempel valt een comment buiten het venster en zou hij stil worden
 # overgeslagen: fail-open, en onzichtbaar.
-COMMENT_ZONDER_TIJD='[{"user":{"login":"claude[bot]"},"body":"iets","html_url":"http://example.invalid/comment"}]'
+COMMENT_ZONDER_TIJD='[{"user":{"login":"claude[bot]"},"body":"iets\n\n<!-- claude-review -->","html_url":"http://example.invalid/comment"}]'
 # Een review die nog niet is ingediend heeft terecht geen `submitted_at`.
-REVIEW_PENDING='[{"user":{"login":"claude[bot]"},"state":"PENDING","body":"nog niet ingediend","html_url":"http://example.invalid/review"}]'
+REVIEW_PENDING='[{"user":{"login":"claude[bot]"},"state":"PENDING","body":"nog niet ingediend\n\n<!-- claude-review -->","html_url":"http://example.invalid/review"}]'
 REVIEW_CRITICAL_VAN_TOEN=$(review 'claude[bot]' "${CRITICAL} — uit een vorige run." "$TOEN")
 # Dezelfde markering, maar van een mens die de bevinding bespreekt. Wie erover
 # praat blokkeert de merge niet; alleen wat de review zelf schreef telt.
@@ -468,6 +480,20 @@ check "bevinding van lagere ernst blokkeert niet" 0 "review afgerond (success)" 
 reset_fixtures
 sticky_is "$COMMENT_CRITICAL_VAN_EEN_MENS"
 check "een mens die de markering citeert blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+
+# `claude.yml` antwoordt als dezelfde bot op `@claude`. Zo'n antwoord draagt de
+# tag niet en is geen bevinding, ook niet als het de markering aanhaalt.
+reset_fixtures
+sticky_is '[{"user":{"login":"claude[bot]"},"body":"Die 🔴 **Critical** ging over regel 12.","updated_at":"'"$NU"'","html_url":"http://example.invalid/antwoord"}]'
+check "een @claude-antwoord zonder de tag blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
+
+# `gh api --paginate --slurp` levert één array per pagina. Werd daar per pagina
+# geteld, dan las de poort "0\n0" als "niet nul" en blokkeerde hij een PR die
+# genoeg runs heeft gehad om over de honderd reviews te komen.
+reset_fixtures
+sticky_is '[]
+[]'
+check "meer dan één pagina blokkeert niet" 0 "review afgerond (success)" "Wat hij niet bewijst" -- MAX_WAIT_SECONDS=0
 
 # Niet kunnen kijken is geen schone uitslag: dat is niet te onderscheiden van
 # "er staat niets", en dan hoort de poort dicht te blijven.

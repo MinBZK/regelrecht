@@ -1,52 +1,17 @@
 #!/usr/bin/env bash
-# Merge gate: block until the Claude review of this workflow run is done.
+# Merge gate: blokkeert tot de Claude-review van deze workflow-run klaar is, en
+# blijft rood als daar een `🔴 **Critical**` uit kwam.
 #
-# Zero review comments is not evidence of "no findings" — it is equally
-# consistent with "the review is still running" and with "the review had nothing
-# to report". Whether there was a review is therefore never derived from the
-# comments. It is read off the review job itself: its status and conclusion, and
-# the outcome of the step that only runs when the review action really executed.
+# Nul comments bewijst niets: dat is net zo goed "draait nog" als "niets
+# gevonden". Of er gereviewd is leest de poort daarom van de review-job zelf, en
+# pas daarna kijkt hij naar de bevindingen. Die volgorde wordt afgedwongen, niet
+# aangenomen: zonder `review_proven` weigert `assert_no_critical_finding`.
 #
-# Only once that is established does the gate read the comments, and only for
-# what is in them: a `🔴 **Critical**` finding blocks the merge. It reads the
-# summary comment, the inline comments and the body of the submitted review, and
-# ignores anything written before the review job started, because that came from
-# an earlier run. At that point zero comments does mean zero findings, because
-# the review is known to have run to completion. The order is load-bearing, so it
-# is enforced rather than implied: `assert_no_critical_finding` refuses to run
-# before `assert_review_ran` has set `review_proven`. Turn the two around and the
-# gate reads the empty window between "cleaning up" and "writing the review" as a
-# clean bill.
+# Alles wat de poort als feit behandelt haalt hij zelf op. Het workflowbestand
+# staat in de pull request, dus wat dat bestand meegeeft is geschreven door de
+# auteur van de wijziging die onder review staat.
 #
-# There is no override. The only way past a critical finding is to fix it and push
-# again; the review rewrites its comment on every run, so a finding that is gone
-# is gone from the gate too. A label or a magic comment would be an escape hatch
-# an agent can operate as easily as a person, and it would read as a human
-# judgement while being nothing of the sort.
-#
-# It exits 0 only when the review job ran to completion, that step ran with it and
-# no critical finding stands, or when the review demonstrably cannot apply
-# (cross-repo PR, draft, dependabot). Those reasons are read off the pull request
-# itself, not off the review's own result, so a review that ran and failed can
-# never pass as one that was never meant to run.
-#
-# What the gate treats as fact it fetches itself. The workflow that invokes it
-# lives in the pull request, so anything that workflow passes in is written by
-# the author of the change under review: `IS_DRAFT: true` in the env block would
-# otherwise be enough to declare the review inapplicable. Only the coordinates of
-# the run (repository, run id, pull request number) come from the environment,
-# and the gate checks that those three describe one and the same thing.
-#
-# What this cannot reach: the job that calls this script also lives in the pull
-# request's workflow file. A PR that keeps the job name and replaces its steps
-# reports green without ever running this script, and no line in here can stop
-# that. Closing it takes a rule outside the pull request — a ruleset or CODEOWNERS
-# entry over `.github/workflows/**`, or a `workflow_run`-triggered gate that
-# judges the review run from the outside.
-#
-# The review job is looked up inside *this* workflow run rather than by head SHA.
-# A `ready_for_review` or `reopened` event keeps the same SHA, so a SHA lookup can
-# race and read the previous run's leftover check-run.
+# Zie CLAUDE.md voor het volledige ontwerp en wat de poort niet afdekt.
 set -uo pipefail
 
 : "${REPO:?REPO is verplicht}"
@@ -63,12 +28,13 @@ GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 readonly JOB_NAME='claude-review'
 readonly PROOF_STEP='Record that the review ran'
 readonly WORKFLOW_FILE='.github/workflows/claude-code-review.yml'
-# De markering waar de review zijn kritieke bevindingen mee opschrijft, letterlijk
-# zoals de prompt in ${WORKFLOW_FILE} hem voorschrijft. Verandert de een, dan moet
-# de ander mee; de testsuite bindt de twee aan elkaar. Alleen Critical blokkeert:
-# Significant heeft "waarschijnlijk" in zijn eigen definitie staan en zou vaak
-# vals-positief zijn, en een uitzondering die routine wordt houdt niets tegen.
+# Letterlijk zoals de prompt in ${WORKFLOW_FILE} hem voorschrijft; de testsuite
+# bindt de twee. Alleen Critical blokkeert: Significant zegt zelf al
+# "waarschijnlijk".
 readonly CRITICAL_MARKER='🔴 **Critical**'
+# `claude.yml` antwoordt als dezelfde bot op `@claude`. Zonder deze eis zet zo'n
+# antwoord dat de markering aanhaalt de poort op rood.
+readonly REVIEW_TAG='<!-- claude-review -->'
 readonly REVIEW_AUTHOR='claude[bot]'
 
 summary() { printf '%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; }
@@ -274,28 +240,23 @@ assert_review_ran() {
   esac
 }
 
-# Waar de review zijn bevindingen achterlaat: de samenvattende comment, de inline
-# comments, en de body van de review zelf. Die laatste wordt makkelijk vergeten en
-# draagt in de praktijk bevindingen die nergens anders staan.
+# Drie plekken, want de body van de review draagt bevindingen die nergens anders
+# staan. Alleen wat na de starttijd van de job is geschreven telt: ouder is van
+# een vorige run, en een submitted review is niet te verwijderen.
 #
-# Gekeken wordt alleen naar wat déze run schreef, afgemeten aan de starttijd van
-# de review-job. Wat er ouder is komt van een vorige run: die comments worden na
-# afloop opgeruimd, maar een submitted review is niet te verwijderen en een
-# mislukte opruiming zou een gerepareerde bevinding anders voor altijd blijven
-# blokkeren.
-#
-# Het resultaat komt in een globale variabele terug en niet uit een subshell:
-# `blocked` stapt uit het proces, en in `$(...)` zou dat alleen de subshell
-# beëindigen en de poort vrolijk verder laten lopen.
+# Het resultaat gaat via een globale en niet via `$(...)`: daarin zou `blocked`
+# alleen de subshell beëindigen.
 critical_at=''
 collect_critical() {
   local what="$1" path="$2" stamp="$3" payload found
-  if ! payload=$(gh api "repos/${REPO}/${path}?per_page=100" --paginate 2>"$gh_stderr"); then
+  # `--slurp` bundelt de pagina's tot één array van arrays; zonder dat levert
+  # `--paginate` meerdere losse documenten en telt `length` per pagina.
+  if ! payload=$(gh api "repos/${REPO}/${path}?per_page=100" --paginate --slurp 2>"$gh_stderr"); then
     blocked "De ${what} van pull request ${PR_NUMBER} zijn niet op te halen, dus of de review een kritieke bevinding heeft achtergelaten is niet vastgesteld. Dat is geen uitspraak over de review zelf; draai deze job opnieuw. Foutmelding: $(cat "$gh_stderr")"
   fi
-  # `--paginate` levert één array per pagina; elke daarvan moet een lijst zijn,
-  # anders is er niets te doorzoeken en is stilzwijgend groen precies fout.
-  if ! jq -e 'type == "array"' <<<"$payload" >/dev/null 2>&1; then
+  # Geen leesbare lijst betekent niets te doorzoeken, en stilzwijgend groen is
+  # dan precies fout.
+  if ! jq -e 'type == "array" and (all(.[]; type == "array"))' <<<"$payload" >/dev/null 2>&1; then
     blocked "Het antwoord op de ${what} van pull request ${PR_NUMBER} is geen leesbare lijst, dus of de review een kritieke bevinding heeft achtergelaten is niet vastgesteld. Dat is geen uitspraak over de review zelf; draai deze job opnieuw."
   fi
   # Een item zonder bruikbaar tijdstempel valt buiten het venster en zou stil
@@ -303,17 +264,21 @@ collect_critical() {
   # alleen onzichtbaar. Een `PENDING` review is de uitzondering; die is nooit
   # ingediend en heeft dus terecht geen `submitted_at`.
   local zonder_tijd
-  zonder_tijd=$(jq -r --arg author "$REVIEW_AUTHOR" --arg stamp "$stamp" '
-    [.[] | select(.user.login == $author) | select((.state // "") != "PENDING")
-         | select((.[$stamp] // "") == "")] | length' <<<"$payload" 2>/dev/null)
+  zonder_tijd=$(jq -r --arg author "$REVIEW_AUTHOR" --arg stamp "$stamp" \
+    --arg tag "$REVIEW_TAG" '
+    [.[][] | select(.user.login == $author)
+           | select((.body // "") | contains($tag))
+           | select((.state // "") != "PENDING")
+           | select((.[$stamp] // "") == "")] | length' <<<"$payload" 2>/dev/null)
   if [ "${zonder_tijd:-onbekend}" != 0 ]; then
     blocked "In de ${what} van pull request ${PR_NUMBER} staat wat \`${REVIEW_AUTHOR}\` schreef zonder bruikbaar tijdstempel (\`${stamp}\`), dus of het van deze review is valt niet vast te stellen. Dat is geen uitspraak over de review zelf; draai deze job opnieuw."
   fi
 
   if ! found=$(jq -r --arg author "$REVIEW_AUTHOR" --arg since "$job_started" \
-    --arg stamp "$stamp" --arg marker "$CRITICAL_MARKER" '
-      .[]
+    --arg stamp "$stamp" --arg marker "$CRITICAL_MARKER" --arg tag "$REVIEW_TAG" '
+      .[][]
       | select(.user.login == $author)
+      | select((.body // "") | contains($tag))
       | select((.[$stamp] // "") >= $since)
       | select((.body // "") | contains($marker))
       | .html_url // "(zonder url)"' <<<"$payload" 2>/dev/null); then

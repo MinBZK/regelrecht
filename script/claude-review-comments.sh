@@ -1,23 +1,11 @@
 #!/usr/bin/env bash
-# Wat de review van de vorige keer achterliet: eerst vastleggen, ná afloop
-# opruimen. Twee subcommando's, in die volgorde aangeroepen vanuit
-# `.github/workflows/claude-code-review.yml`.
+# `snapshot` vóór de review, `clean-up` erna. Ruimde je vóór de review op, dan
+# nam een run die daarna klapte de vorige bevinding mee, en was opnieuw pushen
+# genoeg om langs de poort te komen.
 #
-#   snapshot   legt vast wat `claude[bot]` op deze pull request heeft staan: de
-#              ids om straks op te ruimen, en de teksten om als context aan de
-#              nieuwe review mee te geven.
-#   clean-up   verwijdert wat in die momentopname stond en sindsdien niet is
-#              aangeraakt.
-#
-# De volgorde is het punt. Werd er vóór de review opgeruimd, dan nam een run die
-# daarna klapte de vorige bevinding mee het graf in, en met een poort die op een
-# kritieke bevinding rood wordt is opnieuw pushen dan genoeg om groen te worden.
-# Nu geldt: klapt de run, dan is er niets weg.
-#
-# Het opruimen kijkt naar `updated_at` en niet alleen naar het id.
-# `use_sticky_comment` laat de review-actie de bestaande comment van claude[bot]
-# hérgebruiken, dus het id van de zojuist geschreven review staat in de
-# momentopname. Op id alleen opruimen zou die comment wissen.
+# clean-up vergelijkt `updated_at`: `use_sticky_comment` hergebruikt de comment
+# uit de momentopname, dus op id alleen wissen zou de zojuist geschreven review
+# weggooien.
 set -uo pipefail
 
 : "${REPO:?REPO is verplicht}"
@@ -28,12 +16,8 @@ GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 readonly REVIEW_AUTHOR='claude[bot]'
-# De review sluit elke comment die zij schrijft af met deze regel; de prompt in
-# `.github/workflows/claude-code-review.yml` schrijft dat voor en de testsuite
-# bindt de twee aan elkaar. Op de auteur alleen selecteren is niet genoeg:
-# `claude.yml` laat dezelfde bot in dezelfde draad antwoorden op `@claude`, en
-# zulke gesprekstekst hoort niet als "bevinding van de vorige review" de volgende
-# prompt in, en hoort ook niet opgeruimd te worden.
+# Op auteur alleen selecteren is niet genoeg: `claude.yml` antwoordt als dezelfde
+# bot op `@claude`, en dat is geen bevinding. De prompt schrijft deze regel voor.
 readonly REVIEW_TAG='<!-- claude-review -->'
 
 fail() {
@@ -41,9 +25,7 @@ fail() {
   exit 1
 }
 
-# Eén array per pagina, `--slurp` bundelt ze; `.[][]` loopt er weer doorheen.
-# Faalt de aanroep, dan faalt deze functie; wat dat betekent verschilt per
-# subcommando en wordt daar beslist.
+# `--slurp` geeft één array per pagina; vandaar `.[][]` bij de lezers hieronder.
 list() { gh api "repos/${REPO}/${1}?per_page=100" --paginate --slurp; }
 
 snapshot() {
@@ -52,10 +34,7 @@ snapshot() {
   mine=$(printf 'select(.user.login == "%s") | select((.body // "") | contains("%s"))' \
     "$REVIEW_AUTHOR" "$REVIEW_TAG")
 
-  # Alleen `CHANGES_REQUESTED` is te dismissen; op een `COMMENTED`-review geeft
-  # de API 422 en dat is de enige soort die de review-actie achterlaat. De
-  # bodies gaan wél mee, want daar staan bevindingen in die niet in de
-  # samenvattende comment terechtkomen.
+  # De body van een review draagt bevindingen die nergens anders staan.
   reviews=$(list "pulls/${PR}/reviews" |
     jq "[.[][] | ${mine} | {id, state, submitted_at, body}]") ||
     fail "De reviews van pull request ${PR} zijn niet op te halen of niet te lezen. Zonder die lijst legt de momentopname niet vast wat de vorige review achterliet, en dan gaat die bevinding bij het opruimen verloren."
@@ -70,10 +49,8 @@ snapshot() {
     '{reviews: $r, inline: $i, sticky: $s}' >"$SNAPSHOT_FILE" ||
     fail "De momentopname is niet naar ${SNAPSHOT_FILE} te schrijven."
 
-  # De ernstmarkering wordt in de context onschadelijk gemaakt. De poort leest
-  # `🔴 **Critical**` machinaal uit wat de review schrijft, en een review die de
-  # oude tekst aanhaalt om te melden dat hij is opgelost zou de poort daarmee
-  # alsnog rood zetten. `[Critical]` draagt dezelfde betekenis voor de lezer.
+  # De poort leest `🔴 **Critical**` machinaal, dus een review die een oude
+  # bevinding aanhaalt zou hem daarmee opnieuw rood zetten.
   context=$(jq -r '
     def leesbaar:
       gsub("🔴 \\*\\*Critical\\*\\*"; "[Critical]")
@@ -112,9 +89,8 @@ PREAMBLE
     )
   fi
 
-  # Een willekeurige scheider, en falen in plaats van doorgaan als de tekst hem
-  # toch bevat: dat zou de output afkappen en de rest ervan als eigen sleutels
-  # het stapbestand in schrijven.
+  # Komt de scheider in de tekst voor, dan schrijft de rest zich als eigen
+  # sleutels het stapbestand in.
   delimiter="PREVIOUS_REVIEW_${RANDOM}${RANDOM}${RANDOM}"
   if grep -qF "$delimiter" <<<"$context"; then
     fail "De scheider ${delimiter} komt voor in de tekst van de vorige review."
@@ -126,10 +102,8 @@ PREAMBLE
   } >>"$GITHUB_OUTPUT"
 }
 
-# Mislukt een verwijdering, dan blijft de oude tekst staan. Dat is de goede kant
-# om naar te falen — de poort kijkt naar wat déze run schreef en trekt zich er
-# niets van aan — maar het hoort wel zichtbaar te zijn, anders groeit de PR stil
-# vol met comments van reviews die allang voorbij zijn.
+# Een mislukte verwijdering laat oude tekst staan. Dat is de goede kant om naar
+# te falen, maar het moet wel zichtbaar zijn.
 mislukt=0
 try() {
   gh api "$@" >/dev/null 2>&1 || mislukt=$((mislukt + 1))
@@ -140,9 +114,8 @@ clean_up() {
   [ -r "$SNAPSHOT_FILE" ] ||
     fail "De momentopname ${SNAPSHOT_FILE} ontbreekt, dus er valt niet vast te stellen wat van de vorige review was."
 
-  # De lijst eerst binnenhalen en dan pas doorlopen: in `while read < <(jq ...)`
-  # valt een gevallen jq stil weg als een lege lus, en dan lijkt "niets op te
-  # ruimen" op "alles opgeruimd".
+  # Eerst binnenhalen, dan pas doorlopen: in `while read < <(jq ...)` valt een
+  # gevallen jq weg als een lege lus.
   if ids=$(jq -r '.reviews[] | select(.state == "CHANGES_REQUESTED") | .id' "$SNAPSHOT_FILE" 2>/dev/null); then
     while read -r id; do
       [ -n "$id" ] || continue
@@ -159,10 +132,8 @@ clean_up() {
     else
       current=$(list "issues/${PR}/comments")
     fi
-    # Een API-hik hier is geen reden om de stap te laten vallen: de review is
-    # klaar en staat op de pull request. Een gevallen stap zou de job op
-    # `failure` zetten en de poort laten melden dat er geen bruikbare review is,
-    # wat niet waar is. Opruimen is bijzaak; het telt mee als mislukking.
+    # Een gevallen stap zou de job op `failure` zetten, en dan meldt de poort
+    # dat er geen bruikbare review is terwijl die er wel is.
     if ! current=$(jq "[.[][] | select(.user.login == \"${REVIEW_AUTHOR}\") | {id, updated_at}]" <<<"${current:-}" 2>/dev/null) ||
       [ -z "$current" ]; then
       mislukt=$((mislukt + 1))
