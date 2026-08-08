@@ -60,8 +60,8 @@ over, ook als ze groen zijn:
   een uitzondering, dan is die uitzondering geen besluit maar een melding: sla
   de PR over en zeg erbij welke workflow het is en waarom je dacht dat hij
   erbuiten viel. Dat is eerder misgegaan: op 8 augustus 2026 ging PR 1219 mee
-  omdat hij alleen `scheduled-cleanup.yml` raakte, en dat had voorgelegd moeten
-  worden.
+  omdat er onder dat pad maar één bestand geraakt werd, `scheduled-cleanup.yml`,
+  en dat had voorgelegd moeten worden.
 - RFC's, rapporten en substantieel proza onder `docs/src/content/rfcs/`.
 
 Meld ze aan het eind als klaar en wachtend op een oordeel.
@@ -145,11 +145,11 @@ gh pr checks <nr> -R MinBZK/regelrecht
 Die aanroep rapporteert over de actuele head-SHA, wat na een `update-branch` uit
 stap 2 een andere is dan daarvoor. Lees nooit een check-run van een oudere SHA.
 
-`Claude review completed` bewaakt twee dingen: dat de review gedraaid heeft, en
-dat er geen 🔴 Critical uit kwam. Een kritieke bevinding maakt die check rood, dus
-groen betekent hier dat er geen kritieke bevinding open staat. Wat de review
-verder meldt lees je zodra die check klaar is, en vóór je merget; dat staat onder
-"Reviewbevindingen".
+`Claude review completed` bewaakt dat de review gedraaid heeft, niet wat eruit
+kwam. Groen zegt dus niets over de bevindingen. Die lees je zelf zodra de check
+klaar is en vóór je merget, en een 🔴 Critical stopt de trein ook als alles groen
+staat; dat staat onder "Reviewbevindingen". Issue #1248 maakt de check daarnaast
+rood op een Critical, als tweede net onder het lezen.
 
 - `Build and Deploy` is `skipped` zonder het `deploy:preview`-label. Dat is geen fout.
 - `CodeQL` en `Analyze (…)` rapporteren niet op een PR die alleen docs raakt.
@@ -249,14 +249,11 @@ Lees ze pas als `Claude review completed` klaar is. Elke nieuwe review-run wist
 de vorige comments en schrijft ze opnieuw, dus wat je tijdens het draaien leest
 is de vorige ronde, en nul comments betekent dan niets.
 
-**Critical.** De poort doet dit. `Claude review completed` staat rood zolang er
-een 🔴 Critical op de head-SHA staat, dus de PR komt niet langs stap 3. Dat is
-een gefaalde verplichte check en valt onder "Wanneer je stopt"; repareren hoort
-niet bij deze skill, en de poort omzeilen al helemaal niet.
-
-Zie je een 🔴 terwijl de poort groen staat, merge dan niet. Stop de trein en meld
-wat je gezien hebt: of de bevinding is aan de poort ontsnapt, of de poort leest
-hem niet, en beide zijn een oordeel voor een mens.
+**Critical.** Merge niet. Stop de trein en meld wat er staat; repareren hoort
+niet bij deze skill. Ga hier niet af op de kleur van `Claude review completed`:
+die check staat groen zodra de review gedraaid heeft, ook met een 🔴 eronder. Dat
+is op 8 augustus 2026 misgegaan bij PR 1234, die drieëntwintig seconden na een
+kritieke bevinding gemerged werd.
 
 **Significant.** Die blokkeert niet, en dat is opzet: "waarschijnlijk" zit in de
 definitie, dus vals-positieven zijn er genoeg. Doorgeven zonder oordeel is
