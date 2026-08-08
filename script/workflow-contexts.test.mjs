@@ -50,6 +50,42 @@ test('er zijn workflows om te controleren', () => {
   assert.ok(bestanden.length > 0, `geen workflowbestanden gevonden in ${DIR}`);
 });
 
+// Zonder deze twee bewijst de suite alleen dat de huidige bestanden schoon zijn,
+// en zou een detectie die stilvalt er precies zo uitzien.
+
+const FOUT = `name: X
+jobs:
+  een:
+    runs-on: ubuntu-latest
+    env:
+      UIT: \${{ runner.temp }}/iets
+    steps:
+      - run: 'true'
+`;
+
+const GOED = `name: X
+jobs:
+  een:
+    runs-on: ubuntu-latest
+    env:
+      REPO: \${{ github.repository }}
+    steps:
+      - name: stap met een eigen env
+        env:
+          UIT: \${{ runner.temp }}/iets
+        run: 'true'
+`;
+
+test('een verboden context op jobniveau wordt gevonden', () => {
+  const geraakt = jobEnvRegels(FOUT).filter(([, regel]) => VERBODEN.test(regel));
+  assert.equal(geraakt.length, 1);
+  assert.equal(geraakt[0][0], 6);
+});
+
+test('dezelfde context in een env onder een stap blijft ongemoeid', () => {
+  assert.equal(jobEnvRegels(GOED).filter(([, regel]) => VERBODEN.test(regel)).length, 0);
+});
+
 for (const naam of bestanden) {
   test(`${naam}: env op jobniveau gebruikt geen contexten die er nog niet zijn`, () => {
     const bron = readFileSync(DIR + naam, 'utf8');
