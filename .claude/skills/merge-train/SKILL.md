@@ -79,16 +79,20 @@ gh pr list -R MinBZK/regelrecht --state open --limit 200 \
   --json number,title,isDraft,mergeStateStatus,author,labels
 ```
 
-Kandidaat is een PR die niet in draft staat, van `ehotting` of een teamlid is,
-geen RFC of rapport wijzigt, en `mergeStateStatus` heeft van `CLEAN`, `BEHIND` of
-`BLOCKED`. `DIRTY` betekent een echt conflict: overslaan en melden.
+Kandidaat is een PR die niet in draft staat, van `ehotting` of een teamlid is, en
+`mergeStateStatus` heeft van `CLEAN`, `BEHIND` of `BLOCKED`. `DIRTY` betekent een
+echt conflict: overslaan en melden.
 
-Welke bestanden een PR raakt staat niet in die lijst, en zonder die bestanden
-kun je de uitsluitingen hierboven niet toepassen. Haal ze per kandidaat op:
+Welke bestanden een PR raakt staat niet in die lijst, en zonder die bestanden kun
+je de uitsluitingen uit "Vaste regels" niet toepassen. Haal ze per kandidaat op:
 
 ```bash
 gh pr view <nr> -R MinBZK/regelrecht --json files --jq '.files[].path'
 ```
+
+Raakt er ook maar één pad `corpus/regulation/**`, `schema/**`,
+`.github/workflows/**` of `docs/src/content/rfcs/**`, dan valt de PR af. Doe die
+toets hier, vóór je er tijd in steekt, en niet pas bij het mergen.
 
 Kies er één. Bij gelijke geschiktheid: de kleinste diff eerst, want die is het
 snelst door de poort en zet de rest het minst op achterstand.
@@ -111,9 +115,10 @@ Pre-commit, WASM Build, Protect schema versions, Security Audit,
 Test, Validate PR title, Claude review completed
 ```
 
-`Test` is een verzamelpoort: daarachter hangen `rust-tests`, `frontend-tests`,
-`e2e`, `cross-law-integrity`, `provenance-checks`, `docs-a11y`, `rust-image` en
-`changes`. Je hoeft die niet apart af te wachten; groen op `Test` dekt ze.
+`Test` is een verzamelpoort: daarachter hangen `rust-tests`, `bdd-conformance`,
+`frontend-tests`, `e2e`, `cross-law-integrity`, `provenance-checks`,
+`docs-a11y`, `rust-image` en `changes`. Je hoeft die niet apart af te wachten;
+groen op `Test` dekt ze.
 
 Wacht op precies deze zeven en op niets anders.
 
@@ -149,14 +154,45 @@ nieuwe advisory die `Security Audit` raakt bijvoorbeeld, en dat blokkeert de
 volgende PR toch al, want dat is een verplichte check.
 
 Controleer in plaats daarvan de uitrol, want daar bestaat geen PR-check voor.
-Kijk of `Build and Deploy` voor deze commit is afgerond en of `deploy-production`
-is geslaagd. Is die rood, **stop dan de trein** en meld het; de volgende merge
-zet er alleen maar meer bovenop.
+Zoek de `Build and Deploy`-run van de nieuwe `main`-commit op en lees de banen
+eruit:
+
+```bash
+git fetch origin main && git rev-parse origin/main
+gh run list -R MinBZK/regelrecht --workflow "Build and Deploy" \
+  --commit <sha> --json databaseId,status,conclusion
+gh api repos/MinBZK/regelrecht/actions/runs/<id>/jobs \
+  --jq '.jobs[] | "\(.name)\t\(.conclusion)"'
+```
+
+Beoordeel `deploy-production` en niet de run als geheel:
+
+- `success`: uitgerold, ga door.
+- `failure` of `cancelled`: **stop de trein** en meld het; de volgende merge zet
+  er alleen maar meer bovenop.
+- `skipped`: er is niets uitgerold, en dat kan twee dingen betekenen. Is
+  `Wacht op een groene CI` geslaagd en heeft geen enkele build gedraaid, dan
+  raakte deze commit geen deploybaar component en is de skip in orde. In elk
+  ander geval, en zeker als die baan rood staat, is de CI op main omgevallen,
+  zijn alle builds daarachter overgeslagen en is er niets uitgerold. Dat is een
+  stopgrond, geen groen.
+
+De skip is de gevaarlijke uitkomst: overgeslagen is niet rood, dus een
+oppervlakkige blik op de run ziet er niets aan. Kun je de twee gevallen niet uit
+elkaar houden, stop dan en meld wat je zag.
 
 ### 6. Terug naar stap 1
 
 Verse `origin/main` ophalen en opnieuw beginnen. Verifieer voor elke volgende
-merge dat de gekozen PR `behind_by = 0` heeft; anders eerst stap 2.
+merge dat de gekozen PR bij is met `main`:
+
+```bash
+gh api repos/MinBZK/regelrecht/compare/main...<branch> --jq .behind_by
+```
+
+`behind_by` staat niet in `gh pr list` of `gh pr view`; die kennen alleen
+`mergeStateStatus`, en `BEHIND` is daar de grovere variant van hetzelfde. Is de
+uitkomst niet `0`, dan eerst stap 2.
 
 ## Reviewbevindingen
 
