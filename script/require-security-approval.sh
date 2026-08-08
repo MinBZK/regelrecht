@@ -122,7 +122,12 @@ output 'dependency' "$dependency"
 # geciteerde changelog.
 own_text=${body%%<details>*}
 
-advisories=$(grep -oiE 'GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}|CVE-[0-9]{4}-[0-9]+' <<<"$body" |
+# Uit de aanhef en niet uit de hele body, om dezelfde reden als bij signaal 3:
+# achter het eerste `<details>` staan geciteerde changelogs die een advisory van
+# een heel ander pakket kunnen noemen. Die zou hier in de blokkeermelding komen
+# als de advisory van déze update, terwijl de goedkeurder er juist naar moet
+# kijken.
+advisories=$(grep -oiE 'GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}|CVE-[0-9]{4}-[0-9]+' <<<"$own_text" |
     tr '[:lower:]' '[:upper:]' | sort -u | paste -sd, -)
 output 'advisories' "$advisories"
 
@@ -133,7 +138,7 @@ signal=''
 # formulering kan veranderen. Mislukt de aanroep — een door Dependabot gestarte
 # run krijgt een token met minder rechten — dan is dat geen "geen alert": de
 # poort zegt het en valt terug op de twee tekstsignalen.
-if alerts=$(gh api "repos/${REPO}/dependabot/alerts?state=open&per_page=100" \
+if alerts=$(gh api "repos/${REPO}/dependabot/alerts?state=open&per_page=100" --paginate \
     --jq '.[].security_vulnerability.package.name' 2>"$gh_stderr"); then
     if [ -n "$dependency" ] && grep -qixF "$dependency" <<<"$alerts"; then
         is_security=true
@@ -172,15 +177,26 @@ fi
 # Een goedkeuring van een bot is geen menselijke blik, en een goedkeuring van
 # een willekeurige buitenstaander evenmin: iedereen met een account kan een
 # review achterlaten, dus alleen wie schrijfrechten heeft telt.
+#
+# Eerst de laatste review per persoon, dan pas filteren op APPROVED. De API
+# geeft elke ingediende review als eigen object terug en herschrijft een
+# eerdere niet: keurt iemand goed en vraagt hij daarna op dezelfde commit
+# wijzigingen aan, dan staat die APPROVED er nog steeds. Filteren-dan-laatste
+# pakt hem dus alsnog op, en een ingetrokken goedkeuring zou de poort openen.
 approver=$(jq -r --arg sha "$head_sha" '
     [ .[]
-      | select(.state == "APPROVED")
       | select(.commit_id == $sha)
       | select(.user.login | endswith("[bot]") | not)
       | select(.author_association == "OWNER"
                or .author_association == "MEMBER"
                or .author_association == "COLLABORATOR")
-    ] | last | .user.login // ""' <<<"$reviews")
+      # COMMENTED laat het oordeel ongemoeid; alleen wat een standpunt is telt
+      # mee bij het bepalen van iemands laatste woord.
+      | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")
+    ]
+    | group_by(.user.login) | map(max_by(.id))
+    | map(select(.state == "APPROVED"))
+    | last | .user.login // ""' <<<"$reviews")
 
 if [ -n "$approver" ]; then
     output 'approved' 'true'
