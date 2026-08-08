@@ -22,8 +22,16 @@ jobs:
       deployments: write
       packages: write
       actions: write
+      # Voor `gh pr list` in de controlestap onderaan.
+      pull-requests: read
 
     steps:
+      # Voor script/check-preview-environments.sh onderaan; de opruimactie zelf
+      # heeft de boom niet nodig.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
       - name: Cleanup stale ZAD deployments and GitHub environments
         uses: RijksICTGilde/zad-actions/scheduled-cleanup@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
@@ -36,6 +44,22 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: ${{ inputs.dry-run || false }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
+
+      # De opruimactie hierboven meldt succes op basis van alleen de ZAD-kant:
+      # in zad-actions zet stap 1 `ENV_SUCCESS`, en de stappen die de
+      # GitHub-environment, de deployments en de images verwijderen raken die
+      # variabele nergens aan. Op 7 augustus 2026 sloot de run af met
+      # "Successfully cleaned 773 environment(s)" terwijl alle 773 met 404
+      # faalden. Deze stap telt de uitkomst in plaats van de melding.
+      #
+      # Op een dry-run overslaan: die verwijdert per definitie niets, dus zou
+      # hij hier altijd omvallen.
+      - name: Controleer wat er is achtergebleven
+        if: ${{ !(inputs.dry-run || false) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: script/check-preview-environments.sh
 
       - name: Cleanup stale container images
         env:

@@ -101,6 +101,41 @@ const STRICT = 'changes';
 const withAll = (value) =>
   Object.fromEntries(NEEDS.map((job) => [job, job === STRICT ? 'success' : value]));
 
+// Banen die zelf een verplichte check op main zijn, en dus niet aan de poort
+// hoeven te hangen. Deze lijst moet overeenkomen met de required contexts in de
+// branch protection; wijzigt daar iets, dan hier ook.
+const EIGEN_REQUIRED_CHECK = new Set([
+  'protect-schema', // Protect schema versions
+  'pre-commit', //     Pre-commit
+  'wasm', //           WASM Build
+  'audit', //          Security Audit
+  'test', //           Test, de poort zelf
+]);
+
+// Banen die bewust buiten beide vallen. Leeg, en dat hoort zo te blijven: elke
+// regel hier is dekking die niemand meer bewaakt, dus zet er de reden bij.
+const BUITEN_DE_POORT = new Set([]);
+
+test('elke baan in ci.yml blokkeert, via de poort of als eigen required check', () => {
+  // Zonder deze assertie is een nieuwe baan toevoegen en vergeten aan te haken
+  // stil dekkingsverlies, en dat is precies de fout die de poort kwam
+  // repareren.
+  const ongedekt = [...JOBS.keys()].filter(
+    (job) => !NEEDS.includes(job) && !EIGEN_REQUIRED_CHECK.has(job) && !BUITEN_DE_POORT.has(job),
+  );
+  assert.deepEqual(
+    ongedekt,
+    [],
+    'deze banen hangen niet aan de poort en zijn zelf geen verplichte check, dus ze houden niets tegen',
+  );
+});
+
+test('de lijsten met verplichte checks en uitzonderingen slaan op bestaande banen', () => {
+  for (const job of [...EIGEN_REQUIRED_CHECK, ...BUITEN_DE_POORT]) {
+    assert.ok(JOBS.has(job), `${job} staat in een lijst maar bestaat niet als baan in ci.yml`);
+  }
+});
+
 test('de poort hangt aan de vier checks die tot nu toe niets blokkeerden', () => {
   for (const job of ['e2e', 'cross-law-integrity', 'provenance-checks', 'docs-a11y']) {
     assert.ok(NEEDS.includes(job), `${job} hangt niet aan de poort`);
