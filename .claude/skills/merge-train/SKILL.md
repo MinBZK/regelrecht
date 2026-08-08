@@ -55,7 +55,13 @@ over, ook als ze groen zijn:
   Nederlandse wetgeving en het schema waar die aan hangt. Een fout hier levert
   een verkeerde rechtsuitkomst op, en geen enkele poort in CI ziet dat.
 - `.github/workflows/**`. Wie de workflows wijzigt kan de poorten wijzigen
-  waarop deze skill zelf afgaat.
+  waarop deze skill zelf afgaat. Dit geldt voor elk bestand onder dat pad, wat
+  de workflow ook doet en hoe ver hij ook van de merge-poorten af staat. Zie je
+  een uitzondering, dan is die uitzondering geen besluit maar een melding: sla
+  de PR over en zeg erbij welke workflow het is en waarom je dacht dat hij
+  erbuiten viel. Dat is eerder misgegaan: op 8 augustus 2026 ging PR 1219 mee
+  omdat hij alleen `scheduled-cleanup.yml` raakte, en dat had voorgelegd moeten
+  worden.
 - RFC's, rapporten en substantieel proza onder `docs/src/content/rfcs/`.
 
 Meld ze aan het eind als klaar en wachtend op een oordeel.
@@ -76,6 +82,13 @@ gh pr list -R MinBZK/regelrecht --state open --limit 200 \
 Kandidaat is een PR die niet in draft staat, van `ehotting` of een teamlid is,
 geen RFC of rapport wijzigt, en `mergeStateStatus` heeft van `CLEAN`, `BEHIND` of
 `BLOCKED`. `DIRTY` betekent een echt conflict: overslaan en melden.
+
+Welke bestanden een PR raakt staat niet in die lijst, en zonder die bestanden
+kun je de uitsluitingen hierboven niet toepassen. Haal ze per kandidaat op:
+
+```bash
+gh pr view <nr> -R MinBZK/regelrecht --json files --jq '.files[].path'
+```
 
 Kies er één. Bij gelijke geschiktheid: de kleinste diff eerst, want die is het
 snelst door de poort en zet de rest het minst op achterstand.
@@ -103,6 +116,11 @@ Test, Validate PR title, Claude review completed
 `changes`. Je hoeft die niet apart af te wachten; groen op `Test` dekt ze.
 
 Wacht op precies deze zeven en op niets anders.
+
+`Claude review completed` bewaakt twee dingen: dat de review gedraaid heeft, en
+dat er geen 🔴 Critical uit kwam. Een kritieke bevinding maakt die check rood, dus
+groen betekent hier dat je mag mergen. Wat de review verder meldt, lees je erna;
+dat staat onder "Reviewbevindingen".
 
 - `Build and Deploy` is `skipped` zonder het `deploy:preview`-label. Dat is geen fout.
 - `CodeQL` en `Analyze (…)` rapporteren niet op een PR die alleen docs raakt.
@@ -140,19 +158,76 @@ zet er alleen maar meer bovenop.
 Verse `origin/main` ophalen en opnieuw beginnen. Verifieer voor elke volgende
 merge dat de gekozen PR `behind_by = 0` heeft; anders eerst stap 2.
 
+## Reviewbevindingen
+
+De review deelt in drie: 🔴 Critical (verkeerde rechtsuitkomst, dataverlies,
+crash, beveiligingslek), 🟠 Significant (waarschijnlijke bug, kapotte verwijzing,
+gemist randgeval) en 🟡 Minor (codekwaliteit, stijl). De schaal staat in
+`REVIEW.md`.
+
+De bevindingen staan op twee plekken: een sticky comment op de PR en losse
+inline comments bij de regels.
+
+```bash
+gh pr view <nr> -R MinBZK/regelrecht --json comments --jq '.comments[].body'
+gh api repos/MinBZK/regelrecht/pulls/<nr>/comments --jq '.[].body'
+```
+
+Lees ze pas als `Claude review completed` klaar is. Elke nieuwe review-run wist
+de vorige comments en schrijft ze opnieuw, dus wat je tijdens het draaien leest
+is de vorige ronde, en nul comments betekent dan niets.
+
+**Critical.** De poort doet dit. `Claude review completed` staat rood zolang er
+een 🔴 Critical op de head-SHA staat, dus de PR komt niet langs stap 3. Dat is
+een gefaalde verplichte check en valt onder "Wanneer je stopt"; repareren hoort
+niet bij deze skill, en de poort omzeilen al helemaal niet.
+
+Zie je een 🔴 terwijl de poort groen staat, dan is de poort stuk. Merge niet,
+stop de trein, en meld wat je gezien hebt.
+
+**Significant.** Die blokkeert niet, en dat is opzet: "waarschijnlijk" zit in de
+definitie, dus vals-positieven zijn er genoeg. Doorgeven zonder oordeel is
+daarom geen melding maar een beslispunt zonder grond. Beoordeel hem zelf, aan de
+code en niet aan de tekst van de review:
+
+- Klopt hij? Lees de regels die hij aanwijst, in het hele bestand en niet alleen
+  in de diff, en ga na of het beschreven pad bereikbaar is.
+- Welk gedrag verandert erdoor, en wie merkt dat.
+- Hoe duur is het als hij blijft staan? Landt er een fout in productie die geen
+  poort ziet, of gaat het om een pad dat niemand loopt.
+
+Beslis daarna zelf en voer die beslissing uit: mergen, of overslaan tot de
+bevinding gerepareerd is. Kom je er niet uit, neem dan aan dat hij klopt en sla
+over; dat is de goedkoopste van de twee vergissingen. Raakt de bevinding
+`corpus/regulation/**`, `schema/**` of een workflow, dan hoorde die PR sowieso
+al niet in de trein.
+
+Beide takken laten iets achter, want anders beoordeelt de volgende ronde
+dezelfde bevinding opnieuw en misschien anders. Bij mergen maak je een issue aan
+met de bevinding en de PR erin; bij overslaan zet je hem als comment op de PR.
+
+Meld per bevinding één alinea: wat hij zegt, of hij klopt, wat het kost, wat jij
+gedaan hebt en waarom. Zo bevestigt of draait Eelco jouw beslissing om zonder
+zelf in de diff te hoeven duiken.
+
+**Minor** vermeld je niet apart.
+
 ## Wanneer je stopt
 
 - De productie-deploy van de vorige merge is mislukt.
 - Een PR heeft een echt conflict (`DIRTY`).
-- Een required check faalt inhoudelijk. Repareren hoort niet bij deze skill;
-  meld welke check op welke PR en wat het log zegt.
-- De review meldt iets kritieks. Bevindingen beoordelen is mensenwerk.
+- Een required check faalt inhoudelijk, `Claude review completed` daaronder
+  begrepen. Repareren hoort niet bij deze skill; meld welke check op welke PR en
+  wat het log zegt, of bij de reviewpoort welke bevinding het is.
 
 ## Wat je aan het eind meldt
 
 Per PR één regel: nummer, titel, en wat ermee gebeurd is. Daarachter de
 overgeslagen PR's met de reden. Geen samenvatting van de inhoud van wat er
 gemerged is; dat staat in de PR's zelf.
+
+Uitzondering: een Significant-bevinding krijgt de alinea uit
+"Reviewbevindingen", met jouw oordeel en wat je gedaan hebt.
 
 ## Bekende ruis
 
