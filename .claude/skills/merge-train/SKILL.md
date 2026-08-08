@@ -286,9 +286,11 @@ zelf in de diff te hoeven duiken.
 
 - De productie-deploy van de vorige merge is mislukt.
 - Een PR heeft een echt conflict (`DIRTY`).
-- Een required check faalt inhoudelijk, `Claude review completed` daaronder
-  begrepen. Repareren hoort niet bij deze skill; meld welke check op welke PR en
-  wat het log zegt, of bij de reviewpoort welke bevinding het is.
+- Een required check faalt inhoudelijk. Repareren hoort niet bij deze skill;
+  meld welke check op welke PR en wat het log zegt.
+- De review meldt een 🔴 Critical. Dat is een zelfstandige stopgrond, ook als
+  `Claude review completed` groen staat; die check zegt alleen dat de review
+  gedraaid heeft. Zie "Reviewbevindingen".
 
 ## Wat je aan het eind meldt
 
