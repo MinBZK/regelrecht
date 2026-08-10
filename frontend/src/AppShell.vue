@@ -354,17 +354,13 @@ function onTabDismiss(e) {
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                   <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" dividers="never">
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
                   <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
@@ -453,17 +449,13 @@ function onTabDismiss(e) {
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                   <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" dividers="never">
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
                   <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
@@ -728,17 +720,13 @@ function onTabDismiss(e) {
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                   <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" dividers="never">
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
                   <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
