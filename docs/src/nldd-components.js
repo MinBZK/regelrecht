@@ -5,6 +5,7 @@
 // instead of silently never upgrading.
 //
 // Regenerate: npm run nldd:imports
+import '@nldd/design-system/box';
 import '@nldd/design-system/breadcrumbs';
 import '@nldd/design-system/button';
 import '@nldd/design-system/button-group';

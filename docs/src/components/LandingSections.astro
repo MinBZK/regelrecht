@@ -69,19 +69,21 @@ function exampleImage(key: string): ImageMetadata {
   showSignup ? (
       <nldd-simple-section
         id="signup"
-        width="640px"
-        sm-padding-bottom="32"
-        md-padding-bottom="64"
-        lg-padding-bottom="96"
+        width="704px"
+        vertical-alignment="center"
       >
-        <nldd-title size="2">
-          <h1>{t.signup.pageTitle}</h1>
-        </nldd-title>
-        <nldd-spacer size="24" />
-        <SignupForm lang={lang} />
-        <noscript>
-          <p>{t.signup.noscript}</p>
-        </noscript>
+        <nldd-box>
+          <nldd-container sm-padding="16" md-padding="24" lg-padding="32">
+            <nldd-title size="2">
+              <h1>{t.signup.pageTitle}</h1>
+            </nldd-title>
+            <nldd-spacer size="24" />
+            <SignupForm lang={lang} />
+            <noscript>
+              <p>{t.signup.noscript}</p>
+            </noscript>
+          </nldd-container>
+        </nldd-box>
       </nldd-simple-section>
     ) : (
       <Fragment>
