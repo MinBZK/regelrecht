@@ -126,6 +126,27 @@ repos:
         pass_filenames: false
         files: ^(script/check-preview-environments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
 
+      - id: preview-deployments-tests
+        name: Controle op achtergebleven ZAD-deployments doet wat hij belooft
+        entry: script/check-preview-deployments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-preview-deployments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: orphaned-deployments-tests
+        name: Opruimen van verweesde deployments raakt niets van een open PR
+        entry: script/prune-orphaned-deployments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/prune-orphaned-deployments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: preview-images-tests
+        name: Opruimen van images laat draaiende versies staan
+        entry: script/prune-preview-images.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/prune-preview-images(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
       - id: advisories-report-tests
         name: Advisory-melding komt aan en niet dubbel
         entry: script/report-advisories.test.sh

@@ -530,22 +530,5 @@ jobs:
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
           comment-header: '## Preview Deployment'
 
-      - name: Prune orphaned SHA-tagged images
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-        run: |
-          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-pipeline-api regelrecht-grafana regelrecht-lawmaking regelrecht-docs; do
-            echo "Pruning sha-only images for $PACKAGE..."
-            gh api --paginate \
-              "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions" \
-              --jq '.[] | select(
-                (.metadata.container.tags | length == 0) or
-                (.metadata.container.tags | all(startswith("sha-")))
-              ) | .id' \
-            2>/dev/null | while read -r VERSION_ID; do
-              echo "Deleting $PACKAGE version $VERSION_ID"
-              gh api --method DELETE \
-                "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
-              2>/dev/null || true
-            done
-          done
+      # De sha-opruiming die hier stond kon het image onder productie vandaan
+      # halen en draait nu in scheduled-cleanup.yml.
