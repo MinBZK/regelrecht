@@ -488,9 +488,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Het label eraf halen ruimt op, net als het sluiten van de PR: een preview
-    # waar niemand meer naar kijkt hoort niet te blijven draaien. Sluiten ruimt
-    # ook op zonder dat het label er ooit op zat, want dan valt er niets te
-    # verwijderen en prunet deze job alsnog de verweesde sha-images.
+    # waar niemand meer naar kijkt hoort niet te blijven draaien. Zat het label
+    # er nooit op, dan valt er niets te verwijderen en doet deze job niets.
     #
     # Een fork-PR heeft nooit gebouwd of gedeployd, dus er valt niets op te
     # ruimen en de GHCR-aanroepen zouden alleen maar op rechten stuklopen.
