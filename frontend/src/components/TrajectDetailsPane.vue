@@ -135,7 +135,7 @@ async function confirmLeave() {
     <nldd-activity-indicator v-if="loading" text="Trajectgegevens laden" show-text></nldd-activity-indicator>
     <nldd-inline-dialog v-else-if="loadError" variant="alert" :text="loadError.message || 'Fout bij laden'"></nldd-inline-dialog>
     <template v-else-if="detail">
-    <nldd-list variant="box">
+    <nldd-list variant="box-tinted">
       <nldd-list-item size="md">
         <nldd-text-cell text="Naam" max-width="180px"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -197,7 +197,7 @@ async function confirmLeave() {
          terwijl je hier meestal iets heel anders komt doen. -->
     <template v-if="detail.ref">
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-list variant="box" arrow-navigation>
+      <nldd-list variant="box-tinted" arrow-navigation>
         <nldd-list-item size="md" button @click="openIntegrity">
           <nldd-icon-cell size="20"><nldd-icon name="verified"></nldd-icon></nldd-icon-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -217,31 +217,35 @@ async function confirmLeave() {
     <template v-if="detail.role === 'owner'">
       <nldd-spacer size="24"></nldd-spacer>
       <nldd-box>
-        <nldd-title size="5"><h4>Traject verwijderen</h4></nldd-title>
-        <nldd-spacer size="4"></nldd-spacer>
-        <nldd-rich-text>
-          <p>
-            Het traject verdwijnt met zijn leden en uitnodigingen. De
-            traject-branch op GitHub blijft bestaan.
-          </p>
-        </nldd-rich-text>
-        <nldd-spacer size="8"></nldd-spacer>
-        <nldd-button variant="destructive" size="md" text="Traject verwijderen" @click="askDelete"></nldd-button>
+        <nldd-container padding="16">
+          <nldd-title size="5"><h4>Traject verwijderen</h4></nldd-title>
+          <nldd-spacer size="4"></nldd-spacer>
+          <nldd-rich-text>
+            <p>
+              Het traject verdwijnt met zijn leden en uitnodigingen. De
+              traject-branch op GitHub blijft bestaan.
+            </p>
+          </nldd-rich-text>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-button variant="destructive" size="md" text="Traject verwijderen" @click="askDelete"></nldd-button>
+        </nldd-container>
       </nldd-box>
     </template>
     <template v-else-if="detail.role">
       <nldd-spacer size="24"></nldd-spacer>
       <nldd-box>
-        <nldd-title size="5"><h4>Traject verlaten</h4></nldd-title>
-        <nldd-spacer size="4"></nldd-spacer>
-        <nldd-rich-text>
-          <p>
-            Je verliest toegang tot dit traject. Een eigenaar kan je later
-            opnieuw uitnodigen.
-          </p>
-        </nldd-rich-text>
-        <nldd-spacer size="8"></nldd-spacer>
-        <nldd-button variant="destructive" size="md" text="Traject verlaten" @click="askLeave"></nldd-button>
+        <nldd-container padding="16">
+          <nldd-title size="5"><h4>Traject verlaten</h4></nldd-title>
+          <nldd-spacer size="4"></nldd-spacer>
+          <nldd-rich-text>
+            <p>
+              Je verliest toegang tot dit traject. Een eigenaar kan je later
+              opnieuw uitnodigen.
+            </p>
+          </nldd-rich-text>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-button variant="destructive" size="md" text="Traject verlaten" @click="askLeave"></nldd-button>
+        </nldd-container>
       </nldd-box>
     </template>
     </template>

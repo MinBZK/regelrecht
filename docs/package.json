@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.5",
-    "@nldd/design-system": "^0.8.78",
+    "@nldd/design-system": "^0.8.80",
     "astro": "^7.1.6",
     "astro-pagefind": "^2.0.1",
     "rehype-mermaid": "^3",

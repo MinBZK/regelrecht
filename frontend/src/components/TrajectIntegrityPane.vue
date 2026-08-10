@@ -101,7 +101,7 @@ function scopeSummary(r) {
         <template v-for="group in groups" :key="group.key">
           <nldd-title size="5"><h4>{{ group.title }} ({{ group.counts }})</h4></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="box">
+          <nldd-list variant="box-tinted">
             <nldd-list-item
               v-for="(finding, i) in group.findings"
               :key="`${group.key}-${i}`"

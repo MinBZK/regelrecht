@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
         <nldd-simple-section v-else>
           <!-- Acties van het actieve traject - bovenaan, zonder titel (de
                sheet-titel dekt dit al). -->
-          <nldd-list v-if="activeTraject" variant="box" arrow-navigation>
+          <nldd-list v-if="activeTraject" variant="box-tinted" arrow-navigation>
             <nldd-list-item size="md" button @click="openDocuments">
               <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -279,7 +279,7 @@ onBeforeUnmount(() => {
             <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
           </template>
-          <nldd-list variant="box" arrow-navigation>
+          <nldd-list variant="box-tinted" arrow-navigation>
             <!-- "Corpus juris" = the traject-less global scope, the default
                  option (like `main` among the branches). -->
             <nldd-list-item
@@ -321,7 +321,7 @@ onBeforeUnmount(() => {
             <nldd-spacer size="24"></nldd-spacer>
             <nldd-title size="5"><h2>Artikelen</h2></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box">
+            <nldd-list variant="box-tinted">
               <nldd-list-item
                 v-for="tab in documentTabs"
                 :key="`${documentTabsTrajectRef ?? ''}:${tabActions.key(tab)}`"

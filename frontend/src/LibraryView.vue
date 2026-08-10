@@ -2176,7 +2176,7 @@ watch(activeTrajectRef, () => {
                         <h4>{{ section.title }}</h4>
                         <nldd-button
                           v-if="section.key === 'recent'"
-                          slot="actions"
+                          slot="end"
                           size="xs"
                           variant="accent-transparent"
                           text="Wis"
@@ -2678,7 +2678,7 @@ watch(activeTrajectRef, () => {
                   <span slot="subtitle">{{ lawName }}</span>
                 </nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-list variant="box" accessible-label="Algemene informatie">
+                <nldd-list variant="box-tinted" accessible-label="Algemene informatie">
                   <nldd-list-item v-for="row in algemeenRows" :key="row.label">
                     <nldd-text-cell :text="row.label" width="200px"></nldd-text-cell>
                     <nldd-spacer-cell size="16"></nldd-spacer-cell>

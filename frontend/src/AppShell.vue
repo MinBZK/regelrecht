@@ -354,7 +354,7 @@ function onTabDismiss(e) {
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                   <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
+                    <nldd-list variant="simple" dividers="never">
                       <nldd-list-item>
                         <nldd-text-cell :text="person?.name || person?.email">
                         <span v-if="person?.name || showGithubLine" slot="supporting-text">
@@ -453,7 +453,7 @@ function onTabDismiss(e) {
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                   <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
+                    <nldd-list variant="simple" dividers="never">
                       <nldd-list-item>
                         <nldd-text-cell :text="person?.name || person?.email">
                         <span v-if="person?.name || showGithubLine" slot="supporting-text">
@@ -728,7 +728,7 @@ function onTabDismiss(e) {
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
                   <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
+                    <nldd-list variant="simple" dividers="never">
                       <nldd-list-item>
                         <nldd-text-cell :text="person?.name || person?.email">
                         <span v-if="person?.name || showGithubLine" slot="supporting-text">

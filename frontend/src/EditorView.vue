@@ -2828,7 +2828,7 @@ async function handleActionSave() {
                       </nldd-rich-text>
                       <template v-if="noteAuthor(note)">
                         <nldd-spacer size="4"></nldd-spacer>
-                        <nldd-byline :text="noteAuthor(note)"></nldd-byline>
+                        <nldd-identity :text="noteAuthor(note)"></nldd-identity>
                       </template>
                     </template>
                     <nldd-spacer size="16"></nldd-spacer>

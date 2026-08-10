@@ -164,7 +164,7 @@ function confirmDisconnect() {
               <h2>Koppelingen</h2>
             </nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box">
+            <nldd-list variant="box-tinted">
               <nldd-list-item>
                 <nldd-text-cell
                   text="GitHub"
@@ -196,7 +196,7 @@ function confirmDisconnect() {
               <span slot="subtitle">Geldt voor alle gebruikers en trajecten in deze installatie.</span>
             </nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box">
+            <nldd-list variant="box-tinted">
               <nldd-list-item v-for="[key, label] in editorPanelFlags" :key="key">
                 <nldd-text-cell :text="label"></nldd-text-cell>
                 <nldd-cell>
