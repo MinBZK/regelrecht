@@ -40,10 +40,11 @@ fi
 # zou een registry met poort of een digest-pin een niet-bestaande "tag"
 # opleveren, en geen match betekent hier: mag weg.
 #
-# jq faalt hard (`-e`) omdat een half gelezen lijst gevaarlijker is dan een
-# lege: de leegte-controle hieronder vangt hem niet.
+# Zonder `-e`, anders geeft jq ook status non-zero als er domweg geen images
+# in staan en meldt dit pad "onleesbaar" terwijl de leegte-controle hieronder
+# de juiste diagnose heeft. Een echte jq-fout blijft wel non-zero.
 images_raw="$(
-    jq -re '.deployments[]?.components[]?.image // empty' <<<"$deployments_json"
+    jq -r '.deployments[]?.components[]?.image // empty' <<<"$deployments_json"
 )" || {
     echo "::error title=Image-opruiming::het antwoord van ZAD is niet te lezen als een lijst draaiende images; er wordt niets verwijderd."
     exit 1
