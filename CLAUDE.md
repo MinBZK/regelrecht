@@ -482,6 +482,23 @@ and they do nothing on a PR without `deploy:preview`.
 Fork PRs stay out of the chain regardless of labels; they have no secrets and a
 read-only `GITHUB_TOKEN`, so the push to GHCR could never succeed.
 
+### Opruimen
+
+Productie draait op een `sha-`-tag, niet op `latest`. Een opruiming die op de
+tagvorm afgaat kan dus het image onder de draaiende deployment vandaan halen;
+`script/prune-preview-images.sh` toetst daarom aan wat ZAD op dat moment draait
+en verwijdert niets als het die lijst niet krijgt. Hij draait in
+`scheduled-cleanup.yml` en niet bij elke gesloten pull request.
+
+De opruiming inventariseert GitHub-environments, en mist daarmee elk
+ZAD-deployment waarvan de environment al weg is.
+`script/prune-orphaned-deployments.sh` inventariseert andersom;
+`check-preview-deployments.sh` en `check-preview-environments.sh` stellen daarna
+vast wat er werkelijk over is, want de melding van een opruiming zegt hier niets
+over de uitkomst.
+
+De redenering achter elke regel staat in de kop van het betreffende script.
+
 ### Debugging deploy-preview failures
 
 ZAD deploy timeouts ("Task did not complete within 300s") almost always indicate an **application error**, not a platform issue. When `deploy-preview` fails:
