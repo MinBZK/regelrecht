@@ -1054,7 +1054,12 @@ const sidebarSections = computed(() => {
     if (all.length > 0) {
       const shown = trajectLawsExpanded.value ? all : all.slice(0, TRAJECT_LAWS_COLLAPSED);
       sections.push({ key: 'traject', title: 'In dit traject', laws: shown });
-    } else if (!loading.value) {
+    } else if (!loading.value && changedLawIds.value) {
+      // Alleen als de diff echt is opgehaald. `fetchChangedLawIds` slikt elke
+      // fout en geeft dan `null`, en dat is iets anders dan een lege set: bij
+      // een 500 of een netwerkfout zou "Nog niets bewerkt." een uitspraak doen
+      // die de backend juist niet kon doen. Dan valt de sectie weg, precies
+      // zoals hij dat vóór deze staat ook deed.
       sections.push({ key: 'traject', title: 'In dit traject', laws: [], empty: true });
     }
   }
@@ -1389,11 +1394,20 @@ function articleDescription(article) {
 // Favorieten zijn per plek: de set van het actieve traject, of die van Corpus
 // juris als je nergens in zit. `trajectRef` komt uit de aanroeper zodat een
 // laadronde en de toewijzing erna over dezelfde scope gaan.
-async function loadFavorites(trajectRef) {
+// Schrijft zodra zijn eigen antwoord binnen is, en niet pas als de traagste van
+// de twee ophaalacties klaar is: changed-laws gaat langs GitHub en favorieten
+// niet, dus daarop wachten zou de sterren onnodig laat laten verschijnen.
+//
+// Daarom draagt hij de staleness-check van `loadIndex` zelf. Sinds favorieten
+// per traject zijn kunnen twee antwoorden het oneens zijn, en zonder deze
+// controle overschrijft een traag antwoord van het vórige traject dat van het
+// huidige.
+async function loadFavorites(trajectRef, isCurrent) {
   try {
     const favIds = await apiFetchJson(favoritesUrl(trajectRef), {
       errorMessage: (status) => `Failed to load favorites: ${status}`,
     });
+    if (!isCurrent()) return;
     favorites.value = new Set(favIds);
   } catch (e) {
     // Not authenticated (401/403) or endpoint unavailable - no favorites.
@@ -1510,7 +1524,7 @@ async function loadIndex() {
     // personal favorites and (in a traject) the laws this traject touched on
     // its own branch. Both are id-only.
     const [, changedIds] = await Promise.all([
-      loadFavorites(trajectRef),
+      loadFavorites(trajectRef, isCurrent),
       fetchChangedLawIds(trajectRef),
     ]);
     if (!isCurrent()) return;

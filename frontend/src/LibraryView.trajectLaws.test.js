@@ -65,6 +65,12 @@ const { server, ApiErrorStub, apiFetch, apiFetchJson } = vi.hoisted(() => {
     sourceLaws: [],
     favorites: [],
     changed: [],
+    changedFails: false,
+    favoritesFails: false,
+    // Een belofte die de favorieten-aanroep per traject laat hangen, zodat een
+    // test een traag antwoord van het vórige traject kan laten aankomen nadat
+    // het nieuwe al geladen is.
+    holdFavoritesFor: null,
     // Een belofte die de changed-laws-aanroep laat hangen, zodat een test kan
     // zien wat het menu toont terwijl het antwoord van het nieuwe traject nog
     // onderweg is. `null` = meteen antwoorden.
@@ -85,11 +91,21 @@ const { server, ApiErrorStub, apiFetch, apiFetchJson } = vi.hoisted(() => {
   };
   const answer = (url) => {
     const u = String(url);
-    if (u.includes('/changed-laws')) return server.changed;
+    if (u.includes('/changed-laws')) {
+      if (server.changedFails) {
+        throw new ApiErrorStub('Failed to load changed-laws: 502', { status: 502 });
+      }
+      return server.changed;
+    }
     // Favorieten zijn per plek: `/api/favorites` in Corpus juris,
     // `/api/trajects/{ref}/favorites` in een traject. Beide eindigen op
     // `/favorites`, dus dat is genoeg om ze hier te herkennen.
-    if (u.endsWith('/favorites')) return server.favorites;
+    if (u.endsWith('/favorites')) {
+      if (server.favoritesFails) {
+        throw new ApiErrorStub('Failed to load favorites: 502', { status: 502 });
+      }
+      return server.favorites;
+    }
     if (u.includes('/corpus/laws')) return idsFrom(u).map(byId);
     return [];
   };
@@ -103,6 +119,14 @@ const { server, ApiErrorStub, apiFetch, apiFetchJson } = vi.hoisted(() => {
     })),
     apiFetchJson: vi.fn(async (url) => {
       if (server.holdChanged && String(url).includes('/changed-laws')) await server.holdChanged;
+      if (server.holdFavoritesFor && String(url).includes(server.holdFavoritesFor.ref)) {
+        const held = server.holdFavoritesFor;
+        await held.promise;
+        // Zijn eigen payload, vastgelegd bij het opzetten van de hold: zou hij
+        // `server.favorites` lezen dan kreeg hij de waarde van ná de wissel en
+        // lokt de test de race niet uit.
+        return held.value;
+      }
       return answer(url);
     }),
   };
@@ -258,6 +282,9 @@ beforeEach(() => {
   server.sourceLaws = SEVEN_LAWS;
   server.favorites = [];
   server.changed = SEVEN_LAWS.map((l) => l.law_id);
+  server.changedFails = false;
+  server.favoritesFails = false;
+  server.holdFavoritesFor = null;
   server.holdChanged = null;
 });
 
@@ -321,6 +348,53 @@ describe('LibraryView - wat dit traject heeft aangeraakt, in het linkermenu', ()
 
     expect(wrapper.find('nldd-navigation-split-view').exists()).toBe(true);
     expect(noLawsText(wrapper).exists()).toBe(true);
+  });
+
+  it('zegt niet "nog niets bewerkt" als de diff niet opgehaald kon worden', async () => {
+    // `fetchChangedLawIds` slikt elke fout en geeft `null`. Dat is iets anders
+    // dan een lege set: bij een 500 weet de app juist niet of er iets bewerkt
+    // is, en dan mag de sectie dat ook niet beweren. Hij valt dan weg.
+    server.changedFails = true;
+    server.favorites = ['wet_f'];
+    const wrapper = await mountLibrary();
+
+    expect(sectionTitles(wrapper)).not.toContain(TRAJECT_SECTION_TITLE);
+    expect(noLawsText(wrapper).exists()).toBe(false);
+    // De rest van het menu staat er nog, dus dit is geen kapotte sidebar.
+    expect(sectionLaws(wrapper, 'favorites')).toEqual(['Kieswet']);
+  });
+
+  it('laat een traag antwoord van het vorige traject de favorieten niet overschrijven', async () => {
+    // Favorieten zijn per traject, dus twee antwoorden kunnen het oneens zijn.
+    // Landt dat van het vórige traject later, dan mag het het huidige niet
+    // omverduwen: de toewijzing hoort achter de staleness-check van loadIndex.
+    let releaseOld;
+    server.holdFavoritesFor = {
+      ref: 'traject-abcd1234',
+      promise: new Promise((resolve) => { releaseOld = resolve; }),
+      value: ['wet_a'],
+    };
+    server.favorites = ['wet_a'];
+    const wrapper = await mountLibrary();
+
+    // Wissel naar het volgende traject; dat antwoordt meteen, met een andere set.
+    // Beide wetten zitten in de catalogus, dus als het oude antwoord wint is dat
+    // zichtbaar als "Zorgverzekeringswet" in plaats van weggefilterd.
+    server.holdFavoritesFor = null;
+    server.favorites = ['wet_a', 'wet_f'];
+    routeState.params = { trajectRef: 'traject-99998888' };
+    trajectScope.activeTrajectRef.value = 'traject-99998888';
+    for (let i = 0; i < 8; i++) await nextTick();
+
+    expect(sectionLaws(wrapper, 'favorites')).toEqual(['Zorgverzekeringswet', 'Kieswet']);
+
+    // En nu komt het trage antwoord van het eerste traject alsnog binnen, met
+    // alleen wet_a erin. Zonder de staleness-check zou de sectie daarop
+    // terugvallen en Kieswet kwijtraken.
+    releaseOld();
+    for (let i = 0; i < 8; i++) await nextTick();
+
+    expect(sectionLaws(wrapper, 'favorites')).toEqual(['Zorgverzekeringswet', 'Kieswet']);
   });
 
   it('toont de lege staat ook naast een favoriet', async () => {
