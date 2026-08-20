@@ -46,12 +46,14 @@ function orDash(v) {
   return v && String(v).trim() ? v : '—';
 }
 
-// De integriteitspagina hangt aan de URL-vorm van het traject (`{slug}-{8hex}`),
+// De structuurcontrole hangt aan de URL-vorm van het traject (`{slug}-{8hex}`),
 // niet aan de UUID die deze pane verder gebruikt; `detail.ref` draagt die.
-function openIntegrity() {
+// Pushen en niet lokaal openen: het adres is de open-stand van de sheet, dus
+// Terug sluit hem en een gedeelde link opent hem.
+function openStructureCheck() {
   if (!detail.value?.ref) return;
   router.push({
-    name: 'traject-integriteit',
+    name: 'traject-structuur-controle',
     params: { trajectRef: detail.value.ref },
   });
 }
@@ -192,23 +194,28 @@ async function confirmLeave() {
       </nldd-list-item>
     </nldd-list>
 
-    <!-- Doorstap naar de integriteitspagina. Geen status of aantal hier: dat
-         zou de repo bij elke keer Instellingen openen opnieuw laten doorlezen,
-         terwijl je hier meestal iets heel anders komt doen. -->
+    <!-- Eigen vlak, net als het verwijder-vlak eronder: een kop, een zin en een
+         knop. Geen status of aantal hier - dat zou de repo bij elke keer
+         Instellingen openen opnieuw laten doorlezen, terwijl je hier meestal
+         iets heel anders komt doen. -->
     <template v-if="detail.ref">
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-list variant="box-tinted">
-        <nldd-list-item size="md" button @click="openIntegrity">
-          <nldd-icon-cell size="20"><nldd-icon name="verified"></nldd-icon></nldd-icon-cell>
-          <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-text-cell
-            text="Integriteit"
-            supporting-text="Controleer de configuratie van het traject-corpus op mapnamen, dubbele wet-id's en verwijzingen die nergens uitkomen."
-          ></nldd-text-cell>
-          <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
-        </nldd-list-item>
-      </nldd-list>
+      <nldd-box>
+        <nldd-container padding="16">
+          <nldd-title size="5"><h4>Traject-structuur controleren</h4></nldd-title>
+          <nldd-spacer size="4"></nldd-spacer>
+          <nldd-rich-text>
+            <p>
+              Werk je buiten de editor om in de repo, dan kunnen map- en
+              bestandsnamen uit de pas raken met wat erin staat. Deze controle
+              zoekt die verschillen, plus dubbele wet-id's en verwijzingen die
+              nergens uitkomen.
+            </p>
+          </nldd-rich-text>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-button variant="secondary" size="md" text="Controleer" @click="openStructureCheck"></nldd-button>
+        </nldd-container>
+      </nldd-box>
     </template>
 
     <!-- De onomkeerbare actie in een eigen vlak, met een kopje erboven: zo zie je
@@ -216,7 +223,7 @@ async function confirmLeave() {
          onder een tabel moet ontdekken. -->
     <template v-if="detail.role === 'owner'">
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-box>
+      <nldd-box background="critical">
         <nldd-container padding="16">
           <nldd-title size="5"><h4>Traject verwijderen</h4></nldd-title>
           <nldd-spacer size="4"></nldd-spacer>

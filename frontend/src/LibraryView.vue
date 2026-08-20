@@ -11,6 +11,7 @@ import AddLawSheet from './components/AddLawSheet.vue';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
+import TrajectStructureSheet from './components/TrajectStructureSheet.vue';
 import TrajectMembersPane from './components/TrajectMembersPane.vue';
 import InviteMembersSheet from './components/InviteMembersSheet.vue';
 import TasksCategoriesPane from './components/TasksCategoriesPane.vue';
@@ -485,8 +486,16 @@ const takenTitle = computed(() => {
 });
 
 // --- Instellingen (traject details + leden, folded into Home) ---------------
-const isInstellingenMode = computed(() => route.name === 'instellingen-traject');
-const instellingenTab = computed(() => route.params.tab || null);
+// De structuurcontrole is dezelfde Instellingen-plek met een sheet erover, dus
+// hij telt hier als Instellingen > Algemeen: die pane hoort onder de sheet te
+// staan, en het adres is meteen de open-stand van de sheet.
+const isStructureCheck = computed(() => route.name === 'traject-structuur-controle');
+const isInstellingenMode = computed(
+  () => route.name === 'instellingen-traject' || isStructureCheck.value,
+);
+const instellingenTab = computed(
+  () => (isStructureCheck.value ? 'details' : route.params.tab || null),
+);
 
 // True on the library routes proper (/trajecten/{ref} and /corpus/…) - i.e.
 // none of the sibling non-corpus modes that LibraryView also hosts. Kept as one
@@ -501,6 +510,16 @@ function goToInstellingen(tab) {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
 }
+// Sluiten vervangt het adres in plaats van er een stap aan toe te voegen: de
+// knop pushte al, dus Terug hoort de sheet te sluiten en niet opnieuw te openen.
+function closeStructureCheck() {
+  if (!activeTrajectRef.value) return;
+  router.replace({
+    name: 'instellingen-traject',
+    params: { trajectRef: activeTrajectRef.value, tab: 'details' },
+  });
+}
+
 // Deleting or leaving the traject drops your access - go to the public Home
 // (Corpus juris) and refresh the traject list.
 function onTrajectGone() {
@@ -2724,6 +2743,11 @@ watch(activeTrajectRef, () => {
       @upload-requested="onLawUpload"
     />
     <InviteMembersSheet ref="inviteMembersSheetRef" :traject-id="activeTraject?.id" />
+    <TrajectStructureSheet
+      :traject-ref="activeTrajectRef"
+      :open="isStructureCheck"
+      @close="closeStructureCheck"
+    />
   </Teleport>
   <!-- Unsaved-changes guard for in-view werkdocument navigation. -->
   <Teleport to="body">
