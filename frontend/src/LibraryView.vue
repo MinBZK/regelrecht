@@ -2039,21 +2039,23 @@ watch(activeTrajectRef, () => {
              /instellingen, /werkdocumenten): those don't read the wettenindex,
              so a corpus 502 leaves their panes standing (the fullscreen page
              below is gated to library mode) and they get this banner instead.
-             Rendered as a sibling above the split-view so it spans all panes
-             rather than sitting in the narrow sidebar; the .corpus-warning rule
-             keeps it auto-height (the app main pane slots its children flex:1).
-             It clears itself the moment any index load starts over - a retry
-             here, or a switch to another traject - and stays gone unless that
-             load fails too (loadIndex resets indexError up front). -->
-        <nldd-banner
+             Een notificatie plaatst zichzelf in de gedeelde regio, dus hij
+             hangt boven alle panes zonder dat dit component iets over layout
+             hoeft te zeggen. `duration="0"` houdt hem staan tot je hem wegdoet:
+             de melding beschrijft een toestand, geen gebeurtenis, en wegtellen
+             zou de retry-knop met zich meenemen.
+             Hij verdwijnt vanzelf zodra een index-load opnieuw begint - een
+             retry hier, of een wissel naar een ander traject - en blijft weg
+             tenzij die load ook faalt (loadIndex reset indexError vooraf). -->
+        <nldd-notification
           v-if="indexError && !isLibraryMode"
-          class="corpus-warning"
           variant="warning"
+          duration="0"
           text="Wetten en regels van dit traject zijn niet geladen"
           :supporting-text="indexErrorSupportingText"
         >
           <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
-        </nldd-banner>
+        </nldd-notification>
 
         <!-- Full-page "no usable content" states (matching EditorView): shown
              instead of the split-view so the error / CTA spans the full width,
@@ -2808,15 +2810,4 @@ nldd-navigation-split-view:not(.full-stack) .article-not-found__back-button {
   display: var(--context-back-button-display, inline-flex);
 }
 
-/* The corpus-warning banner is a light-DOM sibling of the navigation-split-view,
-   so it is slotted straight into AppShell's main split-view-pane, whose
-   `::slotted(*)` sets `flex: 1` on every slotted child. Left as-is the banner
-   would grow to eat half the pane; pin it to its content height so it reads as
-   a thin bar above the panes and the split-view keeps the remaining space.
-   (Unlike the rules above this one would also work scoped - it targets an
-   element in this component's own template - but this whole block is global,
-   so it is stated plainly rather than singled out.) */
-nldd-banner.corpus-warning {
-  flex: 0 0 auto;
-}
 </style>

@@ -42,6 +42,7 @@ import '@nldd/design-system/menu';
 import '@nldd/design-system/modal-dialog';
 import '@nldd/design-system/multi-line-text-field';
 import '@nldd/design-system/navigation-split-view';
+import '@nldd/design-system/notification';
 import '@nldd/design-system/number-field';
 import '@nldd/design-system/one-half-one-half-section';
 import '@nldd/design-system/page';
