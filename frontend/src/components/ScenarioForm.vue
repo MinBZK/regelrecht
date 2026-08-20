@@ -376,7 +376,7 @@ const dateErrorId = useId();
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box-tinted" arrow-navigation>
+      <nldd-list variant="box-tinted">
         <nldd-list-item
           v-for="(ds, i) in dataSources"
           :key="ds.sourceName"

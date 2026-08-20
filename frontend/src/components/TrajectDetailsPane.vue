@@ -197,7 +197,7 @@ async function confirmLeave() {
          terwijl je hier meestal iets heel anders komt doen. -->
     <template v-if="detail.ref">
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-list variant="box-tinted" arrow-navigation>
+      <nldd-list variant="box-tinted">
         <nldd-list-item size="md" button @click="openIntegrity">
           <nldd-icon-cell size="20"><nldd-icon name="verified"></nldd-icon></nldd-icon-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>

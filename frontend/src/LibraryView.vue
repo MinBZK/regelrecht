@@ -2145,22 +2145,22 @@ watch(activeTrajectRef, () => {
                        the document list in the secondary sidebar + editor in
                        main, mirroring how a law drills into its articles. -->
                   <template v-if="activeTrajectRef">
-                    <nldd-list variant="simple" arrow-navigation>
-                      <nldd-list-item size="md" button :selected="isInstellingenMode || undefined" @click="goToInstellingen()">
+                    <nldd-list variant="simple">
+                      <nldd-list-item size="md" button :current="isInstellingenMode || undefined" @click="goToInstellingen()">
                         <nldd-icon-cell size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Instellingen"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>
-                      <nldd-list-item size="md" button :selected="isWerkdocMode || undefined" @click="goToWerkdocumenten">
+                      <nldd-list-item size="md" button :current="isWerkdocMode || undefined" @click="goToWerkdocumenten">
                         <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>
-                      <TasksSidebarItem :selected="isTakenMode" @click="goToTaken" />
+                      <TasksSidebarItem :current="isTakenMode" @click="goToTaken" />
                     </nldd-list>
                     <nldd-spacer size="24"></nldd-spacer>
                   </template>
@@ -2185,7 +2185,7 @@ watch(activeTrajectRef, () => {
                       </nldd-title>
                       <nldd-spacer size="8"></nldd-spacer>
                     </template>
-                    <nldd-list variant="simple" arrow-navigation>
+                    <nldd-list variant="simple">
                       <nldd-list-item
                         v-for="law in section.laws"
                         :key="`${section.key}-${law.law_id}`"
@@ -2193,7 +2193,7 @@ watch(activeTrajectRef, () => {
                         button
                         :data-law-id="law.law_id"
                         :data-section="section.key"
-                        :selected="(law.law_id === selectedLawId && section.key === highlightSection) || undefined"
+                        :current="(law.law_id === selectedLawId && section.key === highlightSection) || undefined"
                         @click="selectLawFromSection(law.law_id, section.key)"
                       >
                         <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
@@ -2266,18 +2266,18 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title id="instellingen-titel" size="3"><h3>Instellingen</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-list variant="simple" arrow-navigation>
+                <nldd-list variant="simple">
                   <!-- Zelfde iconen als in TrajectMenu/MobileTrajectSheet: deze
                        twee openen dezelfde bestemmingen, dus ze horen er niet
                        anders uit te zien afhankelijk van waar je ze aanklikt. -->
-                  <nldd-list-item size="md" button :selected="instellingenTab === 'details' || undefined" @click="goToInstellingen('details')">
+                  <nldd-list-item size="md" button :current="instellingenTab === 'details' || undefined" @click="goToInstellingen('details')">
                     <nldd-icon-cell size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Algemeen"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                   </nldd-list-item>
-                  <nldd-list-item size="md" button :selected="instellingenTab === 'leden' || undefined" @click="goToInstellingen('leden')">
+                  <nldd-list-item size="md" button :current="instellingenTab === 'leden' || undefined" @click="goToInstellingen('leden')">
                     <nldd-icon-cell size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Leden"></nldd-text-cell>
@@ -2429,8 +2429,8 @@ watch(activeTrajectRef, () => {
                 <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <template v-else>
-                <nldd-list variant="simple" arrow-navigation>
-                  <nldd-list-item size="md" button :selected="isAlgemeen || undefined" @click="selectAlgemeen()">
+                <nldd-list variant="simple">
+                  <nldd-list-item size="md" button :current="isAlgemeen || undefined" @click="selectAlgemeen()">
                     <nldd-icon-cell size="20">
                       <nldd-icon name="information"></nldd-icon>
                     </nldd-icon-cell>
@@ -2467,13 +2467,13 @@ watch(activeTrajectRef, () => {
                     @click="resetArticleFilters"
                   ></nldd-button>
                 </nldd-inline-dialog>
-                <nldd-list v-else variant="simple" arrow-navigation>
+                <nldd-list v-else variant="simple">
                   <nldd-list-item
                     v-for="article in filteredArticles"
                     :key="article.number"
                     size="md"
                     button
-                    :selected="String(article.number) === String(selectedArticleNumber) || undefined"
+                    :current="String(article.number) === String(selectedArticleNumber) || undefined"
                     @click="selectArticle(article.number)"
                   >
                     <nldd-text-cell :supporting-text="articleDescription(article)">

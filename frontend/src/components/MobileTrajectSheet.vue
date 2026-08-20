@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
         <nldd-simple-section v-else>
           <!-- Acties van het actieve traject - bovenaan, zonder titel (de
                sheet-titel dekt dit al). -->
-          <nldd-list v-if="activeTraject" variant="box-tinted" arrow-navigation>
+          <nldd-list v-if="activeTraject" variant="box-tinted">
             <nldd-list-item size="md" button @click="openDocuments">
               <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -279,13 +279,13 @@ onBeforeUnmount(() => {
             <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
           </template>
-          <nldd-list variant="box-tinted" arrow-navigation>
+          <nldd-list variant="box-tinted">
             <!-- "Corpus juris" = the traject-less global scope, the default
                  option (like `main` among the branches). -->
             <nldd-list-item
               size="md"
               button
-              :selected="!activeTrajectRef || undefined"
+              :current="!activeTrajectRef || undefined"
               @click="goToCorpusJuris"
             >
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -299,7 +299,7 @@ onBeforeUnmount(() => {
               :key="t.id"
               size="md"
               button
-              :selected="t.ref === activeTrajectRef || undefined"
+              :current="t.ref === activeTrajectRef || undefined"
               @click="selectTraject(t)"
             >
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -327,7 +327,7 @@ onBeforeUnmount(() => {
                 :key="`${documentTabsTrajectRef ?? ''}:${tabActions.key(tab)}`"
                 size="md"
                 button
-                :selected="isActiveTab(tab) || undefined"
+                :current="isActiveTab(tab) || undefined"
                 @click="selectTab(tab)"
               >
                 <nldd-spacer-cell size="12"></nldd-spacer-cell>
