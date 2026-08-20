@@ -488,9 +488,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Het label eraf halen ruimt op, net als het sluiten van de PR: een preview
-    # waar niemand meer naar kijkt hoort niet te blijven draaien. Sluiten ruimt
-    # ook op zonder dat het label er ooit op zat, want dan valt er niets te
-    # verwijderen en prunet deze job alsnog de verweesde sha-images.
+    # waar niemand meer naar kijkt hoort niet te blijven draaien. Zat het label
+    # er nooit op, dan valt er niets te verwijderen en doet deze job niets.
     #
     # Een fork-PR heeft nooit gebouwd of gedeployd, dus er valt niets op te
     # ruimen en de GHCR-aanroepen zouden alleen maar op rechten stuklopen.
@@ -530,22 +529,5 @@ jobs:
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
           comment-header: '## Preview Deployment'
 
-      - name: Prune orphaned SHA-tagged images
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-        run: |
-          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-pipeline-api regelrecht-grafana regelrecht-lawmaking regelrecht-docs; do
-            echo "Pruning sha-only images for $PACKAGE..."
-            gh api --paginate \
-              "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions" \
-              --jq '.[] | select(
-                (.metadata.container.tags | length == 0) or
-                (.metadata.container.tags | all(startswith("sha-")))
-              ) | .id' \
-            2>/dev/null | while read -r VERSION_ID; do
-              echo "Deleting $PACKAGE version $VERSION_ID"
-              gh api --method DELETE \
-                "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
-              2>/dev/null || true
-            done
-          done
+      # De sha-opruiming die hier stond kon het image onder productie vandaan
+      # halen en draait nu in scheduled-cleanup.yml.
