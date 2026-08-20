@@ -1,5 +1,5 @@
 <script setup>
-import { inject } from 'vue';
+import { computed, inject } from 'vue';
 
 // De lege staat van de Machine- en YAML-panes, op één plek.
 //
@@ -33,6 +33,10 @@ const props = defineProps({
   createHref: { type: String, default: undefined },
   /** Melding van de laatste mislukte verrijk-aanvraag. */
   enrichError: { type: String, default: '' },
+  /** Wat er nog ontbreekt voordat verrijken hier kan: '' (niets, het gebeurt
+   *  hier), 'login' of 'traject'. Stuurt de uitleg boven de knoppen en de vorm
+   *  van het knoplabel. */
+  needs: { type: String, default: '' },
 });
 
 const emit = defineEmits([
@@ -47,6 +51,19 @@ const emit = defineEmits([
 ]);
 
 const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
+
+// Een voorstel is een wijziging, en wijzigingen leven op de branch van een
+// traject. Buiten een traject voert de knop de actie dus niet uit maar brengt
+// hij je ergens heen. Dat verschil zit in de tekst en in de vorm van het label:
+// gebiedende wijs waar het nu gebeurt, heel werkwoord waar je heen gaat.
+const actsHere = computed(() => !props.needs);
+const enrichLabel = computed(() => (actsHere.value ? 'Genereer een voorstel' : 'Voorstel genereren'));
+const IN_EEN_TRAJECT = 'Een voorstel komt in een traject te staan, want daar leg je wijzigingen vast.';
+const emptyText = computed(() => {
+  if (props.needs === 'login') return `${IN_EEN_TRAJECT} Log in en kies een traject om dit artikel daar te openen.`;
+  if (props.needs === 'traject') return `${IN_EEN_TRAJECT} Kies een traject om dit artikel daar te openen.`;
+  return 'Genereren verrijkt de hele wet en levert een voorstel per artikel op in dit traject.';
+});
 </script>
 
 <template>
@@ -91,7 +108,7 @@ const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
     data-testid="no-machine-readable"
     text="Geen machine-leesbare gegevens voor dit artikel"
     :variant="enrichError ? 'alert' : undefined"
-    :supporting-text="enrichError || (canEnrich ? 'Genereren verrijkt de hele wet en levert een voorstel per artikel op.' : undefined)"
+    :supporting-text="enrichError || (canEnrich ? emptyText : undefined)"
   >
     <nldd-button
       v-if="canEnrich"
@@ -100,7 +117,7 @@ const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
       size="md"
       start-icon="ai"
       data-testid="enrich-btn"
-      text="Genereer een voorstel"
+      :text="enrichLabel"
       @click="emit('enrich', $event.currentTarget)"
       @pointerdown.capture="onLoginTriggerPointerdown"
     ></nldd-button>
@@ -121,7 +138,7 @@ const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
       size="md"
       start-icon="write"
       data-testid="create-mr-btn"
-      text="Stel handmatig op"
+      text="Handmatig opstellen"
       :href="createHref"
       @click.prevent="emit('create', $event.currentTarget)"
       @pointerdown.capture="onLoginTriggerPointerdown"

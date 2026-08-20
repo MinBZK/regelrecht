@@ -24,6 +24,8 @@ const props = defineProps({
   /** Whether an enrichment can be requested here. The run covers the whole
    *  law, not just this article, so the empty state says so. */
   canEnrich: { type: Boolean, default: false },
+  /** Doorgegeven aan MachineEmptyState: '' | 'login' | 'traject'. */
+  needs: { type: String, default: '' },
   /** An enrichment for this law is already pending or processing. The empty
    *  state then reports that instead of offering the buttons again. */
   enriching: { type: Boolean, default: false },
@@ -297,6 +299,7 @@ function addOutput() {
     :review-article="reviewArticle"
     :enriching="enriching"
     :can-enrich="canEnrich"
+    :needs="needs"
     :can-write-here="editable"
     :can-create="canCreate"
     :create-href="createHref"
