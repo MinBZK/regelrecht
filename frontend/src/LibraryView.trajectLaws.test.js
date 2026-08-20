@@ -86,7 +86,10 @@ const { server, ApiErrorStub, apiFetch, apiFetchJson } = vi.hoisted(() => {
   const answer = (url) => {
     const u = String(url);
     if (u.includes('/changed-laws')) return server.changed;
-    if (u.includes('/api/favorites')) return server.favorites;
+    // Favorieten zijn per plek: `/api/favorites` in Corpus juris,
+    // `/api/trajects/{ref}/favorites` in een traject. Beide eindigen op
+    // `/favorites`, dus dat is genoeg om ze hier te herkennen.
+    if (u.endsWith('/favorites')) return server.favorites;
     if (u.includes('/corpus/laws')) return idsFrom(u).map(byId);
     return [];
   };
@@ -240,6 +243,11 @@ function sectionTitles(wrapper) {
   return wrapper.findAll('nldd-title h4').map((h) => h.text());
 }
 
+// De lege staat onder de kop: "nog niets, en dit kun je eraan doen".
+function noLawsText(wrapper) {
+  return wrapper.find('nldd-rich-text[data-testid="traject-no-laws"]');
+}
+
 beforeEach(() => {
   apiFetch.mockClear();
   apiFetchJson.mockClear();
@@ -278,7 +286,7 @@ describe('LibraryView - wat dit traject heeft aangeraakt, in het linkermenu', ()
     expect(sectionLaws(wrapper, 'traject')).toEqual(['Kieswet', 'Wet langdurige zorg']);
   });
 
-  it('zet de sectie bovenaan, vóór Favorieten en Recent bekeken', async () => {
+  it('zet de sectie onder Favorieten en boven Recent bekeken', async () => {
     // Recent bekeken wordt per traject bewaard; de platte sleutel is legacy en
     // wordt bij het laden juist opgeruimd.
     localStorage.setItem(
@@ -289,15 +297,18 @@ describe('LibraryView - wat dit traject heeft aangeraakt, in het linkermenu', ()
     server.changed = ['wet_c'];
     const wrapper = await mountLibrary();
 
-    expect(sectionOrder(wrapper)).toEqual(['traject', 'favorites', 'recent']);
+    expect(sectionOrder(wrapper)).toEqual(['favorites', 'traject', 'recent']);
   });
 
-  it('toont niets in een traject dat nog niets heeft aangeraakt', async () => {
+  it('toont de kop met een lege staat als er nog niets is aangeraakt', async () => {
+    // De lege staat is de sectie in wording: dezelfde kop, met eronder wat je
+    // moet doen om hem te vullen. Geen rijen dus, wel de kop.
     server.changed = [];
     const wrapper = await mountLibrary();
 
     expect(sectionLaws(wrapper, 'traject')).toEqual([]);
-    expect(sectionTitles(wrapper)).not.toContain(TRAJECT_SECTION_TITLE);
+    expect(sectionTitles(wrapper)).toContain(TRAJECT_SECTION_TITLE);
+    expect(noLawsText(wrapper).exists()).toBe(true);
   });
 
   it('houdt het trajectmenu overeind als er nog niets is aangeraakt', async () => {
@@ -309,7 +320,18 @@ describe('LibraryView - wat dit traject heeft aangeraakt, in het linkermenu', ()
     const wrapper = await mountLibrary();
 
     expect(wrapper.find('nldd-navigation-split-view').exists()).toBe(true);
-    expect(wrapper.find('nldd-inline-dialog[data-testid="traject-no-laws"]').exists()).toBe(true);
+    expect(noLawsText(wrapper).exists()).toBe(true);
+  });
+
+  it('toont de lege staat ook naast een favoriet', async () => {
+    // De kop hoort bij deze sectie, niet bij "het menu is leeg": dat je iets
+    // bewaard of bekeken hebt zegt niets over wat dit traject heeft gedaan.
+    server.changed = [];
+    server.favorites = ['wet_f'];
+    const wrapper = await mountLibrary();
+
+    expect(sectionLaws(wrapper, 'favorites')).toEqual(['Kieswet']);
+    expect(noLawsText(wrapper).exists()).toBe(true);
   });
 
   it('laat een aangeraakte favoriet in beide secties staan', async () => {
@@ -378,13 +400,14 @@ describe('LibraryView - wat dit traject heeft aangeraakt, in het linkermenu', ()
 
     expect(sectionLaws(wrapper, 'favorites')).toEqual(['Kieswet']);
     expect(sectionLaws(wrapper, 'traject')).toEqual([]);
-    expect(sectionTitles(wrapper)).not.toContain(TRAJECT_SECTION_TITLE);
 
-    // En na het antwoord blijft het weg - het nieuwe traject raakte niets aan.
+    // En na het antwoord staat er de lege staat: het nieuwe traject raakte niets
+    // aan. De favoriet ernaast doet daar niets aan af, want die zegt niets over
+    // wat dit traject heeft gedaan.
     releaseChanged();
     for (let i = 0; i < 8; i++) await nextTick();
 
     expect(sectionLaws(wrapper, 'traject')).toEqual([]);
-    expect(sectionTitles(wrapper)).not.toContain(TRAJECT_SECTION_TITLE);
+    expect(noLawsText(wrapper).exists()).toBe(true);
   });
 });

@@ -27,7 +27,7 @@ import { useCorpusLaws } from './composables/useCorpusLaws.js';
 import { useEnrichState } from './composables/useEnrichState.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
-import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl } from './composables/corpusUrls.js';
+import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl, favoritesUrl, favoriteUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL, paneChromeVisible } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty, openSearch } from './composables/useAppChrome.js';
 import { homeTarget } from './composables/useLastVisitedRoute.js';
@@ -1037,16 +1037,25 @@ const sidebarSections = computed(() => {
   const list = laws.value;
   const sections = [];
 
-  if (trajectSectionLaws.value.length > 0) {
-    const all = trajectSectionLaws.value;
-    const shown = trajectLawsExpanded.value ? all : all.slice(0, TRAJECT_LAWS_COLLAPSED);
-    sections.push({ key: 'traject', title: 'In dit traject', laws: shown });
-  }
-
+  // Favorieten eerst. Het is jouw bewuste selectie, en sinds die per traject
+  // wordt bewaard hoort hij net zo bij deze plek als de sectie eronder.
   if (favorites.value) {
     const favList = list.filter(law => favorites.value.has(law.law_id));
     if (favList.length > 0) {
       sections.push({ key: 'favorites', title: 'Favorieten', laws: favList });
+    }
+  }
+
+  // "In dit traject" staat er ook als hij leeg is: de kop hoort bij de plek en
+  // eronder staat dan wat je moet doen om hem te vullen. Als sectie in de lijst
+  // en niet als los blok, zodat de volgorde op één plek geregeld is.
+  if (activeTrajectRef.value) {
+    const all = trajectSectionLaws.value;
+    if (all.length > 0) {
+      const shown = trajectLawsExpanded.value ? all : all.slice(0, TRAJECT_LAWS_COLLAPSED);
+      sections.push({ key: 'traject', title: 'In dit traject', laws: shown });
+    } else if (!loading.value) {
+      sections.push({ key: 'traject', title: 'In dit traject', laws: [], empty: true });
     }
   }
 
@@ -1107,12 +1116,6 @@ const isEmptyLibrary = computed(
   () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !activeTrajectRef.value && isLibraryMode.value,
 );
 
-// Een traject zonder wetsecties: nog niets bewerkt, niets bewaard, niets
-// bekeken. Het menu staat er dan wel, maar zonder een deur naar het corpus,
-// en die had de oude aantal-hint (met zijn zoekknop) wel.
-const trajectHasNoLaws = computed(
-  () => !loading.value && !!activeTrajectRef.value && sidebarSections.value.length === 0,
-);
 
 // Longest backend explanation we'll surface verbatim before clamping. The real
 // 502 body is the backend's own Dutch sentence ("De bibliotheek van dit traject
@@ -1383,9 +1386,12 @@ function articleDescription(article) {
   return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
 }
 
-async function loadFavorites() {
+// Favorieten zijn per plek: de set van het actieve traject, of die van Corpus
+// juris als je nergens in zit. `trajectRef` komt uit de aanroeper zodat een
+// laadronde en de toewijzing erna over dezelfde scope gaan.
+async function loadFavorites(trajectRef) {
   try {
-    const favIds = await apiFetchJson('/api/favorites', {
+    const favIds = await apiFetchJson(favoritesUrl(trajectRef), {
       errorMessage: (status) => `Failed to load favorites: ${status}`,
     });
     favorites.value = new Set(favIds);
@@ -1467,7 +1473,7 @@ async function toggleFavorite(lawId) {
 
   try {
     const method = isFav ? 'DELETE' : 'PUT';
-    await apiFetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
+    await apiFetch(favoriteUrl(activeTrajectRef.value, lawId), { method });
     // Re-resolve the sidebar's id-set so a newly-favorited law (whose
     // metadata isn't loaded yet, since we only fetch favorites + edits by
     // id) appears in the Favorieten section without a manual reload. The
@@ -1504,7 +1510,7 @@ async function loadIndex() {
     // personal favorites and (in a traject) the laws this traject touched on
     // its own branch. Both are id-only.
     const [, changedIds] = await Promise.all([
-      loadFavorites(),
+      loadFavorites(trajectRef),
       fetchChangedLawIds(trajectRef),
     ]);
     if (!isCurrent()) return;
@@ -2031,6 +2037,9 @@ watch(activeTrajectRef, () => {
   // `loadIndex` repopulates it for the new scope, or leaves it null in
   // global browse.
   changedLawIds.value = null;
+  // Favorieten zijn nu ook per traject, dus de set van het vorige mag hier niet
+  // blijven staan terwijl de nieuwe onderweg is.
+  favorites.value = null;
   // Ook de uitklapstand hoort bij het vórige traject: zonder deze reset opent
   // het volgende traject uitgeklapt omdat je hier ooit op de knop drukte.
   trajectLawsExpanded.value = false;
@@ -2161,7 +2170,14 @@ watch(activeTrajectRef, () => {
                       </nldd-title>
                       <nldd-spacer size="8"></nldd-spacer>
                     </template>
-                    <nldd-list variant="simple">
+                    <!-- Nog niets aangeraakt: de kop staat er al, hieronder
+                         alleen de mededeling. Uitleg over hóe je hem vult lees
+                         je één keer en daarna voor altijd, op de plek waar je
+                         werk hoort te staan. -->
+                    <nldd-rich-text v-if="section.empty" data-testid="traject-no-laws">
+                      <p>Nog niets bewerkt.</p>
+                    </nldd-rich-text>
+                    <nldd-list v-else variant="simple">
                       <nldd-list-item
                         v-for="law in section.laws"
                         :key="`${section.key}-${law.law_id}`"
@@ -2192,17 +2208,6 @@ watch(activeTrajectRef, () => {
                         @click="trajectLawsExpanded = !trajectLawsExpanded"
                       ></nldd-button>
                     </template>
-                  </template>
-                  <!-- Nog niets in dit traject: het menu heeft dan geen enkele
-                       ingang naar het corpus, dus die zetten we er zelf in. -->
-                  <template v-if="trajectHasNoLaws">
-                    <nldd-inline-dialog
-                      data-testid="traject-no-laws"
-                      text="Nog niets bewerkt in dit traject"
-                      supporting-text="Zoek een wet om ermee te beginnen. Wat je hier bewerkt of hierheen haalt, komt in dit menu te staan."
-                    >
-                      <nldd-button slot="actions" variant="secondary" text="Zoek een wet" @click="openSearch"></nldd-button>
-                    </nldd-inline-dialog>
                   </template>
                   <!-- "Wet toevoegen" is verhuisd naar de universele "+" in de
                        header (AppShell); die opent de AddLawSheet via
