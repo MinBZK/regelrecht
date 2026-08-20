@@ -26,7 +26,7 @@ import { useCorpusLaws } from './composables/useCorpusLaws.js';
 import { useEnrichState } from './composables/useEnrichState.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
-import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl, trajectSourcesUrl } from './composables/corpusUrls.js';
+import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL, paneChromeVisible } from './constants.js';
 import { registerSearchPopover, setLibraryEmpty, openSearch } from './composables/useAppChrome.js';
 import { homeTarget } from './composables/useLastVisitedRoute.js';
@@ -858,24 +858,25 @@ const favorites = ref(null);
 // Law ids edited in the active traject (branch-vs-base diff). `null` until
 // loaded / when no traject is active; a Set once the endpoint resolves.
 const changedLawIds = ref(null);
-// De traject-sectie zakt in twee stappen terug naarmate de eigen bron groeit:
-// tot TRAJECT_LAWS_COLLAPSED staat alles uitgeschreven, daarboven de eerste
-// twintig met een uitklapknop, en boven TRAJECT_LAWS_MAX is een lijst geen
-// lijst meer maar een muur tekst - dan alleen een hint met een zoekknop. Een
-// traject-repo is een gecureerde set (een handvol wetten); een traject
-// waarvan de eigen bron het centrale corpus is zit in de duizenden.
+// De sectie "In dit traject" toont wat dit traject zelf heeft aangeraakt: de
+// diff van de trajectbranch tegen zijn base. Bewerken en een wet hierheen
+// halen gaan allebei via het writable-own schrijfpad, dus allebei staan ze in
+// die diff. Wat de branch van zijn base erfde staat er niet in: dat is niet het
+// werk van dit traject.
+//
+// Boven TRAJECT_LAWS_COLLAPSED wordt het een muur tekst, dus dan de eerste
+// twintig met een uitklapknop.
 const TRAJECT_LAWS_COLLAPSED = 20;
-const TRAJECT_LAWS_MAX = 200;
-// De wetten uit de eigen bron van het actieve traject (source_priority 0),
-// alfabetisch op weergavenaam. `null` buiten een traject, bij een bron die
-// niet gescand kon worden, en boven de bovengrens - dan draagt
-// `trajectLawCount` de hint.
-const trajectLaws = ref(null);
-// Aantal wetten in die eigen bron, zoals `/sources` het telt. Alleen boven
-// de bovengrens doet het ertoe: dan vervangt de hint de lijst.
-const trajectLawCount = ref(0);
 // Staat de lijst uitgeklapt? Per traject, dus gereset bij een wissel.
 const trajectLawsExpanded = ref(false);
+// Alfabetisch op weergavenaam. De backend ordent op law_id, en dat is een
+// andere string dan wat de gebruiker leest.
+const trajectSectionLaws = computed(() => {
+  if (!activeTrajectRef.value || !changedLawIds.value?.size) return [];
+  return laws.value
+    .filter(law => changedLawIds.value.has(law.law_id))
+    .sort((a, b) => displayName(a).localeCompare(displayName(b), 'nl'));
+});
 const loading = ref(true);
 const indexError = ref(null);
 const searchPopoverRef = ref(null);
@@ -1017,11 +1018,10 @@ const sidebarSections = computed(() => {
   const list = laws.value;
   const sections = [];
 
-  if (activeTrajectRef.value && changedLawIds.value?.size) {
-    const changed = list.filter(law => changedLawIds.value.has(law.law_id));
-    if (changed.length > 0) {
-      sections.push({ key: 'changed', title: 'Bewerkt', laws: changed });
-    }
+  if (trajectSectionLaws.value.length > 0) {
+    const all = trajectSectionLaws.value;
+    const shown = trajectLawsExpanded.value ? all : all.slice(0, TRAJECT_LAWS_COLLAPSED);
+    sections.push({ key: 'traject', title: 'In dit traject', laws: shown });
   }
 
   if (favorites.value) {
@@ -1042,27 +1042,17 @@ const sidebarSections = computed(() => {
     sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
   }
 
-  // Everything the traject's own repo holds, deduplicated against NOTHING. A
-  // law that is edited, starred or recently viewed is still a law in this
-  // traject, so it appears here as well - the same stance "Recent bekeken"
-  // already takes. Filtering against "Bewerkt" would make a law jump out of
-  // this list the moment you edit it.
-  if (activeTrajectRef.value && trajectLaws.value?.length) {
-    const all = trajectLaws.value;
-    const shown = trajectLawsExpanded.value ? all : all.slice(0, TRAJECT_LAWS_COLLAPSED);
-    sections.push({ key: 'traject', title: 'Traject', laws: shown });
-  }
 
   return sections;
 });
 
 // A law opened from elsewhere (search, deep link) can sit past the collapsed
 // slice, leaving the selection with no visible anchor anywhere in the menu.
-// Unfold only then: `highlightSection` prefers the FIRST section holding the
-// law and "Traject" is pushed last, so a law that is also edited, starred or
-// recently viewed is already highlighted above - expanding 180 rows for it
-// would be exactly the wall of text the collapsing exists to prevent.
-watch([selectedLawId, trajectLaws], ([lawId, all]) => {
+// Unfold only then: `highlightSection` reads the sections as they are shown,
+// so a law that is also starred or recently viewed is already highlighted in
+// one of those - expanding the whole list for it would be exactly the wall of
+// text the collapsing exists to prevent.
+watch([selectedLawId, trajectSectionLaws], ([lawId, all]) => {
   if (!lawId || trajectLawsExpanded.value || !all) return;
   // Reading a computed inside a watcher with explicit sources adds no
   // dependency, so this cannot feed back into the watcher.
@@ -1072,11 +1062,11 @@ watch([selectedLawId, trajectLaws], ([lawId, all]) => {
   }
 });
 
-// Label of the collapse toggle under the traject section, or `null` when the
-// list fits and there is nothing to fold. Counts the FETCHED laws rather than
-// `trajectLawCount`: the button must promise exactly what clicking it reveals.
+// Label of the collapse toggle under "In dit traject", or `null` when the list
+// fits and there is nothing to fold. Counts the laws the section actually
+// holds, so the button promises exactly what clicking it reveals.
 const trajectExpanderText = computed(() => {
-  const total = trajectLaws.value?.length ?? 0;
+  const total = trajectSectionLaws.value.length;
   if (!activeTrajectRef.value || total <= TRAJECT_LAWS_COLLAPSED) return null;
   return trajectLawsExpanded.value ? 'Toon minder' : `Toon alle ${total}`;
 });
@@ -1088,21 +1078,21 @@ const trajectExpanderText = computed(() => {
 const isInitialLoading = computed(
   () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && isLibraryMode.value,
 );
-// Above the threshold the traject's laws are a single hint line instead of a
-// section: too many to list, but the user must still learn they're there and
-// how to reach them (the existing search popover).
-const trajectLawsHint = computed(() =>
-  activeTrajectRef.value && trajectLawCount.value > TRAJECT_LAWS_MAX
-    ? `Dit traject bevat ${trajectLawCount.value.toLocaleString('nl-NL')} wetten.`
-    : null,
+
+// De paginabrede lege staat vervangt de split-view, dus hij mag alleen aan als
+// er echt niets te tonen is. In een traject is dat nooit zo: Instellingen,
+// Werkdocumenten en Taken staan altijd in het menu, los van welke wetten er
+// zijn. Zonder deze uitzondering krijgt een traject waarin nog niets is
+// bewerkt een lege pagina in plaats van zijn eigen menu.
+const isEmptyLibrary = computed(
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !activeTrajectRef.value && isLibraryMode.value,
 );
 
-// A visible hint counts as "not empty". Without that, a large traject with no
-// favorites, no recent and no edits would fall through to the page-wide empty
-// state - which renders instead of the split-view, so the hint would never be
-// seen: precisely the situation the hint exists for.
-const isEmptyLibrary = computed(
-  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !trajectLawsHint.value && isLibraryMode.value,
+// Een traject zonder wetsecties: nog niets bewerkt, niets bewaard, niets
+// bekeken. Het menu staat er dan wel, maar zonder een deur naar het corpus,
+// en die had de oude aantal-hint (met zijn zoekknop) wel.
+const trajectHasNoLaws = computed(
+  () => !loading.value && !!activeTrajectRef.value && sidebarSections.value.length === 0,
 );
 
 // Longest backend explanation we'll surface verbatim before clamping. The real
@@ -1187,9 +1177,7 @@ const lawName = computed(() => {
  * the humanized id is a different string entirely.
  */
 function indexedLaw(lawId) {
-  return laws.value.find(l => l.law_id === lawId)
-    ?? trajectLaws.value?.find(l => l.law_id === lawId)
-    ?? null;
+  return laws.value.find(l => l.law_id === lawId) ?? null;
 }
 
 // Display name resolved from the index. Used in the load-error state where
@@ -1428,35 +1416,6 @@ async function fetchChangedLawIds(trajectRef) {
 //     threshold. In the last case `count` carries the number for the hint.
 //   - a fetch failure resolves to the same "no section", without an error in
 //     the menu: the same stance as `fetchChangedLawIds`.
-async function fetchTrajectOwnLaws(trajectRef) {
-  const none = { laws: null, count: 0 };
-  if (!trajectRef) return none;
-  try {
-    const sources = await apiFetchJson(trajectSourcesUrl(trajectRef));
-    const own = sources.find(s => s.priority === 0);
-    if (!own || own.index_error || !own.law_count) return none;
-    // Only pull the list when it's small enough to show; above the threshold
-    // the count from `/sources` is all the hint needs. No new counting
-    // mechanism - `law_count` is what that endpoint already reports.
-    if (own.law_count > TRAJECT_LAWS_MAX) return { laws: null, count: own.law_count };
-    const query = `source=${encodeURIComponent(own.id)}&limit=${TRAJECT_LAWS_MAX}`;
-    const trajectLawList = await apiFetchJson(lawsListUrl(trajectRef, query));
-    return {
-      // The backend orders by law_id; the user reads the display name, which
-      // can differ from it - so sort here rather than trusting that order.
-      laws: [...trajectLawList].sort((a, b) => displayName(a).localeCompare(displayName(b), 'nl')),
-      count: own.law_count,
-    };
-  } catch (e) {
-    // De sectie blijft weg (dezelfde stille stance als `fetchChangedLawIds`),
-    // maar een serverfout laat wél een spoor achter: dit is de hoofdinhoud van
-    // het menu van een vers traject, dus "mijn wetten zijn weg" met een schone
-    // console is een diagnostisch gat. Zelfde drempel als `loadFavorites`.
-    if (e instanceof ApiError && e.status >= 500) console.warn(e.message);
-    return none;
-  }
-}
-
 const togglingFavorites = ref(new Set());
 
 // Star button when not logged in: the login nudge sits in the button's popup
@@ -1494,7 +1453,7 @@ async function toggleFavorite(lawId) {
     // metadata isn't loaded yet, since we only fetch favorites + edits by
     // id) appears in the Favorieten section without a manual reload. The
     // traject's own laws are untouched by starring, so they are not refetched.
-    loadIndex({ refreshTrajectLaws: false });
+    loadIndex();
   } catch {
     // HTTP or network failure - roll the optimistic toggle back.
     revert();
@@ -1506,12 +1465,9 @@ async function toggleFavorite(lawId) {
 const claimLoadIndex = useLatest();
 
 /**
- * Reload what the sidebar needs. `refreshTrajectLaws: false` keeps the
- * traject's own-law list as it is - starring a law cannot change the contents
- * of the traject's repo, and refetching it there would add a `/sources` call
- * plus an up-to-200-entry list to every click on the star.
+ * Reload what the sidebar needs.
  */
-async function loadIndex({ refreshTrajectLaws = true } = {}) {
+async function loadIndex() {
   const isCurrent = claimLoadIndex();
   // Drop any previous scope's failure before we start. The error describes one
   // specific index load, so it must not outlive the run that produced it:
@@ -1526,22 +1482,14 @@ async function loadIndex({ refreshTrajectLaws = true } = {}) {
   const trajectRef = activeTrajectRef.value;
   try {
     // Resolve the small id sets the sidebar actually needs: the user's
-    // personal favorites and (in a traject) the laws edited on the traject
-    // branch. Both `loadFavorites` and `fetchChangedLawIds` are id-only.
-    // `fetchTrajectOwnLaws` rides along: the traject's own laws are the one
-    // section that is neither personal nor edit-derived, so it's what a
-    // fresh - or someone else's - traject has to show.
-    const [, changedIds, trajectOwn] = await Promise.all([
+    // personal favorites and (in a traject) the laws this traject touched on
+    // its own branch. Both are id-only.
+    const [, changedIds] = await Promise.all([
       loadFavorites(),
       fetchChangedLawIds(trajectRef),
-      refreshTrajectLaws ? fetchTrajectOwnLaws(trajectRef) : null,
     ]);
     if (!isCurrent()) return;
     changedLawIds.value = changedIds;
-    if (trajectOwn) {
-      trajectLaws.value = trajectOwn.laws;
-      trajectLawCount.value = trajectOwn.count;
-    }
 
     // Fetch metadata for just those ids via `?ids=` - never the whole corpus.
     // The central corpus is the full BWB corpus (thousands of laws); loading
@@ -2062,11 +2010,8 @@ watch(activeTrajectRef, () => {
   // "Bewerkt in dit traject" section doesn't briefly show stale entries
   // (filtered against the also-stale corpus) while the new index loads.
   // `loadIndex` repopulates it for the new scope, or leaves it null in
-  // global browse. Same for the traject's own laws: the previous traject's
-  // list must not linger while the new one loads.
+  // global browse.
   changedLawIds.value = null;
-  trajectLaws.value = null;
-  trajectLawCount.value = 0;
   // Ook de uitklapstand hoort bij het vórige traject: zonder deze reset opent
   // het volgende traject uitgeklapt omdat je hier ooit op de knop drukte.
   trajectLawsExpanded.value = false;
@@ -2214,7 +2159,7 @@ watch(activeTrajectRef, () => {
                         </nldd-icon-cell>
                       </nldd-list-item>
                     </nldd-list>
-                    <!-- Uitklapknop onder de traject-sectie: die is de enige
+                    <!-- Uitklapknop onder "In dit traject": die is de enige
                          die lang genoeg wordt om in te vouwen. -->
                     <template v-if="section.key === 'traject' && trajectExpanderText">
                       <nldd-spacer size="8"></nldd-spacer>
@@ -2227,12 +2172,14 @@ watch(activeTrajectRef, () => {
                       ></nldd-button>
                     </template>
                   </template>
-                  <!-- Boven de bovengrens is een lijst geen lijst meer maar een
-                       muur tekst: één regel met het aantal, plus de knop naar
-                       het bestaande zoekvenster. -->
-                  <template v-if="trajectLawsHint">
-                    <nldd-spacer v-if="sidebarSections.length > 0" size="24"></nldd-spacer>
-                    <nldd-inline-dialog :text="trajectLawsHint">
+                  <!-- Nog niets in dit traject: het menu heeft dan geen enkele
+                       ingang naar het corpus, dus die zetten we er zelf in. -->
+                  <template v-if="trajectHasNoLaws">
+                    <nldd-inline-dialog
+                      data-testid="traject-no-laws"
+                      text="Nog niets bewerkt in dit traject"
+                      supporting-text="Zoek een wet om ermee te beginnen. Wat je hier bewerkt of hierheen haalt, komt in dit menu te staan."
+                    >
                       <nldd-button slot="actions" variant="secondary" text="Zoek een wet" @click="openSearch"></nldd-button>
                     </nldd-inline-dialog>
                   </template>
