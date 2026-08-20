@@ -225,7 +225,7 @@ async function confirmLeave() {
       <nldd-spacer size="24"></nldd-spacer>
       <nldd-box background="critical">
         <nldd-container padding="16">
-          <nldd-title size="5"><h4>Traject verwijderen</h4></nldd-title>
+          <nldd-title size="5"><h4>Traject {{ detail.name }} verwijderen</h4></nldd-title>
           <nldd-spacer size="4"></nldd-spacer>
           <nldd-rich-text>
             <p>
