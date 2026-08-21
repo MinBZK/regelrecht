@@ -18,6 +18,34 @@ ENV GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
 # Disable anonymous access
 ENV GF_AUTH_ANONYMOUS_ENABLED=false
 
+# Security headers. Grafana renders its own, so this is the third place they
+# are decided next to packages/auth/src/security_headers.rs (the Axum
+# services) and deploy/nginx/security-headers.conf (docs and lawmaking).
+# Grafana ships no setting for Referrer-Policy or Permissions-Policy, so this
+# host sends neither; adding them would take a proxy in front of it.
+#
+# Defaults already cover part of it: x_content_type_options and
+# x_xss_protection are on, and allow_embedding=false yields
+# `X-Frame-Options: deny`. HSTS and CSP are off by default and are what this
+# block turns on.
+ENV GF_SECURITY_STRICT_TRANSPORT_SECURITY=true
+ENV GF_SECURITY_STRICT_TRANSPORT_SECURITY_MAX_AGE_SECONDS=31536000
+ENV GF_SECURITY_STRICT_TRANSPORT_SECURITY_SUBDOMAINS=true
+ENV GF_SECURITY_STRICT_TRANSPORT_SECURITY_PRELOAD=true
+ENV GF_SECURITY_CONTENT_SECURITY_POLICY=true
+# Grafana's own template with `frame-ancestors 'none'` appended. Its
+# `'unsafe-eval'` and `'unsafe-inline'` are upstream's and cannot be removed
+# without breaking the UI; `'strict-dynamic'` plus the per-request $NONCE
+# makes a modern browser ignore the `'unsafe-inline'` anyway. Anything beyond
+# this — a `default-src`, a narrower `img-src` — has to be tried against a
+# running Grafana first, because its panels load workers and images from
+# places the template deliberately leaves open.
+#
+# The `\$` are escaped for the Dockerfile parser, not for Grafana: an
+# unescaped `$NONCE` is expanded at build time and reaches Grafana empty,
+# which drops the nonce that makes `'strict-dynamic'` work.
+ENV GF_SECURITY_CONTENT_SECURITY_POLICY_TEMPLATE="script-src 'self' 'unsafe-eval' 'unsafe-inline' 'strict-dynamic' \$NONCE;object-src 'none';font-src 'self';style-src 'self' 'unsafe-inline' blob:;img-src * data:;base-uri 'self';connect-src 'self' grafana.com ws://\$ROOT_PATH wss://\$ROOT_PATH;manifest-src 'self';media-src 'none';form-action 'self';frame-ancestors 'none';"
+
 # Disable local admin account when OIDC is available (set in entrypoint.sh).
 # When OIDC vars are missing, the entrypoint keeps the default admin/admin
 # account as a temporary fallback. Do NOT expose publicly without OIDC.

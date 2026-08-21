@@ -256,10 +256,11 @@ function dismissDeleteNotice() {
           ></nldd-button>
         </nldd-toolbar-item>
         <nldd-toolbar-item v-if="hasChanges" slot="end">
-          <nldd-icon-button id="save-more-btn" size="md" icon="more" text="Meer" tooltip-timing="never" popovertarget="save-more-menu"></nldd-icon-button>
-          <nldd-menu id="save-more-menu" anchor="save-more-btn">
-            <nldd-menu-item text="Maak alle wijzigingen ongedaan" icon="undo" @click="undoChanges"></nldd-menu-item>
-          </nldd-menu>
+          <nldd-icon-button size="md" icon="more" text="Meer" tooltip-timing="never">
+            <nldd-menu slot="popup">
+              <nldd-menu-item text="Maak alle wijzigingen ongedaan" icon="undo" @click="undoChanges"></nldd-menu-item>
+            </nldd-menu>
+          </nldd-icon-button>
         </nldd-toolbar-item>
       </nldd-toolbar>
     </nldd-container>
@@ -352,19 +353,20 @@ function dismissDeleteNotice() {
         </nldd-menu-group>
       </nldd-toolbar-item>
       <nldd-toolbar-item slot="start" label="Tekststijl" priority="8">
-        <nldd-button id="heading-button" data-group="heading" expandable text="Paragraaf"></nldd-button>
-        <nldd-menu id="heading-menu" anchor="heading-button" @select="onHeadingSelect">
-          <nldd-menu-item type="radio" value="0" text="Paragraaf" selected></nldd-menu-item>
-          <nldd-menu-divider></nldd-menu-divider>
-          <nldd-menu-item type="radio" value="1" text="Heading 1"></nldd-menu-item>
-          <nldd-menu-item type="radio" value="2" text="Heading 2"></nldd-menu-item>
-          <nldd-menu-item type="radio" value="3" text="Heading 3"></nldd-menu-item>
-          <nldd-menu-item type="radio" value="4" text="Heading 4"></nldd-menu-item>
-          <nldd-menu-item type="radio" value="5" text="Heading 5"></nldd-menu-item>
-          <nldd-menu-item type="radio" value="6" text="Heading 6"></nldd-menu-item>
-          <nldd-menu-divider></nldd-menu-divider>
-          <nldd-menu-item type="radio" value="codeblock" text="Codeblok"></nldd-menu-item>
-        </nldd-menu>
+        <nldd-button data-group="heading" expandable text="Paragraaf">
+          <nldd-menu slot="popup" @select="onHeadingSelect">
+            <nldd-menu-item type="radio" value="0" text="Paragraaf" selected></nldd-menu-item>
+            <nldd-menu-divider></nldd-menu-divider>
+            <nldd-menu-item type="radio" value="1" text="Heading 1"></nldd-menu-item>
+            <nldd-menu-item type="radio" value="2" text="Heading 2"></nldd-menu-item>
+            <nldd-menu-item type="radio" value="3" text="Heading 3"></nldd-menu-item>
+            <nldd-menu-item type="radio" value="4" text="Heading 4"></nldd-menu-item>
+            <nldd-menu-item type="radio" value="5" text="Heading 5"></nldd-menu-item>
+            <nldd-menu-item type="radio" value="6" text="Heading 6"></nldd-menu-item>
+            <nldd-menu-divider></nldd-menu-divider>
+            <nldd-menu-item type="radio" value="codeblock" text="Codeblok"></nldd-menu-item>
+          </nldd-menu>
+        </nldd-button>
         <!-- In the overflow menu the text styles collapse into a submenu (a
              nested nldd-menu) instead of a flat labelled group. -->
         <nldd-menu-item slot="overflow" text="Tekststijl">

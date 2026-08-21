@@ -10,6 +10,7 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::config::AppConfig;
 use crate::traject_corpus::TrajectCorpusCache;
+use crate::traject_integrity::IntegrityCache;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -41,6 +42,12 @@ pub struct AppState {
     /// traject in the session, save handlers route through this cache
     /// instead of [`AppState::corpus`].
     pub trajects: Arc<TrajectCorpusCache>,
+    /// Content-addressed memo behind the traject integrity report (see
+    /// [`crate::traject_integrity::IntegrityCache`]). Lives here rather than
+    /// on the per-traject corpus snapshot because that snapshot is rebuilt
+    /// on a TTL, which would throw the memo away and re-read every law body
+    /// on the next visit.
+    pub integrity: Arc<IntegrityCache>,
 }
 
 impl OidcAppState for AppState {
@@ -88,6 +95,13 @@ pub struct CorpusState {
     pub backends: HashMap<String, BackendEntry>,
     /// Path to corpus-auth.yaml for GitHub authentication during reload.
     pub auth_file: Option<PathBuf>,
+    /// Source id → error of the last failed index scan for that source.
+    /// Sources absent from this map enumerated fine. Surfaced on
+    /// `GET /api/sources` (and the traject variant) as `index_error`, so a
+    /// source whose scan failed is distinguishable from a genuinely empty
+    /// one — a failing traject writable-own source otherwise reads as
+    /// `law_count: 0` while its laws silently fall back to the seed corpus.
+    pub index_failures: HashMap<String, String>,
 }
 
 impl CorpusState {
@@ -95,9 +109,10 @@ impl CorpusState {
     pub fn empty() -> Self {
         Self {
             registry: regelrecht_corpus::CorpusRegistry::empty(),
-            source_map: SourceMap::new(),
+            source_map: SourceMap::new(regelrecht_shared::dates::today_str()),
             backends: HashMap::new(),
             auth_file: None,
+            index_failures: HashMap::new(),
         }
     }
 }

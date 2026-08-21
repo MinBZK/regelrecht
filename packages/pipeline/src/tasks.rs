@@ -121,8 +121,8 @@ pub async fn count_open_tasks_for_account(pool: &PgPool, account_id: Uuid) -> Re
 }
 
 /// Eén lopende taak-flow-job voor de "Bezig"-sectie: een enrich-,
-/// document_convert- of law_convert-job die deze gebruiker via
-/// `deliver: "task"` heeft aangevraagd en die nog niet is afgerond
+/// document_convert-, law_convert- of traject_harvest-job die deze gebruiker
+/// via `deliver: "task"` heeft aangevraagd en die nog niet is afgerond
 /// (job_review/job_failed-taak bestaat pas na completion/failure).
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct RunningTaskJob {
@@ -153,7 +153,7 @@ pub async fn list_running_task_jobs_for_account(
                 COALESCE(payload->>'target_path', payload->>'filename') AS target_path, \
                 status, created_at \
          FROM jobs \
-         WHERE job_type IN ('enrich', 'document_convert', 'law_convert') \
+         WHERE job_type IN ('enrich', 'document_convert', 'law_convert', 'traject_harvest') \
            AND status IN ('pending', 'processing') \
            AND payload->>'deliver' = 'task' \
            AND payload->>'requested_by' = $1 \
@@ -293,13 +293,19 @@ pub async fn notify_reaped_task_jobs(
                 "Conversie naar wet mislukt: {}",
                 str_field("filename").unwrap_or("document")
             ),
+            JobType::TrajectHarvest => format!(
+                "Wet ophalen mislukt: {}",
+                str_field("law_name")
+                    .or_else(|| str_field("bwb_id"))
+                    .unwrap_or(&job.law_id)
+            ),
         };
 
         let mut task_payload = serde_json::json!({
             "error": "De verwerking duurde te lang of de worker is herstart; \
                       de job is afgebroken.",
         });
-        for key in ["traject_ref", "law_id", "target_path", "filename"] {
+        for key in ["traject_ref", "law_id", "target_path", "filename", "bwb_id"] {
             if let Some(v) = str_field(key) {
                 task_payload[key] = serde_json::json!(v);
             }
@@ -403,6 +409,38 @@ where
         .execute(executor)
         .await?;
     Ok(())
+}
+
+/// Ruim de blobs van een job op, maar alleen als er geen open taak meer aan
+/// hangt. Levert het aantal verwijderde rijen.
+///
+/// Een verrijking levert één review-taak per gewijzigd artikel, allemaal op
+/// dezelfde job en dus op dezelfde resultaat-blobs. Wie de eerste taak
+/// afhandelt is daarmee nog niet klaar met de job: onvoorwaardelijk wissen
+/// zou de andere beoordelaars hun voorstel onder de voeten weghalen.
+///
+/// De check zit in het statement zelf, niet in een aparte telling ervoor:
+/// twee gebruikers die tegelijk hun laatste taak afronden zouden anders
+/// allebei kunnen concluderen dat de ander nog openstaat, en dan blijven de
+/// blobs tot de GC liggen.
+pub async fn delete_blobs_for_finished_job<'e, E>(executor: E, job_id: Uuid) -> Result<u64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let result = sqlx::query(
+        r#"
+        DELETE FROM job_blobs jb
+        WHERE jb.job_id = $1
+          AND NOT EXISTS (
+              SELECT 1 FROM tasks t
+              WHERE t.job_id = jb.job_id AND t.status = 'open'
+          )
+        "#,
+    )
+    .bind(job_id)
+    .execute(executor)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 /// GC: verwijder blobs ouder dan 7 dagen waarvan de job geen open taak meer

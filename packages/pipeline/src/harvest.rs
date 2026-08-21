@@ -190,7 +190,7 @@ pub async fn execute_harvest(
             .date
             .clone()
             .or_else(|| law.metadata.effective_date.clone())
-            .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+            .unwrap_or_else(regelrecht_shared::dates::today_str);
         (law, effective_date)
     };
 

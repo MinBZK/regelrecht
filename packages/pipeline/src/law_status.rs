@@ -173,41 +173,6 @@ where
     Ok(entry)
 }
 
-/// Atomically update status only if the current status is NOT the given value.
-///
-/// Returns `Ok(Some(entry))` if the row was updated, `Ok(None)` if the current
-/// status matched `not_status` (no row modified).
-#[tracing::instrument(skip(executor))]
-pub async fn update_status_unless<'e, E>(
-    executor: E,
-    law_id: &str,
-    not_status: LawStatusValue,
-    new_status: LawStatusValue,
-) -> Result<Option<LawEntry>>
-where
-    E: sqlx::PgExecutor<'e>,
-{
-    let entry = sqlx::query_as::<_, LawEntry>(
-        r#"
-        UPDATE law_entries SET status = $3
-        WHERE law_id = $1 AND status != $2
-        RETURNING *
-        "#,
-    )
-    .bind(law_id)
-    .bind(not_status)
-    .bind(new_status)
-    .fetch_optional(executor)
-    .await?;
-
-    if let Some(ref e) = entry {
-        tracing::info!(law_id = %e.law_id, to = ?new_status, "law status updated (was not {:?})", not_status);
-    } else {
-        tracing::debug!(law_id = %law_id, not_status = ?not_status, to = ?new_status, "status update skipped (status is {:?})", not_status);
-    }
-    Ok(entry)
-}
-
 /// Atomically update status only if the current status is NOT in `not_statuses`.
 ///
 /// Used when a caller wants to "downgrade" a status to e.g. `Queued` while
@@ -294,12 +259,14 @@ fn fail_count_column(job_type: crate::models::JobType) -> &'static str {
     match job_type {
         crate::models::JobType::Harvest => "harvest_fail_count",
         crate::models::JobType::Enrich => "enrich_fail_count",
-        // document_convert/law_convert jobs are traject-scoped, not law-scoped:
-        // they have no `law_entries` row and never go through the per-law
-        // fail-count / exhaust path (the worker fails them with plain
-        // `fail_job`). Reaching here is a programming error.
-        crate::models::JobType::DocumentConvert | crate::models::JobType::LawConvert => {
-            unreachable!("convert jobs have no law-status fail counter")
+        // document_convert/law_convert/traject_harvest jobs are traject-scoped,
+        // not law-scoped: they have no `law_entries` row and never go through
+        // the per-law fail-count / exhaust path (the worker fails them with
+        // plain `fail_job`). Reaching here is a programming error.
+        crate::models::JobType::DocumentConvert
+        | crate::models::JobType::LawConvert
+        | crate::models::JobType::TrajectHarvest => {
+            unreachable!("traject-scoped jobs have no law-status fail counter")
         }
     }
 }
@@ -366,9 +333,11 @@ where
             LawStatusValue::EnrichFailed,
             LawStatusValue::EnrichExhausted,
         ),
-        // See `fail_count_column`: convert jobs are not law-scoped.
-        crate::models::JobType::DocumentConvert | crate::models::JobType::LawConvert => {
-            unreachable!("convert jobs are not law-scoped and cannot be exhausted")
+        // See `fail_count_column`: these job types are not law-scoped.
+        crate::models::JobType::DocumentConvert
+        | crate::models::JobType::LawConvert
+        | crate::models::JobType::TrajectHarvest => {
+            unreachable!("traject-scoped jobs are not law-scoped and cannot be exhausted")
         }
     };
     // Only exhaust if status is still the corresponding failed state,

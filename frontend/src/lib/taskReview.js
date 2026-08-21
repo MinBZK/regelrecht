@@ -32,9 +32,13 @@ export function reviewTarget(task) {
   }
   const lawId = task?.payload?.law_id;
   if (!lawId) return null;
+  // Wijst de taak een artikel aan, neem het dan meteen in de route op. De
+  // editor zou er zelf ook naartoe springen zodra het voorstel is geladen,
+  // maar dan zie je eerst het verkeerde artikel voorbijkomen.
+  const article = task?.payload?.article;
   return {
     name: 'editor-traject',
-    params: { trajectRef, lawId },
+    params: article == null ? { trajectRef, lawId } : { trajectRef, lawId, articleNumber: String(article) },
     query: { task: task.id },
   };
 }
@@ -63,10 +67,27 @@ function articleDiffers(current, proposedArticle) {
  *    verwijdering) - Opslaan committeert die verwijdering net zo goed als
  *    de rest van het voorstel, dus de banner moet ernaar verwijzen ook al
  *    is er geen "proposed article" om te seeden of te tonen.
+ *
+ * @param {string|null} [articleNumber] Wijst de taak één artikel aan
+ *   (`payload.article`), dan gaat het hier alléén daarover: dat artikel wordt
+ *   het target en `hiddenChanges` blijft onwaar. Wat de verrijking elders in
+ *   de wet voorstelt, hangt aan de taak van dát artikel en is hier geen
+ *   verborgen wijziging maar simpelweg andermans werk.
  */
-export function proposalDivergence(currentArticles, proposedArticles) {
+export function proposalDivergence(currentArticles, proposedArticles, articleNumber = null) {
   const current = Array.isArray(currentArticles) ? currentArticles : [];
   const proposed = Array.isArray(proposedArticles) ? proposedArticles : [];
+
+  if (articleNumber != null) {
+    const wanted = String(articleNumber);
+    const pa = proposed.find((a) => String(a.number) === wanted);
+    const match = current.find((a) => String(a.number) === wanted);
+    // Zonder tegenhanger in de opgeslagen wet valt er niets te seeden: de
+    // editor kan een artikel dat de wet niet heeft niet als losse wijziging
+    // tonen. Dan geen target, en de banner meldt dat.
+    const target = pa && match && articleDiffers(match, pa) ? pa : null;
+    return { target, hiddenChanges: false };
+  }
 
   let target = null;
   let hiddenChanges = false;

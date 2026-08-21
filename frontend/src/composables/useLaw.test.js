@@ -348,3 +348,71 @@ describe('useLaw law_create-flow (seedFromYaml + createLaw)', () => {
     expect(law.saveError.value).toBeTruthy();
   });
 });
+
+describe('useLaw clearLaw (traject-switch reset)', () => {
+  it('drops the open law so lawId settles on null and the panes go empty', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async () =>
+      res({ body: '$id: wet_clear\nname: V1\narticles:\n  - number: "1"\n', etag: '"v1"' }),
+    );
+
+    const law = useLaw('wet_clear', '1', 'tr-12345678');
+    await waitForLoaded(law);
+    expect(law.lawId.value).toBe('wet_clear');
+    expect(law.selectedArticleNumber.value).toBe('1');
+
+    law.clearLaw();
+
+    // The initial-route lawParam fallback is dropped too, so lawId is truly null
+    // (not the stale route slug) and the editor shows its neutral empty state.
+    expect(law.lawId.value).toBeNull();
+    expect(law.law.value).toBeNull();
+    expect(law.selectedArticle.value).toBeNull();
+    expect(law.selectedArticleNumber.value).toBeNull();
+    expect(law.rawYaml.value).toBe('');
+    expect(law.error.value).toBeNull();
+    expect(law.loading.value).toBe(false);
+  });
+
+  it('makes an in-flight load discard its writes so a late response cannot repopulate', async () => {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      await gate;
+      return res({ body: '$id: wet_slow\nname: V1\narticles:\n  - number: "1"\n', etag: '"v1"' });
+    });
+
+    const law = useLaw('wet_slow', '1', 'tr-12345678');
+    // The load is still in flight (gated). Clear before it resolves.
+    law.clearLaw();
+    release();
+    await waitForLoaded(law);
+
+    // The stale load's writes were discarded: still cleared.
+    expect(law.lawId.value).toBeNull();
+    expect(law.law.value).toBeNull();
+  });
+});
+
+describe('useLaw lawTrajectRef (which traject the open law belongs to)', () => {
+  it('exposes the initial traject and follows a cross-traject switchLaw', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async () =>
+      res({ body: '$id: wet_x\nname: V1\narticles:\n  - number: "1"\n', etag: '"v1"' }),
+    );
+
+    const law = useLaw('wet_x', '1', 'tr-alpha');
+    await waitForLoaded(law);
+    // Starts on the traject the composable was constructed with.
+    expect(law.lawTrajectRef.value).toBe('tr-alpha');
+
+    // A cross-traject switch retargets the open law's traject. This is the
+    // signal EditorView's add-tab watch uses to avoid persisting a freshly
+    // loaded law under the traject the route is still leaving during a
+    // back/forward navigation.
+    await law.switchLaw('wet_x', '1', 'tr-beta');
+    expect(law.lawTrajectRef.value).toBe('tr-beta');
+
+    // A same-traject switch (newTrajectRef omitted) leaves it untouched.
+    await law.switchLaw('wet_x', '1');
+    expect(law.lawTrajectRef.value).toBe('tr-beta');
+  });
+});

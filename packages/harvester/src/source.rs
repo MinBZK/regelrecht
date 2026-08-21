@@ -58,7 +58,7 @@ impl LawSource for BwbSource {
         // BWB requires a date; default to today if not provided.
         let effective_date = date
             .map(String::from)
-            .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+            .unwrap_or_else(regelrecht_shared::dates::today_str);
 
         let max_mb = self
             .max_size_mb

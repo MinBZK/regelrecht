@@ -62,7 +62,7 @@ stateDiagram-v2
     Processing --> Failed: reap_orphaned_jobs (no retries)
 ```
 
-Workers claim jobs atomically using PostgreSQL's `FOR UPDATE SKIP LOCKED` - multiple workers can safely process jobs concurrently without blocking each other.
+Workers claim jobs atomically using PostgreSQL's `FOR UPDATE SKIP LOCKED`, so multiple workers can safely process jobs concurrently without blocking each other.
 
 ### Automatic Retries
 
@@ -70,7 +70,7 @@ When a job fails and has attempts remaining (`attempts < max_attempts`), it retu
 
 ### Orphan Reaping
 
-Jobs stuck in `Processing` beyond the orphan timeout (default: 30 minutes) are reset to `Pending` or marked `Failed`, handling crashed workers gracefully.
+Jobs stuck in `Processing` beyond the orphan timeout (default: 30 minutes) are reset to `Pending` or marked `Failed`, which is how a crashed worker is handled.
 
 ## Law Status Tracking
 
@@ -108,8 +108,35 @@ The enrich worker:
 1. Polls the queue for pending enrich jobs
 2. Spawns an LLM CLI process to generate `machine_readable` sections
 3. Tracks progress via `.enrichment-progress.json` (polled every 10s)
-4. Computes coverage score (newly enriched articles / articles needing enrichment)
+4. Computes coverage score (the stored `law_entries.coverage_score` is the cumulative fraction of articles with `machine_readable`; the per-run delta rides in the job result)
 5. Creates per-provider branches (e.g., `enrich/opencode`)
+
+### Chunked enrichment of large laws
+
+One LLM session cannot enrich a large law (hundreds of articles) within the
+session/RSS limits. With `ENRICH_MAX_ARTICLES_PER_RUN = N` (default 15, `0`
+disables chunking) each enrich run processes at most N articles, in document
+order, from a **worker-owned cursor**:
+
+- The cursor (`enrich_cursor` + `enrich_cursor_path`) persists in the
+  `.enrichment.yaml` on the `enrich/{provider}` branch. It only applies when
+  recorded for the same YAML path and within bounds; otherwise it resets to 0
+  (covers new law versions and legacy metadata).
+- Each successful chunk commits and pushes its own result, so a failing later
+  chunk never loses earlier chunks.
+- While the law is not finished (`law_complete = false`), its status stays
+  `enriching` and a continuation job is created **in the same database
+  transaction** as the job completion (respecting the unique active-enrich-job
+  index), so there is never a law in `enriching` without an active/pending job.
+- MvT research runs only in the first chunk (cursor 0); reverse validation is
+  limited to the articles of the chunk. A chunk may legitimately add zero
+  `machine_readable` sections when the agent records a `chunk_report` in
+  `.enrichment-result.yaml` that references at least one article of the
+  chunk's window; a chunk without any output (or with an empty/unrelated
+  report) fails retryable (never terminal).
+- Termination is guaranteed in `ceil(articles_total / N)` successful runs,
+  independent of LLM behavior; the last chunk marks the law `enriched`.
+- Task-flow enrichments (`deliver=task`) always run whole-law (chunking off).
 
 ### LLM Providers
 
@@ -130,6 +157,7 @@ The LLM subprocess runs with a stripped environment (allowlisted vars only) for 
 | `WORKER_ORPHAN_TIMEOUT_SECS` | 1800 (30 min) | Orphan detection timeout |
 | `LLM_PROVIDER` | `opencode` | LLM provider selection |
 | `LLM_TIMEOUT_SECS` | 600 (10 min) | LLM execution timeout |
+| `ENRICH_MAX_ARTICLES_PER_RUN` | 15 | Max articles per enrich run (chunked enrichment); `0` disables chunking |
 
 ## Database Schema
 
@@ -148,7 +176,7 @@ just pipeline-test               # Unit tests (no Docker)
 just pipeline-integration-test   # Integration tests (Docker + testcontainers)
 ```
 
-Integration tests use `testcontainers` to spin up ephemeral PostgreSQL instances - no local database setup required.
+Integration tests use `testcontainers` to spin up ephemeral PostgreSQL instances; no local database setup is required.
 
 ## Further Reading
 

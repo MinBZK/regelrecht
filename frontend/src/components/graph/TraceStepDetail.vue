@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../../utils/outputFormat.js';
+import { formatValue, normalizeForCompare, matchStatus as _matchStatus } from '../../utils/outputFormat.js';
 
 const props = defineProps({
   step: { type: Object, default: null },
@@ -54,11 +54,14 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
       </dl>
     </div>
 
+    <!-- Plain values, no currency form: a trace spans every law the run
+         touched, so this panel has no single law's type_spec to read a unit
+         from. Rendering euros here would mean guessing per name again. -->
     <h3 class="step-detail__section-title">Outputs</h3>
     <dl class="step-detail__outputs">
       <div v-for="[k, v] in outputEntries" :key="k" class="step-detail__row">
         <dt>{{ k }}:</dt>
-        <dd class="mono">{{ formatOutputValue(v, k) }}</dd>
+        <dd class="mono">{{ formatValue(v) }}</dd>
       </div>
       <div v-if="outputEntries.length === 0" class="step-detail__empty">Geen outputs</div>
     </dl>

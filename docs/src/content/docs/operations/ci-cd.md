@@ -3,7 +3,7 @@ title: "CI/CD Pipeline"
 description: "What runs on every push and pull request, and how only the checks relevant to changed files run."
 ---
 
-Continuous integration runs on every push to `main` and every pull request via `.github/workflows/ci.yml`. Only checks relevant to changed files run, keeping CI fast.
+Continuous integration runs on every push to `main` and every pull request via `.github/workflows/ci.yml`. Only checks relevant to changed files run, so CI stays fast.
 
 ## What CI checks
 
@@ -16,13 +16,29 @@ Continuous integration runs on every push to `main` and every pull request via `
 
 ### Tests (on Rust changes)
 
-CI runs `just test-all`, which covers:
+CI runs `just test`, which is `cargo test --workspace` over every crate. A new
+crate is covered without anyone having to add it to a list; the pipeline and
+editor-api suites use testcontainers for PostgreSQL, so the runner needs Docker.
 
-- **Unit tests** - `just test`
-- **Harvester tests** - `just harvester-test`
-- **Pipeline tests** - `just pipeline-test` and `just pipeline-integration-test` (the latter uses testcontainers for PostgreSQL)
+`just test-no-docker` is the same coverage minus those container-backed suites,
+for a machine without Docker. `just check` runs the full `test`.
 
-The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) is **not** part of `test-all` and does not run in CI; run it locally.
+The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) covers two
+buckets and is **not** part of `just test`; the target carries `test = false` so
+it only runs when called by name. `BDD_BUCKET` picks the bucket: `all` (the
+default, what `just bdd` runs), `corpus` or `conformance`.
+
+### BDD conformance (on relevant changes)
+
+The **BDD conformance** job runs bucket B — `bdd/conformance/*.feature` against
+the synthetic `test_*` laws — as `BDD_BUCKET=conformance cargo test --test bdd`,
+and hangs on the `Test` gate, so it blocks a merge. That bucket proves the engine
+speaks the whole feature language and depends on nothing outside the repo.
+
+Bucket A (`corpus/regulation/**/scenarios/*.feature`) stays out of CI. It asserts
+what the live laws currently produce, so a failure there means a law changed or a
+scenario went stale; a human decides what that is worth. Run it locally with
+`BDD_BUCKET=corpus`.
 
 ### WASM build (on engine changes)
 
@@ -31,7 +47,7 @@ Builds the engine for the WebAssembly target to catch compilation issues early.
 ### Security audit (always runs)
 
 - **Rust** - `cargo-deny` checks for known vulnerabilities and license issues
-- **Frontend** - `npm ci` for the editor and admin dashboard
+- **Frontend** - `npm ci` over the npm workspace at the repo root
 
 ### Schema protection (on PRs)
 

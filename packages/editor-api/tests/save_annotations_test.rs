@@ -61,11 +61,12 @@ fn empty_state(pool: PgPool) -> AppState {
             github_oauth: None,
             task_enrich_provider: "claude".to_string(),
         }),
-        http_client: reqwest::Client::new(),
+        http_client: regelrecht_auth::http_client(),
         pool: Some(pool),
         pipeline_api_url: None,
         harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
+        integrity: Default::default(),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }
 }
@@ -350,6 +351,7 @@ async fn read_annotations(state: AppState, account: &AccountRecord, traject_id: 
         session,
         Extension(account.clone()),
         Path((traject_ref(traject_id), LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect("get_traject_annotations must succeed");
@@ -403,6 +405,7 @@ async fn missing_sidecar_returns_404() {
         session,
         Extension(account.clone()),
         Path((traject_ref(traject_id), LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect_err("no sidecar yet, expect 404");
@@ -591,6 +594,7 @@ async fn cross_traject_isolation_on_reads() {
         session,
         Extension(account.clone()),
         Path((traject_ref(traject_b), LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect_err("traject B must not see traject A's notes");

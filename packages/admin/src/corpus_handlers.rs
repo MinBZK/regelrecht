@@ -21,9 +21,13 @@ pub async fn list_sources(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<SourceSummary>>, ApiError> {
     let corpus = state.corpus.read().await;
+    // The admin corpus state doesn't track per-source scan health (its
+    // sources are operator-managed manifest entries); pass no failures so
+    // `index_error` serialises as null on every source.
     Ok(Json(build_source_summaries(
         &corpus.registry,
         &corpus.source_map,
+        &std::collections::HashMap::new(),
     )))
 }
 
@@ -102,7 +106,8 @@ pub async fn sync_source(
 
     // Phase 2: no lock held — do all disk I/O on a blocking thread
     // to avoid blocking the Tokio worker pool during directory traversal.
-    let new_map = tokio::task::spawn_blocking(move || registry.load_local_sources())
+    let today = regelrecht_shared::dates::today_str();
+    let new_map = tokio::task::spawn_blocking(move || registry.load_local_sources(&today))
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "spawn_blocking task failed");

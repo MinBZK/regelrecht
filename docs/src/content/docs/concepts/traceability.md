@@ -5,7 +5,7 @@ description: "How to read an execution trace: the node types, the box-drawing tr
 
 When the engine computes an output, it can record every step it took to get there: which articles applied, which inputs it fetched and from where, which operations ran, and what each one produced. That record is the **trace**. It is the legal reasoning behind a number, in a form you can read top to bottom.
 
-A trace is opt-in. The plain evaluation path builds no trace at all; you ask for one explicitly through a separate entry point (`evaluate_law_output_with_trace`, not `evaluate_law_output`). This page explains how to read a trace, then walks through a real one. For how a trace fits into a reproducible, signed [Execution Receipt](./execution-provenance), see that page.
+A trace is opt-in. The plain evaluation path builds no trace at all; you ask for one through a separate entry point (`evaluate_law_output_with_trace`, not `evaluate_law_output`). This page explains how to read a trace, then walks through a real one. For how a trace fits into a reproducible, signed [Execution Receipt](./execution-provenance), see that page.
 
 ## Anatomy of a node
 
@@ -24,7 +24,7 @@ A trace is a tree of nodes. Each node has a type (what kind of step it was), a n
 | `HookResolution` | A hook firing on another article's output (RFC-007) |
 | `OverrideResolution` | A value replaced by lex specialis (RFC-007) |
 
-A `Resolve` node also carries a **resolve type** saying where the value came from: `Parameter` (caller input), `Definition` (an article constant), `Output` (a value computed earlier), `DataSource` (an external register), `ResolvedInput` (a cached cross-law result), `OpenTerm`, `Hook`, `Override`, `Context` (the `referencedate`), `Local` (a loop variable), `Input`, or `Uri`. The resolve type is the difference between "this number is a hard-coded constant in the law" and "this number came from the Tax Authority". The full set lives in `PathNodeType` and `ResolveType` in `packages/engine/src/types.rs`.
+A `Resolve` node also records a **resolve type** saying where the value came from: `Parameter` (caller input), `Definition` (an article constant), `Output` (a value computed earlier), `DataSource` (an external register), `ResolvedInput` (a cached cross-law result), `OpenTerm`, `Hook`, `Override`, `Context` (the `referencedate`), `Local` (a loop variable), `Input`, or `Uri`. The resolve type is the difference between "this number is a hard-coded constant in the law" and "this number came from the Tax Authority". The full set is defined in `PathNodeType` and `ResolveType` in `packages/engine/src/types.rs`.
 
 ## How to read the tree
 

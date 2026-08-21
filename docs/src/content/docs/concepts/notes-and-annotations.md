@@ -28,13 +28,13 @@ A note targets text through a `TextQuoteSelector`: the exact quote, plus a littl
     purpose: linking
 ```
 
-Because the anchor is the content, not a line number, the note follows its text. Insert a new article 1a and renumber the target to 4a, and the note still lands on 4a. The resolver (`packages/engine/src/annotation/`) reports one of three outcomes (`MatchStatus`):
+Because the anchor is the content, not a line number, the note follows its text. Insert a new article 1a and renumber the target to 4a, and the note still resolves to 4a. The resolver (`packages/engine/src/annotation/`) reports one of three outcomes (`MatchStatus`):
 
 - **Found**: exactly one location matches.
 - **Ambiguous**: the quote occurs more than once with no context to separate the hits (the common word "verzekerde" three times in a sentence). Adding a prefix or suffix disambiguates.
-- **Orphaned**: the text is gone. The note is not silently dropped; it is marked orphaned so a human can re-anchor it.
+- **Orphaned**: the text is gone. The note is never discarded; it is marked orphaned so a human can re-anchor it.
 
-When wording drifts slightly (a Staatsblad amendment swaps a few words), exact matching fails but **fuzzy matching** recovers it: normalized Levenshtein similarity above a threshold (currently 0.7) resolves as a fuzzy match with a confidence below 1.0; a wholesale rewrite falls below the threshold and orphans rather than mis-anchoring. A note may also carry an optional article hint to try first; an outdated hint falls back to a full search. The behavior is pinned by `features/notes.feature`.
+When wording drifts slightly (a Staatsblad amendment swaps a few words), exact matching fails but **fuzzy matching** recovers it: normalized Levenshtein similarity above a threshold (currently 0.7) resolves as a fuzzy match with a confidence below 1.0; a wholesale rewrite falls below the threshold and orphans rather than anchoring to the wrong place. A note may also include an optional article hint to try first; an outdated hint falls back to a full search. The behavior is pinned by `features/notes.feature`.
 
 ## What a note says
 
@@ -57,7 +57,7 @@ A note's **authority is derived at display time**, not declared. The resolver co
 - **generated** when tooling produced it.
 - **personal** when an individual wrote it.
 
-The same note text means something different depending on who wrote it, and the model makes that explicit instead of treating every note as equal.
+The same note text means something different depending on who wrote it, and the derived level records which case applies.
 
 The engine exposes resolution to the browser through the WASM bindings `resolveNote` and `resolveNotes` (`packages/engine/src/wasm.rs`), so the editor anchors notes against the live text on screen.
 

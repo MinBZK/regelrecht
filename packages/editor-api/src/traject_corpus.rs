@@ -40,11 +40,22 @@ use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::state::{BackendEntry, CorpusState};
+use crate::traject_index_diagnosis::OwnSourceTarget;
 
 /// Resolved corpus state for a single traject, plus per-source write
 /// routing.
 pub struct TrajectCorpus {
     pub corpus: CorpusState,
+    /// The traject this snapshot belongs to. Carried on the snapshot so
+    /// every log line written from a read path can be tied back to one
+    /// traject — a warning without it cannot be correlated with anything.
+    pub traject_id: Uuid,
+    /// The branch the writable-own source branches from (the
+    /// `gh_base_branch` column), when that source is GitHub-backed.
+    /// Kept outside the registry's [`Source`] because it is
+    /// traject-flow-specific; the diagnosis of a failed index scan needs
+    /// it to tell "the base branch is gone" apart from the other causes.
+    pub own_base_branch: Option<String>,
     /// Maps the `source_id` a law was loaded from to the `source_id`
     /// whose backend should receive the write. When the read source is
     /// itself writable (local source, or a GitHub source that doesn't
@@ -195,6 +206,34 @@ pub struct TrajectCorpus {
     /// guards, so a refresh mid-recompute cannot admit a second Compare
     /// call.
     changed_refresh_in_flight: Arc<AtomicBool>,
+    /// Single-flight gate for the *synchronous* changed-laws refresh — the
+    /// leg taken when only the caller's own token gets into the repo, so
+    /// there is no background task that could do the work. Without it every
+    /// linked member loading the library inside the same expired-TTL window
+    /// fires its own Compare call against a rate-limited token.
+    ///
+    /// A `Mutex` rather than the `AtomicBool` above because here the losers
+    /// must *wait* for the winner instead of returning stale: after taking
+    /// the gate each caller re-reads the cache, and a fresh entry left by the
+    /// winner short-circuits the Compare call. That double-check is what
+    /// makes the gate safe across callers with different credentials — an
+    /// empty result produced without a usable token is never cached (see
+    /// [`Self::changed_law_ids`]), so a token-carrying caller can never
+    /// inherit one, while a token-less caller waiting here is upgraded from
+    /// "empty" to the winner's real diff.
+    ///
+    /// Shared across snapshots like the cache it guards.
+    changed_refresh_gate: Arc<Mutex<()>>,
+    /// Whether this snapshot's index scan had a per-request user token
+    /// available as fallback for the writable-own source. Only a bool —
+    /// the token itself is **never** stored on this shared, cross-user
+    /// structure (nor in any cache key). [`TrajectCorpusCache::get_or_build`]
+    /// uses it to decide whether a snapshot whose writable-own scan failed
+    /// is worth rebuilding now that a request *does* carry a token: a
+    /// failure scanned *without* one may succeed with it; a failure
+    /// scanned *with* one waits for the TTL instead of re-scanning on
+    /// every request.
+    own_index_scanned_with_user_token: bool,
 }
 
 /// One scenario file in a law's cached listing: the filename plus the law
@@ -230,6 +269,12 @@ impl Drop for ResetOnDrop {
 /// loads (mount + tab switches + retries) into a single Compare call.
 const CHANGED_LAWS_TTL: Duration = Duration::from_secs(60);
 
+/// How long a caller waits for the synchronous-refresh gate before giving up
+/// and computing for itself. See the use site: this caps the added latency of
+/// the gate at roughly one Compare round-trip instead of letting concurrent
+/// callers queue behind a persistently failing upstream.
+const CHANGED_REFRESH_GATE_WAIT: Duration = Duration::from_secs(10);
+
 /// How long a traject's cached index snapshot (its [`SourceMap`] plus the
 /// derived body / sidecar / implements caches) is served before the first
 /// request past the deadline triggers a *background* re-enumeration of
@@ -251,11 +296,13 @@ const TRAJECT_INDEX_TTL: Duration = Duration::from_secs(60);
 const BODY_CACHE_MAX_ENTRIES: usize = 1024;
 
 /// When an implements-index build would otherwise fetch at least this many
-/// law bodies one-by-one from a *single* source, pull the whole source in
-/// one archive request instead (see [`RepoBackend::read_all_implements`]).
-/// Below the threshold the per-law lazy fetch is cheaper than downloading
-/// the archive. This is what turns the cold build over a large GitHub-backed
-/// traject from O(corpus) Contents calls (a 504) into one download.
+/// law bodies one-by-one from a *single* source, ask that source for its
+/// whole implements map in one go instead (see
+/// [`RepoBackend::read_all_implements`] — the precomputed index committed in
+/// the corpus repo, or a repo-archive download when no index describes the
+/// branch). Below the threshold the per-law lazy fetch is cheaper. This is
+/// what turns the cold build over a large GitHub-backed traject from
+/// O(corpus) Contents calls (a 504) into a couple of requests.
 ///
 /// [`RepoBackend::read_all_implements`]: regelrecht_corpus::backend::RepoBackend::read_all_implements
 const BULK_FETCH_THRESHOLD: usize = 16;
@@ -352,6 +399,82 @@ pub struct ImplementorsResult {
 }
 
 impl TrajectCorpus {
+    /// The index-scan failure of the **writable-own** source in this
+    /// snapshot, if any. `Some` means the traject's own laws are missing
+    /// from the index — every law would silently resolve from the seed
+    /// sources — so callers serving the traject-scoped library gate on
+    /// this and fail loudly instead of presenting a normal-looking
+    /// central-corpus-only list.
+    pub fn own_index_error(&self) -> Option<&str> {
+        self.corpus
+            .index_failures
+            .get(&self.writable_own_source_id)
+            .map(String::as_str)
+    }
+
+    /// The registry entry of this traject's **writable-own** source — the
+    /// repo the editor commits to. `None` only when the traject's source
+    /// config no longer lists it (a shape the build path doesn't produce).
+    ///
+    /// Shared by every caller that needs the source's own coordinates
+    /// rather than a law's: the index-failure diagnosis
+    /// ([`Self::own_source_target`]) and the integrity scan, which reads
+    /// the repo's whole file tree instead of one law.
+    pub fn own_source(&self) -> Option<&Source> {
+        self.corpus
+            .registry
+            .get_source(&self.writable_own_source_id)
+    }
+
+    /// The GitHub coordinates of the writable-own source, for the in-band
+    /// diagnosis of a failed index scan (see
+    /// [`crate::traject_index_diagnosis`]). `None` when that source isn't
+    /// GitHub-backed (a local dev/preview stack), which leaves nothing to
+    /// ask GitHub about.
+    ///
+    /// The branch comes straight from the stored source config rather than
+    /// being re-derived from the traject name, so the probe asks about the
+    /// branch the scan actually read.
+    pub fn own_source_target(&self) -> Option<OwnSourceTarget> {
+        let source = self.own_source()?;
+        let SourceType::GitHub { github } = &source.source_type else {
+            return None;
+        };
+        Some(OwnSourceTarget {
+            traject_id: self.traject_id,
+            source_id: self.writable_own_source_id.clone(),
+            owner: github.owner.clone(),
+            repo: github.repo.clone(),
+            branch: github.branch.clone(),
+            // Mirrors `build_traject_github_backend`'s default: a NULL
+            // `gh_base_branch` means "main".
+            base_branch: self
+                .own_base_branch
+                .clone()
+                .unwrap_or_else(|| "main".to_string()),
+        })
+    }
+
+    /// Re-resolve the server-side token configured for the writable-own
+    /// source, if any.
+    ///
+    /// For the callers that talk to GitHub directly instead of through the
+    /// backend: when a request carries no personal token, this is the
+    /// credential the backend itself would have used, so they have to
+    /// re-resolve it or they walk a different access path than the ordinary
+    /// reads. The index diagnosis needs that to probe the path that actually
+    /// broke ([`crate::traject_index_diagnosis`]); the integrity scan needs
+    /// it to enumerate the branch at all ([`crate::traject_integrity`]).
+    /// Resolved on demand and dropped by the caller — no token is ever
+    /// stored on this shared, cross-user snapshot.
+    pub fn own_server_token(&self) -> Option<String> {
+        let source = self.own_source()?;
+        regelrecht_corpus::auth::CredentialResolver::new(self.corpus.auth_file.as_deref())
+            .resolve_source(source)
+            .ok()
+            .and_then(regelrecht_corpus::auth::TokenDecision::into_token)
+    }
+
     /// Resolve the YAML content for a law in this traject, preferring the
     /// post-save overlay over the source_map snapshot built at traject
     /// activation time.
@@ -370,6 +493,21 @@ impl TrajectCorpus {
     pub async fn law_yaml(
         &self,
         law_id: &str,
+    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
+        self.law_yaml_with_read_token(law_id, None).await
+    }
+
+    /// [`Self::law_yaml`] with a per-request read token for the
+    /// **writable-own** source (the acting user's own GitHub token,
+    /// resolved by the request handler). The token is applied *only* when
+    /// the law's body resolves from the writable-own source — seed sources
+    /// never see it — and it is passed through per call, never stored on
+    /// this (shared, cross-user) structure. Cached *content* is fine: every
+    /// traject route runs a membership check before reaching this.
+    pub async fn law_yaml_with_read_token(
+        &self,
+        law_id: &str,
+        own_read_token: Option<&str>,
     ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
         if let Some(text) = self.overlay.read().await.get(law_id) {
             return Ok(Some(text.clone()));
@@ -391,16 +529,28 @@ impl TrajectCorpus {
         };
 
         // The source is indexed but its backend was skipped at build time
-        // (already logged then) — the law isn't readable. Treat as a miss.
+        // — `ensure_ready` failed, which is as likely a GitHub hiccup as a
+        // misconfiguration. This law exists (the index enumerated it), so
+        // "no backend" is a failure to read it, not a law that isn't
+        // there; returning a miss would render the whole source as
+        // "leeg maar in orde" for a TTL window.
         let Some(entry) = self.corpus.backends.get(&source_id) else {
-            return Ok(None);
+            return Err(regelrecht_corpus::error::CorpusError::Config(format!(
+                "source '{source_id}' has no usable backend in this snapshot, \
+                 so law '{law_id}' cannot be read (backend init failed at build time)"
+            )));
         };
 
+        // The personal token authenticates exclusively against the
+        // traject's own repo; a seed read must never carry it.
+        let token = (source_id == self.writable_own_source_id)
+            .then_some(own_read_token)
+            .flatten();
         let content = {
             let backend = entry.backend.lock().await;
             // `?` propagates a read error rather than collapsing it to None.
             backend
-                .read_file(std::path::Path::new(&relative_path))
+                .read_file_with_token(std::path::Path::new(&relative_path), token)
                 .await?
         };
         let Some(content) = content else {
@@ -436,9 +586,15 @@ impl TrajectCorpus {
     /// versions are served from the index body (local sources) or lazily fetched
     /// via their own backend + `relative_path` (GitHub sources). Returns an empty
     /// vec when no version of the id is indexed.
-    pub async fn law_yaml_versions(
+    ///
+    /// Accepts the per-request writable-own read token — same contract as
+    /// [`Self::law_yaml_with_read_token`]: the token is only ever applied
+    /// to versions whose source is the writable-own, per call, never
+    /// stored. Pass `None` outside a user-request context.
+    pub async fn law_yaml_versions_with_read_token(
         &self,
         law_id: &str,
+        own_read_token: Option<&str>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
         // Snapshot the per-version index metadata, then drop the borrow before
         // any await below.
@@ -489,8 +645,20 @@ impl TrajectCorpus {
             }
             // Metadata-only (GitHub) version — lazily fetch its body. A source
             // whose backend was skipped at build time is treated as a missing
-            // version rather than failing the whole set.
+            // version rather than failing the whole set: this path feeds the
+            // scenario dependency loader, where one unfetchable future-dated
+            // version must not take down a law whose in-force version is
+            // right here. Unlike `law_yaml`, which answers a single law and
+            // therefore errors, this stays per-version isolation — but it is
+            // no longer silent, because a dropped version changes which
+            // redaction the engine considers in force.
             let Some(entry) = self.corpus.backends.get(&source_id) else {
+                tracing::warn!(
+                    law_id = %law_id,
+                    source_id = %source_id,
+                    "skipping a law version whose source has no usable backend \
+                     in this snapshot (backend init failed at build time)"
+                );
                 continue;
             };
             // Isolate per-version fetch failures: a transient backend error for
@@ -500,10 +668,15 @@ impl TrajectCorpus {
             // per-version `loadLawVersions` isolation. A law that ends up with no
             // fetchable version surfaces to the loader as a missing dependency
             // (retried on the next run), not a hard 502.
+            // Personal token only for the writable-own source, like
+            // `law_yaml_with_read_token`.
+            let token = (source_id == self.writable_own_source_id)
+                .then_some(own_read_token)
+                .flatten();
             let content = {
                 let backend = entry.backend.lock().await;
                 match backend
-                    .read_file(std::path::Path::new(&relative_path))
+                    .read_file_with_token(std::path::Path::new(&relative_path), token)
                     .await
                 {
                     Ok(content) => content,
@@ -916,8 +1089,11 @@ impl TrajectCorpus {
                             }
                             implements
                         }
-                        // A genuine miss (no backend / file vanished) has
-                        // nothing to index and nothing to retry.
+                        // A genuine miss (the file vanished from the branch
+                        // between enumeration and now) has nothing to index
+                        // and nothing to retry. A source without a usable
+                        // backend is not this case — `law_yaml` errors for
+                        // that, so it lands in `failed_law_ids` below.
                         Ok(None) => continue,
                         Err(e) => {
                             tracing::debug!(law_id = %entry.law_id, error = %e, "implements scan: body fetch failed");
@@ -964,48 +1140,181 @@ impl TrajectCorpus {
     /// fresh-compute failure (e.g. token throttled) a stale cached value, if
     /// any, is served rather than propagating the error — the sidebar keeps
     /// showing the last-known edit set instead of dropping the section.
+    ///
+    /// `token` is the acting user's GitHub token, used when the writable-own
+    /// source has no server-side credential of its own (the private-repo
+    /// traject route — see [`Self::changed_diff_needs_user_token`]). The
+    /// *diff* is not user-specific: every member sees the same branch-vs-base
+    /// set, so the cache stays per traject. An **empty result caused by the
+    /// absence of a usable token** is user-specific though, so that one is
+    /// never written to the shared cache — it would otherwise be served for a
+    /// full TTL window to members who do have a link, blanking their
+    /// "Bewerkt" section.
+    ///
+    /// That also splits the refresh in two. When the backend can diff on its
+    /// own credential the expired entry is refreshed in the background
+    /// (stale-while-revalidate, nobody waits for GitHub). When only a
+    /// personal token gets in, the background leg has no credential to use,
+    /// so the refresh happens on the request path of the first caller past
+    /// the TTL who actually carries one; a caller without a token keeps
+    /// being served the stale entry rather than blanking it.
     pub async fn changed_law_ids(
         self: &Arc<Self>,
+        token: Option<&str>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
-        // Fresh or expired, a cached entry is always served immediately.
-        // Past the TTL the first caller additionally kicks off ONE
-        // background recompute (stale-while-revalidate) — nobody waits
-        // out the GitHub Compare round-trip on the request path, and
-        // convergence stays within one extra TTL window.
-        if let Some(cached) = self.changed_cache.read().await.as_ref() {
-            if cached.computed_at.elapsed() >= CHANGED_LAWS_TTL
-                && self
+        // Cached and fresh: serve it. Expired: decide who refreshes.
+        let stale = match self.changed_cache.read().await.as_ref() {
+            None => None,
+            Some(cached) if cached.computed_at.elapsed() < CHANGED_LAWS_TTL => {
+                return Ok(cached.law_ids.clone());
+            }
+            Some(cached) => Some(cached.law_ids.clone()),
+        };
+
+        // Deliberately *after* the fresh-cache return: this takes the backend
+        // mutex (to probe `supports_token_override`), and that same lock is
+        // contended by the law-body reads. The sidebar asks for this diff on
+        // every library load, so the overwhelmingly common case is the hit
+        // above — which has no need for the answer.
+        let needs_user_token = self.changed_diff_needs_user_token().await;
+
+        if let Some(stale_ids) = &stale {
+            if !needs_user_token {
+                // The backend has its own credential, so ONE background
+                // recompute converges the entry while this request returns
+                // immediately — convergence stays within one extra TTL
+                // window and nobody waits out the Compare round-trip.
+                if self
                     .changed_refresh_in_flight
                     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
-            {
-                let corpus = self.clone();
-                tokio::spawn(async move {
-                    // RAII reset (not a trailing `store`): a panic inside
-                    // the recompute must not leave the flag latched true,
-                    // or no request would ever recompute again and the
-                    // stale ids would serve until process restart — the
-                    // AtomicBool analogue of the snapshot refresh's
-                    // OwnedMutexGuard.
-                    let _reset = ResetOnDrop(corpus.changed_refresh_in_flight.clone());
-                    corpus.recompute_changed_cache().await;
-                });
+                {
+                    let corpus = self.clone();
+                    tokio::spawn(async move {
+                        // RAII reset (not a trailing `store`): a panic inside
+                        // the recompute must not leave the flag latched true,
+                        // or no request would ever recompute again and the
+                        // stale ids would serve until process restart — the
+                        // AtomicBool analogue of the snapshot refresh's
+                        // OwnedMutexGuard.
+                        let _reset = ResetOnDrop(corpus.changed_refresh_in_flight.clone());
+                        corpus.recompute_changed_cache().await;
+                    });
+                }
+                return Ok(stale_ids.clone());
             }
-            return Ok(cached.law_ids.clone());
+            if token.is_none() {
+                // Only a personal token gets into this repo and this caller
+                // has none: recomputing would yield an empty list that says
+                // nothing about the branch. Keep serving the stale entry
+                // until a linked member refreshes it.
+                return Ok(stale_ids.clone());
+            }
         }
 
-        // Nothing cached (first call of the process): compute on the
-        // request path — there is nothing stale to serve instead.
-        match self.compute_changed_law_ids().await {
+        // Either nothing is cached (first call of the process — there is
+        // nothing stale to serve instead) or the entry expired and only this
+        // request's personal token can refresh it. Both are request-path
+        // work, so single-flight it: concurrent callers queue on the gate and
+        // the double-check below lets everyone but the first return the
+        // winner's freshly-cached diff instead of firing their own Compare.
+        // Bounded: the gate is held across a GitHub Compare call, and that
+        // call has its own multi-second timeout. Waiting unboundedly would
+        // turn a persistently failing upstream (rate limit, outage) into a
+        // queue — the Nth concurrent member would wait N timeouts where
+        // before this gate existed they each waited one, and the sidebar
+        // blocks on this request. On timeout we simply do what the code did
+        // before the gate: compute for ourselves. The herd-collapsing still
+        // works in the normal case, where the winner returns in well under
+        // this budget.
+        let _gate = tokio::time::timeout(
+            CHANGED_REFRESH_GATE_WAIT,
+            self.changed_refresh_gate.clone().lock_owned(),
+        )
+        .await
+        .ok();
+        if let Some(cached) = self.changed_cache.read().await.as_ref() {
+            if cached.computed_at.elapsed() < CHANGED_LAWS_TTL {
+                return Ok(cached.law_ids.clone());
+            }
+        }
+
+        match self.compute_changed_law_ids(token).await {
             Ok(ids) => {
-                *self.changed_cache.write().await = Some(ChangedLawsCache {
-                    computed_at: Instant::now(),
-                    law_ids: ids.clone(),
-                });
+                // Only a result that could actually see the repo is worth
+                // sharing with the other members of this traject.
+                //
+                //
+                // Known and accepted limitation: on the private-repo leg an
+                // empty diff is ambiguous. It is what a branch without edits
+                // returns, but ALSO what a member gets whose token cannot see
+                // the repo - GitHub answers 404 (not 403) for an invisible
+                // private repo and `compare_files` maps that to "no files
+                // changed". Such a member can therefore blank "Bewerkt" for
+                // the others for up to one TTL window, after which any member
+                // who *can* see the repo overwrites it with the truth. That
+                // self-healing bound is why this is tolerated rather than
+                // patched here: refusing to cache empty results instead would
+                // leave a merged-away diff standing forever for token-less
+                // members, which is worse. The real fix is upstream - teach
+                // `compare_files` to distinguish 404 from "nothing changed" -
+                // and is tracked separately.
+                if token.is_some() || !needs_user_token {
+                    *self.changed_cache.write().await = Some(ChangedLawsCache {
+                        computed_at: Instant::now(),
+                        law_ids: ids.clone(),
+                    });
+                }
                 Ok(ids)
             }
-            Err(e) => Err(e),
+            // Same degrade-to-stale stance as the background leg: a
+            // throttled upstream must not drop the sidebar's section, and
+            // re-arming the clock stops every subsequent request from
+            // re-attempting against it.
+            Err(e) => match stale {
+                Some(stale_ids) => {
+                    tracing::warn!(
+                        error = %e,
+                        "changed-laws refresh failed; serving stale cached value for another TTL"
+                    );
+                    if let Some(cached) = self.changed_cache.write().await.as_mut() {
+                        cached.computed_at = Instant::now();
+                    }
+                    Ok(stale_ids)
+                }
+                None => Err(e),
+            },
         }
+    }
+
+    /// Whether computing the branch-vs-base diff depends on the *caller's*
+    /// GitHub token — i.e. the writable-own backend authenticates per call
+    /// and has no credential at rest.
+    ///
+    /// This deliberately stops at the *capability* probe and does NOT mirror
+    /// `TrajectCredentials::for_read` all the way down: that path additionally
+    /// consults `write_requires_user_token` (config + the `github.user_oauth`
+    /// flag) and hands back `None` when the user-token mode is off. Answering
+    /// that question here would mean a DB round-trip on a hot path, and it
+    /// would buy nothing: this predicate only ever guards *caching and
+    /// background-refresh* decisions, and a token-less backend
+    /// (`is_writable() == self.token.is_some()`) short-circuits the diff to an
+    /// empty list without touching GitHub anyway. With the user-token mode off
+    /// the effect is therefore a cheap empty recompute per request rather than
+    /// a shared cache entry — never a wrong answer.
+    ///
+    /// `false` for everything else: a backend with a service token, a local
+    /// backend, or a missing backend all produce a token-independent result
+    /// that is safe to share across members and to recompute in the
+    /// background.
+    async fn changed_diff_needs_user_token(&self) -> bool {
+        let Some(entry) = self.corpus.backends.get(&self.writable_own_source_id) else {
+            return false;
+        };
+        if entry.writable {
+            return false;
+        }
+        entry.backend.lock().await.supports_token_override()
     }
 
     /// The background leg of [`changed_law_ids`]'s stale-while-revalidate:
@@ -1022,8 +1331,12 @@ impl TrajectCorpus {
     /// at the next recompute, ≤ one [`CHANGED_LAWS_TTL`] window; the
     /// pre-existing invalidate-based code had the same window around a
     /// save.
+    ///
+    /// Runs outside a request, so it has no user token — only started when
+    /// the backend can diff on its own credential (see
+    /// [`Self::changed_law_ids`]).
     async fn recompute_changed_cache(&self) {
-        match self.compute_changed_law_ids().await {
+        match self.compute_changed_law_ids(None).await {
             Ok(ids) => {
                 *self.changed_cache.write().await = Some(ChangedLawsCache {
                     computed_at: Instant::now(),
@@ -1063,17 +1376,19 @@ impl TrajectCorpus {
     }
 
     /// Uncached computation behind [`changed_law_ids`]: ask the writable-own
-    /// backend for its branch-vs-base diff and map the changed paths to law
-    /// ids via the source map.
+    /// backend for its branch-vs-base diff — authenticating with `token` when
+    /// the backend has no credential of its own — and map the changed paths
+    /// to law ids via the source map.
     async fn compute_changed_law_ids(
         &self,
+        token: Option<&str>,
     ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
         let Some(entry) = self.corpus.backends.get(&self.writable_own_source_id) else {
             return Ok(Vec::new());
         };
         let changed = {
             let backend = entry.backend.lock().await;
-            backend.changed_files().await?
+            backend.changed_files_with_token(token).await?
         };
         if changed.is_empty() {
             return Ok(Vec::new());
@@ -1183,12 +1498,36 @@ impl TrajectCorpusCache {
     /// failed refresh extends the stale snapshot for another TTL window
     /// instead of erroring reads (same degrade-to-stale stance as
     /// [`TrajectCorpus::changed_law_ids`]).
+    ///
+    /// `own_scan_token` is the acting user's linked GitHub token, used
+    /// **transiently** as a fallback for the index scan of the traject's
+    /// writable-own source when the server has no token for it (the scan
+    /// mirror of the request-bound read fallback). It is never stored on
+    /// the cached snapshot or in any key — only the *result* of a scan is
+    /// shared, which is acceptable because the law metadata it produces is
+    /// visible to every traject member anyway. One extra rule: a cached
+    /// snapshot whose writable-own scan **failed without** a user token is
+    /// rebuilt synchronously when a request finally carries one — serving
+    /// the broken snapshot to that request would fail it loudly for no
+    /// reason when the user's own access can heal the index right now.
     pub async fn get_or_build(
         &self,
         pool: &PgPool,
         traject_id: Uuid,
         auth_file: Option<PathBuf>,
+        own_scan_token: Option<&str>,
     ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
+        // A snapshot whose writable-own scan failed while no user token was
+        // available is worth one immediate retry now that this request
+        // carries a token. (A failure scanned WITH a token is served as-is
+        // — retrying it per request would hammer GitHub with scans that
+        // keep failing; the TTL refresh retries on schedule.)
+        let heals_own_index = |corpus: &TrajectCorpus| {
+            own_scan_token.is_some()
+                && corpus.own_index_error().is_some()
+                && !corpus.own_index_scanned_with_user_token
+        };
+
         let slot = {
             let mut map = self.cells.write().await;
             map.entry(traject_id)
@@ -1202,6 +1541,10 @@ impl TrajectCorpusCache {
         {
             let state = slot.state.read().await;
             match state.as_ref() {
+                Some(cached) if heals_own_index(&cached.corpus) => {
+                    // Fall through to the synchronous build below: this
+                    // request's token can repair the broken index.
+                }
                 Some(cached) if cached.is_fresh(self.index_ttl) => {
                     tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
                     return Ok(cached.corpus.clone());
@@ -1211,7 +1554,9 @@ impl TrajectCorpusCache {
                     drop(state);
                     // Stale: only one task refreshes (`try_lock`); everyone
                     // else — including the winner — serves stale rather than
-                    // queueing up behind a network round-trip.
+                    // queueing up behind a network round-trip. The refresh
+                    // borrows this request's scan token (owned copy for the
+                    // spawned task; dropped with it).
                     if let Ok(guard) = slot.build_lock.clone().try_lock_owned() {
                         spawn_background_refresh(
                             guard,
@@ -1219,6 +1564,7 @@ impl TrajectCorpusCache {
                             stale.clone(),
                             traject_id,
                             self.index_ttl,
+                            own_scan_token.map(str::to_string),
                         );
                     }
                     return Ok(stale);
@@ -1227,20 +1573,24 @@ impl TrajectCorpusCache {
             }
         }
 
-        // Nothing cached: every caller must wait for the one build.
+        // Nothing cached (or a broken-own-index snapshot this request's
+        // token can heal): every caller must wait for the one build.
         let _build = slot.build_lock.clone().lock_owned().await;
 
         // Re-check under the build lock: the previous holder may have
-        // built while we waited.
+        // built while we waited. A snapshot this request's token could
+        // still heal is NOT served — it is exactly what we came to rebuild.
         if let Some(cached) = slot.state.read().await.as_ref() {
-            tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
-            return Ok(cached.corpus.clone());
+            if !heals_own_index(&cached.corpus) {
+                tracing::debug!(traject = %traject_id, cache = "hit", "traject corpus served from cache");
+                return Ok(cached.corpus.clone());
+            }
         }
 
         tracing::debug!(traject = %traject_id, cache = "cold", "building traject corpus (cold)");
         let corpus = timing::measure(
             "build",
-            build_traject_corpus(pool, traject_id, auth_file.as_deref()),
+            build_traject_corpus(pool, traject_id, auth_file.as_deref(), own_scan_token),
         )
         .await?;
 
@@ -1283,6 +1633,7 @@ fn spawn_background_refresh(
     old: Arc<TrajectCorpus>,
     traject_id: Uuid,
     index_ttl: Duration,
+    own_scan_token: Option<String>,
 ) {
     tokio::spawn(async move {
         let _guard = guard;
@@ -1296,8 +1647,13 @@ fn spawn_background_refresh(
         }
 
         let span = tracing::info_span!("traject_index_refresh", traject = %traject_id);
-        let outcome =
-            tracing::Instrument::instrument(refresh_traject_corpus(&old, traject_id), span).await;
+        let outcome = tracing::Instrument::instrument(
+            refresh_traject_corpus(&old, traject_id, own_scan_token.as_deref()),
+            span,
+        )
+        .await;
+        // `own_scan_token` dies with this task — the refreshed snapshot
+        // only ever carries the scan *result*.
         apply_refresh_outcome(&slot, old, traject_id, outcome).await;
     });
 }
@@ -1380,11 +1736,18 @@ impl From<regelrecht_corpus::error::CorpusError> for TrajectCorpusError {
 
 /// Build a fresh [`TrajectCorpus`]: load sources from DB, clone backends,
 /// produce a [`SourceMap`].
+///
+/// `own_scan_token`: per-call user-token fallback for the index scan of
+/// the writable-own source (see [`TrajectCorpusCache::get_or_build`]).
+/// Consumed by the enumeration only — it is not handed to the backends
+/// (request-bound reads/writes resolve their own per-request token) and
+/// never stored on the returned structure.
 #[tracing::instrument(name = "build_traject_corpus", skip_all, fields(traject = %traject_id))]
 async fn build_traject_corpus(
     pool: &PgPool,
     traject_id: Uuid,
     auth_file: Option<&std::path::Path>,
+    own_scan_token: Option<&str>,
 ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
     let rows = sqlx::query_as::<_, TrajectSourceRow>(
         "SELECT source_id, name, source_type::text AS source_type,
@@ -1412,6 +1775,14 @@ async fn build_traject_corpus(
         .map(|r| r.source_id.clone())
         .ok_or(TrajectCorpusError::NoWritableOwn)?;
 
+    // Traject-flow-specific, so it never made it into `Source`: the branch
+    // the traject branch is cut from. Kept on the snapshot so a failed
+    // index scan can be diagnosed without a second DB round trip.
+    let own_base_branch = rows
+        .iter()
+        .find(|r| r.is_writable_own)
+        .and_then(|r| r.gh_base_branch.clone());
+
     // Build the read-source → write-target-source map. Every non-
     // writable_own source (local seed, GitHub seed, …) is routed to the
     // writable_own's backend so a save on any read-only seed-loaded law
@@ -1434,24 +1805,20 @@ async fn build_traject_corpus(
     // Build a backend per source, scoped to a traject-specific clone path.
     let mut backends: HashMap<String, BackendEntry> = HashMap::new();
     for (row, source) in rows.iter().zip(sources.iter()) {
-        // For the writable-own source we resolve strictly (no legacy
-        // `CORPUS_GIT_TOKEN` fallback). The `auth_ref` on this row was
-        // derived from the create-request's repo coords, so a missing
-        // per-repo token MUST fail closed — not transparently ship the
-        // central token to a user-chosen GitHub repo on the next push.
+        // Token resolution honours `Source::strict_auth` (set by
+        // `to_source` for the writable-own row): the writable-own resolves
+        // strictly (no legacy `CORPUS_GIT_TOKEN` fallback), because its
+        // `auth_ref` was derived from the create-request's repo coords and a
+        // missing per-repo token MUST fail closed — not transparently ship
+        // the central token to a user-chosen GitHub repo on the next push.
         // Seeded (non-writable) sources keep the legacy fallback so
         // pre-existing deployments that rely on a single global PAT for
-        // read-only mirrors keep working.
-        let token_result = if row.is_writable_own {
-            let key = source.auth_ref.as_deref().unwrap_or(&source.id);
-            regelrecht_corpus::auth::resolve_token_strict(key, auth_file)
-        } else {
-            regelrecht_corpus::auth::resolve_token_for_source(
-                &source.id,
-                source.auth_ref.as_deref(),
-                auth_file,
-            )
-        };
+        // read-only mirrors keep working. The index scan below
+        // (`index_all_sources_async`) goes through the same resolver, so
+        // scan and push can no longer disagree about the token.
+        let token_result = regelrecht_corpus::auth::CredentialResolver::new(auth_file)
+            .resolve_source(source)
+            .map(regelrecht_corpus::auth::TokenDecision::into_token);
         let token = token_result.unwrap_or_else(|e| {
             tracing::warn!(
                 traject = %traject_id,
@@ -1462,10 +1829,12 @@ async fn build_traject_corpus(
             None
         });
         // Diagnostic: token=None on the writable-own source means git
-        // push will hit "could not read Username" later. Surface it now
-        // with both the source_id and the resolved auth_ref so an
-        // operator can see whether the row carries the expected ref and
-        // whether the env var matches.
+        // push will hit "could not read Username" later, and — for a
+        // private repo — the index scan and every lazy body read will 404
+        // just as hard, silently resolving the traject's own laws from the
+        // seed corpus instead. Surface it now with both the source_id and
+        // the resolved auth_ref so an operator can see whether the row
+        // carries the expected ref and whether the env var matches.
         if token.is_none() && source.id == writable_own_source_id {
             let expected_env = regelrecht_corpus::auth::token_env_name(
                 source.auth_ref.as_deref().unwrap_or(&source.id),
@@ -1476,21 +1845,24 @@ async fn build_traject_corpus(
                 auth_ref = ?source.auth_ref,
                 auth_file = ?auth_file,
                 expected_env = %expected_env,
-                "traject writable-own source resolved NO token — push will fail"
+                user_scan_token = own_scan_token.is_some(),
+                "traject writable-own source resolved NO server token — server-side pushes \
+                 fail, and on a private repo reads/index scans only work through the acting \
+                 user's linked GitHub token (user_scan_token says whether this build has one)"
             );
         }
 
         let is_writable_own = source.id == writable_own_source_id;
 
-        // The writable-own GitHub source goes through the in-memory
-        // Contents-API backend (no clone, no working tree) so saves are
-        // committed via the API. Read-only base/seed GitHub sources
-        // (minbzk-central, …) instead read from a local git clone: body
-        // reads (`law_yaml`, the implements scan) then hit local disk
-        // rather than the REST Contents API, which avoids exhausting the
-        // GitHub REST quota on an O(corpus) implements scan and reuses the
-        // clone the global corpus already maintains (shared by source id).
-        // Local sources keep their configured path — already isolated.
+        // The writable-own GitHub source goes through
+        // `build_traject_github_backend` because it needs a base branch to
+        // create its traject branch from; read-only base/seed GitHub
+        // sources (minbzk-central, …) go through `create_backend`, which
+        // builds the same Contents-API backend without one. Neither clones:
+        // the implements scan that used to justify a local checkout now
+        // reads the precomputed index out of the corpus repo, and body
+        // reads ride the Contents API with conditional GETs (a 304 costs no
+        // rate-limit quota). Local sources keep their configured path.
         let backend_result = match &source.source_type {
             SourceType::GitHub { github } if is_writable_own => build_traject_github_backend(
                 traject_id,
@@ -1570,30 +1942,62 @@ async fn build_traject_corpus(
     // failing entirely on what is usually a transient GitHub hiccup. The hard
     // failure path is the writable-own *backend* init above, which returns
     // `Err` so a broken write target never opens silently.
-    let source_map =
-        match timing::measure("index", registry.index_all_sources_async(auth_file)).await {
-            Ok((map, failed)) => {
-                if failed.iter().any(|id| id == &writable_own_source_id) {
-                    tracing::error!(
-                        traject = %traject_id,
-                        source_id = %writable_own_source_id,
-                        "traject writable-own source failed to load — the traject's own laws \
-                         will be missing from the bibliotheek until the corpus is rebuilt"
-                    );
-                }
-                map
-            }
-            Err(e) => {
-                tracing::warn!(
+    // The scan may fall back to the acting user's token for the
+    // writable-own source — and only for that source, only when the
+    // server-side resolution yields no token (both enforced corpus-side
+    // by `ScanTokenOverride`).
+    let scan_override = own_scan_token.map(|token| regelrecht_corpus::ScanTokenOverride {
+        source_id: &writable_own_source_id,
+        token,
+    });
+    let today = regelrecht_shared::dates::today_str();
+    let (source_map, index_failures) = match timing::measure(
+        "index",
+        registry.index_all_sources_with_override(auth_file, scan_override, &today),
+    )
+    .await
+    {
+        Ok((map, failed)) => {
+            if let Some(f) = failed
+                .iter()
+                .find(|f| f.source_id == writable_own_source_id)
+            {
+                tracing::error!(
                     traject = %traject_id,
-                    error = %e,
-                    "traject corpus load failed, falling back to local-only"
+                    source_id = %writable_own_source_id,
+                    error = %f.error,
+                    "traject writable-own source failed to index — the traject-scoped \
+                     library refuses to serve (no silent fallback to seed-only laws) \
+                     until a scan succeeds"
                 );
-                registry
-                    .load_local_sources()
-                    .unwrap_or_else(|_| SourceMap::new())
             }
-        };
+            let failures: HashMap<String, String> =
+                failed.into_iter().map(|f| (f.source_id, f.error)).collect();
+            (map, failures)
+        }
+        Err(e) => {
+            tracing::warn!(
+                traject = %traject_id,
+                error = %e,
+                "traject corpus load failed, falling back to local-only"
+            );
+            // Local-only fallback: every non-local source is absent from
+            // the map, so record the enumeration error against each of
+            // them — `/sources` then shows why their law_count is 0.
+            let failures: HashMap<String, String> = registry
+                .sources()
+                .iter()
+                .filter(|s| matches!(s.source_type, SourceType::GitHub { .. }))
+                .map(|s| (s.id.clone(), e.to_string()))
+                .collect();
+            (
+                registry
+                    .load_local_sources(&today)
+                    .unwrap_or_else(|_| SourceMap::new(regelrecht_shared::dates::today_str())),
+                failures,
+            )
+        }
+    };
 
     Ok(Arc::new(TrajectCorpus {
         corpus: CorpusState {
@@ -1601,7 +2005,10 @@ async fn build_traject_corpus(
             source_map,
             backends,
             auth_file: auth_file.map(|p| p.to_path_buf()),
+            index_failures,
         },
+        traject_id,
+        own_base_branch,
         write_target_for_source,
         writable_own_source_id,
         overlay: Arc::new(RwLock::new(HashMap::new())),
@@ -1612,10 +2019,14 @@ async fn build_traject_corpus(
         implements_memo: Arc::new(RwLock::new(HashMap::new())),
         changed_cache: Arc::new(RwLock::new(None)),
         changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+        changed_refresh_gate: Arc::new(Mutex::new(())),
         sidecar_cache: RwLock::new(BoundedCache::default()),
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
         scenario_list_write_gen: AtomicU64::new(0),
+        // Only the *fact* that a user token was available; the token
+        // itself dies with this call.
+        own_index_scanned_with_user_token: own_scan_token.is_some(),
     }))
 }
 
@@ -1653,16 +2064,34 @@ async fn build_traject_corpus(
 async fn refresh_traject_corpus(
     old: &Arc<TrajectCorpus>,
     traject_id: Uuid,
+    own_scan_token: Option<&str>,
 ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
     let registry = old.corpus.registry.clone();
     let auth_file = old.corpus.auth_file.clone();
+    // Same user-token fallback as the cold build: without it, a traject
+    // whose writable-own repo is only readable through the acting user's
+    // token could never refresh its index (every TTL refresh would fail
+    // and re-arm the stale snapshot forever). Transient, like everywhere
+    // else — the refreshed snapshot never carries the token.
+    let scan_override = own_scan_token.map(|token| regelrecht_corpus::ScanTokenOverride {
+        source_id: &old.writable_own_source_id,
+        token,
+    });
     let (source_map, failed) = registry
-        .index_all_sources_async(auth_file.as_deref())
+        .index_all_sources_with_override(
+            auth_file.as_deref(),
+            scan_override,
+            &regelrecht_shared::dates::today_str(),
+        )
         .await?;
     if !failed.is_empty() {
+        let details: Vec<String> = failed
+            .iter()
+            .map(|f| format!("{}: {}", f.source_id, f.error))
+            .collect();
         return Err(TrajectCorpusError::Corpus(
             regelrecht_corpus::error::CorpusError::Config(format!(
-                "index refresh for traject {traject_id} failed to enumerate sources: {failed:?}"
+                "index refresh for traject {traject_id} failed to enumerate sources: {details:?}"
             )),
         ));
     }
@@ -1689,7 +2118,13 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
             source_map,
             backends: old.corpus.backends.clone(),
             auth_file: old.corpus.auth_file.clone(),
+            // A refresh only lands when every source enumerated (see
+            // `refresh_traject_corpus`), so the refreshed snapshot has no
+            // scan failures to report.
+            index_failures: HashMap::new(),
         },
+        traject_id: old.traject_id,
+        own_base_branch: old.own_base_branch.clone(),
         write_target_for_source: old.write_target_for_source.clone(),
         writable_own_source_id: old.writable_own_source_id.clone(),
         overlay: old.overlay.clone(),
@@ -1700,10 +2135,16 @@ async fn next_snapshot(old: &Arc<TrajectCorpus>, source_map: SourceMap) -> Arc<T
         implements_memo: old.implements_memo.clone(),
         changed_cache: old.changed_cache.clone(),
         changed_refresh_in_flight: old.changed_refresh_in_flight.clone(),
+        changed_refresh_gate: old.changed_refresh_gate.clone(),
         sidecar_cache: RwLock::new(BoundedCache::default()),
         scenario_list_cache: RwLock::new(BoundedCache::default()),
         sidecar_write_gen: AtomicU64::new(0),
         scenario_list_write_gen: AtomicU64::new(0),
+        // A refresh only lands when every source enumerated, so this
+        // snapshot has no own-index failure the flag could qualify;
+        // carrying the old value keeps the field truthful about how the
+        // *last* failed scan (if the caller re-arms `old`) was attempted.
+        own_index_scanned_with_user_token: old.own_index_scanned_with_user_token,
     })
 }
 
@@ -1885,6 +2326,7 @@ mod tests {
         FileEntry, PersistOutcome, RepoBackend, WriteContext as CorpusWriteContext,
     };
     use regelrecht_corpus::error::{CorpusError, Result as CorpusResult};
+    use tokio::sync::Semaphore;
 
     /// In-memory backend stub: serves a fixed file set, optionally
     /// failing every read (the throttled-fetch path), and counts reads
@@ -1986,7 +2428,10 @@ mod tests {
                 source_map,
                 backends,
                 auth_file: None,
+                index_failures: HashMap::new(),
             },
+            traject_id: Uuid::nil(),
+            own_base_branch: None,
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
             overlay: Arc::new(RwLock::new(HashMap::new())),
@@ -1997,10 +2442,12 @@ mod tests {
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
             changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+            changed_refresh_gate: Arc::new(Mutex::new(())),
             sidecar_cache: RwLock::new(BoundedCache::default()),
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
             scenario_list_write_gen: AtomicU64::new(0),
+            own_index_scanned_with_user_token: false,
         }
     }
 
@@ -2101,7 +2548,7 @@ mod tests {
     #[test]
     fn cached_corpus_freshness_respects_ttl() {
         let cached = CachedCorpus {
-            corpus: Arc::new(test_corpus(SourceMap::new(), HashMap::new())),
+            corpus: Arc::new(test_corpus(SourceMap::new("2026-06-01"), HashMap::new())),
             built_at: Instant::now(),
         };
         // A just-built snapshot is fresh under the production TTL…
@@ -2114,7 +2561,7 @@ mod tests {
 
     #[tokio::test]
     async fn law_yaml_caches_lazy_fetch_and_prefers_overlay() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "seed");
         let stub = StubBackend::with_files(&[("wet/wet_a/2025-01-01.yaml", "$id: wet_a\n")]);
         let reads = stub.reads.clone();
@@ -2146,11 +2593,164 @@ mod tests {
         );
     }
 
+    /// Backend gedraagt zich als een privé repo achter de Contents-API:
+    /// zonder het verwachte per-call token leest elke file als 404
+    /// (`Ok(None)`). Met `required_token: None` modelleert hij een
+    /// seed-backend die het persoonlijke token nooit mag ontvangen.
+    struct TokenGatedBackend {
+        files: HashMap<String, String>,
+        required_token: Option<String>,
+        /// Laat de Compare-call falen (haperende upstream: rate limit, 5xx)
+        /// terwijl het token gewoon klopt; de leespaden blijven werken.
+        compare_fails: bool,
+        /// Aantal Compare-aanroepen dat deze backend heeft gezien, zodat een
+        /// test kan vaststellen dat gelijktijdige bellers er samen één doen.
+        compare_calls: Arc<AtomicUsize>,
+        /// Parkeert de Compare-call tot de test een permit uitdeelt. Daarmee
+        /// is de single-flight-test niet afhankelijk van scheduler-timing:
+        /// de eerste beller kan de poort niet loslaten voordat de test dat
+        /// wil, dus elke interleaving levert dezelfde telling op.
+        compare_hold: Option<Arc<Semaphore>>,
+    }
+
+    #[async_trait]
+    impl RepoBackend for TokenGatedBackend {
+        async fn read_file(&self, path: &Path) -> CorpusResult<Option<String>> {
+            self.read_file_with_token(path, None).await
+        }
+        async fn read_file_with_token(
+            &self,
+            path: &Path,
+            token: Option<&str>,
+        ) -> CorpusResult<Option<String>> {
+            match &self.required_token {
+                // Privé repo: alleen het juiste token leest; anders 404.
+                Some(required) if token != Some(required.as_str()) => return Ok(None),
+                Some(_) => {}
+                // Seed-bron: het persoonlijke token mag hier nooit landen.
+                None => assert!(
+                    token.is_none(),
+                    "seed backend must never receive the personal read token"
+                ),
+            }
+            Ok(self.files.get(path.to_str().unwrap()).cloned())
+        }
+        async fn write_file(&self, _: &Path, _: &str) -> CorpusResult<()> {
+            Ok(())
+        }
+        async fn delete_file(&self, _: &Path) -> CorpusResult<()> {
+            Ok(())
+        }
+        async fn list_files(&self, _: &Path, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
+            Ok(Vec::new())
+        }
+        /// Zelfde poort als `read_file_with_token`, nu voor de Compare-call:
+        /// zonder bruikbaar token doet `GitHubApiBackend` geen enkele
+        /// round-trip en komt er een lege lijst terug. Elk bestand van deze
+        /// stub telt als gewijzigd, zodat een test aan de uitkomst kan zien
+        /// of het token is doorgegeven.
+        async fn changed_files_with_token(&self, token: Option<&str>) -> CorpusResult<Vec<String>> {
+            self.compare_calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(hold) = &self.compare_hold {
+                let _permit = hold.acquire().await.expect("semafoor open");
+            }
+            match &self.required_token {
+                Some(required) if token != Some(required.as_str()) => Ok(Vec::new()),
+                _ if self.compare_fails => Err(CorpusError::Git("simulated throttle".to_string())),
+                _ => Ok(self.files.keys().cloned().collect()),
+            }
+        }
+        async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
+            Ok(PersistOutcome::default())
+        }
+        async fn ensure_ready(&mut self) -> CorpusResult<()> {
+            Ok(())
+        }
+        fn supports_token_override(&self) -> bool {
+            true
+        }
+        fn is_writable(&self) -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn law_yaml_forwards_the_read_token_only_to_the_writable_own_source() {
+        let mut map = SourceMap::new("2026-06-01");
+        metadata_entry(&mut map, "wet_eigen", "own");
+        metadata_entry(&mut map, "wet_seed", "seed");
+        let backends = HashMap::from([
+            (
+                "own".to_string(),
+                BackendEntry {
+                    backend: Arc::new(Mutex::new(Box::new(TokenGatedBackend {
+                        files: HashMap::from([(
+                            "wet/wet_eigen/2025-01-01.yaml".to_string(),
+                            "$id: wet_eigen\n".to_string(),
+                        )]),
+                        required_token: Some("user-token".to_string()),
+                        compare_fails: false,
+                        compare_calls: Arc::new(AtomicUsize::new(0)),
+                        compare_hold: None,
+                    }) as Box<dyn RepoBackend>)),
+                    writable: false,
+                },
+            ),
+            (
+                "seed".to_string(),
+                BackendEntry {
+                    backend: Arc::new(Mutex::new(Box::new(TokenGatedBackend {
+                        files: HashMap::from([(
+                            "wet/wet_seed/2025-01-01.yaml".to_string(),
+                            "$id: wet_seed\n".to_string(),
+                        )]),
+                        required_token: None,
+                        compare_fails: false,
+                        compare_calls: Arc::new(AtomicUsize::new(0)),
+                        compare_hold: None,
+                    }) as Box<dyn RepoBackend>)),
+                    writable: false,
+                },
+            ),
+        ]);
+        let corpus = test_corpus(map, backends);
+
+        // Zonder token blijft de privé writable-own onleesbaar (GitHub's 404
+        // → `Ok(None)`), en er wordt níets negatiefs gecachet…
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_eigen", None)
+                .await
+                .unwrap(),
+            None
+        );
+        // …met het per-request token leest dezelfde wet wél.
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_eigen", Some("user-token"))
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("$id: wet_eigen\n")
+        );
+
+        // Een seed-read binnen dezelfde request geeft het token NIET door
+        // (de assert in de stub bewaakt dat) en slaagt gewoon.
+        assert_eq!(
+            corpus
+                .law_yaml_with_read_token("wet_seed", Some("user-token"))
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("$id: wet_seed\n")
+        );
+    }
+
     // ---- implements index ----
 
     #[tokio::test]
     async fn implementors_of_builds_index_once_and_reverse_looks_up() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_hoger", "seed");
         let stub = StubBackend::with_files(&[
@@ -2184,7 +2784,7 @@ mod tests {
 
     #[tokio::test]
     async fn implementors_of_reports_fetch_failures_as_skipped() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_kapot", "broken");
         let stub = StubBackend::with_files(&[(
@@ -2213,7 +2813,7 @@ mod tests {
         // must be pulled in ONE bulk request, not one fetch per law — this
         // is what stops the cold build 504-ing on large GitHub trajects.
         let n = BULK_FETCH_THRESHOLD;
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let mut files: Vec<(String, String)> = Vec::new();
         for i in 0..n {
             let law_id = format!("reg_{i}");
@@ -2249,7 +2849,7 @@ mod tests {
 
     #[tokio::test]
     async fn record_save_updates_built_implements_index_in_place() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         let stub = StubBackend::with_files(&[(
             "wet/regeling_a/2025-01-01.yaml",
@@ -2307,9 +2907,10 @@ mod tests {
             scopes: vec![],
             priority: 0,
             auth_ref: None,
+            strict_auth: false,
         };
         let registry = CorpusRegistry::from_sources(vec![source.clone()]);
-        let source_map = registry.load_local_sources().unwrap();
+        let source_map = registry.load_local_sources("2026-06-01").unwrap();
         let mut backend = create_backend(&source, None).unwrap();
         backend.ensure_ready().await.unwrap();
         let writable = backend.is_writable();
@@ -2326,7 +2927,10 @@ mod tests {
                 source_map,
                 backends,
                 auth_file: None,
+                index_failures: HashMap::new(),
             },
+            traject_id: Uuid::nil(),
+            own_base_branch: None,
             write_target_for_source: HashMap::new(),
             writable_own_source_id: "own".to_string(),
             overlay: Arc::new(RwLock::new(HashMap::new())),
@@ -2337,10 +2941,12 @@ mod tests {
             implements_memo: Arc::new(RwLock::new(HashMap::new())),
             changed_cache: Arc::new(RwLock::new(None)),
             changed_refresh_in_flight: Arc::new(AtomicBool::new(false)),
+            changed_refresh_gate: Arc::new(Mutex::new(())),
             sidecar_cache: RwLock::new(BoundedCache::default()),
             scenario_list_cache: RwLock::new(BoundedCache::default()),
             sidecar_write_gen: AtomicU64::new(0),
             scenario_list_write_gen: AtomicU64::new(0),
+            own_index_scanned_with_user_token: false,
         })
     }
 
@@ -2367,7 +2973,7 @@ mod tests {
         write_law_file(dir.path(), "wet_b", "$id: wet_b\nname: nieuw\n");
         assert!(old.corpus.source_map.get_law("wet_b").is_none());
 
-        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4(), None)
             .await
             .expect("local refresh must succeed");
 
@@ -2418,7 +3024,7 @@ mod tests {
             "regeling_a",
             &law_body("regeling_a", Some("wet_hoger")),
         );
-        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4(), None)
             .await
             .expect("local refresh must succeed");
 
@@ -2447,7 +3053,7 @@ mod tests {
         // implementor lookups from it while another task holds the build
         // lock — the post-refresh lookup herd must never queue behind the
         // rescan (the federated-panel hang of PR #762).
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         let corpus = Arc::new(test_corpus(
             map,
@@ -2486,7 +3092,7 @@ mod tests {
 
     #[tokio::test]
     async fn rebuild_after_refresh_skips_unchanged_bodies_via_memo() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "regeling_a", "seed");
         metadata_entry(&mut map, "wet_hoger", "seed");
         let stub = StubBackend::with_files(&[
@@ -2515,7 +3121,7 @@ mod tests {
         // TTL refresh with an UNCHANGED enumeration (same blob shas):
         // the post-refresh rebuild must answer entirely from the memo —
         // zero body fetches.
-        let mut same_map = SourceMap::new();
+        let mut same_map = SourceMap::new("2026-06-01");
         metadata_entry(&mut same_map, "regeling_a", "seed");
         metadata_entry(&mut same_map, "wet_hoger", "seed");
         let refreshed = next_snapshot(&old, same_map).await;
@@ -2531,7 +3137,7 @@ mod tests {
 
         // Next refresh where ONE law's sha moved: only that body is
         // refetched.
-        let mut changed_map = SourceMap::new();
+        let mut changed_map = SourceMap::new("2026-06-01");
         metadata_entry_with_sha(
             &mut changed_map,
             "regeling_a",
@@ -2567,7 +3173,7 @@ mod tests {
         // Another replica / a direct push moves the branch past our save.
         write_law_file(dir.path(), "wet_a", "$id: wet_a\nname: extern\n");
 
-        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4(), None)
             .await
             .expect("local refresh must succeed");
 
@@ -2593,7 +3199,7 @@ mod tests {
         old.record_save("wet_a".to_string(), "$id: wet_a\nname: saved\n".to_string())
             .await;
 
-        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4())
+        let refreshed = refresh_traject_corpus(&old, Uuid::new_v4(), None)
             .await
             .expect("local refresh must succeed");
 
@@ -2645,6 +3251,7 @@ mod tests {
             old.clone(),
             Uuid::new_v4(),
             Duration::from_secs(60),
+            None,
         );
 
         let refreshed = wait_for(|| {
@@ -2699,7 +3306,7 @@ mod tests {
 
     #[tokio::test]
     async fn expired_changed_cache_serves_stale_and_recomputes_in_background() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -2718,7 +3325,7 @@ mod tests {
 
         // Served immediately, stale value and all — no Compare round-trip
         // on the request path.
-        let ids = corpus.changed_law_ids().await.unwrap();
+        let ids = corpus.changed_law_ids(None).await.unwrap();
         assert_eq!(ids, vec!["wet_a".to_string()]);
 
         // …while the background recompute converges to the real diff and
@@ -2740,7 +3347,7 @@ mod tests {
 
     #[tokio::test]
     async fn failed_changed_recompute_rearms_stale_and_releases_the_flag() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -2755,7 +3362,7 @@ mod tests {
 
         // Stale value serves; the background recompute fails against the
         // throttled backend.
-        let ids = corpus.changed_law_ids().await.unwrap();
+        let ids = corpus.changed_law_ids(None).await.unwrap();
         assert_eq!(ids, vec!["wet_a".to_string()]);
 
         // Failure stance: the stale ids survive, the TTL clock is
@@ -2776,9 +3383,217 @@ mod tests {
         .await;
     }
 
+    /// Traject op een privé, door de gebruiker aangedragen repo: de server
+    /// heeft er geen eigen token voor, dus alleen het persoonlijke token van
+    /// de handelende gebruiker komt binnen.
+    fn private_own_corpus() -> Arc<TrajectCorpus> {
+        private_own_corpus_with(false)
+    }
+
+    /// Als [`private_own_corpus`], maar `compare_fails` bepaalt of de
+    /// Compare-call van een correct getokende beller alsnog stukloopt.
+    fn private_own_corpus_with(compare_fails: bool) -> Arc<TrajectCorpus> {
+        private_own_corpus_full(compare_fails, Arc::new(AtomicUsize::new(0)), None)
+    }
+
+    /// Als [`private_own_corpus_with`], met een teller voor het aantal
+    /// Compare-aanroepen en een optionele semafoor die de Compare-call
+    /// parkeert — samen genoeg om de single-flight-poort vast te pinnen.
+    fn private_own_corpus_full(
+        compare_fails: bool,
+        compare_calls: Arc<AtomicUsize>,
+        compare_hold: Option<Arc<Semaphore>>,
+    ) -> Arc<TrajectCorpus> {
+        let mut map = SourceMap::new("2026-06-01");
+        metadata_entry(&mut map, "wet_eigen", "own");
+        Arc::new(test_corpus(
+            map,
+            HashMap::from([(
+                "own".to_string(),
+                BackendEntry {
+                    backend: Arc::new(Mutex::new(Box::new(TokenGatedBackend {
+                        files: HashMap::from([(
+                            "wet/wet_eigen/2025-01-01.yaml".to_string(),
+                            "$id: wet_eigen\n".to_string(),
+                        )]),
+                        required_token: Some("user-token".to_string()),
+                        compare_fails,
+                        compare_calls: compare_calls.clone(),
+                        compare_hold: compare_hold.clone(),
+                    }) as Box<dyn RepoBackend>)),
+                    writable: false,
+                },
+            )]),
+        ))
+    }
+
+    #[tokio::test]
+    async fn changed_law_ids_uses_the_callers_token_on_a_private_own_source() {
+        // De kern van de "Bewerkt is stuk bij privé-trajecten"-fix: zonder
+        // per-call token blijft de diff leeg (het oude, permanente gedrag);
+        // mét token levert dezelfde backend de gewijzigde wet.
+        let corpus = private_own_corpus();
+
+        assert!(corpus.changed_law_ids(None).await.unwrap().is_empty());
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_eigen".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn tokenless_empty_diff_is_never_written_to_the_shared_cache() {
+        // `changed_cache` is per traject (TTL 60 s), niet per gebruiker. Een
+        // lege uitkomst die alleen ontstond doordat *deze* gebruiker geen
+        // GitHub-koppeling heeft, mag daarom niet 60 s lang aan alle leden
+        // worden geserveerd — anders blijft "Bewerkt" leeg voor iemand die
+        // wél gekoppeld is.
+        let corpus = private_own_corpus();
+
+        assert!(corpus.changed_law_ids(None).await.unwrap().is_empty());
+        assert!(
+            corpus.changed_cache.read().await.is_none(),
+            "een token-loze lege diff hoort niet in de gedeelde cache"
+        );
+
+        // Het gekoppelde lid berekent wél een deelbare uitkomst…
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_eigen".to_string()]
+        );
+        assert_eq!(
+            corpus.changed_cache.read().await.as_ref().unwrap().law_ids,
+            vec!["wet_eigen".to_string()]
+        );
+
+        // …en die uitkomst blijft staan als een ongekoppeld lid langskomt.
+        assert_eq!(
+            corpus.changed_law_ids(None).await.unwrap(),
+            vec!["wet_eigen".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_private_cache_waits_for_a_linked_caller_instead_of_blanking() {
+        // De achtergrond-recompute draait buiten een request en heeft dus
+        // geen gebruikerstoken; op een privé-bron zou hij de cache leegvegen.
+        // Hij wordt daarom niet gestart: een ongekoppelde beller krijgt de
+        // stale waarde, een gekoppelde ververst hem op het request-pad.
+        let corpus = private_own_corpus();
+        let expired = Instant::now() - Duration::from_secs(3600);
+        *corpus.changed_cache.write().await = Some(ChangedLawsCache {
+            computed_at: expired,
+            law_ids: vec!["wet_oud".to_string()],
+        });
+
+        assert_eq!(
+            corpus.changed_law_ids(None).await.unwrap(),
+            vec!["wet_oud".to_string()]
+        );
+        let cache = corpus.changed_cache.read().await;
+        let cached = cache.as_ref().unwrap();
+        assert_eq!(cached.law_ids, vec!["wet_oud".to_string()]);
+        assert_eq!(cached.computed_at, expired, "geen achtergrond-recompute");
+        assert!(!corpus.changed_refresh_in_flight.load(Ordering::SeqCst));
+        drop(cache);
+
+        // Een gekoppeld lid ververst de verlopen entry meteen (synchroon:
+        // er is geen achtergrond-leg met een bruikbaar token).
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_eigen".to_string()]
+        );
+        let cache = corpus.changed_cache.read().await;
+        let cached = cache.as_ref().unwrap();
+        assert_eq!(cached.law_ids, vec!["wet_eigen".to_string()]);
+        assert!(cached.computed_at > expired);
+    }
+
+    #[tokio::test]
+    async fn failed_private_request_refresh_serves_stale_instead_of_erroring() {
+        // Op een privé-bron ververst een gekoppelde beller de verlopen entry
+        // op het request-pad. Loopt die Compare-call stuk, dan geldt dezelfde
+        // degradeer-naar-stale-houding als in de achtergrond-leg: geen 502 die
+        // "Bewerkt" laat verdwijnen, en de TTL-klok wordt opnieuw opgespannen
+        // zodat niet elk volgend verzoek tegen een haperende upstream aanloopt.
+        let corpus = private_own_corpus_with(true);
+        let expired = Instant::now() - Duration::from_secs(3600);
+        *corpus.changed_cache.write().await = Some(ChangedLawsCache {
+            computed_at: expired,
+            law_ids: vec!["wet_oud".to_string()],
+        });
+
+        assert_eq!(
+            corpus.changed_law_ids(Some("user-token")).await.unwrap(),
+            vec!["wet_oud".to_string()]
+        );
+        let cache = corpus.changed_cache.read().await;
+        let cached = cache.as_ref().unwrap();
+        assert_eq!(cached.law_ids, vec!["wet_oud".to_string()]);
+        assert!(cached.computed_at > expired, "TTL-klok opnieuw opgespannen");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_private_refreshes_share_one_compare_call() {
+        // De achtergrond-leg heeft `changed_refresh_in_flight`; de synchrone
+        // leg (privé-bron, alleen het token van de beller komt binnen) heeft
+        // de poort. Zonder die poort doet elk gekoppeld lid dat de
+        // bibliotheek binnen hetzelfde verlopen-TTL-venster laadt zijn eigen
+        // Compare-call tegen een gedeeld, gelimiteerd token.
+        //
+        // De semafoor maakt de uitkomst interleaving-onafhankelijk: wie de
+        // poort ook als eerste pakt, hij kan hem niet loslaten voordat de
+        // test een permit uitdeelt, dus de ander staat gegarandeerd te
+        // wachten en vindt daarna een verse cache-entry.
+        let hold = Arc::new(Semaphore::new(0));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let corpus = private_own_corpus_full(false, calls.clone(), Some(hold.clone()));
+
+        let a = corpus.clone();
+        let b = corpus.clone();
+        let first = tokio::spawn(async move { a.changed_law_ids(Some("user-token")).await });
+        let second = tokio::spawn(async move { b.changed_law_ids(Some("user-token")).await });
+
+        // Eén permit: precies genoeg voor de winnaar van de poort. Zou de
+        // verliezer alsnog bij de backend uitkomen, dan liep deze test vast
+        // in plaats van stilletjes een tweede Compare-call te slikken.
+        hold.add_permits(1);
+
+        // De permit komt bij het droppen van de guard weer vrij, dus valt de
+        // poort weg dan komt de verliezer alsnog bij de backend uit en telt
+        // de assertie hieronder er twee — de test faalt dan op de telling,
+        // niet op deze timeout. De timeout is puur een vangnet tegen een
+        // echte deadlock, zodat een fout in de poort nooit als een hangende
+        // suite eindigt.
+        let (ra, rb) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(first, second)
+        })
+        .await
+        .expect(
+            "beide bellers horen af te ronden; een tweede Compare-call parkeert op de semafoor",
+        );
+        assert_eq!(ra.unwrap().unwrap(), vec!["wet_eigen".to_string()]);
+        assert_eq!(rb.unwrap().unwrap(), vec!["wet_eigen".to_string()]);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "gelijktijdige bellers horen één Compare-call te delen"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_private_first_compute_still_errors() {
+        // Zonder iets in de cache is er niets om op terug te vallen: de fout
+        // hoort dan wél door te komen (de handler maakt er een 502 van), in
+        // plaats van stil als "niets bewerkt" te worden gepresenteerd.
+        let corpus = private_own_corpus_with(true);
+        assert!(corpus.changed_law_ids(Some("user-token")).await.is_err());
+        assert!(corpus.changed_cache.read().await.is_none());
+    }
+
     #[tokio::test]
     async fn record_changed_law_folds_a_save_into_the_cached_diff() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -2813,7 +3628,7 @@ mod tests {
 
     #[tokio::test]
     async fn sidecar_cache_round_trips_and_resets_per_snapshot() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -2906,7 +3721,7 @@ mod tests {
         corpus
             .store_sidecar("scn:wet_a/y.feature".to_string(), None)
             .await;
-        let mut next_map = SourceMap::new();
+        let mut next_map = SourceMap::new("2026-06-01");
         metadata_entry(&mut next_map, "wet_a", "own");
         let next = next_snapshot(&corpus, next_map).await;
         assert!(next.cached_sidecar("scn:wet_a/y.feature").await.is_none());
@@ -2914,7 +3729,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_read_store_is_dropped_after_a_write_bumps_the_generation() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         metadata_entry(&mut map, "wet_a", "own");
         let corpus = Arc::new(test_corpus(
             map,
@@ -3074,6 +3889,12 @@ impl TrajectSourceRow {
             scopes,
             priority: self.priority.max(0) as u32,
             auth_ref: self.auth_ref.clone(),
+            // The writable-own's `auth_ref` derives from user-supplied repo
+            // coords (create-traject request), so EVERY token lookup for it
+            // — backend construction here, but also the index scan inside
+            // `CorpusRegistry::index_all_sources_async` — must resolve
+            // strictly, without the legacy `CORPUS_GIT_TOKEN` fallback.
+            strict_auth: self.is_writable_own,
         }
     }
 }

@@ -56,18 +56,6 @@ pub fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, 
     Ok(count)
 }
 
-/// Get the path to a specific regulation file.
-#[allow(dead_code)]
-pub fn get_regulation_path(relative_path: &str) -> Option<std::path::PathBuf> {
-    let path = regulation_base_path().join("nl").join(relative_path);
-
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 mod tests {

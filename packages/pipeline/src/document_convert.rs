@@ -1,15 +1,30 @@
-//! Document-convert jobs: turn an uploaded PDF/Word document into a clean
+//! Document-convert jobs: turn an uploaded document of any format into a clean
 //! markdown werkdocument.
 //!
 //! Known formats (docx/office via `pandoc`, PDF via `pdftotext`) are converted
 //! deterministically with a real tool — reliable, offline, and keeping the
-//! untrusted document away from the Bash-enabled LLM. Only when no tool fits
-//! does it fall back to the LLM agent subprocess that enrich uses (see
+//! untrusted document away from the Bash-enabled LLM. Any other format (the
+//! upload boundary no longer gates on an allow-list) falls back to the LLM
+//! agent subprocess that enrich uses (see
 //! [`crate::enrich::run_llm_subprocess`]), which decides for itself how to
-//! convert (pick a tool, or read it directly). This module owns the payload
+//! convert (pick a tool, or read it directly).
+//!
+//! Die fallback is niet vanzelfsprekend: hij draait alleen met expliciete
+//! toestemming van de uploader ([`DocumentConvertPayload::allow_llm`]). Zonder
+//! toestemming stopt de conversie zichtbaar op het moment dat de
+//! deterministische route niets oplevert — welke van de vele redenen dat ook
+//! heeft. Zo is "geen AI" een belofte die de pipeline kan waarmaken in plaats
+//! van een voorkeur die stilletjes wegvalt. This module owns the payload
 //! type, the transient upload storage helpers, the status-list query for the
 //! editor, and the conversion orchestration. The worker (see `worker.rs`) drives
-//! it and writes the produced markdown back to the traject's git corpus.
+//! it and delivers the produced markdown as a job-blob + review-taak
+//! (`worker::finish_document_convert_task_job`); the editor commits it to the
+//! traject repo namens de gebruiker after approval.
+//!
+//! Per het worker/traject-contract (zie de crate-doc in `lib.rs`) bevat deze
+//! module bewust géén git-push-pad: een sessieloze worker schrijft nooit met
+//! een server-token naar een traject-repo. De guard die dat afdwingt is
+//! [`DocumentConvertPayload::require_task_delivery`].
 
 use std::path::{Path, PathBuf};
 
@@ -17,9 +32,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
-
-use regelrecht_corpus::backend::{create_backend, WriteContext};
-use regelrecht_corpus::models::{GitHubSource, LocalSource, Source, SourceType};
 
 use crate::enrich::{run_llm_subprocess, EnrichConfig};
 use crate::error::{PipelineError, Result};
@@ -50,16 +62,54 @@ pub struct DocumentConvertPayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested_by: Option<Uuid>,
     /// `"task"` ⇒ resultaat als job_blobs + review-taak, géén push (taak-flow;
-    /// editor-api zet dit op elke upload). Afwezig ⇒ oude gedrag (jobs van
-    /// vóór het taken-mechanisme): directe push naar de traject-branch.
+    /// editor-api zet dit op elke upload). Elke andere waarde — inclusief
+    /// afwezig, het pre-taken-mechanisme directe-push-gedrag — wordt door de
+    /// worker terminaal geweigerd: zie [`Self::require_task_delivery`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deliver: Option<String>,
+    /// Gaf de uploader expliciet toestemming om een taalmodel te gebruiken?
+    ///
+    /// `false` (de default, óók voor payloads van vóór dit veld) is een harde
+    /// belofte: de inhoud van dit document komt onder geen enkele omstandigheid
+    /// bij een LLM terecht. Lukt de deterministische conversie niet — geen
+    /// converter voor dit formaat, tool afwezig, non-zero exit, of lege output
+    /// (denk aan een gescande pdf) — dan faalt de job zichtbaar in plaats van
+    /// stilletjes uit te wijken naar de agent. Zie [`convert_in_dir`].
+    ///
+    /// Dat de default `false` is, is bewust: een nog-in-de-wachtrij staande job
+    /// van vóór dit veld draagt geen toestemming, dus mag hij er ook geen
+    /// krijgen. Zo'n job faalt hooguit terminaal met een uitleg — het
+    /// tegenovergestelde (stil alsnog een LLM voeren) is de fout die dit veld
+    /// juist moet uitsluiten.
+    #[serde(default)]
+    pub allow_llm: bool,
 }
 
 impl DocumentConvertPayload {
     /// Taak-flow: resultaat naar Postgres + taak i.p.v. push naar git.
     pub fn deliver_as_task(&self) -> bool {
         self.deliver.as_deref() == Some("task")
+    }
+
+    /// Contract-guard op jobniveau: een document-convert-job heeft altijd een
+    /// traject-doel (`traject_id`), en per het worker/traject-contract (zie de
+    /// crate-doc) mag een sessieloze worker nooit met een server-token naar
+    /// een traject-repo pushen. Oplevering kan dus uitsluitend via de
+    /// taak-flow: `deliver: "task"` mét een `requested_by` als assignee van de
+    /// review-taak. Al het andere — het verwijderde directe-push-gedrag van
+    /// jobs van vóór het taken-mechanisme incluis — hoort terminaal en luid te
+    /// falen, vóór de (kostbare) conversie. Spiegel van de `law_convert`-gate
+    /// in `worker.rs`.
+    pub fn require_task_delivery(&self) -> Result<()> {
+        if !self.deliver_as_task() || self.requested_by.is_none() {
+            return Err(PipelineError::Worker(
+                "document_convert vereist deliver=task met requested_by: een traject-write \
+                 loopt altijd via een review-taak (editor-commit namens de gebruiker), nooit \
+                 via een directe push vanuit de worker"
+                    .to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -121,123 +171,6 @@ pub async fn cleanup_orphaned_uploads(pool: &PgPool) -> Result<u64> {
     .execute(pool)
     .await?;
     Ok(result.rows_affected())
-}
-
-/// Row for a traject's writable-own corpus source, from `traject_corpus_sources`.
-#[derive(sqlx::FromRow)]
-struct WritableOwnSourceRow {
-    source_id: String,
-    name: String,
-    source_type: String,
-    gh_owner: Option<String>,
-    gh_repo: Option<String>,
-    gh_branch: Option<String>,
-    gh_path: Option<String>,
-    gh_ref: Option<String>,
-    local_path: Option<String>,
-    priority: i32,
-    auth_ref: Option<String>,
-}
-
-impl WritableOwnSourceRow {
-    /// Mirror of editor-api's `TrajectSourceRow::to_source`. Scopes are omitted
-    /// (they only gate reads; the worker only writes).
-    fn to_source(&self) -> Source {
-        let source_type = match self.source_type.as_str() {
-            "github" => SourceType::GitHub {
-                github: GitHubSource {
-                    owner: self.gh_owner.clone().unwrap_or_default(),
-                    repo: self.gh_repo.clone().unwrap_or_default(),
-                    branch: self.gh_branch.clone().unwrap_or_default(),
-                    path: self.gh_path.clone(),
-                    git_ref: self.gh_ref.clone(),
-                },
-            },
-            _ => SourceType::Local {
-                local: LocalSource {
-                    path: std::path::PathBuf::from(self.local_path.clone().unwrap_or_default()),
-                },
-            },
-        };
-        Source {
-            id: self.source_id.clone(),
-            name: self.name.clone(),
-            source_type,
-            scopes: Vec::new(),
-            priority: self.priority.max(0) as u32,
-            auth_ref: self.auth_ref.clone(),
-        }
-    }
-}
-
-/// Build a corpus [`Source`] for the traject's single writable-own source.
-async fn load_writable_own_source(pool: &PgPool, traject_id: Uuid) -> Result<Source> {
-    let row = sqlx::query_as::<_, WritableOwnSourceRow>(
-        r#"
-        SELECT source_id, name, source_type::text AS source_type,
-               gh_owner, gh_repo, gh_branch, gh_path, gh_ref, local_path,
-               priority, auth_ref
-        FROM traject_corpus_sources
-        WHERE traject_id = $1 AND is_writable_own = TRUE
-        -- A partial unique index already guarantees at most one such row per
-        -- traject; the deterministic order + LIMIT is defensive belt-and-braces.
-        ORDER BY priority DESC, source_id
-        LIMIT 1
-        "#,
-    )
-    .bind(traject_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| {
-        PipelineError::Enrich(format!(
-            "traject {traject_id} has no writable-own corpus source"
-        ))
-    })?;
-    Ok(row.to_source())
-}
-
-/// Write the converted markdown into the traject's writable-own corpus and push
-/// it. This is a service-account commit straight to the source's branch (no PR):
-/// the async worker has no user session, so it mirrors how the enrich worker
-/// writes to the corpus rather than the editor's per-session PR flow. The file
-/// lands at `documents/<traject_ref>/<target_path>` — the same location the
-/// editor's document handler writes to — so it shows up as a normal werkdocument.
-pub async fn write_markdown_to_traject(
-    pool: &PgPool,
-    payload: &DocumentConvertPayload,
-    markdown: &str,
-) -> Result<()> {
-    let source = load_writable_own_source(pool, payload.traject_id).await?;
-    // Resolve a push token strictly by the source's auth key (env var
-    // `CORPUS_AUTH_<key>_TOKEN`); no auth file in the worker and no shared-token
-    // fallback — matches the editor's writable-own resolution.
-    let auth_key = source.auth_ref.clone().unwrap_or_else(|| source.id.clone());
-    let token = regelrecht_corpus::auth::resolve_token_strict(&auth_key, None)?;
-
-    // A GitHub source with no push token would only commit into the worker's
-    // throwaway checkout (GitBackend goes local-only) and never reach the
-    // traject — silent data loss. Fail loudly instead, so the failure is visible
-    // in the werkdocumenten status block and the ops fix (set the token) is
-    // obvious. Local sources need no token (the local write IS the persistence).
-    if token.is_none() && matches!(source.source_type, SourceType::GitHub { .. }) {
-        return Err(PipelineError::Enrich(format!(
-            "no push token for traject source '{auth_key}' (expected env {}); the converted \
-             document cannot be persisted to the traject repository",
-            regelrecht_corpus::auth::token_env_name(&auth_key),
-        )));
-    }
-
-    let mut backend = create_backend(&source, token.as_deref())?;
-    backend.ensure_ready().await?;
-
-    let relative_path = Path::new("documents")
-        .join(&payload.traject_ref)
-        .join(&payload.target_path);
-    backend.write_file(&relative_path, markdown).await?;
-
-    let message = format!("document-convert: {}", payload.target_path);
-    backend.persist(&WriteContext::new(message, None)).await?;
-    Ok(())
 }
 
 /// A trimmed view of a `document_convert` job for the werkdocumenten status UI.
@@ -471,32 +404,137 @@ pub(crate) fn extension_for(filename: &str, content_type: &str) -> String {
 }
 
 /// Load the upload, run the conversion in a fresh working directory, and return
-/// the produced markdown. The caller (worker) is responsible for writing the
-/// markdown to git and for cleaning up the upload row + job.
+/// the produced markdown plus the route that produced it. The caller (worker) is
+/// responsible for delivering the markdown and for cleaning up the upload row +
+/// job.
 pub async fn execute_document_convert(
     pool: &PgPool,
     payload: &DocumentConvertPayload,
     config: &EnrichConfig,
     converter: &dyn DocumentConverter,
-) -> Result<String> {
+) -> Result<ConvertedDocument> {
     let upload = load_upload(pool, payload.upload_id).await?;
     let work_dir = std::env::temp_dir().join(format!("docconvert-{}", payload.upload_id));
     // Clear any stale directory left by a previous attempt of this same job.
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
     tokio::fs::create_dir_all(&work_dir).await?;
 
-    let result = convert_in_dir(&work_dir, &upload, &payload.target_path, config, converter).await;
+    let result = convert_in_dir(
+        &work_dir,
+        &upload,
+        &payload.target_path,
+        payload.allow_llm,
+        config,
+        converter,
+    )
+    .await;
 
     // Always remove the working directory, success or failure.
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
     result
 }
 
+/// The deterministic command-line converter that handles a given extension.
+/// `pandoc` reads the office/markup formats; `pdftotext` (poppler) reads PDF.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeterministicTool {
+    Pandoc,
+    PdfToText,
+}
+
+/// Single source of truth for "which formats take the fast, offline route":
+/// extension → the tool that reads it. Everything else — the command dispatch
+/// in [`try_deterministic_convert`], the predicate
+/// [`has_deterministic_converter`] the editor-api gates its upload on, and the
+/// list [`deterministic_extensions`] the editor shows the user — is derived
+/// from this table, so the routing decision can never drift apart from what the
+/// UI promises.
+const DETERMINISTIC_CONVERTERS: &[(&str, DeterministicTool)] = &[
+    // pandoc reads these natively and emits GitHub-flavored Markdown.
+    ("docx", DeterministicTool::Pandoc),
+    ("odt", DeterministicTool::Pandoc),
+    ("rtf", DeterministicTool::Pandoc),
+    ("html", DeterministicTool::Pandoc),
+    ("htm", DeterministicTool::Pandoc),
+    ("epub", DeterministicTool::Pandoc),
+    ("fb2", DeterministicTool::Pandoc),
+    // pandoc cannot read PDF; poppler's pdftotext extracts the text layer.
+    ("pdf", DeterministicTool::PdfToText),
+];
+
+/// The deterministic converter for `ext`, or `None` when no tool fits — in which
+/// case only the agentic (LLM) fallback can convert the document, and that route
+/// requires the uploader's explicit permission (`allow_llm`).
+fn deterministic_tool_for(ext: &str) -> Option<DeterministicTool> {
+    DETERMINISTIC_CONVERTERS
+        .iter()
+        .find(|(e, _)| *e == ext)
+        .map(|(_, tool)| *tool)
+}
+
+/// Whether a deterministic converter handles `ext`. Formats without one can only
+/// be converted by the agentic (LLM) route. Public because the upload boundary
+/// gates on it: an upload without LLM permission for such a format is rejected
+/// up front instead of enqueueing a job that could only fail.
+pub fn has_deterministic_converter(ext: &str) -> bool {
+    deterministic_tool_for(ext).is_some()
+}
+
+/// Every extension a deterministic converter handles, in table order. The
+/// editor-api serves this to the frontend so the upload dialog can tell the
+/// user, per chosen file, whether it can be converted without AI — from this
+/// one source, instead of a second hand-maintained list in the UI.
+pub fn deterministic_extensions() -> Vec<&'static str> {
+    DETERMINISTIC_CONVERTERS.iter().map(|(e, _)| *e).collect()
+}
+
+/// Which route a conversion actually took. The uploader's checkbox says what was
+/// *allowed*; only the pipeline knows what *happened*, so this travels back with
+/// the result and ends up in the review banner ("omgezet met pandoc" /
+/// "omgezet met AI").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionRoute {
+    Pandoc,
+    PdfToText,
+    /// The agentic fallback: the document was read by an LLM agent.
+    Llm,
+}
+
+impl ConversionRoute {
+    /// Stable machine token stored in the job result and the review-taak payload.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConversionRoute::Pandoc => "pandoc",
+            ConversionRoute::PdfToText => "pdftotext",
+            ConversionRoute::Llm => "llm",
+        }
+    }
+
+    fn from_tool(tool: DeterministicTool) -> Self {
+        match tool {
+            DeterministicTool::Pandoc => ConversionRoute::Pandoc,
+            DeterministicTool::PdfToText => ConversionRoute::PdfToText,
+        }
+    }
+}
+
+/// A finished conversion: the markdown plus the route that produced it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConvertedDocument {
+    pub markdown: String,
+    pub route: ConversionRoute,
+}
+
 /// Try to convert `input_file` to markdown at `output_path` with a deterministic
-/// command-line tool, chosen by extension. Returns `Some(markdown)` on success,
+/// command-line tool, chosen by extension. Returns `Some(document)` on success,
 /// or `None` when the format is not handled, the tool is absent, it exits
-/// non-zero, or it produces empty output — every `None` case falls through to the
-/// agentic converter, so a missing tool or an odd file never hard-fails here.
+/// non-zero, or it produces empty output.
+///
+/// Note the breadth of `None`: it is emphatically NOT just "unknown extension".
+/// A missing tool, a crash, and a scanned PDF whose text layer is empty all land
+/// here too. Callers must therefore treat `None` as "deterministic conversion
+/// did not happen" and honour `allow_llm` before reaching for the agent — see
+/// [`convert_in_dir`].
 ///
 /// `pandoc` handles the office/markup formats; `pdftotext` (poppler) handles
 /// PDF. Both are baked into the enrich-worker image.
@@ -504,10 +542,10 @@ pub(crate) async fn try_deterministic_convert(
     input_file: &Path,
     ext: &str,
     output_path: &Path,
-) -> Option<String> {
-    let mut cmd = match ext {
-        // pandoc reads these natively and emits GitHub-flavored Markdown.
-        "docx" | "odt" | "rtf" | "html" | "htm" | "epub" | "fb2" => {
+) -> Option<ConvertedDocument> {
+    let tool = deterministic_tool_for(ext)?;
+    let mut cmd = match tool {
+        DeterministicTool::Pandoc => {
             let mut c = tokio::process::Command::new("pandoc");
             c.arg(input_file)
                 .arg("-t")
@@ -517,13 +555,11 @@ pub(crate) async fn try_deterministic_convert(
                 .arg(output_path);
             c
         }
-        // pandoc cannot read PDF; poppler's pdftotext extracts the text layer.
-        "pdf" => {
+        DeterministicTool::PdfToText => {
             let mut c = tokio::process::Command::new("pdftotext");
             c.arg("-layout").arg(input_file).arg(output_path);
             c
         }
-        _ => return None,
     };
 
     match cmd.status().await {
@@ -532,23 +568,61 @@ pub(crate) async fn try_deterministic_convert(
             if markdown.trim().is_empty() {
                 None
             } else {
-                Some(markdown)
+                Some(ConvertedDocument {
+                    markdown,
+                    route: ConversionRoute::from_tool(tool),
+                })
             }
         }
-        // Tool missing (spawn error) or a non-zero exit → let the agent try.
+        // Tool missing (spawn error) or a non-zero exit.
         _ => None,
     }
 }
 
+/// Why a conversion cannot continue without LLM permission. Ends up verbatim in
+/// the "Conversie mislukt: …"-taak, so it is Dutch, concrete about which of the
+/// two cases applies, and says out loud that no language model saw the document.
+///
+/// Bewust [`PipelineError::LlmNotPermitted`] en niet `Enrich`: de boodschap gaat
+/// ongewijzigd naar de gebruiker (geen `enrichment error:`-prefix voor iets dat
+/// juist niet verrijkt is), en ze bevat de bestandsnaam van de gebruiker — het
+/// type houdt die tekst weg bij de tekst-matchende foutclassificatie in de
+/// worker.
+fn no_llm_permission_error(ext: &str, filename: &str) -> PipelineError {
+    let format = if ext.is_empty() {
+        "dit bestand".to_string()
+    } else {
+        format!("een .{ext}-bestand")
+    };
+    let reason = if has_deterministic_converter(ext) {
+        "de omzetting zonder AI leverde geen bruikbare tekst op — bijvoorbeeld een gescande \
+         pdf zonder tekstlaag, of een leeg document"
+            .to_string()
+    } else {
+        format!("voor {format} bestaat geen omzetting zonder AI")
+    };
+    PipelineError::LlmNotPermitted(format!(
+        "Conversie van {filename} gestopt: {reason}. Er is geen taalmodel gebruikt en de inhoud \
+         is nergens naartoe gestuurd. Upload het bestand opnieuw met 'Omzetten met AI toestaan' \
+         aan, of lever een versie met een tekstlaag aan."
+    ))
+}
+
 /// The pure filesystem half of the conversion, split out so it can be unit-tested
 /// with a fake converter and a synthetic upload (no DB, no LLM).
+///
+/// `allow_llm` is the uploader's answer to "mag hier een taalmodel aan te pas
+/// komen?". With `false` this function must never call `converter` — not for an
+/// unknown format, and not when the deterministic tool fell over. That is the
+/// whole promise the upload dialog makes.
 async fn convert_in_dir(
     work_dir: &Path,
     upload: &Upload,
     target_path: &str,
+    allow_llm: bool,
     config: &EnrichConfig,
     converter: &dyn DocumentConverter,
-) -> Result<String> {
+) -> Result<ConvertedDocument> {
     let ext = extension_for(&upload.filename, &upload.content_type);
     let input_file = work_dir.join(format!("input.{ext}"));
     tokio::fs::write(&input_file, &upload.bytes).await?;
@@ -565,8 +639,16 @@ async fn convert_in_dir(
     // crucially — keeps the untrusted document away from the Bash-enabled LLM,
     // shrinking the prompt-injection surface. The agentic path stays as a
     // fallback for formats the tools don't handle (or when they are absent).
-    if let Some(markdown) = try_deterministic_convert(&input_file, &ext, &output_path).await {
-        return Ok(markdown);
+    if let Some(converted) = try_deterministic_convert(&input_file, &ext, &output_path).await {
+        return Ok(converted);
+    }
+
+    // Geen deterministisch resultaat. Dat is méér dan "onbekend formaat": ook
+    // een ontbrekende tool, een crash of lege output (gescande pdf) belandt
+    // hier. Zonder toestemming stopt het hier — één centrale poort, zodat geen
+    // enkel van die gevallen alsnog bij het taalmodel uitkomt.
+    if !allow_llm {
+        return Err(no_llm_permission_error(&ext, &upload.filename));
     }
 
     converter
@@ -584,7 +666,10 @@ async fn convert_in_dir(
             "conversion produced empty markdown".to_string(),
         ));
     }
-    Ok(markdown)
+    Ok(ConvertedDocument {
+        markdown,
+        route: ConversionRoute::Llm,
+    })
 }
 
 #[cfg(test)]
@@ -601,6 +686,7 @@ mod tests {
             provider: Some("claude".to_string()),
             requested_by: None,
             deliver: None,
+            allow_llm: true,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert_eq!(json["upload_id"], "00000000-0000-0000-0000-000000000000");
@@ -619,6 +705,7 @@ mod tests {
             provider: None,
             requested_by: None,
             deliver: None,
+            allow_llm: false,
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert!(json.get("provider").is_none());
@@ -626,8 +713,9 @@ mod tests {
 
     #[test]
     fn payload_deliver_task_fields_roundtrip_and_backcompat() {
-        // Oude payloads (zonder deliver-veld) moeten blijven deserialiseren en
-        // vallen terug op het oude directe-push-gedrag.
+        // Oude payloads (zonder deliver-veld) moeten blijven deserialiseren —
+        // maar hun directe-push-gedrag bestaat niet meer: de guard weigert ze
+        // terminaal (zie `require_task_delivery_rejects_non_task_payloads`).
         let old = serde_json::json!({
             "upload_id": Uuid::nil(),
             "traject_id": Uuid::nil(),
@@ -648,11 +736,64 @@ mod tests {
             provider: None,
             requested_by: Some(account),
             deliver: Some("task".to_string()),
+            allow_llm: true,
         };
         let roundtrip: DocumentConvertPayload =
             serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
         assert_eq!(roundtrip.requested_by, Some(account));
         assert!(roundtrip.deliver_as_task());
+    }
+
+    /// Basispayload met traject-doel voor de guard-tests hieronder.
+    fn traject_payload(
+        deliver: Option<&str>,
+        requested_by: Option<Uuid>,
+    ) -> DocumentConvertPayload {
+        DocumentConvertPayload {
+            upload_id: Uuid::nil(),
+            traject_id: Uuid::new_v4(),
+            traject_ref: "voorbeeld-abcd1234".to_string(),
+            target_path: "report.md".to_string(),
+            provider: None,
+            requested_by,
+            deliver: deliver.map(str::to_string),
+            allow_llm: false,
+        }
+    }
+
+    #[test]
+    fn require_task_delivery_rejects_non_task_payloads() {
+        // Het worker/traject-contract: een document-convert-job (altijd een
+        // traject-doel) mag uitsluitend via de taak-flow opleveren. Zonder
+        // `deliver: "task"` — het verwijderde pre-taken directe-push-gedrag —
+        // moet de guard weigeren, wélke andere waarde er ook staat.
+        let account = Uuid::new_v4();
+        for deliver in [None, Some("push"), Some("Task"), Some("")] {
+            let err = traject_payload(deliver, Some(account))
+                .require_task_delivery()
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("deliver=task"),
+                "deliver={deliver:?} moet met een duidelijke contractfout geweigerd worden, kreeg: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn require_task_delivery_rejects_task_without_requested_by() {
+        // Zonder aanvrager is er geen assignee voor de review-taak, dus ook
+        // geen aflever-pad — net zo terminaal als een niet-task-payload.
+        let err = traject_payload(Some("task"), None)
+            .require_task_delivery()
+            .unwrap_err();
+        assert!(err.to_string().contains("requested_by"));
+    }
+
+    #[test]
+    fn require_task_delivery_accepts_the_task_flow() {
+        traject_payload(Some("task"), Some(Uuid::new_v4()))
+            .require_task_delivery()
+            .expect("taak-flow-payload met aanvrager is het enige geldige aflever-pad");
     }
 
     #[test]
@@ -716,10 +857,11 @@ mod tests {
         let converter = FakeConverter {
             markdown: "# Report\n\nBody.\n".to_string(),
         };
-        let md = convert_in_dir(
+        let converted = convert_in_dir(
             dir.path(),
             &upload,
             "report.md",
+            true,
             &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
                 path: "claude".into(),
                 model: None,
@@ -728,7 +870,8 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(md, "# Report\n\nBody.\n");
+        assert_eq!(converted.markdown, "# Report\n\nBody.\n");
+        assert_eq!(converted.route, ConversionRoute::Llm);
     }
 
     #[tokio::test]
@@ -746,6 +889,7 @@ mod tests {
             dir.path(),
             &upload,
             "report.md",
+            true,
             &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
                 path: "claude".into(),
                 model: None,
@@ -768,5 +912,240 @@ mod tests {
             .await
             .is_none());
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn routes_formats_between_deterministic_and_agentic() {
+        // Formats a real tool handles take the fast, offline route. This covers
+        // the newly-accepted office/markup formats (odt/rtf/html/epub/…) that the
+        // upload boundary used to reject before the allow-list was dropped.
+        for ext in ["docx", "odt", "rtf", "html", "htm", "epub", "fb2", "pdf"] {
+            assert!(
+                has_deterministic_converter(ext),
+                "{ext} should take the deterministic route"
+            );
+        }
+        // Everything else — images, spreadsheets, presentations, unknown/binary
+        // junk — has no deterministic tool and falls back to the agentic
+        // (enricher/LLM) converter, which returns a reviewable markdown task.
+        for ext in ["png", "jpg", "xlsx", "pptx", "csv", "bin", "", "exe"] {
+            assert!(
+                !has_deterministic_converter(ext),
+                "{ext} should take the agentic fallback route"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn convert_in_dir_uses_agentic_fallback_for_new_nonconvertible_format() {
+        let dir = tempfile::tempdir().unwrap();
+        // A `.pptx` is a format the upload boundary now accepts but no
+        // deterministic tool here reads, so the agentic fallback (FakeConverter)
+        // must run and produce the reviewable markdown.
+        let upload = Upload {
+            filename: "deck.pptx".to_string(),
+            content_type:
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    .to_string(),
+            bytes: b"raw slide bytes".to_vec(),
+        };
+        let converter = FakeConverter {
+            markdown: "# Deck\n\nSlide one.\n".to_string(),
+        };
+        let converted = convert_in_dir(
+            dir.path(),
+            &upload,
+            "deck.md",
+            true,
+            &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
+                path: "claude".into(),
+                model: None,
+            }),
+            &converter,
+        )
+        .await
+        .unwrap();
+        assert_eq!(converted.markdown, "# Deck\n\nSlide one.\n");
+        assert_eq!(converted.route, ConversionRoute::Llm);
+    }
+
+    /// End-to-end deterministic route for a newly-accepted format (`.html`): when
+    /// `pandoc` is present the converter is never consulted, proving the fast
+    /// route is taken. Skipped when `pandoc` is absent (it lives in the
+    /// enrich-worker image but not every test host), so the suite never depends
+    /// on an external tool being installed.
+    #[tokio::test]
+    async fn convert_in_dir_uses_deterministic_route_for_new_html_format() {
+        if tokio::process::Command::new("pandoc")
+            .arg("--version")
+            .output()
+            .await
+            .map(|o| !o.status.success())
+            .unwrap_or(true)
+        {
+            eprintln!("skipping: pandoc not installed");
+            return;
+        }
+
+        struct PanickingConverter;
+        #[async_trait::async_trait]
+        impl DocumentConverter for PanickingConverter {
+            async fn convert(
+                &self,
+                _input_file: &Path,
+                _work_dir: &Path,
+                _output_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                panic!("the agentic converter must not run for a deterministic format");
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let upload = Upload {
+            filename: "page.html".to_string(),
+            content_type: "text/html".to_string(),
+            bytes: b"<h1>Titel</h1><p>Inhoud.</p>".to_vec(),
+        };
+        let converted = convert_in_dir(
+            dir.path(),
+            &upload,
+            "page.md",
+            true,
+            &EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
+                path: "claude".into(),
+                model: None,
+            }),
+            &PanickingConverter,
+        )
+        .await
+        .unwrap();
+        // pandoc turns the <h1> into an ATX heading.
+        assert!(
+            converted.markdown.contains("Titel"),
+            "expected converted markdown, got: {}",
+            converted.markdown
+        );
+        assert_eq!(converted.route, ConversionRoute::Pandoc);
+    }
+
+    /// Converter die luid faalt zodra hij wordt aangeroepen: elk gebruik ervan
+    /// betekent dat de inhoud bij een taalmodel terecht was gekomen.
+    struct ForbiddenConverter;
+
+    #[async_trait::async_trait]
+    impl DocumentConverter for ForbiddenConverter {
+        async fn convert(
+            &self,
+            _input_file: &Path,
+            _work_dir: &Path,
+            _output_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            panic!("zonder allow_llm mag de agent nooit draaien");
+        }
+    }
+
+    fn test_config() -> EnrichConfig {
+        EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        })
+    }
+
+    /// De kern van de belofte: zonder toestemming faalt de conversie in ELK
+    /// geval waarin `try_deterministic_convert` niets oplevert — niet alleen bij
+    /// een onbekende extensie. De `.pdf`/`.docx`-gevallen dekken juist de stille
+    /// valstrik: een formaat mét converter waarvan de tool ontbreekt, crasht of
+    /// (gescande pdf) lege tekst geeft. Elke variant moet op de foutregel
+    /// eindigen in plaats van bij `ForbiddenConverter` uit te komen.
+    #[tokio::test]
+    async fn convert_in_dir_refuses_llm_fallback_without_permission() {
+        for (filename, content_type, bytes) in [
+            // Geen deterministische converter voor dit formaat.
+            ("brief.doc", "application/msword", &b"oud word-formaat"[..]),
+            ("aantekening.txt", "text/plain", &b"platte tekst"[..]),
+            // Wél een converter, maar onbruikbare input: pdftotext/pandoc geven
+            // hierop non-zero of lege output (en op een host zonder de tools
+            // faalt de spawn) — precies de stille terugval die dicht moet.
+            ("scan.pdf", "application/pdf", &b"niet echt een pdf"[..]),
+            (
+                "rapport.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                &b"niet echt een docx"[..],
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let upload = Upload {
+                filename: filename.to_string(),
+                content_type: content_type.to_string(),
+                bytes: bytes.to_vec(),
+            };
+            let err = convert_in_dir(
+                dir.path(),
+                &upload,
+                "doel.md",
+                false,
+                &test_config(),
+                &ForbiddenConverter,
+            )
+            .await
+            .unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Er is geen taalmodel gebruikt"),
+                "{filename} moet zichtbaar en met uitleg falen, kreeg: {msg}"
+            );
+            assert!(
+                msg.contains(filename),
+                "de fout moet het bestand noemen, kreeg: {msg}"
+            );
+        }
+    }
+
+    /// Tegenproef bij de test hierboven: mét toestemming loopt hetzelfde
+    /// bestand wél door naar de agent, zodat de weigering aantoonbaar aan
+    /// `allow_llm` hangt en niet aan iets anders in het pad.
+    #[tokio::test]
+    async fn convert_in_dir_runs_llm_fallback_with_permission() {
+        let dir = tempfile::tempdir().unwrap();
+        let upload = Upload {
+            filename: "brief.doc".to_string(),
+            content_type: "application/msword".to_string(),
+            bytes: b"oud word-formaat".to_vec(),
+        };
+        let converted = convert_in_dir(
+            dir.path(),
+            &upload,
+            "brief.md",
+            true,
+            &test_config(),
+            &FakeConverter {
+                markdown: "# Brief\n".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(converted.route, ConversionRoute::Llm);
+    }
+
+    /// De lijst die de editor aan de gebruiker toont komt uit dezelfde tabel als
+    /// de routeringsbeslissing — geen tweede lijst die kan gaan afwijken.
+    #[test]
+    fn deterministic_extensions_match_the_predicate() {
+        let listed = deterministic_extensions();
+        assert!(!listed.is_empty());
+        for ext in &listed {
+            assert!(
+                has_deterministic_converter(ext),
+                "{ext} staat in de lijst maar heeft geen converter"
+            );
+        }
+        for ext in ["doc", "txt", "png", "pptx", ""] {
+            assert!(
+                !listed.contains(&ext),
+                "{ext} heeft geen converter en hoort niet in de lijst"
+            );
+        }
     }
 }

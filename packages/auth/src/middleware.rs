@@ -2,8 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use axum::extract::{Request, State};
-use axum::http::header;
-use axum::http::{HeaderValue, StatusCode};
+use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::Response;
 use openidconnect::core::CoreErrorResponseType;
@@ -80,35 +79,6 @@ pub async fn check_session_role(session: &Session, required_role: &str) -> RoleC
             }
         }
     }
-}
-
-pub async fn security_headers(request: Request, next: Next) -> Response {
-    let mut response = next.run(request).await;
-    let headers = response.headers_mut();
-    headers.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
-    headers.insert(
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
-    );
-    headers.insert(
-        "content-security-policy",
-        HeaderValue::from_static(
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'",
-        ),
-    );
-    headers.insert(
-        "permissions-policy",
-        HeaderValue::from_static("geolocation=(), camera=(), microphone=()"),
-    );
-    headers.insert(
-        header::STRICT_TRANSPORT_SECURITY,
-        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
-    );
-    response
 }
 
 /// Session-based authentication middleware.
@@ -449,55 +419,6 @@ mod tests {
             ))
             .with_state(state)
             .layer(session_layer)
-    }
-
-    #[tokio::test]
-    async fn security_headers_are_set() {
-        let app = Router::new()
-            .route("/test", get(|| async { "ok" }))
-            .layer(axum_middleware::from_fn(security_headers));
-
-        let response = app
-            .oneshot(
-                axum::http::Request::builder()
-                    .uri("/test")
-                    .body(Body::empty())
-                    .expect("request"),
-            )
-            .await
-            .expect("response");
-
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get("x-content-type-options").unwrap(),
-            "nosniff"
-        );
-        assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
-        assert_eq!(
-            response.headers().get("referrer-policy").unwrap(),
-            "strict-origin-when-cross-origin"
-        );
-        assert!(response
-            .headers()
-            .get("content-security-policy")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("default-src 'self'"));
-        assert!(response
-            .headers()
-            .get("permissions-policy")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("geolocation=()"));
-        assert!(response
-            .headers()
-            .get("strict-transport-security")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("max-age="));
     }
 
     #[tokio::test]

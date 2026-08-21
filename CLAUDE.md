@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
 - `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
-- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor JS via `bdd/codegen/gen-js.mjs` → `frontend/src/gherkin/grammar.generated.js`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets.
+- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor JS via `bdd/codegen/gen-js.mjs` → `frontend/src/gherkin/grammar.generated.js`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets; `BDD_BUCKET=conformance|corpus` narrows it to one. CI runs and blocks on bucket B (job **BDD conformance**, hung on the `Test` gate); bucket A stays out, because a failure there is a human's call.
 
 ## Development Setup
 
@@ -51,9 +51,9 @@ just lint        # Run clippy lints on all packages
 just build-check # Run cargo check on all packages
 just validate    # Validate regulation YAML files (all, or pass specific files)
 just check       # Run all quality checks (format + lint + check + validate + tests)
-just test       # Run Rust unit tests
-just bdd        # Run Rust BDD tests (cucumber-rs)
-just test-all   # Run all tests (unit + BDD + harvester + pipeline)
+just test       # Run every Rust test in the workspace (needs Docker)
+just test-no-docker  # Same, minus the container-backed suites
+just bdd        # Run Rust BDD tests (cucumber-rs; not part of `just test`)
 
 # Pipeline commands
 just pipeline-test              # Run pipeline unit tests (no Docker/DB required)
@@ -82,8 +82,8 @@ merge). The format is **Conventional Commits**: `type(scope): subject`, where
 - **Allowed types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
   `test`, `chore`, `build`, `ci`.
 - **Allowed scopes** (optional): `engine`, `admin`, `pipeline`, `harvester`,
-  `editor`, `corpus`, `frontend`, `lawmaking`, `docs`, `grafana`, `ci`,
-  `schema`, `deps`, `dev`. An unlisted scope fails the lint.
+  `editor`, `corpus`, `github`, `frontend`, `lawmaking`, `docs`, `grafana`,
+  `ci`, `schema`, `deps`, `dev`. An unlisted scope fails the lint.
 - **The subject MUST start with a lowercase letter** (`subjectPattern:
   ^[a-z].*$`). This is the easiest rule to trip on: `docs: RFC-…` fails because
   "RFC" is uppercase — write `docs: verwijzingen naar RFC's …` instead. Editing
@@ -213,6 +213,234 @@ After completing significant code changes, proactively use the `code-reviewer` s
 All components are deployed to ZAD (RIG/Quattro/rijksapps) via `.github/workflows/deploy.yml`.
 CI runs via `.github/workflows/ci.yml`.
 
+### The Claude review merge gate
+
+`claude-code-review.yml` posts its findings as review comments and takes about
+ten minutes, roughly twice as long as the required checks. Merging on green
+therefore used to be possible before the review had said anything. The
+`review-gate` job (check name **Claude review completed**) closes that window:
+it waits for the `claude-review` job **inside its own workflow run** and only
+passes once that job is `completed` with `success` or `neutral`. It looks the
+job up by run id rather than by head SHA, because `ready_for_review` and
+`reopened` keep the same SHA and a SHA lookup can then read a leftover check-run
+from the previous run.
+
+Drive the wait off the job's `status`, never off the number of review comments —
+zero comments is equally consistent with "still running" and with "the review had
+nothing to report". The gate does read the comments, but only for what is written
+in them, and only once the proof step has established that the review ran to
+completion. That order is enforced rather than assumed: `assert_no_critical_finding`
+blocks with an internal-error message if it is reached before `assert_review_ran`
+has set `review_proven`, and the test suite asserts that the comment endpoints stay
+untouched on every path where the review is unproven.
+
+`claude-review` itself cannot be a required check, because it does not run on
+cross-repo (fork) PRs, where no secrets exist and `CLAUDE_CODE_OAUTH_TOKEN` is
+absent, and a required check that never reports blocks such a PR forever.
+`review-gate` always runs and always reports; it derives "not applicable" from
+the PR as the API describes it (cross-repo, draft, dependabot) rather than from
+`claude-review`'s conclusion, so a failed or skipped review can never pass as an
+inapplicable one.
+
+Dependabot is a deliberate exemption, not an oversight: those PRs go through
+`claude-dependabot.yml`, and that workflow decides for itself whether to merge.
+The gate does not verify that it ran.
+
+A green job is not enough on its own. `claude-code-action` exits with conclusion
+`success` **without reviewing anything** when the workflow file differs from the
+version on the default branch ("Exiting due to workflow validation skip"). The
+gate therefore checks two things before it believes a green job.
+
+First it compares `.github/workflows/claude-code-review.yml` as this run has it
+with the copy on the default branch, through the contents API. Differ, and there
+is no automatic review to wait for: the gate blocks straight away, before the
+wait. That is also what makes the rest trustworthy — identical files mean the
+workflow that ran is the one from the default branch, not something the PR
+brought along. A PR that edits this file needs a human review plus an admin
+merge.
+
+It compares `refs/pull/N/merge`, not the head commit. A `pull_request` run
+executes the workflow file as it stands in the test merge of PR and base, so a
+branch that has fallen behind still runs the base's copy. Comparing against the
+head commit would put exactly those branches on red while their review ran fine.
+
+Then it reads the proof out of the review job: the step **Record that the review
+ran** carries `if: steps.claude-review.outputs.execution_file != ''`, and that
+output is only set once the Claude CLI has actually run. Self-skip, and the step
+is `skipped`. The gate reads that step's conclusion from the `steps[]` array of
+the job it already looked up, so the proof is bound to this run and this attempt
+by construction, and it exists just as well when the review had zero findings. It
+insists on exactly one step by that name; two would let an added decoy outvote
+the real one.
+
+Do not rename that step without changing `PROOF_STEP` in the gate. The test suite
+asserts that the workflow still carries the step under that name with that `if:`,
+and the pre-commit hook runs on the workflow file for exactly that reason.
+
+What the gate treats as fact it fetches itself. The workflow that invokes it
+lives in the pull request, so anything that workflow passes in is written by the
+author of the change under review — `IS_DRAFT: true` in the env block used to be
+enough to declare the review inapplicable. Draft, fork, author and the workflow
+file all come from the API now; the env block carries only the coordinates of the
+run (repository, run id, PR number), and the gate checks that the run and the PR
+describe the same commit, so pointing it at another PR's run yields a red.
+
+What none of this reaches: the `review-gate` job itself lives in the workflow
+file the PR brings along. A PR that keeps the job name **Claude review completed**
+and replaces its steps with `run: true` reports green without ever running the
+script, and nothing inside the script can prevent that. Closing it takes a rule
+outside the pull request — a ruleset or CODEOWNERS entry over
+`.github/workflows/**`, or a `workflow_run`-triggered gate that judges the review
+run from the outside. Until then the gate protects against mistakes, not against
+someone determined to route around it.
+
+Every red outcome states what was established and names no cause it has not
+tested. An earlier version told every clean PR that the review action had skipped
+itself over a workflow change, on PRs that changed no workflow at all (issue
+#1178).
+
+The gate runs the copy of its own script from the base branch, not the one in
+the PR — otherwise a PR could turn the script into `exit 0` and be green by
+construction. If that copy cannot be fetched or checked out, the gate blocks
+rather than falling back to the PR's version.
+
+It looks the review job up with `filter=all`, because the run id survives a
+"Re-run this job" and `claude-review` is then absent from the newest attempt's
+job list.
+
+A finished review is not the same as an acceptable one. On 8 August 2026 the
+review put a 🔴 Critical on PR 1234 at 10:11:31 and the PR merged at 10:11:54,
+green all the way, because the gate only asked whether a review had happened. It
+now searches what `claude[bot]` wrote for the exact string `🔴 **Critical**` and
+turns red on a hit, naming the comments it found it in. Three places count: the
+sticky comment, the inline comments, and the body of the submitted review. That
+last one is easy to forget and carries findings in practice that appear nowhere
+else.
+
+Only what this run wrote counts, measured against the review job's `started_at`.
+An item by `claude[bot]` without a usable timestamp blocks rather than falling
+outside the window unnoticed; a `PENDING` review is the exception, since it was
+never submitted. One edge the window does not cover: `cancel-in-progress` does not
+stop a run instantly, so a comment written by the run being cancelled can land
+inside its successor's window and turn that one red. The next push clears it.
+Anything older came from an earlier run. Cleanup removes those comments, but a
+submitted review cannot be deleted at all, and a cleanup that fails would
+otherwise keep blocking a finding that has long been fixed. Without a readable
+`started_at` the gate blocks: it cannot tell the two apart.
+
+Only Critical blocks. Significant carries "likely" in its own definition and would
+often be a false positive, and an exception that becomes routine stops holding
+anything back. There is no override: fix the finding and push again, and since the
+review rewrites its comment every run, a finding that is gone is gone from the
+gate too. An escape hatch — a label, a magic comment, an environment variable —
+is something an agent operates as easily as a person, while it reads as a human
+judgement. Better none at all; if a case ever arises that needs one, it gets
+decided then. The marker lives in `CRITICAL_MARKER` and in the review prompt, and the
+test suite binds the two: change one without the other and the gate reads past
+every finding, invisibly.
+
+That marker is free text written by a language model, so the prompt says in as
+many words that a machine parses it and that it must be written exactly, and
+nowhere else. Fully closing that is not possible.
+
+Blocking on findings only works if a finding cannot be pushed away. The review job
+used to delete every `claude[bot]` comment at the start of its run, which meant a
+crash after the deletion took the previous finding with it, and a rerun that
+happened not to notice it again turned red into green. The order is reversed now:
+`script/claude-review-comments.sh snapshot` records the ids and the texts before
+the review, and `clean-up` removes them afterwards, under the same
+`execution_file` condition as the proof step. Cleanup deletes only what is still
+there with an unchanged `updated_at`. `use_sticky_comment` makes the action reuse
+the previous comment, so its id is in the snapshot and deleting by id alone would
+wipe the review that just ran.
+
+Snapshot and cleanup pick their comments by the line `<!-- claude-review -->`,
+which the prompt tells the review to end every comment with. The author is not
+enough: `claude.yml` answers `@claude` in the same thread as the same bot, and
+that conversation is neither a finding to hand to the next review nor something
+to delete. Cleanup itself never fails the step. A hiccup on one of its list calls
+counts as a failed cleanup and lands in the step summary; failing there would put
+`claude-review` on `failure` and have the gate report that there is no usable
+review, of a review that ran fine.
+
+The snapshotted texts go into the prompt as context, with the instruction that
+they describe an earlier version of the diff and that every one of them is to be
+re-checked against the current one: nothing carried over that has been fixed,
+nothing dropped that still stands. Without that, the gate would be an incentive to
+keep pushing until the review forgets, which is worse than no gate. The severity
+markers are rewritten to `[Critical]` and friends on the way in, so a review that
+quotes an old finding to say it has been fixed does not trip the gate with the
+quote.
+
+The gate needs `issues: read` on top of `pull-requests: read`: the summary comment
+is an issue comment, and that endpoint sits behind the issues API.
+
+The gate proves the review ran to completion for this commit and that it left no
+critical finding standing. It says nothing about findings of lower severity,
+whether the findings hold up, or whether they were addressed.
+
+The logic lives in `script/await-claude-review.sh` and
+`script/claude-review-comments.sh`, each with a test suite next to it (a `gh`
+stub) covering every path that decides green versus red, or what is kept and
+thrown away. Both run as a pre-commit hook.
+
+### De goedkeuringspoort op security-updates
+
+Dependabot-security-updates vallen buiten de `cooldown` van vijf dagen in
+`dependabot.yml`: ze komen binnen op het moment dat de versie verschijnt. De
+check **Security update approved** (`security-update-gate.yml`) laat zo'n PR pas
+mergen als een engineer met schrijfrechten hem heeft goedgekeurd.
+
+Dat het een check is en geen branch protection, is geen omweg maar de enige
+route. `required_approving_review_count` hangt aan een branch, niet aan een
+auteur of een label, ook niet in een ruleset, waar de condities alleen over
+refs gaan. Repobreed aanzetten zou betekenen dat niemand nog een eigen PR kan mergen,
+want GitHub laat de auteur zijn eigen wijziging niet goedkeuren. De voorwaarde
+hoort dus in de check, precies zoals bij `Claude review completed`.
+
+Wat een security-update is, staat in geen enkel API-veld. De poort leest drie
+onafhankelijke signalen: een open Dependabot-alert voor precies het pakket dat
+de PR bumpt, Dependabots eigen regel "This update includes a security fix", en
+een GHSA- of CVE-nummer in de aanhef van de PR-body, de tekst tot aan het
+eerste `<details>`-blok: daarachter staan geciteerde changelogs die net zo
+goed over een ander pakket kunnen gaan. Eén signaal is genoeg. Een vals positief
+kost een goedkeuring die niet nodig was; een vals negatief laat een
+security-patch ongezien door, dus de poort leunt naar het eerste.
+
+Een goedkeuring telt alleen op de commit waarop ze is gegeven. `dismiss_stale_reviews`
+werkt pas bij `required_approving_review_count > 0` en dat staat hier op 0, dus
+die binding zit in het script: na een rebase of een push is er niets meer
+goedgekeurd. Goedkeuringen van bots tellen niet, en van iemand zonder
+schrijfrechten (`author_association` buiten OWNER/MEMBER/COLLABORATOR) evenmin.
+
+`claude-dependabot.yml` stelt met hetzelfde script vast of een PR een
+security-update is en mergt die dan niet meer zelf; de review blijft er wel op
+draaien, als input voor de engineer die goedkeurt. Handhaven doet die workflow
+niet; dat doet de check.
+
+Er zit geen ouderdomsdrempel op. Die drempel bestaat omdat niemand naar een
+routinebump kijkt, en dat is precies wat de goedkeuring wegneemt; hem er
+bovenop zetten zou een actief misbruikte kwetsbaarheid vijf dagen laten liggen
+*plus* de wachttijd op een mens. De publicatiedatum van de nieuwe versie is een
+van de dingen waar de goedkeurder naar kijkt, niet iets wat de poort voor hem
+afkapt.
+
+De melding naar Mattermost zit in dezelfde workflow en gaat uit bij het openen
+en het mergen van een security-PR, over `MATTERMOST_WEBHOOK_URL`. Die run wordt
+door Dependabot gestart, en dan leest `secrets.*` uit de
+Dependabot-secretstore in plaats van die van Actions: staat de webhook-URL
+alleen bij Actions, dan valt de melding stil weg. De stap faalt daarom hard op
+een lege URL.
+
+De logica staat in `script/require-security-approval.sh`, met
+`script/require-security-approval.test.sh` (een `gh`-stub) over elk pad dat
+groen of rood beslist; de tests draaien als pre-commit-hook. De poort draait de
+kopie van dat script van de base-branch en niet die uit de pull request. Staat
+het er niet, dan is dat geen leesfout maar de pull request die de poort invoert
+of weghaalt; er is dan op main nog niets wat deze check beschermt, dus de job
+meldt dat en laat door. Dezelfde beperking als bij de review-poort geldt hier:
+de job staat in het workflowbestand dat de PR meebrengt.
+
 ### Deployed Components
 
 | Component | Image | Production URL |
@@ -221,15 +449,55 @@ CI runs via `.github/workflows/ci.yml`.
 | harvester-admin | `regelrecht-admin` | `harvester-admin.regelrecht.rijks.app` |
 | harvester-worker | `regelrecht-harvester-worker` | (no web UI) |
 | enrichworker | `regelrecht-enrich-worker` | (no web UI) |
+| pipeline-api | `regelrecht-pipeline-api` | (internal) |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
 ### How It Works
 
-1. **PR opened/updated**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
-2. **PR closed**: Deletes ZAD deployment and GHCR images
+1. **PR carrying the `deploy:preview` label, opened or pushed to**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
+2. **`deploy:preview` label removed, or PR closed**: Deletes ZAD deployment and GHCR images
 3. **Push to main**: Deploys `regelrecht` (production) to ZAD
+
+### Previews are opt-in
+
+A pull request builds and deploys nothing unless someone puts the **`deploy:preview`**
+label on it. Seven images plus a preview environment per PR was about half of
+the repository's runner consumption, and it held up no merge: none of those
+checks is required and nothing tests against the preview (`E2E (mocked)` runs
+against mocks). The budget goes to the merge train; a preview is a choice
+someone makes.
+
+Put the label on and the build starts from that moment, however old the PR is.
+Every following commit rebuilds as long as the label is there. Take the label
+off and `cleanup-preview` runs, exactly as it does when the PR closes — no
+preview keeps running that nobody is looking at.
+
+The gate is the *presence* of the label on the PR, checked on every event, not
+the kind of event. The `deploy:<component>` labels are a separate, additive
+thing: they force a component to build that the change-detection did not flag,
+and they do nothing on a PR without `deploy:preview`.
+
+Fork PRs stay out of the chain regardless of labels; they have no secrets and a
+read-only `GITHUB_TOKEN`, so the push to GHCR could never succeed.
+
+### Opruimen
+
+Productie draait op een `sha-`-tag, niet op `latest`. Een opruiming die op de
+tagvorm afgaat kan dus het image onder de draaiende deployment vandaan halen;
+`script/prune-preview-images.sh` toetst daarom aan wat ZAD op dat moment draait
+en verwijdert niets als het die lijst niet krijgt. Hij draait in
+`scheduled-cleanup.yml` en niet bij elke gesloten pull request.
+
+De opruiming inventariseert GitHub-environments, en mist daarmee elk
+ZAD-deployment waarvan de environment al weg is.
+`script/prune-orphaned-deployments.sh` inventariseert andersom;
+`check-preview-deployments.sh` en `check-preview-environments.sh` stellen daarna
+vast wat er werkelijk over is, want de melding van een opruiming zegt hier niets
+over de uitkomst.
+
+De redenering achter elke regel staat in de kop van het betreffende script.
 
 ### Debugging deploy-preview failures
 
@@ -239,6 +507,14 @@ ZAD deploy timeouts ("Task did not complete within 300s") almost always indicate
 2. Look for ERROR lines — common causes: migration conflicts, missing env vars, startup panics
 3. If the DB is in a bad state (e.g. migration checksum mismatch after renumbering), delete the preview deployment (`zad deployment delete <deployment>`) and re-trigger CI to get a fresh DB
 4. Do **not** blindly retry — diagnose the root cause first
+
+One failure is benign: `Could not extract URL from result` met `"status":
+"superseded"` in de JSON eronder. ZAD laat een taak wijken voor een nieuwere
+taak die dezelfde deployment dekt (een nieuwe push, of het opruimen van een
+gesloten PR). Het werk is dan door die nieuwere taak gedaan; alleen deze job
+opnieuw draaien volstaat. Om die reden deployen `deploy-preview` en
+`deploy-production` alle componenten in één taak: twee taken voor hetzelfde
+deployment naast elkaar zetten elkaar opzij.
 
 ### Required Secrets
 

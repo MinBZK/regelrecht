@@ -493,6 +493,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_maps_every_schema_unit_name() {
+        // The schema `type_spec.unit` enum (RFC-023) is the contract: every name
+        // in it must land on its own unit. A name that silently falls through to
+        // `Unknown` disables unit checking for every law that uses it.
+        assert_eq!(Unit::parse(Some("euro")), Unit::Euro);
+        assert_eq!(Unit::parse(Some("eurocent")), Unit::Eurocent);
+        assert_eq!(Unit::parse(Some("years")), Unit::Years);
+        assert_eq!(Unit::parse(Some("months")), Unit::Months);
+        assert_eq!(Unit::parse(Some("weeks")), Unit::Weeks);
+        assert_eq!(Unit::parse(Some("days")), Unit::Days);
+        assert_eq!(Unit::parse(Some("ratio")), Unit::Ratio);
+        assert_eq!(Unit::parse(Some("percentage")), Unit::Percentage);
+        // Outside the enum, and absent, are both "no declared unit".
+        assert_eq!(Unit::parse(Some("Euro")), Unit::Unknown);
+        assert_eq!(Unit::parse(Some("kilogram")), Unit::Unknown);
+        assert_eq!(Unit::parse(None), Unit::Unknown);
+    }
+
+    #[test]
+    fn mismatch_error_names_both_units() {
+        // The whole point of RFC-023 is catching euro/eurocent confusion, so the
+        // error must say *which* two units clashed — a message that only says
+        // "unit mismatch" leaves the author hunting for the factor of 100.
+        let err = combine(AlgebraOp::Additive, "ADD", Unit::Euro, Unit::Eurocent).unwrap_err();
+        match err {
+            EngineError::UnitMismatch {
+                operation,
+                left,
+                right,
+            } => {
+                assert_eq!(operation, "ADD");
+                assert_eq!(left, "euro");
+                assert_eq!(right, "eurocent");
+            }
+            other => panic!("expected UnitMismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn unknown_never_errors() {
         assert_eq!(
             combine(AlgebraOp::Additive, "ADD", Unit::Eurocent, Unit::Unknown).unwrap(),
@@ -668,5 +707,192 @@ mod tests {
             infer_operation_unit(&op, &symbols()),
             Err(EngineError::UnitMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn plain_string_literal_is_not_a_symbol_reference() {
+        // Only a leading `$` makes a string a symbol reference. A plain string
+        // that happens to spell a symbol name is a value, not a lookup, so it
+        // must not import that symbol's unit.
+        let su = symbols();
+        assert_eq!(infer_unit(&var("dagen"), &su).unwrap(), Unit::Days);
+        assert_eq!(
+            infer_unit(&lit(Value::String("dagen".to_string())), &su).unwrap(),
+            Unit::Unknown
+        );
+
+        // ...and comparing an annotated amount against such a string stays
+        // unit-silent instead of erroring on a unit nobody declared.
+        let op = ActionOperation::Equals {
+            subject: var("inkomen"),
+            value: lit(Value::String("dagen".to_string())),
+        };
+        assert_eq!(infer_operation_unit(&op, &su).unwrap(), Unit::Unknown);
+    }
+
+    #[test]
+    fn nested_mismatch_inside_logical_operand_is_caught() {
+        // AND/OR/LIST have no unit of their own, but a mismatch buried in an
+        // operand must still surface — otherwise a condition subtree is a blind
+        // spot for the whole check.
+        let bad = || {
+            ActionValue::Operation(Box::new(ActionOperation::Add {
+                values: vec![var("inkomen"), var("dagen")],
+            }))
+        };
+
+        let and = ActionOperation::And {
+            conditions: vec![bad()],
+        };
+        assert!(matches!(
+            infer_operation_unit(&and, &symbols()),
+            Err(EngineError::UnitMismatch { .. })
+        ));
+
+        let list = ActionOperation::List { items: vec![bad()] };
+        assert!(matches!(
+            infer_operation_unit(&list, &symbols()),
+            Err(EngineError::UnitMismatch { .. })
+        ));
+    }
+
+    // -------------------------------------------------------------------------
+    // check_law: the static pass over a whole law
+    // -------------------------------------------------------------------------
+
+    fn law(yaml: &str) -> crate::article::ArticleBasedLaw {
+        use crate::article::LawLoad;
+        crate::article::ArticleBasedLaw::from_yaml_str(yaml).unwrap()
+    }
+
+    #[test]
+    fn check_law_reports_mismatch_in_action_value_as_error() {
+        let law = law(r#"
+$id: unit_check_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bedrag plus duur
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: duur
+            type: number
+            type_spec:
+              unit: days
+        output:
+          - name: onzin
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: onzin
+            value:
+              operation: ADD
+              values:
+                - $bedrag
+                - $duur
+"#);
+
+        let findings = check_law(&law);
+        assert_eq!(findings.len(), 1, "findings: {findings:?}");
+        let f = &findings[0];
+        assert!(f.is_error);
+        assert_eq!(f.article, "1");
+        assert_eq!(f.output, "onzin");
+        assert!(
+            f.message.contains("eurocent") && f.message.contains("days"),
+            "message should name both units: {}",
+            f.message
+        );
+    }
+
+    #[test]
+    fn check_law_warns_on_amount_output_without_unit_in_annotated_article() {
+        let law = law(r#"
+$id: unit_warning_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Wel geannoteerd, output zonder eenheid
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        output:
+          - name: uitkomst
+            type: amount
+"#);
+
+        let findings = check_law(&law);
+        assert_eq!(findings.len(), 1, "findings: {findings:?}");
+        let f = &findings[0];
+        assert!(!f.is_error, "missing unit is a warning, not an error");
+        assert_eq!(f.output, "uitkomst");
+        assert_eq!(f.message, "no unit declared");
+    }
+
+    #[test]
+    fn check_law_stays_silent_on_declared_units_and_non_amount_outputs() {
+        // An amount output that *does* declare a unit is exactly what the warning
+        // asks for, and a non-amount output has nothing to declare — neither is a
+        // finding.
+        let law = law(r#"
+$id: unit_silent_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Netjes geannoteerd
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        output:
+          - name: uitkomst
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: toelichting
+            type: string
+"#);
+
+        assert!(check_law(&law).is_empty(), "{:?}", check_law(&law));
+    }
+
+    #[test]
+    fn check_law_stays_silent_on_un_annotated_article() {
+        // The opt-in cornerstone: a law that has not started annotating units at
+        // all must produce no warnings, so `just validate` is not flooded.
+        let law = law(r#"
+$id: unannotated_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Geen enkele eenheid gedeclareerd
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: amount
+        output:
+          - name: uitkomst
+            type: amount
+"#);
+
+        assert!(check_law(&law).is_empty(), "{:?}", check_law(&law));
     }
 }

@@ -105,6 +105,25 @@ impl CorpusClient {
         self.config.git_token().is_some()
     }
 
+    /// Whether this checkout is a sparse (cone-mode) checkout. A sparse
+    /// working tree is *silently incomplete* for any filesystem-wide scan;
+    /// callers that would otherwise fall back to walking the tree use this
+    /// to refuse instead of returning partial results.
+    pub fn is_sparse(&self) -> bool {
+        self.config.sparse_paths.is_some()
+    }
+
+    /// Git tree sha of `subtree` at the checkout's `HEAD` (`git rev-parse
+    /// HEAD:<subtree>`). This is the content identity of that directory on
+    /// the checked-out commit — comparable across clones, branches and the
+    /// GitHub Trees API. Errors when the path does not exist in `HEAD` or
+    /// the directory is not a git repo.
+    pub async fn subtree_sha(&self, subtree: &str) -> Result<String> {
+        let spec = format!("HEAD:{subtree}");
+        let out = self.run_git_output(&["rev-parse", &spec]).await?;
+        Ok(out.trim().to_string())
+    }
+
     /// Create a local branch (no push).
     pub async fn create_local_branch(&self, branch: &str) -> Result<()> {
         self.run_git(&["checkout", "-b", branch]).await?;
@@ -704,7 +723,11 @@ impl CorpusClient {
     /// checkout (index.lock contention).
     fn git_command(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new("git");
-        cmd.args(args).envs(self.git_env()).kill_on_drop(true);
+        cmd.arg("-c")
+            .arg("core.hooksPath=")
+            .args(args)
+            .envs(self.git_env())
+            .kill_on_drop(true);
         cmd
     }
 
@@ -811,7 +834,13 @@ mod tests {
     async fn setup_bare_repo(dir: &Path) -> PathBuf {
         let bare_path = dir.join("bare.git");
         Command::new("git")
-            .args(["init", "--bare", "--initial-branch=development"])
+            .args([
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--bare",
+                "--initial-branch=development",
+            ])
             .arg(&bare_path)
             .output()
             .await
@@ -821,7 +850,7 @@ mod tests {
         let tmp_clone = dir.join("tmp-clone");
         let bare_url = format!("file://{}", bare_path.display());
         Command::new("git")
-            .args(["clone", &bare_url])
+            .args(["-c", "init.templateDir=", "clone", &bare_url])
             .arg(&tmp_clone)
             .output()
             .await
@@ -847,7 +876,7 @@ mod tests {
     async fn clone_with_config(bare_path: &Path, repo_path: &Path) {
         let bare_url = format!("file://{}", bare_path.display());
         Command::new("git")
-            .args(["clone", &bare_url])
+            .args(["-c", "init.templateDir=", "clone", &bare_url])
             .arg(repo_path)
             .output()
             .await
@@ -1349,7 +1378,13 @@ mod tests {
     async fn setup_bare_repo_with_files(dir: &Path) -> PathBuf {
         let bare_path = dir.join("bare.git");
         Command::new("git")
-            .args(["init", "--bare", "--initial-branch=development"])
+            .args([
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--bare",
+                "--initial-branch=development",
+            ])
             .arg(&bare_path)
             .output()
             .await
@@ -1358,7 +1393,7 @@ mod tests {
         let tmp_clone = dir.join("tmp-clone");
         let bare_url = format!("file://{}", bare_path.display());
         Command::new("git")
-            .args(["clone", &bare_url])
+            .args(["-c", "init.templateDir=", "clone", &bare_url])
             .arg(&tmp_clone)
             .output()
             .await

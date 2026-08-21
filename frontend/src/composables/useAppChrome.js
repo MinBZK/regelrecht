@@ -32,7 +32,7 @@ export function registerSearchPopover(ref_) {
 }
 
 export function openSearch(e, initialSearch = '') {
-  popoverRef?.value?.show(e?.currentTarget, initialSearch);
+  popoverRef?.value?.show(e?.currentTarget, initialSearch, e);
 }
 
 /**
@@ -57,11 +57,25 @@ const lastSavedPr = shallowRef(null);
 const documentTabs = shallowRef([]);
 const activeDocumentTab = shallowRef(null);
 const tabActions = shallowRef(null); // { key, displayName, select, close, reorder }
+// The traject ref the current `documentTabs` belong to, published in the SAME
+// update as the tabs. The shell keys its `<nldd-document-tab-bar>` rebuild on
+// this (not on its own `activeTrajectRef`, which flips a tick earlier than the
+// tabs and would rebuild the bar against the previous traject's set, leaving a
+// spooktab). A rebuild tears down the bar's overflow menu, ResizeObserver and
+// every element reference it holds.
+const documentTabsTrajectRef = shallowRef(null);
 // Article-level pending-changes bar (Wijzigingenbalk). The editor publishes
 // the dirty/saving/undo state reactively and registers the action callbacks;
 // the shell renders the bar while there are unsaved changes.
-const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo } | null
-const editorActions = shallowRef(null); // { save, discard, undo, redo } | null
+// `review` puts the bar in proposal-review mode: it then shows even when the
+// panes are not dirty (a proposal that seeded nothing visible is still a
+// decision waiting to be made) and it carries a Verwerp action next to Opslaan.
+// `reviewStatus`/`reviewVariant` feed the status bar the shell renders above
+// `main`: it belongs to the bar-split-view, not to the editor's own content
+// flow, so it lines up with the tab bar and the changes bar instead of
+// scrolling with the panes.
+const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo, review, reviewStatus, reviewVariant } | null
+const editorActions = shallowRef(null); // { save, discard, undo, redo, reject } | null
 
 // --- Library-only chrome ---
 // Whether the library has nothing curated yet (no favorites, no traject edits,
@@ -74,6 +88,7 @@ export function useAppChrome() {
     lastSavedPr,
     documentTabs,
     activeDocumentTab,
+    documentTabsTrajectRef,
     tabActions,
     editorChanges,
     editorActions,
@@ -87,10 +102,11 @@ export function setLibraryEmpty(empty) {
   libraryEmpty.value = !!empty;
 }
 
-export function setEditorChrome({ pr, tabs, activeTab }) {
+export function setEditorChrome({ pr, tabs, activeTab, trajectRef }) {
   lastSavedPr.value = pr ?? null;
   documentTabs.value = tabs ?? [];
   activeDocumentTab.value = activeTab ?? null;
+  documentTabsTrajectRef.value = trajectRef ?? null;
 }
 
 export function registerTabActions(actions) {
@@ -115,6 +131,7 @@ export function clearEditorChrome() {
   lastSavedPr.value = null;
   documentTabs.value = [];
   activeDocumentTab.value = null;
+  documentTabsTrajectRef.value = null;
   tabActions.value = null;
   editorChanges.value = null;
   editorActions.value = null;

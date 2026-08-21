@@ -4,6 +4,37 @@ use crate::error::{CorpusError, Result};
 use crate::models::{RegistryManifest, Source, SourceType};
 use crate::source_map::SourceMap;
 
+/// A source that failed to enumerate during
+/// [`CorpusRegistry::index_all_sources_async`], with the error it failed on.
+/// Carrying the message (not just the id) lets callers surface *why* the
+/// source's laws are missing — a `law_count: 0` with no reason is
+/// indistinguishable from a genuinely empty repo.
+#[derive(Debug, Clone)]
+pub struct SourceIndexFailure {
+    pub source_id: String,
+    pub error: String,
+}
+
+/// Per-call token override for the index scan of exactly **one** source.
+///
+/// Carries the acting user's personal GitHub token into the enumeration of
+/// a traject's writable-own repo when the server has no `CORPUS_AUTH_*`
+/// token for it — the scan-side mirror of the request-bound reads that
+/// already fall back to the user's token. Two hard rules keep the token
+/// contained:
+///
+/// * it is applied **only** when the server-side resolution for
+///   `source_id` yields no token (a source with its own service token
+///   keeps scanning with that), and never for any other source;
+/// * it lives for the duration of the call — the registry never stores it.
+#[derive(Clone, Copy)]
+pub struct ScanTokenOverride<'a> {
+    /// The one source id the override may authenticate.
+    pub source_id: &'a str,
+    /// The per-call token (e.g. the linked user's OAuth token).
+    pub token: &'a str,
+}
+
 /// Corpus registry that manages source definitions.
 ///
 /// Loads sources from `corpus-registry.yaml` and optionally merges
@@ -108,8 +139,11 @@ impl CorpusRegistry {
     ///
     /// GitHub sources are skipped — use [`index_all_sources_async`] or
     /// [`load_favorites_async`] to include them.
-    pub fn load_local_sources(&self) -> Result<SourceMap> {
-        let mut map = SourceMap::new();
+    ///
+    /// `today` is the date a law's versions are collapsed against; see
+    /// [`SourceMap::new`] for why it is passed in rather than read off a clock.
+    pub fn load_local_sources(&self, today: &str) -> Result<SourceMap> {
+        let mut map = SourceMap::new(today);
         for source in &self.sources {
             match &source.source_type {
                 SourceType::Local { .. } => {
@@ -148,9 +182,10 @@ impl CorpusRegistry {
         &self,
         law_ids: &std::collections::HashSet<String>,
         auth_file: Option<&Path>,
+        today: &str,
     ) -> Result<SourceMap> {
-        let mut map = SourceMap::new();
-        let mut fetcher = crate::github::GitHubFetcher::new()?;
+        let mut map = SourceMap::new(today);
+        let client = regelrecht_github::GithubClient::new()?;
 
         // Determine which law_ids are NOT already covered by local sources,
         // so we only fetch what's missing from GitHub.
@@ -171,14 +206,17 @@ impl CorpusRegistry {
 
         for source in &self.sources {
             if let SourceType::GitHub { github } = &source.source_type {
-                let token = crate::auth::resolve_token_for_source(
-                    &source.id,
-                    source.auth_ref.as_deref(),
-                    auth_file,
-                )?;
-                match fetcher
-                    .fetch_source_filtered(github, token.as_deref(), &missing)
-                    .await?
+                let token = crate::auth::CredentialResolver::new(auth_file)
+                    .resolve_source(source)?
+                    .into_token();
+                match crate::github::fetch_source_filtered(
+                    &client,
+                    github,
+                    token.as_deref(),
+                    &missing,
+                    today,
+                )
+                .await?
                 {
                     crate::github::FetchResult::Fetched(files) => {
                         for file in &files {
@@ -224,32 +262,55 @@ impl CorpusRegistry {
     /// rate limit. The library/search only needs the index; content is only
     /// needed when a specific law is opened.
     ///
-    /// Returns the index plus the ids of any sources that failed to enumerate
-    /// (non-fatal, mirroring [`load_all_sources_async`]).
+    /// Returns the index plus a [`SourceIndexFailure`] per source that failed
+    /// to enumerate (non-fatal, mirroring [`load_all_sources_async`]) — the
+    /// error string travels with the id so callers can surface *why* a
+    /// source's laws are missing instead of only showing a zero law count.
     #[cfg(feature = "github")]
     pub async fn index_all_sources_async(
         &self,
         auth_file: Option<&Path>,
-    ) -> Result<(SourceMap, Vec<String>)> {
-        let mut map = SourceMap::new();
-        let mut fetcher = crate::github::GitHubFetcher::new()?;
-        let mut failed: Vec<String> = Vec::new();
+        today: &str,
+    ) -> Result<(SourceMap, Vec<SourceIndexFailure>)> {
+        self.index_all_sources_with_override(auth_file, None, today)
+            .await
+    }
+
+    /// [`Self::index_all_sources_async`] with an optional per-call
+    /// [`ScanTokenOverride`]: the traject build path passes the acting
+    /// user's token here so the writable-own repo can be enumerated when
+    /// the server has no token for it. See the override type for the
+    /// containment rules (single source, server token wins, never stored).
+    #[cfg(feature = "github")]
+    pub async fn index_all_sources_with_override(
+        &self,
+        auth_file: Option<&Path>,
+        scan_override: Option<ScanTokenOverride<'_>>,
+        today: &str,
+    ) -> Result<(SourceMap, Vec<SourceIndexFailure>)> {
+        let mut map = SourceMap::new(today);
+        let client = regelrecht_github::GithubClient::new()?;
+        let mut failed: Vec<SourceIndexFailure> = Vec::new();
 
         for source in &self.sources {
-            if let Err(e) = Self::index_one_source(&mut map, &mut fetcher, source, auth_file).await
+            if let Err(e) =
+                Self::index_one_source(&mut map, &client, source, auth_file, scan_override).await
             {
                 tracing::warn!(
                     source_id = %source.id,
                     error = %e,
                     "failed to index corpus source, skipping"
                 );
-                failed.push(source.id.clone());
+                failed.push(SourceIndexFailure {
+                    source_id: source.id.clone(),
+                    error: e.to_string(),
+                });
             }
         }
 
         if !failed.is_empty() {
             tracing::warn!(
-                failed = ?failed,
+                failed = ?failed.iter().map(|f| f.source_id.as_str()).collect::<Vec<_>>(),
                 indexed = map.len(),
                 "some corpus sources failed to index"
             );
@@ -273,23 +334,39 @@ impl CorpusRegistry {
     #[cfg(feature = "github")]
     async fn index_one_source(
         map: &mut SourceMap,
-        fetcher: &mut crate::github::GitHubFetcher,
+        client: &regelrecht_github::GithubClient,
         source: &Source,
         auth_file: Option<&Path>,
+        scan_override: Option<ScanTokenOverride<'_>>,
     ) -> Result<()> {
         match &source.source_type {
             SourceType::Local { .. } => {
                 map.load_source(source)?;
             }
             SourceType::GitHub { github } => {
-                let token = crate::auth::resolve_token_for_source(
-                    &source.id,
-                    source.auth_ref.as_deref(),
-                    auth_file,
-                )?;
-                for (law_id, path, sha) in fetcher
-                    .list_source_law_paths(github, token.as_deref())
-                    .await?
+                // `resolve_source` honours `strict_auth`: the scan of a
+                // traject's writable-own repo resolves with exactly the same
+                // rules as its push path, so a repo the server can push to is
+                // also a repo the server can index (and vice versa — no more
+                // "promote succeeded but the index reads with a different
+                // token and comes back empty").
+                let mut token = crate::auth::CredentialResolver::new(auth_file)
+                    .resolve_source(source)?
+                    .into_token();
+                // Only when the server resolves NO token may the per-call
+                // override authenticate this scan — and only for the one
+                // source it was issued for. A configured service token always
+                // wins (mirroring the request-bound read fallback), and the
+                // override never reaches any other (seed) source.
+                if token.is_none() {
+                    if let Some(o) = scan_override.filter(|o| o.source_id == source.id) {
+                        token = Some(o.token.to_string());
+                    }
+                }
+                let today = map.reference_date().to_string();
+                for (law_id, path, sha) in
+                    crate::github::list_source_law_paths(client, github, token.as_deref(), &today)
+                        .await?
                 {
                     map.load_metadata_entry(
                         &law_id,

@@ -5,31 +5,36 @@ import OverviewView from './OverviewView.vue';
 import DataTable from '../components/DataTable.vue';
 import DailyJobsChart from '../components/DailyJobsChart.vue';
 
+// One bucket per job_type, as the API serves them. `document_convert` is in
+// here on purpose: the page used to hardcode harvest/enrich and drop the rest.
 const STATS = {
   jobs: {
-    total: 1204,
-    by_type: { harvest: 842, enrich: 362 },
-    by_status: { pending: 12, processing: 3, completed: 1180, failed: 9 },
+    total: 1211,
+    by_type: { document_convert: 7, enrich: 362, harvest: 842 },
+    by_status: { pending: 13, processing: 3, completed: 1186, failed: 9 },
     by_type_status: {
-      harvest: { pending: 5, processing: 2, completed: 830, failed: 5 },
+      document_convert: { pending: 1, processing: 0, completed: 6, failed: 0 },
       enrich: { pending: 7, processing: 1, completed: 350, failed: 4 },
+      harvest: { pending: 5, processing: 2, completed: 830, failed: 5 },
     },
   },
   executed: {
-    today: { total: 47, harvest: 30, enrich: 17 },
-    last_7d: { total: 210, harvest: 140, enrich: 70 },
+    today: { total: 49, document_convert: 2, enrich: 17, harvest: 30 },
+    last_7d: { total: 217, document_convert: 7, enrich: 70, harvest: 140 },
   },
   open_untranslatables: 23,
   daily: [
     {
       date: '2026-07-06',
-      harvest: { added: 4, succeeded: 3, failed: 1 },
+      document_convert: { added: 1, succeeded: 1, failed: 0 },
       enrich: { added: 2, succeeded: 2, failed: 0 },
+      harvest: { added: 4, succeeded: 3, failed: 1 },
     },
     {
       date: '2026-07-07',
-      harvest: { added: 1, succeeded: 0, failed: 0 },
+      document_convert: { added: 0, succeeded: 0, failed: 0 },
       enrich: { added: 0, succeeded: 1, failed: 1 },
+      harvest: { added: 1, succeeded: 0, failed: 0 },
     },
   ],
   recent_failures: [
@@ -75,7 +80,7 @@ describe('OverviewView', () => {
   it('renders the top KPI totals (nl-NL formatted)', () => {
     const w = shallowMount(OverviewView);
     const text = w.text();
-    expect(text).toContain('1.204'); // jobs total
+    expect(text).toContain('1.211'); // jobs total, som over alle typen
     expect(text).toContain('Jobs totaal');
     expect(text).toContain('23'); // open untranslatables
     expect(text).toContain('Open untranslatables');
@@ -86,11 +91,13 @@ describe('OverviewView', () => {
     // Values live in overline/title slots (light DOM) or on nldd-text-cell
     // `text` attributes (shadow DOM); w.html() covers both.
     const html = w.html();
-    // Per-type headings + totals
+    // Per-type headings + totals, for every type the API returned
     expect(html).toContain('Harvest');
     expect(html).toContain('842');
     expect(html).toContain('Enrich');
     expect(html).toContain('362');
+    expect(html).toContain('Document convert');
+    expect(html).toContain('text="6"');
     // Per-type executed counts (harvest today 30 / week 140, enrich today 17 / week 70)
     expect(html).toContain('Uitgevoerd vandaag');
     expect(html).toContain('Afgelopen 7 dagen');
@@ -105,11 +112,16 @@ describe('OverviewView', () => {
   it('renders one daily chart per job type with mapped entries', () => {
     const w = shallowMount(OverviewView);
     const charts = w.findAllComponents(DailyJobsChart);
-    expect(charts).toHaveLength(2);
+    expect(charts).toHaveLength(3);
 
-    // Charts sit in the right column of their type's half/half section.
+    // Charts sit in the right column of their type's half/half section, in the
+    // key order the API used (document_convert, enrich, harvest).
     expect(charts[0].attributes('slot')).toBe('right');
     expect(charts[0].props('entries')).toEqual([
+      { date: '2026-07-06', added: 1, succeeded: 1, failed: 0 },
+      { date: '2026-07-07', added: 0, succeeded: 0, failed: 0 },
+    ]);
+    expect(charts[2].props('entries')).toEqual([
       { date: '2026-07-06', added: 4, succeeded: 3, failed: 1 },
       { date: '2026-07-07', added: 1, succeeded: 0, failed: 0 },
     ]);

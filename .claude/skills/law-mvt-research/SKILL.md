@@ -19,9 +19,10 @@ examples into Gherkin acceptance tests.
 
 ## Setup
 
-1. Read the target law YAML file to extract `bwb_id`, title, and `valid_from`
+1. Read the target law YAML file to extract `bwb_id`, title, and `valid_from`.
+   Note its directory: scenarios live beside the law, and you will write there.
 2. Read an existing feature file as Gherkin style reference:
-   `features/bijstand.feature`
+   `corpus/regulation/nl/wet/participatiewet/scenarios/bijstand.feature`
 
 ## Step 1: Find MvT Documents
 
@@ -112,13 +113,33 @@ For each extracted example, note:
 
 ## Step 4: Generate Gherkin Feature File
 
-Write a `.feature` file to `features/{slug}.feature` based on the MvT examples,
-where `{slug}` is the law's short name slug (e.g., `zorgtoeslag`, `bijstand`,
-`participatiewet`) — matching the convention used by existing feature files.
-Do NOT use the full `$id` or BWB ID as the filename.
+Write the `.feature` file **beside the law it tests**, in a `scenarios/`
+directory next to the law YAML:
 
-Follow the existing project conventions (see `features/bijstand.feature` and
-`features/zorgtoeslag.feature` for style).
+```
+corpus/regulation/nl/wet/participatiewet/2025-01-01.yaml
+corpus/regulation/nl/wet/participatiewet/scenarios/bijstand.feature
+```
+
+So the path is `{directory of the law YAML}/scenarios/{topic}.feature`. Create
+the `scenarios/` directory if it does not exist yet.
+
+`{topic}` names the subject the scenarios cover, not the law — the law is
+already the directory. `bijstand.feature` under `participatiewet/`,
+`eligibility.feature` under `wet_op_de_zorgtoeslag/`, `bezwaartermijn.feature`
+under `vreemdelingenwet_2000/`. Do NOT use the full `$id` or the BWB ID as the
+filename.
+
+There is no top-level `features/` directory, and writing to one would silently
+do nothing: the BDD runner
+(`packages/engine/tests/bdd/main.rs`) collects `*.feature` from exactly two
+places — any `scenarios/` directory under `corpus/regulation/` (bucket A, law
+validation) and `bdd/conformance/` (bucket B, engine conformance). A file
+anywhere else is never executed, while `just bdd` still reports green.
+
+Follow the existing project conventions; the five feature files under
+`corpus/regulation/**/scenarios/` are the style reference. The Gherkin
+vocabulary itself is fixed by `bdd/grammar.yaml` — use steps that exist there.
 
 **Structure:**
 ```gherkin
@@ -175,7 +196,7 @@ MvT Research for {LAW_NAME}
   - Randgevallen: {N}
   - Afwijzingsscenario's: {N}
 
-  Feature file: features/{slug}.feature
+  Feature file: {law directory}/scenarios/{topic}.feature
 
   Articles without MvT examples: {list}
   Note: No synthetic scenarios were added for these articles.

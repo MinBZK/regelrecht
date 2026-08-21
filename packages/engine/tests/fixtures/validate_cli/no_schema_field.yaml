@@ -1,0 +1,11 @@
+---
+# Geen `$schema`: er valt niets te valideren, dus keurt de poort het af.
+$id: test_validate_cli_no_schema_field
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0123456
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: Dit bestand noemt geen schemaversie.
+    url: https://example.invalid/law/artikel/1

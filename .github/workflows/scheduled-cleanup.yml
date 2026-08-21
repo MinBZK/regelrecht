@@ -13,6 +13,9 @@ on:
 
 env:
   ZAD_PROJECT: regel-k4c
+  # Dezelfde basis-URL die zad-actions zelf als default hanteert; hier expliciet
+  # omdat de scripts hieronder er rechtstreeks naartoe praten.
+  ZAD_API_BASE: https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api
 
 jobs:
   cleanup-stale-previews:
@@ -22,10 +25,17 @@ jobs:
       deployments: write
       packages: write
       actions: write
+      # Voor `gh pr list` in de controlestap onderaan.
+      pull-requests: read
 
     steps:
+      # Voor de scripts hieronder; de opruimactie zelf heeft de boom niet nodig.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
       - name: Cleanup stale ZAD deployments and GitHub environments
-        uses: RijksICTGilde/zad-actions/scheduled-cleanup@v4
+        uses: RijksICTGilde/zad-actions/scheduled-cleanup@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -36,6 +46,34 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: ${{ inputs.dry-run || false }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
+
+      # De opruimactie hierboven inventariseert GitHub-environments en mist
+      # daarmee elk ZAD-deployment waarvan de environment al weg is.
+      - name: Ruim verweesde ZAD-deployments op
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
+          ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
+          ZAD_PROJECT: ${{ env.ZAD_PROJECT }}
+          DRY_RUN: ${{ inputs.dry-run || false }}
+        run: script/prune-orphaned-deployments.sh
+
+      # Draaide in cleanup-preview bij elke gesloten PR. Hier draait hij één
+      # keer per nacht, en staat een rode uitkomst in een run die iemand leest.
+      - name: Ruim image-versies op die nergens meer bij horen
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          ORG: ${{ github.repository_owner }}
+          PACKAGES: >-
+            regelrecht-editor regelrecht-admin regelrecht-harvester-worker
+            regelrecht-enrich-worker regelrecht-pipeline-api regelrecht-grafana
+            regelrecht-lawmaking regelrecht-docs
+          ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
+          ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
+          ZAD_PROJECT: ${{ env.ZAD_PROJECT }}
+          DRY_RUN: ${{ inputs.dry-run || false }}
+        run: script/prune-preview-images.sh
 
       - name: Cleanup stale container images
         env:
@@ -66,3 +104,24 @@ jobs:
                 fi
               done
           done
+
+      # De opruimactie meldt succes op basis van alleen de ZAD-kant, dus deze
+      # twee tellen de uitkomst. Achteraan en met !cancelled(), zodat een rode
+      # controle de opruiming erboven niet meesleept. Op een dry-run overslaan:
+      # die verwijdert niets, dus zouden ze altijd omvallen.
+      - name: Controleer wat er is achtergebleven
+        if: ${{ !cancelled() && !(inputs.dry-run || false) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: script/check-preview-environments.sh
+
+      - name: Controleer of er ZAD-deployments zijn achtergebleven
+        if: ${{ !cancelled() && !(inputs.dry-run || false) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
+          ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
+          ZAD_PROJECT: ${{ env.ZAD_PROJECT }}
+        run: script/check-preview-deployments.sh

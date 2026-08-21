@@ -44,15 +44,80 @@ pub fn init_subscriber(default_level: &str) {
 /// default as an argument rather than mutating the process environment
 /// avoids the `set_var`-under-a-running-runtime data-race caveat and keeps
 /// the setting from leaking into child processes (git subprocesses, etc.).
+///
+/// ## Output format
+///
+/// `LOG_FORMAT` selects the formatter: `json` emits one JSON object per event
+/// (per-field searchable in a log backend), anything else — including unset —
+/// keeps the human-readable text lines that are pleasant during local
+/// development. Deployments that ship logs to a collector set `LOG_FORMAT=json`.
 pub fn init_subscriber_with_spans(default_level: &str, default_span_events: bool) {
-    if let Err(e) = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level)),
-        )
-        .with_span_events(resolve_span_events(default_span_events))
-        .try_init()
-    {
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
+    let span_events = resolve_span_events(default_span_events);
+
+    let result = match resolve_log_format() {
+        LogFormat::Json => tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_span_events(span_events)
+            .json()
+            // Lift the event's own fields (incl. `message`) to the top level
+            // instead of nesting them under `fields`, and keep the enclosing
+            // span context so a JSON line carries the same information the
+            // text line showed inline.
+            .flatten_event(true)
+            .with_current_span(true)
+            .with_span_list(true)
+            .try_init(),
+        LogFormat::Text => tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_span_events(span_events)
+            .try_init(),
+    };
+
+    if let Err(e) = result {
         eprintln!("warning: tracing subscriber already initialized: {e}");
+    }
+}
+
+/// Log output format, selected by `LOG_FORMAT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogFormat {
+    /// Human-readable text lines — the default, and what local development wants.
+    Text,
+    /// One JSON object per event, for per-field searching in a log backend.
+    Json,
+}
+
+/// Read `LOG_FORMAT` from the environment and map it onto a [`LogFormat`].
+fn resolve_log_format() -> LogFormat {
+    match std::env::var("LOG_FORMAT") {
+        Ok(raw) => parse_log_format(Some(&raw)),
+        // Set but not valid UTF-8: it cannot name a format, so fall back to text.
+        Err(VarError::NotUnicode(_)) => {
+            eprintln!("LOG_FORMAT is not valid UTF-8; falling back to text");
+            LogFormat::Text
+        }
+        Err(VarError::NotPresent) => parse_log_format(None),
+    }
+}
+
+/// Pure mapping of a `LOG_FORMAT` value onto a [`LogFormat`], so the choice is
+/// testable without touching the process environment.
+///
+/// Only `json` switches formatter. `text`/`plain` name the default explicitly;
+/// any other value falls back to text — a typo must never silence logs.
+fn parse_log_format(raw: Option<&str>) -> LogFormat {
+    match raw.map(str::trim) {
+        None | Some("") => LogFormat::Text,
+        Some(value) => match value.to_ascii_lowercase().as_str() {
+            "json" => LogFormat::Json,
+            "text" | "plain" => LogFormat::Text,
+            other => {
+                eprintln!("warning: unrecognised LOG_FORMAT={other:?}, falling back to text");
+                LogFormat::Text
+            }
+        },
     }
 }
 
@@ -76,5 +141,40 @@ fn resolve_span_events(default_on: bool) -> FmtSpan {
         // Genuinely unset: honour the per-service default.
         Err(VarError::NotPresent) if default_on => FmtSpan::CLOSE,
         Err(VarError::NotPresent) => FmtSpan::NONE,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unset_log_format_is_text() {
+        assert_eq!(parse_log_format(None), LogFormat::Text);
+    }
+
+    #[test]
+    fn empty_log_format_is_text() {
+        assert_eq!(parse_log_format(Some("")), LogFormat::Text);
+        assert_eq!(parse_log_format(Some("   ")), LogFormat::Text);
+    }
+
+    #[test]
+    fn json_selects_json_case_insensitively() {
+        assert_eq!(parse_log_format(Some("json")), LogFormat::Json);
+        assert_eq!(parse_log_format(Some("JSON")), LogFormat::Json);
+        assert_eq!(parse_log_format(Some(" Json ")), LogFormat::Json);
+    }
+
+    #[test]
+    fn text_and_plain_select_text() {
+        assert_eq!(parse_log_format(Some("text")), LogFormat::Text);
+        assert_eq!(parse_log_format(Some("plain")), LogFormat::Text);
+    }
+
+    #[test]
+    fn unrecognised_value_never_silences_logs() {
+        assert_eq!(parse_log_format(Some("jsonl")), LogFormat::Text);
+        assert_eq!(parse_log_format(Some("logfmt")), LogFormat::Text);
     }
 }

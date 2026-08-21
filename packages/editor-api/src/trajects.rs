@@ -736,6 +736,15 @@ struct WritableTarget {
     /// `MinBZK/regelrecht-corpus` for the default, `<owner>/<repo>` for
     /// user-supplied repos.
     display_name: String,
+    /// True when resolving this target minted the traject branch on
+    /// GitHub. Only the user-supplied-repo arm does that; the MinBZK
+    /// default leaves it `false` because its service-token backend
+    /// bootstraps its own branch in `ensure_ready`.
+    ///
+    /// The handler uses this to tell an operator about a branch that was
+    /// created but whose traject never made it into the database — see
+    /// the failure log in `create`.
+    minted_branch: bool,
 }
 
 /// Decide whether the create-request asks for the MinBZK default or a
@@ -750,6 +759,10 @@ async fn resolve_writable_target(
     req: &CreateTrajectRequest,
     account_id: Uuid,
     headers: &axum::http::HeaderMap,
+    // The branch this traject will write to, derived once by the caller
+    // and reused verbatim for both the GitHub ref-create below and the
+    // `gh_branch` column.
+    writable_branch: &str,
 ) -> Result<WritableTarget, (StatusCode, String)> {
     let owner = req
         .repo_owner
@@ -776,6 +789,7 @@ async fn resolve_writable_target(
             path: Some(CENTRAL_WRITABLE_PATH.to_string()),
             auth_ref: CENTRAL_WRITABLE_AUTH_REF.to_string(),
             display_name: CENTRAL_WRITABLE_NAME.to_string(),
+            minted_branch: false,
         }),
         // All three filled → user-supplied repo path. Validate.
         (Some(owner), Some(repo), Some(base_branch)) => {
@@ -853,75 +867,50 @@ async fn resolve_writable_target(
                 ));
             }
 
-            // Resolve the token to preflight the repo with. Prefer the acting
-            // user's OWN GitHub token (user-OAuth spike): the preflight then
-            // validates *their* push access to the chosen repo — the
-            // entitlement check GitHub gives us for free, so the editor never
-            // needs an all-access credential to police repo choice (the gap
-            // that #885 tracks).
-            //
-            // Fall back to the *strict* per-repo operator token when the user
-            // hasn't linked GitHub and this deployment doesn't require it. The
-            // strict resolver (not `resolve_token`) is deliberate: `auth_ref`
-            // derives from user-supplied repo coords, so an unknown ref must
-            // NOT fall back to `CORPUS_GIT_TOKEN` (that would ship the central
-            // token to a user-picked repo, a token-exfiltration vector).
-            // `user_write_token` returns 428 when a linked token is required
-            // but absent.
-            let token = match crate::github_oauth::user_write_token(state, account_id, headers)
-                .await?
-            {
-                Some(user_token) => user_token,
-                None => {
-                    let auth_file = {
-                        let corpus = state.corpus.read().await;
-                        corpus.auth_file.clone()
-                    };
-                    regelrecht_corpus::auth::resolve_token_strict(&auth_ref, auth_file.as_deref())
-                        .map_err(|e| {
-                            tracing::error!(error = %e, "auth lookup failed for new traject repo");
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                "auth lookup failed".to_string(),
-                            )
-                        })?
-                        .ok_or_else(|| {
-                            let env_name = regelrecht_corpus::auth::token_env_name(&auth_ref);
-                            tracing::warn!(
-                                auth_ref = %auth_ref,
-                                env_name = %env_name,
-                                "no token configured for user-supplied repo"
-                            );
-                            (
-                                StatusCode::SERVICE_UNAVAILABLE,
-                                format!(
-                                    "deze repo is nog niet door je beheerder geconfigureerd \
-                             (verwacht env var {env_name})"
-                                ),
-                            )
-                        })?
-                }
-            };
+            // Resolve the token to preflight the repo with through the one
+            // credential service, following the same precedence rule as the
+            // write path: a configured per-repo service token goes first — the
+            // eventual writes on this repo run over that token too, so
+            // preflighting with the user's personal token would validate an
+            // access path the traject will never use. Only for a token-less
+            // ref does the acting user's OWN GitHub token come into play
+            // (user-OAuth spike): the preflight then validates *their* push
+            // access to the chosen repo — the entitlement check GitHub gives us
+            // for free, so the editor never needs an all-access credential to
+            // police repo choice (the gap that #885 tracks). The service uses a
+            // strict lookup for `auth_ref` (derived from user-supplied repo
+            // coords), so an unknown ref never falls back to the legacy shared
+            // token, and returns 428 when a linked token is required but absent.
+            let token = crate::credentials::TrajectCredentials::new(state, account_id, headers)
+                .for_new_repo_preflight(&auth_ref)
+                .await?;
 
-            // The OAuth config's `api_base` (a pub field, overridable in
-            // tests with a wiremock server) wins over the real default, so
-            // the preflight — including WHICH token it authenticates with —
-            // is testable without touching github.com.
-            let api_base = state
+            // Build the shared GitHub client for the pre-flight. A build
+            // failure is an infrastructure problem, not a caller error → 503.
+            let mut client = regelrecht_github::GithubClient::new().map_err(|e| {
+                tracing::error!(error = %e, "failed to build GitHub client for repo preflight");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "kon de GitHub-client niet initialiseren".to_string(),
+                )
+            })?;
+            // The OAuth config's `api_base` (a pub field, overridable in tests
+            // with a wiremock server — `for_tests` uses `api.github.invalid`)
+            // wins over the client's own default when set, so the preflight —
+            // including WHICH token it authenticates with — is testable without
+            // touching github.com.
+            if let Some(api_base) = state
                 .config
                 .github_oauth
                 .as_ref()
                 .map(|o| o.api_base.as_str())
-                .unwrap_or("https://api.github.com");
-            let info = regelrecht_corpus::repo_access::validate_repo_access(
-                api_base,
-                owner,
-                repo,
-                base_branch,
-                &token,
-            )
-            .await
-            .map_err(|e| repo_access_error_to_status(&e, owner, repo, base_branch))?;
+            {
+                client.set_base_url(api_base);
+            }
+            let info = client
+                .validate_repo_access(owner, repo, base_branch, &token)
+                .await
+                .map_err(|e| repo_access_error_to_status(&e, owner, repo, base_branch))?;
 
             tracing::info!(
                 owner = %owner,
@@ -931,6 +920,64 @@ async fn resolve_writable_target(
                 is_private = info.is_private,
                 "validated user-supplied repo for new traject"
             );
+
+            // Mint the traject branch eagerly, right here where we still
+            // hold the token that just proved push access. Without this a
+            // freshly created traject is dead-on-arrival: the index scan
+            // reads `traject/{slug}-{short}`, which does not exist yet, so
+            // the Trees API 404s and every traject-scoped corpus endpoint
+            // 502s — including the very write UI you'd use to trigger the
+            // lazy branch-bootstrap on the write path. A closed loop.
+            //
+            // In user-token write mode the backend has no service token to
+            // bootstrap the branch at `ensure_ready`, so this is the only
+            // moment a token is guaranteed in hand. Reuse `ensure_branch`
+            // rather than calling `create_branch` directly: it already
+            // absorbs the "branch already exists" race (a repeated create,
+            // or two members racing), keeping this idempotent (criterion 4).
+            // The lazy bootstrap on the write path stays as the safety net
+            // for trajects that predate this and sit branch-less in the DB.
+            //
+            // `writable_branch` is the caller's single derivation, the very
+            // same string the INSERT persists as `gh_branch`. Deriving it a
+            // second time here would reintroduce the failure mode this fix
+            // exists to close: mint branch A, store branch B, traject still
+            // dead-on-arrival.
+            // The bool says whether this call minted the branch; here it
+            // is only of interest to `persist`, which uses it to refuse
+            // blind overwrites of base content. Minting it now is exactly
+            // what makes that case not arise on the write path.
+            regelrecht_corpus::GitHubApiBackend::ensure_branch(
+                &client,
+                &format!("{owner}/{repo}"),
+                writable_branch,
+                Some(base_branch),
+                Some(&token),
+            )
+            .await
+            .map(|_created| ())
+            .map_err(|e| {
+                // Push access was just confirmed by the preflight, so a
+                // failure here is genuinely exceptional (an upstream GitHub
+                // hiccup or a permission revoked mid-flight). Fail loud so no
+                // good-looking-but-broken traject is created — nothing has
+                // been written to the DB yet at this point.
+                tracing::error!(
+                    error = %e,
+                    owner = %owner,
+                    repo = %repo,
+                    branch = %writable_branch,
+                    "failed to create traject branch during create preflight"
+                );
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!(
+                        "kon de traject-branch '{writable_branch}' niet aanmaken op \
+                         {owner}/{repo}; het traject is niet aangemaakt. Probeer het \
+                         opnieuw of controleer je GitHub-toegang."
+                    ),
+                )
+            })?;
 
             Ok(WritableTarget {
                 owner: owner.to_string(),
@@ -946,6 +993,7 @@ async fn resolve_writable_target(
                 path: repo_path,
                 auth_ref,
                 display_name: format!("{owner}/{repo}"),
+                minted_branch: true,
             })
         }
         // Partial → caller error, refuse rather than guess.
@@ -962,12 +1010,12 @@ async fn resolve_writable_target(
 /// the create-sheet can show as-is. Kept verbose so each failure mode is
 /// distinguishable in the UI.
 fn repo_access_error_to_status(
-    err: &regelrecht_corpus::repo_access::RepoAccessError,
+    err: &regelrecht_github::RepoAccessError,
     owner: &str,
     repo: &str,
     base_branch: &str,
 ) -> (StatusCode, String) {
-    use regelrecht_corpus::repo_access::RepoAccessError as E;
+    use regelrecht_github::RepoAccessError as E;
     match err {
         // The *user* is fully authenticated (made it through OIDC + this
         // handler's middleware). What failed is the *operator's*
@@ -1012,9 +1060,13 @@ fn repo_access_error_to_status(
 ///
 /// Seeds the federated config by copying the global registry's sources
 /// (with their original priorities) and then attaching the writable own
-/// source at priority 0. Branch creation on the writable source is
-/// handled by `GitBackend` on first use, which falls back to the
-/// configured base branch when the traject branch doesn't yet exist.
+/// source at priority 0. For a user-supplied repo the traject branch is
+/// minted here, during the preflight — a traject whose branch does not
+/// exist yet cannot be indexed, so creating it lazily on first write left
+/// every fresh traject dead-on-arrival. The lazy bootstrap on the write
+/// path (`GitHubApiBackend::persist`) remains as the safety net for
+/// trajects created before that, and for the MinBZK default, whose
+/// service-token backend bootstraps its branch in `ensure_ready`.
 ///
 /// When the request supplies `repo_owner`/`repo_name`/`base_branch`,
 /// the writable-own source points to that user repo and the
@@ -1032,110 +1084,148 @@ pub async fn create(
         return Err((StatusCode::BAD_REQUEST, "name is required".to_string()));
     }
 
+    // Mint the traject id client-side so the writable-branch name (derived
+    // from it) is known *before* we touch GitHub or the database, and derive
+    // that name exactly once. Both consumers — the ref-create in the
+    // preflight and the `gh_branch` column on the writable-own source — read
+    // this one string, so the branch that gets minted on GitHub and the
+    // branch the index scan later reads cannot drift apart. One identity
+    // across GitHub, URL ref and DB row.
+    let traject_id = Uuid::new_v4();
+    let writable_branch = derive_branch_name(name, traject_id);
+
     // Resolve the writable-own GitHub target up-front. Validation may need
-    // to talk to GitHub (which can fail with a helpful 4xx); we do that
-    // *before* opening the DB transaction so a network blip doesn't leak a
-    // half-rolled row.
-    let target = resolve_writable_target(&state, &req, account.id, &headers).await?;
+    // to talk to GitHub (which can fail with a helpful 4xx) and — for a
+    // user-supplied repo — mints the traject branch there; we do that
+    // *before* opening the DB transaction so a network blip or a failed
+    // branch-create leaves no half-rolled row behind.
+    let target =
+        resolve_writable_target(&state, &req, account.id, &headers, &writable_branch).await?;
 
-    let pool = get_pool_msg(&state)?;
-    let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;
+    // Everything below is database work, and GitHub is not part of that
+    // transaction. If any of it fails after the branch was minted, the ref
+    // stays behind on the user's repo with no traject pointing at it — and a
+    // retry derives a fresh uuid-suffixed name rather than reusing the stray.
+    // Deleting someone else's ref from an error path is worse than leaving
+    // it, so make it findable instead: one error log with the exact
+    // coordinates. Grouping the DB work in a block puts that log on *every*
+    // failure path (begin, each insert, commit), not just the first one.
+    let persisted: Result<(), (StatusCode, String)> = async {
+        let pool = get_pool_msg(&state)?;
+        let mut tx = pool.begin().await.map_err(db_err_msg("begin tx"))?;
 
-    let traject_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO trajects (name, description, scope, created_by)
-         VALUES ($1, $2, $3, $4) RETURNING id",
-    )
-    .bind(name)
-    .bind(&req.description)
-    .bind(&req.scope)
-    .bind(account.id)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(db_err_msg("insert traject"))?;
+        sqlx::query(
+            "INSERT INTO trajects (id, name, description, scope, created_by)
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(traject_id)
+        .bind(name)
+        .bind(&req.description)
+        .bind(&req.scope)
+        .bind(account.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err_msg("insert traject"))?;
 
-    sqlx::query(
-        "INSERT INTO traject_members (traject_id, account_id, role)
-         VALUES ($1, $2, 'owner')",
-    )
-    .bind(traject_id)
-    .bind(account.id)
-    .execute(&mut *tx)
-    .await
-    .map_err(db_err_msg("insert member"))?;
+        sqlx::query(
+            "INSERT INTO traject_members (traject_id, account_id, role)
+             VALUES ($1, $2, 'owner')",
+        )
+        .bind(traject_id)
+        .bind(account.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err_msg("insert member"))?;
 
-    // Seed federated read-config from the global registry. The global
-    // corpus read guard is dropped before the next await so we don't hold
-    // it across the database transaction.
-    let seeded: Vec<SeedSource> = {
-        let corpus = state.corpus.read().await;
-        corpus
-            .registry
-            .sources()
-            .iter()
-            .map(SeedSource::from_source)
-            .collect()
-    };
+        // Seed federated read-config from the global registry. The global
+        // corpus read guard is dropped before the next await so we don't hold
+        // it across the database transaction.
+        let seeded: Vec<SeedSource> = {
+            let corpus = state.corpus.read().await;
+            corpus
+                .registry
+                .sources()
+                .iter()
+                .map(SeedSource::from_source)
+                .collect()
+        };
 
-    for seed in seeded {
+        for seed in seeded {
+            sqlx::query(
+                "INSERT INTO traject_corpus_sources
+                 (traject_id, source_id, name, source_type,
+                  gh_owner, gh_repo, gh_branch, gh_path, gh_ref,
+                  local_path, priority, auth_ref, scopes, is_writable_own)
+                 VALUES ($1, $2, $3, $4::corpus_source_type,
+                         $5, $6, $7, $8, $9,
+                         $10, $11, $12, $13, FALSE)",
+            )
+            .bind(traject_id)
+            .bind(&seed.source_id)
+            .bind(&seed.name)
+            .bind(&seed.source_type)
+            .bind(seed.gh_owner)
+            .bind(seed.gh_repo)
+            .bind(seed.gh_branch)
+            .bind(seed.gh_path)
+            .bind(seed.gh_ref)
+            .bind(seed.local_path)
+            .bind(seed.priority as i32)
+            .bind(seed.auth_ref)
+            .bind(seed.scopes)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err_msg("seed traject source"))?;
+        }
+
+        // Writable-own source: the phase-1 MinBZK default or the user-supplied
+        // repo (already validated up-front for push access). `writable_branch` is
+        // the name derived at the top of this handler — for a user-supplied repo
+        // that branch now exists on GitHub, minted during the preflight. Auth
+        // flows through `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the `auth_ref`
+        // stored on this row.
+        let writable_source_id = format!("traject-own-{}", traject_id.simple());
         sqlx::query(
             "INSERT INTO traject_corpus_sources
              (traject_id, source_id, name, source_type,
-              gh_owner, gh_repo, gh_branch, gh_path, gh_ref,
-              local_path, priority, auth_ref, scopes, is_writable_own)
-             VALUES ($1, $2, $3, $4::corpus_source_type,
-                     $5, $6, $7, $8, $9,
-                     $10, $11, $12, $13, FALSE)",
+              gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path,
+              priority, auth_ref, is_writable_own)
+             VALUES ($1, $2, $3, 'github',
+                     $4, $5, $6, $7, $8,
+                     0, $9, TRUE)",
         )
         .bind(traject_id)
-        .bind(&seed.source_id)
-        .bind(&seed.name)
-        .bind(&seed.source_type)
-        .bind(seed.gh_owner)
-        .bind(seed.gh_repo)
-        .bind(seed.gh_branch)
-        .bind(seed.gh_path)
-        .bind(seed.gh_ref)
-        .bind(seed.local_path)
-        .bind(seed.priority as i32)
-        .bind(seed.auth_ref)
-        .bind(seed.scopes)
+        .bind(&writable_source_id)
+        .bind(&target.display_name)
+        .bind(&target.owner)
+        .bind(&target.repo)
+        .bind(&writable_branch)
+        .bind(&target.base_branch)
+        .bind(&target.path)
+        .bind(&target.auth_ref)
         .execute(&mut *tx)
         .await
-        .map_err(db_err_msg("seed traject source"))?;
+        .map_err(db_err_msg("insert writable source"))?;
+
+        tx.commit()
+            .await
+            .map_err(db_err_msg("commit traject create"))?;
+        Ok(())
     }
-
-    // Writable-own source: the phase-1 MinBZK default or the user-supplied
-    // repo (already validated up-front for push access). The branch name is
-    // derived from the traject name + id; auth flows through
-    // `CORPUS_AUTH_{AUTH_REF_UPPER}_TOKEN` via the `auth_ref` stored on this
-    // row.
-    let writable_source_id = format!("traject-own-{}", traject_id.simple());
-    let writable_branch = derive_branch_name(name, traject_id);
-    sqlx::query(
-        "INSERT INTO traject_corpus_sources
-         (traject_id, source_id, name, source_type,
-          gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path,
-          priority, auth_ref, is_writable_own)
-         VALUES ($1, $2, $3, 'github',
-                 $4, $5, $6, $7, $8,
-                 0, $9, TRUE)",
-    )
-    .bind(traject_id)
-    .bind(&writable_source_id)
-    .bind(&target.display_name)
-    .bind(&target.owner)
-    .bind(&target.repo)
-    .bind(&writable_branch)
-    .bind(&target.base_branch)
-    .bind(&target.path)
-    .bind(&target.auth_ref)
-    .execute(&mut *tx)
-    .await
-    .map_err(db_err_msg("insert writable source"))?;
-
-    tx.commit()
-        .await
-        .map_err(db_err_msg("commit traject create"))?;
+    .await;
+    if let Err(e) = persisted {
+        if target.minted_branch {
+            tracing::error!(
+                traject_id = %traject_id,
+                owner = %target.owner,
+                repo = %target.repo,
+                branch = %writable_branch,
+                "orphaned traject branch: it was created on GitHub but persisting \
+                 the traject failed, so nothing references it; remove it by hand"
+            );
+        }
+        return Err(e);
+    }
 
     state.trajects.invalidate(traject_id).await;
 

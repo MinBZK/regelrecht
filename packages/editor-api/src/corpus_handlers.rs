@@ -7,6 +7,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_sessions::Session;
+use uuid::Uuid;
 
 use regelrecht_auth::handlers::{
     SESSION_KEY_EMAIL, SESSION_KEY_EMAIL_VERIFIED, SESSION_KEY_NAME, SESSION_KEY_SUB,
@@ -18,15 +19,19 @@ use regelrecht_corpus::annotation_schema::{
 use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
-    collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw,
+    collect_law_outputs, extract_law_id, validate_yaml_syntax, LoadedLaw, SourceMap,
 };
 use regelrecht_corpus::timing;
 use regelrecht_corpus::CorpusError;
+use regelrecht_github::GithubClient;
 
 use crate::accounts::AccountRecord;
-use crate::github_oauth;
+use crate::credentials::{self, TrajectCredentials};
 use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{ScenarioListEntry, TrajectCorpus, TrajectCorpusError};
+use crate::traject_index_diagnosis::{
+    classify_index_failure, index_failure_to_status, IndexFailureKind, TokenOrigin,
+};
 use crate::trajects::resolve_traject_ref;
 use crate::user_notes;
 
@@ -119,14 +124,106 @@ pub struct LawOutputEntry {
 /// `TrajectCorpus` it resolved via `require_traject_corpus_from_ref`, to
 /// snapshot a law's YAML through the same read path the editor uses.
 pub(crate) enum ReadScope {
-    Traject(Arc<TrajectCorpus>),
+    Traject(TrajectScope),
     Global(tokio::sync::OwnedRwLockReadGuard<CorpusState>),
 }
 
+/// Traject-scoped read state: the per-traject corpus plus the outcome of
+/// the per-request read-token resolution for its writable-own source.
+///
+/// The token outcome is resolved eagerly at scope construction but
+/// surfaced **lazily**: a read that never touches the writable-own
+/// backend (seed laws, source listings) must keep working for a user
+/// without a linked GitHub account, so the deferred `Err` (the 428
+/// connect-flow) only fires at the call sites that actually read the
+/// writable-own source. The token itself lives only in this per-request
+/// struct — never in the shared `TrajectCorpus` or any cache key.
+pub(crate) struct TrajectScope {
+    traject: Arc<TrajectCorpus>,
+    own_read_token: Result<Option<String>, (StatusCode, String)>,
+    /// The caller's editor account. Only used for logging on the
+    /// index-failure path: reading the logs back, an operator needs to know
+    /// *whose* access path broke, and an account id says that without
+    /// putting a name or e-mail address in the log.
+    account_id: Uuid,
+}
+
+impl TrajectScope {
+    /// The token to authenticate a writable-own read with, or the
+    /// deferred 428 when this deployment requires a user token for that
+    /// source and the caller hasn't linked one. Call this at the moment
+    /// a read actually targets the writable-own backend — not earlier.
+    fn own_read_token(&self) -> Result<Option<&str>, (StatusCode, String)> {
+        match &self.own_read_token {
+            Ok(token) => Ok(token.as_deref()),
+            Err(e) => Err(e.clone()),
+        }
+    }
+
+    /// [`Self::own_read_token`], but only when `law_id`'s body actually
+    /// resolves from the writable-own source — a seed-served law must
+    /// neither carry the personal token nor trip the deferred 428.
+    fn own_read_token_for_law(&self, law_id: &str) -> Result<Option<&str>, (StatusCode, String)> {
+        let from_own = self
+            .traject
+            .corpus
+            .source_map
+            .get_law(law_id)
+            .is_some_and(|l| l.source_id == self.traject.writable_own_source_id);
+        if from_own {
+            self.own_read_token()
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Like [`Self::own_read_token_for_law`], for the full version set:
+    /// the token (or deferred 428) applies as soon as *any* indexed
+    /// version of the law lives on the writable-own source.
+    fn own_read_token_for_law_versions(
+        &self,
+        law_id: &str,
+    ) -> Result<Option<&str>, (StatusCode, String)> {
+        let any_own = self
+            .traject
+            .corpus
+            .source_map
+            .get_law_versions(law_id)
+            .is_some_and(|vs| {
+                vs.iter()
+                    .any(|v| v.source_id == self.traject.writable_own_source_id)
+            });
+        if any_own {
+            self.own_read_token()
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 impl ReadScope {
+    /// Build a traject scope, resolving the per-request read token for
+    /// the traject's writable-own source (see [`TrajectScope`]).
+    ///
+    /// `pub(crate)`: `task_requests` snapshots law YAML through the same
+    /// read path and must resolve the same token.
+    pub(crate) async fn for_traject(
+        state: &AppState,
+        account_id: Uuid,
+        headers: &axum::http::HeaderMap,
+        traject: Arc<TrajectCorpus>,
+    ) -> Self {
+        let own_read_token = resolve_own_read_token(state, account_id, headers, &traject).await;
+        ReadScope::Traject(TrajectScope {
+            traject,
+            own_read_token,
+            account_id,
+        })
+    }
+
     fn corpus(&self) -> &CorpusState {
         match self {
-            ReadScope::Traject(t) => &t.corpus,
+            ReadScope::Traject(t) => &t.traject.corpus,
             ReadScope::Global(g) => g,
         }
     }
@@ -136,12 +233,22 @@ impl ReadScope {
     /// takes precedence over the source_map snapshot, so a save +
     /// re-open in the same traject returns the new content without a
     /// full source_map rebuild.
-    async fn law_yaml(
-        &self,
-        law_id: &str,
-    ) -> Result<Option<String>, regelrecht_corpus::error::CorpusError> {
+    ///
+    /// Backend failures (lazy fetch threw) map to 502 "failed to load",
+    /// distinguishable from a genuine `Ok(None)` miss; a writable-own law
+    /// that needs the caller's GitHub link maps to the 428 connect-flow.
+    async fn law_yaml(&self, law_id: &str) -> Result<Option<String>, (StatusCode, String)> {
         match self {
-            ReadScope::Traject(t) => t.law_yaml(law_id).await,
+            ReadScope::Traject(t) => {
+                // Deferred read-token outcome: loud (428) when the body
+                // lives on a writable-own source we cannot read for this
+                // user, instead of a silent 404 from GitHub.
+                let token = t.own_read_token_for_law(law_id)?;
+                t.traject
+                    .law_yaml_with_read_token(law_id, token)
+                    .await
+                    .map_err(law_read_error(t.traject.traject_id, law_id))
+            }
             // The global corpus is fully loaded up front, so there's no lazy
             // fetch that could fail — a miss is always a genuine miss.
             ReadScope::Global(g) => {
@@ -154,12 +261,26 @@ impl ReadScope {
     /// Mirrors [`Self::law_yaml`] but returns the full version set (newest-first)
     /// so the scenario loader can hand them all to the engine. An unknown law is
     /// an empty vec, not an error.
-    async fn law_yaml_versions(
-        &self,
-        law_id: &str,
-    ) -> Result<Vec<String>, regelrecht_corpus::error::CorpusError> {
+    async fn law_yaml_versions(&self, law_id: &str) -> Result<Vec<String>, (StatusCode, String)> {
         match self {
-            ReadScope::Traject(t) => t.law_yaml_versions(law_id).await,
+            ReadScope::Traject(t) => {
+                let token = t.own_read_token_for_law_versions(law_id)?;
+                t.traject
+                    .law_yaml_versions_with_read_token(law_id, token)
+                    .await
+                    .map_err(|e| {
+                        tracing::warn!(
+                            traject = %t.traject.traject_id,
+                            law_id = %law_id,
+                            error = %e,
+                            "failed to load law versions"
+                        );
+                        (
+                            StatusCode::BAD_GATEWAY,
+                            format!("Kon versies van wet '{law_id}' niet laden"),
+                        )
+                    })
+            }
             // The global corpus is fully loaded up front (like `law_yaml`), so
             // eagerly-loaded (local-source) bodies are present; filter any
             // metadata-only sentinel so the loader never receives an empty YAML
@@ -183,9 +304,58 @@ impl ReadScope {
     }
 }
 
-/// Read a law's YAML within a scope, mapping the outcome to an HTTP error:
-/// a backend failure (lazy fetch threw) becomes 502 "failed to load" so it's
-/// distinguishable from a genuine 404 miss; the error is logged for operators.
+/// Map a law-body backend failure to the client-facing 502; the raw error
+/// is logged for operators, tagged with the traject so it can be correlated
+/// with the rest of that traject's read path.
+fn law_read_error(
+    traject_id: Uuid,
+    law_id: &str,
+) -> impl FnOnce(regelrecht_corpus::error::CorpusError) -> (StatusCode, String) + '_ {
+    move |e| {
+        tracing::warn!(traject = %traject_id, law_id = %law_id, error = %e, "failed to load law body");
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Kon wet '{law_id}' niet laden"),
+        )
+    }
+}
+
+/// Resolve the per-request read token for a traject's writable-own
+/// backend (see [`TrajectCredentials::for_read`] for the decision table).
+/// The result — including the deferred 428 — is stored on the
+/// [`TrajectScope`] and only surfaced by reads that actually target the
+/// writable-own source.
+///
+/// `pub(crate)`: the integrity scan reads the writable-own repo directly
+/// (no law-by-law routing), so it resolves the very same token instead of
+/// growing a second answer to "which credential may read this repo for
+/// this caller" — see [`crate::traject_integrity`].
+pub(crate) async fn resolve_own_read_token(
+    state: &AppState,
+    account_id: Uuid,
+    headers: &axum::http::HeaderMap,
+    traject: &TrajectCorpus,
+) -> Result<Option<String>, (StatusCode, String)> {
+    let Some(entry) = traject.corpus.backends.get(&traject.writable_own_source_id) else {
+        return Ok(None);
+    };
+    // Writable at rest = the backend has its own credential (service
+    // token, or a natively writable local dir): reads keep using it,
+    // behaviour unchanged — and we skip the backend lock entirely.
+    if entry.writable {
+        return Ok(None);
+    }
+    // Lock only long enough for the two synchronous capability probes
+    // inside `for_read`; no I/O under this guard.
+    let backend = entry.backend.lock().await;
+    TrajectCredentials::new(state, account_id, headers)
+        .for_read(&**backend, entry.writable)
+        .await
+}
+
+/// Read a law's YAML within a scope. 502 for a backend failure, 404 for a
+/// genuine miss, 428 when the writable-own source needs the caller's
+/// GitHub link (see [`ReadScope::law_yaml`]).
 ///
 /// `pub(crate)`: also used by `task_requests` to snapshot the wet-YAML an
 /// enrich-op-aanvraag ships as its input blob.
@@ -195,14 +365,7 @@ pub(crate) async fn read_law_yaml(
 ) -> Result<String, (StatusCode, String)> {
     scope
         .law_yaml(law_id)
-        .await
-        .map_err(|e| {
-            tracing::warn!(law_id = %law_id, error = %e, "failed to load law body");
-            (
-                StatusCode::BAD_GATEWAY,
-                format!("Kon wet '{law_id}' niet laden"),
-            )
-        })?
+        .await?
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{law_id}' not found")))
 }
 
@@ -221,13 +384,130 @@ async fn global_scope(state: &AppState) -> ReadScope {
 /// UUID before the membership query (see `resolve_traject_ref`). Returns
 /// 403 when the caller is not a member, 404 when the ref doesn't match
 /// any known traject, 400 when the ref is malformed.
+///
+/// `account` + `headers` feed the per-request read-token resolution for
+/// the traject's writable-own source (see [`TrajectScope`]).
 async fn require_traject_scope(
     state: &AppState,
     session: &Session,
+    account: &AccountRecord,
+    headers: &axum::http::HeaderMap,
     traject_ref: &str,
 ) -> Result<ReadScope, (StatusCode, String)> {
-    let traject = require_traject_corpus_from_ref(state, session, traject_ref).await?;
-    Ok(ReadScope::Traject(traject))
+    // Resolve the user's linked-token *candidate* BEFORE the corpus build:
+    // the index scan of a token-less writable-own repo authenticates with
+    // it (`ScanTokenOverride` scopes it to that one source, and only when
+    // the server resolves no token). A deferred 428 is swallowed here —
+    // seed-only browsing must keep working for unlinked users; the
+    // `ReadScope` re-resolves the token and raises the 428 at the call
+    // sites that actually need the writable-own source (including the
+    // traject-library gate in `require_traject_index`).
+    let scan_token = TrajectCredentials::new(state, account.id, headers)
+        .read_scan_candidate()
+        .await
+        .unwrap_or(None);
+    let traject = require_traject_corpus_from_ref_with_scan_token(
+        state,
+        session,
+        traject_ref,
+        scan_token.as_deref(),
+    )
+    .await?;
+    Ok(ReadScope::for_traject(state, account.id, headers, traject).await)
+}
+
+/// Criterion "luid falen": when the traject's writable-own source failed
+/// to index, the traject-scoped law index must refuse to serve instead of
+/// presenting a normal-looking list in which every law silently resolved
+/// from the central seed corpus. `/sources` deliberately stays outside
+/// this gate — the per-source `index_error` there is how the failure is
+/// diagnosed.
+///
+/// Refusing is not the same as being useless about it. A failed scan has
+/// half a dozen wildly different causes — a traject that was never
+/// initialised, a branch someone deleted, a repo that moved, a link that
+/// GitHub no longer accepts — each with its own remedy, and one blanket
+/// 502 tells the member none of them. So the failure path classifies the
+/// cause in-band, with the very token the scan used (see
+/// [`crate::traject_index_diagnosis`]), and answers with the matching
+/// status and a Dutch sentence that names both the problem and the fix.
+///
+/// The extra GitHub calls that costs land **only here**, on a request
+/// that has already failed; the happy path returns on the first line
+/// without touching the network.
+async fn require_traject_index(scope: &ReadScope) -> Result<(), (StatusCode, String)> {
+    let ReadScope::Traject(t) = scope else {
+        return Ok(());
+    };
+    let Some(scan_error) = t.traject.own_index_error() else {
+        return Ok(());
+    };
+    // Deferred read-token outcome first: unlinked (or expired) in
+    // user-token mode → 428 into the koppel-flow. That is the one
+    // situation the server can already name without asking GitHub.
+    let user_token = t.own_read_token()?;
+
+    // Same token the scan authenticated with, so the probe walks the same
+    // access path: the caller's personal one when there is one, otherwise
+    // the source's server-side token.
+    let server_token = if user_token.is_none() {
+        t.traject.own_server_token()
+    } else {
+        None
+    };
+    let (token, origin) = match (user_token, server_token.as_deref()) {
+        (Some(tok), _) => (Some(tok), TokenOrigin::User),
+        (None, Some(tok)) => (Some(tok), TokenOrigin::Server),
+        (None, None) => (None, TokenOrigin::Absent),
+    };
+
+    let (kind, status, message) = match t.traject.own_source_target() {
+        Some(target) => {
+            // Plain `new()`: it honours the same `GITHUB_API_BASE` seam the
+            // scan's own client did, so the probe reaches the same host that
+            // just refused it.
+            let kind = match GithubClient::new() {
+                Ok(client) => classify_index_failure(&client, &target, token).await,
+                // No client, nothing to probe with — an infrastructure
+                // fault of our own, not a diagnosis.
+                Err(e) => {
+                    tracing::error!(
+                        traject = %target.traject_id,
+                        error = %e,
+                        "failed to build GitHub client for traject index diagnosis"
+                    );
+                    IndexFailureKind::Unknown
+                }
+            };
+            let (status, message) = index_failure_to_status(kind, &target, origin);
+            (kind, status, message)
+        }
+        // A writable-own source that isn't GitHub-backed (local dev /
+        // preview stack): there is no repo to interrogate.
+        None => (
+            IndexFailureKind::Unknown,
+            StatusCode::BAD_GATEWAY,
+            "De bibliotheek van dit traject kon niet worden gelezen. Probeer het opnieuw en \
+             meld het als het blijft misgaan."
+                .to_string(),
+        ),
+    };
+
+    // The one place this path logs its outcome, with a fixed field set so an
+    // incident is findable both by traject and by kind. `error` carries the
+    // raw scan failure; `account` says whose access path broke without naming
+    // the person behind it.
+    tracing::warn!(
+        traject = %t.traject.traject_id,
+        source_id = %t.traject.writable_own_source_id,
+        account = %t.account_id,
+        kind = %kind,
+        token_origin = %origin.as_str(),
+        status = status.as_u16(),
+        error = %scan_error,
+        "traject library refused: writable-own source failed to index"
+    );
+    Err((status, message))
 }
 
 /// GET /api/sources — list all registered corpus sources (global).
@@ -242,16 +522,18 @@ pub async fn list_sources(
 /// but routed through the traject's per-source backends.
 pub async fn list_traject_sources(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<SourceSummary>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     Ok(Json(list_sources_in_scope(&scope)))
 }
 
 fn list_sources_in_scope(scope: &ReadScope) -> Vec<SourceSummary> {
     let corpus = scope.corpus();
-    build_source_summaries(&corpus.registry, &corpus.source_map)
+    build_source_summaries(&corpus.registry, &corpus.source_map, &corpus.index_failures)
 }
 
 /// GET /api/corpus/laws — list loaded laws with source metadata (global view).
@@ -270,16 +552,27 @@ pub async fn list_corpus_laws(
 /// but the source_map comes from the traject's per-source backends.
 pub async fn list_traject_corpus_laws(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
     Query(params): Query<PaginationParams>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
+    // No silent central-only fallback: a traject whose own repo couldn't
+    // be scanned fails this listing loudly, with the cause classified and
+    // the status that fits it.
+    require_traject_index(&scope).await?;
     Ok(Json(list_corpus_laws_in_scope(&scope, params)))
 }
 
 fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec<CorpusLawEntry> {
-    let corpus = scope.corpus();
+    filter_corpus_laws(&scope.corpus().source_map, &params)
+}
+
+/// The pure body of [`list_corpus_laws_in_scope`], split out so the filter
+/// precedence can be tested without an axum/session/DB harness.
+fn filter_corpus_laws(source_map: &SourceMap, params: &PaginationParams) -> Vec<CorpusLawEntry> {
     let limit = params.effective_limit();
 
     // Exact-id filter (highest precedence). The library sidebar sends the
@@ -308,10 +601,25 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty());
 
-    let mut entries: Vec<CorpusLawEntry> = corpus
-        .source_map
+    // Provenance filter. Orthogonal to `ids`/`q` — those say *which* laws,
+    // this says *whose* — so it narrows (AND) whichever of the two applies
+    // instead of competing with them (see `PaginationParams::source`). The
+    // library sidebar sends it alone to list the laws of the traject's own
+    // repo (`source_priority` 0) without the federated central corpus.
+    let source_filter = params
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    let mut entries: Vec<CorpusLawEntry> = source_map
         .laws()
         .filter(|law| {
+            if let Some(source_id) = source_filter {
+                if law.source_id != source_id {
+                    return false;
+                }
+            }
             if let Some(ids) = &id_filter {
                 return ids.contains(law.law_id.as_str());
             }
@@ -339,11 +647,11 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
         })
         .collect();
 
-    if id_filter.is_some() || needle.is_some() {
-        // Filtered (by ids or search): order so the grouped UI gets the
-        // highest-priority sources first (the traject's own repo before the
-        // central corpus), and the result cap can't starve a high-priority
-        // source. No offset paging — return the matching set.
+    if id_filter.is_some() || needle.is_some() || source_filter.is_some() {
+        // Filtered (by ids, search or source): order so the grouped UI gets
+        // the highest-priority sources first (the traject's own repo before
+        // the central corpus), and the result cap can't starve a
+        // high-priority source. No offset paging — return the matching set.
         entries.sort_by(|a, b| {
             a.source_priority
                 .cmp(&b.source_priority)
@@ -371,22 +679,52 @@ fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec
 /// Goes through `require_traject_corpus_from_ref` (not `require_traject_scope`)
 /// because it needs the `TrajectCorpus` directly to reach the writable-own
 /// backend; the membership re-check is identical either way.
+///
+/// The diff is a *read* on that backend, so it resolves the same per-request
+/// token every other writable-own read does ([`resolve_own_read_token`]).
+/// Without it a traject on a private, user-supplied repo — where the server
+/// holds no token by design — could never fill this list, not even after real
+/// edits. A caller who has no GitHub link resolves to no token: the deferred
+/// 428 — and *only* that one — is swallowed here rather than raised, keeping
+/// this endpoint's "empty array, not an error" contract (the frontend then
+/// simply hides the section, and the 428 connect-flow is raised by the reads
+/// that truly need it). Any other error propagates: a failed feature-flag
+/// lookup is an outage, and a 200 with an empty array launders it into a
+/// success that no log or metric will ever flag. (The sidebar renders the same
+/// either way — `fetchChangedLawIds` hides the section on any failure — so the
+/// argument here is operator visibility, not what the user sees.)
 pub async fn list_traject_changed_laws(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let ids = traject.changed_law_ids().await.map_err(|e| {
-        // A GitHub round-trip failure (token, transport, unexpected status)
-        // is upstream — surface it as 502 with a generic message; details
-        // are logged for operators.
-        tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
-        (
-            StatusCode::BAD_GATEWAY,
-            "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
-        )
-    })?;
+    let own_read_token = match resolve_own_read_token(&state, account.id, &headers, &traject).await
+    {
+        Ok(token) => token,
+        // The only error this endpoint absorbs: "you have no GitHub link
+        // yet". Everything else (e.g. the feature-flag lookup failing on
+        // the database) is a real failure and propagates like it does for
+        // every other caller of this `Result` in the crate — folding it
+        // into `None` would hide a real outage behind a 200.
+        Err((StatusCode::PRECONDITION_REQUIRED, _)) => None,
+        Err(e) => return Err(e),
+    };
+    let ids = traject
+        .changed_law_ids(own_read_token.as_deref())
+        .await
+        .map_err(|e| {
+            // A GitHub round-trip failure (token, transport, unexpected status)
+            // is upstream — surface it as 502 with a generic message; details
+            // are logged for operators.
+            tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
+            (
+                StatusCode::BAD_GATEWAY,
+                "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
+            )
+        })?;
     Ok(Json(ids))
 }
 
@@ -429,10 +767,12 @@ pub async fn get_corpus_law(
 /// global GET but with the traject's read-your-writes overlay applied.
 pub async fn get_traject_corpus_law(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<EtaggedContentResponse, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     get_corpus_law_in_scope(&scope, &law_id).await
 }
 
@@ -463,10 +803,12 @@ pub async fn get_corpus_law_versions(
 /// read-your-writes overlay.
 pub async fn get_traject_corpus_law_versions(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     get_corpus_law_versions_in_scope(&scope, &law_id).await
 }
 
@@ -474,15 +816,9 @@ async fn get_corpus_law_versions_in_scope(
     scope: &ReadScope,
     law_id: &str,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let versions = scope.law_yaml_versions(law_id).await.map_err(|e| {
-        // A backend failure (lazy fetch threw) is a 502, distinguishable from
-        // a genuine "no such law" empty array; logged for operators.
-        tracing::warn!(law_id = %law_id, error = %e, "failed to load law versions");
-        (
-            StatusCode::BAD_GATEWAY,
-            format!("Kon versies van wet '{law_id}' niet laden"),
-        )
-    })?;
+    // A backend failure (lazy fetch threw) is a 502, distinguishable from
+    // a genuine "no such law" empty array (see `ReadScope::law_yaml_versions`).
+    let versions = scope.law_yaml_versions(law_id).await?;
     Ok(Json(versions))
 }
 
@@ -499,10 +835,12 @@ pub async fn list_law_outputs(
 /// global but with the traject overlay.
 pub async fn list_traject_law_outputs(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     list_law_outputs_in_scope(&scope, &law_id).await
 }
 
@@ -549,10 +887,12 @@ pub async fn list_law_implementors(
 /// as the global view but resolved through the traject's federated corpus.
 pub async fn list_traject_law_implementors(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     Ok(Json(implementors_in_scope(&scope, &law_id).await))
 }
 
@@ -570,8 +910,8 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
         // per-request signal here is debug-only — a warn per lookup would
         // re-log the same incident on every panel open until the next
         // rebuild self-heals it.
-        ReadScope::Traject(traject) => {
-            let result = traject.implementors_of(law_id).await;
+        ReadScope::Traject(ts) => {
+            let result = ts.traject.implementors_of(law_id).await;
             if result.skipped_count > 0 {
                 tracing::debug!(
                     law_id = %law_id,
@@ -600,13 +940,23 @@ async fn implementors_in_scope(scope: &ReadScope, law_id: &str) -> Vec<String> {
 
 /// Law ids a scenario file evaluates, extracted from its execution steps.
 ///
-/// A target is the law named in an `I evaluate "<output>" of "<law_id>"`
-/// step. The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
+/// A target is the law named in an evaluation step: `I evaluate "<output>"
+/// of "<law_id>"` (`bdd/grammar.yaml`, step `evaluate`) and its multi-output
+/// twin `I evaluate outputs "<outputs>" of "<law_id>"` (step
+/// `evaluate_outputs`). Both name the law the scenario puts to work, so
+/// leaving the second out would hide a scenario from the law it tests — and
+/// make the integrity report call that law's own folder untargeted.
+///
+/// The Gherkin keyword may be `When`, `Then`, `And`, `But` or `*` —
 /// the frontend step matcher (`frontend/src/gherkin/steps.js`) matches step
 /// text without its keyword, so all of these run as execution steps.
 /// `Given law "…" is loaded` lines are dependencies, not targets.
 /// Deduplicated, order of first occurrence preserved.
-fn extract_target_law_ids(content: &str) -> Vec<String> {
+///
+/// `pub(crate)`: the integrity report resolves the same targets against the
+/// federated corpus to spot scenarios pointing at a law id that no longer
+/// exists (see [`crate::traject_integrity`]).
+pub(crate) fn extract_target_law_ids(content: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim_start();
@@ -616,7 +966,11 @@ fn extract_target_law_ids(content: &str) -> Vec<String> {
         else {
             continue;
         };
-        let Some(rest) = step.trim_start().strip_prefix("I evaluate \"") else {
+        let step = step.trim_start();
+        let Some(rest) = step
+            .strip_prefix("I evaluate outputs \"")
+            .or_else(|| step.strip_prefix("I evaluate \""))
+        else {
             continue;
         };
         // rest = `<output>" of "<law_id>"…`
@@ -629,6 +983,43 @@ fn extract_target_law_ids(content: &str) -> Vec<String> {
         let Some((law_id, _)) = rest.split_once('"') else {
             continue;
         };
+        if !law_id.is_empty() && !out.iter().any(|l| l == law_id) {
+            out.push(law_id.to_string());
+        }
+    }
+    out
+}
+
+/// Law ids a scenario file declares as **dependencies**, from its
+/// `law "<law_id>" is loaded` steps (`bdd/grammar.yaml`, step `load_law`).
+///
+/// The counterpart of [`extract_target_law_ids`]: those are the laws the
+/// scenario *evaluates*, these are the ones it loads to make an evaluation
+/// possible. The keyword is `Given` in practice, but every Gherkin keyword is
+/// accepted for the same reason [`extract_target_law_ids`] does — the step
+/// matcher works on the text, not the keyword.
+///
+/// Deduplicated, order of first occurrence preserved.
+pub(crate) fn extract_loaded_law_ids(content: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let Some(step) = ["Given ", "When ", "Then ", "And ", "But ", "* "]
+            .iter()
+            .find_map(|kw| trimmed.strip_prefix(kw))
+        else {
+            continue;
+        };
+        let Some(rest) = step.trim_start().strip_prefix("law \"") else {
+            continue;
+        };
+        let Some((law_id, tail)) = rest.split_once('"') else {
+            continue;
+        };
+        // Only the `is loaded` step — not some other future `law "…"` step.
+        if !tail.trim_start().starts_with("is loaded") {
+            continue;
+        }
         if !law_id.is_empty() && !out.iter().any(|l| l == law_id) {
             out.push(law_id.to_string());
         }
@@ -660,10 +1051,12 @@ pub async fn list_scenarios(
 /// scenario is visible without a corpus reload.
 pub async fn list_traject_scenarios(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     list_scenarios_in_scope(&scope, &law_id).await
 }
 
@@ -694,7 +1087,8 @@ async fn list_scenarios_in_scope(
         // law file itself was never saved there, AND seed scenarios that
         // were never copied to the branch keep showing up (their GET
         // falls back to the seed the same way).
-        ReadScope::Traject(traject) => {
+        ReadScope::Traject(ts) => {
+            let traject = &ts.traject;
             // Per-snapshot cache: the editor requests this listing on
             // every law open, and a rebuild costs one `list_files` per
             // backend plus a read per scenario file — the most GitHub-
@@ -728,6 +1122,10 @@ async fn list_scenarios_in_scope(
                 Err(_) => return Ok(Json(Vec::new())),
             };
             let write_source_id = traject_write_source_id(traject, law);
+            // The write-target listing reads the writable-own source, so
+            // this is where a missing GitHub link surfaces loudly (428)
+            // instead of a silently seed-only listing.
+            let own_read_token = ts.own_read_token()?;
             let mut names = std::collections::BTreeSet::new();
             // Lock order: write target first, released before the seed
             // backend is touched (writable-own → seed, never the
@@ -738,9 +1136,14 @@ async fn list_scenarios_in_scope(
                 let Some(entry) = traject.corpus.backends.get(source_id) else {
                     continue;
                 };
+                // Personal token only on the write-target (writable-own)
+                // leg; the seed listing never carries it.
+                let token = (source_id == write_source_id)
+                    .then_some(own_read_token)
+                    .flatten();
                 let backend = entry.backend.lock().await;
                 let entries = backend
-                    .list_files(&scenarios_dir, Some("feature"))
+                    .list_files_with_token(&scenarios_dir, Some("feature"), token)
                     .await
                     .map_err(list_error)?;
                 drop(backend);
@@ -760,7 +1163,7 @@ async fn list_scenarios_in_scope(
             for filename in names {
                 let relative_path = scenarios_dir.join(&filename);
                 let target_law_ids =
-                    match read_traject_scenario_cached(traject, law, &relative_path).await {
+                    match read_traject_scenario_cached(ts, law, &relative_path).await {
                         Ok(Some(content)) => extract_target_law_ids(&content),
                         // Listed but unreadable on every routing leg: a
                         // ghost. GitHub's directory listing is eventually
@@ -864,10 +1267,12 @@ pub async fn get_scenario(
 /// — traject-scoped scenario read.
 pub async fn get_traject_scenario(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<EtaggedContentResponse, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     get_scenario_in_scope(&scope, &law_id, &filename).await
 }
 
@@ -885,10 +1290,10 @@ async fn get_scenario_in_scope(
         // checked against. See `read_traject_file_via_write_target` for
         // the 412-loop this prevents. Cached per snapshot; saves keep the
         // entry coherent (see `read_traject_scenario_cached`).
-        ReadScope::Traject(traject) => {
-            let law = traject_law(traject, law_id)?;
+        ReadScope::Traject(ts) => {
+            let law = traject_law(&ts.traject, law_id)?;
             let relative_path = scenario_relative_path(law, filename)?;
-            read_traject_scenario_cached(traject, law, &relative_path).await?
+            read_traject_scenario_cached(ts, law, &relative_path).await?
         }
         // Global: no write target exists; keep the read-only resolution.
         ReadScope::Global(_) => {
@@ -946,7 +1351,8 @@ fn resolve_annotation_read_backend(
     law_id: &str,
 ) -> Result<SharedBackend, (StatusCode, String)> {
     match scope {
-        ReadScope::Traject(traject) => {
+        ReadScope::Traject(ts) => {
+            let traject = &ts.traject;
             let law = traject_law(traject, law_id)?;
             // Mirror `resolve_traject_law_write`: a law from a
             // non-writable_own source is routed to the writable_own
@@ -1031,8 +1437,9 @@ pub async fn get_traject_annotations(
     session: Session,
     Extension(account): Extension<AccountRecord>,
     Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<YamlResponse, (StatusCode, String)> {
-    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    let scope = require_traject_scope(&state, &session, &account, &headers, &traject_ref).await?;
     let sidecar = match get_annotations_in_scope(&scope, &law_id).await {
         Ok((_, _, content)) => Some(content),
         // Absent sidecar is fine here: the caller may still have personal
@@ -1125,14 +1532,26 @@ async fn read_annotations_in_scope(
     // letting a stale backend read pass the guard and overwrite the
     // save's fresh entry.
     let mut gen_before = 0;
-    if let ReadScope::Traject(traject) = scope {
-        gen_before = traject.sidecar_write_generation();
-        if let Some(cached) = traject.cached_sidecar(&annotations_cache_key(law_id)).await {
+    if let ReadScope::Traject(ts) = scope {
+        gen_before = ts.traject.sidecar_write_generation();
+        if let Some(cached) = ts
+            .traject
+            .cached_sidecar(&annotations_cache_key(law_id))
+            .await
+        {
             return Ok(cached);
         }
     }
 
     let backend = resolve_annotation_read_backend(scope, law_id)?;
+
+    // Traject-scoped, the resolved backend is the write target — the
+    // writable-own source — so this read carries the per-request token
+    // (or surfaces the deferred 428) exactly like the scenario reads.
+    let own_read_token = match scope {
+        ReadScope::Traject(ts) => ts.own_read_token()?.map(str::to_string),
+        ReadScope::Global(_) => None,
+    };
 
     // RFC-018 §1: keyed by law id at the source root, regardless of where
     // the law file lives. Same path the `save_annotations` write uses.
@@ -1142,17 +1561,20 @@ async fn read_annotations_in_scope(
 
     let content = {
         let backend = backend.lock().await;
-        backend.read_file(&relative_path).await.map_err(|e| {
-            tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to read annotations".to_string(),
-            )
-        })?
+        backend
+            .read_file_with_token(&relative_path, own_read_token.as_deref())
+            .await
+            .map_err(|e| {
+                tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to read annotations".to_string(),
+                )
+            })?
     };
 
-    if let ReadScope::Traject(traject) = scope {
-        traject
+    if let ReadScope::Traject(ts) = scope {
+        ts.traject
             .store_sidecar_read(annotations_cache_key(law_id), content.clone(), gen_before)
             .await;
     }
@@ -1268,8 +1690,26 @@ async fn resolve_backend_for_law(
             continue;
         }
         let backend = entry.backend.lock().await;
-        let exists = backend.read_file(law_rel).await.ok().flatten().is_some();
+        let read = backend.read_file(law_rel).await;
         drop(backend);
+        // A failed read is not "this source doesn't hold the law". The
+        // candidate is still skipped — another one may serve the write,
+        // and failing the whole resolve on one unreachable source would be
+        // worse — but the reason has to reach the logs, or a fallback that
+        // silently stopped matching is undiagnosable.
+        let exists = match read {
+            Ok(found) => found.is_some(),
+            Err(e) => {
+                tracing::warn!(
+                    law_id = %law_id,
+                    candidate_source = %source_id,
+                    error = %e,
+                    "could not read the law from a candidate source; skipping it as a \
+                     write target without knowing whether it holds the law"
+                );
+                false
+            }
+        };
         if exists {
             tracing::warn!(
                 law_id = %law_id,
@@ -1308,6 +1748,9 @@ async fn resolve_backend_for_law(
 /// `ReadOnly` is an expected, recoverable precondition (e.g. the resolved
 /// backend is a baked-in local source on a read-only container filesystem),
 /// and the message is safe to surface to the user as `403 Forbidden`.
+/// `WriteDenied` (GitHub itself answered 403 on the write call) also maps
+/// to `403 Forbidden`, with a fixed Dutch "geen schrijftoegang" message —
+/// the GitHub response text is logged, never echoed.
 ///
 /// Every other variant (IO, git command failures, push failures, …) goes
 /// out as `500 Internal Server Error` with a **generic** message. The full
@@ -1330,6 +1773,24 @@ fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (Status
             StatusCode::CONFLICT,
             "Concurrent edit detected, please retry".to_string(),
         ),
+        // GitHub refused the write outright (403): the authenticating
+        // identity — typically the user's own linked token in the
+        // user-token write mode — has no push access to the repo or its
+        // org (e.g. OAuth App access restrictions). Deliberately NOT the
+        // generic 500: the user can't do anything with "internal error",
+        // but "geen schrijftoegang" points at the actual problem. The
+        // full GitHub response goes to the operator log only. Note that
+        // `apiAuthGuard.js` intentionally does not intercept 403, so this
+        // message reaches the save-failed modal verbatim.
+        CorpusError::WriteDenied(_) => {
+            tracing::warn!(error = %e, kind = %kind, "GitHub denied corpus write (403)");
+            (
+                StatusCode::FORBIDDEN,
+                "GitHub staat deze wijziging niet toe met jouw gekoppelde account: \
+                 geen schrijftoegang tot deze repository of organisatie."
+                    .to_string(),
+            )
+        }
         _ => {
             tracing::warn!(error = %e, kind = %kind, "corpus write/persist failed");
             (
@@ -1403,13 +1864,17 @@ async fn require_editor_user(session: &Session) -> Result<EditorUser, (StatusCod
 /// `persist` call, so we don't need to flag the backend here.
 struct EditorWriteTarget {
     relative_path: PathBuf,
+    /// Whether the write-target source is writable at rest — see
+    /// [`TrajectLawWrite::write_source_writable`].
+    writable: bool,
     backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
 }
 
 /// Resolve the per-traject corpus from the URL ref, re-checking the
 /// caller's membership on every call. Bumps the traject corpus cache on
-/// a miss; calls `ensure_ready` (i.e. `git clone`) for every source in
-/// the traject's federated config on first use.
+/// a miss; calls `ensure_ready` for every source in the traject's
+/// federated config on first use (a branch check per GitHub source — no
+/// clone).
 ///
 /// The `traject_ref` is the URL form `{slug}-{8hex}`. The slug part is
 /// cosmetic — `resolve_traject_ref` looks up the traject by the trailing
@@ -1429,6 +1894,21 @@ pub(crate) async fn require_traject_corpus_from_ref(
     session: &Session,
     traject_ref: &str,
 ) -> Result<Arc<TrajectCorpus>, (StatusCode, String)> {
+    require_traject_corpus_from_ref_with_scan_token(state, session, traject_ref, None).await
+}
+
+/// [`require_traject_corpus_from_ref`] with the acting user's linked
+/// GitHub token as index-scan candidate (see
+/// [`TrajectCorpusCache::get_or_build`](crate::traject_corpus::TrajectCorpusCache::get_or_build)
+/// — transient, only for the writable-own source, never stored). Only the
+/// library read path resolves and passes a token; the write handlers keep
+/// the plain variant, their per-request tokens ride on the write itself.
+async fn require_traject_corpus_from_ref_with_scan_token(
+    state: &AppState,
+    session: &Session,
+    traject_ref: &str,
+    own_scan_token: Option<&str>,
+) -> Result<Arc<TrajectCorpus>, (StatusCode, String)> {
     let pool = state.pool.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         "database not configured".to_string(),
@@ -1442,7 +1922,11 @@ pub(crate) async fn require_traject_corpus_from_ref(
         .get(SESSION_KEY_SUB)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "session read sub in require_traject_corpus_from_ref");
+            tracing::error!(
+                traject = %traject_id,
+                error = %e,
+                "session read sub in require_traject_corpus_from_ref"
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "session read failed".to_string(),
@@ -1464,7 +1948,7 @@ pub(crate) async fn require_traject_corpus_from_ref(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "membership re-check query failed");
+        tracing::error!(traject = %traject_id, error = %e, "membership re-check query failed");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "membership check failed".to_string(),
@@ -1483,12 +1967,15 @@ pub(crate) async fn require_traject_corpus_from_ref(
     };
     state
         .trajects
-        .get_or_build(pool, traject_id, auth_file)
+        .get_or_build(pool, traject_id, auth_file, own_scan_token)
         .await
-        .map_err(traject_corpus_error)
+        .map_err(|e| traject_corpus_error(traject_id, e))
 }
 
-fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
+/// `traject_id` is carried in purely so the one log line here names the
+/// traject: every warning on this read path has to be correlatable with the
+/// rest of that traject's trail.
+fn traject_corpus_error(traject_id: Uuid, e: TrajectCorpusError) -> (StatusCode, String) {
     match e {
         TrajectCorpusError::NotFound => (
             StatusCode::NOT_FOUND,
@@ -1499,7 +1986,7 @@ fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
             "Traject heeft geen eigen schrijfbare source".to_string(),
         ),
         other => {
-            tracing::error!(error = %other, "traject corpus build failed");
+            tracing::error!(traject = %traject_id, error = %other, "traject corpus build failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Traject corpus init failed".to_string(),
@@ -1548,6 +2035,12 @@ struct TrajectLawWrite {
     /// source and its writes are routed to the traject's writable-own
     /// backend (see `write_target_for_source`).
     write_source_id: String,
+    /// Whether the write-target source is writable at rest (has its own
+    /// service token / is a natively writable local dir), captured at
+    /// backend registration. Fed to [`TrajectCredentials::for_write`] as the
+    /// explicit "has own write credential" capability instead of a runtime
+    /// `is_writable()` probe.
+    write_source_writable: bool,
     backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
 }
 
@@ -1569,16 +2062,18 @@ async fn resolve_traject_law_write(
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
         ))?;
-    if !entry.writable {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
     // Per-source write mutex: every save to the same traject source
     // serialises here, so contention (a second save waiting out the
     // first's GitHub round-trips) shows up as a fat `lock` phase.
     let backend = timing::measure("lock", entry.backend.clone().lock_owned()).await;
+    // The writability gate + the per-user token are resolved together by
+    // `TrajectCredentials::for_write` at the handler's write site, so they
+    // can't drift apart; this resolver just carries the write-target
+    // capability along.
     Ok(TrajectLawWrite {
         law,
         write_source_id: write_target_source_id,
+        write_source_writable: entry.writable,
         backend,
     })
 }
@@ -1611,10 +2106,11 @@ async fn current_content_for_write(
     write: &TrajectLawWrite,
     relative_path: &std::path::Path,
     kind: &'static str,
+    own_read_token: Option<&str>,
 ) -> Result<Option<String>, (StatusCode, String)> {
     if let Some(text) = write
         .backend
-        .read_file(relative_path)
+        .read_file_with_token(relative_path, own_read_token)
         .await
         .map_err(corpus_write_error(kind))?
     {
@@ -1684,6 +2180,7 @@ async fn read_traject_file_via_write_target(
     law: &LoadedLaw,
     relative_path: &std::path::Path,
     kind: &'static str,
+    own_read_token: Option<&str>,
 ) -> Result<Option<String>, (StatusCode, String)> {
     let write_source_id = traject_write_source_id(traject, law);
     let entry = traject.corpus.backends.get(&write_source_id).ok_or((
@@ -1692,8 +2189,11 @@ async fn read_traject_file_via_write_target(
     ))?;
     {
         let backend = entry.backend.lock().await;
+        // The write target is the writable-own source, so this leg may
+        // ride the per-request user token. The seed fallback below never
+        // does.
         if let Some(text) = backend
-            .read_file(relative_path)
+            .read_file_with_token(relative_path, own_read_token)
             .await
             .map_err(corpus_write_error(kind))?
         {
@@ -1726,10 +2226,11 @@ fn scenario_cache_key(relative_path: &std::path::Path) -> String {
 /// wrong). Cross-replica edits converge at the next snapshot, like law
 /// bodies.
 async fn read_traject_scenario_cached(
-    traject: &Arc<TrajectCorpus>,
+    ts: &TrajectScope,
     law: &LoadedLaw,
     relative_path: &std::path::Path,
 ) -> Result<Option<String>, (StatusCode, String)> {
+    let traject = &ts.traject;
     let key = scenario_cache_key(relative_path);
     // Generation captured before the cache probe: a save/delete landing
     // while the read is in flight bumps it, and the store below is then
@@ -1742,8 +2243,13 @@ async fn read_traject_scenario_cached(
     if let Some(cached) = traject.cached_sidecar(&key).await {
         return Ok(cached);
     }
+    // Token (or deferred 428) resolved only on a cache miss: cached
+    // *content* is fine to serve — every traject route already passed
+    // the membership check.
+    let own_read_token = ts.own_read_token()?;
     let content =
-        read_traject_file_via_write_target(traject, law, relative_path, "scenario").await?;
+        read_traject_file_via_write_target(traject, law, relative_path, "scenario", own_read_token)
+            .await?;
     traject
         .store_sidecar_read(key, content.clone(), gen_before)
         .await;
@@ -1767,6 +2273,7 @@ async fn resolve_traject_annotation_target(
         relative_path: PathBuf::from("annotations")
             .join(law_id)
             .join("annotations.yaml"),
+        writable: write.write_source_writable,
         backend: write.backend,
     })
 }
@@ -1814,19 +2321,31 @@ pub async fn save_scenario(
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
-    // Resolved-backend-aware: a local writable-own backend ignores the
-    // override, so enforcement must not 428 a save that never reaches GitHub.
-    let token_override =
-        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
-            .await?;
+    // One credential resolution for the whole write: the writability gate
+    // (403) plus the per-user token (428) plus the precondition read token,
+    // resolved together so they can't drift. A local writable-own backend
+    // ignores the override, so this never 428s a save that never reaches
+    // GitHub.
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**write.backend, write.write_source_writable)
+        .await?;
     let relative_path = scenario_relative_path(&write.law, &filename)?;
 
     // Optimistic concurrency, same semantics as documents. Only read the
     // current content when the client actually sent a precondition — a
-    // header-less save stays a single write, no extra backend read.
+    // header-less save stays a single write, no extra backend read. The
+    // precondition read uses the same token the write authenticates with
+    // (a token-less writable-own backend reads with the user's token), so
+    // it compares against the same bytes the GET served.
     if let Some(if_match) = extract_if_match(&headers) {
-        let current =
-            current_content_for_write(&traject, &write, &relative_path, "scenario").await?;
+        let current = current_content_for_write(
+            &traject,
+            &write,
+            &relative_path,
+            "scenario",
+            auth.read_token(),
+        )
+        .await?;
         check_if_match(current.as_deref(), Some(&if_match), "Scenario")?;
     }
 
@@ -1838,11 +2357,10 @@ pub async fn save_scenario(
 
     let outcome = write
         .backend
-        .persist(&WriteContext {
-            message: format!("Update scenario {} for {}", filename, law_id),
+        .persist(&auth.into_write_context(
+            format!("Update scenario {} for {}", filename, law_id),
             author,
-            token_override,
-        })
+        ))
         .await
         .map_err(corpus_write_error("scenario"))?;
 
@@ -2016,21 +2534,26 @@ pub async fn save_annotations(
     let target = resolve_traject_annotation_target(&traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
+        writable,
         backend,
     } = target;
-    // Checked here — after the all-personal early return and against the
+    // Resolved here — after the all-personal early return and against the
     // resolved backend — so enforcement only fires for notes that actually
     // commit to GitHub: personal notes go to the database, and a local
-    // writable-own backend never uses a token at all.
-    let token_override =
-        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
-            .await?;
+    // writable-own backend never uses a token at all. One resolution covers
+    // the write override and the append-base read below.
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**backend, writable)
+        .await?;
 
     // Read the current sidecar from the traject backend (the branch this
     // traject's PR is built on — read-your-writes within the traject).
-    // Absent file = first notes for this law.
+    // Absent file = first notes for this law. Uses the write's token: on a
+    // token-less writable-own backend this read would otherwise 404 on a
+    // private repo and silently drop the existing notes from the append
+    // base.
     let base_text: Option<String> = backend
-        .read_file(&relative_path)
+        .read_file_with_token(&relative_path, auth.read_token())
         .await
         .map_err(corpus_write_error("annotations"))?;
 
@@ -2140,11 +2663,7 @@ pub async fn save_annotations(
         .map_err(corpus_write_error("annotations"))?;
 
     let outcome = backend
-        .persist(&WriteContext {
-            message: format!("Notities bijgewerkt voor {}", law_id),
-            author,
-            token_override,
-        })
+        .persist(&auth.into_write_context(format!("Notities bijgewerkt voor {}", law_id), author))
         .await
         .map_err(corpus_write_error("annotations"))?;
 
@@ -2232,9 +2751,9 @@ pub async fn save_law(
     // overlay after `persist` succeeds.
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
-    let token_override =
-        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
-            .await?;
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**write.backend, write.write_source_writable)
+        .await?;
     let relative_path = PathBuf::from(&write.law.relative_path);
 
     // Optimistic concurrency, same semantics as the document PUT: a
@@ -2244,7 +2763,9 @@ pub async fn save_law(
     // mutex (acquired by `resolve_traject_law_write` above), so a
     // concurrent save cannot slip between the check and the write.
     if let Some(if_match) = extract_if_match(&headers) {
-        let current = current_content_for_write(&traject, &write, &relative_path, "law").await?;
+        let current =
+            current_content_for_write(&traject, &write, &relative_path, "law", auth.read_token())
+                .await?;
         check_if_match(current.as_deref(), Some(&if_match), "Wet")?;
     }
 
@@ -2256,11 +2777,7 @@ pub async fn save_law(
             .map_err(corpus_write_error("law"))?;
         write
             .backend
-            .persist(&WriteContext {
-                message: format!("Update law {}", law_id),
-                author,
-                token_override,
-            })
+            .persist(&auth.into_write_context(format!("Update law {}", law_id), author))
             .await
             .map_err(corpus_write_error("law"))?
     };
@@ -2305,9 +2822,9 @@ pub async fn delete_scenario(
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let write = resolve_traject_law_write(&traject, &law_id).await?;
-    let token_override =
-        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**write.backend)
-            .await?;
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**write.backend, write.write_source_writable)
+        .await?;
     let relative_path = scenario_relative_path(&write.law, &filename)?;
 
     write
@@ -2318,11 +2835,10 @@ pub async fn delete_scenario(
 
     let outcome = write
         .backend
-        .persist(&WriteContext {
-            message: format!("Delete scenario {} for {}", filename, law_id),
+        .persist(&auth.into_write_context(
+            format!("Delete scenario {} for {}", filename, law_id),
             author,
-            token_override,
-        })
+        ))
         .await
         .map_err(corpus_write_error("scenario"))?;
 
@@ -2415,7 +2931,11 @@ pub async fn reload_corpus(
     }
 
     let new_map = registry
-        .load_favorites_async(&law_ids, auth_file.as_deref())
+        .load_favorites_async(
+            &law_ids,
+            auth_file.as_deref(),
+            &regelrecht_shared::dates::today_str(),
+        )
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "corpus reload failed");
@@ -2578,8 +3098,9 @@ fn traject_documents_base(traject_ref: &str) -> PathBuf {
 /// `write_target_for_source.values().next()`, which relied on every
 /// value being identical (true today, but unenforced).
 async fn resolve_traject_documents_writer(
+    state: &AppState,
     traject: &Arc<TrajectCorpus>,
-) -> Result<tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>, (StatusCode, String)> {
+) -> Result<DocumentsWriter, (StatusCode, String)> {
     let entry = traject
         .corpus
         .backends
@@ -2588,10 +3109,25 @@ async fn resolve_traject_documents_writer(
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
         ))?;
-    if !entry.writable {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
-    Ok(entry.backend.clone().lock_owned().await)
+    let writable = entry.writable;
+    let backend = entry.backend.clone().lock_owned().await;
+    // The writability gate runs here so the read-only callers of this
+    // resolver (the document listing/GET) keep their 403; write callers
+    // additionally go through `TrajectCredentials::for_write`, which
+    // re-asserts the gate together with the token so the two are never
+    // applied out of order.
+    credentials::assert_writable(state, &**backend, writable).await?;
+    Ok(DocumentsWriter { backend, writable })
+}
+
+/// The traject's writable-own backend for the document endpoints, plus its
+/// writable-at-rest capability — the input
+/// [`TrajectCredentials::for_read`]/[`TrajectCredentials::for_write`] need to
+/// pick the token source.
+struct DocumentsWriter {
+    backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
+    /// See [`TrajectLawWrite::write_source_writable`].
+    writable: bool,
 }
 
 /// Read the `If-Match` header value, trimmed. `None` when absent or empty.
@@ -2637,9 +3173,10 @@ async fn enforce_if_match(
     backend: &dyn RepoBackend,
     relative_path: &std::path::Path,
     if_match: Option<&str>,
+    read_token: Option<&str>,
 ) -> Result<Option<String>, (StatusCode, String)> {
     let current = backend
-        .read_file(relative_path)
+        .read_file_with_token(relative_path, read_token)
         .await
         .map_err(corpus_write_error("document"))?;
     check_if_match(current.as_deref(), if_match, "Document")
@@ -2688,14 +3225,24 @@ fn check_if_match(
 /// offers the create form.
 pub async fn list_traject_documents(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<TrajectDocumentList>, (StatusCode, String)> {
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let writer = resolve_traject_documents_writer(&state, &traject).await?;
+    // Documents live exclusively on the writable-own source, so this read
+    // rides the per-request user token when that source has no service
+    // token — and fails loud (428, the GitHub connect-flow) instead of
+    // returning a silently empty list when the user hasn't linked GitHub.
+    let read_token = TrajectCredentials::new(&state, account.id, &headers)
+        .for_read(&**writer.backend, writer.writable)
+        .await?;
     let base = traject_documents_base(&traject_ref);
-    let entries = backend
-        .list_files_recursive(&base, None)
+    let entries = writer
+        .backend
+        .list_files_recursive_with_token(&base, None, read_token.as_deref())
         .await
         .map_err(|e| {
             tracing::warn!(error = %e, "list_files_recursive on documents failed");
@@ -2722,14 +3269,118 @@ pub async fn list_traject_documents(
     Ok(Json(TrajectDocumentList { documents }))
 }
 
-/// Upload formats accepted in fase 1: PDF and Word.
+/// Formats the wet-upload (`law_convert`) endpoint accepts. A law upload feeds
+/// the convert-to-law chain, which is only meaningful for a text-bearing
+/// document, so this endpoint keeps a deterministic allow-list — unlike the
+/// werkdocument upload, which accepts any format (see [`upload_traject_document`]).
 const UPLOAD_DOCUMENT_EXTENSIONS: &[&str] = &["pdf", "doc", "docx"];
 
+/// Markdown is the werkdocument target format itself, so a `.md`/`.markdown`
+/// upload needs no conversion: its bytes are stored as-is (pass-through) instead
+/// of going through a `document_convert` job.
+const MARKDOWN_PASSTHROUGH_EXTENSIONS: &[&str] = &["md", "markdown"];
+
+/// Welke formaten de werkdocument-upload hoe behandelt. Puur afgeleid van de
+/// twee bronnen die het gedrag ook echt bepalen — de pass-through-lijst
+/// hierboven en de convertertabel in de pipeline — zodat de editor de gebruiker
+/// per bestand kan vertellen of er AI aan te pas komt zonder daarvoor een eigen
+/// (en dus af te drijven) lijst bij te houden.
+#[derive(Debug, Serialize)]
+pub struct DocumentUploadFormats {
+    /// Wordt zonder conversie opgeslagen; er gebeurt niets met de inhoud.
+    pub passthrough: Vec<&'static str>,
+    /// Heeft een deterministische converter (pandoc/pdftotext): om te zetten
+    /// zonder taalmodel. Elk formaat dat in géén van beide lijsten staat kan
+    /// alleen met een taalmodel worden omgezet.
+    pub deterministic: Vec<&'static str>,
+}
+
+/// GET /api/document-upload-formats
+///
+/// Statische indeling voor de upload-bevestiging in de editor. Geen
+/// traject-scope en niets gevoeligs: het is dezelfde informatie die een
+/// gebruiker ook uit proberen zou afleiden.
+pub async fn list_document_upload_formats() -> Json<DocumentUploadFormats> {
+    Json(DocumentUploadFormats {
+        passthrough: MARKDOWN_PASSTHROUGH_EXTENSIONS.to_vec(),
+        deterministic: regelrecht_pipeline::document_convert::deterministic_extensions(),
+    })
+}
+
+/// Query-parameters van de werkdocument-upload.
+///
+/// Bewust een query-parameter en geen multipart-veld: [`read_upload_multipart`]
+/// breekt de veldenlus af zodra het `file`-veld voorbijkomt, dus een extra
+/// multipart-veld zou alleen werken bij de juiste veldvolgorde — een stille
+/// valstrik precies op de plek waar stilte het gevaarlijkst is.
+#[derive(Debug, Default, Deserialize)]
+pub struct UploadDocumentQuery {
+    /// `?llm=1` ⇒ de uploader staat toe dat een taalmodel het document leest.
+    /// Afwezig is nee: geen toestemming is de veilige uitkomst, ook wanneer een
+    /// oudere client de parameter niet meestuurt.
+    #[serde(default)]
+    pub llm: Option<String>,
+}
+
+impl UploadDocumentQuery {
+    /// Alleen een uitdrukkelijke bevestiging telt als toestemming; al het
+    /// andere (afwezig, leeg, `0`, onzin) is nee.
+    fn allow_llm(&self) -> bool {
+        matches!(
+            self.llm.as_deref().map(str::trim),
+            Some("1") | Some("true") | Some("yes")
+        )
+    }
+}
+
+/// Enforce the optional upload allow-list on `filename`. `None` accepts any
+/// format (the werkdocument upload — the conversion pipeline routes it), while
+/// `Some(list)` rejects any extension outside the list with a 415 (the
+/// wet-upload). Split out of [`read_upload_multipart`] so the gate is unit-
+/// testable without building a multipart request.
+fn check_upload_format(
+    filename: &str,
+    allowed: Option<&[&str]>,
+) -> Result<(), (StatusCode, String)> {
+    let Some(allowed) = allowed else {
+        return Ok(());
+    };
+    let ext = lowercase_extension(filename);
+    if allowed.contains(&ext.as_str()) {
+        return Ok(());
+    }
+    let list = allowed
+        .iter()
+        .map(|e| format!(".{e}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err((
+        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        format!("Dit bestandsformaat wordt niet ondersteund. Toegestaan: {list}."),
+    ))
+}
+
+/// The lowercased file extension of `filename`, or an empty string when it has
+/// none. Shared by the upload gate and the markdown pass-through branch so the
+/// two never disagree on what the extension is.
+fn lowercase_extension(filename: &str) -> String {
+    std::path::Path::new(filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
 /// Pull the uploaded file out of a multipart body (the `file` field) and gate
-/// it on [`UPLOAD_DOCUMENT_EXTENSIONS`]. Shared by the werkdocument- and
-/// wet-upload endpoints. Returns `(filename, content_type, bytes)`.
+/// its extension on `allowed`. Shared by the werkdocument- and wet-upload
+/// endpoints: the wet-upload passes `Some(allow-list)` (only text-bearing
+/// documents feed the convert-to-law chain), while the werkdocument upload
+/// passes `None` — it accepts any format and routes non-markdown through the
+/// deterministic/agentic conversion pipeline. The empty-file guard always
+/// applies. Returns `(filename, content_type, bytes)`.
 async fn read_upload_multipart(
     multipart: &mut Multipart,
+    allowed: Option<&[&str]>,
 ) -> Result<(String, String, Vec<u8>), (StatusCode, String)> {
     let mut filename: Option<String> = None;
     let mut content_type: Option<String> = None;
@@ -2762,18 +3413,11 @@ async fn read_upload_multipart(
     ))?;
     let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
 
-    // Only PDF/Word in fase 1.
-    let ext = std::path::Path::new(&filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    if !UPLOAD_DOCUMENT_EXTENSIONS.contains(&ext.as_str()) {
-        return Err((
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "Alleen PDF- en Word-documenten (.pdf, .doc, .docx) worden ondersteund.".to_string(),
-        ));
-    }
+    // Gate on the caller-supplied allow-list, when there is one. `None` means
+    // "accept any format" (the werkdocument upload): the empty-file check above
+    // is then the only sanity guard, and the conversion pipeline decides per
+    // format whether a deterministic tool fits or the agentic fallback runs.
+    check_upload_format(&filename, allowed)?;
     Ok((filename, content_type, data))
 }
 
@@ -2845,17 +3489,44 @@ fn derive_markdown_target(filename: &str, existing: &[String]) -> String {
     candidate
 }
 
+/// Write an uploaded markdown werkdocument to the traject's documents backend
+/// unchanged and commit it in one step. The bytes are already the target `.md`
+/// format, so this is a byte-for-byte pass-through — no conversion, no
+/// normalization. Split out so the pass-through can be unit-tested against a
+/// capturing backend without an axum/DB harness.
+async fn write_markdown_passthrough(
+    backend: &dyn RepoBackend,
+    relative_path: &std::path::Path,
+    markdown: &str,
+    ctx: WriteContext,
+) -> Result<PersistOutcome, CorpusError> {
+    backend.write_file(relative_path, markdown).await?;
+    backend.persist(&ctx).await
+}
+
 /// POST /api/trajects/{traject_ref}/corpus/documents/upload
 ///
-/// Accept a multipart upload of a PDF/Word document, store its bytes in
-/// `document_uploads`, and enqueue a `document_convert` job that converts it to
-/// a markdown werkdocument. Responds `202 Accepted` with the target `.md` path
-/// the converted document will appear at.
+/// Accept a multipart upload of any format. A non-markdown document has its bytes
+/// stored in `document_uploads` and a `document_convert` job enqueued that
+/// converts it to a markdown werkdocument (responds `202 Accepted`) — via a
+/// deterministic tool when one fits (pandoc/pdftotext) or the agentic enricher
+/// fallback otherwise, the result returning as a reviewable markdown task. A
+/// markdown upload needs no conversion: its bytes are written straight to the
+/// target `.md` (pass-through, responds `201 Created`). Either way the response
+/// carries the target `.md` path the document appears at.
+///
+/// `?llm=1` is de toestemming van de uploader om een taalmodel te gebruiken.
+/// Zonder die toestemming én zonder deterministische converter voor dit formaat
+/// zou er alleen een job ontstaan die niets anders kán dan falen; dat weigeren
+/// we hier meteen met een 400 die uitlegt waarom, in plaats van de gebruiker
+/// later een mislukte-conversie-taak te sturen.
 pub async fn upload_traject_document(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
     session: Session,
     Path(traject_ref): Path<String>,
+    Query(query): Query<UploadDocumentQuery>,
+    headers: axum::http::HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadDocumentResponse>), (StatusCode, String)> {
     let pool = state.pool.as_ref().ok_or((
@@ -2866,19 +3537,62 @@ pub async fn upload_traject_document(
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    // Pull the uploaded file out of the multipart body and gate the extension.
-    let (filename, content_type, data) = read_upload_multipart(&mut multipart).await?;
+    // Pull the uploaded file out of the multipart body. Werkdocumenten accept
+    // any format (`None` = no allow-list): markdown is stored as-is (pass-through
+    // branch below), and every other format is routed through the conversion
+    // pipeline, which picks a deterministic tool when one fits (pandoc/pdftotext)
+    // or the agentic enricher fallback otherwise, returning reviewable markdown.
+    let (filename, content_type, data) = read_upload_multipart(&mut multipart, None).await?;
+    let ext = lowercase_extension(&filename);
+    let allow_llm = query.allow_llm();
+
+    // Weiger vóór al het werk hieronder wat toch niet kan: geen toestemming voor
+    // een taalmodel, geen deterministische converter, en het is geen markdown
+    // (die gaat ongemoeid door). De uitleg is de belofte zelf — er is niets
+    // gelezen en niets verstuurd.
+    //
+    // De extensie komt hier uit de bestandsnaam, terwijl de pipeline bij een
+    // naam zonder extensie nog op het content-type terugvalt. Die grens loopt
+    // dus één kant op scheef: een naamloos-formaat bestand wordt hier geweigerd
+    // terwijl de conversie het misschien had gekund. Dat is de goede kant —
+    // strenger dan de pipeline, nooit ruimer — en het is dezelfde extensie die
+    // de uploadbevestiging de gebruiker liet zien.
+    if !allow_llm
+        && !MARKDOWN_PASSTHROUGH_EXTENSIONS.contains(&ext.as_str())
+        && !regelrecht_pipeline::document_convert::has_deterministic_converter(&ext)
+    {
+        let format = if ext.is_empty() {
+            "Dit bestand".to_string()
+        } else {
+            format!("Een .{ext}-bestand")
+        };
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{format} kan alleen met AI worden omgezet. Het bestand is niet opgeslagen en \
+                 niet omgezet. Upload het opnieuw met 'Omzetten met AI toestaan' aan, of lever \
+                 het aan als PDF, Word (.docx) of markdown."
+            ),
+        ));
+    }
 
     // Derive a collision-safe target markdown path against the existing docs.
     // A failed listing must NOT be swallowed: an empty `existing` set would let
     // the derivation hand back a name that already exists, and the worker's
     // unconditional write would silently overwrite that document. Fail the
     // upload instead.
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let writer = resolve_traject_documents_writer(&state, &traject).await?;
+    // Same read-token routing as `list_traject_documents`: without it a
+    // token-less writable-own repo lists empty and the collision check is
+    // blind.
+    let read_token = TrajectCredentials::new(&state, account.id, &headers)
+        .for_read(&**writer.backend, writer.writable)
+        .await?;
 
     let base = traject_documents_base(&traject_ref);
-    let mut existing: Vec<String> = backend
-        .list_files_recursive(&base, None)
+    let mut existing: Vec<String> = writer
+        .backend
+        .list_files_recursive_with_token(&base, None, read_token.as_deref())
         .await
         .map_err(|e| upload_internal_error("list documents for collision check", e))?
         .into_iter()
@@ -2887,7 +3601,7 @@ pub async fn upload_traject_document(
     // Release the writable-backend lock before the DB work below — the backend
     // is only needed for the listing, and holding its mutex through the
     // transaction would serialize every writable-document op on this traject.
-    drop(backend);
+    drop(writer);
     // Also avoid colliding with conversions that are enqueued but haven't
     // committed their `.md` yet, and with failed ones that still show a row under
     // that name — otherwise two same-named uploads both derive e.g. `report.md`,
@@ -2915,6 +3629,42 @@ pub async fn upload_traject_document(
             })?,
     );
     let target_path = derive_markdown_target(&filename, &existing);
+
+    // Markdown pass-through: markdown IS the werkdocument target format, so a
+    // `.md`/`.markdown` upload needs no conversion. Write its bytes straight to
+    // `<name>.md` (byte-identical, no pandoc round-trip) and skip the
+    // document_convert job + review task entirely — the document appears in the
+    // werkdocumentenlijst right away. (Same synchronous write+commit as
+    // `save_traject_document`.)
+    if MARKDOWN_PASSTHROUGH_EXTENSIONS.contains(&ext.as_str()) {
+        let markdown = String::from_utf8(data).map_err(|_| {
+            (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Het markdown-bestand is geen geldige UTF-8-tekst.".to_string(),
+            )
+        })?;
+        let author = Some(require_editor_user(&session).await?);
+        let writer = resolve_traject_documents_writer(&state, &traject).await?;
+        let auth = TrajectCredentials::new(&state, account.id, &headers)
+            .for_write(&**writer.backend, writer.writable)
+            .await?;
+        let relative_path = traject_documents_base(&traject_ref).join(&target_path);
+        write_markdown_passthrough(
+            &**writer.backend,
+            &relative_path,
+            &markdown,
+            auth.into_write_context(format!("Add document {target_path}"), author),
+        )
+        .await
+        .map_err(corpus_write_error("document"))?;
+        drop(writer);
+        // The `.md` already exists on the branch; the job-based path answers 202
+        // (async), so this synchronous write answers 201 Created.
+        return Ok((
+            StatusCode::CREATED,
+            Json(UploadDocumentResponse { target_path }),
+        ));
+    }
 
     // Persist the bytes and enqueue the conversion job in one transaction.
     let mut tx = pool
@@ -2945,6 +3695,10 @@ pub async fn upload_traject_document(
         // committen gebeurt pas bij goedkeuren in de request-context van de
         // gebruiker (met diens token wanneer enforcement aan staat).
         deliver: Some("task".to_string()),
+        // De keuze van de uploader reist mee de pipeline in; dáár wordt hij
+        // afgedwongen (de deterministische route kan óók stuklopen, en dan mag
+        // de agent alleen draaien als dit waar is).
+        allow_llm,
     };
     let payload_json = serde_json::to_value(&payload)
         .map_err(|e| upload_internal_error("serialize payload", e))?;
@@ -3002,7 +3756,10 @@ pub async fn upload_traject_law(
     let _traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
     let traject_id = resolve_traject_ref(pool, &traject_ref).await?;
 
-    let (filename, content_type, data) = read_upload_multipart(&mut multipart).await?;
+    // Wet-upload only accepts the convertible allow-list; the werkdocument
+    // upload's any-format acceptance does not apply here.
+    let (filename, content_type, data) =
+        read_upload_multipart(&mut multipart, Some(UPLOAD_DOCUMENT_EXTENSIONS)).await?;
 
     // Persist the bytes and enqueue the conversion job in one transaction,
     // guarded by the same per-account taak-flow-cap as enrich-op-aanvraag
@@ -3125,12 +3882,17 @@ pub async fn create_traject_law(
         .join(format!("{}.yaml", meta.valid_from));
 
     // The writable-own backend (same routing as documents: the law does not
-    // exist yet, so there is no per-law source to route from).
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    // exist yet, so there is no per-law source to route from). One credential
+    // resolution: the write override plus the read token for the exists-check.
+    let writer = resolve_traject_documents_writer(&state, &traject).await?;
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**writer.backend, writer.writable)
+        .await?;
     // Belt-and-braces against an index blind spot (e.g. a file committed on
     // the branch after the current snapshot was built).
-    if backend
-        .read_file(&relative_path)
+    if writer
+        .backend
+        .read_file_with_token(&relative_path, auth.read_token())
         .await
         .map_err(corpus_write_error("law"))?
         .is_some()
@@ -3141,23 +3903,21 @@ pub async fn create_traject_law(
                 .to_string(),
         ));
     }
-    let token_override =
-        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
-            .await?;
 
-    backend
+    writer
+        .backend
         .write_file(&relative_path, &body)
         .await
         .map_err(corpus_write_error("law"))?;
-    let outcome = backend
-        .persist(&WriteContext {
-            message: format!("Nieuwe wet {} uit documentconversie", law_id),
+    let outcome = writer
+        .backend
+        .persist(&auth.into_write_context(
+            format!("Nieuwe wet {} uit documentconversie", law_id),
             author,
-            token_override,
-        })
+        ))
         .await
         .map_err(corpus_write_error("law"))?;
-    drop(backend);
+    drop(writer);
 
     let new_etag = document_etag(&body);
 
@@ -3173,6 +3933,291 @@ pub async fn create_traject_law(
     let mut response = save_response_from_traject(outcome);
     response.etag = Some(new_etag.clone());
     Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
+}
+
+/// Response body of a promote: how many files were copied and, when the
+/// traject backend opened a PR for the commit, its coordinates.
+#[derive(Debug, Serialize)]
+pub struct PromoteResponse {
+    pub law_id: String,
+    pub copied_files: usize,
+    pub pr: Option<SavePrInfo>,
+}
+
+/// One file collected from a seed source for a promote, addressed by its
+/// source-relative path — which doubles as the write path in the traject's
+/// writable-own source, exactly like `save_law`'s write-routing for a
+/// federated law (`resolve_traject_law_write` reuses `law.relative_path`).
+struct PromoteFile {
+    relative_path: PathBuf,
+    content: String,
+}
+
+/// POST /api/trajects/{traject_ref}/corpus/laws/{law_id}/promote
+///
+/// Kopieer een wet uit het centrale corpus (de gefedereerde seed-bron van
+/// het traject, bijv. `minbzk-central`) naar de traject-repo: alle
+/// versie-YAML's (inclusief `machine_readable`) plus de bijbehorende
+/// `scenarios/*.feature`-bestanden, in één commit via het bestaande
+/// traject-schrijfpad (zelfde commit- en autorisatiegedrag als het opslaan
+/// van een wet). Staat de wet al in de traject-repo, dan 409 — er ontstaan
+/// nooit dubbele bestanden.
+///
+/// De bron is bewust het traject-gefedereerde corpus en niet de globale
+/// corpus-state: de traject-index dekt de volledige seed (metadata-only,
+/// lazy bodies), terwijl de globale state in productie alleen favorieten
+/// materialiseert (`load_favorites_async`).
+pub async fn promote_corpus_law(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<PromoteResponse>, (StatusCode, String)> {
+    let author = Some(require_editor_user(&session).await?);
+
+    // Membership guard FIRST (same ordering as create_traject_law), and the
+    // traject-id for the cache invalidation afterwards.
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let traject_id = resolve_traject_ref(
+        state.pool.as_ref().ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database not configured".to_string(),
+        ))?,
+        &traject_ref,
+    )
+    .await?;
+
+    // Al in de traject-repo volgens de gefedereerde index? Dan is promoten
+    // zinloos/gevaarlijk (overschrijven van traject-edits). De index kan een
+    // blinde vlek hebben (file net gecommit); de per-bestand check verderop
+    // is de belt-and-braces.
+    if let Some(law) = traject.corpus.source_map.get_law(&law_id) {
+        if law.source_id == traject.writable_own_source_id {
+            return Err((
+                StatusCode::CONFLICT,
+                "Deze wet staat al in dit traject.".to_string(),
+            ));
+        }
+    }
+
+    // Verzamel alle te kopiëren bestanden uit de seed-bron(nen), vóórdat de
+    // writable-own-lock genomen wordt. Alleen seed-locks worden hier (één
+    // tegelijk) gehouden — de writable-own → seed lock-orde-invariant blijft
+    // daarmee intact.
+    let files = collect_promote_files(&traject, &law_id).await?;
+
+    // Schrijfpad: de writable-own backend van het traject (zelfde routing als
+    // documents/create: per-wet routing bestaat nog niet, want de wet zit nog
+    // niet in de traject-repo).
+    let writer = resolve_traject_documents_writer(&state, &traject).await?;
+    // Eén credential-resolutie: het schrijf-override én het leestoken voor de
+    // bestaat-al-checks hieronder. Zonder service-token leest een privé
+    // traject-repo anders overal 404 en zou de promote bestaande traject-edits
+    // stilletjes overschrijven.
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**writer.backend, writer.writable)
+        .await?;
+
+    // Geen dubbele/overschreven bestanden, per bestandssoort:
+    // - Wet-versie-YAML al op het doelpad (bijv. via een eerdere save_law op
+    //   de gefedereerde wet, of een commit die de index nog niet zag) → 409
+    //   voor de hele promote.
+    // - Scenario-file al op het doelpad: dat is een traject-edit —
+    //   `save_scenario` routeert scenario's van gefedereerde wetten naar de
+    //   writable-own zónder dat er een wet-YAML in de traject-repo staat.
+    //   Die edit mag een promote niet stilletjes overschrijven; de
+    //   traject-versie wint (zelfde "eigen repo boven seed"-regel als
+    //   source_priority 0) en de rest van de wet-map wordt gewoon gekopieerd.
+    let mut to_write: Vec<&PromoteFile> = Vec::with_capacity(files.len());
+    for file in &files {
+        let exists = writer
+            .backend
+            .read_file_with_token(&file.relative_path, auth.read_token())
+            .await
+            .map_err(corpus_write_error("law"))?
+            .is_some();
+        if !exists {
+            to_write.push(file);
+            continue;
+        }
+        if file
+            .relative_path
+            .extension()
+            .is_some_and(|ext| ext == "yaml")
+        {
+            return Err((
+                StatusCode::CONFLICT,
+                "Deze wet staat al (deels) in dit traject.".to_string(),
+            ));
+        }
+        tracing::info!(
+            law_id = %law_id,
+            path = %file.relative_path.display(),
+            "promote: bestand bestaat al in de traject-repo (traject-edit wint), overslaan"
+        );
+    }
+
+    for file in &to_write {
+        writer
+            .backend
+            .write_file(&file.relative_path, &file.content)
+            .await
+            .map_err(corpus_write_error("law"))?;
+    }
+    let outcome = writer
+        .backend
+        .persist(&auth.into_write_context(
+            format!("Voeg wet {} toe uit het centrale corpus", law_id),
+            author,
+        ))
+        .await
+        .map_err(corpus_write_error("law"))?;
+    drop(writer);
+
+    // Read-your-writes + index-verversing, zoals create_traject_law: de
+    // nieuwste versie in de overlay, de wet in de changed-lijst, en een
+    // cache-drop zodat de volgende request de wet in de traject-index ziet.
+    if let Some(newest) = files
+        .iter()
+        .find(|f| f.relative_path.extension().is_some_and(|e| e == "yaml"))
+    {
+        traject
+            .record_save(law_id.clone(), newest.content.clone())
+            .await;
+    }
+    traject.record_changed_law(&law_id).await;
+    state.trajects.invalidate(traject_id).await;
+
+    Ok(Json(PromoteResponse {
+        law_id,
+        copied_files: to_write.len(),
+        pr: outcome.pr.map(|pr| SavePrInfo {
+            url: pr.html_url,
+            number: pr.number,
+        }),
+    }))
+}
+
+/// Verzamel de volledige wet-map van `law_id` uit de seed-bron(nen) van het
+/// traject: elk versie-YAML (nieuwste eerst, lazy-fetch waar de index alleen
+/// metadata heeft) plus de `scenarios/*.feature`-bestanden naast de wet.
+/// Versies uit de writable-own-bron worden overgeslagen (die staan er al).
+///
+/// Lock-discipline: houdt uitsluitend seed-backend-locks, één tegelijk —
+/// de aanroeper neemt de writable-own-lock pas ná dit verzamelen, dus de
+/// writable-own → seed lock-orde-invariant kan hier niet schenden.
+async fn collect_promote_files(
+    traject: &Arc<TrajectCorpus>,
+    law_id: &str,
+) -> Result<Vec<PromoteFile>, (StatusCode, String)> {
+    let not_found = || {
+        (
+            StatusCode::NOT_FOUND,
+            "Deze wet is niet gevonden in het centrale corpus van dit traject.".to_string(),
+        )
+    };
+    let versions: Vec<LoadedLaw> = traject
+        .corpus
+        .source_map
+        .get_law_versions(law_id)
+        .ok_or_else(not_found)?
+        .iter()
+        .filter(|v| v.source_id != traject.writable_own_source_id)
+        .cloned()
+        .collect();
+    if versions.is_empty() {
+        return Err(not_found());
+    }
+
+    let fetch_error = |what: &'static str, path: &std::path::Path, e: &dyn std::fmt::Display| {
+        tracing::warn!(law_id = %law_id, path = %path.display(), error = %e, "promote: {what} lezen uit seed-bron mislukt");
+        (
+            StatusCode::BAD_GATEWAY,
+            "Kon de wet niet volledig uit het centrale corpus lezen.".to_string(),
+        )
+    };
+
+    // Dedupe op relative_path: dezelfde versie kan uit meerdere seeds
+    // geïndexeerd zijn; get_law_versions sorteert hoogste prioriteit eerst,
+    // dus de eerste treffer per pad wint.
+    let mut seen = std::collections::BTreeSet::new();
+    let mut files = Vec::new();
+    for version in &versions {
+        let relative_path = PathBuf::from(&version.relative_path);
+        // Defensief: de index is vertrouwd, maar deze paden worden 1-op-1
+        // schrijfpaden in de traject-repo.
+        if version.relative_path.contains("..") || relative_path.is_absolute() {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Ongeldig bronpad in de corpus-index.".to_string(),
+            ));
+        }
+        if !seen.insert(relative_path.clone()) {
+            continue;
+        }
+        let content = if !version.yaml_content.is_empty() {
+            version.yaml_content.clone()
+        } else {
+            // Metadata-only indexvermelding: body lazy fetchen via de
+            // seed-backend, net als de traject-scoped reads doen.
+            let entry = traject.corpus.backends.get(&version.source_id).ok_or((
+                StatusCode::BAD_GATEWAY,
+                "Seed-backend van het centrale corpus is niet beschikbaar.".to_string(),
+            ))?;
+            let backend = entry.backend.lock().await;
+            backend
+                .read_file(&relative_path)
+                .await
+                .map_err(|e| fetch_error("wet-versie", &relative_path, &e))?
+                .ok_or_else(|| {
+                    fetch_error(
+                        "wet-versie",
+                        &relative_path,
+                        &"bestand ontbreekt bij de bron",
+                    )
+                })?
+        };
+        files.push(PromoteFile {
+            relative_path,
+            content,
+        });
+    }
+
+    // Scenario's naast de wet (criterium: de volledige wet-map). We lezen ze
+    // van de seed van de best-passende versie; een leesfout is een harde
+    // fout — stilletjes zonder scenario's promoten zou het acceptatiecriterium
+    // schenden zonder dat iemand het ziet.
+    let primary = &versions[0];
+    let law_dir = PathBuf::from(&primary.relative_path)
+        .parent()
+        .map(PathBuf::from)
+        .ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Kan de wet-map niet bepalen.".to_string(),
+        ))?;
+    let scenarios_dir = law_dir.join("scenarios");
+    if let Some(entry) = traject.corpus.backends.get(&primary.source_id) {
+        let backend = entry.backend.lock().await;
+        let entries = backend
+            .list_files(&scenarios_dir, Some("feature"))
+            .await
+            .map_err(|e| fetch_error("scenario-lijst", &scenarios_dir, &e))?;
+        for entry in entries {
+            let path = scenarios_dir.join(&entry.name);
+            let content = backend
+                .read_file(&path)
+                .await
+                .map_err(|e| fetch_error("scenario", &path, &e))?
+                .ok_or_else(|| fetch_error("scenario", &path, &"bestand ontbreekt bij de bron"))?;
+            files.push(PromoteFile {
+                relative_path: path,
+                content,
+            });
+        }
+    }
+
+    Ok(files)
 }
 
 /// GET /api/trajects/{traject_ref}/corpus/documents/jobs
@@ -3231,16 +4276,25 @@ pub async fn cancel_traject_document_convert_job(
 /// next PUT/DELETE to detect a concurrent edit.
 pub async fn get_traject_document(
     State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
     session: Session,
     Path((traject_ref, doc_path)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     use axum::response::IntoResponse;
     validate_document_path(&doc_path)?;
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
+    let writer = resolve_traject_documents_writer(&state, &traject).await?;
+    // Same read-token routing as the listing: user token on a token-less
+    // writable-own source, 428 instead of a misleading 404 when the user
+    // hasn't linked GitHub.
+    let read_token = TrajectCredentials::new(&state, account.id, &headers)
+        .for_read(&**writer.backend, writer.writable)
+        .await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
-    let content = backend
-        .read_file(&relative_path)
+    let content = writer
+        .backend
+        .read_file_with_token(&relative_path, read_token.as_deref())
         .await
         .map_err(corpus_write_error("document"))?
         .ok_or((StatusCode::NOT_FOUND, "Document niet gevonden".to_string()))?;
@@ -3303,18 +4357,24 @@ pub async fn save_traject_document(
     }
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
-    let token_override =
-        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
-            .await?;
+    let writer = resolve_traject_documents_writer(&state, &traject).await?;
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**writer.backend, writer.writable)
+        .await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
 
     let if_match = extract_if_match(&headers);
-    let existed_before = enforce_if_match(&**backend, &relative_path, if_match.as_deref())
-        .await?
-        .is_some();
+    let existed_before = enforce_if_match(
+        &**writer.backend,
+        &relative_path,
+        if_match.as_deref(),
+        auth.read_token(),
+    )
+    .await?
+    .is_some();
 
-    backend
+    writer
+        .backend
         .write_file(&relative_path, &body)
         .await
         .map_err(corpus_write_error("document"))?;
@@ -3324,12 +4384,9 @@ pub async fn save_traject_document(
     } else {
         format!("Add document {doc_path}")
     };
-    let outcome = backend
-        .persist(&WriteContext {
-            message,
-            author,
-            token_override,
-        })
+    let outcome = writer
+        .backend
+        .persist(&auth.into_write_context(message, author))
         .await
         .map_err(corpus_write_error("document"))?;
 
@@ -3371,31 +4428,34 @@ pub async fn delete_traject_document(
     let author = Some(require_editor_user(&session).await?);
 
     let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
-    let backend = resolve_traject_documents_writer(&traject).await?;
-    let token_override =
-        github_oauth::user_write_token_for_backend(&state, account.id, &headers, &**backend)
-            .await?;
+    let writer = resolve_traject_documents_writer(&state, &traject).await?;
+    let auth = TrajectCredentials::new(&state, account.id, &headers)
+        .for_write(&**writer.backend, writer.writable)
+        .await?;
     let relative_path = traject_documents_base(&traject_ref).join(&doc_path);
 
     let if_match = extract_if_match(&headers);
-    let existed = enforce_if_match(&**backend, &relative_path, if_match.as_deref())
-        .await?
-        .is_some();
+    let existed = enforce_if_match(
+        &**writer.backend,
+        &relative_path,
+        if_match.as_deref(),
+        auth.read_token(),
+    )
+    .await?
+    .is_some();
     if !existed {
         return Err((StatusCode::NOT_FOUND, "Document niet gevonden".to_string()));
     }
 
-    backend
+    writer
+        .backend
         .delete_file(&relative_path)
         .await
         .map_err(corpus_write_error("document"))?;
 
-    let outcome = backend
-        .persist(&WriteContext {
-            message: format!("Delete document {doc_path}"),
-            author,
-            token_override,
-        })
+    let outcome = writer
+        .backend
+        .persist(&auth.into_write_context(format!("Delete document {doc_path}"), author))
         .await
         .map_err(corpus_write_error("document"))?;
 
@@ -3692,6 +4752,60 @@ mod tests {
     }
 
     #[test]
+    fn lowercase_extension_reads_and_normalises() {
+        assert_eq!(lowercase_extension("Report.MD"), "md");
+        assert_eq!(lowercase_extension("notes.markdown"), "markdown");
+        assert_eq!(lowercase_extension("Brief.DOCX"), "docx");
+        // No extension → empty (never matches an allow-list entry).
+        assert_eq!(lowercase_extension("README"), "");
+    }
+
+    #[test]
+    fn markdown_is_passthrough_but_not_a_wet_upload_format() {
+        // A markdown upload takes the werkdocument pass-through branch (its
+        // extension classifies it), but markdown is never a convertible
+        // (wet-upload) format.
+        for ext in MARKDOWN_PASSTHROUGH_EXTENSIONS {
+            assert!(!UPLOAD_DOCUMENT_EXTENSIONS.contains(ext));
+        }
+    }
+
+    #[test]
+    fn check_upload_format_accepts_any_format_when_ungated() {
+        // The werkdocument upload passes `None`: any file is accepted whatever
+        // its extension — no 415 for an image, spreadsheet, presentation, or an
+        // unknown/extension-less name. The conversion pipeline decides the route.
+        for name in [
+            "scan.png",
+            "sheet.xlsx",
+            "deck.pptx",
+            "README",
+            "notes.odt",
+            "page.html",
+            "archive.weird",
+        ] {
+            assert!(
+                check_upload_format(name, None).is_ok(),
+                "{name} should be accepted by the any-format upload"
+            );
+        }
+    }
+
+    #[test]
+    fn check_upload_format_gates_on_allow_list_for_wet_upload() {
+        // The wet-upload keeps its allow-list: a non-listed format is 415, a
+        // listed one passes.
+        let err = check_upload_format("scan.png", Some(UPLOAD_DOCUMENT_EXTENSIONS)).unwrap_err();
+        assert_eq!(err.0, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        for name in ["brief.pdf", "brief.doc", "brief.docx", "BRIEF.PDF"] {
+            assert!(
+                check_upload_format(name, Some(UPLOAD_DOCUMENT_EXTENSIONS)).is_ok(),
+                "{name} should pass the wet-upload allow-list"
+            );
+        }
+    }
+
+    #[test]
     fn document_etag_is_quoted_hex() {
         let etag = document_etag("hello world");
         // RFC 7232 strong validator: quoted ASCII.
@@ -3796,7 +4910,7 @@ mod tests {
         let backend = StubBackend {
             body: Some("hello".to_string()),
         };
-        let etag = enforce_if_match(&backend, StdPath::new("x"), None)
+        let etag = enforce_if_match(&backend, StdPath::new("x"), None, None)
             .await
             .unwrap();
         assert_eq!(etag.as_deref(), Some(document_etag("hello").as_str()));
@@ -3805,7 +4919,7 @@ mod tests {
     #[tokio::test]
     async fn enforce_if_match_returns_none_when_file_absent_and_no_precondition() {
         let backend = StubBackend { body: None };
-        let etag = enforce_if_match(&backend, StdPath::new("x"), None)
+        let etag = enforce_if_match(&backend, StdPath::new("x"), None, None)
             .await
             .unwrap();
         assert!(etag.is_none());
@@ -3816,7 +4930,7 @@ mod tests {
         let backend = StubBackend {
             body: Some("hello".to_string()),
         };
-        let err = enforce_if_match(&backend, StdPath::new("x"), Some("\"stale\""))
+        let err = enforce_if_match(&backend, StdPath::new("x"), Some("\"stale\""), None)
             .await
             .expect_err("must refuse stale etag");
         assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
@@ -3828,7 +4942,7 @@ mod tests {
             body: Some("hello".to_string()),
         };
         let etag = document_etag("hello");
-        let returned = enforce_if_match(&backend, StdPath::new("x"), Some(&etag))
+        let returned = enforce_if_match(&backend, StdPath::new("x"), Some(&etag), None)
             .await
             .unwrap();
         assert_eq!(returned.as_deref(), Some(etag.as_str()));
@@ -3839,7 +4953,7 @@ mod tests {
         // `If-Match: *` semantically means "match any existing version".
         // Against a file that doesn't exist yet, the precondition fails.
         let backend = StubBackend { body: None };
-        let err = enforce_if_match(&backend, StdPath::new("x"), Some("*"))
+        let err = enforce_if_match(&backend, StdPath::new("x"), Some("*"), None)
             .await
             .expect_err("must refuse `*` against missing file");
         assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
@@ -3850,13 +4964,81 @@ mod tests {
         let backend = StubBackend {
             body: Some("anything".to_string()),
         };
-        let returned = enforce_if_match(&backend, StdPath::new("x"), Some("*"))
+        let returned = enforce_if_match(&backend, StdPath::new("x"), Some("*"), None)
             .await
             .unwrap();
         assert_eq!(
             returned.as_deref(),
             Some(document_etag("anything").as_str())
         );
+    }
+
+    // ---- markdown werkdocument pass-through ----
+
+    /// Writable backend stub that records the single write it receives, so a
+    /// test can assert the pass-through hands the bytes through untouched.
+    struct CapturingBackend {
+        written: std::sync::Mutex<Option<(std::path::PathBuf, String)>>,
+    }
+
+    #[async_trait]
+    impl RepoBackend for CapturingBackend {
+        async fn read_file(&self, _: &StdPath) -> CorpusResult<Option<String>> {
+            Ok(None)
+        }
+        async fn write_file(&self, path: &StdPath, content: &str) -> CorpusResult<()> {
+            *self.written.lock().unwrap() = Some((path.to_path_buf(), content.to_string()));
+            Ok(())
+        }
+        async fn delete_file(&self, _: &StdPath) -> CorpusResult<()> {
+            unreachable!("pass-through never deletes")
+        }
+        async fn list_files(&self, _: &StdPath, _: Option<&str>) -> CorpusResult<Vec<FileEntry>> {
+            Ok(Vec::new())
+        }
+        async fn persist(&self, _: &CorpusWriteContext) -> CorpusResult<PersistOutcome> {
+            Ok(PersistOutcome::default())
+        }
+        async fn ensure_ready(&mut self) -> CorpusResult<()> {
+            Ok(())
+        }
+        fn is_writable(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn markdown_passthrough_writes_bytes_verbatim() {
+        // Content chosen to expose any normalization: no trailing newline,
+        // trailing spaces, CRLF, tabs and non-ASCII must all survive unchanged.
+        let markdown = "# Café  \r\n\n- één\ttwee\n> geen slot-newline";
+        let backend = CapturingBackend {
+            written: std::sync::Mutex::new(None),
+        };
+        let path = std::path::Path::new("regulation/.werkdocumenten/verslag.md");
+        write_markdown_passthrough(
+            &backend,
+            path,
+            markdown,
+            WriteContext {
+                message: "Add document verslag.md".to_string(),
+                author: None,
+                token_override: None,
+            },
+        )
+        .await
+        .expect("pass-through write");
+
+        let (written_path, written_content) = backend
+            .written
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("a write must have happened");
+        assert_eq!(written_path, path);
+        // Byte-for-byte identical: markdown is the target format, so nothing is
+        // converted, wrapped or trimmed.
+        assert_eq!(written_content, markdown);
     }
 
     // ---- check_if_match: the law/scenario save precondition ----
@@ -3954,6 +5136,23 @@ mod tests {
     }
 
     #[test]
+    fn extract_targets_covers_the_multi_output_evaluation_step() {
+        // `evaluate_outputs` (bdd/grammar.yaml) names its law in the same
+        // place as `evaluate`. Missing it would hide the scenario from the
+        // law it tests — and make the integrity report claim the law's own
+        // scenario folder targets nothing.
+        let content = r#"
+    When I evaluate outputs "a, b" of "law_multi"
+    When I evaluate "c" of "law_single"
+    When I evaluate outputs "d" of "law_multi"
+"#;
+        assert_eq!(
+            extract_target_law_ids(content),
+            vec!["law_multi", "law_single"]
+        );
+    }
+
+    #[test]
     fn extract_targets_ignores_given_law_loaded_dependencies() {
         let content = r#"
     Given law "zorgverzekeringswet" is loaded
@@ -3981,5 +5180,187 @@ mod tests {
     When something else entirely
 "#;
         assert_eq!(extract_target_law_ids(content), Vec::<String>::new());
+    }
+
+    // ---- filter_corpus_laws: source / ids / q precedence ----
+
+    /// Index met twee bronnen: de eigen traject-repo (prioriteit 0) en het
+    /// gefedereerde centrale corpus. Bewust geanonimiseerde ids — dit is een
+    /// publieke repo.
+    fn two_source_map() -> SourceMap {
+        let mut map = SourceMap::new("2026-06-01");
+        for (law_id, source_id, priority) in [
+            ("wet_alpha", "own", 0),
+            ("wet_beta", "own", 0),
+            ("wet_gamma", "central", 1),
+            ("wet_delta", "central", 1),
+        ] {
+            map.load_metadata_entry(
+                law_id,
+                &format!("wet/{law_id}/2025-01-01.yaml"),
+                None,
+                source_id,
+                source_id,
+                priority,
+                None,
+            )
+            .unwrap();
+        }
+        map
+    }
+
+    fn params(source: Option<&str>, ids: Option<&str>, q: Option<&str>) -> PaginationParams {
+        PaginationParams {
+            offset: 0,
+            limit: None,
+            q: q.map(str::to_string),
+            ids: ids.map(str::to_string),
+            source: source.map(str::to_string),
+        }
+    }
+
+    fn law_ids(entries: Vec<CorpusLawEntry>) -> Vec<String> {
+        let mut ids: Vec<String> = entries.into_iter().map(|e| e.law_id).collect();
+        ids.sort();
+        ids
+    }
+
+    #[test]
+    fn source_filter_returns_only_that_sources_laws() {
+        // Wat de bibliotheek-sidebar stuurt voor de sectie "Traject":
+        // alleen de eigen bron, niet het gefedereerde corpus.
+        let map = two_source_map();
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(Some("own"), None, None))),
+            vec!["wet_alpha".to_string(), "wet_beta".to_string()]
+        );
+    }
+
+    #[test]
+    fn unknown_source_matches_nothing() {
+        // Een bron-id dat niet in deze index bestaat filtert alles weg —
+        // geen stille terugval op de volledige lijst.
+        let map = two_source_map();
+        assert!(filter_corpus_laws(&map, &params(Some("bestaat-niet"), None, None)).is_empty());
+    }
+
+    #[test]
+    fn blank_source_is_no_filter_rather_than_a_filter_matching_nothing() {
+        // `?source=` (of alleen spaties) komt binnen als `Some("")`. Dat is
+        // géén bron-id dat nergens op matcht — het wordt genormaliseerd naar
+        // "geen filter", zodat een leeg queryveld de lijst niet leegt.
+        let map = two_source_map();
+        let full = law_ids(filter_corpus_laws(&map, &params(None, None, None)));
+        assert!(!full.is_empty());
+        for blank in ["", "   "] {
+            assert_eq!(
+                law_ids(filter_corpus_laws(&map, &params(Some(blank), None, None))),
+                full,
+                "een lege `source` hoort zich als een afwezige te gedragen"
+            );
+        }
+    }
+
+    #[test]
+    fn absent_source_leaves_the_existing_listing_untouched() {
+        // Regressie op de globale route: elke route erft dit veld, dus een
+        // afwezige `source` mag niets veranderen aan wat er vandaag uitkomt.
+        let map = two_source_map();
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(None, None, None))),
+            vec![
+                "wet_alpha".to_string(),
+                "wet_beta".to_string(),
+                "wet_delta".to_string(),
+                "wet_gamma".to_string(),
+            ]
+        );
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(None, Some("wet_gamma"), None)
+            )),
+            vec!["wet_gamma".to_string()]
+        );
+        assert_eq!(
+            law_ids(filter_corpus_laws(&map, &params(None, None, Some("alpha")))),
+            vec!["wet_alpha".to_string()]
+        );
+    }
+
+    #[test]
+    fn source_narrows_ids_and_q_instead_of_replacing_them() {
+        // Vastgelegde precedentie (zie `PaginationParams::source`): `source`
+        // zegt *wiens* wetten en combineert daarom met `ids`/`q`, die zeggen
+        // *welke* wetten.
+        let map = two_source_map();
+
+        // source + ids: alleen de gevraagde ids die in die bron zitten.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), Some("wet_alpha,wet_gamma"), None)
+            )),
+            vec!["wet_alpha".to_string()]
+        );
+
+        // source + q: alleen de treffers in die bron.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), None, Some("wet"))
+            )),
+            vec!["wet_alpha".to_string(), "wet_beta".to_string()]
+        );
+
+        // source + ids + q: `ids` wint nog steeds van `q` (bestaande
+        // precedentie), en het resultaat wordt daarna op bron versmald.
+        assert_eq!(
+            law_ids(filter_corpus_laws(
+                &map,
+                &params(Some("own"), Some("wet_beta"), Some("alpha"))
+            )),
+            vec!["wet_beta".to_string()]
+        );
+    }
+
+    #[test]
+    fn source_filtered_listing_is_ordered_by_priority_then_law_id() {
+        // De gefilterde tak sorteert op bronprioriteit, dan law_id — met één
+        // bron komt dat neer op alfabetisch op law_id. De frontend leunt daar
+        // niet op (die sorteert op weergavenaam), maar de volgorde moet
+        // deterministisch zijn.
+        let map = two_source_map();
+        let ids: Vec<String> = filter_corpus_laws(&map, &params(Some("own"), None, None))
+            .into_iter()
+            .map(|e| e.law_id)
+            .collect();
+        assert_eq!(ids, vec!["wet_alpha".to_string(), "wet_beta".to_string()]);
+    }
+
+    #[test]
+    fn source_and_limit_arrive_from_the_query_string() {
+        // De tests hierboven voeden `PaginationParams` rechtstreeks; deze legt
+        // de andere helft van de afspraak vast — dat de URL die de sidebar
+        // bouwt (`?source=…&limit=200`) ook echt in dat veld belandt. Zonder
+        // deze zou een hernoemd/verkeerd geserialiseerd veld stil doorglippen:
+        // de route blijft dan 200 geven, alleen ongefilterd.
+        let query: Query<PaginationParams> = Query::try_from_uri(
+            &"http://editor.test/api/trajects/t-1234abcd/corpus/laws?source=own&limit=200"
+                .parse()
+                .unwrap(),
+        )
+        .expect("query met source moet deserialiseren");
+        assert_eq!(query.source.as_deref(), Some("own"));
+        assert_eq!(query.effective_limit(), 200);
+
+        // En de bestaande vorm zonder `source` blijft een afwezig filter, niet
+        // een lege string. `filter_corpus_laws` normaliseert een lege of
+        // whitespace-only `source` bovendien terug naar "geen filter", zodat
+        // `?source=` niet stilletjes alles wegfiltert.
+        let bare: Query<PaginationParams> =
+            Query::try_from_uri(&"http://editor.test/api/corpus/laws".parse().unwrap())
+                .expect("query zonder source moet deserialiseren");
+        assert_eq!(bare.source, None);
     }
 }

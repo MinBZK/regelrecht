@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 
 use crate::client::CorpusClient;
+// Only the clone-based factory branch builds a config from scratch; with
+// the `github` feature that branch is compiled out.
+#[cfg_attr(feature = "github", allow(unused_imports))]
 use crate::config::CorpusConfig;
 use crate::error::{CorpusError, Result};
 use crate::models::{Source, SourceType};
@@ -65,6 +68,7 @@ pub struct FileEntry {
 /// relative to the directory the list call was rooted at, so callers
 /// can rebuild the source-relative path without re-tracking the
 /// starting point.
+#[derive(Debug, Clone)]
 pub struct RecursiveFileEntry {
     /// Path relative to the listing root, using forward slashes
     /// regardless of platform. Example: when listing `documents/abc`
@@ -77,9 +81,10 @@ pub struct RecursiveFileEntry {
 /// call. Returned via [`PersistOutcome`] so the editor-api can surface the
 /// URL to the frontend after a save.
 ///
-/// Lives on `backend` (not `pr_client`) so the type is available even when
-/// the `github` feature is disabled — keeps the [`PersistOutcome`] shape
-/// uniform across builds.
+/// Lives on `backend` (not on the `regelrecht-github` crate's own `PrInfo`)
+/// so the type is available even when the `github` feature is disabled — it
+/// keeps the [`PersistOutcome`] shape uniform across builds. `SessionGitBackend`
+/// converts the crate's `PrInfo` into this one.
 #[derive(Debug, Clone)]
 pub struct PrInfo {
     /// PR number on the source repo. Used to construct the title in
@@ -109,6 +114,29 @@ pub trait RepoBackend: Send + Sync {
     /// Read a file's contents. Returns `None` if the file does not exist.
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>>;
 
+    /// [`read_file`], authenticating with `token_override` when this
+    /// backend supports per-call tokens (see
+    /// [`RepoBackend::supports_token_override`]) — the read analogue of
+    /// [`WriteContext::token_override`]. `None` (or a backend that never
+    /// authenticates reads per call) falls back to [`read_file`]'s
+    /// behaviour, so the default implementation just delegates.
+    ///
+    /// This exists for the traject flow where the writable-own source has
+    /// no configured service token (fail-closed against shipping the
+    /// central token to a user-chosen repo): reads on that source can then
+    /// ride the acting editor user's own GitHub token per request, exactly
+    /// like `persist` does for writes.
+    ///
+    /// [`read_file`]: RepoBackend::read_file
+    async fn read_file_with_token(
+        &self,
+        relative_path: &Path,
+        token_override: Option<&str>,
+    ) -> Result<Option<String>> {
+        let _ = token_override;
+        self.read_file(relative_path).await
+    }
+
     /// Write a file's contents, creating parent directories as needed.
     ///
     /// For git backends this writes to the local checkout without committing.
@@ -120,6 +148,20 @@ pub trait RepoBackend: Send + Sync {
 
     /// List files in a directory, optionally filtered by extension (without dot).
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>>;
+
+    /// [`list_files`] with a per-call token override — same contract as
+    /// [`RepoBackend::read_file_with_token`].
+    ///
+    /// [`list_files`]: RepoBackend::list_files
+    async fn list_files_with_token(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+        token_override: Option<&str>,
+    ) -> Result<Vec<FileEntry>> {
+        let _ = token_override;
+        self.list_files(dir, extension).await
+    }
 
     /// List all files in a directory tree, recursively, optionally filtered by
     /// extension (without dot). Returned entries carry their path relative to
@@ -152,6 +194,20 @@ pub trait RepoBackend: Send + Sync {
             .collect())
     }
 
+    /// [`list_files_recursive`] with a per-call token override — same
+    /// contract as [`RepoBackend::read_file_with_token`].
+    ///
+    /// [`list_files_recursive`]: RepoBackend::list_files_recursive
+    async fn list_files_recursive_with_token(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+        token_override: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
+        let _ = token_override;
+        self.list_files_recursive(dir, extension).await
+    }
+
     /// Return every YAML law's `implements` list as `(source-relative
     /// path, implements)` pairs — the input the implements/“who implements
     /// me” index is built from — reading bodies in as few requests as
@@ -161,25 +217,21 @@ pub trait RepoBackend: Send + Sync {
     /// corpus-wide scan must never hold every law body in memory at once
     /// (that OOMs on a large corpus). The default implementation reads one
     /// file at a time via [`list_files_recursive`] + [`read_file`], parsing
-    /// and dropping each body as it goes. A backend that can fetch in bulk
-    /// (the GitHub API backend downloads the repo archive in a single
-    /// request) overrides this — but still streams bodies through the
-    /// parser one at a time.
+    /// and dropping each body as it goes. Backends that can do better
+    /// override this: `GitBackend` reads the precomputed
+    /// [`implements_index`](crate::implements_index) committed at the
+    /// corpus repo root, the GitHub API backend downloads the repo archive
+    /// in a single request — both still without materialising all bodies.
+    ///
+    /// The result must contain an entry for **every** YAML file the source
+    /// holds, including files that implement nothing: callers use the map
+    /// as a negative cache, and a missing entry triggers a per-law body
+    /// fetch + parse.
     ///
     /// [`list_files_recursive`]: RepoBackend::list_files_recursive
     /// [`read_file`]: RepoBackend::read_file
     async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
-        let entries = self
-            .list_files_recursive(Path::new(""), Some("yaml"))
-            .await?;
-        let mut out = Vec::with_capacity(entries.len());
-        for entry in entries {
-            if let Some(content) = self.read_file(Path::new(&entry.relative_path)).await? {
-                let implements = crate::source_map::collect_law_implements(&content);
-                out.push((entry.relative_path, implements));
-            }
-        }
-        Ok(out)
+        scan_implements_via_listing(self).await
     }
 
     /// Persist pending changes.
@@ -218,6 +270,71 @@ pub trait RepoBackend: Send + Sync {
     async fn changed_files(&self) -> Result<Vec<String>> {
         Ok(Vec::new())
     }
+
+    /// [`changed_files`] with a per-call token override — same contract as
+    /// [`RepoBackend::read_file_with_token`].
+    ///
+    /// The diff is the last read path that used to be service-token-only.
+    /// On a private, user-supplied traject repo the server has no token of
+    /// its own by design (that is the whole point of the private-token
+    /// route), so without this the branch-vs-base diff — and with it the
+    /// sidebar's "Bewerkt" section — could never be computed, not even
+    /// after real edits.
+    ///
+    /// The default implementation delegates, so backends with no "base vs
+    /// head" notion keep reporting "nothing changed" unchanged.
+    ///
+    /// [`changed_files`]: RepoBackend::changed_files
+    async fn changed_files_with_token(&self, token_override: Option<&str>) -> Result<Vec<String>> {
+        let _ = token_override;
+        self.changed_files().await
+    }
+}
+
+/// The checkout-scan fallback for [`GitBackend::read_all_implements`],
+/// with the one case where scanning is not allowed to be a fallback.
+///
+/// A sparse working tree only materialises the configured cone, so a
+/// filesystem scan over it returns a silently *incomplete* implements map
+/// (missing entries read as "fetch this law per-request", or worse, as
+/// "law does not exist"). Refuse loudly instead.
+async fn scan_or_refuse(backend: &GitBackend) -> Result<Vec<(String, Vec<String>)>> {
+    if backend.client.is_sparse() {
+        return Err(CorpusError::Config(
+            "implements index unavailable and this is a sparse checkout: \
+             a filesystem scan would be silently incomplete"
+                .to_string(),
+        ));
+    }
+    scan_implements_via_listing(backend).await
+}
+
+/// Shared body of the default [`RepoBackend::read_all_implements`]: list
+/// every `.yaml` **and** `.yml` file under the source root and parse each
+/// body one at a time. Both extensions are law carriers (the corpus
+/// convention is `.yaml`, but `.yml` occurs and the GitHub archive scan
+/// counts it too) — a `.yaml`-only scan would silently drop those laws
+/// from the negative cache.
+async fn scan_implements_via_listing<B: RepoBackend + ?Sized>(
+    backend: &B,
+) -> Result<Vec<(String, Vec<String>)>> {
+    let mut entries = Vec::new();
+    for ext in ["yaml", "yml"] {
+        entries.extend(
+            backend
+                .list_files_recursive(Path::new(""), Some(ext))
+                .await?,
+        );
+    }
+    entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    let mut out = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if let Some(content) = backend.read_file(Path::new(&entry.relative_path)).await? {
+            let implements = crate::source_map::collect_law_implements(&content);
+            out.push((entry.relative_path, implements));
+        }
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -715,6 +832,108 @@ impl RepoBackend for GitBackend {
         walk_local_tree(abs, extension.map(str::to_string)).await
     }
 
+    /// Serve the corpus-wide implements map from the precomputed index
+    /// committed at the checkout root ([`implements_index`]) instead of
+    /// parsing every YAML file on disk.
+    ///
+    /// The index lives at the **repo root**, outside this backend's
+    /// source sandbox (`resolve` prefixes every path with `repo_subpath`,
+    /// e.g. `regulation/nl`), so it is read directly off the checkout
+    /// root. Freshness is verified against the checkout itself: the
+    /// index's recorded tree sha must equal `git rev-parse HEAD:<root>` in
+    /// this clone. That makes the check branch-aware by construction — a
+    /// `pr<N>` corpus branch that received commits after its index was
+    /// last regenerated fails the comparison and falls back to the scan.
+    ///
+    /// Fallback matrix:
+    /// - fresh index → serve it (an **empty but fresh** index is
+    ///   authoritative: genuinely no YAML files, no fallback);
+    /// - missing / unparseable / stale index, or one rooted outside this
+    ///   source → full checkout scan, with a warning — **unless** the
+    ///   checkout is sparse, in which case the scan would be silently
+    ///   incomplete and the call errors instead.
+    ///
+    /// Known limit: the tree sha describes `HEAD`, not the working tree,
+    /// so uncommitted local writes are invisible to the freshness check.
+    /// That matches how this backend is used — the editor's central read
+    /// clone never receives local writes (editor writes go through the
+    /// session/API backends), and post-save reads ride the caller's
+    /// overlay.
+    ///
+    /// [`implements_index`]: crate::implements_index
+    async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
+        use crate::implements_index::{ImplementsIndex, IMPLEMENTS_INDEX_FILENAME};
+
+        let index_path = self.client.repo_path().join(IMPLEMENTS_INDEX_FILENAME);
+        let raw = match tokio::fs::read_to_string(&index_path).await {
+            Ok(raw) => Some(raw),
+            // Missing is a distinct state from empty: the corpus repo
+            // simply doesn't publish an index (yet) on this branch.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.into()),
+        };
+
+        match raw {
+            Some(raw) => match ImplementsIndex::parse(&raw) {
+                // An index rooted elsewhere does not describe this source.
+                // Projecting anyway yields an empty list, which the caller
+                // reads as an authoritative "no laws" — worse than no index.
+                Ok(index) if !index.covers(self.repo_subpath.as_deref()) => {
+                    tracing::warn!(
+                        index_root = %index.root,
+                        source_root = self.repo_subpath.as_deref().unwrap_or("<repo root>"),
+                        "implements index does not cover this source's root; \
+                         falling back to a scan"
+                    );
+                }
+                Ok(index) => match self.client.subtree_sha(&index.root).await {
+                    Ok(checkout_sha) if checkout_sha == index.tree_sha => {
+                        let entries = index.to_source_relative(self.repo_subpath.as_deref());
+                        tracing::info!(
+                            entries = entries.len(),
+                            root = %index.root,
+                            tree = %index.tree_sha,
+                            "served implements map from the precomputed index"
+                        );
+                        return Ok(entries);
+                    }
+                    Ok(checkout_sha) => {
+                        tracing::warn!(
+                            index_tree = %index.tree_sha,
+                            checkout_tree = %checkout_sha,
+                            root = %index.root,
+                            "implements index does not match this checkout's content \
+                             (stale index on this corpus branch?); falling back to a scan"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            root = %index.root,
+                            error = %e,
+                            "implements index freshness could not be verified against \
+                             the checkout; falling back to a scan"
+                        );
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        path = %index_path.display(),
+                        error = %e,
+                        "implements index is unreadable; falling back to a scan"
+                    );
+                }
+            },
+            None => {
+                tracing::warn!(
+                    path = %index_path.display(),
+                    "no implements index in this corpus checkout; falling back to a scan"
+                );
+            }
+        }
+
+        scan_or_refuse(self).await
+    }
+
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
         let paths: Vec<PathBuf> = {
             let mut dirty = self.dirty_files.lock().await;
@@ -804,7 +1023,8 @@ pub struct SessionGitBackend {
     client: CorpusClient,
     repo_subpath: Option<String>,
     dirty_files: tokio::sync::Mutex<Vec<PathBuf>>,
-    pr_client: crate::pr_client::PullRequestClient,
+    /// Shared GitHub REST client — used here for the Pulls API calls.
+    github: regelrecht_github::GithubClient,
     /// GitHub coordinates of the source — used for PR API calls.
     github_owner: String,
     github_repo: String,
@@ -846,7 +1066,7 @@ impl SessionGitBackend {
             client,
             repo_subpath,
             dirty_files: tokio::sync::Mutex::new(Vec::new()),
-            pr_client: crate::pr_client::PullRequestClient::new()?,
+            github: regelrecht_github::GithubClient::new()?,
             github_owner,
             github_repo,
             base_branch,
@@ -856,10 +1076,10 @@ impl SessionGitBackend {
         })
     }
 
-    /// Test-only: swap the PR client for one pointed at a wiremock server.
+    /// Test-only: swap the GitHub client for one pointed at a wiremock server.
     #[cfg(test)]
-    pub(crate) fn with_pr_client(mut self, pr_client: crate::pr_client::PullRequestClient) -> Self {
-        self.pr_client = pr_client;
+    pub(crate) fn with_github_client(mut self, github: regelrecht_github::GithubClient) -> Self {
+        self.github = github;
         self
     }
 
@@ -1089,8 +1309,8 @@ impl RepoBackend for SessionGitBackend {
         }
 
         let (title, body) = self.pr_title_body(ctx);
-        let pr = self
-            .pr_client
+        let gh_pr = self
+            .github
             .ensure_pr(
                 &self.github_owner,
                 &self.github_repo,
@@ -1101,6 +1321,12 @@ impl RepoBackend for SessionGitBackend {
                 &self.pr_token,
             )
             .await?;
+        // Convert the crate's PrInfo into the feature-independent
+        // `backend::PrInfo` the editor-api consumes.
+        let pr = PrInfo {
+            number: gh_pr.number,
+            html_url: gh_pr.html_url,
+        };
 
         *self.last_pr.lock().await = Some(pr.clone());
         Ok(PersistOutcome { pr: Some(pr) })
@@ -1121,13 +1347,30 @@ impl RepoBackend for SessionGitBackend {
 
 /// Create a [`RepoBackend`] for a given corpus source.
 ///
-/// For GitHub sources, an optional authentication token can be provided.
+/// A GitHub source is served over the REST API
+/// ([`GitHubApiBackend`](crate::github_api_backend::GitHubApiBackend)) — no
+/// clone, no working tree, so `ensure_ready` is a single branch check
+/// instead of minutes of git. The central corpus is 4,2 GB; cloning it in
+/// the startup path is what pushed preview deploys past their 300 s
+/// admission window, and the clone was only ever a read cache. The one
+/// read that could not be served over the API — the corpus-wide implements
+/// scan — now reads the precomputed
+/// [`implements_index`](crate::implements_index) instead of the repo
+/// archive.
 ///
-/// The on-disk checkout path is namespaced by the host identifier
-/// (`HOSTNAME` env var, falling back to `"local"`) so that multiple replicas
-/// of the editor running on the same node — or a pod restart racing with a
-/// previous instance — do not share a working directory and corrupt each
-/// other's git state during concurrent `clone`/`pull --rebase`/`push`.
+/// The API backend is created **without a base branch**: this factory
+/// serves read paths, and a source whose configured branch is missing is a
+/// misconfiguration to surface, not a branch for the editor to create on
+/// someone else's corpus. Branch creation stays with the traject flow,
+/// which owns its branch and passes a base explicitly.
+///
+/// Without the `github` feature there is no REST client to build on, so
+/// that build keeps the clone-based [`GitBackend`]. Its on-disk checkout
+/// path is namespaced by the host identifier (`HOSTNAME` env var, falling
+/// back to `"local"`) so that multiple replicas of the editor running on
+/// the same node — or a pod restart racing with a previous instance — do
+/// not share a working directory and corrupt each other's git state during
+/// concurrent `clone`/`pull --rebase`/`push`.
 pub fn create_backend(source: &Source, auth_token: Option<&str>) -> Result<Box<dyn RepoBackend>> {
     match &source.source_type {
         SourceType::Local { local } => Ok(Box::new(LocalBackend::new(
@@ -1135,6 +1378,15 @@ pub fn create_backend(source: &Source, auth_token: Option<&str>) -> Result<Box<d
             local.path.clone(),
             true,
         ))),
+        #[cfg(feature = "github")]
+        SourceType::GitHub { github } => {
+            Ok(Box::new(crate::github_api_backend::GitHubApiBackend::new(
+                github,
+                None,
+                auth_token.map(str::to_string),
+            )?))
+        }
+        #[cfg(not(feature = "github"))]
         SourceType::GitHub { github } => {
             let repo_url = format!("https://github.com/{}/{}.git", github.owner, github.repo);
             let host_id = std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string());
@@ -1344,6 +1596,258 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Init a standalone git repo at `path` with a committed corpus tree:
+    /// two laws under `regulation/nl` (one declaring `implements`) plus a
+    /// non-law `.yml` under a second country subtree. Returns nothing —
+    /// callers inspect via git / the backend.
+    async fn setup_corpus_checkout(path: &Path) {
+        use tokio::process::Command;
+
+        tokio::fs::create_dir_all(path).await.unwrap();
+        // Empty template dir: an ambient global `init.templateDir` would
+        // otherwise install this repo's hooks into the fixture.
+        let template = path.join(".empty-template");
+        tokio::fs::create_dir_all(&template).await.unwrap();
+        let template_arg = format!("--template={}", template.display());
+        for args in [
+            vec!["init", "--initial-branch=development", &template_arg],
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@test.nl"],
+            vec!["config", "commit.gpgsign", "false"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(path)
+                .output()
+                .await
+                .unwrap();
+        }
+        tokio::fs::remove_dir_all(&template).await.unwrap();
+
+        let write = |rel: &str, content: &str| {
+            let abs = path.join(rel);
+            std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+            std::fs::write(abs, content).unwrap();
+        };
+        write(
+            "regulation/nl/wet/wet_a/2025-01-01.yaml",
+            "$id: wet_a\narticles: []\n",
+        );
+        write(
+            "regulation/nl/regeling/reg_b/2025-01-01.yaml",
+            "$id: reg_b\narticles:\n  - number: '1'\n    machine_readable:\n      implements:\n        - law: wet_a\n          open_term: iets\n",
+        );
+        // `.yml` law inside the source root — the fallback scan must count
+        // it (the corpus convention is `.yaml`, but `.yml` occurs).
+        write(
+            "regulation/nl/wet/wet_kort/2025-01-01.yml",
+            "$id: wet_kort\narticles: []\n",
+        );
+        // Law outside the source root (different country subtree): present
+        // in the repo-level index but must be dropped from the
+        // source-relative result.
+        write(
+            "regulation/be/wet/wet_be/2025-01-01.yaml",
+            "$id: wet_be\narticles: []\n",
+        );
+        git_commit_all(path, "seed corpus").await;
+    }
+
+    async fn git_commit_all(path: &Path, message: &str) {
+        use tokio::process::Command;
+        for args in [
+            vec!["add", "-A"],
+            vec!["commit", "--no-verify", "-m", message],
+        ] {
+            let out = Command::new("git")
+                .args(&args)
+                .current_dir(path)
+                .output()
+                .await
+                .unwrap();
+            assert!(out.status.success(), "git {args:?} failed");
+        }
+    }
+
+    async fn regulation_tree_sha(path: &Path) -> String {
+        let out = tokio::process::Command::new("git")
+            .args(["rev-parse", "HEAD:regulation"])
+            .current_dir(path)
+            .output()
+            .await
+            .unwrap();
+        assert!(out.status.success());
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// Generate + commit the implements index for the checkout, exactly as
+    /// the `implements-indexer` binary would.
+    async fn write_index(path: &Path) {
+        let outcome = crate::implements_index::scan_tree(path, "regulation").unwrap();
+        assert!(outcome.failures.is_empty());
+        let index = crate::implements_index::ImplementsIndex {
+            version: crate::implements_index::IMPLEMENTS_INDEX_VERSION,
+            root: "regulation".to_string(),
+            tree_sha: regulation_tree_sha(path).await,
+            files: outcome.files,
+        };
+        std::fs::write(
+            path.join(crate::implements_index::IMPLEMENTS_INDEX_FILENAME),
+            index.to_json(),
+        )
+        .unwrap();
+        git_commit_all(path, "regenerate implements index").await;
+    }
+
+    fn git_backend_on(path: &Path, sparse: bool) -> GitBackend {
+        let mut config = CorpusConfig::new("https://example.invalid/corpus.git", path);
+        if sparse {
+            config.sparse_paths = Some(vec!["regulation/nl/wet".to_string()]);
+        }
+        let client = CorpusClient::new(config);
+        GitBackend::new(client, Some("regulation/nl".to_string()))
+    }
+
+    #[tokio::test]
+    async fn git_read_all_implements_serves_fresh_index_not_the_working_tree() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        write_index(dir.path()).await;
+
+        // Uncommitted working-tree edit AFTER index generation: HEAD (and
+        // so the index) is unchanged, and the documented semantics are
+        // that a fresh index wins over the working tree. This divergence
+        // is what proves the index is actually being read.
+        std::fs::write(
+            dir.path().join("regulation/nl/wet/wet_a/2025-01-01.yaml"),
+            "$id: wet_a\narticles:\n  - number: '1'\n    machine_readable:\n      implements:\n        - law: iets_nieuws\n          open_term: x\n",
+        )
+        .unwrap();
+
+        let backend = git_backend_on(dir.path(), false);
+        let mut got = backend.read_all_implements().await.unwrap();
+        got.sort();
+
+        assert_eq!(
+            got,
+            vec![
+                (
+                    "regeling/reg_b/2025-01-01.yaml".to_string(),
+                    vec!["wet_a".to_string()]
+                ),
+                // Entry present with an EMPTY list — and still the
+                // committed (pre-edit) content, proving the index served.
+                ("wet/wet_a/2025-01-01.yaml".to_string(), Vec::new()),
+                // `.yml` law has an entry too.
+                ("wet/wet_kort/2025-01-01.yml".to_string(), Vec::new()),
+            ],
+            "expected index-served, source-relative entries for every law \
+             under regulation/nl (and wet_be dropped as outside the root)"
+        );
+    }
+
+    #[tokio::test]
+    async fn git_read_all_implements_stale_index_falls_back_to_scan() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        write_index(dir.path()).await;
+
+        // A committed corpus change after the last index regeneration —
+        // the pr<N>-branch scenario. The regulation tree sha moves, the
+        // index's recorded sha doesn't.
+        std::fs::create_dir_all(dir.path().join("regulation/nl/wet/wet_nieuw")).unwrap();
+        std::fs::write(
+            dir.path()
+                .join("regulation/nl/wet/wet_nieuw/2026-01-01.yaml"),
+            "$id: wet_nieuw\narticles: []\n",
+        )
+        .unwrap();
+        git_commit_all(dir.path(), "add law without regenerating index").await;
+
+        let backend = git_backend_on(dir.path(), false);
+        let got = backend.read_all_implements().await.unwrap();
+        let paths: Vec<&str> = got.iter().map(|(p, _)| p.as_str()).collect();
+
+        assert!(
+            paths.contains(&"wet/wet_nieuw/2026-01-01.yaml"),
+            "stale index must not shadow the newer checkout content; got {paths:?}"
+        );
+        assert!(
+            paths.contains(&"wet/wet_kort/2025-01-01.yml"),
+            "fallback scan must include .yml laws; got {paths:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn git_read_all_implements_missing_index_scans_checkout() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        // No index written at all.
+
+        let backend = git_backend_on(dir.path(), false);
+        let mut got = backend.read_all_implements().await.unwrap();
+        got.sort();
+
+        let paths: Vec<&str> = got.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "regeling/reg_b/2025-01-01.yaml",
+                "wet/wet_a/2025-01-01.yaml",
+                "wet/wet_kort/2025-01-01.yml",
+            ]
+        );
+    }
+
+    /// An index generated for a narrower subtree than this source's root
+    /// describes none of this source. Serving it would project to an empty
+    /// list, which the caller cannot tell apart from "this corpus has no
+    /// laws" — so the backend must ignore it and scan.
+    #[tokio::test]
+    async fn git_read_all_implements_ignores_an_index_that_does_not_cover_the_source() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+
+        // Source root is `regulation/nl`; index root is `regulation/be`.
+        let outcome = crate::implements_index::scan_tree(dir.path(), "regulation/be").unwrap();
+        let index = crate::implements_index::ImplementsIndex {
+            version: crate::implements_index::IMPLEMENTS_INDEX_VERSION,
+            root: "regulation/be".to_string(),
+            tree_sha: "irrelevant".to_string(),
+            files: outcome.files,
+        };
+        std::fs::write(
+            dir.path()
+                .join(crate::implements_index::IMPLEMENTS_INDEX_FILENAME),
+            index.to_json(),
+        )
+        .unwrap();
+        git_commit_all(dir.path(), "commit a non-covering index").await;
+
+        let backend = git_backend_on(dir.path(), false);
+        let got = backend.read_all_implements().await.unwrap();
+        assert_eq!(
+            got.len(),
+            3,
+            "expected the full scan of regulation/nl, got {got:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn git_read_all_implements_refuses_scan_on_sparse_checkout() {
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        // No index + sparse checkout: a scan would be silently incomplete
+        // (only the cone is materialised), so the call must error instead
+        // of returning a partial implements map.
+        let backend = git_backend_on(dir.path(), true);
+        let err = backend.read_all_implements().await.unwrap_err();
+        assert!(
+            err.to_string().contains("sparse"),
+            "unexpected error: {err}"
+        );
+    }
+
     #[tokio::test]
     async fn git_local_only_commits_without_push() {
         use tokio::process::Command;
@@ -1352,7 +1856,13 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let bare_path = dir.path().join("bare.git");
         Command::new("git")
-            .args(["init", "--bare", "--initial-branch=development"])
+            .args([
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--bare",
+                "--initial-branch=development",
+            ])
             .arg(&bare_path)
             .output()
             .await
@@ -1362,7 +1872,7 @@ mod tests {
         // Push an initial commit
         let tmp_clone = dir.path().join("tmp-clone");
         Command::new("git")
-            .args(["clone", &bare_url])
+            .args(["-c", "init.templateDir=", "clone", &bare_url])
             .arg(&tmp_clone)
             .output()
             .await
@@ -1446,7 +1956,13 @@ mod tests {
 
         let bare_path = dir.join("bare.git");
         Command::new("git")
-            .args(["init", "--bare", "--initial-branch=development"])
+            .args([
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--bare",
+                "--initial-branch=development",
+            ])
             .arg(&bare_path)
             .output()
             .await
@@ -1457,7 +1973,7 @@ mod tests {
         // Seed initial commit on development
         let seed = dir.join("seed");
         Command::new("git")
-            .args(["clone", &bare_url])
+            .args(["-c", "init.templateDir=", "clone", &bare_url])
             .arg(&seed)
             .output()
             .await
@@ -1479,7 +1995,14 @@ mod tests {
         // Working checkout the SessionGitBackend will use
         let work = dir.join("work");
         Command::new("git")
-            .args(["clone", "--branch", "development", &bare_url])
+            .args([
+                "-c",
+                "init.templateDir=",
+                "clone",
+                "--branch",
+                "development",
+                &bare_url,
+            ])
             .arg(&work)
             .output()
             .await
@@ -1502,7 +2025,7 @@ mod tests {
     #[cfg(feature = "github")]
     #[tokio::test]
     async fn session_backend_persists_then_opens_pr() {
-        use crate::pr_client::PullRequestClient;
+        use regelrecht_github::GithubClient;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1530,9 +2053,7 @@ mod tests {
         config.branch = "development".to_string();
         let client = CorpusClient::new(config);
 
-        let pr_client = PullRequestClient::new()
-            .unwrap()
-            .with_base_url(server.uri());
+        let github = GithubClient::new().unwrap().with_base_url(server.uri());
 
         let backend = SessionGitBackend::new(
             client,
@@ -1544,7 +2065,7 @@ mod tests {
             "test-token".to_string(),
         )
         .unwrap()
-        .with_pr_client(pr_client);
+        .with_github_client(github);
 
         // Edit + persist.
         backend
@@ -1590,7 +2111,7 @@ mod tests {
     #[cfg(feature = "github")]
     #[tokio::test]
     async fn session_backend_empty_persist_returns_cached_pr() {
-        use crate::pr_client::PullRequestClient;
+        use regelrecht_github::GithubClient;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1617,9 +2138,7 @@ mod tests {
         let mut config = CorpusConfig::new(&bare_url, &work);
         config.branch = "development".to_string();
         let client = CorpusClient::new(config);
-        let pr_client = PullRequestClient::new()
-            .unwrap()
-            .with_base_url(server.uri());
+        let github = GithubClient::new().unwrap().with_base_url(server.uri());
 
         let backend = SessionGitBackend::new(
             client,
@@ -1631,7 +2150,7 @@ mod tests {
             "test-token".to_string(),
         )
         .unwrap()
-        .with_pr_client(pr_client);
+        .with_github_client(github);
 
         // First persist makes a real PR
         backend.write_file(Path::new("a.md"), "hi").await.unwrap();

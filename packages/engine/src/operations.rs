@@ -1390,10 +1390,15 @@ fn parse_iso_date(s: &str) -> Result<NaiveDate> {
 ///
 /// Used by DATE_DIFF with `in: months`.
 fn calculate_months_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
-    let (earlier, later, sign) = if date1 >= date2 {
-        (date2, date1, 1)
+    // Het teken als tak in plaats van als vermenigvuldiging: `total * sign` met
+    // sign in {1, -1} levert een mutant op die per constructie hetzelfde
+    // antwoord geeft (delen door -1 is vermenigvuldigen met -1), en die mutant
+    // deelt zijn omschrijving met `years_diff * 12` een paar regels lager. Eén
+    // uitsluiting zou daarmee ook echte rekenkunde stilzwijgend afdekken.
+    let (earlier, later, negate) = if date1 >= date2 {
+        (date2, date1, false)
     } else {
-        (date1, date2, -1)
+        (date1, date2, true)
     };
 
     let years_diff = later.year() - earlier.year();
@@ -1410,7 +1415,12 @@ fn calculate_months_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
         total_months -= 1;
     }
 
-    (total_months as i64) * sign
+    let total = total_months as i64;
+    if negate {
+        -total
+    } else {
+        total
+    }
 }
 
 /// Return the number of days in a given month.
@@ -1434,10 +1444,12 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 /// Uses proper calendar arithmetic. A year is counted as complete when
 /// the anniversary date (or Feb 28 for leap year births on Feb 29) is reached.
 fn calculate_years_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
-    let (earlier, later, sign) = if date1 >= date2 {
-        (date2, date1, 1)
+    // Zie calculate_months_difference: het teken staat als tak, niet als
+    // vermenigvuldiging, zodat er geen gedragsequivalente mutant ontstaat.
+    let (earlier, later, negate) = if date1 >= date2 {
+        (date2, date1, false)
     } else {
-        (date1, date2, -1)
+        (date1, date2, true)
     };
 
     let mut years = later.year() - earlier.year();
@@ -1461,7 +1473,12 @@ fn calculate_years_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
         years -= 1;
     }
 
-    (years as i64) * sign
+    let years = years as i64;
+    if negate {
+        -years
+    } else {
+        years
+    }
 }
 
 // =============================================================================
@@ -1836,6 +1853,23 @@ mod tests {
             let result = execute_operation(&op, &resolver, 0).unwrap();
             assert_eq!(result, Value::String("hello world".to_string()));
         }
+
+        #[test]
+        fn test_add_propagates_an_untranslatable_operand() {
+            // RFC-012: a sum in which one term could not be translated has no
+            // number as its answer. The taint travels on as a value; it is not a
+            // type error and not a silent zero.
+            let tainted = Value::Untranslatable {
+                article: "12".to_string(),
+                construct: "naar redelijkheid".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("onvertaalbaar", tainted.clone());
+            let op = ActionOperation::Add {
+                values: vec![lit(100i64), var("onvertaalbaar"), lit(1i64)],
+            };
+
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1887,6 +1921,23 @@ mod tests {
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
             assert_eq!(result, Value::Int(0));
+        }
+
+        #[test]
+        fn test_max_propagates_an_untranslatable_operand() {
+            // RFC-012: the highest of a set that contains an untranslatable is
+            // itself untranslatable — picking the largest of the rest would
+            // silently drop the value that could not be determined.
+            let tainted = Value::Untranslatable {
+                article: "12".to_string(),
+                construct: "naar redelijkheid".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("onvertaalbaar", tainted.clone());
+            let op = ActionOperation::Max {
+                values: vec![lit(10i64), var("onvertaalbaar")],
+            };
+
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
         }
     }
 
@@ -2135,6 +2186,98 @@ mod tests {
             let result2 = execute_operation(&op2, &resolver, 0).unwrap();
             assert_eq!(result2, Value::Bool(true));
         }
+
+        /// Build an Untranslatable value for the taint tests.
+        fn untranslatable(article: &str) -> Value {
+            Value::Untranslatable {
+                article: article.to_string(),
+                construct: "open norm".to_string(),
+            }
+        }
+
+        /// The article an untranslatable result points at. Asserted explicitly
+        /// because `Value`'s equality treats *any* two untranslatables as equal,
+        /// so `assert_eq!` alone would not see which one came back.
+        fn untranslatable_article(value: &Value) -> &str {
+            match value {
+                Value::Untranslatable { article, .. } => article,
+                other => panic!("expected an untranslatable value, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn test_and_reports_the_first_untranslatable_condition() {
+            // RFC-012: when nothing is definitively false, AND hands back the
+            // taint. Which one matters for the explanation shown to the citizen:
+            // the first untranslatable condition is the one that blocked the
+            // evaluation, so its article is the one that gets reported.
+            let resolver = TestResolver::new()
+                .with_var("eerste", untranslatable("5"))
+                .with_var("tweede", untranslatable("9"));
+            let op = ActionOperation::And {
+                conditions: vec![lit(true), var("eerste"), var("tweede")],
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(untranslatable_article(&result), "5");
+        }
+
+        #[test]
+        fn test_and_definitive_false_beats_a_taint() {
+            // A condition that is certainly false decides the whole AND, whatever
+            // order it appears in — an untranslatable elsewhere cannot revive it.
+            let resolver = TestResolver::new().with_var("onvertaalbaar", untranslatable("5"));
+            let op = ActionOperation::And {
+                conditions: vec![var("onvertaalbaar"), lit(false)],
+            };
+
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_or_propagates_a_taint_over_a_plain_false() {
+            // A false condition does not settle an OR: as long as another
+            // condition could not be evaluated, the outcome is untranslatable
+            // rather than a hard "no".
+            let resolver = TestResolver::new().with_var("onvertaalbaar", untranslatable("7"));
+            let op = ActionOperation::Or {
+                conditions: vec![lit(false), var("onvertaalbaar")],
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(untranslatable_article(&result), "7");
+        }
+
+        #[test]
+        fn test_or_reports_the_first_untranslatable_condition() {
+            // Same provenance rule as AND: the explanation points at the first
+            // condition that could not be evaluated, not at the last one seen.
+            let resolver = TestResolver::new()
+                .with_var("eerste", untranslatable("5"))
+                .with_var("tweede", untranslatable("9"));
+            let op = ActionOperation::Or {
+                conditions: vec![lit(false), var("eerste"), var("tweede")],
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(untranslatable_article(&result), "5");
+        }
+
+        #[test]
+        fn test_or_definitive_true_beats_a_taint() {
+            let resolver = TestResolver::new().with_var("onvertaalbaar", untranslatable("7"));
+            let op = ActionOperation::Or {
+                conditions: vec![var("onvertaalbaar"), lit(true)],
+            };
+
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -2382,6 +2525,51 @@ mod tests {
         }
 
         #[test]
+        fn test_depth_guard_allows_the_maximum_depth() {
+            // The guard rejects nesting *deeper* than MAX_OPERATION_DEPTH, so a
+            // law that nests exactly that deep still evaluates. Pinning the
+            // boundary keeps the limit from silently shifting by one.
+            let resolver = TestResolver::new();
+
+            assert_eq!(
+                evaluate_value(&lit(42i64), &resolver, MAX_OPERATION_DEPTH).unwrap(),
+                Value::Int(42)
+            );
+
+            let op = ActionOperation::List { items: vec![] };
+            assert_eq!(
+                execute_operation(&op, &resolver, MAX_OPERATION_DEPTH).unwrap(),
+                Value::Array(vec![])
+            );
+        }
+
+        #[test]
+        fn test_depth_guard_rejects_beyond_the_maximum_depth() {
+            // One step past the limit is refused, and so is anything deeper —
+            // the guard is a threshold, not an equality check on one depth.
+            let resolver = TestResolver::new();
+
+            for depth in [MAX_OPERATION_DEPTH + 1, MAX_OPERATION_DEPTH + 2] {
+                assert!(
+                    matches!(
+                        evaluate_value(&lit(42i64), &resolver, depth),
+                        Err(EngineError::MaxDepthExceeded(_))
+                    ),
+                    "evaluate_value accepted depth {depth}"
+                );
+
+                let op = ActionOperation::List { items: vec![] };
+                assert!(
+                    matches!(
+                        execute_operation(&op, &resolver, depth),
+                        Err(EngineError::MaxDepthExceeded(_))
+                    ),
+                    "execute_operation accepted depth {depth}"
+                );
+            }
+        }
+
+        #[test]
         fn test_decimal_to_i64_safe_rejects_non_integer() {
             // A fractional value is "not an integer" (InvalidOperation), not an overflow.
             assert!(matches!(
@@ -2402,6 +2590,26 @@ mod tests {
                 &Value::Decimal(dec!(1.5))
             ));
             assert!(!values_equal(&Value::Decimal(dec!(42.5)), &Value::Int(42)));
+        }
+
+        #[test]
+        fn test_values_equal_untranslatable() {
+            // RFC-012: untranslatables compare like NaN in this domain. Two of
+            // them count as equal (both are "could not be determined"), and one
+            // never equals a concrete value — so a membership test against a
+            // list can never accidentally match on a taint.
+            let unknown = Value::Untranslatable {
+                article: "5".to_string(),
+                construct: "naar het oordeel van".to_string(),
+            };
+            let other_unknown = Value::Untranslatable {
+                article: "9".to_string(),
+                construct: "in redelijkheid".to_string(),
+            };
+
+            assert!(values_equal(&unknown, &other_unknown));
+            assert!(!values_equal(&unknown, &Value::Int(42)));
+            assert!(!values_equal(&Value::String("ja".to_string()), &unknown));
         }
 
         #[test]
@@ -2506,6 +2714,34 @@ mod tests {
         }
 
         #[test]
+        fn test_not_in_true_when_absent() {
+            // NOT_IN is the complement of IN: absent subject → true.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::NotIn {
+                subject: lit("student"),
+                value: None,
+                values: Some(vec![lit("gehuwd"), lit("samenwonend")]),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
+        }
+
+        #[test]
+        fn test_not_in_false_when_present() {
+            // The exclusion fires: a subject that IS in the list is not "not in" it.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::NotIn {
+                subject: lit("gehuwd"),
+                value: None,
+                values: Some(vec![lit("gehuwd"), lit("samenwonend")]),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(false));
+        }
+
+        #[test]
         fn test_list_construct() {
             let resolver = TestResolver::new();
             let op = ActionOperation::List {
@@ -2535,6 +2771,82 @@ mod tests {
                     Value::Bool(true),
                 ])
             );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Null Checking Tests (IS_NULL / NOT_NULL)
+    // -------------------------------------------------------------------------
+
+    mod null_checks {
+        use super::*;
+
+        #[test]
+        fn test_is_null_on_missing_value() {
+            // A parameter that resolves to Null: "niet opgegeven" is true.
+            let resolver = TestResolver::new().with_var("inkomen", Value::Null);
+            let op = ActionOperation::IsNull {
+                subject: var("inkomen"),
+            };
+
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_is_null_false_on_present_value() {
+            // Zero is a value, not a missing value: IS_NULL must not confuse the two.
+            let resolver = TestResolver::new().with_var("inkomen", 0i64);
+            let op = ActionOperation::IsNull {
+                subject: var("inkomen"),
+            };
+
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn test_not_null_is_the_complement() {
+            // NOT_NULL answers the opposite question on the same two inputs.
+            let resolver = TestResolver::new()
+                .with_var("leeg", Value::Null)
+                .with_var("gevuld", 0i64);
+
+            let on_null = ActionOperation::NotNull {
+                subject: var("leeg"),
+            };
+            assert_eq!(
+                execute_operation(&on_null, &resolver, 0).unwrap(),
+                Value::Bool(false)
+            );
+
+            let on_value = ActionOperation::NotNull {
+                subject: var("gevuld"),
+            };
+            assert_eq!(
+                execute_operation(&on_value, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_null_check_propagates_untranslatable() {
+            // RFC-012: an untranslatable subject is neither null nor not-null;
+            // the taint flows through instead of collapsing to a boolean.
+            let tainted = Value::Untranslatable {
+                article: "3".to_string(),
+                construct: "naar het oordeel van".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("onvertaalbaar", tainted.clone());
+            let op = ActionOperation::IsNull {
+                subject: var("onvertaalbaar"),
+            };
+
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
         }
     }
 
@@ -3319,6 +3631,70 @@ mod tests {
         }
 
         #[test]
+        fn test_diff_in_months_counts_only_complete_months() {
+            // 15 January → 10 April is two whole months plus a bit: the day of
+            // the month has not been reached again, so the third month does not
+            // count. Termijnen in maanden lopen tot dezelfde dag in de maand.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2025-01-15"),
+                to: lit("2025-04-10"),
+                unit: lit("months"),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(2));
+        }
+
+        #[test]
+        fn test_diff_in_months_spans_calendar_years() {
+            // Months keep counting across the year boundary: 2 years and 3
+            // months is 27 months, not 3.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2023-01-01"),
+                to: lit("2025-04-01"),
+                unit: lit("months"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(27)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_years_february_start_is_not_treated_as_feb29() {
+            // The Feb-29 rule is for Feb 29 only. A 10 February start reaches its
+            // anniversary on 10 February, so 15 February is past it: 25 whole
+            // years, not 24.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2000-02-10"),
+                to: lit("2025-02-15"),
+                unit: lit("years"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(25)
+            );
+        }
+
+        #[test]
+        fn test_diff_in_years_feb29_anniversary_falls_on_feb29_in_a_leap_year() {
+            // The fallback to 28 February exists only for years that have no 29
+            // February. 2024 has one, so on 28 February 2024 the anniversary has
+            // not been reached yet: 23 whole years.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateDiff {
+                from: lit("2000-02-29"),
+                to: lit("2024-02-28"),
+                unit: lit("years"),
+            };
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(23)
+            );
+        }
+
+        #[test]
         fn test_diff_with_variables() {
             let resolver = TestResolver::new()
                 .with_var("start", "2025-01-01")
@@ -3540,6 +3916,50 @@ mod tests {
             assert_eq!(
                 execute_operation(&lt, &resolver, 0).unwrap(),
                 Value::Bool(false)
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Tracing opt-in Tests
+    // -------------------------------------------------------------------------
+
+    mod tracing {
+        use super::*;
+        use std::cell::RefCell;
+
+        /// A resolver that offers a trace hook but never switches tracing on:
+        /// it keeps `has_trace` at the trait's default.
+        #[derive(Default)]
+        struct RecordingResolver {
+            pushed: RefCell<Vec<String>>,
+        }
+
+        impl ValueResolver for RecordingResolver {
+            fn resolve(&self, name: &str) -> Result<Value> {
+                Err(EngineError::VariableNotFound(name.to_string()))
+            }
+
+            fn trace_push(&self, name: &str, _node_type: PathNodeType) {
+                self.pushed.borrow_mut().push(name.to_string());
+            }
+        }
+
+        #[test]
+        fn test_no_tracing_unless_the_resolver_opts_in() {
+            // Tracing is opt-in: a resolver that implements the hooks but leaves
+            // `has_trace` at its default gets none of the trace bookkeeping, and
+            // the operation result is the same either way.
+            let resolver = RecordingResolver::default();
+            let op = ActionOperation::Add {
+                values: vec![lit(1i64), lit(2i64)],
+            };
+
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(3));
+            assert!(
+                resolver.pushed.borrow().is_empty(),
+                "expected no trace nodes, got {:?}",
+                resolver.pushed.borrow()
             );
         }
     }

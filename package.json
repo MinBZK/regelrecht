@@ -7,5 +7,9 @@
     "packages/frontend-shared",
     "frontend",
     "frontend-lawmaking"
-  ]
+  ],
+  "overrides": {
+    "brace-expansion": "^5.0.8",
+    "postcss": "^8.5.18"
+  }
 }

@@ -75,11 +75,23 @@ const router = createRouter({
         },
         {
           // The user's taken within a traject: `/trajecten/{ref}/taken`.
-          // Rendered by the same LibraryView (Taken entry -> the task list in
-          // the secondary sidebar), like werkdocumenten. A task itself never
-          // opens in main - "Beoordelen" navigates to the editor or the
-          // addressed werkdocument.
-          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/taken',
+          // Rendered by the same LibraryView, shaped like Instellingen: the
+          // secondary sidebar lists the categories, the chosen one opens its
+          // task list in main. A task itself still never opens in main -
+          // "Beoordelen" navigates to the editor or the addressed werkdocument.
+          //
+          // `:categorie` is pinned to the panel entries. `:contextLawId` names
+          // the law behind a `wet` context (`/taken/wet/kieswet`) and is
+          // deliberately NOT pinned: the law contexts are derived from whatever
+          // laws the open tasks mention, so the set is data-driven, not a fixed
+          // enum. An unknown id simply yields an empty list.
+          //
+          // It is emphatically NOT called `lawId`: LibraryView treats that param
+          // as "a law is open in this view" and both selects it in the sidebar
+          // and fires loadLaw() for it (see its route.params.lawId watcher and
+          // initial load). A task context filters a list - it opens no law - so
+          // reusing the name would highlight and fetch a law nobody asked for.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/taken/:categorie(alle|prioriteit|wachten|werkdocumenten|wet)?/:contextLawId?',
           name: 'taken-traject',
           component: LibraryView,
           meta: { title: 'Taken', requiresAuth: true },
@@ -179,6 +191,19 @@ const router = createRouter({
       name: 'trajecten',
       component: () => import('./TrajectChooserView.vue'),
       meta: { title: 'Trajecten', requiresAuth: true },
+    },
+    {
+      // Integriteit van een traject: de runtime-diagnose van het
+      // traject-corpus (mapnamen vs `$id`, dubbele id's, losse verwijzingen).
+      // Top-level route zoals de trajectkeuze: eigen chrome, geen app-shell -
+      // je pakt deze pagina erbij vanuit Instellingen en gaat daarna terug.
+      //
+      // `:trajectRef` is met hetzelfde `{slug}-{8hex}`-patroon gepind als de
+      // andere traject-routes, zodat een wet-slug hier nooit op matcht.
+      path: '/trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/integriteit',
+      name: 'traject-integriteit',
+      component: () => import('./TrajectIntegrityView.vue'),
+      meta: { title: 'Integriteit', requiresAuth: true },
     },
     {
       // Nieuw traject aanmaken - eigen pagina met het gedeelde aanmaakformulier

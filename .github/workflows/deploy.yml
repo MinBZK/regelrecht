@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, closed, labeled]
+    types: [opened, synchronize, reopened, closed, labeled, unlabeled]
 
 permissions: {}
 
@@ -14,12 +14,28 @@ env:
   ZAD_PROJECT: regel-k4c
 
 jobs:
+  # Deze job is de poort van de hele keten: alles wat bouwt of deployt hangt er
+  # via `needs: changes` aan, dus wat hier niet doorkomt kost geen runner.
+  #
+  # Een PR bouwt alleen met het label `deploy:preview` erop. Getoetst op aanwezigheid
+  # van het label, niet op het soort gebeurtenis, zodat dezelfde regel geldt bij
+  # openen, bij elke volgende commit en op het moment dat het label erbij komt.
+  # Bij `unlabeled` bouwt de keten nooit; dat event bestaat hier alleen om
+  # cleanup-preview af te trappen.
+  #
+  # Een fork-PR krijgt geen secrets en een read-only GITHUB_TOKEN, dus de push
+  # naar GHCR faalt daar per definitie.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: >-
       github.event.action != 'closed' &&
-      (github.event.action != 'labeled' || startsWith(github.event.label.name, 'deploy:'))
+      github.event.action != 'unlabeled' &&
+      github.event.pull_request.head.repo.fork != true &&
+      (
+        github.event_name == 'push' ||
+        contains(github.event.pull_request.labels.*.name, 'deploy:preview')
+      )
     permissions:
       contents: read
     outputs:
@@ -32,60 +48,86 @@ jobs:
       lawmaking: ${{ steps.filter.outputs.lawmaking }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-
-      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706  # v4.0.2
-        id: filter
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          filters: |
-            editor:
-              - 'frontend/**'
-              - 'packages/frontend-shared/**'
-              - 'packages/editor-api/**'
-              - 'packages/engine/**'
-              - 'packages/corpus/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-              - 'corpus-registry.yaml'
-              - 'corpus/regulation/**'
-            admin:
-              - 'packages/admin/**'
-              - 'packages/frontend-shared/**'
-              - 'packages/pipeline/**'
-              - 'packages/corpus/**'
-              - 'packages/harvester/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-            harvester-worker:
-              - 'packages/pipeline/**'
-              - 'packages/harvester/**'
-              - 'packages/corpus/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-            enrich-worker:
-              - 'packages/pipeline/**'
-              - 'packages/corpus/**'
-              - 'packages/harvester/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-              - '.claude/skills/law-*/**'
-            pipeline-api:
-              - 'packages/pipeline/**'
-              - 'packages/corpus/**'
-              - 'packages/harvester/**'
-              - 'packages/shared/**'
-              - 'packages/Cargo.lock'
-            grafana:
-              - 'packages/grafana/**'
-            lawmaking:
-              - 'frontend-lawmaking/**'
-              - 'packages/frontend-shared/**'
-            docs:
-              - 'docs/**'
+          # De diff tegen de base (PR) of tegen de vorige commit (push) bepaalt
+          # welke bestanden gewijzigd zijn.
+          fetch-depth: 0
+
+      - name: Bepaal gewijzigde bestanden
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # Een lege of nul-SHA (nieuwe branch, eerste push) betekent: geen
+          # betrouwbare diff, dus alles bouwen. Dat regelt het script zelf als
+          # de lijst leeg blijft.
+          if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ] \
+             && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git diff --name-only "$BASE_SHA" HEAD > changed.txt
+          else
+            : > changed.txt
+          fi
+          echo "Gewijzigde bestanden: $(wc -l < changed.txt)"
+
+      # Welke componenten geraakt worden volgt uit de dependency-graaf van
+      # cargo, niet uit een handmatige padenlijst. Die lijst dreef weg:
+      # packages/auth en packages/law-model stonden er nergens in, terwijl
+      # editor-api en admin op auth leunen en engine, corpus, pipeline en
+      # harvester op law-model. Faalt het script, dan zet het alles op true.
+      # Dezelfde Node als waarmee de testsuite in ci.yml draait. Dit script
+      # bepaalt wat er naar productie gaat; het hoort niet stil mee te
+      # verschuiven met wat er toevallig op de runner staat.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+
+      - name: Bepaal geraakte componenten
+        id: filter
+        run: node script/deploy-filters.mjs --from-file changed.txt
+
+  # ci.yml en deze workflow hangen allebei aan `push` op main en weten niets van
+  # elkaar; er is geen `needs` tussen twee workflows. Op commit 4518c575 faalde
+  # CI op Security Audit en ging de productie-deploy diezelfde minuut door.
+  #
+  # Deze baan staat vóór de builds en niet vóór de deploy. build-image.yml tagt
+  # op main `latest` en pusht die naar GHCR; stond de poort achteraan, dan was
+  # dat image van een rood commit al gepubliceerd en scant de wekelijkse scan
+  # precies die tag.
+  #
+  # Geen job-level `if:`, maar guards per stap, zodat de baan op een pull request
+  # gewoon rapporteert in plaats van over te slaan. Een overgeslagen voorganger
+  # zou anders elke build meeslepen.
+  ci-green:
+    name: Wacht op een groene CI
+    runs-on: ubuntu-latest
+    # Ruim boven MAX_WAIT_SECONDS hieronder, zodat het script zelf stopt met een
+    # leesbare melding in plaats van dat Actions de job afkapt.
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        with:
+          fetch-depth: 1
+
+      - name: Wacht op een groene CI voor deze commit
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          MAX_WAIT_SECONDS: '1200'
+        run: script/require-ci-green.sh
+
+      - name: Niet van toepassing
+        if: "!(github.ref == 'refs/heads/main' && github.event_name == 'push')"
+        run: echo "Alleen een push op main wacht op CI; een preview bouwt op verzoek."
 
   # -- Build jobs --
   build:
-    needs: changes
+    needs: [changes, ci-green]
     if: >-
       github.event.action != 'closed' &&
       (
@@ -103,7 +145,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-admin:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.admin == 'true'
     permissions:
       contents: read
@@ -116,7 +158,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-harvester-worker:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.harvester-worker == 'true'
     permissions:
       contents: read
@@ -131,7 +173,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-enrich-worker:
-    needs: changes
+    needs: [changes, ci-green]
     if: >-
       github.event.action != 'closed' &&
       (
@@ -151,7 +193,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-pipeline-api:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.pipeline-api == 'true'
     permissions:
       contents: read
@@ -165,7 +207,7 @@ jobs:
       cache-scope: pipeline-api
 
   build-grafana:
-    needs: changes
+    needs: [changes, ci-green]
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.changes.outputs.grafana == 'true'
@@ -181,7 +223,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-lawmaking:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.lawmaking == 'true'
     permissions:
       contents: read
@@ -194,7 +236,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-docs:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.docs == 'true'
     permissions:
       contents: read
@@ -209,10 +251,7 @@ jobs:
   # -- Deploy preview --
   deploy-preview:
     runs-on: ubuntu-latest
-    # Each ZAD component deploy takes ~5 minutes and they run sequentially;
-    # a PR touching engine + frontend + docs redeploys 6+ components, which
-    # does not fit in 15 minutes.
-    timeout-minutes: 45
+    timeout-minutes: 20
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-lawmaking, build-docs, changes]
     if: >-
       always() &&
@@ -231,131 +270,89 @@ jobs:
       pull-requests: write
     environment:
       name: pr${{ github.event.pull_request.number }}
-      url: ${{ steps.deploy.outputs.url }}
+      url: ${{ steps.editor-url.outputs.url }}
 
     steps:
       - name: Get short SHA
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Deploy admin to ZAD (Preview)
-        if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: harvester-admin
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-admin:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment'
+      # ZAD kent per deployment één taak-scope: een tweede taak voor pr<N> zet de
+      # eerste opzij ("superseded", zie RIG-Cluster features/task-supersede.md).
+      # Componenten los deployen kan daarom niet parallel; ze gaan als één lijst
+      # in één upsert-taak, die ze samen commit en in één ArgoCD-sync uitrolt.
+      - name: Stel de componentenlijst samen
+        id: plan
+        env:
+          SHA: ${{ steps.sha.outputs.short }}
+          EDITOR: ${{ needs.build.result }}
+          ADMIN: ${{ needs.build-admin.result }}
+          HARVESTER_WORKER: ${{ needs.build-harvester-worker.result }}
+          ENRICH_WORKER: ${{ needs.build-enrich-worker.result }}
+          PIPELINE_API: ${{ needs.build-pipeline-api.result }}
+          LAWMAKING: ${{ needs.build-lawmaking.result }}
+          DOCS: ${{ needs.build-docs.result }}
+        run: |
+          set -euo pipefail
+          COMPONENTS='[]'
+          add() {
+            COMPONENTS=$(jq -c --arg name "$1" --arg image "${REGISTRY}/minbzk/$2:sha-${SHA}" \
+              '. + [{name: $name, image: $image}]' <<<"$COMPONENTS")
+          }
 
-      - name: Deploy harvester-worker to ZAD (Preview)
-        if: needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: harvester-worker
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-harvester-worker:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment'
+          # De editor gaat als eerste in de lijst: de action leidt de
+          # environment-URL af van de eerste component.
+          if [ "$EDITOR" = success ]; then add editor regelrecht-editor; fi
+          if [ "$ADMIN" = success ]; then add harvester-admin regelrecht-admin; fi
+          if [ "$HARVESTER_WORKER" = success ]; then add harvester-worker regelrecht-harvester-worker; fi
+          if [ "$ENRICH_WORKER" = success ]; then add enrichworker regelrecht-enrich-worker; fi
+          if [ "$PIPELINE_API" = success ]; then add pipelineapi regelrecht-pipeline-api; fi
+          if [ "$LAWMAKING" = success ]; then add lawmaking regelrecht-lawmaking; fi
+          if [ "$DOCS" = success ]; then add docs regelrecht-docs; fi
 
-      - name: Deploy enrich-worker to ZAD (Preview)
-        if: needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: enrichworker
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-enrich-worker:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment'
+          jq -r '.[] | "  \(.name): \(.image)"' <<<"$COMPONENTS"
+          echo "components=$COMPONENTS" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy pipeline-api to ZAD (Preview)
-        if: needs.build-pipeline-api.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: pipelineapi
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-pipeline-api:sha-${{ steps.sha.outputs.short }}
-          # No public domain: pipeline-api has no authentication and is only
-          # reachable in-cluster by editor-api (which enforces auth). Matches
-          # the production deploy below.
-          clone-from: regelrecht
-          force-clone: false
-
-      - name: Deploy editor to ZAD (Preview)
-        if: needs.build.result == 'success'
+      - name: Deploy to ZAD (Preview)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
           deployment-name: pr${{ github.event.pull_request.number }}
-          component: editor
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-editor:sha-${{ steps.sha.outputs.short }}
+          components: ${{ steps.plan.outputs.components }}
+          # Bepaalt alleen de hostnaam-vorm. Of een component publiek bereikbaar
+          # is, hangt aan publish-on-web in de gekloonde config: pipeline-api
+          # heeft dat niet en blijft dus in-cluster, net als in productie.
           domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
           comment-on-pr: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment — editor'
+          comment-header: '## Preview Deployment'
 
-      - name: Deploy lawmaking to ZAD (Preview)
-        if: needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: lawmaking
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-lawmaking:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment — lawmaking'
+      - name: Editor-URL voor de environment
+        id: editor-url
+        if: needs.build.result == 'success'
+        env:
+          URLS: ${{ steps.deploy.outputs.urls }}
+        run: echo "url=$(jq -r '.editor // empty' <<<"$URLS")" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy docs to ZAD (Preview)
-        if: needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: pr${{ github.event.pull_request.number }}
-          component: docs
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-docs:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
-          clone-from: regelrecht
-          force-clone: false
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-header: '## Preview Deployment — docs'
+      - name: Verklaar een mislukte deploy
+        if: failure() && steps.deploy.outcome == 'failure'
+        env:
+          COMPONENTS: ${{ steps.plan.outputs.components }}
+        run: |
+          echo "::notice::Deploy van pr${{ github.event.pull_request.number }} mislukt voor: $(jq -r '[.[].name] | join(", ")' <<<"$COMPONENTS")"
+          echo "'status: superseded' in de output hierboven betekent dat een nieuwere taak"
+          echo "voor dit deployment (een nieuwe push, of het opruimen van een gesloten PR)"
+          echo "het werk heeft overgenomen. Deze job opnieuw draaien is dan veilig."
+          echo "Iets anders? Zie 'Debugging deploy-preview failures' in CLAUDE.md."
 
   # -- Deploy production --
   deploy-production:
     runs-on: ubuntu-latest
-    # Same budget as deploy-preview: sequential ZAD deploys of all changed
-    # components do not fit in 15 minutes on a broad merge.
-    timeout-minutes: 45
+    timeout-minutes: 20
     needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-grafana, build-lawmaking, build-docs]
     if: >-
       always() &&
@@ -371,102 +368,138 @@ jobs:
         needs.build-lawmaking.result == 'success' ||
         needs.build-docs.result == 'success'
       )
-    permissions: {}
+    permissions:
+      # Voor script/check-deployed-urls.sh onderaan.
+      contents: read
     environment:
       name: production
-      url: ${{ steps.deploy.outputs.url }}
+      url: ${{ steps.editor-url.outputs.url }}
 
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # Faalt één gevraagd image, dan gaat er niets. De conditie hierboven laat
+      # de deploy al door zodra één build slaagt, en de lijst hieronder neemt
+      # alleen de geslaagde mee: het gevolg was dat een component stil op zijn
+      # vorige image bleef staan terwijl de rest meeschoof. De editor en
+      # editor-api delen een contract, dus dat is geen halve deploy maar een
+      # inconsistente. Nooit gebeurd in de laatste honderd runs op main, en dat
+      # is precies waarom het onopgemerkt kon blijven.
+      - name: Weiger een halve deploy
+        env:
+          RESULTS: >-
+            ${{ needs.build.result }} ${{ needs.build-admin.result }}
+            ${{ needs.build-harvester-worker.result }} ${{ needs.build-enrich-worker.result }}
+            ${{ needs.build-pipeline-api.result }} ${{ needs.build-grafana.result }}
+            ${{ needs.build-lawmaking.result }} ${{ needs.build-docs.result }}
+        run: |
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*)
+              echo "::error title=Deploy-poort::Niet elk gevraagd image is gebouwd ($RESULTS). Een deploy zou de rest vooruit zetten en het gevallen component op zijn vorige image laten staan; er gaat daarom niets naar productie."
+              exit 1
+              ;;
+          esac
+          echo "Geen gevallen build; alle gevraagde images staan klaar."
+
       - name: Get short SHA
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Deploy admin to ZAD (Production)
-        if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: regelrecht
-          component: harvester-admin
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-admin:sha-${{ steps.sha.outputs.short }}
+      # Dezelfde reden als bij de preview: ZAD kent per deployment één
+      # taak-scope, dus een tweede taak voor regelrecht zet de eerste opzij
+      # ("superseded"). Alle componenten gaan als één lijst in één upsert-taak.
+      - name: Stel de componentenlijst samen
+        id: plan
+        env:
+          SHA: ${{ steps.sha.outputs.short }}
+          EDITOR: ${{ needs.build.result }}
+          ADMIN: ${{ needs.build-admin.result }}
+          HARVESTER_WORKER: ${{ needs.build-harvester-worker.result }}
+          ENRICH_WORKER: ${{ needs.build-enrich-worker.result }}
+          PIPELINE_API: ${{ needs.build-pipeline-api.result }}
+          GRAFANA: ${{ needs.build-grafana.result }}
+          LAWMAKING: ${{ needs.build-lawmaking.result }}
+          DOCS: ${{ needs.build-docs.result }}
+        run: |
+          set -euo pipefail
+          COMPONENTS='[]'
+          add() {
+            COMPONENTS=$(jq -c --arg name "$1" --arg image "${REGISTRY}/minbzk/$2:sha-${SHA}" \
+              '. + [{name: $name, image: $image}]' <<<"$COMPONENTS")
+          }
 
-      - name: Deploy pipeline-api to ZAD (Production)
-        if: needs.build-pipeline-api.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: regelrecht
-          component: pipelineapi
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-pipeline-api:sha-${{ steps.sha.outputs.short }}
+          # De editor gaat als eerste in de lijst: de action leidt de
+          # environment-URL af van de eerste component.
+          if [ "$EDITOR" = success ]; then add editor regelrecht-editor; fi
+          if [ "$ADMIN" = success ]; then add harvester-admin regelrecht-admin; fi
+          if [ "$HARVESTER_WORKER" = success ]; then add harvester-worker regelrecht-harvester-worker; fi
+          if [ "$ENRICH_WORKER" = success ]; then add enrichworker regelrecht-enrich-worker; fi
+          if [ "$PIPELINE_API" = success ]; then add pipelineapi regelrecht-pipeline-api; fi
+          # Grafana bouwt alleen op main, dus alleen productie kent deze regel.
+          if [ "$GRAFANA" = success ]; then add grafana regelrecht-grafana; fi
+          if [ "$LAWMAKING" = success ]; then add lawmaking regelrecht-lawmaking; fi
+          if [ "$DOCS" = success ]; then add docs regelrecht-docs; fi
 
-      - name: Deploy editor to ZAD (Production)
-        if: needs.build.result == 'success'
+          jq -r '.[] | "  \(.name): \(.image)"' <<<"$COMPONENTS"
+          echo "components=$COMPONENTS" >> "$GITHUB_OUTPUT"
+
+      # Geen clone-from: regelrecht is zelf de bron waar de previews van
+      # klonen. Geen domain-format: de hostnamen van productie liggen vast in
+      # de bestaande config en moeten daar niet door een deploy verschuiven.
+      - name: Deploy to ZAD (Production)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@v4
+        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
           deployment-name: regelrecht
-          component: editor
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-editor:sha-${{ steps.sha.outputs.short }}
+          components: ${{ steps.plan.outputs.components }}
 
-      - name: Deploy harvester-worker to ZAD (Production)
-        if: needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: regelrecht
-          component: harvester-worker
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-harvester-worker:sha-${{ steps.sha.outputs.short }}
+      - name: Editor-URL voor de environment
+        id: editor-url
+        if: needs.build.result == 'success'
+        env:
+          URLS: ${{ steps.deploy.outputs.urls }}
+        run: echo "url=$(jq -r '.editor // empty' <<<"$URLS")" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy enrich-worker to ZAD (Production)
-        if: needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: regelrecht
-          component: enrichworker
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-enrich-worker:sha-${{ steps.sha.outputs.short }}
+      # De poort vooraan bewaakt dat er niets van een rood commit uitgaat en dat
+      # er geen halve uitrol plaatsvindt. Geen van beide zegt iets over de
+      # uitkomst, en daar bestond verder geen enkele controle voor.
+      - name: Controleer of productie antwoordt
+        env:
+          URLS: ${{ steps.deploy.outputs.urls }}
+        run: script/check-deployed-urls.sh
 
-      - name: Deploy grafana to ZAD (Production)
-        if: needs.build-grafana.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: regelrecht
-          component: grafana
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-grafana:sha-${{ steps.sha.outputs.short }}
-
-      - name: Deploy lawmaking to ZAD (Production)
-        if: needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: regelrecht
-          component: lawmaking
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-lawmaking:sha-${{ steps.sha.outputs.short }}
-
-      - name: Deploy docs to ZAD (Production)
-        if: needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v4
-        with:
-          api-key: ${{ secrets.RIG_API_KEY }}
-          project-id: ${{ env.ZAD_PROJECT }}
-          deployment-name: regelrecht
-          component: docs
-          image: ${{ env.REGISTRY }}/minbzk/regelrecht-docs:sha-${{ steps.sha.outputs.short }}
+      - name: Verklaar een mislukte deploy
+        if: failure() && steps.deploy.outcome == 'failure'
+        env:
+          COMPONENTS: ${{ steps.plan.outputs.components }}
+        run: |
+          echo "::notice::Deploy van regelrecht mislukt voor: $(jq -r '[.[].name] | join(", ")' <<<"$COMPONENTS")"
+          echo "'status: superseded' in de output hierboven betekent dat een nieuwere taak"
+          echo "voor dit deployment (een volgende merge naar main) het werk heeft overgenomen."
+          echo "Deze job opnieuw draaien is dan veilig."
+          echo "Iets anders? Zie 'Debugging deploy-preview failures' in CLAUDE.md."
 
   # -- Cleanup preview --
   cleanup-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    # Het label eraf halen ruimt op, net als het sluiten van de PR: een preview
+    # waar niemand meer naar kijkt hoort niet te blijven draaien. Zat het label
+    # er nooit op, dan valt er niets te verwijderen en doet deze job niets.
+    #
+    # Een fork-PR heeft nooit gebouwd of gedeployd, dus er valt niets op te
+    # ruimen en de GHCR-aanroepen zouden alleen maar op rechten stuklopen.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.fork != true &&
+      (
+        github.event.action == 'closed' ||
+        (github.event.action == 'unlabeled' && github.event.label.name == 'deploy:preview')
+      )
     permissions:
       packages: write
       deployments: write
@@ -474,7 +507,7 @@ jobs:
 
     steps:
       - name: Cleanup ZAD deployment and container images
-        uses: RijksICTGilde/zad-actions/cleanup@v4
+        uses: RijksICTGilde/zad-actions/cleanup@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -496,22 +529,5 @@ jobs:
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
           comment-header: '## Preview Deployment'
 
-      - name: Prune orphaned SHA-tagged images
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-        run: |
-          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-pipeline-api regelrecht-grafana regelrecht-lawmaking regelrecht-docs; do
-            echo "Pruning sha-only images for $PACKAGE..."
-            gh api --paginate \
-              "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions" \
-              --jq '.[] | select(
-                (.metadata.container.tags | length == 0) or
-                (.metadata.container.tags | all(startswith("sha-")))
-              ) | .id' \
-            2>/dev/null | while read -r VERSION_ID; do
-              echo "Deleting $PACKAGE version $VERSION_ID"
-              gh api --method DELETE \
-                "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
-              2>/dev/null || true
-            done
-          done
+      # De sha-opruiming die hier stond kon het image onder productie vandaan
+      # halen en draait nu in scheduled-cleanup.yml.

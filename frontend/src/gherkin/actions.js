@@ -9,9 +9,12 @@
  * feature can never silently no-op in the editor.
  *
  * `args` is the ordered capture list (typed per the grammar's argTypes) with any
- * grammar `literals` appended. `table` is the step's dataTable rows (string[][],
- * header row first) or null.
+ * grammar `literals` appended. `table` is the step's dataTable rows (string[][])
+ * or null. Whether row 0 is a header depends on the step: a data-source table
+ * has one, a parameter table does not.
  */
+
+import { VALUE_TYPING } from './grammar.generated.js';
 
 /**
  * Parse a string value to a typed value, mirroring Rust value_conversion.rs.
@@ -39,17 +42,58 @@ export function parseValue(str) {
 }
 
 /**
+ * Type a quoted capture. The three `value_typing` rules live in
+ * bdd/grammar.yaml and reach both dispatchers through codegen, so neither
+ * engine can hold its own opinion about what a quote means.
+ */
+export function quotedValue(raw) {
+  switch (VALUE_TYPING.quoted) {
+    case 'literal': return raw;
+    case 'inferred': return parseValue(raw);
+    default:
+      throw new Error(`bdd/grammar.yaml: unknown value_typing.quoted '${VALUE_TYPING.quoted}'`);
+  }
+}
+
+/** Type a bare (unquoted) capture; see [quotedValue] for where the rule lives. */
+export function bareValue(raw) {
+  if (VALUE_TYPING.bare !== 'number') {
+    throw new Error(`bdd/grammar.yaml: unknown value_typing.bare '${VALUE_TYPING.bare}'`);
+  }
+  return Number(raw);
+}
+
+/** Type a data-table cell; see [quotedValue] for where the rule lives. */
+export function tableCellValue(raw) {
+  switch (VALUE_TYPING.table_cell) {
+    case 'inferred': return parseValue(raw);
+    case 'literal': return raw.trim();
+    default:
+      throw new Error(`bdd/grammar.yaml: unknown value_typing.table_cell '${VALUE_TYPING.table_cell}'`);
+  }
+}
+
+/**
  * Parse a data table into record objects using the header row.
- * Values are auto-typed via parseValue() so the engine receives correctly
- * typed numbers, booleans, and nulls.
+ *
+ * A row that does not match the header row is rejected rather than filled with
+ * undefined: today the Gherkin parser already rejects a varying cell count, but
+ * that guarantee lives in a dependency we bump, and the Rust mirror
+ * (`rows_to_records`) leans on a different parser. The explicit check keeps
+ * both sides failing the same way if either parser ever loosens.
  */
 export function tableToRecords(dataTable) {
   if (!dataTable || dataTable.length < 2) return [];
   const headers = dataTable[0];
-  return dataTable.slice(1).map((row) => {
+  return dataTable.slice(1).map((row, rowIndex) => {
+    if (row.length !== headers.length) {
+      throw new Error(
+        `data table row ${rowIndex + 1} has ${row.length} cells, header row has ${headers.length}`,
+      );
+    }
     const record = {};
     headers.forEach((h, i) => {
-      record[h] = parseValue(row[i] || '');
+      record[h] = tableCellValue(row[i]);
     });
     return record;
   });
@@ -90,7 +134,8 @@ function tierUnsupported(tier) {
  * @param {object} engine - WasmEngine instance
  * @param {string} action - canonical action id from the grammar
  * @param {Array} args - ordered typed captures + literals
- * @param {string[][]|null} table - step dataTable rows (header first) or null
+ * @param {string[][]|null} table - step dataTable rows, or null; row 0 is a
+ *   header for a data-source table and a value row for a parameter table
  * @param {object} options
  * @param {(lawId: string) => Promise<void>} options.loadDependency
  */
@@ -110,16 +155,16 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
     }
 
     case 'set_parameter':
-      // String form keeps the raw string (preserves identifiers like BSNs);
-      // numeric form arrives already typed as a Number from the grammar.
+      // Already typed by the grammar's `value_typing` rule in buildArgs.
       ctx.parameters[args[0]] = args[1];
       break;
 
+    // No header row on a parameter table (mirror of Rust `rows_to_params`);
+    // every row is a name/value pair.
     case 'set_parameters_table':
-      if (table) {
-        for (const row of table.slice(1)) {
-          ctx.parameters[row[0]] = parseValue(row[1] || '');
-        }
+      for (const row of table || []) {
+        if (row.length < 2) continue;
+        ctx.parameters[row[0].trim()] = tableCellValue(row[1] || '');
       }
       break;
 

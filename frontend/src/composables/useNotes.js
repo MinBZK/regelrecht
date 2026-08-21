@@ -5,7 +5,8 @@
  * (RFC-005). The Rust resolver runs in WASM (`engine.resolveNotes`) so the
  * editor shows exactly what the engine and CI validate. Match offsets are
  * `char` offsets into the article text, not UTF-16 code units (see the WASM
- * binding docs); `markRanges` converts them when slicing.
+ * binding docs); consumers convert with cpToUtf16 (useTextSelection) where
+ * the DOM needs UTF-16.
  */
 import { ref, computed, watch } from 'vue';
 import { useEngine } from './useEngine.js';
@@ -13,22 +14,22 @@ import { annotationsUrl } from './corpusUrls.js';
 import { apiFetch } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
 
-// Cache resolved notes per `${trajectRef}::${lawId}` for the session.
-// The resolver result only changes when the law text or the sidecar
-// changes; scoping by trajectRef prevents cross-traject leakage when
-// the user switches between trajects.
+// Cache resolved notes per `${trajectRef}::${lawId}::${validFrom}` for the
+// session. The resolver result only changes when the law text or the sidecar
+// changes; scoping by trajectRef prevents cross-traject leakage when the user
+// switches between trajects, and the version's `valid_from` keeps two
+// versions of the same law from sharing resolved offsets.
 //
 // Caveat (acceptable for the display-only, default-off MVP; revisit in
-// the note-editing phase): the lawId key part is `law.$id`, which does
-// not encode the law *version*. A save through the editor changes the
-// text without changing `$id`, so the cache is not invalidated on save
-// - editing a law in-session and reopening its Notities pane could show
-// offsets resolved against the pre-save text. Once notes become
-// editable, key by `$id` + version and invalidate on save.
+// the note-editing phase): a save through the editor changes the text
+// without changing `$id` or `valid_from`, so the cache is not invalidated
+// on save - editing a law in-session and reopening its Notities pane could
+// show offsets resolved against the pre-save text. Once notes become
+// editable, invalidate on save.
 const cache = new Map();
 
-function cacheKey(trajectRef, lawId) {
-  return `${trajectRef || ''}::${lawId}`;
+function cacheKey(trajectRef, lawId, validFrom) {
+  return `${trajectRef || ''}::${lawId}::${validFrom || ''}`;
 }
 
 /**
@@ -36,8 +37,12 @@ function cacheKey(trajectRef, lawId) {
  * @param {import('vue').Ref<object>} selectedArticle reactive current article
  * @param {import('vue').Ref<string|null>} trajectRef reactive traject ref
  *   (`null` for global / no-traject reads)
+ * @param {import('vue').Ref<string|null>=} lawValidFrom `valid_from` of the
+ *   law version on screen. Passed to the resolver so notes anchor in the
+ *   viewed version's text instead of the newest loaded version
+ *   (`loadDependency` loads every version).
  */
-export function useNotes(lawId, selectedArticle, trajectRef) {
+export function useNotes(lawId, selectedArticle, trajectRef, lawValidFrom) {
   const { initEngine, loadDependency } = useEngine();
   const resolved = ref([]); // [{ note, match, error }]
   const loading = ref(false);
@@ -54,6 +59,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
   async function load() {
     const id = lawId.value;
     const tr = trajectRef?.value ?? null;
+    const vf = lawValidFrom?.value ?? null;
     const isCurrent = claimLoad();
     const isStale = () => !isCurrent();
 
@@ -68,7 +74,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
       loading.value = false;
       return;
     }
-    const key = cacheKey(tr, id);
+    const key = cacheKey(tr, id, vf);
     if (cache.has(key)) {
       // Reset error too: a cached law (e.g. a 404 → []) must not keep showing
       // the previous law's "kon notities niet laden" alert.
@@ -106,7 +112,9 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
       // A bare `if (!engine.hasLaw(id))` gate here would skip that scope
       // check and resolve notes against stale-scope content.
       await loadDependency(id, tr);
-      const result = engine.resolveNotes(id, yamlText);
+      // `vf` selects the viewed version inside the engine's full version
+      // set; `undefined` (no valid_from on the law) means the latest.
+      const result = engine.resolveNotes(id, yamlText, vf ?? undefined);
       const list = Array.isArray(result) ? result : [];
       cache.set(key, list);
       if (!isStale()) resolved.value = list;
@@ -121,10 +129,11 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
     }
   }
 
-  // Re-load on either the law or the active-traject changing - the
-  // sidecar lives per traject branch, so a switch needs a fresh fetch
-  // even if the law id stayed put.
-  const trackers = trajectRef ? [lawId, trajectRef] : [lawId];
+  // Re-load on the law, the active traject or the viewed version changing -
+  // the sidecar lives per traject branch and the resolved offsets are
+  // version-specific, so any of the three needs a fresh resolve even if the
+  // law id stayed put.
+  const trackers = [lawId, trajectRef, lawValidFrom].filter(Boolean);
   watch(trackers, load, { immediate: true });
 
   /**
@@ -139,7 +148,11 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
    */
   async function reload() {
     const id = lawId.value;
-    if (id) cache.delete(cacheKey(trajectRef?.value ?? null, id));
+    if (id) {
+      cache.delete(
+        cacheKey(trajectRef?.value ?? null, id, lawValidFrom?.value ?? null),
+      );
+    }
     await load();
   }
 
@@ -168,7 +181,7 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
     return out;
   });
 
-  /** Orphaned / ambiguous / parse-failed notes, for a status list. */
+  /** Orphaned / ambiguous / skipped / parse-failed notes, for a status list. */
   const issues = computed(() =>
     resolved.value
       .filter(
@@ -180,7 +193,16 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
           ? `parsefout: ${e.error}`
           : e.match.status === 'orphaned'
             ? 'niet gevonden in de wettekst (orphaned)'
-            : 'meerdere matches (ambigu) - voeg context toe',
+            : e.match.status === 'skipped'
+              ? // The resolver hit a scan bound (config.rs): the law was not
+                // (fully) searched. Distinct from orphaned, which asserts
+                // the text is absent. skip_reason names the bound that was
+                // hit, so the advice matches the cause instead of always
+                // blaming the quote length.
+                e.match.skip_reason === 'quote_too_long'
+                ? 'niet naar gezocht: citaat te lang voor de zoekbegrenzing - kort het citaat in'
+                : 'niet volledig doorzocht: de wettekst overschrijdt de zoekbegrenzing'
+              : 'meerdere matches (ambigu) - voeg context toe',
       })),
   );
 
@@ -200,8 +222,17 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
  * @param {import('vue').Ref<string|null>=} trajectRef Active traject ref.
  *   Routes the dependency load through the matching scope so a draft
  *   resolves against the same law copy the editor shows.
+ * @param {import('vue').Ref<string|null>=} lawValidFrom `valid_from` of the
+ *   viewed law version, so drafts anchor in the text on screen instead of
+ *   the newest loaded version (same contract as `useNotes`).
  */
-export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajectRef) {
+export function useResolvedDraftNotes(
+  draftNotes,
+  lawId,
+  selectedArticle,
+  trajectRef,
+  lawValidFrom,
+) {
   const { initEngine, loadDependency } = useEngine();
   const resolvedDrafts = ref([]); // [{ note, match }]
 
@@ -217,6 +248,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
     const id = lawId.value;
     const notes = draftNotes.value;
     const tr = trajectRef?.value ?? null;
+    const vf = lawValidFrom?.value ?? null;
     const isCurrent = claimResolve();
     const isStale = () => !isCurrent();
     if (!id || !notes || notes.length === 0) {
@@ -235,7 +267,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
         if (!selector) continue;
         let match;
         try {
-          match = engine.resolveNote(id, selector);
+          match = engine.resolveNote(id, selector, vf ?? undefined);
         } catch {
           continue; // a malformed draft selector simply does not highlight
         }
@@ -247,7 +279,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
     }
   }
 
-  const trackers = trajectRef ? [draftNotes, lawId, trajectRef] : [draftNotes, lawId];
+  const trackers = [draftNotes, lawId, trajectRef, lawValidFrom].filter(Boolean);
   watch(trackers, resolve, { immediate: true, deep: true });
 
   const draftNotesForArticle = computed(() => {
@@ -266,56 +298,4 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajec
   });
 
   return { draftNotesForArticle };
-}
-
-/**
- * Slice `text` into segments around resolved note spans, for rendering.
- *
- * Returns an ordered array of `{ text, note }` segments where `note` is null
- * for plain text and the annotating note for a highlighted span. The result is
- * a gap-free partition of `text` (every character emitted exactly once).
- *
- * Overlap handling: marks are sorted by start (longest first on ties); a mark
- * that starts inside an already-emitted mark is dropped. The resolver
- * de-duplicates a single selector's matches, but two *different* notes
- * annotating overlapping spans is a legitimate RFC-018 case - the later one
- * is silently not rendered here (it is not surfaced in `issues` either, since
- * it resolved fine). Acceptable for display-only; the note-editing phase will
- * need layered rendering instead of a flat partition.
- *
- * @param {string} text          article text (the same string the resolver saw)
- * @param {Array<{note:object,spans:Array}>} notesForArticle
- */
-export function markRanges(text, notesForArticle) {
-  const chars = Array.from(text); // char (code-point) array: offsets are char-based
-  const marks = [];
-  for (const { note, spans } of notesForArticle) {
-    for (const s of spans) {
-      marks.push({ start: s.start, end: s.end, note });
-    }
-  }
-  marks.sort((a, b) => a.start - b.start || b.end - a.end);
-
-  const segments = [];
-  let cursor = 0;
-  for (const m of marks) {
-    // A zero-length span (start === end) would emit an empty, styled <mark>.
-    // The Rust resolver never produces this for a TextQuoteSelector, but a
-    // malformed hand-authored sidecar could; drop it so the contract is
-    // explicit and the partition stays clean.
-    if (m.end <= m.start) continue;
-    if (m.start < cursor) continue; // skip overlap with an already-emitted mark
-    if (m.start > cursor) {
-      segments.push({ text: chars.slice(cursor, m.start).join(''), note: null });
-    }
-    segments.push({
-      text: chars.slice(m.start, m.end).join(''),
-      note: m.note,
-    });
-    cursor = m.end;
-  }
-  if (cursor < chars.length) {
-    segments.push({ text: chars.slice(cursor).join(''), note: null });
-  }
-  return segments;
 }

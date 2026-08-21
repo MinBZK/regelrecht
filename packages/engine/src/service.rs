@@ -67,6 +67,23 @@ struct CacheEntry {
     parameters: BTreeMap<String, Value>,
 }
 
+impl CacheEntry {
+    /// Whether this entry was stored for exactly this law, output and parameter set.
+    ///
+    /// Cache keys are `u64` hashes, so two different evaluations can in theory
+    /// land on the same key. For legally binding decisions a wrong hit is never
+    /// acceptable, so every read re-checks the full identity: all three fields
+    /// must match, a difference in any one of them means "not this entry".
+    fn matches(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: &BTreeMap<String, Value>,
+    ) -> bool {
+        self.law_id == law_id && self.output_name == output_name && self.parameters == *parameters
+    }
+}
+
 /// Uses a scoped push/pop pattern for the visited set to avoid
 /// cloning the HashSet on every cross-law descent.
 struct ResolutionContext<'a> {
@@ -458,17 +475,8 @@ impl LawExecutionService {
 
     /// Build an Execution Receipt (RFC-013) from an ArticleResult.
     ///
-    /// Wraps the result with provenance, engine config, and scope metadata.
-    pub fn build_receipt(
-        &self,
-        result: &ArticleResult,
-        parameters: &BTreeMap<String, Value>,
-        calculation_date: &str,
-    ) -> crate::receipt::ExecutionReceipt {
-        self.build_receipt_with_outputs(result, parameters, calculation_date, &[])
-    }
-
-    /// Build an Execution Receipt with explicit requested output tracking.
+    /// Wraps the result with provenance, engine config, and scope metadata,
+    /// and records which outputs were explicitly requested.
     pub fn build_receipt_with_outputs(
         &self,
         result: &ArticleResult,
@@ -764,60 +772,6 @@ impl LawExecutionService {
         )
     }
 
-    /// Execute a single lifecycle stage with tracing enabled.
-    ///
-    /// Same as `execute_stage` but accepts a shared trace builder so the
-    /// staged execution is recorded in the trace tree.
-    pub fn execute_stage_with_trace(
-        &self,
-        law_id: &str,
-        output_name: &str,
-        state: Option<StageState>,
-        parameters: BTreeMap<String, Value>,
-        calculation_date: &str,
-        trace: Rc<RefCell<TraceBuilder>>,
-    ) -> Result<ExecutionOutcome> {
-        // Push a top-level trace node so partial traces are preserved on error,
-        // mirroring evaluate_law_output_with_trace_builder.
-        {
-            let mut tb = trace.borrow_mut();
-            tb.push(
-                format!("{} ({}) [stage]", law_id, output_name),
-                PathNodeType::Article,
-            );
-            tb.set_message(format!(
-                "Stage execution: {} ({} {})",
-                law_id, calculation_date, output_name,
-            ));
-        }
-
-        let result = self.execute_stage_internal(
-            law_id,
-            output_name,
-            state,
-            parameters,
-            calculation_date,
-            Some(Rc::clone(&trace)),
-        );
-
-        match result {
-            Ok(outcome) => {
-                let mut tb = trace.borrow_mut();
-                tb.pop();
-                Ok(outcome)
-            }
-            Err(e) => {
-                let mut tb = trace.borrow_mut();
-                tb.set_message(format!("Stage execution failed: {}", e));
-                let partial_trace = tb.pop();
-                Err(EngineError::TracedError {
-                    source: Box::new(e),
-                    trace: partial_trace.map(Box::new),
-                })
-            }
-        }
-    }
-
     /// Internal stage execution with optional tracing.
     fn execute_stage_internal(
         &self,
@@ -1093,10 +1047,7 @@ impl LawExecutionService {
             // Runtime collision check: hash keys are u64 so collisions are
             // theoretically possible. For legally binding decisions, we must
             // never silently return wrong results.
-            if cached.law_id != law_id
-                || cached.output_name != output_name
-                || cached.parameters != parameters
-            {
+            if !cached.matches(law_id, output_name, &parameters) {
                 tracing::warn!(
                     cached_law = cached.law_id,
                     cached_output = cached.output_name,
@@ -1997,29 +1948,28 @@ impl LawExecutionService {
                 continue;
             }
 
-            // Check DataSourceRegistry before cross-law resolution
-            if self.data_registry.source_count() > 0 {
-                if let Some(data_match) = self.data_registry.resolve(&input.name, parameters) {
-                    tracing::debug!(
-                        input = %input.name,
-                        source = %data_match.source_name,
-                        "Resolved input from data registry"
-                    );
+            // Check DataSourceRegistry before cross-law resolution.
+            // An empty registry resolves to None, so no separate guard is needed.
+            if let Some(data_match) = self.data_registry.resolve(&input.name, parameters) {
+                tracing::debug!(
+                    input = %input.name,
+                    source = %data_match.source_name,
+                    "Resolved input from data registry"
+                );
 
-                    // Trace the data source resolution
-                    {
-                        let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
-                        res_ctx.trace_set_resolve_type(ResolveType::DataSource);
-                        res_ctx.trace_set_result(data_match.value.clone());
-                        res_ctx.trace_set_message(format!(
-                            "Resolving from SOURCE {}: {}",
-                            data_match.source_name, data_match.value
-                        ));
-                    }
-
-                    context.set_resolved_input(&input.name, data_match.value);
-                    continue;
+                // Trace the data source resolution
+                {
+                    let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                    res_ctx.trace_set_result(data_match.value.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Resolving from SOURCE {}: {}",
+                        data_match.source_name, data_match.value
+                    ));
                 }
+
+                context.set_resolved_input(&input.name, data_match.value);
+                continue;
             }
 
             // For cross-law resolution, output defaults to input name
@@ -2300,6 +2250,44 @@ impl LawExecutionService {
     /// Get direct access to the resolver.
     pub fn resolver(&self) -> &RuleResolver {
         &self.resolver
+    }
+
+    /// Version-aware law lookup for annotation resolution (RFC-005/RFC-018).
+    ///
+    /// `valid_from` names the version the caller is looking at (that
+    /// version's own `valid_from` date), so a note resolves against the text
+    /// on screen instead of whichever version happens to be newest —
+    /// [`ServiceProvider::get_law`] returns the newest loaded version,
+    /// including one that is not yet in force. `None` keeps the
+    /// latest-version behaviour for callers without a version context.
+    ///
+    /// Failing loudly beats a silent wrong answer (RFC-019), twice over: a
+    /// malformed date is an error rather than a fall-back to the newest
+    /// version, and the selected version must carry exactly the requested
+    /// `valid_from`. The date-based selection alone would otherwise slide to
+    /// the next-older *loaded* version when the viewed one is absent from the
+    /// engine (the editor's dependency loader skips versions the engine
+    /// cannot parse), and the returned offsets would mis-highlight the text
+    /// on screen without any signal.
+    pub fn get_law_version(
+        &self,
+        law_id: &str,
+        valid_from: Option<&str>,
+    ) -> Result<&ArticleBasedLaw> {
+        let reference_date = valid_from.map(parse_calculation_date).transpose()?;
+        let law = self
+            .resolver
+            .get_law_for_date_reported(law_id, reference_date)
+            .map_err(|reason| selection_error(law_id, valid_from.unwrap_or(""), reason))?;
+        if let Some(requested) = valid_from {
+            if law.valid_from.as_deref() != Some(requested) {
+                return Err(EngineError::LoadError(format!(
+                    "law '{law_id}' has no loaded version with valid_from {requested}; \
+                     the viewed version may have failed to load"
+                )));
+            }
+        }
+        Ok(law)
     }
 
     /// Get metadata about a loaded law.
@@ -2755,11 +2743,19 @@ articles:
         let result =
             service.evaluate_law_output("law_a", "output_a", BTreeMap::new(), "2025-01-01");
 
-        assert!(
-            matches!(result, Err(EngineError::CircularReference(_))),
-            "Expected CircularReference error, got: {:?}",
-            result
-        );
+        match result {
+            Err(EngineError::CircularReference(msg)) => {
+                // The cycle guard has to catch this on re-entry. Reporting an
+                // exhausted depth budget instead would send the reader looking
+                // for a long chain that is not there.
+                assert!(
+                    msg.contains("already being resolved"),
+                    "Expected the cycle itself to be reported, got: {}",
+                    msg
+                );
+            }
+            other => panic!("Expected CircularReference error, got: {:?}", other),
+        }
     }
 
     #[test]
@@ -4106,5 +4102,1018 @@ articles:
             Some(&Value::Int(220000)),
             "2026 calculation should use 2026 version"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Memoization cache identity
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_cache_key_depends_on_parameter_values() {
+        // The per-execution memo cache is keyed on a hash of law, output and
+        // parameters. The parameter *values* must reach that hash: without
+        // them every call with the same parameter names lands on one key and
+        // the identity check has to reject nearly every hit.
+        let key_of = |value: Value| {
+            let mut params = BTreeMap::new();
+            params.insert("bsn".to_string(), value);
+            cache_key("zorgtoeslag", "recht_op_zorgtoeslag", &params)
+        };
+
+        assert_ne!(key_of(Value::Int(1)), key_of(Value::Int(2)));
+        assert_ne!(key_of(Value::Bool(true)), key_of(Value::Bool(false)));
+        assert_ne!(
+            key_of(Value::String("111".to_string())),
+            key_of(Value::String("222".to_string()))
+        );
+        assert_ne!(
+            key_of(Value::Array(vec![Value::Int(1)])),
+            key_of(Value::Array(vec![Value::Int(2)]))
+        );
+        let obj = |v: i64| {
+            let mut map = BTreeMap::new();
+            map.insert("field".to_string(), Value::Int(v));
+            Value::Object(map)
+        };
+        assert_ne!(key_of(obj(1)), key_of(obj(2)));
+
+        // Equal decimals hash equally, matching PartialEq (1.0 == 1.00).
+        assert_eq!(
+            key_of(Value::Decimal("1.0".parse().unwrap())),
+            key_of(Value::Decimal("1.00".parse().unwrap()))
+        );
+
+        // Law and output are part of the identity too.
+        let empty = BTreeMap::new();
+        assert_ne!(
+            cache_key("law_a", "output", &empty),
+            cache_key("law_b", "output", &empty)
+        );
+        assert_ne!(
+            cache_key("law_a", "output_x", &empty),
+            cache_key("law_a", "output_y", &empty)
+        );
+    }
+
+    #[test]
+    fn test_cache_entry_matches_requires_every_identity_field() {
+        // A cache hit is only honoured when law, output *and* parameters match.
+        // The key is a u64 hash, so a collision must never hand one decision
+        // the outputs of another.
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("111".to_string()));
+
+        let entry = CacheEntry {
+            law_id: "law_a".to_string(),
+            output_name: "output_x".to_string(),
+            outputs: BTreeMap::new(),
+            output_provenance: BTreeMap::new(),
+            parameters: params.clone(),
+        };
+
+        assert!(entry.matches("law_a", "output_x", &params));
+        assert!(
+            !entry.matches("law_b", "output_x", &params),
+            "another law must never reuse this entry"
+        );
+        assert!(
+            !entry.matches("law_a", "output_y", &params),
+            "another output must never reuse this entry"
+        );
+
+        let mut other_params = params.clone();
+        other_params.insert("bsn".to_string(), Value::String("222".to_string()));
+        assert!(
+            !entry.matches("law_a", "output_x", &other_params),
+            "other parameters must never reuse this entry"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Resolution depth accounting
+    // -------------------------------------------------------------------------
+
+    /// Build `links` laws where `chain_law_{i}` sources `chain_law_{i+1}`, plus
+    /// a terminal law with a literal value. Each link costs one depth level.
+    fn cross_law_chain(links: usize) -> Vec<String> {
+        let mut laws = Vec::new();
+        for i in 0..links {
+            let next = i + 1;
+            laws.push(format!(
+                r#"
+$id: chain_law_{i}
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Chain link {i}
+    machine_readable:
+      execution:
+        input:
+          - name: from_next
+            type: number
+            source:
+              regulation: chain_law_{next}
+              output: value_{next}
+        output:
+          - name: value_{i}
+            type: number
+        actions:
+          - output: value_{i}
+            value: $from_next
+"#
+            ));
+        }
+        laws.push(format!(
+            r#"
+$id: chain_law_{links}
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Chain terminal
+    machine_readable:
+      execution:
+        output:
+          - name: value_{links}
+            type: number
+        actions:
+          - output: value_{links}
+            value: 7
+"#
+        ));
+        laws
+    }
+
+    #[test]
+    fn test_service_cross_law_depth_limit_boundary() {
+        // The depth limit exists to stop runaway recursion, not to reject
+        // chains the configuration declares admissible: exactly
+        // MAX_CROSS_LAW_DEPTH hops must resolve, one hop more must not.
+        let mut service = LawExecutionService::new();
+        for law in cross_law_chain(config::MAX_CROSS_LAW_DEPTH) {
+            service.load_law(&law).unwrap();
+        }
+        let result = service
+            .evaluate_law_output("chain_law_0", "value_0", BTreeMap::new(), "2025-01-01")
+            .expect("a chain of exactly MAX_CROSS_LAW_DEPTH hops must resolve");
+        assert_eq!(result.outputs.get("value_0"), Some(&Value::Int(7)));
+
+        let mut service = LawExecutionService::new();
+        for law in cross_law_chain(config::MAX_CROSS_LAW_DEPTH + 1) {
+            service.load_law(&law).unwrap();
+        }
+        let result =
+            service.evaluate_law_output("chain_law_0", "value_0", BTreeMap::new(), "2025-01-01");
+        match result {
+            Err(EngineError::CircularReference(msg)) => {
+                assert!(
+                    msg.contains("depth exceeded"),
+                    "Expected depth-exceeded error, got: {}",
+                    msg
+                );
+            }
+            other => panic!("Expected CircularReference depth error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_service_internal_depth_limit_boundary() {
+        // Same boundary for same-law (internal) references: a chain of exactly
+        // MAX_CROSS_LAW_DEPTH links stays within budget.
+        let links = config::MAX_CROSS_LAW_DEPTH;
+        let mut yaml = String::from(
+            "$id: internal_max_chain_law\n\
+             regulatory_layer: WET\n\
+             publication_date: '2025-01-01'\n\
+             articles:\n",
+        );
+        for i in 0..links {
+            yaml.push_str(&format!(
+                r#"  - number: '{num}'
+    text: Chain link {num}
+    machine_readable:
+      execution:
+        input:
+          - name: from_next
+            type: number
+            source:
+              output: value_{next}
+        output:
+          - name: value_{num}
+            type: number
+        actions:
+          - output: value_{num}
+            value: $from_next
+"#,
+                num = i,
+                next = i + 1
+            ));
+        }
+        yaml.push_str(&format!(
+            r#"  - number: '{links}'
+    text: Chain terminal
+    machine_readable:
+      execution:
+        output:
+          - name: value_{links}
+            type: number
+        actions:
+          - output: value_{links}
+            value: 3
+"#
+        ));
+
+        let mut service = LawExecutionService::new();
+        service.load_law(&yaml).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "internal_max_chain_law",
+                "value_0",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("a chain of exactly MAX_CROSS_LAW_DEPTH internal links must resolve");
+        assert_eq!(result.outputs.get("value_0"), Some(&Value::Int(3)));
+    }
+
+    #[test]
+    fn test_service_sibling_cross_law_references_do_not_consume_depth() {
+        // Breadth is not depth. Every sibling reference of one article resolves
+        // at depth one, so leaving a resolution scope has to hand the budget
+        // back; otherwise a wide article trips the recursion guard.
+        let siblings = config::MAX_CROSS_LAW_DEPTH + 5;
+        let mut service = LawExecutionService::new();
+        for i in 0..siblings {
+            service
+                .load_law(&format!(
+                    r#"
+$id: leaf_law_{i}
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Leaf {i}
+    machine_readable:
+      execution:
+        output:
+          - name: leaf_value
+            type: number
+        actions:
+          - output: leaf_value
+            value: 1
+"#
+                ))
+                .unwrap();
+        }
+
+        let mut yaml = String::from(
+            "$id: wide_law\n\
+             regulatory_layer: WET\n\
+             publication_date: '2025-01-01'\n\
+             articles:\n  \
+             - number: '1'\n    \
+             text: References many laws side by side\n    \
+             machine_readable:\n      \
+             execution:\n        \
+             input:\n",
+        );
+        for i in 0..siblings {
+            yaml.push_str(&format!(
+                "          - name: leaf_{i}\n            type: number\n            source:\n              regulation: leaf_law_{i}\n              output: leaf_value\n"
+            ));
+        }
+        yaml.push_str(
+            "        output:\n          - name: total\n            type: number\n        actions:\n          - output: total\n            operation: ADD\n            values:\n",
+        );
+        for i in 0..siblings {
+            yaml.push_str(&format!("              - $leaf_{i}\n"));
+        }
+        service.load_law(&yaml).unwrap();
+
+        let result = service
+            .evaluate_law_output("wide_law", "total", BTreeMap::new(), "2025-01-01")
+            .expect("sibling references must not consume the depth budget");
+        assert_eq!(
+            result.outputs.get("total"),
+            Some(&Value::Int(siblings as i64))
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Multi-output evaluation
+    // -------------------------------------------------------------------------
+
+    fn make_two_article_law() -> &'static str {
+        r#"
+$id: two_article_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces the first output
+    machine_readable:
+      execution:
+        output:
+          - name: out_a
+            type: number
+        actions:
+          - output: out_a
+            value: 1
+  - number: '2'
+    text: Produces the second output
+    machine_readable:
+      execution:
+        output:
+          - name: out_b
+            type: number
+        actions:
+          - output: out_b
+            value: 2
+"#
+    }
+
+    #[test]
+    fn test_evaluate_law_reports_every_producing_article() {
+        // Outputs from two articles are merged into one result. The result then
+        // names both articles: a single number would tell the reader the
+        // decision rests on an article that produced only half of it.
+        let mut service = LawExecutionService::new();
+        service.load_law(make_two_article_law()).unwrap();
+
+        let result = service
+            .evaluate_law(
+                "two_article_law",
+                &["out_a", "out_b"],
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(result.outputs.get("out_a"), Some(&Value::Int(1)));
+        assert_eq!(result.outputs.get("out_b"), Some(&Value::Int(2)));
+        assert_eq!(result.article_number, "1, 2");
+
+        // A single article keeps its own number.
+        let result = service
+            .evaluate_law("two_article_law", &["out_b"], BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.article_number, "2");
+    }
+
+    // -------------------------------------------------------------------------
+    // Lex specialis overrides
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_conflicting_overrides_from_one_law_are_rejected() {
+        // Two articles of the same law both claim to replace the same output.
+        // There is no rule that picks between them, so the engine must refuse
+        // rather than silently apply whichever came first.
+        let target = r#"
+$id: override_target_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Provides the amount
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+"#;
+        let specialis = r#"
+$id: override_specialis_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Uses the amount from the target law
+    machine_readable:
+      execution:
+        input:
+          - name: bedrag
+            type: number
+            source:
+              regulation: override_target_law
+              output: bedrag
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $bedrag
+  - number: '2'
+    text: In afwijking van het bedrag
+    machine_readable:
+      overrides:
+        - law: override_target_law
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 200
+  - number: '3'
+    text: Eveneens in afwijking van hetzelfde bedrag
+    machine_readable:
+      overrides:
+        - law: override_target_law
+          article: '1'
+          output: bedrag
+      execution:
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value: 300
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(target).unwrap();
+        service.load_law(specialis).unwrap();
+
+        let result = service.evaluate_law_output(
+            "override_specialis_law",
+            "result",
+            BTreeMap::new(),
+            "2025-01-01",
+        );
+
+        match result {
+            Err(EngineError::InvalidOperation(msg)) => {
+                assert!(
+                    msg.contains("Multiple overrides"),
+                    "Expected a conflicting-overrides error, got: {}",
+                    msg
+                );
+            }
+            other => panic!("Expected conflicting overrides to be rejected, got: {other:?}"),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Procedure stages (RFC-008)
+    // -------------------------------------------------------------------------
+
+    /// Build a procedure-bearing law: one article producing a TEST_BESCHIKKING
+    /// with `outputs`, governed by a procedure whose stages are given as
+    /// `(stage name, required external inputs)` pairs.
+    fn make_stage_law(law_id: &str, stages: &[(&str, &[&str])], outputs: &[&str]) -> String {
+        let mut yaml = String::new();
+        yaml.push_str(&format!("$id: {law_id}\n"));
+        yaml.push_str("regulatory_layer: WET\n");
+        yaml.push_str("publication_date: '2025-01-01'\n");
+        yaml.push_str("procedure:\n");
+        yaml.push_str("  - id: test_procedure\n");
+        yaml.push_str("    default: true\n");
+        yaml.push_str("    applies_to:\n");
+        yaml.push_str("      legal_character: TEST_BESCHIKKING\n");
+        yaml.push_str("    stages:\n");
+        for (name, requires) in stages {
+            yaml.push_str(&format!("      - name: {name}\n"));
+            if !requires.is_empty() {
+                yaml.push_str("        requires:\n");
+                for req in *requires {
+                    yaml.push_str(&format!("          - name: {req}\n"));
+                    yaml.push_str("            type: string\n");
+                }
+            }
+        }
+        yaml.push_str("articles:\n");
+        yaml.push_str("  - number: '1'\n");
+        yaml.push_str("    text: Neemt een beschikking\n");
+        yaml.push_str("    machine_readable:\n");
+        yaml.push_str("      execution:\n");
+        yaml.push_str("        produces:\n");
+        yaml.push_str("          legal_character: TEST_BESCHIKKING\n");
+        yaml.push_str("        parameters:\n");
+        yaml.push_str("          - name: bedrag\n");
+        yaml.push_str("            type: number\n");
+        yaml.push_str("            required: true\n");
+        yaml.push_str("        output:\n");
+        for out in outputs {
+            yaml.push_str(&format!("          - name: {out}\n"));
+            yaml.push_str("            type: number\n");
+        }
+        yaml.push_str("        actions:\n");
+        for out in outputs {
+            yaml.push_str(&format!("          - output: {out}\n"));
+            yaml.push_str("            value: $bedrag\n");
+        }
+        yaml
+    }
+
+    fn stage_params(pairs: &[(&str, &str)]) -> BTreeMap<String, Value> {
+        let mut params = BTreeMap::new();
+        params.insert("bedrag".to_string(), Value::Int(100));
+        for (name, value) in pairs {
+            params.insert(name.to_string(), Value::String(value.to_string()));
+        }
+        params
+    }
+
+    #[test]
+    fn test_execute_stage_yields_on_a_missing_input_of_the_current_stage() {
+        // The first stage needs an external input the caller did not supply, so
+        // the procedure must stop there and name exactly that input.
+        let law = make_stage_law(
+            "stage_law_yield",
+            &[("AANVRAAG", &["aanvraag_datum"]), ("BESLUIT", &[])],
+            &["toekenning"],
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&law).unwrap();
+
+        let outcome = service
+            .execute_stage(
+                "stage_law_yield",
+                "toekenning",
+                None,
+                stage_params(&[]),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        match outcome {
+            ExecutionOutcome::Yielded {
+                state,
+                outputs,
+                pending_inputs,
+            } => {
+                assert_eq!(
+                    state.current_stage, "AANVRAAG",
+                    "execution must halt in the stage whose input is missing"
+                );
+                assert_eq!(state.procedure_id, "test_procedure");
+                assert_eq!(state.contextual_law, "stage_law_yield");
+                assert_eq!(pending_inputs, vec!["aanvraag_datum".to_string()]);
+                assert!(
+                    outputs.is_empty(),
+                    "nothing is decided before the stage has run"
+                );
+            }
+            other => panic!("Expected a yield on the missing stage input, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_execute_stage_runs_the_stage_and_yields_on_the_next_one() {
+        // With the first stage's input supplied, that stage runs and its
+        // outputs travel with the yield for the next stage's missing input.
+        let law = make_stage_law(
+            "stage_law_advance",
+            &[
+                ("AANVRAAG", &["aanvraag_datum"]),
+                ("BESLUIT", &["besluit_datum"]),
+            ],
+            &["toekenning"],
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&law).unwrap();
+
+        let outcome = service
+            .execute_stage(
+                "stage_law_advance",
+                "toekenning",
+                None,
+                stage_params(&[("aanvraag_datum", "2025-01-05")]),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        match outcome {
+            ExecutionOutcome::Yielded {
+                state,
+                outputs,
+                pending_inputs,
+            } => {
+                assert_eq!(
+                    state.current_stage, "BESLUIT",
+                    "the first stage ran, so the state moved on"
+                );
+                assert_eq!(pending_inputs, vec!["besluit_datum".to_string()]);
+                assert_eq!(
+                    outputs.get("toekenning"),
+                    Some(&Value::Int(100)),
+                    "the completed stage's outputs travel with the yield"
+                );
+            }
+            other => panic!("Expected a yield awaiting the next stage's input, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_execute_stage_next_stage_input_from_an_earlier_stage_output() {
+        // A stage may require what an earlier stage produced. That value is in
+        // the accumulated outputs, so the procedure runs on to the end instead
+        // of asking the caller for it.
+        let law = make_stage_law(
+            "stage_law_accumulated",
+            &[
+                ("AANVRAAG", &["aanvraag_datum"]),
+                ("BESLUIT", &["beschikking_nummer"]),
+            ],
+            &["toekenning", "beschikking_nummer"],
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&law).unwrap();
+
+        let outcome = service
+            .execute_stage(
+                "stage_law_accumulated",
+                "toekenning",
+                None,
+                stage_params(&[("aanvraag_datum", "2025-01-05")]),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        match outcome {
+            ExecutionOutcome::Complete(result) => {
+                assert_eq!(result.outputs.get("toekenning"), Some(&Value::Int(100)));
+                assert_eq!(
+                    result.outputs.get("beschikking_nummer"),
+                    Some(&Value::Int(100)),
+                    "the final result carries the outputs of every stage"
+                );
+            }
+            other => panic!("Expected the procedure to run to completion, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_execute_stage_resume_asks_only_for_what_is_still_missing() {
+        // An input supplied with the first call stays available across the
+        // yield: on resuming, the engine asks only for what it does not have.
+        let law = make_stage_law(
+            "stage_law_resume",
+            &[
+                ("AANVRAAG", &["aanvraag_datum"]),
+                ("BESLUIT", &["besluit_datum"]),
+                ("BEKENDMAKING", &["zienswijze", "bekendmaking_datum"]),
+            ],
+            &["toekenning"],
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&law).unwrap();
+
+        let first = service
+            .execute_stage(
+                "stage_law_resume",
+                "toekenning",
+                None,
+                stage_params(&[("aanvraag_datum", "2025-01-05"), ("zienswijze", "geen")]),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        let state = match first {
+            ExecutionOutcome::Yielded {
+                state,
+                pending_inputs,
+                ..
+            } => {
+                assert_eq!(state.current_stage, "BESLUIT");
+                assert_eq!(pending_inputs, vec!["besluit_datum".to_string()]);
+                state
+            }
+            other => panic!("Expected a yield awaiting besluit_datum, got: {other:?}"),
+        };
+
+        let mut resume = BTreeMap::new();
+        resume.insert(
+            "besluit_datum".to_string(),
+            Value::String("2025-02-01".to_string()),
+        );
+
+        let second = service
+            .execute_stage(
+                "stage_law_resume",
+                "toekenning",
+                Some(state),
+                resume,
+                "2025-01-01",
+            )
+            .unwrap();
+
+        match second {
+            ExecutionOutcome::Yielded {
+                state,
+                pending_inputs,
+                ..
+            } => {
+                assert_eq!(state.current_stage, "BEKENDMAKING");
+                assert_eq!(
+                    pending_inputs,
+                    vec!["bekendmaking_datum".to_string()],
+                    "zienswijze was supplied on the first call and must not be asked again"
+                );
+            }
+            other => panic!("Expected a yield awaiting bekendmaking_datum, got: {other:?}"),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Law loading, provenance and inventory
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_load_law_with_source_records_provenance() {
+        let mut service = LawExecutionService::new();
+
+        let law_id = service
+            .load_law_with_source(make_base_law(), "bwb-corpus", "BWB corpus")
+            .unwrap();
+        assert_eq!(law_id, "base_law");
+
+        assert_eq!(
+            service.get_law_source("base_law"),
+            Some(("bwb-corpus", "BWB corpus")),
+            "a receipt must be able to name where a law came from"
+        );
+        assert_eq!(
+            service.get_law_source("unknown_law"),
+            None,
+            "an unknown law has no provenance"
+        );
+
+        // A law loaded without provenance keeps none.
+        service.load_law(make_dependent_law()).unwrap();
+        assert_eq!(service.get_law_source("dependent_law"), None);
+    }
+
+    #[test]
+    fn test_law_inventory_and_unloading() {
+        let mut service = LawExecutionService::new();
+        assert_eq!(service.law_count(), 0);
+        assert!(!service.has_law("base_law"));
+
+        service.load_law(make_base_law()).unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+        assert_eq!(service.law_count(), 2);
+        assert!(service.has_law("base_law"));
+        assert!(service.has_law("dependent_law"));
+        assert!(!service.has_law("unknown_law"));
+
+        assert!(
+            service.unload_law("base_law"),
+            "unloading a loaded law reports success"
+        );
+        assert_eq!(service.law_count(), 1);
+        assert!(!service.has_law("base_law"));
+        assert!(
+            !service.unload_law("base_law"),
+            "unloading a law that is not there reports failure"
+        );
+    }
+
+    #[test]
+    fn test_resolver_exposes_the_loaded_laws() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_base_law()).unwrap();
+
+        let resolver = service.resolver();
+        assert!(
+            resolver.has_law("base_law"),
+            "the exposed resolver must be the service's own, not an empty one"
+        );
+        assert_eq!(resolver.law_count(), 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Data source management
+    // -------------------------------------------------------------------------
+
+    fn dict_record(field: &str, value: i64) -> BTreeMap<String, BTreeMap<String, Value>> {
+        let mut fields = BTreeMap::new();
+        fields.insert(field.to_string(), Value::Int(value));
+        let mut data = BTreeMap::new();
+        data.insert("123".to_string(), fields);
+        data
+    }
+
+    #[test]
+    fn test_data_source_registration_and_removal() {
+        let mut service = LawExecutionService::new();
+        assert_eq!(service.data_source_count(), 0);
+        assert!(service.list_data_sources().is_empty());
+
+        service.add_dict_source("hoge_prioriteit", 10, dict_record("inkomen", 1));
+        assert_eq!(service.data_source_count(), 1);
+        assert_eq!(service.list_data_sources(), vec!["hoge_prioriteit"]);
+
+        service.add_data_source(Box::new(DictDataSource::new(
+            "lage_prioriteit",
+            5,
+            dict_record("vermogen", 2),
+        )));
+        assert_eq!(service.data_source_count(), 2);
+        assert_eq!(
+            service.list_data_sources(),
+            vec!["hoge_prioriteit", "lage_prioriteit"],
+            "sources are ordered by priority, highest first"
+        );
+        assert_eq!(
+            service.data_registry().source_count(),
+            2,
+            "the exposed registry must be the service's own, not an empty one"
+        );
+
+        assert!(service.remove_data_source("lage_prioriteit"));
+        assert_eq!(service.list_data_sources(), vec!["hoge_prioriteit"]);
+        assert!(
+            !service.remove_data_source("lage_prioriteit"),
+            "removing a source that is not there reports failure"
+        );
+
+        service.clear_data_sources();
+        assert_eq!(service.data_source_count(), 0);
+        assert!(service.list_data_sources().is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // ServiceProvider trait surface
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_service_provider_get_law() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_base_law()).unwrap();
+
+        let law = ServiceProvider::get_law(&service, "base_law")
+            .expect("a loaded law must be reachable through the trait");
+        assert_eq!(law.id, "base_law");
+        assert!(ServiceProvider::get_law(&service, "unknown_law").is_none());
+    }
+
+    #[test]
+    fn test_service_provider_resolve_external_input() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_base_law()).unwrap();
+
+        let context = RuleContext::new(BTreeMap::new(), "2025-01-01").unwrap();
+        let value = service
+            .resolve_external_input("base_law", "base_value", None, &context, "2025-01-01")
+            .expect("the referenced law must be executed");
+
+        assert_eq!(value, Value::Int(100));
+    }
+
+    // -------------------------------------------------------------------------
+    // Version-aware law lookup for annotation resolution (get_law_version)
+    // -------------------------------------------------------------------------
+
+    /// Two versions of the same law whose *article text* genuinely differs, so
+    /// a quote from the old redaction does not occur in the new one. This is
+    /// the premise of the annotation-versioning bug: text-only laws are enough,
+    /// notes anchor on text, not on execution logic.
+    fn text_law_version(valid_from: &str, text: &str) -> String {
+        format!(
+            r#"
+$id: test_versioned_text_law
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '{valid_from}'
+articles:
+  - number: '2'
+    text: '{text}'
+"#
+        )
+    }
+
+    const OLD_TEXT: &str =
+        "heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil";
+    const NEW_TEXT: &str = "wordt de tegemoetkoming ambtshalve toegekend door de dienst";
+
+    fn service_with_two_text_versions() -> LawExecutionService {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&text_law_version("2024-01-01", OLD_TEXT))
+            .unwrap();
+        service
+            .load_law(&text_law_version("2025-01-01", NEW_TEXT))
+            .unwrap();
+        service
+    }
+
+    #[test]
+    fn get_law_version_selects_the_version_being_viewed() {
+        let service = service_with_two_text_versions();
+
+        let old = service
+            .get_law_version("test_versioned_text_law", Some("2024-01-01"))
+            .expect("the 2024 version is in force on its own valid_from");
+        assert_eq!(old.articles[0].text, OLD_TEXT);
+
+        let latest = service
+            .get_law_version("test_versioned_text_law", None)
+            .expect("without a date the latest version is the answer");
+        assert_eq!(latest.articles[0].text, NEW_TEXT);
+    }
+
+    #[test]
+    fn a_note_on_an_old_version_resolves_against_that_version() {
+        // The full annotation premise: the quoted text exists only in the old
+        // redaction. Resolving against the viewed (old) version anchors the
+        // note; the newest version — what `ServiceProvider::get_law` returns,
+        // and what the resolver used to be handed — orphans it.
+        let service = service_with_two_text_versions();
+        let selector = crate::annotation::TextQuoteSelector {
+            exact: "zorgtoeslag".to_string(),
+            prefix: "op een ".to_string(),
+            suffix: " ter grootte".to_string(),
+            hint: None,
+        };
+
+        let viewed = service
+            .get_law_version("test_versioned_text_law", Some("2024-01-01"))
+            .unwrap();
+        let r = crate::annotation::resolve(&selector, &viewed.articles);
+        assert!(r.is_found(), "got {:?}", r.status);
+        assert_eq!(r.single().unwrap().article_number, "2");
+
+        let newest = ServiceProvider::get_law(&service, "test_versioned_text_law").unwrap();
+        let r = crate::annotation::resolve(&selector, &newest.articles);
+        assert!(
+            r.is_orphaned(),
+            "premise check: the quote must be absent from the newest version, got {:?}",
+            r.status
+        );
+    }
+
+    #[test]
+    fn get_law_version_refuses_to_slide_to_an_older_loaded_version() {
+        // The requested version is not loaded (the editor's dependency loader
+        // skips versions the engine cannot parse). Date-based selection alone
+        // would silently pick the next-older loaded version and the resolver
+        // would mis-highlight the text on screen; this must be an error.
+        let service = service_with_two_text_versions(); // 2024 and 2025 loaded
+        let err = service
+            .get_law_version("test_versioned_text_law", Some("2024-07-01"))
+            .unwrap_err();
+        match err {
+            EngineError::LoadError(msg) => {
+                assert!(
+                    msg.contains("2024-07-01"),
+                    "message must name the version: {msg}"
+                );
+                assert!(msg.contains("test_versioned_text_law"));
+            }
+            other => panic!("expected LoadError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn get_law_version_rejects_a_malformed_date() {
+        let service = service_with_two_text_versions();
+        let err = service
+            .get_law_version("test_versioned_text_law", Some("gisteren"))
+            .unwrap_err();
+        assert!(
+            matches!(err, EngineError::InvalidDate(_)),
+            "a malformed date must not silently fall back to the newest version: {err:?}"
+        );
+    }
+
+    #[test]
+    fn get_law_version_reports_an_unknown_law() {
+        let service = LawExecutionService::new();
+        let err = service
+            .get_law_version("nonexistent_law", None)
+            .unwrap_err();
+        assert!(matches!(err, EngineError::LawNotFound(id) if id == "nonexistent_law"));
+    }
+
+    #[test]
+    fn get_law_version_reports_a_not_yet_in_force_date() {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&text_law_version("2025-01-01", NEW_TEXT))
+            .unwrap();
+        let err = service
+            .get_law_version("test_versioned_text_law", Some("2024-06-01"))
+            .unwrap_err();
+        match err {
+            EngineError::LawNotYetInForce {
+                law_id,
+                reference_date,
+            } => {
+                assert_eq!(law_id, "test_versioned_text_law");
+                assert_eq!(
+                    reference_date, "2024-06-01",
+                    "the error must name the date the caller asked about"
+                );
+            }
+            other => panic!("expected LawNotYetInForce, got {other:?}"),
+        }
     }
 }

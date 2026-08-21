@@ -51,7 +51,7 @@ Feature: With background
     expect(form.background.dependencies).toEqual(['law_a', 'law_b']);
 
     const s = form.scenarios[0];
-    expect(s.setup.parameters).toEqual([{ name: 'bsn', value: '999993653' }]);
+    expect(s.setup.parameters).toEqual([{ name: 'bsn', value: 999993653 }]);
     expect(s.assertions[0]).toEqual({ assertionType: 'boolean', outputName: 'output', value: false });
   });
 
@@ -124,12 +124,15 @@ Feature: Params
     const form = mapFeatureToForm(parsed);
     const params = form.scenarios[0].setup.parameters;
     expect(params).toEqual([
-      { name: 'bsn', value: '999993653' },
+      { name: 'bsn', value: 999993653 },
       { name: 'amount', value: 1500 },
       { name: 'rate', value: 3.14 },
     ]);
   });
 
+  // A parameter table has no header row, so its first row is a parameter too.
+  // Shape taken verbatim from
+  // corpus/regulation/nl/wet/burgerlijk_wetboek_boek_5/scenarios/erfgrensbeplanting.feature.
   it('maps parameter table', () => {
     const parsed = parseFeature(`
 Feature: Param table
@@ -137,18 +140,54 @@ Feature: Param table
   Scenario: Bulk params
     Given the calculation date is "2025-01-01"
     Given the following parameters:
-      | name   | value |
-      | bsn    | 123   |
-      | amount | 500   |
-    When I evaluate "x" of "law"
+      | gemeente_code   | GM0363 |
+      | type_beplanting | boom   |
+      | postcode        | 1012   |
+    When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
 `);
 
     const form = mapFeatureToForm(parsed);
     const params = form.scenarios[0].setup.parameters;
     expect(params).toEqual([
-      { name: 'bsn', value: 123 },
-      { name: 'amount', value: 500 },
+      { name: 'gemeente_code', value: 'GM0363' },
+      { name: 'type_beplanting', value: 'boom' },
+      { name: 'postcode', value: 1012 },
     ]);
+  });
+
+  it('keeps a single-row parameter table', () => {
+    const parsed = parseFeature(`
+Feature: One param
+
+  Scenario: Single row
+    Given the following parameters:
+      | indieningsdatum | 2025-01-01 |
+    When I evaluate "tijdig_ingediend" of "test_date_operations"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    expect(form.scenarios[0].setup.parameters).toEqual([
+      { name: 'indieningsdatum', value: '2025-01-01' },
+    ]);
+  });
+
+  // Round-trip guard: saving from the visual form rewrites the table as
+  // individual `Given parameter ...` steps, so a row lost on read is lost
+  // in the .feature file for good.
+  it('keeps every parameter through a table load/save round-trip', () => {
+    const parsed = parseFeature(`
+Feature: Round trip
+
+  Scenario: Bulk params
+    Given the following parameters:
+      | gemeente_code   | GM0363 |
+      | type_beplanting | boom   |
+    When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
+`);
+
+    const gherkin = formStateToGherkin(mapFeatureToForm(parsed));
+    expect(gherkin).toContain('Given parameter "gemeente_code" is "GM0363"');
+    expect(gherkin).toContain('Given parameter "type_beplanting" is "boom"');
   });
 
   it('puts unrecognized steps in unmatchedSteps', () => {
@@ -212,7 +251,7 @@ Feature: Merge test
 
     expect(effective.calculationDate).toBe('2025-01-01');
     expect(effective.dependencies).toEqual(['dep_a', 'dep_b']);
-    expect(effective.parameters).toEqual([{ name: 'bsn', value: '123' }]);
+    expect(effective.parameters).toEqual([{ name: 'bsn', value: 123 }]);
   });
 
   it('scenario date overrides background date', () => {
@@ -404,5 +443,46 @@ Feature: Typed values
     );
     expect(parseValue(reparams.is_verzekerde)).toBe(true);
     expect(reparams.inkomen).toBe(150000);
+  });
+});
+
+// The canonical rule (bdd/grammar.yaml `value_typing`) is that the quotes do
+// not change what a value is — the content decides, on both sides of the
+// language. The editor used to keep the quoted form as a raw string, so it ran
+// a scenario with different types than the Rust runner did (#1160). A save may
+// normalise a quoted number to its bare form; what it may not do is leave the
+// two engines reading the same line differently.
+describe('a quoted value carries its content, not its quotes', () => {
+  const feature = `
+Feature: Round trip
+
+  Scenario: Test
+    Given parameter "bsn" is "999993653"
+    Given parameter "is_verzekerde" is "true"
+    Given parameter "gemeente" is "GM0384"
+    When I evaluate "result" of "law"
+`;
+
+  it('reads a quoted value by its content', () => {
+    const form = mapFeatureToForm(parseFeature(feature));
+    const params = Object.fromEntries(
+      form.scenarios[0].setup.parameters.map((p) => [p.name, p.value]),
+    );
+    expect(params.bsn).toBe(999993653);
+    expect(params.is_verzekerde).toBe(true);
+    expect(params.gemeente).toBe('GM0384');
+  });
+
+  it('round-trips every form to the same values', () => {
+    const form = mapFeatureToForm(parseFeature(feature));
+    syncEditedValues(form, 0, {
+      parameterValues: { bsn: '999993653', is_verzekerde: 'true', gemeente: 'GM0384' },
+      calculationDate: null,
+    });
+    const reform = mapFeatureToForm(parseFeature(formStateToGherkin(form)));
+    const params = Object.fromEntries(
+      reform.scenarios[0].setup.parameters.map((p) => [p.name, p.value]),
+    );
+    expect(params).toEqual({ bsn: 999993653, is_verzekerde: true, gemeente: 'GM0384' });
   });
 });

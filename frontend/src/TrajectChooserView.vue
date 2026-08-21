@@ -118,9 +118,9 @@ function trajectSupportingText(t) {
             button
             @click="selectTraject(t)"
           >
-            <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-            <nldd-icon-cell slot="start" size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
-            <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-icon-cell size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-text-cell :text="t.name" :supporting-text="trajectSupportingText(t)"></nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-icon-cell size="20">
@@ -131,9 +131,9 @@ function trajectSupportingText(t) {
             button
             @click="openCreate"
           >
-            <nldd-spacer-cell slot="start" size="12"></nldd-spacer-cell>
-            <nldd-icon-cell slot="start" size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
-            <nldd-spacer-cell slot="start" size="8"></nldd-spacer-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-icon-cell size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-text-cell text="Nieuw traject"></nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-icon-cell size="20">

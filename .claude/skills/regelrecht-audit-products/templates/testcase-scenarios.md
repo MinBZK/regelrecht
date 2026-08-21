@@ -5,8 +5,8 @@ beoordelings-keten. **Kernvraag per scenario**: *"komen jullie op hetzelfde uit 
 de engine? En hoe rekenen jullie eigenlijk?"*
 
 > **Vertrouwelijkheid**: scenario's zijn fictief of sterk-gelijkend op echte
-> casussen — **nooit echte persoonsgegevens**. De BDD-versie kan in een
-> `features/`-feature-file staan.
+> casussen — **nooit echte persoonsgegevens**. De BDD-versie hoort in een
+> feature-file in de `scenarios/`-map naast de wet die hij test.
 
 > **Methode**: bouw de scenario's met `regelrecht-scenario-traces` — geef elke casus een
 > naam (persona op casus-assen, niet een losse leaf-bundel) zodat experts 'm herkennen, en

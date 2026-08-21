@@ -15,7 +15,6 @@
 
 use std::path::Path;
 
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -32,6 +31,12 @@ use crate::tasks::{self, BlobKind};
 /// Prioriteit van de geketende enrich-job: gelijk aan de interactieve
 /// enrich-op-aanvraag (task_requests.rs), want ook hier wacht een mens.
 const CHAINED_ENRICH_PRIORITY: i32 = 80;
+
+/// Marker in de dedup-fout van [`chain_enrich_and_complete`] ("er loopt al
+/// een verrijking …"). De worker classificeert de fout hiermee als
+/// deterministisch (terminaal, geen retry) — door de gedeelde const kan de
+/// formulering niet stilletjes uit de pas lopen met de matcher in `worker.rs`.
+pub(crate) const ENRICH_IN_PROGRESS_MARKER: &str = "er loopt al een verrijking";
 
 /// Payload carried by a `law_convert` job. The raw bytes live in
 /// `document_uploads` (referenced by `upload_id`), same as document-convert.
@@ -129,9 +134,10 @@ const OUTPUT_FILE: &str = "law.yaml";
 /// Name of the deterministically extracted text, when extraction succeeded.
 const SOURCE_TEXT_FILE: &str = "source.md";
 
-/// `$schema` URL the generated law must carry (pinned; the enrichment that
-/// follows works on the same version).
-const SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json";
+/// `$schema` URL the generated law must carry. Shared with the harvester so the
+/// two writers cannot stamp different contracts into one corpus (#1167); the
+/// enrichment that follows works on the same version.
+use regelrecht_shared::SCHEMA_URL;
 
 /// Sanitize the uploaded filename into something safe for the synthetic
 /// `upload://` source-URL (schema `url` is `format: uri`, so no spaces).
@@ -197,7 +203,7 @@ fn build_structure_prompt(source_file: &str, source_is_text: bool, source_url: &
     .map(|(k, v)| format!("   - `{k}`: {v}"))
     .collect::<Vec<_>>()
     .join("\n");
-    let today = Utc::now().format("%Y-%m-%d");
+    let today = regelrecht_shared::dates::today_str();
     format!(
         "You are converting a source document into a regelrecht base-law YAML file — the same \
          article-based format the BWB harvester produces. The document is not necessarily a \
@@ -413,14 +419,25 @@ async fn read_output(output_path: &Path) -> Result<String> {
     Ok(yaml)
 }
 
+/// Context for chaining a task-flow enrich job onto the job that produced a
+/// base law. Shared by `law_convert` (document → wet) and `traject_harvest`
+/// (BWB → wet): both end in the same "enrich as review task" chain.
+#[derive(Debug, Clone)]
+pub struct EnrichChainContext {
+    pub provider: Option<String>,
+    pub requested_by: Option<Uuid>,
+    pub traject_id: Uuid,
+    pub traject_ref: String,
+}
+
 /// Chain step, in one transaction: enqueue the task-flow enrich job with the
-/// generated base YAML as input blob, and complete the convert job. The
+/// generated base YAML as input blob, and complete the producing job. The
 /// single review task the user sees is created later by the enrich task flow
 /// (`worker::finish_enrich_task_job`, with `kind: "law_create"`).
-pub async fn finish_law_convert_job(
+pub async fn chain_enrich_and_complete(
     pool: &PgPool,
-    convert_job: &Job,
-    payload: &LawConvertPayload,
+    source_job: &Job,
+    ctx: &EnrichChainContext,
     law: &GeneratedLaw,
 ) -> Result<()> {
     // Same synthetic repo-relative path convention as `request_enrich` in
@@ -430,32 +447,34 @@ pub async fn finish_law_convert_job(
     let enrich_payload = EnrichPayload {
         law_id: law.meta.law_id.clone(),
         yaml_path: yaml_path.clone(),
-        provider: payload.provider.clone(),
+        provider: ctx.provider.clone(),
         depth: None,
-        requested_by: payload.requested_by,
+        requested_by: ctx.requested_by,
         deliver: Some("task".to_string()),
-        traject_id: Some(payload.traject_id),
-        traject_ref: Some(payload.traject_ref.clone()),
+        traject_id: Some(ctx.traject_id),
+        traject_ref: Some(ctx.traject_ref.clone()),
         source_etag: None,
         new_law: Some(true),
+        chunk_articles: None,
+        skip_mvt: None,
     };
     let payload_json = serde_json::to_value(&enrich_payload)
         .map_err(|e| PipelineError::Enrich(format!("serialize enrich payload: {e}")))?;
 
     let mut tx = pool.begin().await?;
     let req = CreateJobRequest::new(JobType::Enrich, &law.meta.law_id)
-        .with_traject_ref(&payload.traject_ref)
+        .with_traject_ref(&ctx.traject_ref)
         .with_priority(Priority::new(CHAINED_ENRICH_PRIORITY))
         .with_payload(payload_json)
         .with_max_attempts(3);
     let enrich_job = job_queue::create_enrich_job_if_not_exists(&mut *tx, req).await?;
     let Some(enrich_job) = enrich_job else {
         // Er loopt al een actieve enrich voor deze (slug, provider, traject) —
-        // kan alleen bij een tweede upload die op dezelfde slug uitkomt.
+        // kan alleen bij een tweede aanvraag die op dezelfde slug uitkomt.
         // Rollback (impliciet) en laat de aanroeper dit als terminale fout met
         // job_failed-taak afhandelen.
         return Err(PipelineError::Enrich(format!(
-            "er loopt al een verrijking voor wet '{}' in dit traject; \
+            "{ENRICH_IN_PROGRESS_MARKER} voor wet '{}' in dit traject; \
              de nieuwe wet is niet aangemaakt",
             law.meta.law_id
         )));
@@ -470,19 +489,36 @@ pub async fn finish_law_convert_job(
     .await?;
     job_queue::complete_job(
         &mut *tx,
-        convert_job.id,
+        source_job.id,
         Some(serde_json::json!({ "law_id": law.meta.law_id })),
     )
     .await?;
     tx.commit().await?;
     tracing::info!(
-        convert_job = %convert_job.id,
+        source_job = %source_job.id,
+        source_job_type = ?source_job.job_type,
         enrich_job = %enrich_job.id,
         law_id = %law.meta.law_id,
         layer = law.meta.regulatory_layer.as_str(),
-        "law-convert chained into enrich task job"
+        "chained into enrich task job"
     );
     Ok(())
+}
+
+/// Chain step for law-convert; see [`chain_enrich_and_complete`].
+pub async fn finish_law_convert_job(
+    pool: &PgPool,
+    convert_job: &Job,
+    payload: &LawConvertPayload,
+    law: &GeneratedLaw,
+) -> Result<()> {
+    let ctx = EnrichChainContext {
+        provider: payload.provider.clone(),
+        requested_by: payload.requested_by,
+        traject_id: payload.traject_id,
+        traject_ref: payload.traject_ref.clone(),
+    };
+    chain_enrich_and_complete(pool, convert_job, &ctx, law).await
 }
 
 #[cfg(test)]

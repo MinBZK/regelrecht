@@ -13,7 +13,7 @@
 //! testcontainers/Postgres. It lives in the integration `tests/` target (rather
 //! than as a `#[cfg(test)]` unit test) purely for filesystem/git isolation: it
 //! shells out to real `git` against a bare remote in a `tempfile` dir. It is not
-//! Docker-dependent, and it also runs under `just test-all`, so coverage isn't
+//! Docker-dependent, and it also runs under `just test`, so coverage isn't
 //! gated on the Docker-only `pipeline-integration-test` recipe.
 
 use std::path::Path;
@@ -26,6 +26,10 @@ use uuid::Uuid;
 /// Run a git command in `dir` and assert it succeeded.
 async fn run_git(dir: &Path, args: &[&str]) {
     let output = tokio::process::Command::new("git")
+        // Zonder hooks: een globale `init.templateDir` zet de hooks van de
+        // ontwikkelaar in elke tijdelijke repo en laat de commit falen.
+        .arg("-c")
+        .arg("core.hooksPath=")
         .args(args)
         .current_dir(dir)
         .output()

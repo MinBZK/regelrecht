@@ -73,7 +73,10 @@ const entries = grammar.steps.map((step) => {
     `template: ${templateFn(step)} }`;
 });
 
+const vt = grammar.value_typing ?? {};
 const out = `// @generated from bdd/grammar.yaml by bdd/codegen/gen-js.mjs — do not edit.
+export const VALUE_TYPING = ${JSON.stringify(vt)};
+
 export const GRAMMAR = [
 ${entries.join(',\n')},
 ];

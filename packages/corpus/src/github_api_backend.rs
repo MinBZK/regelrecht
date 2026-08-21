@@ -25,6 +25,25 @@
 //! surfaced as [`CorpusError::Conflict`] for the caller to deal with.
 //! For `save_annotations`'s append-only flow this is safe because dedup
 //! happens against the freshly-read base before re-writing.
+//!
+//! ### Known gap: a branch minted by someone else
+//!
+//! A read that lands before the traject branch exists is told "absent",
+//! and the branch is then seeded from base, so the file may hold base
+//! content the read never saw. `persist` refuses to adopt such a file
+//! (`may_adopt_existing` in [`try_put`]) — but only when *this* backend
+//! instance minted the branch. A second replica or session minting it
+//! between this instance's read and its persist leaves the same window
+//! open, and nothing here notices.
+//!
+//! Closing it takes a compare-and-set against the branch tip, which the
+//! Contents API does not offer: its `sha` parameter guards the blob, not
+//! the ref. That means moving writes to the Git Data API (blob → tree →
+//! commit → `PATCH /git/refs` with the expected old sha), the same rework
+//! the multi-file atomicity gap above needs. Until then the gap is real
+//! and unguarded; it is narrow (the branch is minted on first activation,
+//! by whoever gets there first) and it fails loudly on the far more
+//! common single-instance path.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -32,9 +51,10 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
+use regelrecht_github::{Committer, GithubClient, GithubError};
+
 use crate::backend::{FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend, WriteContext};
 use crate::error::{CorpusError, Result};
-use crate::github::{Committer, GitHubFetcher};
 use crate::models::GitHubSource;
 use crate::timing;
 
@@ -46,6 +66,12 @@ use crate::timing;
 struct PendingWrite {
     op: PendingOp,
     base_sha: Option<String>,
+    /// Whether a read of this path in this backend answered "not there"
+    /// before the write was buffered. Only such a write can be misled by
+    /// a branch that gets minted from base in between — see `persist`.
+    /// A blind write (`save_law`) never read, so it keeps its
+    /// write-what-I-say semantics.
+    read_saw_absence: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -54,12 +80,12 @@ enum PendingOp {
     Delete,
 }
 
-/// Mutable state guarded by the backend's mutex. The fetcher lives here
-/// because its methods take `&mut self` (ETag cache + rate-limit
-/// tracking), and the SHA cache + pending buffer must be accessed from
-/// `&self` callbacks on the trait.
+/// Mutable state guarded by the backend's mutex. The shared `GithubClient`
+/// lives here alongside the SHA cache + pending buffer so a single guard
+/// covers a whole read/persist cycle; the client itself uses interior
+/// mutability (all its methods take `&self`).
 struct Inner {
-    fetcher: GitHubFetcher,
+    client: GithubClient,
     /// Map from source-relative path → most recently observed blob SHA.
     /// Populated by `read_file`. On persist: entries for paths that were
     /// written are refreshed with the post-commit SHA; entries for paths
@@ -67,8 +93,18 @@ struct Inner {
     /// written nor deleted may linger — the next write's 409/retry path
     /// covers that, so it stays correct.
     sha_cache: HashMap<PathBuf, String>,
+    /// Paths whose most recent read in this backend answered "not there".
+    /// Feeds [`PendingWrite::read_saw_absence`]; a read that does find the
+    /// file removes its entry again.
+    absent_reads: std::collections::HashSet<PathBuf>,
     /// Buffered writes/deletes, in insertion order.
     pending: Vec<(PathBuf, PendingWrite)>,
+    /// Whether the target branch is known to exist. Set by a successful
+    /// `ensure_ready` (rest-token bootstrap) or by the lazy bootstrap in
+    /// `persist`. A token-less backend skips branch creation at
+    /// `ensure_ready`, so the first user-token write mints the branch
+    /// itself — this flag keeps that to one round-trip per backend.
+    branch_ready: bool,
 }
 
 pub struct GitHubApiBackend {
@@ -82,7 +118,11 @@ pub struct GitHubApiBackend {
     /// Path prefix inside the repo (same role as `repo_subpath` on
     /// `GitBackend`). Source-relative paths are joined under this.
     sub_path: Option<String>,
-    /// OAuth/PAT token for the API. `None` makes the backend read-only.
+    /// OAuth/PAT token for the API. `None` makes the backend read-only
+    /// **at rest** (`is_writable` = false): writes can then still land via
+    /// a per-call `WriteContext::token_override` (the acting editor user's
+    /// own GitHub token) — `persist` refuses only when *neither* token is
+    /// present.
     token: Option<String>,
     inner: Mutex<Inner>,
 }
@@ -101,9 +141,11 @@ impl GitHubApiBackend {
             sub_path: github.path.clone(),
             token,
             inner: Mutex::new(Inner {
-                fetcher: GitHubFetcher::new()?,
+                client: GithubClient::new()?,
                 sha_cache: HashMap::new(),
+                absent_reads: std::collections::HashSet::new(),
                 pending: Vec::new(),
+                branch_ready: false,
             }),
         })
     }
@@ -115,11 +157,11 @@ impl GitHubApiBackend {
     /// makes that easy to enforce at the type level).
     pub fn with_api_base(mut self, base_url: impl Into<String>) -> Self {
         // `get_mut` is fine because we still hold &mut self, so the mutex
-        // isn't contended. Mutate the fetcher in place rather than
+        // isn't contended. Mutate the client in place rather than
         // rebuilding it (which would propagate a fallible
-        // `GitHubFetcher::new` call for what is meant to be a trivial
+        // `GithubClient::new` call for what is meant to be a trivial
         // test-only seam).
-        self.inner.get_mut().fetcher.set_base_url(base_url);
+        self.inner.get_mut().client.set_base_url(base_url);
         self
     }
 
@@ -164,20 +206,205 @@ impl GitHubApiBackend {
     /// to an existing file). Returns `Ok(None)` on 404 — the caller can
     /// then treat the PUT as a create.
     async fn fetch_sha(
-        inner: &mut Inner,
+        client: &GithubClient,
         repo: &str,
         branch: &str,
         path: &str,
         token: Option<&str>,
     ) -> Result<Option<String>> {
-        match inner
-            .fetcher
+        match client
             .fetch_file_with_sha(repo, branch, path, token)
             .await?
         {
             Some((_, sha)) => Ok(Some(sha)),
             None => Ok(None),
         }
+    }
+
+    /// Serve the corpus-wide implements map from the precomputed index at
+    /// the repo root ([`implements_index`]), or `Ok(None)` when this ref
+    /// has no index that provably describes it.
+    ///
+    /// The index is fetched with the **raw** representation: at 22k entries
+    /// it is comfortably past the Contents API's 1 MiB JSON ceiling, where
+    /// the JSON path returns no content at all.
+    ///
+    /// Freshness is verified the same way the checkout-based backend does
+    /// it, one layer up: the index records the git tree sha of the subtree
+    /// it scanned, and that is compared against the same subtree on this
+    /// backend's branch. Equal means the index describes exactly this
+    /// content — which makes the check branch-aware by construction, so a
+    /// preview corpus branch that moved past its last index regeneration is
+    /// caught. Anything else (no index, unparseable, rooted elsewhere,
+    /// unverifiable, or simply stale) returns `None` so the caller falls
+    /// back rather than serving a map that may be wrong.
+    ///
+    /// A read failure is an `Err`, never an empty map: the consumer uses
+    /// this map as a negative cache, so "I could not read the index" and
+    /// "these laws implement nothing" must not arrive as the same answer.
+    ///
+    /// [`implements_index`]: crate::implements_index
+    async fn implements_from_index(&self) -> Result<Option<Vec<(String, Vec<String>)>>> {
+        use crate::implements_index::{ImplementsIndex, IMPLEMENTS_INDEX_FILENAME};
+
+        let repo = self.full_repo();
+        let inner = self.inner.lock().await;
+
+        let raw = inner
+            .client
+            .fetch_file_raw_opt(
+                &repo,
+                &self.branch,
+                IMPLEMENTS_INDEX_FILENAME,
+                self.token.as_deref(),
+            )
+            .await?;
+        let Some(raw) = raw else {
+            tracing::warn!(
+                repo = %repo,
+                branch = %self.branch,
+                "no implements index on this corpus branch; falling back to the archive scan"
+            );
+            return Ok(None);
+        };
+
+        let index = match ImplementsIndex::parse(&raw) {
+            Ok(index) => index,
+            Err(e) => {
+                tracing::warn!(
+                    repo = %repo,
+                    error = %e,
+                    "implements index is unreadable; falling back to the archive scan"
+                );
+                return Ok(None);
+            }
+        };
+
+        // An index rooted elsewhere says nothing about this source. Serving
+        // its projection would yield an empty list, which the caller cannot
+        // tell apart from an authoritative "this corpus holds no laws".
+        if !index.covers(self.sub_path.as_deref()) {
+            tracing::warn!(
+                index_root = %index.root,
+                source_root = self.sub_path.as_deref().unwrap_or("<repo root>"),
+                "implements index does not cover this source's root; \
+                 falling back to the archive scan"
+            );
+            return Ok(None);
+        }
+
+        match inner
+            .client
+            .subtree_sha(&repo, &self.branch, &index.root, self.token.as_deref())
+            .await?
+        {
+            Some(remote_sha) if remote_sha == index.tree_sha => {
+                let entries = index.to_source_relative(self.sub_path.as_deref());
+                tracing::info!(
+                    entries = entries.len(),
+                    root = %index.root,
+                    tree = %index.tree_sha,
+                    branch = %self.branch,
+                    "served implements map from the precomputed index"
+                );
+                Ok(Some(entries))
+            }
+            Some(remote_sha) => {
+                tracing::warn!(
+                    index_tree = %index.tree_sha,
+                    remote_tree = %remote_sha,
+                    root = %index.root,
+                    branch = %self.branch,
+                    "implements index does not match this branch's content \
+                     (stale index on this corpus branch?); falling back to the archive scan"
+                );
+                Ok(None)
+            }
+            None => {
+                tracing::warn!(
+                    root = %index.root,
+                    branch = %self.branch,
+                    "implements index freshness could not be verified (root not found \
+                     on this branch); falling back to the archive scan"
+                );
+                Ok(None)
+            }
+        }
+    }
+
+    /// Ensure `branch` exists on `repo`, creating it from `base_branch`
+    /// when missing. Shared by `ensure_ready` (rest-token bootstrap at
+    /// backend init) and `persist` (lazy bootstrap with the per-call
+    /// user token, for backends that had no token at init).
+    ///
+    /// Also reused by the editor-api create-traject flow to mint the
+    /// traject branch eagerly, while it still holds the token that just
+    /// proved push access — closing the "fresh traject is
+    /// dead-on-arrival because its branch does not exist yet" gap. The
+    /// benign-race handling below makes eager and lazy bootstrap safe to
+    /// coexist: whichever runs second sees the branch and no-ops.
+    ///
+    /// `repo` is the `owner/name` form; `token` is `None` only for
+    /// anonymous public reads (branch creation always needs one).
+    ///
+    /// Returns whether the branch was **created** by this call. That
+    /// matters to `persist`: a branch minted from base carries the base's
+    /// files, which the reads leading up to this write did not see (they
+    /// were made against a ref that did not exist and answered "absent").
+    pub async fn ensure_branch(
+        client: &GithubClient,
+        repo: &str,
+        branch: &str,
+        base_branch: Option<&str>,
+        token: Option<&str>,
+    ) -> Result<bool> {
+        let exists = client.branch_exists(repo, branch, token).await?;
+        if exists {
+            return Ok(false);
+        }
+        let base = base_branch.ok_or_else(|| {
+            CorpusError::Config(format!(
+                "branch '{}' does not exist on {} and no base_branch \
+                 was configured to seed it from",
+                branch, repo
+            ))
+        })?;
+        // TOCTOU on lazy branch creation: between our `branch_exists`
+        // returning false and this POST, another activation (different
+        // backend instance, same traject) can win the race and create
+        // the branch first. GitHub then 422s us with "Reference already
+        // exists". Re-check `branch_exists` on any create_branch failure;
+        // if the branch is present now the desired post-condition holds
+        // and we treat the create as a benign no-op.
+        match client.create_branch(repo, branch, base, token).await {
+            Ok(()) => {
+                tracing::info!(
+                    repo = %repo,
+                    branch = %branch,
+                    base = %base,
+                    "GitHubApiBackend: created traject branch from base"
+                );
+            }
+            Err(e) => {
+                let now_exists = client
+                    .branch_exists(repo, branch, token)
+                    .await
+                    .unwrap_or(false);
+                if now_exists {
+                    tracing::info!(
+                        repo = %repo,
+                        branch = %branch,
+                        "GitHubApiBackend: create_branch lost a benign race; branch already exists"
+                    );
+                    // Someone else minted it, so it was not created *here*
+                    // — but it did appear after our reads, so the caller
+                    // must treat it exactly like our own create.
+                } else {
+                    return Err(e.into());
+                }
+            }
+        }
+        Ok(true)
     }
 }
 
@@ -203,59 +430,100 @@ fn validate_relative(path: &Path) -> Result<()> {
 impl RepoBackend for GitHubApiBackend {
     #[tracing::instrument(name = "gh_read_file", skip_all, fields(path = %relative_path.display()))]
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
+        self.read_file_with_token(relative_path, None).await
+    }
+
+    // The read-side counterpart of `persist`'s `ctx.token_override`: a
+    // per-call user token supersedes the backend's baked-in token for this
+    // one Contents API GET, so a request-bound read on a private repo
+    // without a configured service token can authenticate as the acting
+    // editor user. Absent an override the configured token (or none) is
+    // used — byte-identical to `read_file`.
+    async fn read_file_with_token(
+        &self,
+        relative_path: &Path,
+        token_override: Option<&str>,
+    ) -> Result<Option<String>> {
         let api_path = self.api_path(relative_path)?;
         let mut inner = self.inner.lock().await;
         // One Contents API GET — the If-Match precondition read on the save
         // path lands here, so it feeds the `gh_get` Server-Timing phase.
         let outcome = timing::measure(
             "gh_get",
-            inner.fetcher.fetch_file_with_sha(
+            inner.client.fetch_file_with_sha(
                 &self.full_repo(),
                 &self.branch,
                 &api_path,
-                self.token.as_deref(),
+                token_override.or(self.token.as_deref()),
             ),
         )
         .await?;
         match outcome {
             Some((content, sha)) => {
                 inner.sha_cache.insert(relative_path.to_path_buf(), sha);
+                inner.absent_reads.remove(relative_path);
                 Ok(Some(content))
             }
             None => {
                 // Remove any stale SHA from a previous existence — a
                 // later write will (correctly) be treated as a create.
                 inner.sha_cache.remove(relative_path);
+                inner.absent_reads.insert(relative_path.to_path_buf());
                 Ok(None)
             }
         }
     }
 
-    /// Bulk implements scan via the repo archive: one tarball download for
-    /// the whole source instead of a Contents call per file. Bodies are
-    /// parsed for `implements` and discarded during extraction (see
-    /// [`fetch_archive_implements`]), so this never materialises the whole
-    /// corpus in memory. Archive paths are repo-relative; map them back
-    /// through [`to_source_relative`] (drops files outside `sub_path`) so
-    /// they match the `SourceMap`.
+    /// The corpus-wide implements map, from the precomputed index at the
+    /// repo root when this branch has a verifiably matching one, and from
+    /// the repo archive otherwise.
+    ///
+    /// The index is what makes this backend usable for a whole central
+    /// corpus: it is two small requests, against a tarball of hundreds of
+    /// megabytes that has to be held in memory to be extracted. The archive
+    /// remains the fallback because being slow beats being wrong — a
+    /// missing or stale index must not turn into a map that reads as
+    /// authoritative.
+    ///
+    /// Archive path: one tarball download for the whole source instead of a
+    /// Contents call per file. Bodies are parsed for `implements` and
+    /// discarded during extraction (see [`fetch_archive_implements`]), so
+    /// the *parsed* result never holds the corpus. Archive paths are
+    /// repo-relative; map them back through [`to_source_relative`] (drops
+    /// files outside `sub_path`) so they match the `SourceMap`.
     ///
     /// Holds the `inner` lock for the whole archive download + extraction
     /// (seconds for a large corpus), same as [`read_file`] holds it for its
-    /// Contents call — the fetcher's `&mut self` (ETag cache, rate-limit
-    /// tracking) requires exclusive access. A concurrent read on the same
-    /// backend stalls for the duration, but in practice this only fires on
-    /// the cold implements-index build, which is single-flighted anyway.
+    /// Contents call. A concurrent read on the same backend stalls for the
+    /// duration, but in practice this only fires on the cold implements-index
+    /// build, which is single-flighted anyway.
     ///
-    /// [`fetch_archive_implements`]: crate::github::GitHubFetcher::fetch_archive_implements
+    /// [`fetch_archive_implements`]: crate::github::fetch_archive_implements
     /// [`to_source_relative`]: GitHubApiBackend::to_source_relative
     /// [`read_file`]: GitHubApiBackend::read_file
     async fn read_all_implements(&self) -> Result<Vec<(String, Vec<String>)>> {
+        match self.implements_from_index().await {
+            Ok(Some(entries)) => return Ok(entries),
+            // Every "no usable index" case is already logged with its
+            // reason inside `implements_from_index`.
+            Ok(None) => {}
+            Err(e) => tracing::warn!(
+                repo = %self.full_repo(),
+                branch = %self.branch,
+                error = %e,
+                "implements index could not be read; falling back to the archive scan"
+            ),
+        }
+
         let files = {
-            let mut inner = self.inner.lock().await;
-            inner
-                .fetcher
-                .fetch_archive_implements(&self.full_repo(), &self.branch, self.token.as_deref())
-                .await?
+            let inner = self.inner.lock().await;
+            crate::github::fetch_archive_implements(
+                &inner.client,
+                &self.full_repo(),
+                &self.branch,
+                self.token.as_deref(),
+            )
+            .await?
         };
         Ok(files
             .into_iter()
@@ -266,32 +534,29 @@ impl RepoBackend for GitHubApiBackend {
             .collect())
     }
 
+    // No token guard here: a backend without a rest-token can still
+    // commit via `WriteContext::token_override` (per-user GitHub OAuth),
+    // and the override only becomes visible at `persist`. Buffer now;
+    // `persist` refuses with `ReadOnly` when neither token is present.
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
         validate_relative(relative_path)?;
-        if self.token.is_none() {
-            return Err(CorpusError::ReadOnly(
-                "GitHubApiBackend has no push token".to_string(),
-            ));
-        }
         let mut inner = self.inner.lock().await;
         let base_sha = inner.sha_cache.get(relative_path).cloned();
+        let read_saw_absence = inner.absent_reads.contains(relative_path);
         inner.pending.push((
             relative_path.to_path_buf(),
             PendingWrite {
                 op: PendingOp::Upsert(content.to_string()),
                 base_sha,
+                read_saw_absence,
             },
         ));
         Ok(())
     }
 
+    // Same stance as `write_file`: token enforcement lives in `persist`.
     async fn delete_file(&self, relative_path: &Path) -> Result<()> {
         validate_relative(relative_path)?;
-        if self.token.is_none() {
-            return Err(CorpusError::ReadOnly(
-                "GitHubApiBackend has no push token".to_string(),
-            ));
-        }
         let mut inner = self.inner.lock().await;
         let base_sha = inner.sha_cache.get(relative_path).cloned();
         inner.pending.push((
@@ -299,6 +564,7 @@ impl RepoBackend for GitHubApiBackend {
             PendingWrite {
                 op: PendingOp::Delete,
                 base_sha,
+                read_saw_absence: false,
             },
         ));
         Ok(())
@@ -306,18 +572,28 @@ impl RepoBackend for GitHubApiBackend {
 
     #[tracing::instrument(name = "gh_list_files", skip_all, fields(dir = %dir.display()))]
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
+        self.list_files_with_token(dir, extension, None).await
+    }
+
+    // Same per-call token override stance as `read_file_with_token`.
+    async fn list_files_with_token(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+        token_override: Option<&str>,
+    ) -> Result<Vec<FileEntry>> {
         let api_dir = self.api_path(dir)?;
-        let mut inner = self.inner.lock().await;
+        let inner = self.inner.lock().await;
         // One Contents API directory GET — feeds the `gh_list` Server-
         // Timing phase so listing round-trips (scenario listings) are
         // visible next to `gh_get` instead of vanishing into `total`.
         let entries = timing::measure(
             "gh_list",
-            inner.fetcher.list_directory(
+            inner.client.list_directory(
                 &self.full_repo(),
                 &self.branch,
                 &api_dir,
-                self.token.as_deref(),
+                token_override.or(self.token.as_deref()),
             ),
         )
         .await?;
@@ -342,8 +618,19 @@ impl RepoBackend for GitHubApiBackend {
         dir: &Path,
         extension: Option<&str>,
     ) -> Result<Vec<RecursiveFileEntry>> {
+        self.list_files_recursive_with_token(dir, extension, None)
+            .await
+    }
+
+    // Same per-call token override stance as `read_file_with_token`.
+    async fn list_files_recursive_with_token(
+        &self,
+        dir: &Path,
+        extension: Option<&str>,
+        token_override: Option<&str>,
+    ) -> Result<Vec<RecursiveFileEntry>> {
         let api_root = self.api_path(dir)?;
-        let mut inner = self.inner.lock().await;
+        let inner = self.inner.lock().await;
 
         // Iterative DFS (LIFO `Vec` used as a stack) over Contents-API
         // directory pages. Traversal order doesn't matter — the result is
@@ -363,12 +650,12 @@ impl RepoBackend for GitHubApiBackend {
 
         while let Some((rel_prefix, api_dir)) = queue.pop() {
             let entries = inner
-                .fetcher
+                .client
                 .list_directory(
                     &self.full_repo(),
                     &self.branch,
                     &api_dir,
-                    self.token.as_deref(),
+                    token_override.or(self.token.as_deref()),
                 )
                 .await?;
             // The Contents API caps a single directory listing at 1000
@@ -442,8 +729,16 @@ impl RepoBackend for GitHubApiBackend {
         // OAuth token) supersedes the backend's baked-in token for this write,
         // so the commit authenticates *as the user* and GitHub enforces their
         // push rights. Absent an override we fall back to the configured token
-        // — byte-identical to the pre-spike behaviour.
-        let token = ctx.token_override.as_deref().or(self.token.as_deref());
+        // — byte-identical to the pre-spike behaviour. Neither present =
+        // read-only: this is where the token guard lives now that
+        // `write_file`/`delete_file` buffer unconditionally (the override
+        // only exists at persist time). The drained pending buffer is
+        // dropped on this error, same as any other failing persist.
+        let Some(token) = ctx.token_override.as_deref().or(self.token.as_deref()) else {
+            return Err(CorpusError::ReadOnly(
+                "GitHubApiBackend has no push token (neither configured nor per-user)".to_string(),
+            ));
+        };
 
         // With a user token the commit is left unattributed on our side:
         // the Contents API then defaults author/committer to the
@@ -473,20 +768,52 @@ impl RepoBackend for GitHubApiBackend {
         let repo = self.full_repo();
         let mut new_shas: HashMap<PathBuf, String> = HashMap::new();
 
-        // Take one lock guard for the whole loop so the &mut GitHubFetcher
-        // calls inside don't pay re-acquire cost per-write. The pending
+        // Take one lock guard for the whole loop so the shared-client calls
+        // inside don't pay re-acquire cost per-write. The pending
         // buffer was already drained above; if any write fails we propagate
-        // via `?` and the remaining (still-untaken-from-buffer) entries are
-        // dropped — fine in practice because each handler only enqueues a
-        // single write before calling persist, so there is no partially-
-        // applied multi-write batch to recover here.
+        // via `?` and the remaining entries are dropped. The Contents API
+        // commits per file, so a multi-file persist (promote copies every
+        // version plus the scenarios) that fails halfway leaves the files
+        // before it committed on the branch — the caller sees the error
+        // and the branch holds a prefix. Single-file saves, which is every
+        // other handler, have nothing to recover.
         let mut inner = self.inner.lock().await;
+
+        // Lazy branch bootstrap for the user-token write mode: a backend
+        // without a rest-token skipped branch creation at `ensure_ready`
+        // (it had nothing to authenticate with), so the first persist must
+        // mint the traject branch itself — with the same effective token
+        // that authenticates the commit.
+        // Whether this persist is the one that minted the branch. A
+        // branch seeded from base carries the base's files, which a read
+        // made before it existed could not see: it asked a ref that was
+        // not there and was told "absent". Upserting blindly over that
+        // would silently replace base content — an append-only sidecar
+        // (notes) would come back holding only the new entry. So a write
+        // whose own read saw absence is create-only here.
+        //
+        // This catches the branch *we* mint, and only that one — see the
+        // "known gap" section in the module docs for the window a branch
+        // minted elsewhere leaves open, and what it takes to close it.
+        let mut branch_just_created = false;
+        if !inner.branch_ready {
+            branch_just_created = Self::ensure_branch(
+                &inner.client,
+                &repo,
+                &self.branch,
+                self.base_branch.as_deref(),
+                Some(token),
+            )
+            .await?;
+            inner.branch_ready = true;
+        }
+
         for (path, pw) in pending {
             let api_path = self.api_path(&path)?;
             match pw.op {
                 PendingOp::Upsert(content) => {
                     let new_sha = try_put(
-                        &mut inner.fetcher,
+                        &inner.client,
                         &repo,
                         &self.branch,
                         &api_path,
@@ -494,7 +821,8 @@ impl RepoBackend for GitHubApiBackend {
                         pw.base_sha.as_deref(),
                         committer.as_ref(),
                         &ctx.message,
-                        token,
+                        Some(token),
+                        !(branch_just_created && pw.read_saw_absence),
                     )
                     .await?;
                     new_shas.insert(path, new_sha);
@@ -503,8 +831,14 @@ impl RepoBackend for GitHubApiBackend {
                     let sha_for_delete = match &pw.base_sha {
                         Some(s) => s.clone(),
                         None => {
-                            match Self::fetch_sha(&mut inner, &repo, &self.branch, &api_path, token)
-                                .await?
+                            match Self::fetch_sha(
+                                &inner.client,
+                                &repo,
+                                &self.branch,
+                                &api_path,
+                                Some(token),
+                            )
+                            .await?
                             {
                                 Some(s) => s,
                                 // Already gone: treat as a successful delete,
@@ -514,14 +848,14 @@ impl RepoBackend for GitHubApiBackend {
                         }
                     };
                     try_delete(
-                        &mut inner.fetcher,
+                        &inner.client,
                         &repo,
                         &self.branch,
                         &api_path,
                         &sha_for_delete,
                         committer.as_ref(),
                         &ctx.message,
-                        token,
+                        Some(token),
                     )
                     .await?;
                     // Drop the cached SHA so a next read sees the file as
@@ -555,70 +889,32 @@ impl RepoBackend for GitHubApiBackend {
 
     #[tracing::instrument(name = "gh_ensure_ready", skip_all, fields(branch = %self.branch))]
     async fn ensure_ready(&mut self) -> Result<()> {
-        // Read-only backends have nothing to bootstrap — the branch
-        // either exists (reads work) or it doesn't (reads 404 as
-        // they'd 404 on a missing file), and we don't try to mint a
-        // branch without a write token.
+        // Backends without a rest-token have nothing to bootstrap here —
+        // the branch either exists (reads work) or it doesn't (reads 404
+        // as they'd 404 on a missing file), and we can't mint a branch
+        // without a token. In the user-token write mode the first
+        // `persist` bootstraps the branch instead, with the per-call
+        // override token.
         if self.token.is_none() {
             return Ok(());
         }
         // Branch-check (+ lazy create) round-trips against GitHub; feeds
         // the `ensure_ready` Server-Timing phase on the cold-build path.
         let ready_start = std::time::Instant::now();
-        let inner = self.inner.get_mut();
         let repo = format!("{}/{}", self.owner, self.repo);
-        let exists = inner
-            .fetcher
-            .branch_exists(&repo, &self.branch, self.token.as_deref())
-            .await?;
-        if exists {
-            timing::record("ensure_ready", ready_start.elapsed());
-            return Ok(());
-        }
-        let base = self.base_branch.as_deref().ok_or_else(|| {
-            CorpusError::Config(format!(
-                "branch '{}' does not exist on {}/{} and no base_branch \
-                 was configured to seed it from",
-                self.branch, self.owner, self.repo
-            ))
-        })?;
-        // TOCTOU on lazy branch creation: between our `branch_exists`
-        // returning false and this POST, another activation (different
-        // backend instance, same traject) can win the race and create
-        // the branch first. GitHub then 422s us with "Reference already
-        // exists". Re-check `branch_exists` on any create_branch failure;
-        // if the branch is present now the desired post-condition holds
-        // and we treat the create as a benign no-op.
-        match inner
-            .fetcher
-            .create_branch(&repo, &self.branch, base, self.token.as_deref())
-            .await
-        {
-            Ok(()) => {
-                tracing::info!(
-                    repo = %repo,
-                    branch = %self.branch,
-                    base = %base,
-                    "GitHubApiBackend: created traject branch from base"
-                );
-            }
-            Err(e) => {
-                let now_exists = inner
-                    .fetcher
-                    .branch_exists(&repo, &self.branch, self.token.as_deref())
-                    .await
-                    .unwrap_or(false);
-                if now_exists {
-                    tracing::info!(
-                        repo = %repo,
-                        branch = %self.branch,
-                        "GitHubApiBackend: create_branch lost a benign race; branch already exists"
-                    );
-                } else {
-                    return Err(e);
-                }
-            }
-        }
+        let branch = self.branch.clone();
+        let base_branch = self.base_branch.clone();
+        let token = self.token.clone();
+        let inner = self.inner.get_mut();
+        Self::ensure_branch(
+            &inner.client,
+            &repo,
+            &branch,
+            base_branch.as_deref(),
+            token.as_deref(),
+        )
+        .await?;
+        inner.branch_ready = true;
         timing::record("ensure_ready", ready_start.elapsed());
         Ok(())
     }
@@ -628,20 +924,29 @@ impl RepoBackend for GitHubApiBackend {
     }
 
     async fn changed_files(&self) -> Result<Vec<String>> {
+        self.changed_files_with_token(None).await
+    }
+
+    // Same per-call token override stance as `read_file_with_token`: a
+    // request-bound user token supersedes the backend's baked-in one, so a
+    // private traject repo without a configured service token can still be
+    // diffed as the acting editor user.
+    async fn changed_files_with_token(&self, token_override: Option<&str>) -> Result<Vec<String>> {
         // The diff is branch-against-base. Without a base to compare to,
         // or a token to read the (typically private) repo, there's nothing
         // meaningful to report — return empty rather than erroring.
         let Some(base) = self.base_branch.as_deref() else {
             return Ok(Vec::new());
         };
-        if self.token.is_none() {
+        let token = token_override.or(self.token.as_deref());
+        if token.is_none() {
             return Ok(Vec::new());
         }
         let in_repo_paths = {
-            let mut inner = self.inner.lock().await;
+            let inner = self.inner.lock().await;
             inner
-                .fetcher
-                .compare_files(&self.full_repo(), base, &self.branch, self.token.as_deref())
+                .client
+                .compare_files(&self.full_repo(), base, &self.branch, token)
                 .await?
         };
         // Map in-repo paths back to source-relative paths, dropping any
@@ -657,9 +962,20 @@ impl RepoBackend for GitHubApiBackend {
 /// (the file moved between our last read and this PUT) and the put is
 /// reattempted exactly once with the new SHA. A second 409 propagates so
 /// the caller can decide between abort and a higher-level retry.
+///
+/// `may_adopt_existing` governs the *other* retry: a PUT without `sha`
+/// against a file that turns out to exist. Normally that is adopted (the
+/// caller wrote blind and the file was already there — `save_law` relies
+/// on it). It is refused when the branch was just seeded from base,
+/// because then "already there" means base content the caller never read,
+/// and adopting it replaces that content instead of building on it.
+///
+/// The caller derives that flag from its own `ensure_branch` call, so a
+/// branch minted by another instance does not set it — the module docs'
+/// "known gap" section names what that leaves open.
 #[allow(clippy::too_many_arguments)]
 async fn try_put(
-    fetcher: &mut GitHubFetcher,
+    client: &GithubClient,
     repo: &str,
     branch: &str,
     path: &str,
@@ -668,21 +984,22 @@ async fn try_put(
     committer: Option<&Committer>,
     message: &str,
     token: Option<&str>,
+    may_adopt_existing: bool,
 ) -> Result<String> {
-    match fetcher
+    match client
         .put_file(
             repo, branch, path, content, base_sha, committer, message, token,
         )
         .await
     {
         Ok(sha) => Ok(sha),
-        Err(CorpusError::Conflict(_)) => {
+        Err(GithubError::Conflict(_)) => {
             tracing::debug!(repo = %repo, path = %path, "PUT 409 — refreshing sha and retrying");
-            let fresh = fetcher
+            let fresh = client
                 .fetch_file_with_sha(repo, branch, path, token)
                 .await?
                 .map(|(_, sha)| sha);
-            fetcher
+            client
                 .put_file(
                     repo,
                     branch,
@@ -694,6 +1011,23 @@ async fn try_put(
                     token,
                 )
                 .await
+                .map_err(Into::into)
+        }
+        Err(e) if is_unsigned_existing_file(&e) && !may_adopt_existing => {
+            // The branch was minted from base during this persist, so the
+            // file we are told already exists is base content that the
+            // read before this write could not see. Overwriting it would
+            // lose it silently; surface a conflict so the caller can redo
+            // the read-modify-write against the branch that now exists.
+            tracing::warn!(
+                repo = %repo,
+                path = %path,
+                "refusing to overwrite base content on a freshly created branch"
+            );
+            Err(CorpusError::Conflict(format!(
+                "'{path}' already exists on the branch that was just created from base; \
+                 the write was prepared against a branch that did not exist yet"
+            )))
         }
         Err(e) if is_unsigned_existing_file(&e) => {
             // A PUT without `sha` against an existing file returns 422
@@ -706,16 +1040,16 @@ async fn try_put(
             // (no separate header phase) so the Server-Timing breakdown
             // does not double-count this leg.
             tracing::info!(repo = %repo, path = %path, gh_put_retry = 422, "PUT 422 — fetching sha and retrying as update");
-            let fresh = fetcher
+            let fresh = client
                 .fetch_file_with_sha(repo, branch, path, token)
                 .await?
                 .map(|(_, sha)| sha);
             if fresh.is_none() {
                 // 422 wasn't about an existing file after all — propagate
                 // the original error so the operator can diagnose.
-                return Err(e);
+                return Err(e.into());
             }
-            fetcher
+            client
                 .put_file(
                     repo,
                     branch,
@@ -727,15 +1061,16 @@ async fn try_put(
                     token,
                 )
                 .await
+                .map_err(Into::into)
         }
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 
 /// DELETE with one optimistic-concurrency retry: same shape as `try_put`.
 #[allow(clippy::too_many_arguments)]
 async fn try_delete(
-    fetcher: &mut GitHubFetcher,
+    client: &GithubClient,
     repo: &str,
     branch: &str,
     path: &str,
@@ -744,39 +1079,40 @@ async fn try_delete(
     message: &str,
     token: Option<&str>,
 ) -> Result<()> {
-    match fetcher
-        .delete_file_via_api(repo, branch, path, sha, committer, message, token)
+    match client
+        .delete_file(repo, branch, path, sha, committer, message, token)
         .await
     {
         Ok(()) => Ok(()),
-        Err(CorpusError::Conflict(_)) => {
+        Err(GithubError::Conflict(_)) => {
             tracing::debug!(repo = %repo, path = %path, "DELETE 409 — refreshing sha and retrying");
-            let fresh = fetcher
+            let fresh = client
                 .fetch_file_with_sha(repo, branch, path, token)
                 .await?
                 .map(|(_, sha)| sha);
             match fresh {
-                Some(s) => {
-                    fetcher
-                        .delete_file_via_api(repo, branch, path, &s, committer, message, token)
-                        .await
-                }
+                Some(s) => client
+                    .delete_file(repo, branch, path, &s, committer, message, token)
+                    .await
+                    .map_err(Into::into),
                 // Race: file was deleted between our 409 and this
                 // refetch. Treat as a successful delete.
                 None => Ok(()),
             }
         }
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 
 /// Best-effort detection that a PUT failed with 422 because we omitted
-/// `sha` while the file already exists. We don't have a structured error
-/// variant for 422 (it's just `CorpusError::Git`), so we sniff the
-/// message — the GitHub response text reliably mentions `sha`.
-fn is_unsigned_existing_file(e: &CorpusError) -> bool {
+/// `sha` while the file already exists. The GitHub response text reliably
+/// mentions `sha`, which rides along in the [`GithubError::Api`] message.
+fn is_unsigned_existing_file(e: &GithubError) -> bool {
     match e {
-        CorpusError::Git(msg) => msg.contains(" 422") && msg.contains("sha"),
+        GithubError::Api {
+            status: 422,
+            message,
+        } => message.contains("sha"),
         _ => false,
     }
 }
@@ -816,6 +1152,221 @@ mod tests {
         format!(
             "$id: {id}\narticles:\n  - number: '1'\n    machine_readable:\n      implements:\n        - law: {higher}\n"
         )
+    }
+
+    /// The `regulation/nl`-rooted source every implements test reads.
+    fn nl_source() -> GitHubSource {
+        GitHubSource {
+            owner: "acme".to_string(),
+            repo: "corpus".to_string(),
+            branch: "main".to_string(),
+            path: Some("regulation/nl".to_string()),
+            git_ref: None,
+        }
+    }
+
+    fn backend_at(server: &MockServer) -> GitHubApiBackend {
+        GitHubApiBackend::new(
+            &nl_source(),
+            Some("main".to_string()),
+            Some("tok".to_string()),
+        )
+        .unwrap()
+        .with_api_base(server.uri())
+    }
+
+    /// A committed index over `regulation`, recording `tree_sha` for that
+    /// subtree. One entry per file including the empty one, and one entry
+    /// outside the source root that projection must drop.
+    fn index_json(tree_sha: &str, root: &str) -> String {
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "regulation/nl/wet/foo/2025-01-01.yaml".to_string(),
+            vec!["wet_target".to_string()],
+        );
+        files.insert(
+            "regulation/nl/wet/bar/2025-01-01.yaml".to_string(),
+            Vec::new(),
+        );
+        files.insert(
+            "regulation/be/wet/b/2025-01-01.yaml".to_string(),
+            Vec::new(),
+        );
+        crate::implements_index::ImplementsIndex {
+            version: crate::implements_index::IMPLEMENTS_INDEX_VERSION,
+            root: root.to_string(),
+            tree_sha: tree_sha.to_string(),
+            files,
+        }
+        .to_json()
+    }
+
+    /// Serve the index file at the repo root for `main`.
+    async fn mount_index(server: &MockServer, body: String) {
+        Mock::given(method("GET"))
+            .and(path_matcher(
+                "/repos/acme/corpus/contents/implements-index.json",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(server)
+            .await;
+    }
+
+    /// Serve the root tree of `main`, where `regulation` has sha `reg_sha`.
+    async fn mount_root_tree(server: &MockServer, reg_sha: &str) {
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/git/trees/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "sha": "roottree",
+                "truncated": false,
+                "tree": [{"path": "regulation", "type": "tree", "sha": reg_sha}]
+            })))
+            .mount(server)
+            .await;
+    }
+
+    /// A tarball mock that must not be hit.
+    async fn forbid_archive(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/tarball/main"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(server)
+            .await;
+    }
+
+    /// A tarball mock holding one implementing and one non-implementing law.
+    async fn mount_archive(server: &MockServer, times: u64) {
+        let foo = law_with_implements("foo", "wet_target");
+        let tar_gz = make_repo_tar_gz(
+            "acme-corpus-deadbeef",
+            &[
+                ("regulation/nl/wet/foo/2025-01-01.yaml", foo.as_str()),
+                (
+                    "regulation/nl/wet/bar/2025-01-01.yaml",
+                    "$id: bar\narticles: []\n",
+                ),
+            ],
+        );
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/tarball/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(tar_gz, "application/gzip"))
+            .expect(times)
+            .mount(server)
+            .await;
+    }
+
+    /// The two source-relative entries both routes must produce.
+    fn expected_entries() -> Vec<(String, Vec<String>)> {
+        vec![
+            ("wet/bar/2025-01-01.yaml".to_string(), Vec::<String>::new()),
+            (
+                "wet/foo/2025-01-01.yaml".to_string(),
+                vec!["wet_target".to_string()],
+            ),
+        ]
+    }
+
+    /// The point of the whole exercise: a central corpus is served from the
+    /// committed index in two small requests, so nothing has to pull a
+    /// repo archive of hundreds of megabytes into memory to answer it.
+    #[tokio::test]
+    async fn read_all_implements_serves_the_index_without_touching_the_archive() {
+        let server = MockServer::start().await;
+        forbid_archive(&server).await;
+        mount_index(&server, index_json("regtree", "regulation")).await;
+        mount_root_tree(&server, "regtree").await;
+
+        let mut got = backend_at(&server).read_all_implements().await.unwrap();
+        got.sort();
+        assert_eq!(got, expected_entries());
+    }
+
+    /// The index records the tree it was generated from. A corpus branch
+    /// that moved on since — a preview branch that got commits after its
+    /// last index build — must not be answered from it.
+    #[tokio::test]
+    async fn a_stale_index_is_not_served_but_falls_back_to_the_archive() {
+        let server = MockServer::start().await;
+        mount_archive(&server, 1).await;
+        mount_index(&server, index_json("oldtree", "regulation")).await;
+        mount_root_tree(&server, "regtree").await;
+
+        let mut got = backend_at(&server).read_all_implements().await.unwrap();
+        got.sort();
+        assert_eq!(got, expected_entries());
+    }
+
+    /// An index scanned under a different root says nothing about this
+    /// source. Projecting it anyway would yield an empty list, which the
+    /// caller reads as an authoritative "this corpus holds no laws".
+    #[tokio::test]
+    async fn an_index_rooted_outside_the_source_is_not_served() {
+        let server = MockServer::start().await;
+        mount_archive(&server, 1).await;
+        mount_index(&server, index_json("regtree", "andere-root")).await;
+        mount_root_tree(&server, "regtree").await;
+
+        let mut got = backend_at(&server).read_all_implements().await.unwrap();
+        got.sort();
+        assert_eq!(got, expected_entries());
+    }
+
+    /// A freshness check that cannot be performed is not a freshness check
+    /// that passed: a rate-limited Trees call falls back instead of serving
+    /// an index whose currency is unknown.
+    #[tokio::test]
+    async fn an_unverifiable_index_is_not_served() {
+        let server = MockServer::start().await;
+        mount_archive(&server, 1).await;
+        mount_index(&server, index_json("regtree", "regulation")).await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/git/trees/main"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .insert_header("x-ratelimit-remaining", "0")
+                    .set_body_string("API rate limit exceeded"),
+            )
+            .mount(&server)
+            .await;
+
+        let mut got = backend_at(&server).read_all_implements().await.unwrap();
+        got.sort();
+        assert_eq!(got, expected_entries());
+    }
+
+    /// The map is a negative cache: a missing path means "fetch this law".
+    /// So a failed read must never surface as a successful empty map — if
+    /// neither route can answer, the call fails.
+    #[tokio::test]
+    async fn a_failed_read_is_an_error_and_never_an_empty_map() {
+        let server = MockServer::start().await;
+        // Index read: rate-limited, not absent.
+        Mock::given(method("GET"))
+            .and(path_matcher(
+                "/repos/acme/corpus/contents/implements-index.json",
+            ))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .insert_header("x-ratelimit-remaining", "0")
+                    .set_body_string("API rate limit exceeded"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/tarball/main"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("upstream unavailable"))
+            .mount(&server)
+            .await;
+
+        let err = backend_at(&server)
+            .read_all_implements()
+            .await
+            .expect_err("an unreadable corpus is not an empty corpus");
+        assert!(
+            err.to_string().contains("503"),
+            "the real cause must survive: {err}"
+        );
     }
 
     #[tokio::test]
@@ -877,6 +1428,17 @@ mod tests {
     /// JSON body of the resulting Contents API PUT.
     async fn persist_and_capture_put_body(ctx: WriteContext) -> serde_json::Value {
         let server = MockServer::start().await;
+        // `persist` bootstraps the branch lazily when `ensure_ready` never
+        // ran (this helper builds the backend directly); an existing branch
+        // is a single ref GET.
+        Mock::given(method("GET"))
+            .and(path_matcher("/repos/acme/corpus/git/ref/heads/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ref": "refs/heads/main",
+                "object": {"sha": "branch-sha"}
+            })))
+            .mount(&server)
+            .await;
         Mock::given(method("PUT"))
             .and(path_matcher(
                 "/repos/acme/corpus/contents/regulation/nl/wet/foo/2025-01-01.yaml",

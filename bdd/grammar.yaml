@@ -6,6 +6,27 @@ version: 1
 # Quoted-only steps emit Cucumber-expression bindings ({string}); any numeric
 # arg forces a regex binding. See bdd/codegen/.
 
+# What a captured value means once it reaches the engine.
+#
+# The quoted form does not mean "text". `is "42"` and `is 42` name the same
+# value; the content decides what it is, and the quotes are only there because
+# the language has no bare form for a boolean or a date — the editor writes
+# every boolean as `is "true"`. Reading quotes as text would hand the engine a
+# String where the law compares a Bool, and EQUALS is structural, so that
+# comparison silently goes false instead of failing.
+#
+# A data-table cell carries no quoting either, and reads the same way. The cost
+# is that a numeric-looking identifier loses its string form (a leading zero
+# does not survive); which literals this language actually knows is #1172.
+#
+# Codegen carries these three keys into both dispatchers (Rust
+# packages/engine/tests/bdd, JS frontend/src/gherkin), so a change here changes
+# both engines and neither can hold its own opinion. See issue #1160.
+value_typing:
+  quoted: inferred
+  bare: number
+  table_cell: inferred
+
 steps:
   # ---------- core: setup ----------
   - id: set_calculation_date

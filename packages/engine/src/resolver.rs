@@ -1748,4 +1748,726 @@ articles:
         assert!(resolver.has_law("regeling_standaardpremie"));
         assert!(resolver.has_law("participatiewet"));
     }
+
+    // -------------------------------------------------------------------------
+    // Law count limit (memory-exhaustion guard)
+    // -------------------------------------------------------------------------
+
+    /// A minimal law with its own `$id`, so the registry can be filled to the limit.
+    fn make_numbered_law(n: usize, valid_from: Option<&str>) -> String {
+        let valid_from_line = match valid_from {
+            Some(d) => format!("valid_from: '{d}'\n"),
+            None => String::new(),
+        };
+        format!(
+            r#"
+$id: filler_law_{n}
+regulatory_layer: WET
+publication_date: '2025-01-01'
+{valid_from_line}articles:
+  - number: '1'
+    text: Filler article {n}
+    machine_readable:
+      execution:
+        output:
+          - name: filler_output
+            type: number
+        actions:
+          - output: filler_output
+            value: {n}
+"#
+        )
+    }
+
+    fn resolver_at_law_limit() -> RuleResolver {
+        let mut resolver = RuleResolver::new();
+        for n in 0..config::MAX_LOADED_LAWS {
+            resolver
+                .load_from_yaml(&make_numbered_law(n, None))
+                .unwrap();
+        }
+        assert_eq!(resolver.version_count(), config::MAX_LOADED_LAWS);
+        resolver
+    }
+
+    #[test]
+    fn test_resolver_limit_rejects_new_version_of_existing_law() {
+        // A second version of an already-loaded law is a *new* law in the
+        // registry: it adds memory, so it must hit the limit like any other.
+        let mut resolver = resolver_at_law_limit();
+
+        let result = resolver.load_from_yaml(&make_numbered_law(0, Some("2030-01-01")));
+
+        assert!(
+            matches!(result, Err(EngineError::LoadError(_))),
+            "adding a new version at the limit must be rejected, got {result:?}"
+        );
+        assert_eq!(resolver.version_count(), config::MAX_LOADED_LAWS);
+        assert_eq!(resolver.version_count_for_law("filler_law_0"), 1);
+    }
+
+    #[test]
+    fn test_resolver_limit_allows_replacing_existing_version() {
+        // Replacing a version (same law id, same valid_from) does not grow the
+        // registry, so the limit must not block it — otherwise a full resolver
+        // could never be corrected.
+        let mut resolver = resolver_at_law_limit();
+
+        resolver
+            .load_from_yaml(&make_numbered_law(0, None))
+            .expect("replacing an existing version at the limit must be allowed");
+
+        assert_eq!(resolver.version_count(), config::MAX_LOADED_LAWS);
+    }
+
+    #[test]
+    fn test_resolver_law_count_counts_unique_ids() {
+        let mut resolver = RuleResolver::new();
+        assert_eq!(resolver.law_count(), 0);
+
+        resolver
+            .load_from_yaml(&make_numbered_law(1, None))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_numbered_law(2, None))
+            .unwrap();
+        assert_eq!(resolver.law_count(), 2);
+
+        // A second version of law 1 adds a version, not a law id.
+        resolver
+            .load_from_yaml(&make_numbered_law(1, Some("2030-01-01")))
+            .unwrap();
+        assert_eq!(resolver.law_count(), 2);
+        assert_eq!(resolver.version_count(), 3);
+    }
+
+    #[test]
+    fn test_resolver_all_law_versions_yields_every_version() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_test_law_with_valid_from("2024-01-01", 100))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_test_law_with_valid_from("2025-01-01", 200))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_numbered_law(7, None))
+            .unwrap();
+
+        let mut seen: Vec<(&str, Option<&str>)> = resolver
+            .all_law_versions()
+            .map(|law| (law.id.as_str(), law.valid_from.as_deref()))
+            .collect();
+        seen.sort();
+
+        assert_eq!(
+            seen,
+            vec![
+                ("filler_law_7", None),
+                ("test_law", Some("2024-01-01")),
+                ("test_law", Some("2025-01-01")),
+            ]
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Version unloading
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_resolver_unload_version_removes_only_the_named_version() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_test_law_with_valid_from("2024-01-01", 100))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_test_law_with_valid_from("2025-01-01", 200))
+            .unwrap();
+
+        assert!(resolver.unload_law_version("test_law", Some("2024-01-01")));
+
+        // The version that was *not* named must survive.
+        assert_eq!(resolver.version_count(), 1);
+        let remaining = resolver.get_law("test_law").unwrap();
+        assert_eq!(remaining.valid_from, Some("2025-01-01".to_string()));
+    }
+
+    #[test]
+    fn test_resolver_unload_unknown_version_is_a_no_op() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_test_law_with_valid_from("2024-01-01", 100))
+            .unwrap();
+
+        // Nothing matches, so nothing was removed — the caller must be told so.
+        assert!(!resolver.unload_law_version("test_law", Some("1999-01-01")));
+        assert!(!resolver.unload_law_version("test_law", None));
+        assert_eq!(resolver.version_count(), 1);
+        assert!(resolver.has_law("test_law"));
+
+        // Unknown law id likewise.
+        assert!(!resolver.unload_law_version("nonexistent", Some("2024-01-01")));
+    }
+
+    // -------------------------------------------------------------------------
+    // Scope filtering (gemeentelijke / waterschaps-verordeningen)
+    // -------------------------------------------------------------------------
+
+    fn make_law_with_open_term_scoped() -> &'static str {
+        r#"
+$id: kaderwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het tarief wordt vastgesteld bij verordening
+    machine_readable:
+      open_terms:
+        - id: tarief
+          type: amount
+          required: true
+          delegated_to: waterschap
+          delegation_type: WATERSCHAPS_VERORDENING
+      execution:
+        output:
+          - name: tarief
+            type: number
+        actions:
+          - output: tarief
+            value: 0
+"#
+    }
+
+    fn make_scoped_implementation(id: &str, scope_line: &str, value: i32) -> String {
+        format!(
+            r#"
+$id: {id}
+regulatory_layer: WATERSCHAPS_VERORDENING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+{scope_line}
+articles:
+  - number: '1'
+    text: Het tarief bedraagt {value}
+    machine_readable:
+      implements:
+        - law: kaderwet
+          article: '1'
+          open_term: tarief
+          gelet_op: "Gelet op artikel 1 van de Kaderwet"
+      execution:
+        output:
+          - name: tarief
+            type: number
+        actions:
+          - output: tarief
+            value: {value}
+"#
+        )
+    }
+
+    fn scope_of(field: &str, code: &str) -> HashMap<String, Value> {
+        let mut scope = HashMap::new();
+        scope.insert(field.to_string(), Value::String(code.to_string()));
+        scope
+    }
+
+    /// A waterschapsverordening only implements an open term for its own
+    /// waterschap; another waterschap (or a national run) must not inherit it.
+    #[test]
+    fn test_find_implementations_filters_on_waterschap_code() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(make_law_with_open_term_scoped())
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_scoped_implementation(
+                "keur_ws0653",
+                "waterschap_code: 'WS0653'",
+                42,
+            ))
+            .unwrap();
+
+        let find = |scope: &HashMap<String, Value>| {
+            resolver
+                .find_implementations("kaderwet", "1", "tarief", None, scope)
+                .unwrap()
+        };
+
+        // Own waterschap: applies.
+        let matching = find(&scope_of("waterschap_code", "WS0653"));
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].0.id, "keur_ws0653");
+
+        // Different waterschap: does not apply.
+        assert!(find(&scope_of("waterschap_code", "WS0999")).is_empty());
+
+        // No waterschap in scope at all: does not apply.
+        assert!(find(&HashMap::new()).is_empty());
+
+        // A gemeente in scope does not satisfy a waterschap requirement.
+        assert!(find(&scope_of("gemeente_code", "WS0653")).is_empty());
+    }
+
+    /// The gemeente branch of the same rule, so both scope fields are pinned.
+    #[test]
+    fn test_find_implementations_filters_on_gemeente_code() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(make_law_with_open_term_scoped())
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_scoped_implementation(
+                "verordening_g0363",
+                "gemeente_code: 'GM0363'",
+                7,
+            ))
+            .unwrap();
+
+        let find = |scope: &HashMap<String, Value>| {
+            resolver
+                .find_implementations("kaderwet", "1", "tarief", None, scope)
+                .unwrap()
+        };
+
+        assert_eq!(find(&scope_of("gemeente_code", "GM0363")).len(), 1);
+        assert!(find(&scope_of("gemeente_code", "GM0599")).is_empty());
+        assert!(find(&HashMap::new()).is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // Index bookkeeping: hooks, overrides, procedures
+    // -------------------------------------------------------------------------
+
+    fn make_law_with_hook(id: &str, article: &str, decision_type: Option<&str>) -> String {
+        let decision_type_line = match decision_type {
+            Some(dt) => format!("            decision_type: {dt}\n"),
+            None => String::new(),
+        };
+        format!(
+            r#"
+$id: {id}
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '{article}'
+    text: Hook article
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+{decision_type_line}      execution:
+        output:
+          - name: hook_output_{id}
+            type: number
+        actions:
+          - output: hook_output_{id}
+            value: 1
+"#
+        )
+    }
+
+    fn make_law_with_override(id: &str, output: &str) -> String {
+        format!(
+            r#"
+$id: {id}
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '69'
+    text: In afwijking van artikel 1 van de doelwet
+    machine_readable:
+      overrides:
+        - law: doelwet
+          article: '1'
+          output: {output}
+      execution:
+        output:
+          - name: {output}
+            type: number
+        actions:
+          - output: {output}
+            value: 4
+"#
+        )
+    }
+
+    fn make_override_target() -> &'static str {
+        r#"
+$id: doelwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De termijn bedraagt zes weken
+    machine_readable:
+      execution:
+        output:
+          - name: bezwaartermijn_weken
+            type: number
+        actions:
+          - output: bezwaartermijn_weken
+            value: 6
+"#
+    }
+
+    fn make_law_with_procedure(id: &str, legal_character: &str, proc_id: &str) -> String {
+        format!(
+            r#"
+$id: {id}
+regulatory_layer: WET
+publication_date: '2025-01-01'
+procedure:
+  - id: {proc_id}
+    default: true
+    applies_to:
+      legal_character: {legal_character}
+    stages:
+      - name: AANVRAAG
+        description: Belanghebbende dient aanvraag in
+      - name: BESLUIT
+        description: Bestuursorgaan neemt besluit
+articles:
+  - number: '1'
+    text: Procedure-artikel
+    machine_readable:
+      execution:
+        output:
+          - name: proc_output_{proc_id}
+            type: number
+        actions:
+          - output: proc_output_{proc_id}
+            value: 1
+"#
+        )
+    }
+
+    /// Loading an unrelated law rebuilds only *its own* index entries. It must
+    /// not evict the hooks, overrides and procedures other laws registered.
+    #[test]
+    fn test_loading_a_law_keeps_other_laws_indexes() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_override_target()).unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_override(
+                "afwijkingswet",
+                "bezwaartermijn_weken",
+            ))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_hook("hookwet", "3:46", None))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_procedure(
+                "procedurewet",
+                "BESCHIKKING",
+                "beschikking",
+            ))
+            .unwrap();
+
+        // Now load something entirely unrelated.
+        resolver.load_from_yaml(make_test_law()).unwrap();
+
+        let overrides = resolver.find_overrides("doelwet", "1", "bezwaartermijn_weken");
+        assert_eq!(overrides.len(), 1);
+        assert_eq!(overrides[0].law_id, "afwijkingswet");
+
+        let hooks = resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT");
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].law_id, "hookwet");
+
+        assert!(resolver.find_procedure("BESCHIKKING", None).is_some());
+        assert!(resolver
+            .find_procedure("BESCHIKKING", Some("beschikking"))
+            .is_some());
+    }
+
+    /// Unloading one law must remove exactly that law's index entries and leave
+    /// every other law's entries intact.
+    #[test]
+    fn test_unloading_a_law_leaves_other_laws_indexes_intact() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_override_target()).unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_override(
+                "afwijkingswet_a",
+                "bezwaartermijn_weken",
+            ))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_override(
+                "afwijkingswet_b",
+                "bezwaartermijn_weken",
+            ))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_hook("hookwet_a", "3:46", None))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_hook("hookwet_b", "3:47", None))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_procedure(
+                "procedurewet_a",
+                "BESCHIKKING",
+                "beschikking",
+            ))
+            .unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_procedure(
+                "procedurewet_b",
+                "ALGEMEEN_VERBINDEND_VOORSCHRIFT",
+                "avv",
+            ))
+            .unwrap();
+
+        assert!(resolver.unload_law("afwijkingswet_a"));
+        assert!(resolver.unload_law("hookwet_a"));
+        assert!(resolver.unload_law("procedurewet_a"));
+
+        // Overrides: only b survives, and it is really b.
+        let overrides = resolver.find_overrides("doelwet", "1", "bezwaartermijn_weken");
+        assert_eq!(overrides.len(), 1);
+        assert_eq!(overrides[0].law_id, "afwijkingswet_b");
+
+        // Hooks: only b survives, and it is really b.
+        let hooks = resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT");
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].law_id, "hookwet_b");
+
+        // Procedures: the unloaded law's procedure is gone, the other remains.
+        assert!(resolver.find_procedure("BESCHIKKING", None).is_none());
+        assert!(resolver
+            .find_procedure("ALGEMEEN_VERBINDEND_VOORSCHRIFT", None)
+            .is_some());
+    }
+
+    /// The output index must lose exactly the unloaded law's outputs.
+    #[test]
+    fn test_unloading_a_law_leaves_other_laws_outputs_indexed() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_test_law()).unwrap();
+        resolver
+            .load_from_yaml(&make_numbered_law(3, None))
+            .unwrap();
+
+        assert!(resolver.unload_law("test_law"));
+
+        assert_eq!(
+            resolver.list_all_outputs(),
+            vec![("filler_law_3", "filler_output")]
+        );
+        assert_eq!(resolver.output_count(), 1);
+    }
+
+    /// Unloading one implementing regulation must not take its siblings with it.
+    #[test]
+    fn test_unloading_one_implementor_keeps_the_others() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(make_implementing_regulation_older())
+            .unwrap();
+        resolver
+            .load_from_yaml(make_implementing_regulation())
+            .unwrap();
+        assert_eq!(resolver.implements_count(), 2);
+
+        resolver.unload_law("regeling_standaardpremie_2024");
+
+        assert_eq!(resolver.implements_count(), 1);
+        let results = resolver
+            .find_implementations(
+                "wet_op_de_zorgtoeslag",
+                "4",
+                "standaardpremie",
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.id, "regeling_standaardpremie");
+    }
+
+    // -------------------------------------------------------------------------
+    // Hook filtering
+    // -------------------------------------------------------------------------
+
+    /// A hook narrowed to one decision type fires for that type only — never for
+    /// another type, and never for a decision without a type.
+    #[test]
+    fn test_find_hooks_filters_on_decision_type() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_law_with_hook("hookwet", "3:46", Some("TOEKENNING")))
+            .unwrap();
+
+        let find = |dt: Option<&str>| {
+            resolver
+                .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT")
+                .len()
+        };
+
+        assert_eq!(find(Some("TOEKENNING")), 1);
+        assert_eq!(find(Some("AFWIJZING")), 0);
+        assert_eq!(find(None), 0);
+    }
+
+    /// A hook without a decision-type filter fires regardless of decision type.
+    #[test]
+    fn test_find_hooks_without_decision_type_filter_matches_all() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_law_with_hook("hookwet", "3:46", None))
+            .unwrap();
+
+        for dt in [Some("TOEKENNING"), Some("AFWIJZING"), None] {
+            assert_eq!(
+                resolver
+                    .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT")
+                    .len(),
+                1,
+                "unfiltered hook should fire for decision_type {dt:?}"
+            );
+        }
+
+        // Stage still filters.
+        assert_eq!(
+            resolver
+                .find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BEKENDMAKING")
+                .len(),
+            0
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Procedure lookup
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_find_procedure_by_default_and_by_id() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&make_law_with_procedure(
+                "procedurewet",
+                "BESCHIKKING",
+                "beschikking",
+            ))
+            .unwrap();
+
+        let by_default = resolver.find_procedure("BESCHIKKING", None).unwrap();
+        assert_eq!(by_default.id, "beschikking");
+        assert_eq!(by_default.stages.len(), 2);
+
+        let by_id = resolver
+            .find_procedure("BESCHIKKING", Some("beschikking"))
+            .unwrap();
+        assert_eq!(by_id.id, "beschikking");
+
+        // Unknown procedure id, and unknown legal character.
+        assert!(resolver
+            .find_procedure("BESCHIKKING", Some("nope"))
+            .is_none());
+        assert!(resolver.find_procedure("ONBEKEND", None).is_none());
+    }
+
+    // -------------------------------------------------------------------------
+    // Override target validation
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_validate_override_targets_accepts_a_resolvable_override() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_override_target()).unwrap();
+        resolver
+            .load_from_yaml(&make_law_with_override(
+                "afwijkingswet",
+                "bezwaartermijn_weken",
+            ))
+            .unwrap();
+
+        assert_eq!(resolver.validate_override_targets(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_validate_override_targets_reports_missing_law() {
+        let mut resolver = RuleResolver::new();
+        // The target law 'doelwet' is never loaded.
+        resolver
+            .load_from_yaml(&make_law_with_override(
+                "afwijkingswet",
+                "bezwaartermijn_weken",
+            ))
+            .unwrap();
+
+        let errors = resolver.validate_override_targets();
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].contains("non-existent law 'doelwet'"),
+            "unexpected error: {}",
+            errors[0]
+        );
+        assert!(errors[0].contains("afwijkingswet:69"));
+    }
+
+    #[test]
+    fn test_validate_override_targets_reports_missing_article() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_override_target()).unwrap();
+        // Overrides article '99', which 'doelwet' does not have.
+        let yaml = r#"
+$id: afwijkingswet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '69'
+    text: In afwijking van artikel 99 van de doelwet
+    machine_readable:
+      overrides:
+        - law: doelwet
+          article: '99'
+          output: bezwaartermijn_weken
+      execution:
+        output:
+          - name: bezwaartermijn_weken
+            type: number
+        actions:
+          - output: bezwaartermijn_weken
+            value: 4
+"#;
+        resolver.load_from_yaml(yaml).unwrap();
+
+        let errors = resolver.validate_override_targets();
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].contains("non-existent article '99'"),
+            "unexpected error: {}",
+            errors[0]
+        );
+    }
+
+    #[test]
+    fn test_validate_override_targets_reports_missing_output() {
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(make_override_target()).unwrap();
+        // The article exists, but does not produce 'beroepstermijn_weken'.
+        resolver
+            .load_from_yaml(&make_law_with_override(
+                "afwijkingswet",
+                "beroepstermijn_weken",
+            ))
+            .unwrap();
+
+        let errors = resolver.validate_override_targets();
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].contains("non-existent output 'beroepstermijn_weken'"),
+            "unexpected error: {}",
+            errors[0]
+        );
+        assert!(errors[0].contains("doelwet:1"));
+    }
 }

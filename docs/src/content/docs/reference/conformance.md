@@ -14,15 +14,15 @@ If you came here expecting test cases you can run against your own engine, there
 
 ## What is enforced today
 
-Two manifests are checked in, `conformance/v0.5.0/manifest.json` and `conformance/v0.5.4/manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with.
+Four manifests are checked in: `conformance/v0.5.0/`, `v0.5.4/`, `v0.5.5/` and `v0.5.6/`, each with a `manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with.
 
-What runs in CI is **operation coverage of the manifest itself**, nothing more. Three integration tests in `packages/engine/tests/conformance_coverage.rs` check each manifest's `operations` lists against the engine's own operation list:
+What runs in CI is **operation coverage of the manifests themselves**, nothing more. `packages/engine/tests/conformance_coverage.rs` checks their `operations` lists against the engine's own operation list in three integration tests:
 
-- every operation the engine supports appears in some level,
-- no level lists an operation the engine does not have,
-- no operation lands in two levels.
+- every operation the engine supports appears in some level, checked against the newest manifest only,
+- no level lists an operation the engine does not have, checked against every manifest,
+- no operation lands in two levels, checked against every manifest.
 
-So a new operation cannot be added to the engine without being classified into exactly one conformance level; CI fails otherwise. This keeps the manifest honest as the engine grows. But it tests the *manifest*, not any law execution: it never runs a regulation, never checks an output. The cross-implementation guarantee a conformance suite is meant to provide does **not** hold today.
+So a new operation cannot be added to the engine without being classified into exactly one conformance level; CI fails otherwise, and those three properties keep holding as the engine grows. But it tests the *manifest*, not any law execution: it never runs a regulation, never checks an output. The cross-implementation guarantee a conformance suite is meant to provide does **not** hold today.
 
 ## The intended suite
 

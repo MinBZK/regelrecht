@@ -54,8 +54,6 @@ use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 use uuid::Uuid;
 
-use regelrecht_corpus::backend::RepoBackend;
-
 use crate::accounts::AccountRecord;
 use crate::crypto::TokenCipher;
 use crate::state::AppState;
@@ -87,18 +85,21 @@ pub struct GithubOAuth {
     /// middle" mode). This is one of TWO switches: the `github.user_oauth`
     /// feature flag enforces the same thing at runtime, so enabling the
     /// GitHub-koppeling UI also enables enforcement — linking is never
-    /// offered-but-inert. See [`write_requires_user_token`] for the combined
-    /// decision; this env var remains as a deployment-wide override that wins
-    /// regardless of the flag.
+    /// offered-but-inert. See [`crate::credentials::write_requires_user_token`]
+    /// for the combined decision; this env var remains as a deployment-wide
+    /// override that wins regardless of the flag.
     ///
     /// * required off (both switches): writes **always** use the backend's
     ///   configured token — byte-identical to pre-spike behaviour for every
     ///   user, linked or not, so a linked user's saves to the operator-managed
     ///   central repo can't start 403-ing because their personal token lacks
     ///   access.
-    /// * required on (either switch): every traject write uses the acting
-    ///   user's token; a save with no linked (or an expired) token is refused
-    ///   with 428 rather than silently falling back to the configured token.
+    /// * required on (either switch): a configured service token still takes
+    ///   precedence per backend (see
+    ///   [`crate::credentials::TrajectCredentials::for_write`]); only
+    ///   writes to token-less, override-capable backends must carry the
+    ///   acting user's token, and a save there with no linked (or an
+    ///   expired) token is refused with 428.
     pub require_user_token: bool,
     /// Relay mode. When set, `/login` sends GitHub a **fixed** `redirect_uri`
     /// of `{callback_base}/auth/github/relay` instead of the deployment's own
@@ -385,6 +386,35 @@ fn open_token_cookie(
         return None;
     }
     Some(payload)
+}
+
+/// The sealed per-user GitHub link, opened for one request. The cookie
+/// internals (encryption, account binding, the `expired` computation) stay
+/// private to this module; [`crate::credentials`] consumes this narrow view to
+/// apply the requiredness / 428 policy.
+pub(crate) struct OpenedLink {
+    /// The GitHub access token to authenticate as the linked user.
+    pub access_token: String,
+    /// Whether the provider-reported expiry has passed.
+    pub expired: bool,
+    /// GitHub login (handle) — for the authorizing-as log line only.
+    pub github_login: String,
+}
+
+/// Open the sealed per-user token cookie for `account_id`, exposing only what
+/// the credential policy needs. `None` on *any* cookie failure (absent,
+/// undecodable, tampered, wrong-key, foreign-account) — all of which mean "not
+/// linked" and fail closed into the 428 connect-flow at the policy layer.
+pub(crate) fn open_link(
+    oauth: &GithubOAuth,
+    headers: &HeaderMap,
+    account_id: Uuid,
+) -> Option<OpenedLink> {
+    open_token_cookie(oauth, headers, account_id).map(|cookie| OpenedLink {
+        expired: cookie.expired(),
+        github_login: cookie.github_login,
+        access_token: cookie.access_token,
+    })
 }
 
 /// Extract a cookie value from the request's `Cookie` header(s).
@@ -805,7 +835,7 @@ pub async fn status(
     };
     // Effective requiredness (env var OR feature flag), so the frontend's
     // `required` mirrors what the write path will actually enforce.
-    let required = write_requires_user_token(&state, oauth)
+    let required = crate::credentials::write_requires_user_token(&state, oauth)
         .await
         .map_err(|(code, _)| code)?;
     Ok(Json(match open_token_cookie(oauth, &headers, account.id) {
@@ -854,134 +884,6 @@ pub async fn disconnect(
     let mut response = StatusCode::NO_CONTENT.into_response();
     append_set_cookie(&mut response, &clear_token_cookie_header(secure));
     Ok(response)
-}
-
-// --- Write-path helper -----------------------------------------------------
-
-/// Whether traject writes must carry the acting user's own GitHub token.
-///
-/// Two switches, OR-ed:
-/// * the `GITHUB_USER_TOKEN_REQUIRED` env var — static, deployment-wide
-///   override;
-/// * the `github.user_oauth` feature flag — the same toggle that shows the
-///   GitHub-koppeling UI, so switching the feature on in the Functies menu
-///   also switches enforcement on. Linking is never offered-but-inert.
-///
-/// A flag-read failure propagates as 500: on the write path the contract is
-/// "never silently fall back to the service token", and that includes not
-/// guessing when the flag store is unreadable. (In practice the session
-/// store shares the same database, so requests rarely get this far with a
-/// broken pool.)
-pub async fn write_requires_user_token(
-    state: &AppState,
-    oauth: &GithubOAuth,
-) -> Result<bool, (StatusCode, String)> {
-    if oauth.require_user_token {
-        return Ok(true);
-    }
-    // Without a database there is no flag store either (the toggle PUT 503s),
-    // so the env var is the only switch — e.g. OIDC-off local dev.
-    let Some(pool) = &state.pool else {
-        return Ok(false);
-    };
-    crate::feature_flags::flag_enabled(pool, crate::feature_flags::GITHUB_USER_OAUTH)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to read github.user_oauth feature flag");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Kon de feature-flags niet lezen; probeer het opnieuw.".to_string(),
-            )
-        })
-}
-
-/// Resolve the per-user GitHub credential to attach to an editor write, read
-/// from the sealed token cookie riding on this request.
-///
-/// * `Ok(None)` — no override; the write uses the backend's configured token
-///   (pre-spike behaviour, or the user simply hasn't linked GitHub and this
-///   deployment doesn't require it).
-/// * `Ok(Some(token))` — use the acting user's own token for this write.
-/// * `Err((428, msg))` — this deployment requires a user token but the user
-///   hasn't linked one (or it expired); the frontend bounces this straight
-///   into the GitHub connect flow (`apiAuthGuard.js`).
-///
-/// **428 is reserved editor-wide for this flow.** `apiAuthGuard.js` redirects
-/// every same-origin `/api/*` response with status 428 into the GitHub
-/// connect flow, keyed on nothing but the status code — an endpoint that
-/// returns 428 for any other reason would silently hijack its callers into
-/// the koppel-flow. Pick a different status for other preconditions.
-///
-/// Write handlers should prefer [`user_write_token_for_backend`], which
-/// additionally skips enforcement for backends that ignore the override.
-pub async fn user_write_token(
-    state: &AppState,
-    account_id: Uuid,
-    headers: &HeaderMap,
-) -> Result<Option<String>, (StatusCode, String)> {
-    let Some(oauth) = state.config.github_oauth.as_ref() else {
-        return Ok(None);
-    };
-
-    // The override is gated *entirely* on the requiredness decision. With it
-    // off (the default), every write keeps using the backend's configured
-    // token — byte-identical to pre-spike behaviour, and crucially this holds
-    // even for users who HAVE linked GitHub. That matters for the
-    // operator-managed central repo: routing a linked user's write there
-    // through their personal token would 403 if they lack direct push access,
-    // silently breaking saves that worked before. So linking is inert for
-    // writes until this deployment opts into the "editor is not in the
-    // middle" mode via the feature flag or the env var.
-    if !write_requires_user_token(state, oauth).await? {
-        return Ok(None);
-    }
-
-    // From here `require_user_token` is on, so the contract is "never silently
-    // fall back to the service token": the only outcomes are the user's own
-    // token or a 428. `open_token_cookie` folds every failure mode (absent,
-    // tampered, wrong key, foreign account) into `None` = not linked, which
-    // fails closed into the 428 below.
-    match open_token_cookie(oauth, headers, account_id) {
-        Some(link) if !link.expired() => {
-            tracing::debug!(
-                github_login = %link.github_login,
-                "authorizing traject write as the linked GitHub user"
-            );
-            Ok(Some(link.access_token))
-        }
-        Some(_expired) => Err((
-            StatusCode::PRECONDITION_REQUIRED,
-            "Je GitHub-koppeling is verlopen. Koppel je account opnieuw om op te slaan."
-                .to_string(),
-        )),
-        None => Err((
-            StatusCode::PRECONDITION_REQUIRED,
-            "Koppel je GitHub-account om in dit traject op te slaan. \
-             De wijziging wordt met jouw eigen GitHub-toegang weggeschreven."
-                .to_string(),
-        )),
-    }
-}
-
-/// [`user_write_token`], scoped to the backend the write actually goes to.
-///
-/// Enforcement only makes sense for a backend whose `persist` honors
-/// `WriteContext::token_override` (the GitHub Contents-API backend). A
-/// writable-own source can also be `SourceType::Local` — the supported
-/// preview/local-stack configuration — whose backend never touches GitHub or
-/// any token at all. Demanding a linked GitHub account there would 428 every
-/// save with a requirement linking can never satisfy. So: resolve the write
-/// target first, then call this with the resolved backend.
-pub async fn user_write_token_for_backend(
-    state: &AppState,
-    account_id: Uuid,
-    headers: &HeaderMap,
-    backend: &dyn RepoBackend,
-) -> Result<Option<String>, (StatusCode, String)> {
-    if !backend.supports_token_override() {
-        return Ok(None);
-    }
-    user_write_token(state, account_id, headers).await
 }
 
 // --- GitHub HTTP calls -----------------------------------------------------
@@ -1310,7 +1212,7 @@ mod tests {
             .await;
 
         let oauth = test_oauth(&server.uri(), &server.uri());
-        let client = reqwest::Client::new();
+        let client = regelrecht_auth::http_client();
         let token = exchange_code(
             &client,
             &oauth,
@@ -1337,7 +1239,7 @@ mod tests {
             .await;
 
         let oauth = test_oauth(&server.uri(), &server.uri());
-        let client = reqwest::Client::new();
+        let client = regelrecht_auth::http_client();
         let err = match exchange_code(&client, &oauth, "bad", "https://app/cb").await {
             Ok(_) => panic!("provider error must propagate"),
             Err(e) => e,
@@ -1358,7 +1260,7 @@ mod tests {
             .await;
 
         let oauth = test_oauth(&server.uri(), &server.uri());
-        let client = reqwest::Client::new();
+        let client = regelrecht_auth::http_client();
         let login = fetch_login(&client, &oauth, "gho_token")
             .await
             .expect("user fetch should succeed");

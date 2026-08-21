@@ -40,13 +40,21 @@ wasm-build:
 format:
     cd packages && cargo fmt --check --all
 
+# The features a deployed artefact or a `just` recipe actually turns on.
+# Deliberately not --all-features: that also builds `engine/otel` (the whole
+# OpenTelemetry stack, enabled by no Dockerfile, CI job or recipe),
+# `engine/wasm` and the two `test-utils` features, together 46 crates. Those
+# three still get compiled by `just test`, which does run --all-features, so
+# leaving them out here costs clippy coverage on that code and nothing else.
+check_features := "regelrecht-engine/validate,regelrecht-corpus/annotation-validation"
+
 # Run clippy lints
 lint:
-    cd packages && {{ci_flags}} cargo clippy --all-features
+    cd packages && {{ci_flags}} cargo clippy --workspace --features {{check_features}}
 
 # Run cargo check
 build-check:
-    cd packages && {{ci_flags}} cargo check --all-features
+    cd packages && {{ci_flags}} cargo check --workspace --features {{check_features}}
 
 # Validate regulation YAML files
 validate *FILES:
@@ -54,6 +62,7 @@ validate *FILES:
 
 # Validate note sidecar files (RFC-005, RFC-016)
 # Orphaned/ambiguous notes and unknown tags are warnings, not errors.
+[doc("Validate note sidecar files (RFC-005, RFC-016)")]
 validate-annotations *FILES:
     script/validate-annotations.sh {{FILES}}
 
@@ -61,19 +70,105 @@ validate-annotations *FILES:
 # canonical schema.json. Standalone helper; `just test` already runs it via
 # --all-features. Needs the `validate` feature (jsonschema). See
 # packages/engine/tests/conformance/README.md.
+[doc("Prove the Rust law-model conforms to the canonical schema.json")]
 conformance:
     cd packages && {{ci_flags}} cargo test -p regelrecht-engine --features validate --test conformance
 
-# Run all quality checks (format + lint + check + validate + validate-annotations + tests)
-# Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
-# Note: the conformance suite runs as part of `test` (cargo test --all-features).
-check: format lint build-check validate validate-annotations test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test editor-api-fmt editor-api-lint editor-api-check
+# Pins the deploy filters against the real cargo graph. Node's built-in test
+# runner, so no dependency for one file. Needs `cargo metadata`, not a build.
+[doc("Check the deploy filters against the real cargo dependency graph")]
+deploy-filters-test:
+    node --test script/deploy-filters.test.mjs
+
+# Pins the build-time asset precompression the editor image relies on. Same
+# reasoning as deploy-filters-test: node's built-in runner, no dependency.
+[doc("Check the editor's build-time asset precompression")]
+precompress-test:
+    node --test frontend/scripts/precompress.test.mjs
+
+# Holds the Rust services, the nginx images and Grafana to the same header
+# set. Same reasoning as deploy-filters-test: node's built-in runner, no
+# dependency.
+[doc("Check that every domain sends the same security headers")]
+security-headers-test:
+    node --test script/security-headers.test.mjs
+
+# Pins the first-load guard against fixture dists. The guard itself only runs
+# inside `npm run build`, so without this a broken chunk match surfaces as a
+# failing image build — or worse, as a green one that ships echarts eagerly.
+[doc("Check the editor's first-load guard")]
+first-load-test:
+    node --test frontend/scripts/check-first-load.test.mjs
+
+# Draait het shellfragment van de `Test`-poort uit ci.yml met echte
+# resultaatwaarden. Zonder dit is een voorganger die wel in `needs` staat maar
+# niet gelezen wordt niet van een werkende poort te onderscheiden.
+[doc("Check that the Test gate in ci.yml blocks on a failed predecessor")]
+ci-gate-test:
+    node --test script/ci-gate.test.mjs
+
+# Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
+# of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
+# bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
+[doc("Check the Rust Dockerfiles against the cargo workspace")]
+dockerfile-consistency-test:
+    node --test script/dockerfile-consistency.test.mjs
+
+# De poort die productie op een groene CI laat wachten. Zonder deze test is een
+# poort die alles doorlaat niet te onderscheiden van een die werkt; `gh` staat
+# hier als stub op PATH, dus er gaat geen verkeer naar GitHub.
+[doc("Check the gate that holds production to a green CI")]
+deploy-gate-test:
+    script/require-ci-green.test.sh
+
+# De controle die na de uitrol nakijkt of productie antwoordt. `curl` staat in
+# de test als stub op PATH, dus er gaat geen verkeer naar buiten.
+[doc("Check the post-deploy health check")]
+deployed-urls-test:
+    script/check-deployed-urls.test.sh
+# De controle die telt wat de nachtelijke opruiming heeft achtergelaten. `gh`
+# staat in de test als stub op PATH, dus er gaat geen verkeer naar GitHub.
+[doc("Check the guard on leftover preview environments")]
+preview-environments-test:
+    script/check-preview-environments.test.sh
+
+# Run all quality checks, exactly what CI runs. Needs Docker for the
+# container-backed suites; on a machine without a daemon, swap `test` for
+# `test-no-docker`.
+[doc("Run all quality checks, exactly what CI runs (needs Docker)")]
+check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 
-# Run Rust unit and integration tests
+# Crates with testcontainers-backed suites. Enumerates the exceptions, not the
+# members: a new crate is covered by --workspace. The list is exactly the crates
+# that dev-depend on regelrecht-pipeline/test-utils:
+#   grep -l 'regelrecht-pipeline.*test-utils' packages/*/Cargo.toml
+db_crates_exclude := "--exclude regelrecht-pipeline --exclude regelrecht-editor-api --exclude regelrecht-admin"
+db_crates := "-p regelrecht-pipeline -p regelrecht-editor-api -p regelrecht-admin"
+
+# Every recipe below is ONE cargo invocation, and that is load-bearing. Cargo
+# unifies features over the selected packages, so two invocations with different
+# selections in the same target dir resolve dependencies differently and rebuild
+# each other's artefacts. Splitting `just test` into four invocations cost 240
+# seconds of pure rebuild in CI, with regelrecht-engine compiled four times.
+
+# Run every Rust test in the workspace. Needs Docker for the testcontainers
+# suites. This is what `just check` runs.
+[doc("Run every Rust test in the workspace (needs Docker)")]
 test:
-    cd packages/engine && {{ci_flags}} cargo test --all-features
+    cd packages && {{ci_flags}} cargo test --workspace --all-features
+
+# Every test that needs no external services: the workspace minus the
+# container-backed crates. For a machine without a Docker daemon, and the
+# `unit` leg of the CI matrix.
+[doc("Run every Rust test that needs no external services")]
+test-no-docker:
+    cd packages && {{ci_flags}} cargo test --workspace --all-features {{db_crates_exclude}}
+
+# Only the container-backed crates: the `db` leg of the CI matrix.
+test-db:
+    cd packages && {{ci_flags}} cargo test {{db_crates}} --all-features
 
 # Run Rust BDD tests
 bdd:
@@ -89,11 +184,17 @@ bdd-trace:
     rm -rf trace_output
     cd packages/engine && {{ci_flags}} TRACE=1 cargo test --test bdd -- --nocapture
 
+# Run regelrecht-github crate tests (shared GitHub REST client)
+github-test:
+    cd packages && {{ci_flags}} cargo test -p regelrecht-github
+
 # Run harvester tests
 harvester-test:
     cd packages/harvester && {{ci_flags}} cargo test
 
-# Run pipeline unit tests (no Docker/DB required)
+# Run the pipeline unit tests in `src/`. The container-backed suites live in
+# `tests/` and run via `pipeline-integration-test`, not here.
+[doc("Run pipeline unit tests (src/ only, no Docker)")]
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
 
@@ -101,14 +202,92 @@ pipeline-test:
 pipeline-integration-test:
     cd packages/pipeline && {{ci_flags}} cargo test --test '*'
 
-# Run all tests (engine + harvester + pipeline unit + pipeline integration + editor-api)
-test-all: test harvester-test pipeline-test pipeline-integration-test editor-api-test
+# Run the frontend Playwright e2e specs (mocked backend, no Postgres/token needed).
+# Depends on wasm-build: the scenario-execution specs run the real WASM engine
+# in-browser, so the compiled artifact under frontend/public/wasm/pkg must exist.
+# cargo caches, so the build is a near-no-op once warm.
+[doc("Run the frontend Playwright e2e specs against a mocked backend")]
+test-e2e: wasm-build
+    npm run test:e2e -w frontend
+
+
+# Optionele variabelen-overrides (moeten VOOR de recipe-naam staan in just):
+#   just PR=886 smoke-preview
+#   just URL=https://editor.regelrecht.rijks.app smoke-preview
+PR := ""
+URL := ""
+
+# Token-vrije browser-smoketest tegen een DEPLOYED editor-preview (of productie):
+# echte Keycloak-login + editor-api + DB + WASM. Draai met een PR-nummer of een
+# volledige URL. De test-user-creds komen uit /workspace/.cred (override met
+# SMOKE_CRED_FILE) - nooit in de repo.
+#
+# Drie manieren om het doel op te geven (positioneel is het handigst):
+#   just smoke-preview 886                                    # PR-preview #886
+#   just smoke-preview https://editor.regelrecht.rijks.app    # exacte URL
+#   just PR=886 smoke-preview                                 # via variabele
+[doc("Browser smoketest against a deployed editor preview or production")]
+smoke-preview TARGET="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    target="{{TARGET}}"
+    if [ -n "{{URL}}" ]; then
+      base="{{URL}}"
+    elif [ -n "{{PR}}" ]; then
+      base="https://editor-pr{{PR}}-regel-k4c.rig.prd1.gn2.quattro.rijksapps.nl"
+    elif [ -n "$target" ]; then
+      case "$target" in
+        http://*|https://*) base="$target" ;;
+        *) base="https://editor-pr${target}-regel-k4c.rig.prd1.gn2.quattro.rijksapps.nl" ;;
+      esac
+    else
+      echo "Geef een doel mee, bijv. 'just smoke-preview 886' of 'just URL=<url> smoke-preview'." >&2
+      exit 2
+    fi
+    cred="${SMOKE_CRED_FILE:-/workspace/.cred}"
+    if [ ! -f "$cred" ]; then
+      echo "Cred-bestand niet gevonden: $cred (verwacht regels 'Username:'/'Password:')." >&2
+      exit 2
+    fi
+    export SMOKE_BASE_URL="$base"
+    export SMOKE_USER="$(sed -n 's/^Username:[[:space:]]*//p' "$cred" | head -n1)"
+    export SMOKE_PASS="$(sed -n 's/^Password:[[:space:]]*//p' "$cred" | head -n1)"
+    if [ -z "$SMOKE_USER" ] || [ -z "$SMOKE_PASS" ]; then
+      echo "Kon Username/Password niet uit $cred lezen." >&2
+      exit 2
+    fi
+    echo "Smoke-test tegen $SMOKE_BASE_URL"
+    npx playwright test -c frontend/playwright.smoke.config.js
 
 # --- Mutation testing ---
 
 # Run mutation testing on engine (in-place because tests use relative paths to corpus/)
 mutants *ARGS:
     cd packages/engine && cargo mutants --in-place --timeout-multiplier 3 {{ARGS}}
+
+# Mutation testing on your own changes only — the local tegenhanger of the
+# mutation-diff CI-poort. De volledige set kost uren, dit een paar minuten.
+#
+# Het pad-detail dat dit recept wegneemt: cargo-mutants noemt bestanden
+# relatief aan de workspace-root (packages/), dus de diff moet `b/engine/src/…`
+# bevatten en niet `b/packages/engine/src/…`. Voer je een diff met de verkeerde
+# prefix in, dan vindt hij nul mutanten en lijkt alles in orde.
+#
+# Driepunts (`BASE...HEAD`), niet tweepunts: tweepunts vergelijkt twee bomen,
+# dus alles wat main na jouw aftakking veranderde komt in de diff terecht als
+# jouw wijziging. Op een branch die achterloopt muteer je dan andermans regels.
+[doc("Mutation testing on your own changed lines only")]
+mutants-diff BASE="origin/main":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    diff_file="$(mktemp -t mutants-diff-XXXXXX.diff)"
+    git -C packages diff --relative "{{BASE}}...HEAD" -- engine > "$diff_file"
+    if [ ! -s "$diff_file" ]; then
+        echo "Geen gewijzigde regels in packages/engine ten opzichte van {{BASE}}."
+        exit 0
+    fi
+    cd packages/engine
+    cargo mutants --in-place --timeout-multiplier 3 --in-diff "$diff_file"
 
 # --- Benchmarks ---
 
@@ -128,15 +307,27 @@ bench-compare BASE:
 
 # --- Security ---
 
-# Run security audit on all dependencies (vulnerabilities, licenses, sources)
+# De deterministische helft van de security-audit, en de enige die een pull
+# request blokkeert. Bans, licenses en sources hangen alleen aan wat er in de
+# lockfiles staat: dezelfde commit geeft vandaag en over een maand dezelfde
+# uitslag. Kwetsbaarheden horen daar niet bij, want die komen van buiten en
+# maken een PR rood zonder dat er iets aan die PR veranderd is; die staan in
+# `just audit-advisories`.
 audit:
-    cd packages && cargo deny check --config ../deny.toml
-    # One npm workspace at the repo root covers all three frontends + the shared
-    # package, so audit/license-check the whole hoisted tree once. (license-checker
-    # drops --production because the workspace root has no production deps of its
-    # own; the whole-tree scan is strictly broader coverage.)
-    npm audit
+    script/cargo-deny.sh bans licenses sources
+    # license-checker draait alleen over de workspace in de root; die drops
+    # --production omdat de root geen eigen productie-deps heeft, en de
+    # hele-boom-scan is strikt ruimer.
     npx license-checker --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
+
+# De tijdsafhankelijke helft: advisories uit RustSec en npm. Draait periodiek
+# in .github/workflows/security-advisories.yml en meldt zich daar als issue.
+audit-advisories:
+    script/audit-advisories.sh
+
+# De meldlogica van de advisory-controle
+advisories-report-test:
+    script/report-advisories.test.sh
 
 # --- Admin ---
 
@@ -190,9 +381,9 @@ editor-api-fmt:
     cd packages && cargo fmt --check --package regelrecht-editor-api
 
 # Run ALL editor API tests: src unit tests + tests/*.rs integration tests
-# (the latter require Docker for testcontainers). This is what CI runs on
-# editor-api changes; excluded from `just check` for the same reason
-# `pipeline-integration-test` is.
+# (the latter require Docker for testcontainers). A shortcut for running this
+# crate alone; `just check` covers it through the workspace-wide `test`.
+[doc("Run ALL editor API tests, unit and integration (needs Docker)")]
 editor-api-test:
     cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api
 
@@ -535,3 +726,64 @@ docs-preview:
 # Run the accessibility gate (build + mermaid-alt + heading-order + pa11y-ci htmlcs+axe, WCAG 2.1 AA)
 docs-a11y:
     cd docs && npm run a11y
+
+# --- Architecture model ---
+
+# Generate the code-derived architecture model
+# (packages/arch-extract → docs/src/content/architecture/model.json, a gitignored
+# path). The model is generated on-demand, never committed: the local architecture
+# explorer regenerates it from the working tree. Run this to inspect the model
+# without starting the explorer.
+[doc("Generate the code-derived architecture model")]
+arch-generate:
+    cd packages && {{ci_flags}} cargo run --quiet -p regelrecht-arch-extract -- generate
+
+# Start the local architecture explorer: build the Vue Flow UI, then run the
+# arch-extract server, which regenerates the model on-demand from the working
+# tree (GET /api/model, cached on source mtime) and serves the UI on
+# 0.0.0.0:7180. Open http://localhost:7180. Override the port with
+# ARCH_EXPLORE_PORT (stay in 7100–7300 for the dev container). See
+# packages/arch-extract/README.md.
+[doc("Start the local architecture explorer on http://localhost:7180")]
+arch-explore:
+    cd packages/arch-extract/ui && npm install && npm run build
+    cd packages && cargo run --release --quiet -p regelrecht-arch-extract -- serve
+
+# Run the arch-extract tests: the Rust side (schema validation of the generated
+# model + the prose-sidecar drift logic) and the explorer UI's vitest suite
+# (edge-lifting / aggregation logic). Part of `just check`.
+[doc("Run the arch-extract tests, Rust and explorer UI")]
+arch-test:
+    cd packages && {{ci_flags}} cargo test -p regelrecht-arch-extract
+    npm --prefix packages/arch-extract/ui install
+    npm --prefix packages/arch-extract/ui test
+
+# --- Architecture prose sidecar ---
+# Per-node "wat/waarom" narrative lives beside the model in
+# packages/arch-extract/prose/, keyed by node id, at container + component level.
+
+# Report drift between the on-demand model and the prose sidecar.
+arch-prose-status:
+    cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose status
+
+# Like arch-prose-status, but exit non-zero on any drift (for the scheduled flow).
+arch-prose-check:
+    cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose check
+
+# Scaffold empty prose stubs for undocumented in-scope nodes (seeded with each
+# node's doc-comment as a starting point).
+[doc("Scaffold empty prose stubs for undocumented in-scope nodes")]
+arch-prose-sync:
+    cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose sync
+
+# Refresh the fingerprint of prose entries after rewriting their text (clears a
+# stale flag). Pass one or more node ids, or --all.
+[doc("Refresh the fingerprint of prose entries after rewriting them")]
+arch-prose-bless *ARGS:
+    cd packages && cargo run --quiet -p regelrecht-arch-extract -- prose bless {{ARGS}}
+
+# Run the scheduled prose-drift flow: diff model vs. sidecar and, on drift, open
+# a draft PR with proposals. Meant to run on a schedule; DRY_RUN=true to preview.
+[doc("Run the scheduled prose-drift flow and open a draft PR on drift")]
+arch-prose-drift-pr:
+    packages/arch-extract/scripts/prose-drift-pr.sh

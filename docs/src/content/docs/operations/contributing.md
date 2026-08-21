@@ -3,7 +3,7 @@ title: "Contributing"
 description: "The branching model, quality checks, and workflow for contributing to RegelRecht."
 ---
 
-RegelRecht is open source and welcomes contributions. This page covers the workflow.
+RegelRecht is open source and welcomes contributions. The workflow is below.
 
 ## Branching model
 
@@ -51,7 +51,7 @@ Do not bypass hooks with `--no-verify`. If a hook fails, fix the underlying prob
 
 1. Create a feature branch and push your changes
 2. Open a PR - CI runs all relevant checks automatically
-3. A preview deployment is created (see [Deployment](./deployment))
+3. Add the `deploy:preview` label if reviewers need a running preview (see [Deployment](./deployment))
 4. Get a code review
 5. Merge to main - production deploys automatically
 
@@ -67,7 +67,7 @@ Reviewers check for:
 
 Changes to the law format, engine architecture, or cross-cutting patterns require an RFC. See the [RFC process](/rfcs/rfc-000) for details.
 
-Use the template at `docs/rfcs/template.md` to draft your RFC, then open a PR for discussion.
+Use the template at `docs/src/content/rfcs/template.md` to draft your RFC, then open a PR for discussion.
 
 ## Further reading
 

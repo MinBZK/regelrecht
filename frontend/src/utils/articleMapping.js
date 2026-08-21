@@ -61,6 +61,27 @@ export function buildTypeMap(articles) {
 }
 
 /**
+ * Builds an outputName -> { type, unit } map from `execution.output`, so result
+ * views can format a value by its declared unit instead of guessing from the
+ * name. First declaration wins on a name collision, matching the backend's
+ * `collect_law_outputs` dedup.
+ *
+ * @param {Array} articles - Articles array from useLaw()
+ * @returns {Map<string, { type: (string|null), unit: (string|null) }>}
+ */
+export function buildOutputTypeMap(articles) {
+  const map = new Map();
+  for (const article of articles || []) {
+    for (const o of article.machine_readable?.execution?.output || []) {
+      if (o?.name && !map.has(o.name)) {
+        map.set(o.name, { type: o.type ?? null, unit: o.type_spec?.unit ?? null });
+      }
+    }
+  }
+  return map;
+}
+
+/**
  * Builds a fieldName -> { type, unit } map for EXTERNAL data-source fields -
  * inputs whose `source` is empty (no `regulation` and no `output`), i.e. raw
  * data the engine resolves by field name (e.g. insurance.verdragsinschrijving).

@@ -52,11 +52,12 @@ fn empty_state(pool: PgPool) -> AppState {
             github_oauth: None,
             task_enrich_provider: "claude".to_string(),
         }),
-        http_client: reqwest::Client::new(),
+        http_client: regelrecht_auth::http_client(),
         pool: Some(pool),
         pipeline_api_url: None,
         harvest_admin_url: None,
         reload_lock: Arc::new(Mutex::new(())),
+        integrity: Default::default(),
         trajects: Arc::new(TrajectCorpusCache::new()),
     }
 }
@@ -168,8 +169,10 @@ fn if_match_headers(etag: &str) -> HeaderMap {
 async fn read_law(state: AppState, session: Session, tref: &str) -> (String, String) {
     let (status, headers, body) = get_traject_corpus_law(
         State(state),
+        Extension(test_account()),
         session,
         Path((tref.to_string(), LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect("get_traject_corpus_law must succeed");
@@ -228,8 +231,10 @@ async fn read_scenario(
 ) -> (String, String) {
     let (status, headers, body) = get_traject_scenario(
         State(state),
+        Extension(test_account()),
         session,
         Path((tref.to_string(), LAW_ID.to_string(), filename.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect("scenario GET must succeed");
@@ -413,23 +418,43 @@ async fn ttl_refresh_picks_up_upstream_laws_and_reconciles_saves() {
     .unwrap();
     write_law(corpus.path(), "EXTERNAL");
 
-    // The next request refreshes the snapshot (TTL expired): the new law
-    // is indexed without a traject delete/recreate or process restart…
-    let Json(entries) = list_traject_corpus_laws(
-        State(state.clone()),
-        session_for(&sub).await,
-        Path(tref.clone()),
-        Query(PaginationParams {
-            offset: 0,
-            limit: None,
-            q: None,
-            ids: None,
-        }),
-    )
-    .await
-    .expect("law list must succeed");
+    // A next request refreshes the snapshot (TTL expired) and the new law
+    // is indexed without a traject delete/recreate or process restart.
+    //
+    // The refresh is stale-while-revalidate: a request past the TTL serves
+    // the stale snapshot and kicks the re-enumeration off in a *background*
+    // task (see `spawn_background_refresh`), so no single request is
+    // guaranteed to observe the post-write snapshot — in particular, a
+    // refresh spawned by an earlier request may have enumerated the sources
+    // just *before* the writes above landed. Poll (bounded) until a request
+    // is served the refreshed snapshot; asserting on one shot made this
+    // test scheduling-dependent and flaky.
+    let mut indexed = false;
+    for _ in 0..50 {
+        let Json(entries) = list_traject_corpus_laws(
+            State(state.clone()),
+            Extension(test_account()),
+            session_for(&sub).await,
+            Path(tref.clone()),
+            Query(PaginationParams {
+                offset: 0,
+                limit: None,
+                q: None,
+                ids: None,
+                source: None,
+            }),
+            HeaderMap::new(),
+        )
+        .await
+        .expect("law list must succeed");
+        if entries.iter().any(|e| e.law_id == "andere_wet") {
+            indexed = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     assert!(
-        entries.iter().any(|e| e.law_id == "andere_wet"),
+        indexed,
         "refreshed snapshot must index the upstream-added law"
     );
 
@@ -439,7 +464,16 @@ async fn ttl_refresh_picks_up_upstream_laws_and_reconciles_saves() {
     // stops pinning its own stale save (which would otherwise turn every
     // cross-replica edit into a permanent 412 loop — the user could
     // never fetch the conflicting content their If-Match fails against).
-    let (_etag, after) = read_law(state, session_for(&sub).await, &tref).await;
+    // Same stale-while-revalidate caveat as above: poll, don't one-shot.
+    let mut after = String::new();
+    for _ in 0..50 {
+        let (_etag, body) = read_law(state.clone(), session_for(&sub).await, &tref).await;
+        after = body;
+        if after.contains("EXTERNAL") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     assert!(
         after.contains("EXTERNAL"),
         "expected reads to converge to the externally written content; got: {after}"
@@ -481,8 +515,10 @@ async fn revoked_membership_is_403_on_traject_read() {
 
     let err = get_traject_corpus_law(
         State(state),
+        Extension(test_account()),
         session_for(&sub).await,
         Path((traject_ref(traject_id), LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect_err("revoked membership must refuse the traject read");
@@ -894,8 +930,10 @@ async fn scenario_list_unions_write_target_and_seed() {
 
     let Json(entries) = list_traject_scenarios(
         State(state),
+        Extension(test_account()),
         session_for(&sub).await,
         Path((tref, LAW_ID.to_string())),
+        HeaderMap::new(),
     )
     .await
     .expect("list must succeed");
@@ -979,13 +1017,12 @@ async fn feature_flag_row_drives_user_token_requirement() {
     let account_id = Uuid::new_v4();
 
     // Flag row absent (default off): pre-spike behaviour, no override demanded.
-    let token = regelrecht_editor_api::github_oauth::user_write_token(
-        &state,
-        account_id,
-        &HeaderMap::new(),
-    )
-    .await
-    .expect("without the flag no user token may be demanded");
+    let headers = HeaderMap::new();
+    let token =
+        regelrecht_editor_api::credentials::TrajectCredentials::new(&state, account_id, &headers)
+            .user_write_token()
+            .await
+            .expect("without the flag no user token may be demanded");
     assert_eq!(token, None);
 
     // Flip the DB row — the same write the "Functies" toggle PUT performs.
@@ -999,12 +1036,11 @@ async fn feature_flag_row_drives_user_token_requirement() {
     .expect("flag upsert must succeed");
 
     // Flag on + no linked token cookie → 428 on the GitHub-capable write path.
-    let err = regelrecht_editor_api::github_oauth::user_write_token(
-        &state,
-        account_id,
-        &HeaderMap::new(),
-    )
-    .await
-    .expect_err("flag on without a linked token must refuse the write");
+    let headers = HeaderMap::new();
+    let err =
+        regelrecht_editor_api::credentials::TrajectCredentials::new(&state, account_id, &headers)
+            .user_write_token()
+            .await
+            .expect_err("flag on without a linked token must refuse the write");
     assert_eq!(err.0, StatusCode::PRECONDITION_REQUIRED);
 }

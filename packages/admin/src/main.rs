@@ -42,6 +42,7 @@ async fn health(State(state): State<AppState>) -> Result<&'static str, StatusCod
 #[tokio::main]
 async fn main() {
     regelrecht_shared::telemetry::init_subscriber("info");
+    regelrecht_auth::install_crypto_provider();
 
     let app_config = AppConfig::from_env();
 
@@ -225,14 +226,16 @@ async fn main() {
             middleware::refresh_session_token::<AppState>,
         ))
         .layer(session_layer)
-        .layer(axum_middleware::from_fn(middleware::security_headers))
+        .layer(axum_middleware::from_fn(middleware::security_headers(
+            middleware::API_CSP,
+        )))
         .layer(TraceLayer::new_for_http());
     // API-only service: the harvester-admin dashboard UI now lives in the
     // editor (frontend/src/harvester), which reaches this API through the
     // editor-api /api/harvest-admin/* proxy. This binary no longer serves a
     // SPA, so there is no static fallback — unmatched paths 404. The API
     // surface (/health, /metrics, /auth/*, /api/*) stays a standalone,
-    // publicly-addressable harvest API (OIDC + ADMIN_API_KEY on GET/DELETE).
+    // publicly-addressable harvest API (OIDC + ADMIN_API_KEY on GET/POST/DELETE).
 
     let port: u16 = env::var("ADMIN_PORT")
         .ok()
@@ -307,14 +310,14 @@ fn init_corpus() -> state::CorpusState {
         regelrecht_corpus::CorpusRegistry::empty()
     };
 
-    let source_map = match registry.load_local_sources() {
+    let source_map = match registry.load_local_sources(&regelrecht_shared::dates::today_str()) {
         Ok(map) => {
             tracing::info!(laws = map.len(), "Loaded corpus laws");
             map
         }
         Err(e) => {
             tracing::warn!(error = %e, "Failed to load corpus sources");
-            regelrecht_corpus::SourceMap::new()
+            regelrecht_corpus::SourceMap::new(regelrecht_shared::dates::today_str())
         }
     };
 

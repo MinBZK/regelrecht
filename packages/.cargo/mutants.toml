@@ -1,0 +1,152 @@
+# Configuratie voor cargo-mutants. De workspace-root is `packages/`, dus dit is
+# het bestand dat alle vier de ingangen lezen: `just mutants`, `just
+# mutants-diff`, de wekelijkse run (mutation-testing.yml) en de poort op een PR
+# (mutation-diff.yml). Wat hier staat geldt dus overal hetzelfde.
+#
+# Twee soorten regels staan hieronder, en ze doen iets verschillends.
+#
+# `additional_cargo_args` bepaalt WELKE code de mutatierun überhaupt te zien
+# krijgt. `exclude_re` bepaalt welke mutanten we bewust laten leven. Alleen het
+# tweede is een oordeel; het eerste is een gelijkstelling met de testsuite.
+#
+# Elke uitsluiting heeft een reden. Een uitsluiting zonder reden is geen
+# antwoord maar een weggeklikte vraag, en telt niet.
+
+# Muteer met dezelfde features waarmee de suite draait. `just test` is
+# `cargo test --workspace --all-features`; een kale `cargo mutants` bouwt zonder
+# features, en dan valt alles achter een `#[cfg(feature = ...)]` buiten de
+# build: schema.rs (validate), wasm.rs (wasm), telemetry.rs (otel) en de
+# binaries met `required-features`. Die code wordt niet gecompileerd, de
+# mutatie verandert dus niets, de tests blijven groen en de mutant "overleeft"
+# zonder dat er ooit iets is gedraaid. In de weekrun van 2026-08-01 waren dat
+# 46 van de 353 overlevers.
+#
+# Bewust `--all-features` en geen opsomming als `--features validate,wasm`: een
+# met de hand bijgehouden lijst van wat meetelt loopt achter zodra er een
+# feature bijkomt. Dat is dezelfde rot die #1061 uit de testrecepten haalde.
+additional_cargo_args = ["--all-features"]
+
+exclude_re = [
+    # --- annotation/resolver.rs -------------------------------------------
+
+    # similarity(): strsim::normalized_levenshtein geeft voor een paar waarvan
+    # precies één string leeg is zelf al 0.0 (1 - n/n). De vroege return is een
+    # kortere route naar hetzelfde getal; met && ernaast loopt de aanroep door
+    # naar strsim en komt er hetzelfde uit. Het randgeval zelf ligt vast in
+    # similarity_treats_a_missing_side_as_no_similarity.
+    'annotation/resolver\.rs.*replace \|\| with && in similarity',
+
+    # find_fuzzy_matches(): beide helften van de guard leiden ook zonder guard
+    # tot nul kandidaten. Zonder exact-tekst is max_w 0 en is het vensterbereik
+    # leeg; zonder artikeltekst breekt de eerste iteratie meteen af op
+    # `window > chars.len()`. De guard scheelt werk, geen uitkomst.
+    'annotation/resolver\.rs.*replace \|\| with && in find_fuzzy_matches',
+
+    # shares_significant_content(): de lengtecheck op het kandidaatwoord is een
+    # goedkope voorfilter vóór de hash-lookup. exact_words komt altijd uit
+    # significant_words(), die alleen woorden langer dan drie tekens overhoudt,
+    # dus een woord van drie tekens zit er nooit in en >= 3 kan geen ander
+    # antwoord geven dan > 3.
+    'annotation/resolver\.rs.*replace > with >= in shares_significant_content',
+
+    # --- service.rs --------------------------------------------------------
+
+    # evaluate_article_with_service: `taints.len() > 1` bewaakt uitsluitend een
+    # tracing::warn. De taint die daarna op de outputs terechtkomt is in beide
+    # takken dezelfde waarde, dus geen assertie kan het verschil zien. Dit is nu
+    # de enige `>`-vergelijking in die functie; komt er een tweede bij, dan is
+    # deze regel te breed en hoort hij aangescherpt te worden.
+    'service\.rs.*replace > with (<|==|>=) in LawExecutionService::evaluate_article_with_service',
+
+    # evaluate_law_multi_internal: `article_numbers.len() > 1` met >= is
+    # equivalent. Bij precies één artikel levert join(", ") exact het
+    # artikelnummer op dat al in het samengevoegde resultaat stond, dus de
+    # toewijzing is dan een no-op. De varianten < en == veranderen wel gedrag en
+    # worden gedood door test_evaluate_law_reports_every_producing_article.
+    'service\.rs.*replace > with >= in LawExecutionService::evaluate_law_multi_internal',
+
+    # --- operations.rs -----------------------------------------------------
+
+    # values_equal herhaalt in deze twee armen bewust wat de PartialEq van
+    # law-model's Value al doet: gemengd untranslatable is nooit gelijk, en twee
+    # Decimals vergelijken numeriek. De arm weghalen laat de vergelijking naar
+    # `_ => a == b` vallen, wat exact hetzelfde antwoord geeft. De armen staan
+    # er om de bedoeling in dit bestand vast te leggen, los van een andere crate.
+    'operations\.rs.*delete match arm \(Value::Untranslatable\{\.\.\}, _\) \|\(_, Value::Untranslatable\{\.\.\}\) in values_equal',
+    'operations\.rs.*delete match arm \(Value::Decimal\(d1\), Value::Decimal\(d2\)\) in values_equal',
+
+    # iso_object altijd waar maken verandert geen enkele uitkomst: de
+    # datum-terugval in EQUALS vraagt daarna alsnog parse_date, en die slaagt
+    # precies voor dezelfde waarden (een ISO-string of een object met een
+    # `iso`-string). Niet-canonieke datumstrings worden sowieso geweigerd, dus
+    # er bestaat geen paar dat structureel ongelijk is maar chronologisch gelijk.
+    'operations\.rs.*replace is_mixed_date_pair::iso_object -> bool with true',
+
+    # Trait-default van een trace-hook. De enige resolver die echt traceert
+    # (RuleContext) overschrijft hem; de default bestaat zodat een resolver
+    # zonder tracing compileert. Een assertie hierop legt alleen de vorm van een
+    # diagnostische tekst vast.
+    'operations\.rs.*replace ValueResolver::trace_get_message -> Option<String> with Some',
+
+    # --- data_source.rs ----------------------------------------------------
+
+    # De handgeschreven `Debug for DataSourceRegistry` bestaat alleen omdat
+    # `Box<dyn DataSource>` geen Debug afleidt en de omliggende structs dat wel
+    # willen. De uitvoer is diagnostisch: niets in de engine leest hem, geen
+    # juridische uitkomst hangt ervan af. Een test zou het letterlijke formaat
+    # vastleggen, en dat is precies het willekeurige implementatiedetail dat we
+    # niet willen vastpinnen.
+    'data_source\.rs.*impl std::fmt::Debug for DataSourceRegistry',
+
+    # --- error.rs ----------------------------------------------------------
+
+    # `impl From<EngineError> for JsValue` is één regel
+    # `JsValue::from_str(&err.to_string())` over de JS-grens. Ook met de
+    # wasm-feature aan is dat native niet uit te voeren: wasm-bindgen aborteert
+    # buiten wasm32 met een panic die niet af te wikkelen is. Het gedrag dat
+    # ertoe doet is de tekst van de fout, en die ligt vast in de Display-tests
+    # in dit bestand.
+    'error\.rs.*impl From<EngineError> for wasm_bindgen::JsValue',
+
+    # --- telemetry.rs ------------------------------------------------------
+
+    # De hele module is OTLP-bedrading. `init_otel_subscriber` installeert via
+    # `try_init` een procesbrede subscriber, die per testbinary maar één keer te
+    # zetten is en daarna alle andere tests beïnvloedt; `Drop for OtelGuard`
+    # roept `shutdown()` op de OTel-SDK aan en print een eventuele fout naar
+    # stderr. Beide zijn gedrag van de SDK en van de afsluitvolgorde van het
+    # proces, niet van de wetsuitvoering.
+    '^engine/src/telemetry\.rs:',
+
+    # --- bin/evaluate.rs ---------------------------------------------------
+
+    # De OTLP-endpointcheck (`!v.is_empty()`) bepaalt alleen of er een collector
+    # wordt aangesloten. Het verschil is uitsluitend zichtbaar tegen een
+    # draaiende OTLP-collector, en dat is geen unit-test. De afloopcodes van het
+    # binary zelf worden wel gedood.
+    'engine/src/bin/evaluate\.rs.*delete ! in main',
+
+    # --- wasm.rs -----------------------------------------------------------
+
+    # Alles in de WASM-bindings dat een JsValue aanraakt (aanmaken, parsen of
+    # serialiseren) is alleen in een JavaScript-runtime uit te voeren. Buiten
+    # wasm32 aborteert wasm-bindgen het proces met een non-unwinding panic, dus
+    # een native test kan dit gedrag niet vastleggen, ook niet negatief. Deze
+    # functies zijn bovendien doorgeefluiken: de beslislogica die ze aanroepen
+    # (service.rs, annotation/) wordt daar gemuteerd en gemeten.
+    #
+    # Wat in wasm.rs zelf aan regels leeft staat hier NIET in en wordt gedood:
+    # de 1 MB-grens op loadLaw, de boekhouding van geladen wetten, en het filter
+    # dat notities van een andere wet overslaat (note_targets_another_law).
+    'engine/src/wasm\.rs.*js_serializer',
+    'engine/src/wasm\.rs.*wasm_error',
+    'engine/src/wasm\.rs.*engine_error_to_wasm',
+    'engine/src/wasm\.rs.*WasmEngine::execute\b',
+    'engine/src/wasm\.rs.*WasmEngine::execute_with_trace',
+    'engine/src/wasm\.rs.*WasmEngine::execute_multiple',
+    'engine/src/wasm\.rs.*WasmEngine::execute_multiple_with_trace',
+    'engine/src/wasm\.rs.*WasmEngine::get_law_info',
+    'engine/src/wasm\.rs.*WasmEngine::resolve_note\b',
+    'engine/src/wasm\.rs.*WasmEngine::resolve_notes',
+    'engine/src/wasm\.rs.*WasmEngine::register_data_source',
+]

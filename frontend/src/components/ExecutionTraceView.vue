@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 
 const props = defineProps({
   /** Execution result with outputs */
@@ -15,12 +15,21 @@ const props = defineProps({
   running: { type: Boolean, default: false },
   /** Whether a re-run action is available */
   canReload: { type: Boolean, default: false },
+  /** Declared output types from buildOutputTypeMap(): name -> { type, unit } */
+  outputTypes: { type: Object, default: null },
 });
 
 const emit = defineEmits(['reload']);
 
 function matchStatus(outputName, actualValue) {
   return _matchStatus(outputName, actualValue, props.expectations);
+}
+
+function outputParts(name) {
+  return formatOutputValueParts(
+    props.result?.outputs?.[name],
+    props.outputTypes?.get(name)?.unit ?? null,
+  );
 }
 
 const hasContent = computed(() =>
@@ -91,8 +100,8 @@ const overallStatus = computed(() => {
             size="md"
             horizontal-alignment="right"
             width="100px"
-            :text="humanize(formatOutputValueParts(result.outputs?.[name], name).text)"
-            :supporting-text="formatOutputValueParts(result.outputs?.[name], name).supportingText"
+            :text="humanize(outputParts(name).text)"
+            :supporting-text="outputParts(name).supportingText"
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-text-cell
@@ -110,16 +119,22 @@ const overallStatus = computed(() => {
       <nldd-spacer size="16"></nldd-spacer>
     </template>
 
+    <!-- `wrap` because the code-viewer only ever owns a *horizontal* scroller
+         and grows to its full content height. Inside the trace sheet that puts
+         its horizontal scrollbar thousands of pixels below the fold, so long
+         lines (a DEFINITION with a dozen enum values) read as truncated with no
+         hint that there is more to the right. Wrapping keeps every value
+         visible; the sheet's own scroller handles the vertical axis. -->
     <template v-if="result && traceText">
       <nldd-title size="5" class="etv-section-title"><span>Execution trace</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <pre class="etv-trace">{{ traceText }}</pre>
+      <nldd-code-viewer wrap>{{ traceText }}</nldd-code-viewer>
     </template>
 
     <template v-if="error && traceText && !result">
       <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <pre class="etv-trace">{{ traceText }}</pre>
+      <nldd-code-viewer wrap>{{ traceText }}</nldd-code-viewer>
       <template v-if="canReload">
         <nldd-spacer size="12"></nldd-spacer>
         <nldd-button size="md" text="Opnieuw uitvoeren" @click="emit('reload')"></nldd-button>
@@ -127,18 +142,3 @@ const overallStatus = computed(() => {
     </template>
   </template>
 </template>
-
-<style scoped>
-.etv-trace {
-  white-space: pre;
-  overflow-x: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  background: #f6f8fa;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
-  padding: 12px 14px;
-  margin: 0;
-}
-</style>

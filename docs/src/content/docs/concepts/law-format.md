@@ -114,7 +114,7 @@ definitions:
 
 ### Operations
 
-Operations are the building blocks of law logic:
+The logic of a law is written with operations:
 
 | Category | Operations | Syntax |
 |----------|-----------|--------|
@@ -241,7 +241,7 @@ A value's *quantity-kind* is declared with `type_spec.unit`, on inputs, outputs,
 
 A unit is a **label, never a computational constraint**: tagging a value never changes it. In particular, a `percentage` is not silently divided by 100; any `… / 100` is an explicit operation written where the value is applied. `ratio` and `percentage` are distinct labels for the same dimension; the corpus keeps both so a law that says "1,896" (a ratio) and one that says "30 procent" are both transcribed faithfully.
 
-Constants may use the optionally-structured form to carry a unit (the bare `naam: 123` form stays valid):
+Constants may use the optionally-structured form to declare a unit (the bare `naam: 123` form stays valid):
 
 ```yaml
 definitions:

@@ -4,4 +4,5 @@
 #![allow(unused_imports)]
 
 pub mod regulation_loader;
+pub mod table;
 pub mod value_conversion;

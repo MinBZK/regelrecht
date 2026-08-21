@@ -129,6 +129,14 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   // update this when navigation crosses trajects, so URL builders read
   // through the closure instead of capturing a snapshot.
   let currentTrajectRef = trajectRefParam || null;
+  // Reactive mirror of `currentTrajectRef`, kept in sync wherever it is
+  // reassigned. Consumers use this to learn which traject the *open law* was
+  // loaded through - which is NOT necessarily the route's active traject
+  // during a cross-traject navigation: `switchLaw` updates it a tick before
+  // the route (and thus `activeTrajectRef`) commits, so a watcher on the law
+  // can tell "this law belongs to the traject I'm loading into" apart from
+  // "…the traject I'm still leaving".
+  const lawTrajectRef = ref(currentTrajectRef);
   // If the parameter looks like a URL, fetch directly; otherwise build
   // the API URL from the current trajectRef.
   const initialDirectUrl =
@@ -227,6 +235,18 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
    * article / traject in one step. Passing `newTrajectRef` is how a
    * cross-traject URL change drives a fresh fetch (and the cache key
    * keeps the previous traject's copy untouched).
+   *
+   * `claimSwitch` is a SHARED staleness token across every caller
+   * (`selectTab`, `onBeforeRouteUpdate`, `watch(activeTrajectRef)`,
+   * `restoreForTraject`, retry): a later call supersedes an earlier one
+   * regardless of which site started it. On supersession this returns `false`
+   * WITHOUT touching `law.value`/`error.value` (the winning call owns those);
+   * on a completed load (success OR its own error) it returns `true`. A caller
+   * whose own guard can't tell "someone else's call won the shared race" apart
+   * from "my call finished" must check this so it doesn't act on refs that now
+   * reflect a different request.
+   *
+   * @returns {Promise<boolean>} whether THIS call was the one that completed.
    */
   async function switchLaw(newLawId, articleNumber, newTrajectRef, { minLoadingMs = 0 } = {}) {
     const isCurrent = claimSwitch();
@@ -239,9 +259,10 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       saving.value = false;
       if (newTrajectRef !== undefined) {
         currentTrajectRef = newTrajectRef || null;
+        lawTrajectRef.value = currentTrajectRef;
       }
       const entry = await fetchLaw(currentTrajectRef, newLawId);
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       law.value = entry.law;
       rawYaml.value = entry.rawYaml;
       currentEtag.value = entry.etag ?? null;
@@ -251,7 +272,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         selectedArticleNumber.value = String(articles.value[0].number);
       }
     } catch (e) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       failed = true;
       error.value = e;
     } finally {
@@ -262,6 +283,28 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         if (isCurrent()) loading.value = false;
       }
     }
+    return true;
+  }
+
+  /**
+   * Drop the currently open law and return to the "nothing open" state (no
+   * law, no article, no error, not loading). Used when a traject switch lands
+   * on the section root: the previous traject's law must not linger in the
+   * panes, and `lawId` must read `null` so the editor shows its neutral empty
+   * state instead of trying to keep the old document up. Clearing `lawParam`
+   * too drops the initial-route fallback, so `lawId` really settles on `null`.
+   * Invalidates any in-flight load/switch so a late response can't repopulate
+   * the cleared state.
+   */
+  function clearLaw() {
+    claimSwitch();
+    lawParam = null;
+    law.value = null;
+    rawYaml.value = '';
+    selectedArticleNumber.value = null;
+    currentEtag.value = null;
+    error.value = null;
+    loading.value = false;
   }
 
   /**
@@ -458,6 +501,8 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     selectedArticle,
     selectedArticleNumber,
     switchLaw,
+    clearLaw,
+    lawTrajectRef,
     loading,
     error,
     saving,

@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
-// @cucumber/messages 33 runs `createRequire(import.meta.url)('../package.json')`
+// @cucumber/messages 34 runs `createRequire(import.meta.url)('../package.json')`
 // at import time (a Node-only API). In the browser build that throws and
 // crashes every view importing the gherkin parser, so alias `node:module` to a
 // browser shim that provides a harmless `createRequire`. Scope it to the build
@@ -50,11 +50,15 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['src/**/*.test.js'],
+    // `e2e/` holds Playwright specs (`*.spec.js`) plus plain Node helpers those
+    // specs share; the helpers' own unit tests are `*.test.js` and run here.
+    // Playwright's `testMatch` is narrowed to `*.spec.js` so the two never
+    // collect each other's files.
+    include: ['src/**/*.test.js', 'e2e/**/*.test.js'],
     pool: 'vmThreads',
     testTimeout: 10000,
     server: {
-      // @cucumber/gherkin 40 and @cucumber/messages 33 ship as pure ESM. The
+      // @cucumber/gherkin 41 and @cucumber/messages 34 ship as pure ESM. The
       // vmThreads pool loads external ESM in a separate VM context, which throws
       // "Linked modules must use the same context". Inlining lets vitest process
       // them in the test context instead. The @regelrecht/frontend-shared
@@ -68,6 +72,36 @@ export default defineConfig({
   build: {
     cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: 'dist',
+    rolldownOptions: {
+      output: {
+        // Without this group, rolldown parks its shared module-namespace
+        // runtime helper inside the OverviewView chunk (the only chunk that
+        // needs CJS interop, via echarts). Several design-system chunks in the
+        // static entry graph import that helper, which drags the ~550 KB
+        // echarts payload into index.html's modulepreload list even though the
+        // route itself is lazy. Grouping echarts into its own chunk makes
+        // rolldown emit a separate tiny runtime chunk, and echarts is then
+        // only fetched when a harvester view actually opens.
+        //
+        // `includeDependenciesRecursively: false` is required: the default
+        // (true) pulls the captured modules' dependencies (Vue's runtime-core,
+        // reactivity, tslib) into the echarts chunk, which puts it right back
+        // in the entry graph.
+        //
+        // `scripts/check-first-load.mjs` (postbuild) guards this: if the
+        // option stops working the build fails instead of echarts silently
+        // rejoining the first load.
+        codeSplitting: {
+          groups: [
+            {
+              name: 'echarts',
+              test: /node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/,
+              includeDependenciesRecursively: false,
+            },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: 3000,

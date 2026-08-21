@@ -49,15 +49,29 @@ function stopPolling() {
 }
 
 async function pollHarvestStatus() {
-  // Timeout check
+  // Timeout check. Entries in 'enriching' are exempt from the poll cap:
+  // chunked enrichment of a large law legitimately runs far longer than
+  // POLL_MAX_MS (the backend keeps the law 'enriching' across chunk runs),
+  // so we must not surface a false "timeout" while the backend is working.
+  // Entries stuck in the early statuses (queued/harvesting) still time out.
   if (pollStart && Date.now() - pollStart > POLL_MAX_MS) {
     const updated = { ...harvestStatus.value };
+    let changed = false;
     for (const [id, status] of Object.entries(updated)) {
-      if (POLLING_STATUSES.has(status)) updated[id] = 'timeout';
+      if (POLLING_STATUSES.has(status) && status !== 'enriching') {
+        updated[id] = 'timeout';
+        changed = true;
+      }
     }
-    harvestStatus.value = updated;
-    stopPolling();
-    return;
+    // Only reassign when something actually flipped to 'timeout': past the
+    // cap this branch runs on every tick (pollStart never advances), and an
+    // 'enriching' entry can legitimately keep polling for hours — rebuilding
+    // the reactive object every 5s would churn watchers for nothing.
+    if (changed) harvestStatus.value = updated;
+    if (!Object.values(updated).some(s => POLLING_STATUSES.has(s))) {
+      stopPolling();
+      return;
+    }
   }
 
   const activeIds = Object.entries(harvestStatus.value)

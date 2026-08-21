@@ -52,13 +52,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
 
       - name: Log in to Container Registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -87,7 +87,24 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha${{ inputs.cache-scope != '' && format(',scope={0}', inputs.cache-scope) || '' }}
-          cache-to: type=gha,mode=max${{ inputs.cache-scope != '' && format(',scope={0}', inputs.cache-scope) || '' }}
+          # De cache ligt in GHCR, niet in de Actions-cache.
+          #
+          # Waarom weg van type=gha: die schrijft per git-ref, en op main is
+          # dat funest. Een PR-run leest alle scopes die zijn token ziet, dus
+          # ook die van main, maar main ziet alleen zichzelf. Daarbovenop
+          # evicteert LRU precies het verkeerde: main's index-bestandjes worden
+          # zelden aangeraakt en vliegen eruit, terwijl de bijbehorende
+          # gigabytes aan blobs vers blijven omdat elke PR ze leest. Gemeten
+          # gevolg: build-jobs op main mediaan 799s, op PR-branches 203s.
+          #
+          # Alleen main schrijft. Een PR leest main's cache en exporteert niet,
+          # zodat er geen tags achterblijven die niemand opruimt (GHCR ruimt
+          # untagged manifests niet automatisch op). Prijs: een PR die
+          # Cargo.lock wijzigt bouwt de cook-laag bij elke push opnieuw.
+          #
+          # ignore-error omdat een mislukte export anders de hele buildstap
+          # laat falen; fork-PR's mogen niet naar GHCR schrijven.
+          cache-from: type=registry,ref=ghcr.io/minbzk/regelrecht-buildcache:${{ inputs.cache-scope != '' && inputs.cache-scope || 'default' }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=ghcr.io/minbzk/regelrecht-buildcache:{0},mode=max,ignore-error=true', inputs.cache-scope != '' && inputs.cache-scope || 'default') || '' }}
           secrets: |
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}

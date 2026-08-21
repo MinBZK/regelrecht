@@ -43,6 +43,37 @@ describe('route disambiguation (traject vs no-traject)', () => {
     const r = router.resolve(`/trajecten/${REF}/taken`);
     expect(r.name).toBe('taken-traject');
     expect(r.params.trajectRef).toBe(REF);
+    // Geen categorie = de "Kies een categorie"-staat in main.
+    expect(r.params.categorie).toBeUndefined();
+  });
+
+  it('routes a taken categorie URL to taken-traject', () => {
+    const r = router.resolve(`/trajecten/${REF}/taken/werkdocumenten`);
+    expect(r.name).toBe('taken-traject');
+    expect(r.params.categorie).toBe('werkdocumenten');
+  });
+
+  // A law CONTEXT filters the task list; it does not open the law. LibraryView
+  // treats `params.lawId` as "a law is open here" - it selects that law in the
+  // sidebar and fires loadLaw() for it - so the taken route must never produce
+  // that param, however law-ish its URL looks.
+  it('names a taken law context contextLawId, never lawId', () => {
+    const r = router.resolve(`/trajecten/${REF}/taken/wet/wet_op_de_zorgtoeslag`);
+    expect(r.name).toBe('taken-traject');
+    expect(r.params.categorie).toBe('wet');
+    expect(r.params.contextLawId).toBe('wet_op_de_zorgtoeslag');
+    expect(r.params.lawId).toBeUndefined();
+  });
+
+  // De integriteitspagina is een top-level route (eigen chrome), maar deelt
+  // het `/trajecten/{ref}/...`-pad met de AppShell-kinderen. Deze test pint
+  // vast dat hij daar niet door een van die kinderen wordt opgeslokt.
+  it('routes a traject integriteit URL to traject-integriteit', () => {
+    const r = router.resolve(`/trajecten/${REF}/integriteit`);
+    expect(r.name).toBe('traject-integriteit');
+    expect(r.params.trajectRef).toBe(REF);
+    expect(r.meta.requiresAuth).toBe(true);
+    expect(r.meta.title).toBe('Integriteit');
   });
 
   it('routes a plain law-id corpus URL to corpus-juris (no traject)', () => {
@@ -122,11 +153,16 @@ describe('sectionTarget - traject preserved across tab switches', () => {
     expect(t.params.lawId).toBe('wet_op_de_zorgtoeslag');
   });
 
-  it('re-stamps a stale stored traject with the currently active one', () => {
+  it('drops a foreign lawId on a cross-traject editor path, landing on the editor root', () => {
+    // The stored editor path names a DIFFERENT traject: its lawId belongs to
+    // that traject and may not exist in the active one. Stamping it across gave
+    // a "niet beschikbaar in dit traject" dead end, so we now land on the active
+    // traject's editor root and let the restore-on-entry flow open the right
+    // article (same rule as trajectSwitchTarget).
     const t = sectionTarget(router, '/trajecten/old-deadbeef/editor/foo', REF);
     expect(t.name).toBe('editor-traject');
     expect(t.params.trajectRef).toBe(REF);
-    expect(t.params.lawId).toBe('foo');
+    expect(t.params.lawId).toBeUndefined();
   });
 
   it('strips the traject when none is active (Geen traject)', () => {

@@ -2,10 +2,12 @@
 resolver = "2"
 members = [
     "admin",
+    "arch-extract",
     "auth",
     "corpus",
     "editor-api",
     "engine",
+    "github",
     "harvester",
     "law-model",
     "pipeline",
@@ -23,18 +25,31 @@ panic = "warn"
 [workspace.dependencies]
 async-trait = "0.1"
 axum = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 # Symmetric AEAD for sealing per-user GitHub OAuth tokens into the browser
 # cookie - the token is deliberately never stored server-side (no DB row, no
 # session-store entry; see editor-api github_oauth.rs). `getrandom` gives
 # `OsRng` for nonce generation.
 chacha20poly1305 = { version = "0.10", features = ["getrandom"] }
 chrono = { version = "0.4", features = ["serde"] }
-openidconnect = "4.0"
+chrono-tz = "0.10"
+# Every schema this workspace validates against is baked into the binary with
+# `include_str!` and every `$ref` in them is a local `#/definitions/...`
+# pointer, so no reference is ever resolved over the network or from disk.
+# The default features (`resolve-http`, `resolve-file`, `tls-aws-lc-rs`) drag
+# in reqwest, rustls and aws-lc-rs - roughly a hundred crates of HTTP stack
+# that is compiled but never called.
+jsonschema = { version = "0.49", default-features = false }
+# default-features = false drops `rustls-tls`, which would hand
+# oauth2/reqwest 0.12 the ring provider and put a second crypto backend in
+# every image. TLS comes from our own reqwest declaration instead, which picks
+# aws-lc-rs, the provider sqlx and reqwest 0.13 already use.
+openidconnect = { version = "4.0", default-features = false, features = ["reqwest"] }
 regex = "1.11"
-# Note: reqwest is intentionally not workspace-hoisted. admin/auth/editor-api
-# require reqwest 0.12 to satisfy openidconnect/oauth2's pinned dependency,
-# while corpus/harvester/pipeline use 0.13. Aligning them would require
+# Note: reqwest is intentionally NOT workspace-hoisted, and must stay that way.
+# admin/auth/editor-api require reqwest 0.12 to satisfy openidconnect/oauth2's
+# pinned dependency, while corpus/github/harvester/pipeline use 0.13. Hoisting a
+# single version would break one side or the other; aligning them would require
 # upgrading openidconnect, which is out of scope for this cleanup.
 roxmltree = "0.21"
 rust_decimal = { version = "1", default-features = false, features = ["maths", "serde", "std"] }
@@ -53,16 +68,14 @@ tower-http = "0.7"
 tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2"
-urlencoding = "2"
 uuid = { version = "1", features = ["serde"] }
 walkdir = "2"
 
 # Test/dev deps.
 http-body-util = "0.1"
 pretty_assertions = "1.4"
-rsa = "0.9"
 tempfile = "3"
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["postgres"] }

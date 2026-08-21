@@ -30,7 +30,7 @@ When `machine_readable` sections are added or changed:
 
 ### Schema and format compliance (regulation YAML changes)
 
-- Does the YAML structure conform to the schema (v0.4.0)?
+- Does the YAML structure conform to the schema (`schema/latest/schema.json`)?
 - Are required fields present (`$schema`, `$id`, `regulatory_layer`, `valid_from`, etc.)?
 - Are operation names valid (`IF`, `AND`, `OR`, `ADD`, `SUBTRACT`, `MULTIPLY`, etc.)?
 - Are type declarations correct (`string`, `number`, `boolean`, `amount` with `type_spec.unit`)?
@@ -70,6 +70,11 @@ When `machine_readable` sections are added or changed:
 - **Critical** — wrong legal outcome, data loss, runtime crash, security vulnerability
 - **Significant** — likely bug, broken reference, missing edge case, lost jobs
 - **Minor** — code quality, style, non-blocking improvement
+
+The merge gate `Claude review completed` searches the review for the exact string
+`🔴 **Critical**` and blocks the merge when it finds one. Reserve that marker for
+findings that really are critical, write it exactly like that, and do not use it
+anywhere you are not reporting one.
 
 ## Skip
 

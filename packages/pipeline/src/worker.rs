@@ -11,7 +11,7 @@ use crate::db;
 use crate::document_convert::{self, DocumentConvertPayload, LlmDocumentConverter};
 use crate::enrich::{
     create_enrich_corpus, enrich_branch_name, execute_enrich, progress_file_path, EnrichConfig,
-    EnrichPayload, RelatedLegislation,
+    EnrichPayload, EnrichResult, RelatedLegislation,
 };
 use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
@@ -19,6 +19,7 @@ use crate::job_queue::{self, CreateJobRequest};
 use crate::law_convert::{self, LawConvertPayload, LlmLawStructurer};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue, Priority};
+use crate::traject_harvest::{self, TrajectHarvestPayload};
 
 /// Local night window (Europe/Amsterdam) as a half-open hour-of-day range
 /// `[start, end)`. Hours in this range get the multiplied enrich cap.
@@ -68,6 +69,25 @@ fn outcome_for_error(err: &str) -> JobOutcome {
         JobOutcome::ResourceExhausted
     } else {
         JobOutcome::Processed
+    }
+}
+
+/// [`outcome_for_error`] voor een mislukte document-convert-job, met één
+/// uitzondering die het verschil maakt.
+///
+/// `is_resource_exhaustion` herkent echte fork/EAGAIN/OOM-uitputting aan
+/// tekstmarkers ("cannot fork", "os error 11", …) in de foutmelding. Dat werkt
+/// alleen zolang die foutmelding niet door een buitenstaander te kiezen is: de
+/// weigering-zonder-toestemming noemt de geüploade bestandsnaam, dus een
+/// document dat `cannot fork.pdf` heet zou anders als resource-uitputting tellen
+/// en — na `WORKER_MAX_CONSECUTIVE_RESOURCE_FAILURES` van zulke uploads op rij —
+/// de breaker laten afgaan die de worker afsluit. Die mislukking is per
+/// definitie een gewoon, afgehandeld geval: we classificeren 'm op het
+/// fouttype in plaats van op de tekst.
+fn document_convert_outcome(err: &PipelineError, msg: &str) -> JobOutcome {
+    match err {
+        PipelineError::LlmNotPermitted(_) => JobOutcome::Processed,
+        _ => outcome_for_error(msg),
     }
 }
 
@@ -140,6 +160,7 @@ const REAPER_INTERVAL: Duration = Duration::from_secs(60);
 fn spawn_reaper(
     pool: PgPool,
     orphan_timeout: Duration,
+    exhausted_threshold: i32,
     cancel: tokio_util::sync::CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -152,6 +173,11 @@ fn spawn_reaper(
                     if let Err(e) = crate::tasks::notify_reaped_task_jobs(&pool, &reaped).await {
                         tracing::warn!(error = %e, "failed to create tasks for reaped jobs");
                     }
+                    // Terminaal gefaalde niet-taak-flow enrich-jobs: dezelfde
+                    // status/retry/exhausted-bookkeeping als het synchrone
+                    // failure-pad, anders strandt de wet in 'enriching' zonder
+                    // actieve/pending job (en polt de frontend eindeloos).
+                    handle_reaped_enrich_jobs(&pool, &reaped, exhausted_threshold).await;
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "failed to reap orphaned jobs");
@@ -235,7 +261,12 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
     // Reap orphaned jobs on an independent task so a wedged job in the main
     // loop can't also stop the reaper (which would freeze the whole queue).
     let reaper_cancel = tokio_util::sync::CancellationToken::new();
-    let reaper_handle = spawn_reaper(pool.clone(), config.orphan_timeout, reaper_cancel.clone());
+    let reaper_handle = spawn_reaper(
+        pool.clone(),
+        config.orphan_timeout,
+        config.exhausted_threshold,
+        reaper_cancel.clone(),
+    );
 
     let mut current_interval = std::time::Duration::ZERO; // poll immediately on startup
     let mut consecutive_resource_failures: u32 = 0;
@@ -255,6 +286,35 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
             }
             _ = tokio::time::sleep(current_interval) => {
                 // Ready to process next job
+            }
+        }
+
+        // Traject-scoped harvests (taak-flow) gaan vóór de corpus-brede
+        // queue: een mens wacht erop (prio 80-aanvraag uit de editor), en de
+        // corpus-brede harvest kan lange bulkruns draaien. Spiegel van hoe de
+        // enrich-worker document-/law-convert-jobs vóór de enrich-cap draait.
+        match process_next_traject_harvest_job(&pool, &config, &http_client).await {
+            Ok(JobOutcome::Processed) => {
+                consecutive_resource_failures = 0;
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::ResourceExhausted) => {
+                handle_resource_exhaustion(
+                    &mut consecutive_resource_failures,
+                    config.max_consecutive_resource_failures,
+                    "traject-harvest",
+                );
+                current_interval = config.poll_interval;
+                continue;
+            }
+            Ok(JobOutcome::Idle) => { /* geen traject-harvest — door naar de gewone queue */ }
+            Err(e) => {
+                tracing::error!(error = %e, "error processing traject-harvest job");
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+                continue;
             }
         }
 
@@ -513,6 +573,8 @@ async fn process_next_job(
                         traject_ref: None,
                         source_etag: None,
                         new_law: None,
+                        chunk_articles: None,
+                        skip_mvt: None,
                     };
                     let payload_json = match serde_json::to_value(&enrich_payload) {
                         Ok(json) => json,
@@ -839,7 +901,12 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
     // Reap orphaned jobs on an independent task so a wedged job in the main
     // loop can't also stop the reaper (which would freeze the whole queue).
     let reaper_cancel = tokio_util::sync::CancellationToken::new();
-    let reaper_handle = spawn_reaper(pool.clone(), config.orphan_timeout, reaper_cancel.clone());
+    let reaper_handle = spawn_reaper(
+        pool.clone(),
+        config.orphan_timeout,
+        config.exhausted_threshold,
+        reaper_cancel.clone(),
+    );
 
     let mut current_interval = std::time::Duration::ZERO;
     let mut consecutive_resource_failures: u32 = 0;
@@ -1328,13 +1395,17 @@ async fn process_next_document_convert_job(
         }
     };
 
-    // Taak-flow-gate, vóór de (kostbare) conversie: zonder `requested_by` is
-    // er geen zinvolle assignee voor de review-taak, dus zo'n job kan nooit
-    // afgeleverd worden. Terminaal falen zónder taak (mirrors the enrich
-    // gate in `process_next_enrich_job`) - de upload-bytes worden ook
-    // meteen opgeruimd, er is toch geen aflever-pad meer voor ze.
-    if payload.deliver_as_task() && payload.requested_by.is_none() {
-        let msg = "taak-flow-payload zonder requested_by".to_string();
+    // Contract-guard, vóór de (kostbare) conversie: een document-convert-job
+    // heeft een traject-doel en mag dus uitsluitend via de taak-flow
+    // opleveren — het directe-push-pad naar de traject-repo is verwijderd
+    // (worker/traject-contract, zie de crate-doc). Dit dekt zowel
+    // `deliver != "task"` (waaronder jobs van vóór het taken-mechanisme) als
+    // een ontbrekende `requested_by` (geen assignee voor de review-taak).
+    // Terminaal falen zónder taak, spiegel van de `law_convert`-gate
+    // hieronder; de upload-bytes worden meteen opgeruimd, er is toch geen
+    // aflever-pad meer voor ze.
+    if let Err(e) = payload.require_task_delivery() {
+        let msg = e.to_string();
         tracing::error!(job_id = %job.id, error = %msg);
         let _ = document_convert::delete_upload(pool, payload.upload_id).await;
         job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
@@ -1358,34 +1429,13 @@ async fn process_next_document_convert_job(
     job_config.timeout = convert_deadline;
 
     match run_document_convert(pool, &job, &payload, &job_config, convert_deadline).await {
-        Ok(true) => {
+        Ok(()) => {
             // Taak-flow: `finish_document_convert_task_job` already inserted the
             // result-blob, completed the job, and created the review-taak,
             // atomically. Only the transient upload bytes remain to clean up.
             if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
                 tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
             }
-            Ok(JobOutcome::Processed)
-        }
-        Ok(false) => {
-            // The markdown is already committed to git at this point. Drop the
-            // transient upload bytes BEFORE propagating any complete_job error —
-            // otherwise a failed status update would `?`-return past the cleanup
-            // and leak the (up to 25 MiB) BYTEA row.
-            let complete_result = job_queue::complete_job(pool, job.id, None).await;
-            if let Err(e) = document_convert::delete_upload(pool, payload.upload_id).await {
-                tracing::warn!(job_id = %job.id, error = %e, "failed to delete document upload after success");
-            }
-            if let Err(e) = &complete_result {
-                // The markdown is already committed to git, but the status update
-                // failed. The job will show as in-progress until the orphan reaper
-                // reclaims it; log loudly so an operator can correlate.
-                tracing::error!(
-                    job_id = %job.id, error = %e, target = %payload.target_path,
-                    "document converted + committed, but marking the job completed failed"
-                );
-            }
-            complete_result?;
             Ok(JobOutcome::Processed)
         }
         Err(e) => {
@@ -1455,27 +1505,28 @@ async fn process_next_document_convert_job(
             }
             fail_result?;
 
-            Ok(outcome_for_error(&msg))
+            Ok(document_convert_outcome(&e, &msg))
         }
     }
 }
 
-/// Convert the uploaded document to markdown and deliver it - either pushed
-/// straight to the traject (old behaviour), or as a result-blob + review-taak
-/// (taak-flow, `payload.deliver_as_task()`). Returns `true` when the taak-flow
-/// ran: `finish_document_convert_task_job` already completed the job as part
-/// of its own transaction, so the caller must NOT call `complete_job` again.
+/// Convert the uploaded document to markdown and deliver it as a result-blob +
+/// review-taak (taak-flow — het enige aflever-pad; de guard in de aanroeper
+/// heeft al geborgd dat `payload.deliver_as_task()` waar is, en het oude
+/// directe-push-pad naar de traject-repo bestaat niet meer).
+/// `finish_document_convert_task_job` completes the job as part of its own
+/// transaction, so the caller must NOT call `complete_job` again.
 async fn run_document_convert(
     pool: &PgPool,
     job: &crate::models::Job,
     payload: &DocumentConvertPayload,
     config: &EnrichConfig,
     convert_deadline: Duration,
-) -> Result<bool> {
+) -> Result<()> {
     // Buitenste begrenzing ónder de reaper-window (zie de aanroeper): de
     // gedropte future komt niet meer aan zijn eigen tempdir-cleanup toe, dus
     // die doen we hier; kill_on_drop ruimt het agent-subprocess op.
-    let markdown = match tokio::time::timeout(
+    let converted = match tokio::time::timeout(
         convert_deadline,
         document_convert::execute_document_convert(pool, payload, config, &LlmDocumentConverter),
     )
@@ -1493,12 +1544,8 @@ async fn run_document_convert(
         }
         Ok(r) => r?,
     };
-    if payload.deliver_as_task() {
-        finish_document_convert_task_job(pool, job, payload, &markdown).await?;
-        return Ok(true);
-    }
-    document_convert::write_markdown_to_traject(pool, payload, &markdown).await?;
-    Ok(false)
+    finish_document_convert_task_job(pool, job, payload, &converted).await?;
+    Ok(())
 }
 
 /// Verwerk één `law_convert`-job: geüpload document → gevalideerde
@@ -1656,6 +1703,147 @@ async fn process_next_law_convert_job(
     }
 }
 
+/// Verwerk één `traject_harvest`-job: BWB-download → gevalideerde
+/// basis-wet-YAML → geketende taak-flow-enrich-job (het kettingstuk is
+/// [`law_convert::chain_enrich_and_complete`] — zelfde keten als law-convert).
+/// Draait op de harvest-worker (die heeft de BWB-machinerie); de geketende
+/// enrich draait daarna op de enrich-worker.
+async fn process_next_traject_harvest_job(
+    pool: &PgPool,
+    config: &WorkerConfig,
+    http_client: &Client,
+) -> Result<JobOutcome> {
+    let job = match job_queue::claim_job(pool, Some(JobType::TrajectHarvest)).await? {
+        Some(job) => job,
+        None => return Ok(JobOutcome::Idle),
+    };
+    tracing::info!(job_id = %job.id, law_id = %job.law_id, attempt = job.attempts, "processing traject-harvest job");
+
+    // Malformed payload is deterministisch: terminaal falen. Zonder payload
+    // is er ook geen aanvrager om een taak voor te maken.
+    let payload: TrajectHarvestPayload = match job
+        .payload
+        .as_ref()
+        .ok_or_else(|| PipelineError::Worker("traject_harvest job has no payload".to_string()))
+        .and_then(|p| {
+            serde_json::from_value(p.clone())
+                .map_err(|e| PipelineError::Worker(format!("payload deserialization failed: {e}")))
+        }) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let msg = format!("invalid traject_harvest payload: {e}");
+            tracing::error!(job_id = %job.id, error = %msg);
+            job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+                .await?;
+            return Ok(JobOutcome::Processed);
+        }
+    };
+
+    // Traject-harvest kent alléén de taak-flow: zonder `requested_by` is er
+    // geen assignee voor de uiteindelijke review-taak, en zonder
+    // `deliver: task` geen aflever-pad (er bestaat geen direct-push-variant).
+    if !payload.deliver_as_task() || payload.requested_by.is_none() {
+        let msg = "traject_harvest vereist deliver=task met requested_by".to_string();
+        tracing::error!(job_id = %job.id, error = %msg);
+        job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+            .await?;
+        return Ok(JobOutcome::Processed);
+    }
+
+    // Zelfde buitenboord-timeout als de corpus-brede harvest: de BWB-fetches
+    // hebben geen eigen deadline en dit is een sequentiële workerloop.
+    let run_result = match tokio::time::timeout(
+        config.job_timeout,
+        traject_harvest::execute_traject_harvest(&payload, http_client),
+    )
+    .await
+    {
+        Err(_elapsed) => Err(PipelineError::Worker(format!(
+            "traject-harvest timed out after {}s",
+            config.job_timeout.as_secs()
+        ))),
+        Ok(Ok(law)) => {
+            let ctx = law_convert::EnrichChainContext {
+                provider: payload.provider.clone(),
+                requested_by: payload.requested_by,
+                traject_id: payload.traject_id,
+                traject_ref: payload.traject_ref.clone(),
+            };
+            law_convert::chain_enrich_and_complete(pool, &job, &ctx, &law).await
+        }
+        Ok(Err(e)) => Err(e),
+    };
+
+    match run_result {
+        Ok(()) => Ok(JobOutcome::Processed),
+        Err(e) => {
+            let msg = e.to_string();
+            tracing::error!(job_id = %job.id, error = %msg, "traject-harvest job failed");
+            // Deterministische fouten (geen geconsolideerde tekst; YAML die
+            // niet valideert; een al-lopende enrich op dezelfde slug) falen
+            // terminaal — een retry reproduceert exact hetzelfde. Transiënte
+            // fouten (BWB-outage, netwerk, timeout) doorlopen fail_job met
+            // backoff tot max_attempts; pas bij definitief falen krijgt de
+            // aanvrager de job_failed-taak.
+            let deterministic = matches!(
+                e,
+                PipelineError::Harvester(
+                    regelrecht_harvester::HarvesterError::NoConsolidatedText { .. }
+                )
+            ) || msg.contains(traject_harvest::SCHEMA_MISMATCH_MARKER)
+                || msg.contains(law_convert::ENRICH_IN_PROGRESS_MARKER);
+
+            let fail_and_notify: Result<()> = async {
+                let mut tx = pool.begin().await?;
+                let terminal = if deterministic {
+                    job_queue::fail_job_terminal(
+                        &mut *tx,
+                        job.id,
+                        Some(serde_json::json!({ "error": msg.clone() })),
+                    )
+                    .await?;
+                    true
+                } else {
+                    let failed = job_queue::fail_job(
+                        &mut *tx,
+                        job.id,
+                        Some(serde_json::json!({ "error": msg.clone() })),
+                    )
+                    .await?;
+                    failed.status == crate::models::JobStatus::Failed
+                };
+                if terminal {
+                    if let Some(account_id) = payload.requested_by {
+                        crate::tasks::create_task(
+                            &mut *tx,
+                            crate::tasks::NewTask {
+                                task_type: crate::tasks::TaskType::JobFailed,
+                                assignee_account_id: Some(account_id),
+                                traject_id: Some(payload.traject_id),
+                                job_id: Some(job.id),
+                                title: format!("Wet ophalen mislukt: {}", payload.display_name()),
+                                payload: Some(serde_json::json!({
+                                    "traject_ref": payload.traject_ref,
+                                    "bwb_id": payload.bwb_id,
+                                    "law_name": payload.law_name,
+                                    "error": msg.clone(),
+                                })),
+                            },
+                        )
+                        .await?;
+                    }
+                }
+                tx.commit().await?;
+                Ok(())
+            }
+            .await;
+            fail_and_notify?;
+
+            Ok(outcome_for_error(&msg))
+        }
+    }
+}
+
 /// Taak-flow: materialiseer de input-blob(s) van een enrich-taak-job in een
 /// eigen werkdirectory, zodat `execute_enrich` zonder git-checkout kan
 /// draaien. Retourneert de workdir-root (TempDir houdt hem in leven).
@@ -1684,6 +1872,99 @@ pub async fn materialize_task_workdir(
     Ok(dir)
 }
 
+/// Reden waarmee een geslaagde run die niets beoordeelbaars opleverde alsnog
+/// als mislukking bij de aanvrager landt. Zonder deze stap zou de review-taak
+/// gewoon worden aangemaakt en zou de gebruiker een taak openen die per
+/// definitie niet af te maken is.
+pub(crate) const NO_REVIEWABLE_LAW: &str =
+    "de verrijking leverde geen wet-YAML op om te beoordelen";
+
+/// Whether an enrich run wrote something the review UI can actually open.
+///
+/// Mirrors how `useTaskReview` picks the law out of the result blobs: the
+/// exact `yaml_path` from the payload, else a file whose basename is neither
+/// dot-prefixed nor a sidecar. The worker stages `features/*.feature` files
+/// alongside the law, and those are not a proposal on their own — a run that
+/// produced only those has nothing to review.
+///
+/// Pure so the contract can be pinned without a live database or workdir.
+pub(crate) fn produced_reviewable_law(
+    workdir: &Path,
+    written_files: &[std::path::PathBuf],
+    yaml_path: &str,
+) -> bool {
+    written_files.iter().any(|abs| {
+        let rel = abs.strip_prefix(workdir).unwrap_or(abs);
+        if rel.to_string_lossy() == yaml_path {
+            return true;
+        }
+        rel.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| !name.starts_with('.') && name.ends_with(".yaml"))
+    })
+}
+
+/// Article numbers whose content differs between the source snapshot and the
+/// proposal, in the proposal's own order.
+///
+/// The enrichment writes `machine_readable` per article, so a run typically
+/// touches a handful of them while leaving the rest byte-identical. Splitting
+/// the review per article means a reviewer decides on what actually changed
+/// instead of on the whole law at once.
+///
+/// Compared as untyped YAML rather than through the law model on purpose: the
+/// only question here is "did this article change", and an untyped compare
+/// keeps answering that when the schema grows a field this crate does not know
+/// about yet. An article the source does not have at all counts as changed.
+///
+/// A parse failure yields None, and the caller then falls back to one task for
+/// the whole law — a proposal we cannot read is still reviewable by hand.
+pub(crate) fn changed_articles(source_yaml: &str, proposal_yaml: &str) -> Option<Vec<String>> {
+    /// `number:` als string, of de YAML hem nu quootte of niet.
+    ///
+    /// Een ongequote `number: 2` parset als YAML-integer. Alleen `as_str()`
+    /// lezen liet zo'n artikel stil uit beide lijsten vallen: geen review-taak
+    /// voor een wél gewijzigd artikel, en ook geen parse-fout die de
+    /// hele-wet-fallback aanzet. De frontend normaliseert hetzelfde veld op
+    /// dezelfde manier (`String(a.number)` in `proposalDivergence`), en de
+    /// taak-payload draagt het nummer als string, dus dat is hier de eenheid.
+    fn article_number(article: &serde_yaml_ng::Value) -> Option<String> {
+        match article.get("number")? {
+            serde_yaml_ng::Value::String(s) => Some(s.clone()),
+            serde_yaml_ng::Value::Number(n) => Some(n.to_string()),
+            // Alles anders (ontbrekend, null, een lijst) is geen artikelnummer
+            // waar een reviewer iets aan heeft; die artikelen blijven buiten
+            // de diff.
+            _ => None,
+        }
+    }
+
+    fn articles(yaml: &str) -> Option<Vec<(String, serde_yaml_ng::Value)>> {
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).ok()?;
+        let list = doc.get("articles")?.as_sequence()?;
+        Some(
+            list.iter()
+                .filter_map(|a| Some((article_number(a)?, a.clone())))
+                .collect(),
+        )
+    }
+
+    let source = articles(source_yaml)?;
+    let proposal = articles(proposal_yaml)?;
+    Some(
+        proposal
+            .into_iter()
+            .filter(|(number, article)| {
+                source
+                    .iter()
+                    .find(|(n, _)| n == number)
+                    .is_none_or(|(_, before)| before != article)
+            })
+            .map(|(number, _)| number)
+            .collect(),
+    )
+}
+
 /// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
 /// result-blobs, verwijder de input-blobs, complete de job en maak de
 /// review-taak aan — alles in één transactie.
@@ -1697,8 +1978,17 @@ pub async fn finish_enrich_task_job(
     let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
         .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
 
+    // Vóór de transactie, want delete_blobs_for_job hieronder gooit de
+    // input-blobs weg: dit is de bronsnapshot waartegen we de proposal diffen.
+    let source_yaml = crate::tasks::load_blobs(pool, job.id, crate::tasks::BlobKind::Input)
+        .await?
+        .into_iter()
+        .find(|b| b.path == payload.yaml_path)
+        .map(|b| b.content);
+
     let mut tx = pool.begin().await?;
     crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
+    let mut proposal_yaml: Option<String> = None;
     for abs in written_files {
         let rel = abs
             .strip_prefix(workdir)
@@ -1711,6 +2001,9 @@ pub async fn finish_enrich_task_job(
             .to_string_lossy()
             .to_string();
         let content = tokio::fs::read_to_string(abs).await?;
+        if rel == payload.yaml_path {
+            proposal_yaml = Some(content.clone());
+        }
         crate::tasks::insert_blob(
             &mut *tx,
             job.id,
@@ -1735,23 +2028,81 @@ pub async fn finish_enrich_task_job(
     if new_law {
         task_payload["kind"] = serde_json::json!("law_create");
     }
-    let title = if new_law {
-        format!("Nieuwe wet beoordelen: {}", payload.law_id)
+
+    // Eén taak per gewijzigd artikel. Een verrijking raakt doorgaans een
+    // handvol artikelen en laat de rest ongemoeid; per artikel beslissen laat de
+    // beoordelaar zich uitspreken over wat er werkelijk veranderd is.
+    //
+    // Terug naar één taak voor de hele wet wanneer we niet kunnen diffen: bij
+    // een nieuwe wet is er geen bron om tegen af te zetten, en bij een
+    // onleesbare YAML weten we het simpelweg niet. Beide zijn met de hand nog
+    // prima te beoordelen, dus dat is een terugval en geen fout.
+    let per_article = if new_law {
+        None
     } else {
-        format!("Verrijking beoordelen: {}", payload.law_id)
+        match (source_yaml.as_deref(), proposal_yaml.as_deref()) {
+            (Some(before), Some(after)) => changed_articles(before, after),
+            _ => None,
+        }
     };
-    crate::tasks::create_task(
-        &mut *tx,
-        crate::tasks::NewTask {
-            task_type: crate::tasks::TaskType::JobReview,
-            assignee_account_id: payload.requested_by,
-            traject_id: payload.traject_id,
-            job_id: Some(job.id),
-            title,
-            payload: Some(task_payload),
-        },
-    )
-    .await?;
+
+    match per_article {
+        Some(articles) if !articles.is_empty() => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %payload.law_id,
+                articles = articles.len(),
+                "review-taken per artikel aangemaakt"
+            );
+            for number in articles {
+                let mut article_payload = task_payload.clone();
+                article_payload["article"] = serde_json::json!(number);
+                crate::tasks::create_task(
+                    &mut *tx,
+                    crate::tasks::NewTask {
+                        task_type: crate::tasks::TaskType::JobReview,
+                        assignee_account_id: payload.requested_by,
+                        traject_id: payload.traject_id,
+                        job_id: Some(job.id),
+                        title: format!(
+                            "Verrijking beoordelen: {} artikel {}",
+                            payload.law_id, number
+                        ),
+                        payload: Some(article_payload),
+                    },
+                )
+                .await?;
+            }
+        }
+        // Leeg betekent: de proposal verschilt nergens van de bron. Dan valt er
+        // niets te beoordelen en hoort er geen taak te komen; de job is klaar.
+        Some(_) => {
+            tracing::info!(
+                job_id = %job.id,
+                law_id = %payload.law_id,
+                "verrijking leverde geen wijziging op, geen review-taak"
+            );
+        }
+        None => {
+            let title = if new_law {
+                format!("Nieuwe wet beoordelen: {}", payload.law_id)
+            } else {
+                format!("Verrijking beoordelen: {}", payload.law_id)
+            };
+            crate::tasks::create_task(
+                &mut *tx,
+                crate::tasks::NewTask {
+                    task_type: crate::tasks::TaskType::JobReview,
+                    assignee_account_id: payload.requested_by,
+                    traject_id: payload.traject_id,
+                    job_id: Some(job.id),
+                    title,
+                    payload: Some(task_payload),
+                },
+            )
+            .await?;
+        }
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -1760,11 +2111,18 @@ pub async fn finish_enrich_task_job(
 /// als result-blob en maak de review-taak aan - atomair met complete_job.
 /// De worker pusht niets; goedkeuren gebeurt in de request-context van de
 /// gebruiker (met diens token wanneer enforcement aan staat).
+///
+/// De genomen route (`pandoc` / `pdftotext` / `llm`) reist mee als
+/// `converted_with`. Twee plekken, met opzet: in `jobs.result` als duurzaam
+/// spoor van wat er gebeurd is, en in de taak-payload omdat dát is wat de
+/// reviewbanner leest (`job_blobs` heeft geen metadata-kolom om het aan de
+/// result-blob zelf te hangen). Dit is expliciet iets anders dan het vinkje bij
+/// de upload: dat zegt wat mócht, dit zegt wat er is gebeurd.
 pub async fn finish_document_convert_task_job(
     pool: &PgPool,
     job: &crate::models::Job,
     payload: &DocumentConvertPayload,
-    markdown: &str,
+    converted: &document_convert::ConvertedDocument,
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
     // Hygiëne: er zijn geen input-blobs voor document-convert (de bytes
@@ -1776,10 +2134,15 @@ pub async fn finish_document_convert_task_job(
         job.id,
         crate::tasks::BlobKind::Result,
         &payload.target_path,
-        markdown,
+        &converted.markdown,
     )
     .await?;
-    job_queue::complete_job(&mut *tx, job.id, None).await?;
+    job_queue::complete_job(
+        &mut *tx,
+        job.id,
+        Some(serde_json::json!({ "converted_with": converted.route.as_str() })),
+    )
+    .await?;
     crate::tasks::create_task(
         &mut *tx,
         crate::tasks::NewTask {
@@ -1792,6 +2155,7 @@ pub async fn finish_document_convert_task_job(
                 "kind": "document",
                 "traject_ref": payload.traject_ref,
                 "target_path": payload.target_path,
+                "converted_with": converted.route.as_str(),
             })),
         },
     )
@@ -1942,6 +2306,10 @@ async fn process_enrich_task_job(
     if bounded_config.timeout >= job_timeout {
         bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
     }
+    // Taak-flow verrijkt altijd de hele wet in één sessie: het resultaat wordt
+    // een review-taak (blobs), niet een push naar de enrich-branch, dus er is
+    // geen cursor-persistentie of continuation-lus om op te bouwen.
+    bounded_config.max_articles_per_run = 0;
 
     let outcome = tokio::time::timeout(
         job_timeout,
@@ -1973,6 +2341,21 @@ async fn process_enrich_task_job(
             }
         }
         Ok(Ok((result, written_files))) => {
+            // De run meldde succes, maar zonder wet-YAML valt er niets te
+            // beoordelen. Een review-taak aanmaken zou de aanvrager een
+            // onmogelijke taak geven; met retry-semantiek krijgt hij in plaats
+            // daarvan een nieuwe poging, en pas na de laatste een
+            // `job_failed`-taak met deze reden erin.
+            if !produced_reviewable_law(workdir.path(), &written_files, &payload.yaml_path) {
+                tracing::warn!(
+                    job_id = %job.id,
+                    law_id = %job.law_id,
+                    files = written_files.len(),
+                    "enrich-run zonder beoordeelbare wet-YAML"
+                );
+                fail_enrich_task_job_with_retry(pool, job, NO_REVIEWABLE_LAW).await?;
+                return Ok(JobOutcome::Processed);
+            }
             let result_json = match serde_json::to_value(&result) {
                 Ok(v) => Some(v),
                 Err(e) => {
@@ -1990,6 +2373,100 @@ async fn process_enrich_task_job(
             Ok(JobOutcome::Processed)
         }
     }
+}
+
+/// Finish a successful (non-task-flow) enrich run atomically.
+///
+/// One transaction: complete the job, mirror the captured untranslatables,
+/// and then either
+/// - `law_complete == true` → mark the law `enriched` (the pre-chunking
+///   behavior); or
+/// - `law_complete == false` (mid-chunk-loop) → leave the law status alone
+///   (it stays `enriching`) and create the continuation enrich job — same
+///   provider, priority, depth and traject scope, bare payload — in the SAME
+///   transaction. Creating it after `complete_job` inside one tx means
+///   `idx_unique_active_enrich_job` no longer sees the completed job as
+///   active, and either both the completion and the continuation commit or
+///   neither does: there is never a law left `enriching` without an
+///   active/pending job.
+///
+/// Returns the continuation job when one was created. An `Ok(None)` conflict
+/// (another active job in the same scope already exists — e.g. a manually
+/// requested re-enrich) is logged and accepted: that job will carry the loop
+/// forward.
+///
+/// `pub` so the DB-integration tests can drive the completion/continuation
+/// contract against a real Postgres without spawning an LLM.
+pub async fn complete_enrich_success_tx(
+    pool: &PgPool,
+    job: &crate::models::Job,
+    payload: &EnrichPayload,
+    result: &EnrichResult,
+    result_json: Option<serde_json::Value>,
+) -> Result<Option<crate::models::Job>> {
+    let mut tx = pool.begin().await?;
+    job_queue::complete_job(&mut *tx, job.id, result_json).await?;
+    // Mirror the captured untranslatables into their table so they
+    // surface in the harvester UI. Atomic with the completion:
+    // delete-and-replace per (law_id, provider).
+    crate::untranslatables::replace_untranslatables(
+        &mut tx,
+        &result.law_id,
+        &result.provider,
+        job.id,
+        &result.untranslatables,
+    )
+    .await?;
+
+    let continuation = if result.law_complete {
+        law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Enriched).await?;
+        None
+    } else {
+        // Bare continuation payload: the chunk window is recomputed from the
+        // cursor on the enrich branch at claim time, so it does NOT ride in
+        // the queue payload (`chunk_articles`/`skip_mvt` stay transport-only).
+        let continuation_payload = EnrichPayload {
+            law_id: payload.law_id.clone(),
+            yaml_path: payload.yaml_path.clone(),
+            provider: Some(result.provider.clone()),
+            depth: payload.depth,
+            requested_by: None,
+            deliver: None,
+            traject_id: None,
+            traject_ref: payload.traject_ref.clone(),
+            source_etag: None,
+            new_law: None,
+            chunk_articles: None,
+            skip_mvt: None,
+        };
+        let continuation_json = serde_json::to_value(&continuation_payload).map_err(|e| {
+            PipelineError::Enrich(format!("serialize continuation enrich payload: {e}"))
+        })?;
+        let mut req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+            .with_priority(Priority::new(job.priority))
+            .with_payload(continuation_json);
+        // Inherit the traject scope from the payload (the `Job` model does not
+        // carry the `traject_ref` column), so the continuation lands in the
+        // same uniqueness scope of `idx_unique_active_enrich_job`.
+        if let Some(ref traject_ref) = payload.traject_ref {
+            req = req.with_traject_ref(traject_ref.clone());
+        }
+        let created = job_queue::create_enrich_job_if_not_exists(&mut *tx, req).await?;
+        if created.is_none() {
+            // Another active enrich job for this law/provider/scope already
+            // exists (e.g. a manual re-enrich request); it will pick the
+            // cursor up from the branch, so the loop still progresses.
+            tracing::info!(
+                law_id = %job.law_id,
+                provider = %result.provider,
+                "continuation enrich job skipped: active job already exists"
+            );
+        }
+        created
+    };
+
+    tx.commit().await?;
+    Ok(continuation)
 }
 
 /// Process the next available enrich job.
@@ -2055,6 +2532,19 @@ async fn process_next_enrich_job(
             return Ok(JobOutcome::Processed);
         }
         return process_enrich_task_job(pool, &job, &payload, enrich_config, job_timeout).await;
+    }
+
+    // Contract-borging (worker/traject-contract, zie de crate-doc): vanaf hier
+    // loopt het corpus-brede pad, dat met het centrale corpus-token naar de
+    // centrale corpus-repo pusht. Een payload met een traject-doel die niet
+    // via de taak-flow hierboven is afgebogen, is een enqueue-fout — terminaal
+    // falen in plaats van met het server-token door te pushen.
+    if let Err(e) = payload.require_corpus_wide_target() {
+        let msg = e.to_string();
+        tracing::error!(job_id = %job.id, law_id = %job.law_id, error = %msg);
+        job_queue::fail_job_terminal(pool, job.id, Some(serde_json::json!({ "error": msg })))
+            .await?;
+        return Ok(JobOutcome::Processed);
     }
 
     // Override the provider if the payload specifies one
@@ -2258,6 +2748,8 @@ async fn process_next_enrich_job(
                 articles_total = result.articles_total,
                 articles_with_machine_readable = result.articles_with_machine_readable,
                 coverage_score = result.coverage_score,
+                law_complete = result.law_complete,
+                enrich_cursor = result.enrich_cursor,
                 provider = %result.provider,
                 branch = %result.branch,
                 "enrichment completed successfully"
@@ -2266,45 +2758,33 @@ async fn process_next_enrich_job(
             // Push to corpus, complete the job in DB, and update law status.
             // If any of these fail, mark the job as failed so it gets retried
             // instead of orphaning it in 'processing' state for 30 minutes.
-            let commit_result: std::result::Result<(), PipelineError> = async {
-                if let Some(ref corpus) = enrich_corpus {
-                    let message = format!(
-                        "enrich({}): {} ({})",
-                        result.provider, result.law_id, result.yaml_path
-                    );
-                    corpus
-                        .client
-                        .commit_and_push(&written_files, &message)
-                        .await
-                        .map_err(|e| PipelineError::Enrich(format!("corpus push failed: {e}")))?;
-                }
-
-                let result_json = match serde_json::to_value(&result) {
-                    Ok(v) => Some(v),
-                    Err(e) => {
-                        tracing::warn!(error = %e, job_id = %job.id, "failed to serialize enrich result");
-                        None
+            let commit_result: std::result::Result<Option<crate::models::Job>, PipelineError> =
+                async {
+                    if let Some(ref corpus) = enrich_corpus {
+                        let message = format!(
+                            "enrich({}): {} ({})",
+                            result.provider, result.law_id, result.yaml_path
+                        );
+                        corpus
+                            .client
+                            .commit_and_push(&written_files, &message)
+                            .await
+                            .map_err(|e| {
+                                PipelineError::Enrich(format!("corpus push failed: {e}"))
+                            })?;
                     }
-                };
 
-                let mut tx = pool.begin().await?;
-                job_queue::complete_job(&mut *tx, job.id, result_json).await?;
-                // Mirror the captured untranslatables into their table so they
-                // surface in the harvester UI. Atomic with the completion:
-                // delete-and-replace per (law_id, provider).
-                crate::untranslatables::replace_untranslatables(
-                    &mut tx,
-                    &result.law_id,
-                    &result.provider,
-                    job.id,
-                    &result.untranslatables,
-                )
-                .await?;
-                law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Enriched).await?;
-                tx.commit().await?;
-                Ok(())
-            }
-            .await;
+                    let result_json = match serde_json::to_value(&result) {
+                        Ok(v) => Some(v),
+                        Err(e) => {
+                            tracing::warn!(error = %e, job_id = %job.id, "failed to serialize enrich result");
+                            None
+                        }
+                    };
+
+                    complete_enrich_success_tx(pool, &job, &payload, &result, result_json).await
+                }
+                .await;
 
             match commit_result {
                 Err(e) => {
@@ -2350,7 +2830,19 @@ async fn process_next_enrich_job(
                     }
                     Ok(outcome)
                 }
-                Ok(()) => {
+                Ok(continuation) => {
+                    if let Some(ref cont) = continuation {
+                        tracing::info!(
+                            job_id = %job.id,
+                            continuation_job_id = %cont.id,
+                            law_id = %job.law_id,
+                            enrich_cursor = result.enrich_cursor,
+                            "law not complete after chunk; continuation enrich job created"
+                        );
+                    }
+
+                    // A successful chunk resets the fail counter: only
+                    // *consecutive* failed runs count toward exhaustion.
                     if let Err(e) =
                         law_status::reset_fail_count(pool, &job.law_id, JobType::Enrich).await
                     {
@@ -2359,16 +2851,24 @@ async fn process_next_enrich_job(
 
                     // Set coverage score outside the transaction (non-critical).
                     // With dual providers, whichever finishes last writes the score.
+                    // The stored score is the CUMULATIVE fraction of articles with
+                    // machine_readable, not the per-run delta — mid-chunk-loop the
+                    // delta would misrepresent a partially processed law. The
+                    // per-run delta stays visible in the job's `EnrichResult`.
+                    let cumulative_coverage = if result.articles_total > 0 {
+                        result.articles_with_machine_readable as f64 / result.articles_total as f64
+                    } else {
+                        0.0
+                    };
                     if let Err(e) =
-                        law_status::set_coverage_score(pool, &job.law_id, result.coverage_score)
-                            .await
+                        law_status::set_coverage_score(pool, &job.law_id, cumulative_coverage).await
                     {
                         tracing::warn!(error = %e, provider = %result.provider, "failed to set coverage score");
                     } else {
                         tracing::info!(
                             law_id = %job.law_id,
                             provider = %result.provider,
-                            coverage_score = result.coverage_score,
+                            coverage_score = cumulative_coverage,
                             "coverage score updated"
                         );
                     }
@@ -2619,6 +3119,72 @@ async fn execute_harvest_job(
     Ok(result)
 }
 
+/// Nazorg voor door de reaper terminaal gefaalde (niet-taak-flow) enrich-jobs.
+///
+/// `reap_orphaned_jobs` zet een job op `failed` zonder `law_entries` aan te
+/// raken; alleen het synchrone failure-pad in `process_next_enrich_job` deed
+/// de statusovergang plus retry/exhausted-bookkeeping. Zonder deze nazorg
+/// blijft een wet na een crash-reap voorgoed in `enriching` staan zonder
+/// actieve of pending job — precies de toestand die de chunk-lus (D2) uitsluit
+/// voor het succespad, en die de frontend sinds de poll-cap-exemptie voor
+/// `enriching` niet meer met een (vals) timeout-signaal afdekt. Spiegel daarom
+/// het synchrone pad: markeer de wet `enrich_failed` en laat
+/// [`handle_enrich_exhausted_or_retry`] óf een retry-job met backoff plannen
+/// (de lus hervat bij de cursor op de branch) óf de wet `enrich_exhausted`
+/// maken. Taak-flow-jobs (`deliver=task`) volgen het bestaande
+/// task-notificatiepad (`tasks::notify_reaped_task_jobs`) en raken
+/// `law_entries` niet.
+///
+/// `pub` zodat de DB-integratietests dit contract zonder reaper-task kunnen
+/// aanroepen.
+pub async fn handle_reaped_enrich_jobs(
+    pool: &PgPool,
+    reaped: &[job_queue::ReapedJob],
+    exhausted_threshold: i32,
+) {
+    for job in reaped {
+        if job.job_type != JobType::Enrich || job.status != crate::models::JobStatus::Failed {
+            continue;
+        }
+        let Some(payload_json) = job.payload.as_ref() else {
+            continue;
+        };
+        let payload: EnrichPayload = match serde_json::from_value(payload_json.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(
+                    job_id = %job.id,
+                    law_id = %job.law_id,
+                    error = %e,
+                    "reaped enrich job has an unparseable payload; skipping law-status aftercare"
+                );
+                continue;
+            }
+        };
+        if payload.deliver_as_task() {
+            continue;
+        }
+        tracing::warn!(
+            job_id = %job.id,
+            law_id = %job.law_id,
+            "enrich job reaped to terminal failure; running law-status aftercare"
+        );
+        // Set EnrichFailed only if not already Enriched or EnrichExhausted
+        // (same guard as the synchronous failure path).
+        if let Err(e) = law_status::mark_enrich_failed(pool, &job.law_id).await {
+            tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
+        }
+        handle_enrich_exhausted_or_retry(
+            pool,
+            &job.law_id,
+            &payload,
+            job.priority,
+            exhausted_threshold,
+        )
+        .await;
+    }
+}
+
 /// Increment the enrich fail count and either mark the law as exhausted
 /// or schedule a new enrich job for retry.
 async fn handle_enrich_exhausted_or_retry(
@@ -2693,6 +3259,7 @@ async fn handle_enrich_exhausted_or_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn hourly_cap_day_vs_night() {
@@ -2774,6 +3341,164 @@ mod tests {
         ));
     }
 
+    const SOURCE: &str = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output: []
+"#;
+
+    #[test]
+    fn reports_only_the_articles_that_differ() {
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+"#;
+        assert_eq!(
+            changed_articles(SOURCE, proposal),
+            Some(vec!["2".to_string()])
+        );
+    }
+
+    #[test]
+    fn reports_nothing_when_the_proposal_matches_the_source() {
+        assert_eq!(changed_articles(SOURCE, SOURCE), Some(Vec::new()));
+    }
+
+    #[test]
+    fn counts_an_article_the_source_does_not_have_as_changed() {
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: "1"
+    text: Eerste artikel
+  - number: "2"
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output: []
+  - number: "3"
+    text: Nieuw artikel
+"#;
+        assert_eq!(
+            changed_articles(SOURCE, proposal),
+            Some(vec!["3".to_string()])
+        );
+    }
+
+    // Een ongequote `number: 2` is geldige YAML en komt in de praktijk voor.
+    // Vroeger viel zo'n artikel stil uit de diff (as_str() op een integer), dus
+    // kreeg een wél gewijzigd artikel geen review-taak - en zonder parse-fout
+    // sloeg de hele-wet-fallback ook niet aan: het voorstel verdween geruisloos.
+    #[test]
+    fn reports_a_changed_article_with_an_unquoted_number() {
+        let source = r#"
+$id: wet_x
+articles:
+  - number: 1
+    text: Eerste artikel
+  - number: 2
+    text: Tweede artikel
+"#;
+        let proposal = r#"
+$id: wet_x
+articles:
+  - number: 1
+    text: Eerste artikel
+  - number: 2
+    text: Tweede artikel
+    machine_readable:
+      execution:
+        output:
+          - name: bedrag
+"#;
+        assert_eq!(
+            changed_articles(source, proposal),
+            Some(vec!["2".to_string()])
+        );
+        assert_eq!(changed_articles(source, source), Some(Vec::new()));
+    }
+
+    #[test]
+    fn yields_none_on_unreadable_yaml_so_the_caller_falls_back() {
+        // Geen paniek en geen lege lijst: "ik weet het niet" is iets anders dan
+        // "er is niets veranderd", en de caller maakt er één taak van.
+        assert_eq!(
+            changed_articles(SOURCE, "dit is: [geen: geldige yaml"),
+            None
+        );
+        assert_eq!(changed_articles("zonder articles-sleutel: 1", SOURCE), None);
+    }
+
+    #[test]
+    fn accepts_a_run_that_wrote_the_law_yaml() {
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![
+            PathBuf::from("/tmp/wd/features/zorgtoeslag.feature"),
+            PathBuf::from("/tmp/wd/laws/wet_op_de_zorgtoeslag/law.yaml"),
+        ];
+        assert!(produced_reviewable_law(
+            workdir,
+            &files,
+            "laws/wet_op_de_zorgtoeslag/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_run_that_only_wrote_feature_files() {
+        // De worker staged features naast de wet. Alleen features betekent dat
+        // er niets te beoordelen is, ook al meldde de run succes.
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![
+            PathBuf::from("/tmp/wd/features/zorgtoeslag.feature"),
+            PathBuf::from("/tmp/wd/features/premie.feature"),
+        ];
+        assert!(!produced_reviewable_law(
+            workdir,
+            &files,
+            "laws/wet_op_de_zorgtoeslag/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_run_that_only_wrote_sidecars() {
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![PathBuf::from("/tmp/wd/laws/x/.enrichment.yaml")];
+        assert!(!produced_reviewable_law(workdir, &files, "laws/x/law.yaml"));
+    }
+
+    #[test]
+    fn rejects_a_run_that_wrote_nothing() {
+        assert!(!produced_reviewable_law(
+            Path::new("/tmp/wd"),
+            &[],
+            "laws/x/law.yaml"
+        ));
+    }
+
+    #[test]
+    fn accepts_a_law_yaml_on_a_path_other_than_the_payload_one() {
+        // Fallback, gelijk aan die van useTaskReview: schrijft het model de wet
+        // ergens anders neer, dan is er nog steeds iets te beoordelen. Alleen
+        // een run zonder énige wet-YAML faalt.
+        let workdir = Path::new("/tmp/wd");
+        let files = vec![PathBuf::from("/tmp/wd/regulation/nl/wet/anders.yaml")];
+        assert!(produced_reviewable_law(workdir, &files, "laws/x/law.yaml"));
+    }
+
     #[test]
     fn classifies_content_failures_as_deterministic() {
         // Real strings observed from failed enrich jobs (opencode) — retrying
@@ -2837,6 +3562,25 @@ mod tests {
     }
 
     #[test]
+    fn chunk_no_output_is_not_deterministic() {
+        // A chunk that produced no output at all fails RETRYABLE: its message
+        // must never match the deterministic-content classifier, or a healthy
+        // large law could be terminally exhausted by one hiccupped chunk. Pin
+        // the full formatted message, not just the marker, so a rewording that
+        // accidentally introduces a classifier marker fails here.
+        let chunk_err = PipelineError::Enrich(format!(
+            "{}: no new machine_readable additions in the window, no chunk_report \
+             referencing this window, no new untranslatables in the window \
+             (articles 15..30 of 324)",
+            crate::enrich::CHUNK_NO_OUTPUT_MARKER
+        ));
+        assert!(
+            !is_deterministic_content_failure(&chunk_err.to_string()),
+            "chunk no-output failures must stay retryable (never terminal)"
+        );
+    }
+
+    #[test]
     fn handle_resource_exhaustion_increments_until_threshold() {
         // Below the threshold it must not exit (test would abort if it did).
         let mut counter = 0u32;
@@ -2844,6 +3588,50 @@ mod tests {
         assert_eq!(counter, 1);
         handle_resource_exhaustion(&mut counter, 3, "test");
         assert_eq!(counter, 2);
+    }
+
+    /// De uitputtings-breaker sluit de worker af, dus mag een gebruiker hem niet
+    /// kunnen laten afgaan. De weigering-zonder-toestemming noemt de geüploade
+    /// bestandsnaam; heet die `cannot fork.pdf`, dan matcht de tekst-classificatie
+    /// een fork-marker. Het fouttype moet daar dwars doorheen gaan.
+    #[test]
+    fn document_convert_refusal_never_counts_as_resource_exhaustion() {
+        let err = PipelineError::LlmNotPermitted(
+            "Conversie van cannot fork.pdf gestopt: de omzetting zonder AI leverde geen \
+             bruikbare tekst op. Er is geen taalmodel gebruikt."
+                .to_string(),
+        );
+        let msg = err.to_string();
+        // De tekst zou de breaker wél laten aanslaan — daarom classificeren we
+        // deze mislukking op type.
+        assert!(is_resource_exhaustion(&msg));
+        assert_eq!(outcome_for_error(&msg), JobOutcome::ResourceExhausted);
+        assert_eq!(
+            document_convert_outcome(&err, &msg),
+            JobOutcome::Processed,
+            "een geweigerde conversie is een gewone mislukking, geen resource-uitputting"
+        );
+    }
+
+    /// De tegenproef: echte fork/OOM-uitputting op deze zelfde job moet de
+    /// breaker nog steeds voeden.
+    #[test]
+    fn document_convert_real_exhaustion_still_trips_the_breaker() {
+        let err =
+            PipelineError::Enrich("cannot fork: Resource temporarily unavailable".to_string());
+        let msg = err.to_string();
+        assert_eq!(
+            document_convert_outcome(&err, &msg),
+            JobOutcome::ResourceExhausted
+        );
+    }
+
+    /// De uitleg gaat ongewijzigd naar de gebruiker (taak-payload, `jobs.result`),
+    /// dus zonder `enrichment error:`-voorvoegsel voor iets dat niet verrijkt is.
+    #[test]
+    fn llm_not_permitted_displays_without_prefix() {
+        let err = PipelineError::LlmNotPermitted("Conversie van brief.doc gestopt.".to_string());
+        assert_eq!(err.to_string(), "Conversie van brief.doc gestopt.");
     }
 
     #[test]
@@ -2898,5 +3686,217 @@ mod tests {
         let root = HarvestPayload::for_law("BWBR0018451", None);
         let root_json = serde_json::to_string(&root).unwrap();
         assert!(!root_json.contains("depth"));
+    }
+}
+
+/// DB-backed borging van het worker/traject-contract op jobniveau (zie de
+/// crate-doc): een document-convert-job die niet via de taak-flow oplevert,
+/// wordt door [`process_next_document_convert_job`] terminaal geweigerd —
+/// vóór de conversie, zonder taak, zonder blob, en (structureel: het push-pad
+/// bestaat niet meer in `document_convert`) zonder ook maar een git-backend
+/// aan te raken.
+#[cfg(all(test, feature = "test-utils"))]
+mod contract_tests {
+    use super::*;
+    use crate::enrich::LlmProvider;
+    use crate::test_utils::TestDb;
+    use serde_json::json;
+
+    /// Seed een upload + document-convert-job zoals de upload-handler dat doet,
+    /// maar met een vrij te kiezen payload (om het contract te kunnen schenden).
+    async fn seed_job(db: &TestDb, payload: serde_json::Value) -> (uuid::Uuid, uuid::Uuid) {
+        let (upload_id,): (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO document_uploads (traject_ref, filename, content_type, bytes) \
+             VALUES ('testtraject-abcd1234', 'bron.pdf', 'application/pdf', $1) RETURNING id",
+        )
+        .bind(vec![1u8, 2, 3])
+        .fetch_one(&db.pool)
+        .await
+        .expect("insert upload");
+
+        let mut payload = payload;
+        payload["upload_id"] = json!(upload_id);
+        let job = job_queue::create_job(
+            &db.pool,
+            CreateJobRequest::new(
+                JobType::DocumentConvert,
+                "doc:testtraject-abcd1234/report.md",
+            )
+            .with_traject_ref("testtraject-abcd1234")
+            .with_payload(payload)
+            .with_max_attempts(1),
+        )
+        .await
+        .expect("create job");
+        (job.id, upload_id)
+    }
+
+    async fn process_one(db: &TestDb) {
+        // De guard vuurt vóór de conversie; er wordt dus nooit een LLM
+        // gespawnd en de timeouts zijn niet relevant.
+        let config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        process_next_document_convert_job(
+            &db.pool,
+            &config,
+            Duration::from_secs(60),
+            Duration::from_secs(1800),
+        )
+        .await
+        .expect("verwerking hoort netjes af te ronden (met een terminaal gefaalde job)");
+    }
+
+    /// Assert dat de job terminaal gefaald is met de contractfout, de upload is
+    /// opgeruimd, en er niets is afgeleverd: geen review-taak, geen result-blob
+    /// — en dus aantoonbaar geen push-materiaal.
+    async fn assert_rejected_without_delivery(db: &TestDb, job_id: uuid::Uuid) {
+        let (status, error): (String, Option<String>) =
+            sqlx::query_as("SELECT status::text, result->>'error' FROM jobs WHERE id = $1")
+                .bind(job_id)
+                .fetch_one(&db.pool)
+                .await
+                .expect("job row");
+        assert_eq!(status, "failed", "de job faalt terminaal");
+        assert!(
+            error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("deliver=task"),
+            "de fout benoemt het contract, kreeg: {error:?}"
+        );
+
+        let (uploads, tasks, blobs): (i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM document_uploads), \
+                    (SELECT COUNT(*) FROM tasks), \
+                    (SELECT COUNT(*) FROM job_blobs)",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("counts");
+        assert_eq!(uploads, 0, "de upload-bytes zijn opgeruimd");
+        assert_eq!(tasks, 0, "geen taak: de guard faalt zonder aflever-pad");
+        assert_eq!(blobs, 0, "geen result-blob: er is niets opgeleverd");
+    }
+
+    #[tokio::test]
+    async fn document_convert_without_task_delivery_fails_terminally() {
+        // Een pre-taken-mechanisme-payload (geen deliver-veld): het oude
+        // directe-push-gedrag bestaat niet meer, dus dit moet terminaal falen.
+        let db = TestDb::new().await;
+        let (job_id, _upload) = seed_job(
+            &db,
+            json!({
+                "traject_id": uuid::Uuid::new_v4(),
+                "traject_ref": "testtraject-abcd1234",
+                "target_path": "report.md",
+            }),
+        )
+        .await;
+
+        process_one(&db).await;
+        assert_rejected_without_delivery(&db, job_id).await;
+    }
+
+    /// Een account + traject om een echte taak aan te kunnen hangen (de
+    /// `tasks`-FK's eisen bestaande rijen). De contract-tests hierboven hebben
+    /// dit niet nodig omdat daar juist géén taak ontstaat.
+    async fn seed_account_and_traject(db: &TestDb) -> (uuid::Uuid, uuid::Uuid) {
+        let (account_id,): (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO accounts (person_sub, email, name) \
+             VALUES ('sub-uploader', 'uploader@example.test', 'Uploader') RETURNING id",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("insert account");
+        let (traject_id,): (uuid::Uuid,) = sqlx::query_as(
+            "INSERT INTO trajects (name, description, scope, created_by) \
+             VALUES ('Testtraject', '', '', $1) RETURNING id",
+        )
+        .bind(account_id)
+        .fetch_one(&db.pool)
+        .await
+        .expect("insert traject");
+        (account_id, traject_id)
+    }
+
+    /// De belofte end-to-end door de worker heen: zonder `allow_llm` faalt een
+    /// conversie die de deterministische route niet haalt terminaal, mét de
+    /// bestaande "Conversie mislukt"-taak — en zonder ooit de agent te starten.
+    /// De seed-upload is een `.pdf` met onzin-bytes: een formaat dát een
+    /// converter heeft, waarvan de tool op deze input stukloopt. Precies de
+    /// stille terugval die dit ticket dichtzet (en die niet zichtbaar zou zijn
+    /// als we alleen een onbekende extensie zouden testen).
+    #[tokio::test]
+    async fn document_convert_without_llm_permission_fails_terminally_with_task() {
+        let db = TestDb::new().await;
+        let (account_id, traject_id) = seed_account_and_traject(&db).await;
+        let (job_id, _upload) = seed_job(
+            &db,
+            json!({
+                "traject_id": traject_id,
+                "traject_ref": "testtraject-abcd1234",
+                "target_path": "report.md",
+                "deliver": "task",
+                "requested_by": account_id,
+                "allow_llm": false,
+            }),
+        )
+        .await;
+
+        process_one(&db).await;
+
+        let (status, error): (String, Option<String>) =
+            sqlx::query_as("SELECT status::text, result->>'error' FROM jobs WHERE id = $1")
+                .bind(job_id)
+                .fetch_one(&db.pool)
+                .await
+                .expect("job row");
+        assert_eq!(status, "failed", "de job faalt terminaal, zonder retry");
+        let error = error.unwrap_or_default();
+        assert!(
+            error.contains("Er is geen taalmodel gebruikt"),
+            "de fout legt uit waarom er niets is omgezet, kreeg: {error}"
+        );
+
+        // Het bestaande faal-pad levert 'm af als taak; geen nieuw mechanisme.
+        let (task_type, title): (String, String) =
+            sqlx::query_as("SELECT task_type, title FROM tasks WHERE job_id = $1")
+                .bind(job_id)
+                .fetch_one(&db.pool)
+                .await
+                .expect("taak-rij");
+        assert_eq!(task_type, "job_failed");
+        assert_eq!(title, "Conversie mislukt: report.md");
+
+        let (uploads, blobs): (i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM document_uploads), (SELECT COUNT(*) FROM job_blobs)",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("counts");
+        assert_eq!(uploads, 0, "de upload-bytes zijn opgeruimd");
+        assert_eq!(blobs, 0, "er is niets opgeleverd");
+    }
+
+    #[tokio::test]
+    async fn document_convert_task_delivery_without_requested_by_fails_terminally() {
+        // deliver=task zonder aanvrager: geen assignee voor de review-taak,
+        // dus ook geen aflever-pad — zelfde terminale weigering.
+        let db = TestDb::new().await;
+        let (job_id, _upload) = seed_job(
+            &db,
+            json!({
+                "traject_id": uuid::Uuid::new_v4(),
+                "traject_ref": "testtraject-abcd1234",
+                "target_path": "report.md",
+                "deliver": "task",
+            }),
+        )
+        .await;
+
+        process_one(&db).await;
+        assert_rejected_without_delivery(&db, job_id).await;
     }
 }

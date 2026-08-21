@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { interceptLaw, gotoEditor, selectArticle, readYamlPane, waitForSheet, fillSheetTextField, fillSheetNumberField, saveSheet } from './helpers.js';
+import { interceptLaw, gotoEditor, selectArticle, readYamlPane, waitForSheet, fillSheetTextField, fillSheetNumberField, saveSheet, pane } from './helpers.js';
 
 test.describe('Definitions', () => {
   test.beforeEach(async ({ page }) => {
@@ -11,11 +11,11 @@ test.describe('Definitions', () => {
     await selectArticle(page, '1a');
 
     // Init machine_readable
-    await page.locator('[data-testid="init-mr-btn"]').click();
+    await pane(page, 'machine').locator('[data-testid="init-mr-btn"]').click();
     await page.waitForTimeout(300);
 
     // Click "Nieuwe definitie" button
-    await page.locator('nldd-button:has-text("Nieuwe definitie")').click();
+    await page.locator('[data-testid="add-def-btn"]').click();
     await waitForSheet(page);
 
     // Set name
@@ -42,11 +42,11 @@ test.describe('Definitions', () => {
     await selectArticle(page, '2');
 
     // Init machine_readable
-    await page.locator('[data-testid="init-mr-btn"]').click();
+    await pane(page, 'machine').locator('[data-testid="init-mr-btn"]').click();
     await page.waitForTimeout(300);
 
     // Add definition: drempelinkomen_alleenstaande = 3971900
-    await page.locator('nldd-button:has-text("Nieuwe definitie")').click();
+    await page.locator('[data-testid="add-def-btn"]').click();
     await waitForSheet(page);
 
     await fillSheetTextField(page, 'Naam', 'drempelinkomen_alleenstaande');

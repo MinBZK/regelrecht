@@ -87,7 +87,7 @@ async fn download_command(
     // Use today if no date provided
     let effective_date = date
         .map(String::from)
-        .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+        .unwrap_or_else(regelrecht_shared::dates::today_str);
 
     // Validate output directory exists (if specified) before downloading
     if let Some(output_dir) = output {

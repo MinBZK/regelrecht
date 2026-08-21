@@ -2,26 +2,26 @@
 /**
  * NoteCreator - the note authoring form (RFC-018 write path, steps 3-5).
  *
- * Opened by AnnotatedText when the user selects text and clicks "Notitie".
- * Receives the raw [start,end) range the selection mapped to (selectionToRaw
- * already did the DOM->raw work). This component builds the TextQuoteSelector
+ * Rendered by EditorView in the notes sheet, opened from the toolbar comment
+ * button on an editor selection or from a note group's "Notitie toevoegen".
+ * Receives the raw [start,end) code-point range the selection mapped to.
+ * This component builds the TextQuoteSelector
  * (growing context until it is unique), lets the user pick a motivation and
  * fill the matching body, and emits a complete W3C Annotation object. It does
  * not persist - useDraftNotes (owned by EditorApp) does, so the new note
  * highlights live alongside committed ones.
  */
 import { ref, computed, watch, onMounted } from 'vue';
-import { buildSelector } from '../composables/useTextSelection.js';
+import { buildSelector, cpToUtf16 } from '../composables/useTextSelection.js';
 import { useAmbiguityVocabulary } from '../composables/useAmbiguityVocabulary.js';
 import { documentsListUrl } from '../composables/corpusUrls.js';
 import { apiFetchJson } from '../lib/apiFetch.js';
 import { useAuth } from '../composables/useAuth.js';
 import { quoteContext } from '../lib/quoteContext.js';
-import { cpToUtf16 } from '../composables/useNotesHighlight.js';
 import QuotedFragment from './QuotedFragment.vue';
 
 const props = defineProps({
-  // Raw char range from selectionToRawRange(), or null when closed.
+  // Raw (code-point) char range into rawText, or null when closed.
   range: { type: Object, default: null },
   rawText: { type: String, default: '' },
   lawId: { type: String, default: '' },
@@ -29,6 +29,10 @@ const props = defineProps({
   article: { type: Object, default: null },
   // Loaded WASM engine (resolveNote) for selector uniqueness validation.
   engine: { type: Object, default: null },
+  // `valid_from` of the law version on screen, so uniqueness is validated in
+  // the text being annotated instead of the newest loaded version. Empty
+  // means "latest" (a law without valid_from).
+  validFrom: { type: String, default: '' },
   // Active traject ref. Required to surface the "Document" link mode -
   // without a traject there is no documents folder to pick from.
   trajectRef: { type: String, default: '' },
@@ -155,6 +159,7 @@ const selectorResult = computed(() => {
     props.lawId,
     props.engine,
     props.article?.number,
+    props.validFrom || null,
   );
 });
 
@@ -172,6 +177,7 @@ const referencedFragment = computed(() => {
 });
 const selectorStatus = computed(() => selectorResult.value?.status ?? null);
 const selectorReason = computed(() => selectorResult.value?.reason ?? null);
+const selectorSkipReason = computed(() => selectorResult.value?.skipReason ?? null);
 
 // Individual "is this part filled?" checks, shared by canSave and the body /
 // motivation builders. A link only counts once its target is actually chosen.
@@ -206,6 +212,21 @@ function applyRange(range) {
   }
 }
 watch(() => props.range, applyRange);
+// The selected article can change while the form is open (tab click, browser
+// back). `range` holds offsets into the OLD article's text; buildSelector
+// would slice a garbage substring of the new text at stale offsets and could
+// anchor a note on text the user never selected. Cancel the whole flow on any
+// article/law switch instead. Keyed on lawId + article number, not object
+// identity: a save/reload of the same article swaps the object but keeps the
+// offsets valid, and must not slam the form shut mid-edit.
+watch(
+  () => [props.lawId, props.article?.number],
+  ([lawId, nr], [prevLawId, prevNr]) => {
+    if (String(lawId) !== String(prevLawId) || String(nr) !== String(prevNr)) {
+      emit('cancel');
+    }
+  },
+);
 // v-if mounts this fresh when editing starts, so the range is already set - run
 // the setup once on mount (the non-immediate watch alone would miss it).
 onMounted(() => {
@@ -358,6 +379,21 @@ const statusInfo = computed(() => {
         title: 'Niet eenduidig',
         lead: 'Dit fragment is hier niet uniek. Breid de selectie uit met de omringende woorden.',
       };
+    case 'not-searched':
+      // status 'skipped': the resolver hit one of its bounds and never
+      // searched. Saying "niet teruggevonden" here would be untrue (nothing
+      // was established) and the lidnummer advice would be misdirected.
+      // Which bound was hit decides the advice: only 'quote_too_long' is
+      // something the author fixes by shortening the selection.
+      return selectorSkipReason.value === 'search_budget'
+        ? {
+            title: 'Niet naar gezocht',
+            lead: 'De wettekst is te groot om deze selectie in terug te zoeken. Korter selecteren helpt hier niet.',
+          }
+        : {
+            title: 'Niet naar gezocht',
+            lead: 'De selectie is te lang om terug te zoeken. Maak de selectie korter.',
+          };
     default: // 'not-found'
       return {
         title: 'Niet teruggevonden',

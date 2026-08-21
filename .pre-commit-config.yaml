@@ -64,6 +64,96 @@ repos:
         exclude: (^|/)\.[^/]*\.yaml$
         types: [yaml]
 
+      - id: tool-pins-in-sync
+        name: cargo-chef-pin gelijk in alle Dockerfiles
+        entry: script/check-tool-pins.sh
+        language: system
+        pass_filenames: false
+        files: (^frontend/Dockerfile$|^packages/(admin|pipeline)/Dockerfile$)
+
+      - id: review-gate-tests
+        name: Merge-poort op de Claude-review doet wat hij belooft
+        entry: script/await-claude-review.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/await-claude-review(\.test)?\.sh|\.github/workflows/claude-code-review\.yml)$
+
+      - id: review-comments-tests
+        name: Momentopname en opruimen van de vorige review doen wat ze beloven
+        entry: script/claude-review-comments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/claude-review-comments(\.test)?\.sh|\.github/workflows/claude-code-review\.yml)$
+
+      - id: security-approval-gate-tests
+        name: Merge-poort op een goedgekeurde security-update doet wat hij belooft
+        entry: script/require-security-approval.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/require-security-approval(\.test)?\.sh|\.github/workflows/(security-update-gate|claude-dependabot)\.yml)$
+
+      - id: ci-gate-tests
+        name: Test-poort in ci.yml blokkeert op een gevallen voorganger
+        entry: just ci-gate-test
+        language: system
+        pass_filenames: false
+        files: ^(\.github/workflows/ci\.yml|script/ci-gate\.test\.mjs)$
+
+      - id: dockerfile-consistency
+        name: Rust-Dockerfiles blijven bij de cargo-workspace
+        entry: just dockerfile-consistency-test
+        language: system
+        pass_filenames: false
+        files: ^(frontend/Dockerfile|packages/(admin|pipeline)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
+
+      - id: deploy-gate-tests
+        name: Deploy-poort op een groene CI doet wat hij belooft
+        entry: script/require-ci-green.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/require-ci-green(\.test)?\.sh|\.github/workflows/deploy\.yml)$
+
+      - id: deployed-urls-tests
+        name: Productiecontrole na de deploy doet wat hij belooft
+        entry: script/check-deployed-urls.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-deployed-urls(\.test)?\.sh|\.github/workflows/deploy\.yml)$
+      - id: preview-environments-tests
+        name: Controle op achtergebleven previews doet wat hij belooft
+        entry: script/check-preview-environments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-preview-environments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: preview-deployments-tests
+        name: Controle op achtergebleven ZAD-deployments doet wat hij belooft
+        entry: script/check-preview-deployments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/check-preview-deployments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: orphaned-deployments-tests
+        name: Opruimen van verweesde deployments raakt niets van een open PR
+        entry: script/prune-orphaned-deployments.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/prune-orphaned-deployments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: preview-images-tests
+        name: Opruimen van images laat draaiende versies staan
+        entry: script/prune-preview-images.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/prune-preview-images(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+
+      - id: advisories-report-tests
+        name: Advisory-melding komt aan en niet dubbel
+        entry: script/report-advisories.test.sh
+        language: system
+        pass_filenames: false
+        files: ^(script/(report-advisories(\.test)?|audit-advisories)\.sh|\.github/workflows/security-advisories\.yml)$
+
       - id: skills-no-casus
         name: Skills blijven dossier-agnostisch (geen casus-inhoud)
         entry: script/check-skills-no-casus.sh

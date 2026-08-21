@@ -41,13 +41,16 @@ fn to_pg_interval(duration: Duration) -> Result<PgInterval> {
 /// De payload rijdt mee zodat de aanroeper voor terminaal gefaalde
 /// taak-flow-jobs alsnog een `job_failed`-taak kan aanmaken — zonder die
 /// nazorg verdwijnt zo'n job stil uit de "Bezig"-lijst (zie
-/// `tasks::notify_reaped_task_jobs`).
+/// `tasks::notify_reaped_task_jobs`). `priority` rijdt mee voor de
+/// enrich-nazorg (`worker::handle_reaped_enrich_jobs`), die een retry-job met
+/// dezelfde prioriteit inplant.
 #[derive(Debug, sqlx::FromRow)]
 pub struct ReapedJob {
     pub id: Uuid,
     pub law_id: String,
     pub job_type: JobType,
     pub status: JobStatus,
+    pub priority: i32,
     pub payload: Option<serde_json::Value>,
 }
 
@@ -394,9 +397,9 @@ where
                 END
             WHERE status = 'processing'
               AND started_at < now() - $1::interval
-            RETURNING id, law_id, job_type, status, payload
+            RETURNING id, law_id, job_type, status, priority, payload
         )
-        SELECT id, law_id, job_type, status, payload FROM reaped
+        SELECT id, law_id, job_type, status, priority, payload FROM reaped
         "#,
     )
     .bind(timeout_interval)

@@ -17,7 +17,6 @@ supported-schemas = ["v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0",
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-regelrecht-shared = { path = "../shared" }
 regelrecht-law-model = { path = "../law-model" }
 rust_decimal.workspace = true
 serde.workspace = true
@@ -31,7 +30,7 @@ strsim = "0.11"
 tracing.workspace = true
 
 [dependencies.jsonschema]
-version = "0.47"
+workspace = true
 optional = true
 
 [dependencies.wasm-bindgen]
@@ -59,6 +58,12 @@ path = "src/bin/evaluate.rs"
 [[test]]
 name = "bdd"
 harness = false
+# Niet meelopen in `cargo test`: het target draait standaard beide buckets, en
+# bucket A (wetvalidatie tegen het echte corpus) hoort niet in een testbaan die
+# moet blokkeren. Aanroepers kiezen hun bucket met BDD_BUCKET en noemen het
+# target expliciet — `just bdd` lokaal, `BDD_BUCKET=conformance cargo test
+# --test bdd` in CI (zie docs/operations/ci-cd.md).
+test = false
 
 [features]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]

@@ -1,5 +1,5 @@
 <script setup>
-// "Ondersteuning" — a short support sheet opened from the account menu. Points
+// "Help" — a short support sheet opened from the account menu. Points
 // users at the support inbox when they run into something. Exposes show()/hide()
 // so the shell can drive it from the menu item.
 import { ref } from 'vue';
@@ -21,7 +21,7 @@ defineExpose({ show, hide });
   <Teleport to="body">
     <nldd-sheet ref="sheetEl" placement="right" width="480px" full-height @close="hide">
       <nldd-page sticky-header>
-        <nldd-top-title-bar slot="header" text="Ondersteuning" dismiss-text="Sluit" @dismiss="hide"></nldd-top-title-bar>
+        <nldd-top-title-bar slot="header" text="Help" dismiss-text="Sluit" @dismiss="hide"></nldd-top-title-bar>
         <nldd-simple-section width="full">
           <nldd-rich-text>
             <p>

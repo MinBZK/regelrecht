@@ -1,0 +1,41 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: test_value_typing
+name: Testwet waardetypering
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2023-01-01'
+valid_from: '2023-01-01'
+url: https://example.com/test_value_typing
+
+articles:
+  - number: '1'
+    url: https://example.com/test_value_typing/1
+    text: >-
+      De waarde is een getal indien zij gelijk is aan 42, en tekst indien zij
+      gelijk is aan "42".
+    machine_readable:
+      execution:
+        parameters:
+          - name: waarde
+            type: string
+            required: true
+        output:
+          - name: waarde_is_getal
+            type: boolean
+          - name: waarde_is_tekst
+            type: boolean
+        actions:
+          # EQUALS is structureel: Int(42) en String("42") zijn niet gelijk.
+          # Daarmee verraadt de uitkomst welk type de stap heeft opgeleverd.
+          - output: waarde_is_getal
+            value:
+              operation: EQUALS
+              subject: $waarde
+              value: 42
+          - output: waarde_is_tekst
+            value:
+              operation: EQUALS
+              subject: $waarde
+              value: '42'

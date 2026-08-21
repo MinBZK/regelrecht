@@ -93,6 +93,12 @@ pub struct SourceMap {
     versions: HashMap<String, Vec<LoadedLaw>>,
     /// Conflicts that were resolved (for reporting).
     resolved_conflicts: Vec<ConflictResolution>,
+    /// The date "currently in force" is measured against when collapsing a
+    /// law's versions to one. Supplied by the caller rather than read off a
+    /// clock here: this crate deliberately carries no time dependency, and the
+    /// answer is a Dutch calendar date (`regelrecht_shared::dates`), not the
+    /// timezone of whichever machine happens to run the scan.
+    reference_date: String,
 }
 
 /// Record of a conflict that was resolved by priority.
@@ -107,12 +113,18 @@ pub struct ConflictResolution {
 
 impl SourceMap {
     /// Create an empty source map.
-    pub fn new() -> Self {
+    pub fn new(reference_date: impl Into<String>) -> Self {
         Self {
             laws: HashMap::new(),
             versions: HashMap::new(),
             resolved_conflicts: Vec::new(),
+            reference_date: reference_date.into(),
         }
+    }
+
+    /// The date this map resolves "currently in force" against.
+    pub fn reference_date(&self) -> &str {
+        &self.reference_date
     }
 
     /// Load laws from a single source directory.
@@ -226,10 +238,12 @@ impl SourceMap {
                 if existing.source_id == law.source_id {
                     let existing_date = extract_date_from_path(&existing.file_path);
                     let new_date = extract_date_from_path(&law.file_path);
-                    let today = today_str();
 
-                    let new_wins =
-                        pick_best_version(existing_date.as_deref(), new_date.as_deref(), &today);
+                    let new_wins = pick_best_version(
+                        existing_date.as_deref(),
+                        new_date.as_deref(),
+                        &self.reference_date,
+                    );
 
                     if new_wins {
                         tracing::debug!(
@@ -512,57 +526,30 @@ impl SourceMap {
     }
 }
 
-impl Default for SourceMap {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Extract a YYYY-MM-DD date from the filename component of a path.
 ///
-/// Matches the convention `…/law_id/2025-01-01.yaml`.
-fn extract_date_from_path(path: &str) -> Option<String> {
+/// Matches the convention `…/law_id/2025-01-01.yaml`. The single extractor for
+/// every route that feeds [`pick_best_version`] — local scan and GitHub tree
+/// alike. That comparison is lexicographic, so any stem that is not a date
+/// sorts against real dates by accident: `2025-01-01-concept` is greater than
+/// `2025-01-01` and would win. Returning `None` keeps such a file out of the
+/// running instead.
+pub(crate) fn extract_date_from_path(path: &str) -> Option<String> {
     let filename = path.rsplit('/').next().unwrap_or(path);
     let stem = filename.strip_suffix(".yaml")?;
-    // Validate YYYY-MM-DD pattern
-    if stem.len() == 10
-        && stem.as_bytes()[4] == b'-'
-        && stem.as_bytes()[7] == b'-'
-        && stem.bytes().filter(|b| b.is_ascii_digit()).count() == 8
-    {
-        Some(stem.to_string())
-    } else {
-        None
+    let bytes = stem.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
     }
-}
-
-/// Return today's date as "YYYY-MM-DD".
-pub(crate) fn today_str() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    // 86400 seconds per day, epoch is 1970-01-01
-    let days = now / 86400;
-    // Simple conversion: count years/months/days from epoch
-    let (y, m, d) = days_to_ymd(days);
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
-/// Convert days since Unix epoch to (year, month, day).
-fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
-    // Algorithm from https://howardhinnant.github.io/date_algorithms.html
-    days += 719_468;
-    let era = days / 146_097;
-    let doe = days - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
+    if !(0..10).all(|i| i == 4 || i == 7 || bytes[i].is_ascii_digit()) {
+        return None;
+    }
+    let month: u32 = stem.get(5..7)?.parse().ok()?;
+    let day: u32 = stem.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some(stem.to_string())
 }
 
 /// Decide whether `new_date` should replace `existing_date`.
@@ -844,11 +831,24 @@ pub fn collect_law_outputs(yaml: &str) -> Vec<CollectedOutput> {
 /// scenario dependency loader doesn't have to fetch and parse every law in
 /// the corpus over HTTP just to find the handful of implementing regulations.
 pub fn collect_law_implements(yaml: &str) -> Vec<String> {
-    let doc: LawDoc = match serde_yaml_ng::from_str(yaml) {
-        Ok(d) => d,
-        Err(_) => return Vec::new(),
-    };
-    collect_implements_from_doc(&doc)
+    try_collect_law_implements(yaml).unwrap_or_default()
+}
+
+/// Fallible variant of [`collect_law_implements`]: returns `Err` exactly
+/// when the tolerant law parse fails — the case the infallible variant
+/// silently degrades to "implements nothing".
+///
+/// The implements-index *generator* must use this one: recording a parse
+/// failure as an empty list in a committed index artefact would make the
+/// failure permanent and invisible (the consumer trusts the index and never
+/// re-parses the body), so the generator counts these and refuses to emit
+/// an index. Read paths that merely degrade per-request keep using the
+/// infallible variant.
+pub fn try_collect_law_implements(
+    yaml: &str,
+) -> std::result::Result<Vec<String>, serde_yaml_ng::Error> {
+    let doc: LawDoc = serde_yaml_ng::from_str(yaml)?;
+    Ok(collect_implements_from_doc(&doc))
 }
 
 /// Doc-based core of [`collect_law_implements`], shared with the
@@ -867,6 +867,104 @@ fn collect_implements_from_doc(doc: &LawDoc) -> Vec<String> {
         }
     }
     out
+}
+
+/// How one law points at another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LawReferenceKind {
+    /// An input field resolved from another law's output
+    /// (`source: {regulation: …, output: …}`).
+    SourceRegulation,
+    /// The IoC link from a lower regulation to the higher law whose
+    /// `open_term` it fills (`machine_readable.implements[].law`).
+    Implements,
+}
+
+/// One `$id` a law body points at, with the kind of link it came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LawReference {
+    pub law_id: String,
+    pub kind: LawReferenceKind,
+}
+
+/// Collect every other law `$id` this body points at: the `source.regulation`
+/// targets of its input fields plus its `implements` declarations. Each
+/// `(kind, id)` pair appears at most once; order of first occurrence is kept.
+///
+/// Deliberately a **structural walk** over the parsed document rather than a
+/// path-pinned lookup: this feeds the integrity report, whose whole job is to
+/// find dangling references, so it must not silently miss one that sits at a
+/// nesting the schema grows later. A body that does not parse yields no
+/// references (the caller reports the parse failure separately) — same
+/// tolerance as [`collect_law_implements`].
+pub fn collect_law_references(yaml: &str) -> Vec<LawReference> {
+    let value: serde_yaml_ng::Value = match serde_yaml_ng::from_str(yaml) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    walk_law_references(&value, &mut seen, &mut out);
+    out
+}
+
+/// Record one reference, unless the same `(kind, id)` was already seen.
+fn push_law_reference(
+    kind: LawReferenceKind,
+    id: &str,
+    seen: &mut HashSet<(LawReferenceKind, String)>,
+    out: &mut Vec<LawReference>,
+) {
+    if !id.is_empty() && seen.insert((kind, id.to_string())) {
+        out.push(LawReference {
+            law_id: id.to_string(),
+            kind,
+        });
+    }
+}
+
+/// Recursive half of [`collect_law_references`].
+fn walk_law_references(
+    value: &serde_yaml_ng::Value,
+    seen: &mut HashSet<(LawReferenceKind, String)>,
+    out: &mut Vec<LawReference>,
+) {
+    match value {
+        serde_yaml_ng::Value::Mapping(map) => {
+            for (key, child) in map {
+                match key.as_str() {
+                    // `source: {regulation: "other_law", output: …}`
+                    Some("source") => {
+                        if let Some(id) = child.get("regulation").and_then(|v| v.as_str()) {
+                            push_law_reference(LawReferenceKind::SourceRegulation, id, seen, out);
+                        }
+                    }
+                    // `implements: [{law: "higher_law", …}]`
+                    Some("implements") => {
+                        if let Some(items) = child.as_sequence() {
+                            for item in items {
+                                if let Some(id) = item.get("law").and_then(|v| v.as_str()) {
+                                    push_law_reference(LawReferenceKind::Implements, id, seen, out);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            // Recurse after the direct matches so `out` follows the document
+            // order rather than the recursion's.
+            for (_, child) in map {
+                walk_law_references(child, seen, out);
+            }
+        }
+        serde_yaml_ng::Value::Sequence(items) => {
+            for item in items {
+                walk_law_references(item, seen, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -889,6 +987,7 @@ mod tests {
             scopes: vec![],
             priority,
             auth_ref: None,
+            strict_auth: false,
         }
     }
 
@@ -934,7 +1033,7 @@ mod tests {
         write_yaml(dir.path(), "wet/test_wet/2025-01-01.yaml", "test_wet");
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let original = map.get_law("test_wet").unwrap().clone();
@@ -971,7 +1070,7 @@ mod tests {
         .unwrap();
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
         assert_eq!(
             map.get_law("test_wet").unwrap().name.as_deref(),
@@ -987,7 +1086,7 @@ mod tests {
 
     #[test]
     fn test_update_yaml_content_missing_law_returns_false() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let updated = map.update_yaml_content("nonexistent_law", "$id: foo\n".to_string());
         assert!(!updated, "update should report failure for missing law");
         assert_eq!(map.len(), 0, "missing law should not be inserted");
@@ -1014,7 +1113,7 @@ mod tests {
         write_yaml(dir.path(), "wet/test_wet/2025-01-01.yaml", "test_wet");
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let count = map.load_source(&source).unwrap();
 
         assert_eq!(count, 1);
@@ -1028,7 +1127,7 @@ mod tests {
 
     #[test]
     fn test_metadata_entry_is_unloaded_with_stripped_path() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         // `file_path` is the in-repo path; the source is rooted at
         // `regulation/nl`, so the stored relative_path drops that prefix.
         map.load_metadata_entry(
@@ -1066,7 +1165,7 @@ mod tests {
         let source_a = make_source("central", "Central", dir_a.path(), 1);
         let source_b = make_source("gemeente", "Gemeente", dir_b.path(), 10);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source_a).unwrap();
         map.load_source(&source_b).unwrap();
 
@@ -1086,7 +1185,7 @@ mod tests {
         let source_a = make_source("central", "Central", dir_a.path(), 1);
         let source_b = make_source("overlap", "Overlap", dir_b.path(), 10);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source_a).unwrap();
         map.load_source(&source_b).unwrap();
 
@@ -1109,7 +1208,7 @@ mod tests {
         let source_a = make_source("source-a", "Source A", dir_a.path(), 5);
         let source_b = make_source("source-b", "Source B", dir_b.path(), 5);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source_a).unwrap();
         let result = map.load_source(&source_b);
 
@@ -1128,7 +1227,7 @@ mod tests {
         write_yaml(dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
 
         let source = make_source("local", "Local", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let count = map.load_source(&source).unwrap();
 
         // Both files are loaded but only one law in the map
@@ -1149,7 +1248,7 @@ mod tests {
         write_yaml(dir.path(), "wet/my_law/2099-01-01.yaml", "my_law");
 
         let source = make_source("local", "Local", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let law = map.get_law("my_law").unwrap();
@@ -1165,7 +1264,7 @@ mod tests {
         write_yaml(dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
 
         let source = make_source("local", "Local", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         // `get_law` still collapses to one (the today's-best entry)...
@@ -1196,7 +1295,7 @@ mod tests {
         let local = make_source("local", "Local", local_dir.path(), 1);
         let central = make_source("central", "Central", central_dir.path(), 2);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&local).unwrap();
         map.load_source(&central).unwrap();
 
@@ -1234,7 +1333,7 @@ mod tests {
         let local = make_source("local", "Local", local_dir.path(), 1);
         let central = make_source("central", "Central", central_dir.path(), 2);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&central).unwrap();
         map.load_source(&local).unwrap();
 
@@ -1256,7 +1355,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let source = make_source("empty", "Empty", dir.path(), 1);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let count = map.load_source(&source).unwrap();
 
         assert_eq!(count, 0);
@@ -1267,7 +1366,7 @@ mod tests {
     fn test_nonexistent_directory() {
         let source = make_source("missing", "Missing", Path::new("/nonexistent"), 1);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         let count = map.load_source(&source).unwrap();
 
         assert_eq!(count, 0);
@@ -1285,7 +1384,7 @@ mod tests {
         let source_low = make_source("low", "Low Priority", dir_a.path(), 100);
         let source_high = make_source("high", "High Priority", dir_b.path(), 1);
 
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source_low).unwrap();
         map.load_source(&source_high).unwrap();
 
@@ -1357,7 +1456,7 @@ articles:
         fs::write(&path, DERIVED_FIELDS_YAML).unwrap();
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let law = map.get_law("regeling_zorgtoeslag").unwrap();
@@ -1370,7 +1469,7 @@ articles:
 
     #[test]
     fn test_load_fetched_file_precomputes_display_name_and_implements() {
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_fetched_file(
             DERIVED_FIELDS_YAML,
             "regulation/nl/regeling/regeling_zorgtoeslag/2025-01-01.yaml",
@@ -1394,7 +1493,7 @@ articles:
         fs::write(&path, "$id: kieswet\nname: Kieswet\narticles: []\n").unwrap();
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         let law = map.get_law("kieswet").unwrap();
@@ -1408,7 +1507,7 @@ articles:
         // Metadata-only entries have no body to derive from — the fields
         // stay empty until the body is fetched and (in the editor flow)
         // a snapshot rebuild or `update_yaml_content` recomputes them.
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_metadata_entry(
             "some_wet",
             "regulation/nl/wet/some_wet/2025-01-01.yaml",
@@ -1434,7 +1533,7 @@ articles:
         fs::write(&path, DERIVED_FIELDS_YAML).unwrap();
 
         let source = make_source("central", "Central", dir.path(), 1);
-        let mut map = SourceMap::new();
+        let mut map = SourceMap::new("2026-06-01");
         map.load_source(&source).unwrap();
 
         // Edit drops the implements block and switches to a literal name:
@@ -1566,5 +1665,82 @@ articles:
         assert!(collect_law_implements(yaml).is_empty());
         // Malformed YAML is tolerated as "no implements".
         assert!(collect_law_implements("not: [valid").is_empty());
+    }
+
+    #[test]
+    fn test_try_collect_law_implements_distinguishes_parse_failure_from_empty() {
+        // A law that genuinely implements nothing: Ok(empty).
+        let empty = try_collect_law_implements("$id: x\narticles: []\n").unwrap();
+        assert!(empty.is_empty());
+
+        // Malformed YAML: Err — the index generator must fail on this
+        // instead of committing "implements nothing".
+        assert!(try_collect_law_implements("not: [valid").is_err());
+    }
+
+    #[test]
+    fn test_collect_law_references_picks_up_both_link_kinds() {
+        let yaml = "\
+$id: wet_a
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: inkomen
+            type: amount
+            source:
+              regulation: wet_b
+              output: toetsingsinkomen
+          - name: verzekerd
+            type: boolean
+            source:
+              regulation: wet_c
+              output: is_verzekerd
+      implements:
+        - law: wet_d
+          article: '4'
+          open_term: tarief
+";
+        assert_eq!(
+            collect_law_references(yaml),
+            vec![
+                LawReference {
+                    law_id: "wet_d".to_string(),
+                    kind: LawReferenceKind::Implements,
+                },
+                LawReference {
+                    law_id: "wet_b".to_string(),
+                    kind: LawReferenceKind::SourceRegulation,
+                },
+                LawReference {
+                    law_id: "wet_c".to_string(),
+                    kind: LawReferenceKind::SourceRegulation,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_law_references_dedupes_and_tolerates_garbage() {
+        let yaml = "\
+$id: wet_a
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: een
+            source:
+              regulation: wet_b
+              output: x
+          - name: twee
+            source:
+              regulation: wet_b
+              output: y
+";
+        assert_eq!(collect_law_references(yaml).len(), 1);
+        assert!(collect_law_references("not: [valid").is_empty());
+        assert!(collect_law_references("$id: wet_a\narticles: []\n").is_empty());
     }
 }

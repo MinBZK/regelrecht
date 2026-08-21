@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseValue, createStepDefinitions, SUPPORTED_TIERS } from './steps.js';
-import { GRAMMAR } from './grammar.generated.js';
+import { GRAMMAR, VALUE_TYPING } from './grammar.generated.js';
 
 describe('parseValue', () => {
   it('parses booleans', () => {
@@ -81,4 +81,68 @@ describe('core grammar patterns match their canonical example lines', () => {
       expect(matching[0].action).toBe(action);
     });
   }
+});
+
+// Mirror of Rust `rows_to_params` in packages/engine/tests/bdd/dispatch.rs:
+// a parameter table carries no header row.
+describe('set_parameters_table dispatch', () => {
+  async function runTable(dataTable) {
+    const ctx = { calculationDate: null, parameters: {}, result: null, error: null, executed: false };
+    const def = createStepDefinitions({ loadDependency: async () => {} }).find(
+      (d) => d.pattern.test('the following parameters:'),
+    );
+    await def.execute(ctx, null, 'the following parameters:'.match(def.pattern), { dataTable });
+    return ctx.parameters;
+  }
+
+  it('reads every row of a corpus parameter table', async () => {
+    expect(
+      await runTable([
+        ['gemeente_code', 'GM0363'],
+        ['type_beplanting', 'boom'],
+        ['postcode', '1012'],
+      ]),
+    ).toEqual({ gemeente_code: 'GM0363', type_beplanting: 'boom', postcode: 1012 });
+  });
+
+  it('reads a single-row parameter table', async () => {
+    expect(await runTable([['indieningsdatum', '2025-01-01']])).toEqual({
+      indieningsdatum: '2025-01-01',
+    });
+  });
+});
+
+// The canonical typing rule lives in bdd/grammar.yaml (`value_typing`) and is
+// carried into both dispatchers by codegen. These assertions are the editor
+// half of bdd/conformance/value_typing.feature: the same three lines, the same
+// three types. Drift here is the failure mode of issue #1160 — a scenario that
+// runs green in the editor and red in CI.
+describe('value typing follows bdd/grammar.yaml', () => {
+  const defs = createStepDefinitions({ loadDependency: async () => {} });
+
+  async function runStep(line, table = null) {
+    const ctx = { parameters: {} };
+    const def = defs.find((d) => d.pattern.test(line));
+    expect(def, `no step matches "${line}"`).toBeTruthy();
+    await def.execute(ctx, null, line.match(def.pattern), table ? { dataTable: table } : null);
+    return ctx.parameters;
+  }
+
+  it('declares the three rules', () => {
+    expect(VALUE_TYPING).toEqual({ quoted: 'inferred', bare: 'number', table_cell: 'inferred' });
+  });
+
+  it('reads a quoted value by its content, not by its quotes', async () => {
+    expect(await runStep('parameter "waarde" is "42"')).toEqual({ waarde: 42 });
+    expect(await runStep('parameter "verzekerd" is "true"')).toEqual({ verzekerd: true });
+    expect(await runStep('parameter "gemeente" is "GM0384"')).toEqual({ gemeente: 'GM0384' });
+  });
+
+  it('reads a bare value as a number', async () => {
+    expect(await runStep('parameter "waarde" is 42')).toEqual({ waarde: 42 });
+  });
+
+  it('lets the content decide in a data table cell', async () => {
+    expect(await runStep('the following parameters:', [['waarde', '42']])).toEqual({ waarde: 42 });
+  });
 });

@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Op main niet afbreken: een tweede merge zou de run van de eerste afkappen
+  # en main zonder afgeronde CI achterlaten.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
@@ -21,27 +27,36 @@ jobs:
     timeout-minutes: 5
     outputs:
       ci: ${{ steps.filter.outputs.ci }}
-      admin: ${{ steps.filter.outputs.admin }}
-      editor-api: ${{ steps.filter.outputs.editor-api }}
       docs: ${{ steps.filter.outputs.docs }}
+      rust-image: ${{ steps.filter.outputs.rust-image }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706  # v4.0.2
         id: filter
         with:
           filters: |
             ci:
-              - packages/corpus/**
-              - packages/engine/**
-              - packages/harvester/**
-              - packages/pipeline/**
+              # Alle crates; een handmatige opsomming dreef eerder weg.
+              - packages/**
               - frontend/**
+              - frontend-lawmaking/**
               - packages/frontend-shared/**
               - bdd/**
               - corpus/regulation/**
               - schema/**
               - script/**
+              # De npm-workspace zelf: een dependency-bump raakt alleen deze
+              # drie bestanden en zou anders elke frontend-, e2e- en wasm-baan
+              # overslaan.
+              - package.json
+              - package-lock.json
+              - .npmrc
+              # De Rust-versie waarop alle Rust-banen draaien.
+              - rust-toolchain.toml
+              # copy-laws.js leest het register om te bepalen welke wetten in
+              # de bundel meegaan.
+              - corpus-registry.yaml
               # The schema reference doc is version-locked to schema/latest by
               # provenance-checks; edit it and that guard must re-run.
               - docs/src/content/docs/reference/schema.md
@@ -50,20 +65,19 @@ jobs:
               - .pre-commit-config.yaml
               - .yamllint
               - .github/workflows/ci.yml
-            admin:
-              - packages/admin/**
-              - Justfile
-              - .github/workflows/ci.yml
-            editor-api:
-              - packages/editor-api/**
-              - packages/corpus/**
-              - packages/pipeline/**
-              - packages/harvester/**
-              - Justfile
-              - .github/workflows/ci.yml
             docs:
               - docs/**
-              - Justfile
+              - .github/workflows/ci.yml
+            # Wat de bouw van een Rust-image kan breken. Smaller dan `ci`: een
+            # wijziging in frontend/ of bdd/ raakt deze Dockerfiles niet, en die
+            # build kost 4,5 minuut.
+            rust-image:
+              - packages/**
+              # De Dockerfile doet `COPY schema/ /schema/`; de engine leest die
+              # paden met include_str!, en die kloppen in de image om een andere
+              # reden dan in de repo.
+              - schema/**
+              - rust-toolchain.toml
               - .github/workflows/ci.yml
 
   protect-schema:
@@ -73,7 +87,7 @@ jobs:
     timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         if: needs.changes.outputs.ci == 'true'
         with:
           fetch-depth: 0
@@ -132,13 +146,11 @@ jobs:
     timeout-minutes: 5
     if: needs.changes.outputs.ci == 'true'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        if: needs.changes.outputs.ci == 'true'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Check schema versions registered in schema.rs
-        if: needs.changes.outputs.ci == 'true'
         run: |
           # Every schema/vX.Y.Z/ directory must appear in the embedded schema table.
           VALIDATE_RS="packages/engine/src/schema.rs"
@@ -157,7 +169,6 @@ jobs:
           echo "All schema versions registered in schema.rs"
 
       - name: Check corpus schema references
-        if: needs.changes.outputs.ci == 'true'
         run: |
           # Every $schema URL in corpus YAML must reference a known schema version
           KNOWN_VERSIONS=$(ls -d schema/v*/ | xargs -n1 basename)
@@ -193,7 +204,6 @@ jobs:
           echo "All corpus schema references valid"
 
       - name: Check schema/latest symlink
-        if: needs.changes.outputs.ci == 'true'
         run: |
           TARGET=$(readlink schema/latest)
           HIGHEST=$(ls -d schema/v*/ | xargs -n1 basename | sort -V | tail -1)
@@ -207,13 +217,11 @@ jobs:
       # it tracks schema/latest so a schema bump can't leave the docs behind.
       # Node-only, reads source files (no astro build).
       - name: Setup Node.js
-        if: needs.changes.outputs.ci == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
 
       - name: Check schema reference doc tracks schema/latest
-        if: needs.changes.outputs.ci == 'true'
         run: node docs/scripts/check-schema-version.mjs
 
       - name: Check engine version bump on source changes
@@ -245,10 +253,6 @@ jobs:
             echo "Engine version bumped: $MAIN_VERSION -> $PR_VERSION"
           fi
 
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.ci != 'true'
-        run: echo "No relevant changes, skipping provenance checks"
-
   cross-law-integrity:
     name: Cross-law integrity
     needs: changes
@@ -256,9 +260,9 @@ jobs:
     timeout-minutes: 5
     if: needs.changes.outputs.ci == 'true'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.x'
 
@@ -274,6 +278,7 @@ jobs:
 
   pre-commit:
     name: Pre-commit
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -283,9 +288,9 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -301,7 +306,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
 
       - name: Cache cargo registry (shared)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -311,6 +316,34 @@ jobs:
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
+
+      # De deploy-filters leiden zichzelf af uit de cargo-graaf, dus een crate
+      # die van eigenaar wisselt kan een component stil buiten de deploy laten
+      # vallen. Die test hoort in een required check, en deze baan heeft cargo
+      # al staan; `cargo metadata` bouwt niets en kost seconden.
+      # Ongegate: de security-headers-guard verderop bewaakt bestanden
+      # (deploy/nginx, de twee nginx.conf's, het Grafana-Dockerfile) die niet
+      # onder het `ci`-filter vallen. Gegate zou hij precies de wijzigingen
+      # missen waarvoor hij bestaat.
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+
+      - name: Check deploy filters
+        if: needs.changes.outputs.ci == 'true'
+        run: just deploy-filters-test
+
+      - name: Check asset precompression
+        if: needs.changes.outputs.ci == 'true'
+        run: just precompress-test
+
+      - name: Check security headers
+        run: just security-headers-test
+
+      - name: Check first-load guard
+        if: needs.changes.outputs.ci == 'true'
+        run: just first-load-test
 
       # Leak-guard laag 2: voorzie het git-ignored aanvulbestand met de casus-/
       # sector-specifieke patronen uit een secret, zodat de skills-no-casus hook in
@@ -329,39 +362,74 @@ jobs:
             echo "WAARSCHUWING: geen SKILLS_CASUS_DENYLIST secret — alleen laag 1 (domein-loze vorm) draait. Casus-/sector-patronen worden in deze run NIET gescand."
           fi
 
+      # De hooks draaien over de hele boom (--all-files). Raakt de PR geen Rust
+      # of corpus, dan zijn rust-format, rust-lint en validate-law-yaml drie
+      # minuten werk aan bestanden die niemand heeft aangeraakt; die worden dan
+      # overgeslagen. De job blijft `Pre-commit` heten: dat is een required check.
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
+        env:
+          SKIP: ${{ needs.changes.outputs.ci == 'true' && '' || 'rust-format,rust-lint,validate-law-yaml' }}
 
-  test:
-    name: Test
+  rust-tests:
+    name: Rust tests (${{ matrix.leg }})
     needs: changes
+    if: needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gesneden langs de grens die er al is: de crates met een
+        # testcontainers-suite tegenover de rest. Beide benen zijn precies één
+        # cargo-aanroep, want twee selecties in dezelfde target-dir laten cargo
+        # elkaars artefacten herbouwen.
+        include:
+          - leg: unit
+            recipe: test-no-docker
+            postgres-url: ''
+          - leg: db
+            recipe: test-db
+            # De testhelper start zelf een container als deze leeg is. Hier
+            # staat er al een als service naast de job, en dat scheelt de
+            # opstart in elk van de ruim twintig testbinaries.
+            postgres-url: postgres://postgres:postgres@127.0.0.1:5432
+    services:
+      # Dezelfde image als de testhelper zelf zou starten, zodat de tests op
+      # dezelfde Postgres draaien als lokaal zonder deze variabele. Het
+      # unit-been gebruikt hem niet; die paar seconden opstart zijn de
+      # eenvoud van één matrix waard.
+      postgres:
+        image: postgres:11-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
+      TEST_POSTGRES_URL: ${{ matrix.postgres-url }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        if: needs.changes.outputs.ci == 'true'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install just
-        if: needs.changes.outputs.ci == 'true'
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
 
       - name: Install Rust toolchain
-        if: needs.changes.outputs.ci == 'true'
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Install mold linker
-        if: needs.changes.outputs.ci == 'true'
         run: sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
-        if: needs.changes.outputs.ci == 'true'
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
 
       - name: Cache cargo registry (shared)
-        if: needs.changes.outputs.ci == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
@@ -370,43 +438,194 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
 
-      - name: Run all tests
-        if: needs.changes.outputs.ci == 'true'
-        run: just test-all
+      - name: Run tests
+        run: just ${{ matrix.recipe }}
+
+  bdd-conformance:
+    name: BDD conformance
+    needs: changes
+    if: needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
+
+      - name: Cache cargo registry (shared)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      # Alleen bucket B. Die bewijst dat de engine de hele BDD-taal spreekt
+      # tegen synthetische `test_*`-wetten, en hangt aan niets buiten de repo.
+      # Bucket A toetst de levende wetten: daar betekent rood dat een wet is
+      # veranderd of een scenario verouderd is, en dat is een oordeel van een
+      # mens, geen merge-blokkade.
+      #
+      # Het testtarget staat op `test = false` en loopt dus niet mee in
+      # `cargo test --workspace`; het wordt hier expliciet genoemd. RUSTFLAGS
+      # herhaalt de mold-link-arg uit packages/.cargo/config.toml, omdat een
+      # expliciete RUSTFLAGS die configuratie overschrijft.
+      - name: Run conformance bucket
+        working-directory: packages/engine
+        env:
+          BDD_BUCKET: conformance
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: cargo test --test bdd -- --nocapture
+
+  frontend-tests:
+    name: Frontend tests
+    needs: changes
+    if: needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup Node.js
-        if: needs.changes.outputs.ci == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
+      # --ignore-scripts: een gekaapte release mag zijn preinstall/postinstall
+      # niet in onze CI draaien. Dependabot lost zelf al met --ignore-scripts
+      # op, dus de PR is onschuldig; het venster zit hier, in de eerste install
+      # op die branch.
+      #
+      # Geen enkele install-hook in deze workspace levert iets op wat de build
+      # nodig heeft. De uitzondering zit in docs/ (puppeteer voor pa11y) en
+      # wordt daar in een eigen stap opgevangen.
       - name: Install frontend dependencies
-        if: needs.changes.outputs.ci == 'true'
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: BDD grammar codegen is in sync
-        if: needs.changes.outputs.ci == 'true'
         run: |
           node bdd/codegen/gen-js.mjs
           git diff --exit-code frontend/src/gherkin/grammar.generated.js \
             || { echo "::error::grammar.generated.js is stale — run 'just bdd-codegen' and commit the result"; exit 1; }
 
+      # Niet in `npm run build`: de Docker-images bouwen met alleen hun eigen
+      # workspace als context (docs/Dockerfile doet `COPY docs/ .`), dus een
+      # script buiten die map is daar onbereikbaar. Hier is de hele repo
+      # uitgecheckt.
+      - name: Ontwerpsysteem-imports in sync met de gebruikte tags
+        run: |
+          node script/check-nldd-imports.mjs frontend/src frontend/src/nldd-components.js
+          node script/check-nldd-imports.mjs docs/src docs/src/nldd-components.js
+
       - name: Run frontend tests
-        if: needs.changes.outputs.ci == 'true'
         # Directory form (`-w frontend`) rather than the package name, so a
         # rename of the `name` field can't silently skip the tests.
         run: npm test -w frontend
 
+      - name: Run lawmaking tests
+        run: npm test -w frontend-lawmaking
+
+      # packages/arch-extract/ui is geen workspace-member (eigen package.json en
+      # lockfile), dus `npm test -w` bereikt het niet en de test die er ligt
+      # draaide nergens.
+      - name: Run arch-explorer tests
+        working-directory: packages/arch-extract/ui
+        run: |
+          npm ci --ignore-scripts
+          npm test
+
       - name: Run shared-package tests
-        if: needs.changes.outputs.ci == 'true'
         run: npm test -w packages/frontend-shared
 
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.ci != 'true'
-        run: echo "No relevant changes, skipping tests"
+      # De productiebundel werd tot nu toe alleen in frontend/Dockerfile
+      # gemaakt, en sinds de images uit de standaardloop van een PR zijn
+      # gehaald draaide `vite build` nergens meer. Dit dekt in één stap de
+      # bundel plus de drie scripts die eraan hangen: copy-laws (prebuild),
+      # check-first-load en precompress.
+      #
+      # Na de tests: `prebuild` schrijft in frontend/public/data, en die map
+      # hoort niet onder de vitest-run te veranderen.
+      - name: Build editor bundle
+        run: npm run build -w frontend
+
+      - name: Build lawmaking bundle
+        run: npm run build -w frontend-lawmaking
+
+  # Verplichte check op main. De benen hierboven dragen nieuwe namen en mogen
+  # dus van vorm veranderen; deze naam moet blijven bestaan, want een required
+  # check die niet verschijnt laat elke PR eeuwig hangen. Skipped benen (geen
+  # relevante wijziging) gelden hier als geslaagd.
+  test:
+    name: Test
+    needs:
+      # Niet als voorganger die iets test, maar omdat elke baan hieronder eraan
+      # hangt: valt `changes` om, dan slaan ze allemaal over.
+      - changes
+      - rust-tests
+      - bdd-conformance
+      - frontend-tests
+      # Deze vier draaiden al bij elke PR maar blokkeerden niets. Ze hier
+      # aanhangen kost geen runnerminuut en geen nieuwe required context bij
+      # branch protection.
+      - e2e
+      - cross-law-integrity
+      - provenance-checks
+      - docs-a11y
+      - rust-image
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Elke voorganger krijgt een eigen `check`-regel; script/ci-gate.test.mjs
+      # rekent na dat de lijst hieronder en `needs` niet uiteenlopen, en dat
+      # skipped geslaagd blijft.
+      - name: Gate
+        run: |
+          status=0
+          check() {
+            case "$2" in
+              failure|cancelled) echo "::error::$1 gaf $2"; status=1 ;;
+              *) echo "$1: $2" ;;
+            esac
+          }
+          # `changes` is de enige voorganger die geslaagd MOET zijn. Overgeslagen
+          # geldt hieronder als geslaagd, en terecht: een PR die geen Rust raakt
+          # hoort niet te blijven hangen op een testbaan die niets te doen had.
+          # Maar valt `changes` zelf om, dan slaan al zijn afhankelijken over om
+          # een heel andere reden, en zou de poort die zes stuk voor stuk als
+          # geslaagd lezen. De hele required set wordt dan groen terwijl er niets
+          # gedraaid is.
+          require() {
+            case "$2" in
+              success) echo "$1: $2" ;;
+              *) echo "::error::$1 gaf $2, dus de banen erachter zijn nooit gedraaid"; status=1 ;;
+            esac
+          }
+          require changes "${{ needs.changes.result }}"
+          check rust-tests "${{ needs.rust-tests.result }}"
+          check bdd-conformance "${{ needs.bdd-conformance.result }}"
+          check frontend-tests "${{ needs.frontend-tests.result }}"
+          check e2e "${{ needs.e2e.result }}"
+          check cross-law-integrity "${{ needs.cross-law-integrity.result }}"
+          check provenance-checks "${{ needs.provenance-checks.result }}"
+          check docs-a11y "${{ needs.docs-a11y.result }}"
+          check rust-image "${{ needs.rust-image.result }}"
+          exit "$status"
 
   wasm:
     name: WASM Build
@@ -418,7 +637,7 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: "0"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         if: needs.changes.outputs.ci == 'true'
 
       - name: Install Rust toolchain
@@ -429,7 +648,7 @@ jobs:
 
       - name: Run sccache
         if: needs.changes.outputs.ci == 'true'
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
@@ -451,6 +670,206 @@ jobs:
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping WASM build"
 
+  # Sinds de previews opt-in werden (#1204) bouwt een PR geen images meer, dus
+  # of een Rust-image überhaupt bouwt bleek pas op main, met deploy-production
+  # er direct achteraan. De machinerie die daar stuk kan: de musl-toolchain, het
+  # release-profiel, de cargo-chef-lagen, de `COPY schema/` waar include_str!
+  # aan hangt, en de bin-naam in `COPY --from=builder`.
+  #
+  # Eén image is genoeg. De drie Rust-Dockerfiles delen deze hele machinerie en
+  # verschillen alleen in welke members ze kopiëren en welke binary ze eruit
+  # halen; dat verschil dekt script/dockerfile-consistency.test.mjs statisch af.
+  # pipeline-api is de goedkoopste van de drie: gemeten 4,4 tot 4,8 minuut met
+  # warme cache.
+  #
+  # Hij hangt aan de `Test`-poort en blokkeert dus. Een build waarop gewacht
+  # wordt maar die niets tegenhoudt kost de wandklok zonder de garantie te
+  # leveren; dan kun je hem net zo goed niet draaien.
+  rust-image:
+    name: Rust image build
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Alleen lezen: deze build duwt niets naar GHCR. Zie `push: false`.
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: needs.changes.outputs.rust-image == 'true'
+
+      - name: Set up Docker Buildx
+        if: needs.changes.outputs.rust-image == 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
+
+      # Nodig om de buildcache uit GHCR te mogen lezen; zonder login bouwt hij
+      # alles koud en loopt de job richting het kwartier.
+      - name: Log in to Container Registry
+        if: needs.changes.outputs.rust-image == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Dezelfde inputs als build-pipeline-api in deploy.yml, op push na. Lopen
+      # die twee uiteen, dan bewijst deze baan iets anders dan er gedeployd
+      # wordt; script/dockerfile-consistency.test.mjs bewaakt de namen.
+      - name: Build pipeline-api image
+        if: needs.changes.outputs.rust-image == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: .
+          file: packages/pipeline/Dockerfile
+          target: pipeline-api
+          build-args: BIN=regelrecht-pipeline-api
+          # Niets pushen en niets in de daemon laden: het gaat om de bouw, niet
+          # om het artefact. Ook geen cache-to, want alleen main schrijft cache.
+          push: false
+          load: false
+          cache-from: type=registry,ref=ghcr.io/minbzk/regelrecht-buildcache:pipeline-api
+
+      - name: Skip (no relevant changes)
+        if: needs.changes.outputs.rust-image != 'true'
+        run: echo "Geen wijziging die een Rust-image raakt, image-build overgeslagen"
+
+  # De enige job die de editor in een echte browser laadt. Unit-tests draaien op
+  # happy-dom, en die ziet het WASM-laadpad in
+  # frontend/src/composables/useEngine.js niet: fetch -> Blob -> object-URL ->
+  # `import(/* @vite-ignore */ blobUrl)` wordt door de bundler juist buiten de
+  # analyse gehouden, dus een groene build zegt daar niets over.
+  #
+  # Alleen de gemockte suite (frontend/e2e/). De smoketest uit
+  # `just smoke-preview` draait tegen een gedeployde preview met echte Keycloak-
+  # credentials en hoort niet in de PR-gate.
+  e2e:
+    name: E2E (mocked)
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Parity met de andere npm-jobs: de workspace kan @nldd-pakketten van
+      # npm.pkg.github.com halen.
+      packages: read
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: needs.changes.outputs.ci == 'true'
+
+      - name: Install just
+        if: needs.changes.outputs.ci == 'true'
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+
+      - name: Install Rust toolchain
+        if: needs.changes.outputs.ci == 'true'
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Run sccache
+        if: needs.changes.outputs.ci == 'true'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
+
+      - name: Cache cargo registry (shared)
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      # `just test-e2e` hangt aan `wasm-build`, dat `wasm-bindgen` op PATH
+      # verwacht. Versie en checksum staan in frontend/Dockerfile en worden hier
+      # gelezen in plaats van een tweede keer opgeschreven; dat houdt CI en het
+      # editor-image op precies dezelfde binary. De versie moet gelijk lopen met
+      # de wasm-bindgen-crate uit packages/Cargo.lock, anders faalt de
+      # bindgen-stap verderop met een versie-mismatch.
+      - name: Install wasm-bindgen-cli
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          set -eu
+          locked=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
+            | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}')
+          version=$(sed -n 's/^ARG WASM_BINDGEN_VERSION=\(.*\)$/\1/p' frontend/Dockerfile)
+          sha=$(sed -n 's/^ARG WASM_BINDGEN_SHA256_AMD64=\(.*\)$/\1/p' frontend/Dockerfile)
+          if [ -z "$locked" ]; then
+            echo "::error::kon wasm-bindgen-versie niet uit packages/Cargo.lock lezen"
+            exit 1
+          fi
+          if [ -z "$version" ] || [ -z "$sha" ]; then
+            echo "::error::kon WASM_BINDGEN_VERSION/WASM_BINDGEN_SHA256_AMD64 niet uit frontend/Dockerfile lezen"
+            exit 1
+          fi
+          if [ "$version" != "$locked" ]; then
+            echo "::error::wasm-bindgen-cli is in frontend/Dockerfile gepind op $version, packages/Cargo.lock heeft $locked. Werk WASM_BINDGEN_VERSION en beide WASM_BINDGEN_SHA256_* bij naar $locked; de checksums staan naast de release op https://github.com/wasm-bindgen/wasm-bindgen/releases/tag/$locked"
+            exit 1
+          fi
+          dir="wasm-bindgen-${version}-x86_64-unknown-linux-musl"
+          curl -fsSLo "/tmp/${dir}.tar.gz" \
+            "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/${dir}.tar.gz"
+          echo "${sha}  /tmp/${dir}.tar.gz" | sha256sum -c -
+          tar -xzf "/tmp/${dir}.tar.gz" -C /tmp
+          install -D -m0755 "/tmp/${dir}/wasm-bindgen" "$HOME/.cargo/bin/wasm-bindgen"
+          wasm-bindgen --version
+
+      - name: Setup Node.js
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+          registry-url: https://npm.pkg.github.com
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        if: needs.changes.outputs.ci == 'true'
+        run: npm ci --ignore-scripts
+
+      # De browserdownload (~150 MB) is de duurste stap; cache hem op de
+      # playwright-versie uit de lockfile. De apt-kant van `--with-deps` is niet
+      # cachebaar en draait hieronder sowieso.
+      - name: Cache Playwright browsers
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-playwright-
+
+      # `--with-deps` is niet optioneel: het trekt naast de Chromium-libs ook
+      # fontconfig en een lettertypepakket binnen. Zonder fontconfig sterft
+      # Chromium bij het eerste renderen op
+      # `SkFontMgr_FontConfigInterface.cpp:163 Not implemented`. Zelfde aanpak
+      # als docs/Dockerfile en de docs-a11y-job.
+      - name: Install Playwright Chromium
+        if: needs.changes.outputs.ci == 'true'
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      # Bouwt eerst het WASM-artefact (frontend/public/wasm/pkg) en start dan de
+      # vite-dev-server via playwright's webServer-config.
+      - name: Run mocked e2e suite
+        if: needs.changes.outputs.ci == 'true'
+        run: just test-e2e
+
+      - name: Upload Playwright report
+        if: failure() && needs.changes.outputs.ci == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
+
+      - name: Skip (no relevant changes)
+        if: needs.changes.outputs.ci != 'true'
+        run: echo "No relevant changes, skipping e2e suite"
+
   # Security audit
   audit:
     name: Security Audit
@@ -460,7 +879,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
@@ -486,7 +905,7 @@ jobs:
             "cargo-deny-${CARGO_DENY_VERSION}-x86_64-unknown-linux-musl/cargo-deny"
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
@@ -494,7 +913,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install workspace dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
@@ -502,97 +921,17 @@ jobs:
       - name: Run security audit
         run: just audit
 
-  # One matrixed job for the per-package fmt/lint/check pipelines that only
-  # differ in the `just <package>-*` recipe names. The job runs when either
-  # package changed; per-step guards on the package's own changes filter make
-  # the matrix leg of an unchanged package a no-op (every step skips), so an
-  # admin-only change does not actually build editor-api and vice versa.
-  package-checks:
-    name: Package checks (${{ matrix.package }})
-    needs: changes
-    if: >-
-      needs.changes.outputs.admin == 'true' ||
-      needs.changes.outputs['editor-api'] == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      # Needed by the admin leg to install @nldd packages from
-      # npm.pkg.github.com; harmless (read-only) for editor-api.
-      packages: read
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [admin, editor-api]
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
-      CARGO_INCREMENTAL: "0"
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        if: needs.changes.outputs[matrix.package] == 'true'
-
-      - name: Install Rust toolchain
-        if: needs.changes.outputs[matrix.package] == 'true'
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo registry (shared)
-        if: needs.changes.outputs[matrix.package] == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-registry-
-
-      - name: Install mold linker
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: sudo apt-get update && sudo apt-get install -y mold
-
-      - name: Run sccache
-        if: needs.changes.outputs[matrix.package] == 'true'
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
-
-      - name: Install just
-        if: needs.changes.outputs[matrix.package] == 'true'
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
-
-      - name: Check formatting
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: just ${{ matrix.package }}-fmt
-
-      - name: Run clippy
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: just ${{ matrix.package }}-lint
-
-      - name: Run cargo check
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: just ${{ matrix.package }}-check
-
-      # Uniform per-package test step: `just admin-test` / `just editor-api-test`.
-      # The editor-api recipe covers src unit tests AND tests/*.rs integration
-      # tests (testcontainers — Docker is present on the hosted runner); before
-      # this step existed those tests were never even compiled in CI and rotted
-      # silently. (The admin frontend moved into the editor, so there is no
-      # longer an admin frontend build here — admin is an API-only Rust binary.)
-      - name: Run tests
-        if: needs.changes.outputs[matrix.package] == 'true'
-        run: just ${{ matrix.package }}-test
-
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs[matrix.package] != 'true'
-        run: echo "No ${{ matrix.package }} changes, skipping"
-
   docs-a11y:
     name: Docs accessibility gate
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # De gate beperkt zich tot de gewijzigde pagina's als dat veilig kan,
+          # en daarvoor is de diff tegen de base nodig.
+          fetch-depth: 0
 
       - name: Install just
         if: needs.changes.outputs.docs == 'true'
@@ -600,7 +939,7 @@ jobs:
 
       - name: Setup Node.js
         if: needs.changes.outputs.docs == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -609,20 +948,63 @@ jobs:
       - name: Install docs dependencies
         if: needs.changes.outputs.docs == 'true'
         working-directory: docs
-        run: npm ci
+        run: npm ci --ignore-scripts
 
-      # rehype-mermaid renders diagrams with a headless Chromium at build time,
-      # and pa11y drives Chromium too — install it (with system deps) the same
-      # way docs/Dockerfile does.
+      # rehype-mermaid rendert diagrammen met een headless Chromium tijdens de
+      # build — installeer die (met systeemdeps) op dezelfde manier als
+      # docs/Dockerfile.
       - name: Install Playwright Chromium
         if: needs.changes.outputs.docs == 'true'
         working-directory: docs
         run: npx playwright install --with-deps chromium
 
+      # pa11y draait niet op playwright maar op puppeteer, met een eigen
+      # browsercache (~/.cache/puppeteer). Die download zat in puppeteers
+      # postinstall en verdween met --ignore-scripts hierboven; hij hoort
+      # daarom expliciet te staan. Zonder deze stap faalt de gate met
+      # "Could not find Chrome".
+      #
+      # Deze stap haalt alleen de browser zelf binnen. De gedeelde libraries
+      # (libnss3, libgbm, libasound2, …) die pa11y straks nodig heeft om deze
+      # Chrome te starten komen van `playwright install --with-deps` hierboven;
+      # die stap moet dus blijven staan. `browsers install` heeft daar zelf wel
+      # een --install-deps voor, maar dat vereist root en dat is de runner niet.
+      #
+      # `--no` houdt npx bij de puppeteer uit docs/package-lock.json. Zonder
+      # die vlag zou npx bij een resolutiewijziging stilletjes puppeteer@latest
+      # van de registry halen — inclusief de postinstall die we hierboven net
+      # hebben uitgezet. De playwright-regel hierboven staat nog zonder --no;
+      # playwright heeft geen install-hook, dus daar valt niets uit te voeren.
+      - name: Install Puppeteer Chrome
+        if: needs.changes.outputs.docs == 'true'
+        working-directory: docs
+        run: npx --no puppeteer browsers install chrome
+
+      # Alleen op een pull request: de lijst gewijzigde bestanden, waarmee
+      # gen-pa11yci.mjs de gate tot de geraakte pagina's beperkt. Raakt de PR
+      # iets anders dan inhoud (layout, component, stylesheet, configuratie),
+      # dan valt dat script terug op de volledige site. Bij een push naar main
+      # blijft de lijst leeg en draait de gate altijd volledig.
+      - name: Bepaal gewijzigde bestanden
+        if: needs.changes.outputs.docs == 'true'
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            files=$(git diff --name-only "$BASE_SHA" HEAD | tr '\n' ' ')
+          else
+            files=""
+          fi
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
       # `just docs-a11y` builds the site, regenerates .pa11yci from the build,
-      # then runs pa11y-ci (htmlcs + axe) over every page. Non-zero exit fails.
+      # then runs pa11y-ci (htmlcs + axe) over the selected pages. Non-zero
+      # exit fails. Welke pagina's dat waren staat in het log van die stap.
       - name: Run accessibility gate
         if: needs.changes.outputs.docs == 'true'
+        env:
+          A11Y_CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: just docs-a11y
 
       - name: Skip (no relevant changes)

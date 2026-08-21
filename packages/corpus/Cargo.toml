@@ -18,24 +18,34 @@ thiserror.workspace = true
 serde.workspace = true
 serde_yaml_ng.workspace = true
 regelrecht-law-model = { path = "../law-model" }
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
-serde_json = { workspace = true, optional = true }
-jsonschema = { version = "0.47", optional = true }
-base64 = { workspace = true, optional = true }
+# All GitHub REST talks through the shared regelrecht-github crate now; corpus
+# keeps only the domain layer (source enumeration, archive extraction). No
+# direct reqwest dependency any more.
+regelrecht-github = { path = "../github", optional = true }
+# Non-optional: the implements-index artefact (module + generator binary)
+# is JSON and must build without the `github` feature.
+serde_json.workspace = true
+jsonschema = { workspace = true, optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
 walkdir.workspace = true
 
 [features]
 default = ["github"]
-# The GitHub API backend (write path through Contents/Refs API) needs
-# JSON bodies and base64-encoded file contents, so `github` pulls both
-# in alongside reqwest. The implements-index bulk read downloads the repo
-# archive (tarball) in one request, so it also needs gzip + tar.
-github = ["dep:reqwest", "dep:serde_json", "dep:base64", "dep:flate2", "dep:tar"]
+# The GitHub domain layer talks to the shared `regelrecht-github` client.
+# The implements-index bulk read downloads the repo archive (tarball) in one
+# request and extracts it here, so it needs gzip + tar.
+github = ["dep:regelrecht-github", "dep:flate2", "dep:tar"]
 # Schema validation for note (annotation) YAML. Pulls in jsonschema; only
 # the editor-api write path needs it, so it stays optional.
-annotation-validation = ["dep:jsonschema", "dep:serde_json"]
+annotation-validation = ["dep:jsonschema"]
+
+[[bin]]
+# Generator for the precomputed implements-index committed at the root of
+# the corpus repo. Run by CI in the corpus repo against its own checkout:
+#   cargo run -p regelrecht-corpus --bin implements-indexer -- <checkout>
+name = "implements-indexer"
+path = "src/bin/implements_indexer.rs"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "process", "fs"] }
@@ -43,6 +53,9 @@ tempfile.workspace = true
 regelrecht-engine = { path = "../engine" }
 wiremock.workspace = true
 serde_json.workspace = true
+# base64 is only used by the GitHub-backend integration tests (to build
+# Contents-API bodies); the runtime encode/decode moved into regelrecht-github.
+base64.workspace = true
 
 [lints]
 workspace = true

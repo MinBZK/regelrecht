@@ -7,22 +7,33 @@ import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
+import AddLawSheet from './components/AddLawSheet.vue';
 import DocumentList from './components/DocumentList.vue';
 import DocumentEditor from './components/DocumentEditor.vue';
 import TrajectDetailsPane from './components/TrajectDetailsPane.vue';
 import TrajectMembersPane from './components/TrajectMembersPane.vue';
-import TasksPane from './components/TasksPane.vue';
+import InviteMembersSheet from './components/InviteMembersSheet.vue';
+import TasksCategoriesPane from './components/TasksCategoriesPane.vue';
+import TasksListPane from './components/TasksListPane.vue';
 import TasksSidebarItem from './components/TasksSidebarItem.vue';
+import UploadConfirmDialog from './components/UploadConfirmDialog.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useCorpusLaws } from './composables/useCorpusLaws.js';
+// useEnrichState (bovenop useTaskActions), niet useTasks: LibraryView heeft
+// alleen gerichte refreshes nodig - na een geannuleerde job, na een eigen
+// aanvraag - en mag daarvoor niet de 30s-poll aanzetten (die hoort bij de
+// taken-componenten, en anonieme bezoekers pollen nooit).
+import { useEnrichState } from './composables/useEnrichState.js';
 import { lawFetchInit } from './composables/useLaw.js';
 import { useTrajects, refreshTrajects } from './composables/useTrajects.js';
-import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl } from './composables/corpusUrls.js';
+import { lawsListUrl, lawUrl, lawUploadUrl, changedLawsUrl, trajectSourcesUrl } from './composables/corpusUrls.js';
 import { SUPPORT_EMAIL, paneChromeVisible } from './constants.js';
-import { registerSearchPopover, setLibraryEmpty } from './composables/useAppChrome.js';
+import { registerSearchPopover, setLibraryEmpty, openSearch } from './composables/useAppChrome.js';
 import { homeTarget } from './composables/useLastVisitedRoute.js';
 import { useDocumentsManager } from './composables/useDocumentsManager.js';
 import { useTrajectDocumentJobs } from './composables/useTrajectDocumentJobs.js';
 import { useDocumentUpload } from './composables/useDocumentUpload.js';
+import { useAddActions } from './composables/useAddActions.js';
 import { useDocumentTaskReview } from './composables/useDocumentTaskReview.js';
 import { humanizeLawId } from './lib/lawName.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
@@ -62,6 +73,13 @@ const { activeTrajectRef, activeTraject } = useTrajects();
 const sidebarTitle = computed(() =>
   activeTrajectRef.value ? activeTraject.value?.name || 'Traject…' : 'Corpus juris',
 );
+// Laadtekst die aansluit op wat er stráks in de kop staat: binnen een traject
+// laden we dat traject, daarbuiten de globale corpus. Gekoppeld aan
+// activeTrajectRef (niet aan ingelogd-zijn): ingelogd zonder gekozen traject is
+// nog steeds de Corpus juris-scope, en de kop zegt dat ook.
+const sidebarLoadingText = computed(() =>
+  activeTrajectRef.value ? 'Traject laden' : 'Corpus juris laden',
+);
 
 // "Account aanvragen" affordance for the favoriet login popover (mirrors the
 // editor/bewerken login popover in AppShell): to the public account-request
@@ -84,6 +102,35 @@ function goToAccountRequest() {
 // so it can reserve converting target names against create/rename collisions.
 const docJobs = useTrajectDocumentJobs(activeTrajectRef);
 const { jobs: conversionJobs, cancelJob: cancelConversionJob } = docJobs;
+// Verrijken kan ook vanuit de corpusweergave, met dezelfde twee knoppen als in
+// een traject. De knop staat er dus altijd zodra er een wet is; ontbreekt de
+// login of het traject, dan routeert hij net als "Bewerken" ernaast in plaats
+// van te verdwijnen. Zonder traject is er namelijk niets om het voorstel ín te
+// landen: het endpoint hangt onder /api/trajects/{ref}/.
+const canEnrich = computed(() => !!selectedLawId.value);
+
+const enrichError = ref('');
+
+async function enrichSelectedLaw(anchorEl) {
+  if (!selectedLawId.value) return;
+  if (!authenticated.value || !activeTrajectRef.value) {
+    // openEditor regelt beide: login-popover op deze knop, of de editor-route
+    // die de trajectkiezer toont.
+    openEditor(anchorEl);
+    return;
+  }
+  enrichError.value = '';
+  try {
+    // requestEnrich ververst zelf de takenlijst, dus de pane staat daarna in de
+    // bezig-staat. alreadyRunning heeft daarom geen eigen melding nodig: dat is
+    // precies wat de pane dan toont.
+    const { alreadyRunning, tooMany } = await requestEnrich();
+    if (tooMany) enrichError.value = 'Je hebt te veel verrijkingen tegelijk lopen.';
+    else if (!alreadyRunning) enrichError.value = '';
+  } catch {
+    enrichError.value = 'Verrijking aanvragen mislukt.';
+  }
+}
 
 const docsMgr = useDocumentsManager(
   activeTrajectRef,
@@ -160,6 +207,12 @@ watch(conversionJobs, async (now, prev) => {
 // the watcher above corrects it once the jobs arrive.
 function showWerkdocPath(p) {
   if (!p) { viewingJobPath.value = null; closeDoc(); return; }
+  // Al bewust op de job-weergave gezet (bijv. "Bekijk document" vanuit een
+  // lopende taak, of de conversionJobs-watcher): behoud die, ook al is de
+  // jobs-lijst nog niet gepolld - anders zou dit 'm als gewoon document openen
+  // en de 404/‘mislukt’-staat laten opflitsen. De watcher bevestigt de job
+  // zodra de poll landt, of opent de .md zodra de conversie klaar is.
+  if (viewingJobPath.value === p) return;
   if (conversionJobs.value.some((j) => j.target_path === p)) {
     viewingJobPath.value = p;
     if (openDocPath.value) closeDoc();
@@ -168,16 +221,41 @@ function showWerkdocPath(p) {
   viewingJobPath.value = null;
   if (openDocPath.value !== p) openDoc(p);
 }
+// `confirm: true`: het gekozen bestand wacht in `pendingDocUpload` op de
+// bevestigingsdialoog, die vertelt of er AI aan te pas komt en (waar er iets te
+// kiezen valt) om toestemming vraagt.
 const {
   fileInput: docFileInput,
   uploadError: docUploadError,
   uploadRetryable: docUploadRetryable,
+  pendingFile: pendingDocUpload,
   onUpload: onDocUpload,
   onFileChange: onDocFileChange,
+  confirmUpload: confirmDocUpload,
+  cancelUpload: cancelDocUpload,
 } = useDocumentUpload(docsMgr.uploadDocument, (result) => {
   docJobs.refresh();
-  if (result?.targetPath) showUploadedJob(result.targetPath);
-});
+  // De conversie is ook een wacht-taak. Zonder deze refresh wacht de takenlijst
+  // op zijn eigen 30s-poll en staat de taak die je zojuist in gang zette er nog
+  // niet in als je er meteen naartoe navigeert.
+  refreshTasks();
+  if (!result?.targetPath) return;
+  // Vanuit de takenlijst ("Probeer opnieuw") staan we niet in werkdoc-modus, en
+  // `showUploadedJob` zet alleen state die dáár rendert - de gebruiker zou dan
+  // op zijn takenlijst blijven staan zonder enig teken dat de upload aankwam.
+  // Navigeer in dat geval naar de job-weergave, dezelfde bestemming die
+  // "Bekijk document" opent.
+  if (!isWerkdocMode.value) {
+    if (activeTrajectRef.value) {
+      router.push({
+        name: 'werkdocumenten-traject',
+        params: { trajectRef: activeTrajectRef.value, docPath: result.targetPath },
+      });
+    }
+    return;
+  }
+  showUploadedJob(result.targetPath);
+}, { confirm: true });
 // Poll conversion jobs only while the werkdocumenten sidebar is open.
 watch(
   isWerkdocMode,
@@ -242,6 +320,7 @@ const {
   onFileChange: onLawFileChange,
 } = useDocumentUpload(uploadLawDocument, () => {
   lawUploadStarted.value = true;
+  refreshTasks();
 });
 // Zelfde modal-behandeling als de werkdocument-upload, met een eigen modal
 // zodat de retry-actie de juiste picker heropent.
@@ -257,6 +336,55 @@ function dismissLawUploadError() {
 function retryLawUpload() {
   lawUploadError.value = null;
   nextTick(() => onLawUpload());
+}
+
+// --- Wet toevoegen uit het centrale corpus (promote / traject-harvest) -----
+// De zoek-flow achter "Zoeken in het centrale corpus…": promoten kopieert de
+// wet naar de traject-repo, en voor een niet-gevonden wet start een BWB-id
+// een traject-scoped harvest via het taken-mechanisme (AddLawSheet).
+const addLawSheetRef = ref(null);
+const inviteMembersSheetRef = ref(null);
+function openAddLawSearch() {
+  addLawSheetRef.value?.show();
+}
+
+// De universele "Toevoegen"-knop in de header (AppShell) vuurt intenties; hier
+// worden ze omgezet in de bestaande acties. LibraryView is altijd gemount binnen
+// een traject, dus de tellers worden altijd opgevangen.
+const addActions = useAddActions();
+watch(() => addActions.addLaw.value, () => openAddLawSearch());
+watch(() => addActions.newWerkdoc.value, () => headerAddWerkdoc('new'));
+watch(() => addActions.uploadWerkdoc.value, () => headerAddWerkdoc('upload'));
+// Alleen de sheet openen, geen navigatie: de InviteMembersSheet leeft hier en is
+// altijd bereikbaar. Na een geslaagde invite seint hij membersChanged, waar de
+// leden-pane op herlaadt.
+watch(() => addActions.inviteMembers.value, () => inviteMembersSheetRef.value?.show());
+
+// Werkdocument nieuw/upload vanuit de header: zorg eerst voor werkdoc-modus (de
+// nieuw-document-editor en de file-picker leven daar), voer daarna de actie uit.
+async function headerAddWerkdoc(kind) {
+  if (!isWerkdocMode.value) {
+    goToWerkdocumenten();
+    await nextTick();
+  }
+  if (kind === 'new') onDocNew();
+  else onDocUpload();
+}
+// Na een geslaagde promote (via de AddLawSheet): index verversen (de wet staat
+// nu in de traject-repo) en de wet openen — dezelfde afronding als een
+// afgeronde harvest in de globale zoeker (onHarvestAvailable).
+async function onLawPromoted(lawId) {
+  await loadIndex();
+  selectLaw(lawId);
+}
+// Een gestarte traject-harvest is async: bevestig met dezelfde banner-vorm
+// als de document-upload dat de voortgang in het Taken-paneel verschijnt.
+const lawHarvestStarted = ref(false);
+function onTrajectHarvestRequested() {
+  lawHarvestStarted.value = true;
+}
+function dismissLawHarvestStarted() {
+  lawHarvestStarted.value = false;
 }
 
 // Name the open document in the unsaved-changes guard so it's clear what's at
@@ -276,19 +404,89 @@ function goToWerkdocumenten() {
 
 // --- Taken (folded into Home) -----------------------------------------------
 // The user's taken live inside Home too: a "Taken"-item in the primary sidebar
-// (below Instellingen and Werkdocumenten) opens the task list in the secondary
-// sidebar (route `taken-traject`), like the werkdocumenten panel. A task never
-// opens in main - "Beoordelen" navigates to the editor or the addressed
+// (below Instellingen and Werkdocumenten) opens the categories in the secondary
+// sidebar (route `taken-traject`), and the chosen category's task list in main -
+// the Instellingen shape, not the werkdocumenten one. A task itself still never
+// opens in main: "Beoordelen" navigates to the editor or the addressed
 // werkdocument.
 const isTakenMode = computed(() => route.name === 'taken-traject');
+const takenCategorie = computed(() => route.params.categorie || null);
+// Only meaningful under `wet`; the route allows the segment either way, so pin
+// it here rather than let a stray /taken/alle/kieswet filter anything. Note the
+// param is `contextLawId`, not `lawId` - see the route comment: `lawId` would
+// make this view open the law as well as filter by it.
+const takenLawId = computed(() =>
+  takenCategorie.value === 'wet' ? (route.params.contextLawId || null) : null,
+);
 function goToTaken() {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'taken-traject', params: { trajectRef: activeTrajectRef.value } });
 }
+// "Annuleer conversie" vanuit de takenlijst. Hergebruikt de foutmodal van de
+// job-weergave: een mislukte cancel mag niet stil blijven, want de rij blijft
+// dan staan terwijl de UI doet alsof er iets gebeurde. `useTasks` merkt de
+// verdwenen job pas op bij zijn volgende poll (30s), dus refresh meteen.
+async function onCancelTaskJob(job) {
+  const res = await cancelConversionJob(job.job_id);
+  if (!res?.ok) {
+    jobCancelError.value = res?.error || 'Annuleren mislukt.';
+    return;
+  }
+  await refreshTasks();
+}
+
+// "Bekijk document" vanuit een lopende conversie-taak. Zet viewingJobPath vóór
+// de navigatie, zodat de resolutie het pad niet eerst als gewoon document opent
+// (de jobs-lijst is bij binnenkomst nog niet gepolld) - dat gaf de flits tussen
+// "aan het converteren" en "mislukt". showWerkdocPath respecteert een al
+// gezette viewingJobPath, dus de job-weergave staat er meteen; de
+// conversionJobs-watcher bevestigt de job zodra de poll landt.
+function onViewTaskJob(path) {
+  if (!activeTrajectRef.value || !path) return;
+  viewingJobPath.value = path;
+  router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value, docPath: path } });
+}
+
+function goToTakenCategorie({ categorie, lawId }) {
+  if (!activeTrajectRef.value) return;
+  router.push({
+    name: 'taken-traject',
+    params: { trajectRef: activeTrajectRef.value, categorie, contextLawId: lawId || undefined },
+  });
+}
+// Titel van de gekozen categorie, voor zowel de top-title-bar als de kop in
+// main. Een wet-context draagt de weergavenaam (de route draagt alleen het
+// law_id); useCorpusLaws deelt zijn scope-cache met TasksCategoriesPane, dus
+// dit is geen tweede fetch.
+const { displayName: corpusLawName } = useCorpusLaws(activeTrajectRef);
+const TAKEN_TITELS = {
+  alle: 'Alle taken',
+  prioriteit: 'Prioriteit',
+  wachten: 'Wachten op',
+  werkdocumenten: 'Werkdocumenten',
+  // Alleen bereikbaar via een handmatig getypte /taken/wet zonder id; het panel
+  // linkt altijd naar één wet.
+  wet: 'Wetten',
+};
+const takenTitle = computed(() => {
+  if (!takenCategorie.value) return undefined;
+  if (takenLawId.value) return corpusLawName(takenLawId.value);
+  return TAKEN_TITELS[takenCategorie.value];
+});
 
 // --- Instellingen (traject details + leden, folded into Home) ---------------
 const isInstellingenMode = computed(() => route.name === 'instellingen-traject');
 const instellingenTab = computed(() => route.params.tab || null);
+
+// True on the library routes proper (/trajecten/{ref} and /corpus/…) - i.e.
+// none of the sibling non-corpus modes that LibraryView also hosts. Kept as one
+// computed so the "no usable content" states below (initial-loading,
+// empty-library and, crucially, the index-error takeover) can't drift apart:
+// a failed corpus index must only take over the library itself, never /taken,
+// /instellingen or /werkdocumenten, which don't read the wettenindex at all.
+const isLibraryMode = computed(
+  () => !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+);
 function goToInstellingen(tab) {
   if (!activeTrajectRef.value) return;
   router.push({ name: 'instellingen-traject', params: { trajectRef: activeTrajectRef.value, tab } });
@@ -429,6 +627,9 @@ async function onRetryViewingJob() {
   onDocUpload();
 }
 function onDocBack() {
+  // closeDoc nult currentPath; de docSelectedPath-mirror (zie boven) vervangt de
+  // URL dan naar de kale lijst. Geen expliciete navigatie nodig - dat zou de
+  // mirror alleen dubbelen.
   guardedDocNavigate(() => { viewingJobPath.value = null; closeDoc(); });
 }
 
@@ -459,6 +660,21 @@ const docReviewTaskIdParam = computed(() =>
   isWerkdocMode.value && typeof route.query.task === 'string' ? route.query.task : null,
 );
 
+// Het geadresseerde werkdocument bestaat niet: openDoc's 404-tak liet een
+// 'not-found' docError achter (useTrajectDocuments.js). Toon dan een eigen
+// centrale melding i.p.v. de kale editor-body. Niet tijdens een review: een
+// review wijst normaal naar een nog-niet-bestaand document, en dan is de
+// 'not-found' juist het startpunt voor het voorstel (zie de watcher hierboven,
+// die 'm wist zodra er een voorstel is). Zolang er nog een ?task= loopt, laten
+// we de review-flow het scherm bezitten - mislukt die, dan haalt hij ?task=
+// eruit en valt het alsnog hier naartoe.
+const docNotFoundActive = computed(() =>
+  isWerkdocMode.value
+  && docsMgr.docError.value?.kind === 'not-found'
+  && !docReviewActive.value
+  && !docReviewTaskIdParam.value,
+);
+
 // Fires once the addressed document has finished its (possibly 404) open -
 // `openDoc(docPath)` (route-driven, see the initial-load/onBeforeRouteUpdate
 // wiring below) already sets `currentPath`/`docError` before this can act,
@@ -471,7 +687,18 @@ watch(
     if (docReviewAttemptedForTaskId === taskId) return;
     docReviewAttemptedForTaskId = taskId;
     loadDocReview(taskId).then(() => {
-      if (!docReviewProposedContent.value) return;
+      if (!docReviewProposedContent.value) {
+        // Geen voorstel om te seeden. Alleen als de load écht faalde (de
+        // composable laat `reviewTask` dan leeg) halen we ?task= uit de URL en
+        // laten we de natuurlijke document-staat het overnemen - voor het
+        // normaal niet-bestaande doeldocument is dat de 404-melding, geen
+        // sticky foutbanner die daarna elk document vervuilt.
+        if (!docReviewTask.value) {
+          docReviewLoadError.value = null;
+          clearDocReviewQuery();
+        }
+        return;
+      }
       // Stale-callback guard: `docPath`/`activeTrajectRef` may have moved on
       // (another document opened, or the traject switched) while the fetch
       // was in flight. Re-check against the task's own payload - a mismatch
@@ -580,9 +807,22 @@ async function onDocSaved(savedPath) {
 }
 
 const docReviewBannerVariant = computed(() => (docReviewLoadError.value ? 'critical' : 'neutral'));
-const docReviewBannerSupportingText = computed(() =>
-  docReviewLoadError.value || 'Opslaan keurt het voorstel goed, Verwerpen wijst af.',
-);
+// Hoe het voorstel tot stand kwam. Dit is nadrukkelijk iets anders dan het
+// vinkje bij de upload: dat zei wat mócht, dit zegt wat er is gebeurd - alleen
+// de pipeline weet dat (een .docx die pandoc niet aankon kan alsnog via het
+// taalmodel zijn gegaan). Een oudere taak draagt het veld niet; dan zwijgen we
+// erover in plaats van iets te beweren.
+const DOC_CONVERSION_ORIGIN = {
+  llm: 'Omgezet met AI.',
+  pandoc: 'Omgezet met pandoc, zonder AI.',
+  pdftotext: 'Omgezet met pdftotext, zonder AI.',
+};
+const docReviewBannerSupportingText = computed(() => {
+  if (docReviewLoadError.value) return docReviewLoadError.value;
+  const origin = DOC_CONVERSION_ORIGIN[docReviewTask.value?.payload?.converted_with];
+  const action = 'Opslaan keurt het voorstel goed, Verwerpen wijst af.';
+  return origin ? `${origin} ${action}` : action;
+});
 
 // Keep the user's traject scope across in-app navigations. A traject with a law
 // stays on `library-traject`, a traject without one on `traject-home`; publicly,
@@ -608,6 +848,24 @@ const favorites = ref(null);
 // Law ids edited in the active traject (branch-vs-base diff). `null` until
 // loaded / when no traject is active; a Set once the endpoint resolves.
 const changedLawIds = ref(null);
+// De traject-sectie zakt in twee stappen terug naarmate de eigen bron groeit:
+// tot TRAJECT_LAWS_COLLAPSED staat alles uitgeschreven, daarboven de eerste
+// twintig met een uitklapknop, en boven TRAJECT_LAWS_MAX is een lijst geen
+// lijst meer maar een muur tekst - dan alleen een hint met een zoekknop. Een
+// traject-repo is een gecureerde set (een handvol wetten); een traject
+// waarvan de eigen bron het centrale corpus is zit in de duizenden.
+const TRAJECT_LAWS_COLLAPSED = 20;
+const TRAJECT_LAWS_MAX = 200;
+// De wetten uit de eigen bron van het actieve traject (source_priority 0),
+// alfabetisch op weergavenaam. `null` buiten een traject, bij een bron die
+// niet gescand kon worden, en boven de bovengrens - dan draagt
+// `trajectLawCount` de hint.
+const trajectLaws = ref(null);
+// Aantal wetten in die eigen bron, zoals `/sources` het telt. Alleen boven
+// de bovengrens doet het ertoe: dan vervangt de hint de lijst.
+const trajectLawCount = ref(0);
+// Staat de lijst uitgeklapt? Per traject, dus gereset bij een wissel.
+const trajectLawsExpanded = ref(false);
 const loading = ref(true);
 const indexError = ref(null);
 const searchPopoverRef = ref(null);
@@ -624,28 +882,64 @@ const selectedSection = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
+
 const selectedArticleNumber = ref(null);
+
+// De verrijk-/beoordeel-staat van de geselecteerde wet, gedeeld met EditorView:
+// wat de lege Machine-/YAML-pane meldt en waar zijn knoppen heen gaan. Hier en
+// niet bovenaan het bestand: de composable legt meteen een watch op zijn bron,
+// dus selectedLawId/selectedArticleNumber moeten al bestaan - eerder aanroepen
+// gooit een ReferenceError in setup en dan rendert de hele view niets.
+const {
+  isEnriching,
+  reviewReady,
+  reviewArticleForPane,
+  openReviewForLaw,
+  openTasksForLaw,
+  requestEnrich,
+  refreshTasks,
+} = useEnrichState({
+  trajectRef: activeTrajectRef,
+  lawId: selectedLawId,
+  articleNumber: selectedArticleNumber,
+});
 
 // Recently-viewed laws (most-recent-first), persisted across sessions. Stored
 // as { law_id, name } so a law that fails to load in the active traject - and
 // therefore never enters the corpus index - still stays reachable + labelled.
+//
+// One list per traject, plus one for the global corpus. Two trajects hold
+// different laws, so a law you opened in the one has no business turning up
+// under "Recent bekeken" in the other - it would point at something that
+// corpus may not even have.
 const RECENT_LAWS_KEY = 'regelrecht-recent-laws';
 const MAX_RECENT_LAWS = 12;
-function loadRecentLaws() {
+function recentLawsKey(trajectRef) {
+  return `${RECENT_LAWS_KEY}:${trajectRef || 'corpus'}`;
+}
+function loadRecentLaws(trajectRef) {
   try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_LAWS_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(recentLawsKey(trajectRef)) || '[]');
     return Array.isArray(raw) ? raw.filter(r => r && r.law_id) : [];
   } catch {
     return [];
   }
 }
-const recentLaws = ref(loadRecentLaws());
+// The list from before this was scoped mixed every traject together, so there
+// is nothing to migrate it into. Drop it instead of leaving it behind forever.
+try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+const recentLaws = ref(loadRecentLaws(activeTrajectRef.value));
+// Switching traject keeps this view mounted (same route, other param), so the
+// list has to follow the switch itself; there is no remount to reload it.
+watch(activeTrajectRef, (trajectRef) => {
+  recentLaws.value = loadRecentLaws(trajectRef);
+});
 function recordRecentLaw(lawId, name) {
   if (!lawId) return;
   const entry = { law_id: lawId, name: name || humanizeLawId(lawId) };
   recentLaws.value = [entry, ...recentLaws.value.filter(r => r.law_id !== lawId)].slice(0, MAX_RECENT_LAWS);
   try {
-    localStorage.setItem(RECENT_LAWS_KEY, JSON.stringify(recentLaws.value));
+    localStorage.setItem(recentLawsKey(activeTrajectRef.value), JSON.stringify(recentLaws.value));
   } catch { /* storage unavailable - keep the in-memory list */ }
 }
 // Detail view (tekst/machine/yaml) is reflected in the URL hash so the
@@ -698,6 +992,11 @@ const activeAction = ref(null);
 //     context-specific set, so it sits above favorites.
 //     Only present when a traject is active and the diff is non-empty.
 //   - "Favorieten": the user's personal favorites.
+//   - "Recent bekeken": the view history.
+//   - "Traject" comes LAST: the full contents of the traject's own repo. It is
+//     the longest and least selective of the four, so it belongs at the bottom
+//     - but without it a fresh traject, or someone else's, shows an empty menu,
+//     because the diff is empty and favorites/recent are personal.
 //
 // There is deliberately NO full-corpus fallback: the central corpus is the
 // full BWB corpus (thousands of laws), so dumping it into the sidebar isn't
@@ -729,12 +1028,47 @@ const sidebarSections = computed(() => {
   // available, otherwise to the stored { law_id, name } (e.g. a law not present
   // in the active traject).
   if (recentLaws.value.length > 0) {
-    const recent = recentLaws.value
-      .map(r => list.find(law => law.law_id === r.law_id) || r);
+    const recent = recentLaws.value.map(r => indexedLaw(r.law_id) || r);
     sections.push({ key: 'recent', title: 'Recent bekeken', laws: recent });
   }
 
+  // Everything the traject's own repo holds, deduplicated against NOTHING. A
+  // law that is edited, starred or recently viewed is still a law in this
+  // traject, so it appears here as well - the same stance "Recent bekeken"
+  // already takes. Filtering against "Bewerkt" would make a law jump out of
+  // this list the moment you edit it.
+  if (activeTrajectRef.value && trajectLaws.value?.length) {
+    const all = trajectLaws.value;
+    const shown = trajectLawsExpanded.value ? all : all.slice(0, TRAJECT_LAWS_COLLAPSED);
+    sections.push({ key: 'traject', title: 'Traject', laws: shown });
+  }
+
   return sections;
+});
+
+// A law opened from elsewhere (search, deep link) can sit past the collapsed
+// slice, leaving the selection with no visible anchor anywhere in the menu.
+// Unfold only then: `highlightSection` prefers the FIRST section holding the
+// law and "Traject" is pushed last, so a law that is also edited, starred or
+// recently viewed is already highlighted above - expanding 180 rows for it
+// would be exactly the wall of text the collapsing exists to prevent.
+watch([selectedLawId, trajectLaws], ([lawId, all]) => {
+  if (!lawId || trajectLawsExpanded.value || !all) return;
+  // Reading a computed inside a watcher with explicit sources adds no
+  // dependency, so this cannot feed back into the watcher.
+  if (highlightSection.value) return;
+  if (all.findIndex(law => law.law_id === lawId) >= TRAJECT_LAWS_COLLAPSED) {
+    trajectLawsExpanded.value = true;
+  }
+});
+
+// Label of the collapse toggle under the traject section, or `null` when the
+// list fits and there is nothing to fold. Counts the FETCHED laws rather than
+// `trajectLawCount`: the button must promise exactly what clicking it reveals.
+const trajectExpanderText = computed(() => {
+  const total = trajectLaws.value?.length ?? 0;
+  if (!activeTrajectRef.value || total <= TRAJECT_LAWS_COLLAPSED) return null;
+  return trajectLawsExpanded.value ? 'Toon minder' : `Toon alle ${total}`;
 });
 
 // "No usable content" states, shown full-page (like EditorView's no-content
@@ -742,11 +1076,52 @@ const sidebarSections = computed(() => {
 // width rather than the narrow sidebar. isInitialLoading covers the first load
 // before anything resolves; indexError is handled at the same top level.
 const isInitialLoading = computed(
-  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+  () => loading.value && !selectedLawId.value && sidebarSections.value.length === 0 && isLibraryMode.value,
 );
+// Above the threshold the traject's laws are a single hint line instead of a
+// section: too many to list, but the user must still learn they're there and
+// how to reach them (the existing search popover).
+const trajectLawsHint = computed(() =>
+  activeTrajectRef.value && trajectLawCount.value > TRAJECT_LAWS_MAX
+    ? `Dit traject bevat ${trajectLawCount.value.toLocaleString('nl-NL')} wetten.`
+    : null,
+);
+
+// A visible hint counts as "not empty". Without that, a large traject with no
+// favorites, no recent and no edits would fall through to the page-wide empty
+// state - which renders instead of the split-view, so the hint would never be
+// seen: precisely the situation the hint exists for.
 const isEmptyLibrary = computed(
-  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !isWerkdocMode.value && !isInstellingenMode.value && !isTakenMode.value,
+  () => !loading.value && !indexError.value && !selectedLawId.value && sidebarSections.value.length === 0 && !trajectLawsHint.value && isLibraryMode.value,
 );
+
+// Longest backend explanation we'll surface verbatim before clamping. The real
+// 502 body is the backend's own Dutch sentence ("De bibliotheek van dit traject
+// is niet beschikbaar: de traject-repo kon niet worden gescand (…)") with
+// GitHub's Trees error interpolated, which comfortably exceeds a few hundred
+// chars; the old 300 cap silently dropped the whole thing to the useless
+// generic fallback. Clamp-with-ellipsis instead so the reason still reaches the
+// user while a runaway body can't flood the dialog.
+const INDEX_ERROR_MAX_CHARS = 600;
+
+// Supporting text for the index-error surfaces (fullscreen pane + non-library
+// warning banner): prefer the backend's own (Dutch) explanation over the
+// generic fallback. The `<`/`{` guard still rejects an HTML/JSON body from an
+// intermediary proxy (those start with those chars) so a raw proxy dump never
+// leaks; a human-readable sentence with JSON interpolated *inside* it does not
+// start with either and comes through, clamped to a clean length.
+const indexErrorSupportingText = computed(() => {
+  const body = indexError.value?.body;
+  if (typeof body === 'string') {
+    const text = body.trim();
+    if (text && !text.startsWith('<') && !text.startsWith('{')) {
+      return text.length <= INDEX_ERROR_MAX_CHARS
+        ? text
+        : `${text.slice(0, INDEX_ERROR_MAX_CHARS).trimEnd()}…`;
+    }
+  }
+  return 'De gegevens konden niet worden opgehaald.';
+});
 
 // Tell the shell whether the library is empty so it can show the just-in-time
 // search coach-mark on the toolbar field; reset on unmount so it doesn't linger
@@ -756,28 +1131,62 @@ onBeforeUnmount(() => setLibraryEmpty(false));
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
 
+// "Algemeen" rides the existing :articleNumber segment as a reserved value, so
+// deep-linking and the browser back button work without a new route. The
+// schema types article numbers as free-form strings, so a real article could
+// in theory be called 'algemeen' too; when that happens the real article wins
+// and the pane is simply not reachable for that law.
+const ALGEMEEN_KEY = 'algemeen';
+const isAlgemeen = computed(
+  () =>
+    selectedArticleNumber.value === ALGEMEEN_KEY &&
+    !articles.value.some((article) => article.number === ALGEMEEN_KEY),
+);
+
+// A header field may be an internal reference like '#wet_naam': the value is
+// produced by an action in one of the articles, not written in the header.
+function resolveLawReference(value) {
+  if (typeof value !== 'string' || !value.startsWith('#')) return value ?? null;
+  const outputName = value.slice(1);
+  for (const article of articles.value) {
+    const actions = article.machine_readable?.execution?.actions;
+    if (!actions) continue;
+    for (const action of actions) {
+      if (action.output === outputName) return action.value;
+    }
+  }
+  return null;
+}
+
 const lawName = computed(() => {
   if (!selectedLaw.value) return '';
   const nameRef = selectedLaw.value.name;
-  if (typeof nameRef === 'string' && nameRef.startsWith('#')) {
-    const outputName = nameRef.slice(1);
-    for (const article of articles.value) {
-      const actions = article.machine_readable?.execution?.actions;
-      if (!actions) continue;
-      for (const action of actions) {
-        if (action.output === outputName) return action.value;
-      }
-    }
-  }
-  if (nameRef) return nameRef;
+  const resolved = resolveLawReference(nameRef);
+  if (resolved) return resolved;
   return humanizeLawId(selectedLaw.value.$id || selectedLaw.value.law_id || '');
 });
+
+/**
+ * Metadata for a law id from whatever the sidebar has loaded: the `?ids=` set
+ * (favorites + edits) first, then the traject's own list.
+ *
+ * The second lookup matters because the "Traject" section makes laws clickable
+ * that are in neither of those id sets. Without it they resolve to
+ * `humanizeLawId`, which is wrong for every law whose YAML carries a dynamic
+ * `name: '#output_ref'` - the backend resolves those into `display_name`, and
+ * the humanized id is a different string entirely.
+ */
+function indexedLaw(lawId) {
+  return laws.value.find(l => l.law_id === lawId)
+    ?? trajectLaws.value?.find(l => l.law_id === lawId)
+    ?? null;
+}
 
 // Display name resolved from the index. Used in the load-error state where
 // `selectedLaw` is null and `lawName` would be empty.
 const indexedLawName = computed(() => {
   if (!selectedLawId.value) return '';
-  const law = laws.value.find(l => l.law_id === selectedLawId.value);
+  const law = indexedLaw(selectedLawId.value);
   return law ? displayName(law) : humanizeLawId(selectedLawId.value);
 });
 
@@ -793,24 +1202,101 @@ const lawTitle = computed(() =>
 // so the sidebar reflects what the user is looking at even when nothing is
 // curated yet. Re-runs as the name resolves to upgrade the label from the
 // humanized id to the real name.
+//
+// Switching traject keeps the open law on screen and re-resolves its name, so
+// this watch fires again. That is a switch and not a visit: without the guard
+// below, every switch prepends the law you were already looking at to the list
+// of the corpus you just moved into, and the two lists converge again.
+let lastRecorded = { trajectRef: null, lawId: null };
 watch([selectedLawId, lawName, indexedLawName], () => {
-  if (selectedLawId.value) {
-    recordRecentLaw(selectedLawId.value, lawName.value || indexedLawName.value);
-  }
+  const lawId = selectedLawId.value;
+  if (!lawId) return;
+  const trajectRef = activeTrajectRef.value ?? null;
+  const switchedContext = lawId === lastRecorded.lawId && trajectRef !== lastRecorded.trajectRef;
+  lastRecorded = { trajectRef, lawId };
+  if (switchedContext) return;
+  recordRecentLaw(lawId, lawName.value || indexedLawName.value);
 }, { immediate: true });
 
 const selectedArticle = computed(() => {
-  if (!selectedArticleNumber.value) return null;
+  if (!selectedArticleNumber.value || isAlgemeen.value) return null;
   return articles.value.find(
     (a) => String(a.number) === String(selectedArticleNumber.value)
   ) ?? null;
 });
 
+// The general-information rows, built from what the corpus document actually
+// carries. Fields the law leaves empty are dropped rather than shown blank:
+// across the corpus only the first handful is filled everywhere. Identifiers
+// that belong to an external source (bwb_id, and the source url) stay out:
+// RegelRecht is meant to become the record itself, not a view onto another one.
+const REGULATORY_LAYER_LABELS = {
+  GRONDWET: 'Grondwet',
+  WET: 'Wet',
+  AMVB: 'Algemene maatregel van bestuur',
+  KONINKLIJK_BESLUIT: 'Koninklijk besluit',
+  MINISTERIELE_REGELING: 'Ministeriële regeling',
+  BELEIDSREGEL: 'Beleidsregel',
+  EU_VERORDENING: 'EU-verordening',
+  EU_RICHTLIJN: 'EU-richtlijn',
+  VERDRAG: 'Verdrag',
+  UITVOERINGSBELEID: 'Uitvoeringsbeleid',
+  GEMEENTELIJKE_VERORDENING: 'Gemeentelijke verordening',
+  PROVINCIALE_VERORDENING: 'Provinciale verordening',
+  WATERSCHAPS_VERORDENING: 'Waterschapsverordening',
+};
+
+function formatLawDate(value) {
+  if (!value || typeof value !== 'string' || value.startsWith('#')) return null;
+  // Parse the calendar date by hand: new Date('YYYY-MM-DD') means UTC
+  // midnight, and formatting that in a timezone behind UTC renders the day
+  // before the legal date. Anchoring both the parse and the formatting to UTC
+  // keeps the written date identical in every timezone.
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(value);
+  if (!match) return value;
+  const parsed = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+const algemeenRows = computed(() => {
+  const law = selectedLaw.value;
+  if (!law) return [];
+  const rows = [
+    { label: 'Naam', value: lawName.value || indexedLawName.value },
+    { label: 'Soort regeling', value: REGULATORY_LAYER_LABELS[law.regulatory_layer] || law.regulatory_layer },
+    { label: 'Officiële titel', value: law.officiele_titel },
+    { label: 'Bevoegd gezag', value: resolveLawReference(law.competent_authority) },
+    { label: 'Publicatiedatum', value: formatLawDate(law.publication_date) },
+    { label: 'Inwerkingtreding', value: formatLawDate(resolveLawReference(law.valid_from)) },
+    { label: 'Geldig tot en met', value: formatLawDate(law.valid_to) },
+    { label: 'Gemeentecode', value: law.gemeente_code },
+    { label: 'Provinciecode', value: law.provincie_code },
+    { label: 'Waterschapscode', value: law.waterschap_code },
+    { label: 'CELEX-nummer', value: law.celex_nummer },
+    { label: 'ELI', value: law.eli },
+    { label: 'Tractatenblad', value: law.tractatenblad_id },
+    { label: 'UNTS-nummer', value: law.unts_nummer },
+    { label: 'Staatscourant', value: law.stcrt_id },
+    { label: 'Organisatie', value: law.organisation },
+    { label: 'Aantal artikelen', value: articles.value.length ? String(articles.value.length) : null },
+  ];
+  return rows.filter((row) => row.value);
+});
+
+// `legal_basis` points at other laws in the corpus, so these become links.
+const algemeenLegalBasis = computed(() => selectedLaw.value?.legal_basis ?? []);
+
 // True when the URL points at an article that doesn't exist in the
 // loaded law. Distinct from "no article selected" (where no article
 // number is in the URL).
 const articleNotFound = computed(() =>
-  !!(selectedLaw.value && selectedArticleNumber.value && !selectedArticle.value)
+  !!(selectedLaw.value && selectedArticleNumber.value && !isAlgemeen.value && !selectedArticle.value)
 );
 
 // 404 means the law isn't in the active traject's corpus; the error UI shows a traject-specific message.
@@ -833,21 +1319,22 @@ watchEffect(() => {
   const detail = [];
   if (isWerkdocMode.value) {
     // Leaf-first with a leading status glyph, so it stays visible when the tab
-    // strip truncates: ⋯ converting, △ failed, • unsaved edits. A viewed
-    // conversion job names the tab by its target, an open document by its name,
-    // else the section.
+    // strip truncates: ○ converting, △ failed, ● unsaved edits. Alle drie
+    // geometrische markers van gelijke grootte (○/● zijn een ontworpen paar,
+    // open vs gevuld), bewust geen ⋯-leesteken ertussen. A viewed conversion job
+    // names the tab by its target, an open document by its name, else the section.
     if (viewingJobPath.value) {
-      const glyph = viewedJobFailed.value ? '△' : '⋯';
+      const glyph = viewedJobFailed.value ? '△' : '○';
       detail.push(`${glyph} ${docsMgr.displayTitle(viewingJobPath.value)}`);
     } else if (hasOpenDoc.value && openDocPath.value) {
-      detail.push(`${docHasChanges.value ? '• ' : ''}${docsMgr.displayTitle(openDocPath.value)}`);
+      detail.push(`${docHasChanges.value ? '● ' : ''}${docsMgr.displayTitle(openDocPath.value)}`);
     } else {
       detail.push('Werkdocumenten');
     }
   } else if (isInstellingenMode.value) {
     detail.push(
       instellingenTab.value === 'leden' ? 'Leden'
-        : instellingenTab.value === 'details' ? 'Traject details'
+        : instellingenTab.value === 'details' ? 'Algemeen'
           : 'Instellingen',
     );
   } else {
@@ -908,20 +1395,65 @@ async function fetchChangedLawIds(trajectRef) {
   }
 }
 
+// The laws of the traject's OWN source - the one repo it writes to, unique
+// per traject and recognisable by `priority === 0` (the same convention
+// `useLawPromote` and `AddLawSheet` already use). Federated sources are
+// deliberately left out: the central one is the full BWB corpus.
+//
+// Why not reuse `useCorpusLaws` (already instantiated above, and it does hold
+// `source_priority`): its list is the UNFILTERED route, which the backend
+// sorts by `law_id` across every source and then truncates at the limit. A
+// traject that federates the central BWB corpus can therefore lose its own
+// laws past that cap - they simply sort too late - and filtering the result on
+// `source_priority === 0` would silently show a partial section. `?source=`
+// takes the filtered branch, which orders by source priority precisely so the
+// cap cannot starve the own repo (see `list_corpus_laws_in_scope`). The
+// `/sources` call stays regardless: it is the only place carrying `law_count`
+// (exact past any cap) and `index_error`.
+//
+// Returns `{ laws, count }`:
+//   - `laws: null` means "no section": no traject, no own source, a source
+//     that could not be scanned (`index_error` - the existing index-error
+//     surface reports that failure), an empty source, or a source past the
+//     threshold. In the last case `count` carries the number for the hint.
+//   - a fetch failure resolves to the same "no section", without an error in
+//     the menu: the same stance as `fetchChangedLawIds`.
+async function fetchTrajectOwnLaws(trajectRef) {
+  const none = { laws: null, count: 0 };
+  if (!trajectRef) return none;
+  try {
+    const sources = await apiFetchJson(trajectSourcesUrl(trajectRef));
+    const own = sources.find(s => s.priority === 0);
+    if (!own || own.index_error || !own.law_count) return none;
+    // Only pull the list when it's small enough to show; above the threshold
+    // the count from `/sources` is all the hint needs. No new counting
+    // mechanism - `law_count` is what that endpoint already reports.
+    if (own.law_count > TRAJECT_LAWS_MAX) return { laws: null, count: own.law_count };
+    const query = `source=${encodeURIComponent(own.id)}&limit=${TRAJECT_LAWS_MAX}`;
+    const trajectLawList = await apiFetchJson(lawsListUrl(trajectRef, query));
+    return {
+      // The backend orders by law_id; the user reads the display name, which
+      // can differ from it - so sort here rather than trusting that order.
+      laws: [...trajectLawList].sort((a, b) => displayName(a).localeCompare(displayName(b), 'nl')),
+      count: own.law_count,
+    };
+  } catch (e) {
+    // De sectie blijft weg (dezelfde stille stance als `fetchChangedLawIds`),
+    // maar een serverfout laat wél een spoor achter: dit is de hoofdinhoud van
+    // het menu van een vers traject, dus "mijn wetten zijn weg" met een schone
+    // console is een diagnostisch gat. Zelfde drempel als `loadFavorites`.
+    if (e instanceof ApiError && e.status >= 500) console.warn(e.message);
+    return none;
+  }
+}
+
 const togglingFavorites = ref(new Set());
 
-const favoriteLoginWarning = ref(null);
-// Heart button when not logged in: nudge to log in via a popover anchored to the
-// button (same pattern as the Editor tab + Trajecten button) instead of silently
-// doing nothing.
-function onFavoriteClick(e) {
-  if (!authenticated.value) {
-    if (favoriteLoginWarning.value) {
-      favoriteLoginWarning.value.anchorElement = e.currentTarget;
-      favoriteLoginWarning.value.show();
-    }
-    return;
-  }
+// Star button when not logged in: the login nudge sits in the button's popup
+// slot, so the component anchors and toggles it. Logged in there is no popover
+// and the click marks the law.
+function onFavoriteClick() {
+  if (!authenticated.value) return;
   toggleFavorite(selectedLawId.value);
 }
 
@@ -950,8 +1482,9 @@ async function toggleFavorite(lawId) {
     await apiFetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
     // Re-resolve the sidebar's id-set so a newly-favorited law (whose
     // metadata isn't loaded yet, since we only fetch favorites + edits by
-    // id) appears in the Favorieten section without a manual reload.
-    loadIndex();
+    // id) appears in the Favorieten section without a manual reload. The
+    // traject's own laws are untouched by starring, so they are not refetched.
+    loadIndex({ refreshTrajectLaws: false });
   } catch {
     // HTTP or network failure - roll the optimistic toggle back.
     revert();
@@ -962,8 +1495,22 @@ async function toggleFavorite(lawId) {
 
 const claimLoadIndex = useLatest();
 
-async function loadIndex() {
+/**
+ * Reload what the sidebar needs. `refreshTrajectLaws: false` keeps the
+ * traject's own-law list as it is - starring a law cannot change the contents
+ * of the traject's repo, and refetching it there would add a `/sources` call
+ * plus an up-to-200-entry list to every click on the star.
+ */
+async function loadIndex({ refreshTrajectLaws = true } = {}) {
   const isCurrent = claimLoadIndex();
+  // Drop any previous scope's failure before we start. The error describes one
+  // specific index load, so it must not outlive the run that produced it:
+  // besides `retryLoadCorpus`, `loadIndex` is also reached from the
+  // `activeTrajectRef` watcher, and without this a broken traject's error would
+  // ride along to the next traject the user switches to - warning about (or,
+  // on the library routes, blocking) a traject whose wetten loaded fine. The
+  // `catch` below re-raises it for this run if this load fails too.
+  indexError.value = null;
   // Snapshot the traject so the changed-laws fetch and its assignment below
   // both refer to the scope this run started in.
   const trajectRef = activeTrajectRef.value;
@@ -971,12 +1518,20 @@ async function loadIndex() {
     // Resolve the small id sets the sidebar actually needs: the user's
     // personal favorites and (in a traject) the laws edited on the traject
     // branch. Both `loadFavorites` and `fetchChangedLawIds` are id-only.
-    const [, changedIds] = await Promise.all([
+    // `fetchTrajectOwnLaws` rides along: the traject's own laws are the one
+    // section that is neither personal nor edit-derived, so it's what a
+    // fresh - or someone else's - traject has to show.
+    const [, changedIds, trajectOwn] = await Promise.all([
       loadFavorites(),
       fetchChangedLawIds(trajectRef),
+      refreshTrajectLaws ? fetchTrajectOwnLaws(trajectRef) : null,
     ]);
     if (!isCurrent()) return;
     changedLawIds.value = changedIds;
+    if (trajectOwn) {
+      trajectLaws.value = trajectOwn.laws;
+      trajectLawCount.value = trajectOwn.count;
+    }
 
     // Fetch metadata for just those ids via `?ids=` - never the whole corpus.
     // The central corpus is the full BWB corpus (thousands of laws); loading
@@ -985,6 +1540,17 @@ async function loadIndex() {
     // search popover instead.
     const ids = new Set([...(favorites.value || []), ...(changedIds || [])]);
     if (ids.size === 0) {
+      // In een traject is "niets samengesteld" niet hetzelfde als "alles in
+      // orde": als de traject-repo niet gescand kan worden weigert de backend
+      // de traject-bibliotheek expliciet (428 koppel-flow / 502 met uitleg).
+      // Probe die status ook zonder ids, zodat de gebruiker de foutstatus
+      // ziet in plaats van een normaal ogende lege bibliotheek.
+      if (trajectRef) {
+        await apiFetch(lawsListUrl(trajectRef, 'limit=1'), {
+          errorMessage: (status) => `Failed to load corpus: ${status}`,
+        });
+        if (!isCurrent()) return;
+      }
       laws.value = [];
       return;
     }
@@ -1054,11 +1620,11 @@ function retryLoadLaw() {
 }
 
 function retryLoadCorpus() {
-  indexError.value = null;
-  // loadIndex only flips loading back to false in its finally block -
-  // it never sets it to true. So after the first failure (loading is
-  // false, indexError is truthy) we have to flip the spinner back on
-  // here, otherwise the retry shows the error pane until the next
+  // Clearing indexError is loadIndex's job (it does so for every caller, not
+  // just this one). loading is not: loadIndex only flips it back to false in
+  // its finally block, it never sets it to true. So after the first failure
+  // (loading is false, indexError is truthy) we have to flip the spinner back
+  // on here, otherwise the retry shows the error pane until the next
   // round-trip resolves.
   loading.value = true;
   loadIndex();
@@ -1156,6 +1722,27 @@ const highlightSection = computed(() => {
   return sections.find(s => s.laws.some(l => l.law_id === id))?.key ?? null;
 });
 
+// A Grondslag entry points at an article in another law: select that law and
+// land on the authorizing article itself, instead of dropping the reader at
+// the law's front door to re-find it. A dangling article reference degrades
+// to the law's own empty state.
+function selectLawArticle(lawId, articleNumber) {
+  if (!articleNumber) {
+    selectLaw(lawId);
+    return;
+  }
+  const articleStr = String(articleNumber);
+  selectedSection.value = null;
+  if (lawId !== selectedLawId.value || lawError.value) {
+    selectedLawId.value = lawId;
+    lawError.value = null;
+    loadLaw(lawId);
+  }
+  selectedArticleNumber.value = articleStr;
+  activeAction.value = null;
+  router.push(libraryRouteFor({ lawId, articleNumber: articleStr }));
+}
+
 function selectArticle(number) {
   const articleStr = String(number);
   if (articleStr === selectedArticleNumber.value) return;
@@ -1165,6 +1752,110 @@ function selectArticle(number) {
     ...libraryRouteFor({ lawId: selectedLawId.value, articleNumber: articleStr }),
     hash: route.hash,
   });
+}
+
+function selectAlgemeen() {
+  selectArticle(ALGEMEEN_KEY);
+}
+
+// Article filter: a toolbar toggle reveals the field, so the list stays
+// undisturbed until someone asks for it.
+const articleFilterOpen = ref(false);
+const articleFilter = ref('');
+const articleFilterField = ref(null);
+
+function toggleArticleFilter() {
+  articleFilterOpen.value = !articleFilterOpen.value;
+  if (articleFilterOpen.value) {
+    nextTick(() => articleFilterField.value?.focus?.());
+  } else {
+    articleFilter.value = '';
+  }
+}
+
+// Machine-uitvoerbaar = het artikel draagt een uitvoerbare regel, niet alleen
+// een definitie: `execution` is wat de engine kan draaien.
+function isMachineReadable(article) {
+  // The Machine tab renders whatever machine_readable holds, and a machine
+  // version with only definitions (no execution yet) is still a machine
+  // version - the tag and the filter follow that same notion.
+  const mr = article.machine_readable;
+  if (!mr) return false;
+  return !!mr.execution || Object.keys(mr.definitions ?? {}).length > 0;
+}
+
+const ARTICLE_FILTERS = [
+  { key: 'alles', label: 'Alles' },
+  { key: 'machine', label: 'Met machine-versie' },
+  { key: 'geen-machine', label: 'Zonder machine-versie' },
+];
+const articleTypeFilter = ref('alles');
+
+function setArticleTypeFilter(key) {
+  articleTypeFilter.value = key;
+}
+
+function resetArticleFilters() {
+  articleTypeFilter.value = 'alles';
+  articleFilter.value = '';
+}
+
+// Zeg wát er niets opleverde, niet alleen dát er niets is: de zoekterm en het
+// typefilter kunnen allebei de oorzaak zijn en vragen om een ander antwoord.
+const articleEmptyText = computed(() => {
+  const term = articleFilter.value.trim();
+  if (term) return `Geen artikelen gevonden voor "${term}"`;
+  if (articleTypeFilter.value === 'machine') return 'Geen machine-uitvoerbare artikelen';
+  if (articleTypeFilter.value === 'geen-machine') return 'Alle artikelen zijn machine-uitvoerbaar';
+  return 'Geen artikelen';
+});
+
+// Alleen het typefilter krijgt een token: een zoekterm staat al zichtbaar in
+// het veld, terwijl de filterkeuze anders onzichtbaar in een menu verdwijnt.
+const activeTypeFilterLabel = computed(() =>
+  articleTypeFilter.value === 'alles'
+    ? ''
+    : ARTICLE_FILTERS.find((f) => f.key === articleTypeFilter.value)?.label ?? ''
+);
+
+const articleFiltersActive = computed(
+  () => articleTypeFilter.value !== 'alles' || !!articleFilter.value.trim()
+);
+
+// Filters horen bij de wet die je bekijkt, niet bij de sessie: van wet wisselen
+// wist ze, ongeacht de route ernaartoe (klik, deeplink of de backknop).
+watch(selectedLawId, () => {
+  resetArticleFilters();
+  articleFilterOpen.value = false;
+});
+
+const filteredArticles = computed(() => {
+  const term = articleFilter.value.trim().toLowerCase();
+  const byType = articles.value.filter((article) => {
+    if (articleTypeFilter.value === 'machine') return isMachineReadable(article);
+    if (articleTypeFilter.value === 'geen-machine') return !isMachineReadable(article);
+    return true;
+  });
+  if (!term) return byType;
+  return byType.filter((article) => {
+    const number = `artikel ${article.number}`.toLowerCase();
+    const description = (articleDescription(article) || '').toLowerCase();
+    return number.includes(term) || description.includes(term) || String(article.text || '').toLowerCase().includes(term);
+  });
+});
+
+// Web Share is absent on most desktop browsers, so the button only appears
+// where the OS can actually take over. Checked once: it cannot change at runtime.
+const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+async function shareLaw() {
+  if (!canShare) return;
+  try {
+    await navigator.share({ title: lawName.value || lawTitle.value, url: window.location.href });
+  } catch (err) {
+    // An abort is the user closing the sheet, not a failure worth surfacing.
+    if (err?.name !== 'AbortError') console.warn('Delen is niet gelukt', err);
+  }
 }
 
 /**
@@ -1194,6 +1885,10 @@ function onPaneBack(e) {
     // Instellingen: back from a tab's content returns to the tab list
     // (bare /instellingen), which collapses to the secondary sidebar on narrow.
     if (isInstellingenMode.value) return goToInstellingen();
+    // Taken: same shape, back from a category returns to the category list.
+    // Without this the shared fallback below ran, and that routes on a law id
+    // that taken mode does not have, so the button did nothing at all.
+    if (isTakenMode.value) return goToTaken();
     return (lawError.value || indexError.value) ? goToLibraryRoot() : goToLawRoot();
   }
   if (slot === 'secondary-sidebar') return goToLibraryRoot();
@@ -1219,7 +1914,7 @@ function clearRecent() {
               (changedLawIds.value && changedLawIds.value.has(sel)));
   const deselect = !!sel && recentLaws.value.some(r => r.law_id === sel) && !stillShown;
   recentLaws.value = [];
-  try { localStorage.removeItem(RECENT_LAWS_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(recentLawsKey(activeTrajectRef.value)); } catch { /* ignore */ }
   if (deselect) {
     // Clear the open law up front so the article sidebar + main reflow to the
     // empty state now. `selectedLawId` is a manual ref, not route-derived; a
@@ -1287,14 +1982,34 @@ onBeforeRouteLeave(async (to) => {
 // (traject-home / corpus home) via the back button or a tab switch - a
 // different route record - leaves the ref set and the article list lingers
 // until refresh. Sync it reactively so the view reflows on any such navigation.
+// Symmetrisch: een wet die uit de route verdwijnt ruimt op, een wet die erin
+// verschijnt wordt geopend. Dat tweede stond alleen in de initiële load
+// hieronder, en die draait niet opnieuw wanneer je vanuit de takenlijst hierheen
+// navigeert: `taken-traject` en `library-traject` worden door dezelfde
+// LibraryView gerenderd, dus Vue hergebruikt de instantie. Zonder deze tak bleef
+// de view op "Geen selectie" staan terwijl de URL de wet wél noemde.
+//
+// Niet via selectLaw(): die doet een router.push naar de route waar we al zijn.
 watch(() => route.params.lawId, (lawId) => {
-  if (!lawId && selectedLawId.value) {
-    selectedLawId.value = null;
-    selectedLaw.value = null;
-    selectedArticleNumber.value = null;
-    activeAction.value = null;
-    lawError.value = null;
+  if (!lawId) {
+    if (selectedLawId.value) {
+      selectedLawId.value = null;
+      selectedLaw.value = null;
+      selectedArticleNumber.value = null;
+      activeAction.value = null;
+      lawError.value = null;
+    }
+    return;
   }
+  if (lawId === selectedLawId.value && !lawError.value) return;
+  selectedSection.value = null;
+  selectedLawId.value = lawId;
+  selectedArticleNumber.value = route.params.articleNumber
+    ? String(route.params.articleNumber)
+    : null;
+  activeAction.value = null;
+  lawError.value = null;
+  loadLaw(lawId);
 });
 
 // When a harvested law becomes available, reload the corpus and select it.
@@ -1337,8 +2052,14 @@ watch(activeTrajectRef, () => {
   // "Bewerkt in dit traject" section doesn't briefly show stale entries
   // (filtered against the also-stale corpus) while the new index loads.
   // `loadIndex` repopulates it for the new scope, or leaves it null in
-  // global browse.
+  // global browse. Same for the traject's own laws: the previous traject's
+  // list must not linger while the new one loads.
   changedLawIds.value = null;
+  trajectLaws.value = null;
+  trajectLawCount.value = 0;
+  // Ook de uitklapstand hoort bij het vórige traject: zonder deze reset opent
+  // het volgende traject uitgeklapt omdat je hier ooit op de knop drukte.
+  trajectLawsExpanded.value = false;
   loadIndex();
   if (selectedLawId.value) {
     lawError.value = null;
@@ -1348,15 +2069,49 @@ watch(activeTrajectRef, () => {
 </script>
 
 <template>
+        <!-- Buiten de panes: de bestandskiezer wordt vanuit twee modi geopend
+             (de werkdocumenten-toolbar en "Probeer opnieuw" in de takenlijst).
+             Stond hij in het werkdocumenten-paneel, dan is `docFileInput` in
+             taken-modus null en klikt `onUpload()` stilletjes niets aan -
+             optional chaining slikt dat zonder een kik. -->
+        <!-- No `accept` filter: werkdocumenten accept any format. Markdown is
+             stored as-is; every other format is converted server-side (a
+             deterministic tool when one fits, otherwise the enricher) and comes
+             back as a reviewable markdown werkdocument. -->
+        <input ref="docFileInput" type="file" hidden @change="onDocFileChange" />
+
+        <!-- Non-blocking corpus warning for the non-library modes (/taken,
+             /instellingen, /werkdocumenten): those don't read the wettenindex,
+             so a corpus 502 leaves their panes standing (the fullscreen page
+             below is gated to library mode) and they get this banner instead.
+             Rendered as a sibling above the split-view so it spans all panes
+             rather than sitting in the narrow sidebar; the .corpus-warning rule
+             keeps it auto-height (the app main pane slots its children flex:1).
+             It clears itself the moment any index load starts over - a retry
+             here, or a switch to another traject - and stays gone unless that
+             load fails too (loadIndex resets indexError up front). -->
+        <nldd-banner
+          v-if="indexError && !isLibraryMode"
+          class="corpus-warning"
+          variant="warning"
+          text="Wetten en regels van dit traject zijn niet geladen"
+          :supporting-text="indexErrorSupportingText"
+        >
+          <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
+        </nldd-banner>
+
         <!-- Full-page "no usable content" states (matching EditorView): shown
              instead of the split-view so the error / CTA spans the full width,
-             not the narrow sidebar. -->
-        <nldd-page v-if="indexError">
+             not the narrow sidebar. The index-error takeover is gated to
+             library mode: /taken, /instellingen and /werkdocumenten don't read
+             the wettenindex, so a corpus 502 must leave them standing (they get
+             the non-blocking warning banner above instead). -->
+        <nldd-page v-if="indexError && isLibraryMode">
           <nldd-simple-section width="full">
             <nldd-inline-dialog
               variant="alert"
               text="Wetten en regels zijn niet geladen"
-              supporting-text="De gegevens konden niet worden opgehaald."
+              :supporting-text="indexErrorSupportingText"
             >
               <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
               <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
@@ -1384,7 +2139,7 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title v-if="!loading" id="home-titel" size="3"><h3>{{ sidebarTitle }}</h3></nldd-title>
                 <nldd-spacer v-if="!loading" size="16"></nldd-spacer>
-                <nldd-activity-indicator v-if="loading" text="Laden" show-text></nldd-activity-indicator>
+                <nldd-activity-indicator v-if="loading" :text="sidebarLoadingText" show-text></nldd-activity-indicator>
                 <template v-else>
                   <!-- Werkdocumenten (in a traject): a single entry that opens
                        the document list in the secondary sidebar + editor in
@@ -1449,28 +2204,34 @@ watch(activeTrajectRef, () => {
                         </nldd-icon-cell>
                       </nldd-list-item>
                     </nldd-list>
+                    <!-- Uitklapknop onder de traject-sectie: die is de enige
+                         die lang genoeg wordt om in te vouwen. -->
+                    <template v-if="section.key === 'traject' && trajectExpanderText">
+                      <nldd-spacer size="8"></nldd-spacer>
+                      <nldd-button
+                        data-testid="traject-laws-expander"
+                        size="xs"
+                        variant="accent-transparent"
+                        :text="trajectExpanderText"
+                        @click="trajectLawsExpanded = !trajectLawsExpanded"
+                      ></nldd-button>
+                    </template>
                   </template>
-                  <!-- Wet of regel toevoegen uit een geüpload document (alleen
-                       in een traject): start de conversie-naar-wet-keten; de
-                       voortgang en het resultaat verschijnen in het
-                       Taken-paneel. Zelfde toolbar/icon-button-patroon als de
-                       werkdocument-upload; één actie, dus direct een klik in
-                       plaats van een menu. -->
+                  <!-- Boven de bovengrens is een lijst geen lijst meer maar een
+                       muur tekst: één regel met het aantal, plus de knop naar
+                       het bestaande zoekvenster. -->
+                  <template v-if="trajectLawsHint">
+                    <nldd-spacer v-if="sidebarSections.length > 0" size="24"></nldd-spacer>
+                    <nldd-inline-dialog :text="trajectLawsHint">
+                      <nldd-button slot="actions" variant="secondary" text="Zoek een wet" @click="openSearch"></nldd-button>
+                    </nldd-inline-dialog>
+                  </template>
+                  <!-- "Wet toevoegen" is verhuisd naar de universele "+" in de
+                       header (AppShell); die opent de AddLawSheet via
+                       useAddActions. De file-picker voor de upload-route blijft
+                       hier, want de upload zelf (onLawFileChange) leeft in deze
+                       view. -->
                   <template v-if="activeTrajectRef">
-                    <nldd-spacer size="24"></nldd-spacer>
-                    <nldd-toolbar label="Wetacties">
-                      <nldd-toolbar-item slot="start">
-                        <!-- Géén `expandable`: dat is de disclosure-chevron
-                             voor menu/popover-knoppen; dit is een directe
-                             actie. De tekst verschijnt als tooltip. -->
-                        <nldd-icon-button
-                          id="law-upload-btn"
-                          icon="plus-small"
-                          text="Wet of regel toevoegen uit document"
-                          @click="onLawUpload"
-                        ></nldd-icon-button>
-                      </nldd-toolbar-item>
-                    </nldd-toolbar>
                     <input ref="lawFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onLawFileChange" />
                     <template v-if="lawUploadStarted">
                       <nldd-spacer size="8"></nldd-spacer>
@@ -1480,6 +2241,16 @@ watch(activeTrajectRef, () => {
                         supporting-text="Je krijgt een taak zodra de wet klaarstaat voor beoordeling."
                         dismissible
                         @dismiss="dismissLawUploadStarted"
+                      ></nldd-banner>
+                    </template>
+                    <template v-if="lawHarvestStarted">
+                      <nldd-spacer size="8"></nldd-spacer>
+                      <nldd-banner
+                        variant="success"
+                        text="Ophalen gestart"
+                        supporting-text="De aanvraag staat bij Taken; je krijgt een taak zodra de wet klaarstaat voor beoordeling."
+                        dismissible
+                        @dismiss="dismissLawHarvestStarted"
                       ></nldd-banner>
                     </template>
                   </template>
@@ -1496,12 +2267,19 @@ watch(activeTrajectRef, () => {
                 <nldd-title id="instellingen-titel" size="3"><h3>Instellingen</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-list variant="simple" arrow-navigation>
+                  <!-- Zelfde iconen als in TrajectMenu/MobileTrajectSheet: deze
+                       twee openen dezelfde bestemmingen, dus ze horen er niet
+                       anders uit te zien afhankelijk van waar je ze aanklikt. -->
                   <nldd-list-item size="md" button :selected="instellingenTab === 'details' || undefined" @click="goToInstellingen('details')">
-                    <nldd-text-cell text="Traject details"></nldd-text-cell>
+                    <nldd-icon-cell size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-text-cell text="Algemeen"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
                   </nldd-list-item>
                   <nldd-list-item size="md" button :selected="instellingenTab === 'leden' || undefined" @click="goToInstellingen('leden')">
+                    <nldd-icon-cell size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Leden"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
@@ -1511,15 +2289,20 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Secondary Sidebar (taken mode): the task list, mirroring the
-               werkdocumenten panel. -->
+          <!-- Secondary Sidebar (taken mode): the categories, mirroring the
+               Instellingen panel - the list itself lives in main. -->
           <nldd-split-view-pane v-else-if="isTakenMode" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" text="Taken" :back-text="LIBRARY_HOME_BACK_TEXT" collapse-anchor="taken-titel"></nldd-top-title-bar>
               <nldd-simple-section width="full">
                 <nldd-title id="taken-titel" size="3"><h3>Taken</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <TasksPane></TasksPane>
+                <TasksCategoriesPane
+                  :traject-ref="activeTrajectRef"
+                  :categorie="takenCategorie"
+                  :law-id="takenLawId"
+                  @select="goToTakenCategorie"
+                ></TasksCategoriesPane>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1534,26 +2317,23 @@ watch(activeTrajectRef, () => {
                 <nldd-toolbar label="Documentacties">
                   <nldd-toolbar-item slot="start">
                     <nldd-icon-button
-                      id="werkdoc-add-btn"
                       icon="plus-small"
                       text="Document toevoegen"
                       expandable
                       tooltip-timing="never"
-                      popup-type="menu"
-                      popovertarget="werkdoc-add-menu"
-                    ></nldd-icon-button>
-                    <nldd-menu id="werkdoc-add-menu" anchor="werkdoc-add-btn">
-                      <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="onDocNew"></nldd-menu-item>
-                      <nldd-menu-item icon="upload-to-cloud" text="PDF of DOCX uploaden…" @select="onDocUpload"></nldd-menu-item>
-                    </nldd-menu>
+                    >
+                      <nldd-menu slot="popup">
+                        <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="onDocNew"></nldd-menu-item>
+                        <nldd-menu-item icon="upload-to-cloud" text="Document uploaden…" @select="onDocUpload"></nldd-menu-item>
+                      </nldd-menu>
+                    </nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer size="16"></nldd-spacer>
-                <input ref="docFileInput" type="file" accept=".pdf,.doc,.docx" hidden @change="onDocFileChange" />
                 <nldd-activity-indicator v-if="docsLoading && !docList.length && !conversionJobs.length" text="Documenten laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="docsError" variant="alert" text="Documenten niet geladen" :supporting-text="docsError.message"></nldd-inline-dialog>
                 <DocumentList v-else-if="docList.length || conversionJobs.length" :documents="docList" :jobs="conversionJobs" :selected-path="docSelectedPath" @select="onDocSelect"></DocumentList>
-                <nldd-inline-dialog v-else text="Geen werkdocumenten" supporting-text="Maak een nieuw document of upload een PDF of DOCX."></nldd-inline-dialog>
+                <nldd-inline-dialog v-else text="Geen werkdocumenten"></nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1578,40 +2358,127 @@ watch(activeTrajectRef, () => {
                      favourite button runs entirely off `selectedLawId` (route)
                      + `favorites`, never the loaded law, so waiting for
                      `selectedLaw` only hid the toolbar during the load. -->
-                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Favorieten">
-                  <nldd-toolbar-item slot="start">
+                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Wetacties">
+                  <!-- priority: hoger blijft langer staan, lager verdwijnt als
+                       eerste in het overflow-menu. -->
+                  <nldd-toolbar-item slot="start" :priority="2">
                     <nldd-icon-button
-                      :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
+                      :icon="favorites?.has(selectedLawId) ? 'star-filled' : 'star'"
                       :text="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
                       @click="onFavoriteClick"
+                    >
+                      <!-- In de popup-slot: het component ankert en toggelt de
+                           popover zelf, dus een tweede klik sluit hem weer.
+                           Alleen zinvol zolang je niet bent ingelogd. -->
+                      <nldd-popover
+                        v-if="!authenticated"
+                        slot="popup"
+                        accessible-label="Inloggen"
+                        width="320px"
+                      >
+                        <nldd-container padding="16">
+                          <nldd-inline-dialog
+                            icon="login"
+                            text="Log in om wetten als favoriet te markeren"
+                            supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
+                          >
+                            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+                            <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                          </nldd-inline-dialog>
+                        </nldd-container>
+                      </nldd-popover>
+                    </nldd-icon-button>
+                  </nldd-toolbar-item>
+                  <nldd-toolbar-item v-if="canShare" slot="start" :priority="1">
+                    <nldd-icon-button icon="share" text="Delen" @click="shareLaw"></nldd-icon-button>
+                  </nldd-toolbar-item>
+                  <nldd-toolbar-item slot="end" :priority="4">
+                    <nldd-icon-button
+                      icon="search"
+                      text="Artikelen zoeken"
+                      :expanded="articleFilterOpen || undefined"
+                      @click="toggleArticleFilter"
                     ></nldd-icon-button>
+                  </nldd-toolbar-item>
+                  <nldd-toolbar-item slot="end" :priority="3">
+                    <nldd-icon-button icon="filter" text="Artikelen filteren">
+                      <nldd-menu slot="popup">
+                        <nldd-menu-item
+                          v-for="option in ARTICLE_FILTERS"
+                          :key="option.key"
+                          type="radio"
+                          :text="option.label"
+                          :selected="articleTypeFilter === option.key || undefined"
+                          @select="setArticleTypeFilter(option.key)"
+                        ></nldd-menu-item>
+                      </nldd-menu>
+                    </nldd-icon-button>
                   </nldd-toolbar-item>
                 </nldd-toolbar>
                 <nldd-spacer v-if="paneChromeVisible(selectedLawLoading)" size="16"></nldd-spacer>
-                <nldd-popover ref="favoriteLoginWarning" accessible-label="Inloggen" width="320px">
-                  <nldd-container padding="16">
-                    <nldd-inline-dialog
-                      icon="login"
-                      text="Log in om wetten als favoriet te markeren"
-                      supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
-                    >
-                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
-                    </nldd-inline-dialog>
-                  </nldd-container>
-                </nldd-popover>
+                <template v-if="paneChromeVisible(selectedLawLoading) && articleFilterOpen">
+                  <nldd-search-field
+                    ref="articleFilterField"
+                    :value="articleFilter"
+                    placeholder="Artikelen zoeken"
+                    accessible-label="Artikelen zoeken"
+                    @input="articleFilter = $event.detail?.value ?? ''"
+                  ></nldd-search-field>
+                  <nldd-spacer size="16"></nldd-spacer>
+                </template>
                 <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
+                <template v-else>
+                <nldd-list variant="simple" arrow-navigation>
+                  <nldd-list-item size="md" button :selected="isAlgemeen || undefined" @click="selectAlgemeen()">
+                    <nldd-icon-cell size="20">
+                      <nldd-icon name="information"></nldd-icon>
+                    </nldd-icon-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-text-cell text="Algemeen"></nldd-text-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20">
+                      <nldd-icon name="chevron-right"></nldd-icon>
+                    </nldd-icon-cell>
+                  </nldd-list-item>
+                </nldd-list>
+                <nldd-spacer size="24"></nldd-spacer>
+                <nldd-title size="5">
+                  <h4>Artikelen</h4>
+                </nldd-title>
+                <nldd-spacer size="8"></nldd-spacer>
+                <template v-if="activeTypeFilterLabel">
+                  <nldd-token
+                    control="dismiss"
+                    :text="activeTypeFilterLabel"
+                    dismiss-text="Filter wissen"
+                    @dismiss="setArticleTypeFilter('alles')"
+                  ></nldd-token>
+                  <nldd-spacer size="8"></nldd-spacer>
+                </template>
+                <!-- Geen lijst maar een losse dialog zodra er niets te tonen is:
+                     die vult de resterende hoogte en zet de boodschap in het
+                     midden, in plaats van als blokje bovenin te blijven hangen. -->
+                <nldd-inline-dialog v-if="!filteredArticles.length" :text="articleEmptyText">
+                  <nldd-button
+                    v-if="articleFiltersActive"
+                    slot="actions"
+                    text="Toon alles"
+                    @click="resetArticleFilters"
+                  ></nldd-button>
+                </nldd-inline-dialog>
                 <nldd-list v-else variant="simple" arrow-navigation>
                   <nldd-list-item
-                    v-for="article in articles"
+                    v-for="article in filteredArticles"
                     :key="article.number"
                     size="md"
                     button
                     :selected="String(article.number) === String(selectedArticleNumber) || undefined"
                     @click="selectArticle(article.number)"
                   >
-                    <nldd-text-cell :text="`Artikel ${article.number}`" :supporting-text="articleDescription(article)">
+                    <nldd-text-cell :supporting-text="articleDescription(article)">
+                      Artikel {{ article.number }}
+                      <nldd-tag v-if="isMachineReadable(article)" size="sm" color="accent">Machine</nldd-tag>
                     </nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20">
@@ -1619,6 +2486,7 @@ watch(activeTrajectRef, () => {
                     </nldd-icon-cell>
                   </nldd-list-item>
                 </nldd-list>
+                </template>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1628,7 +2496,7 @@ watch(activeTrajectRef, () => {
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
-                :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Traject details' : undefined)"
+                :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Algemeen' : undefined)"
                 back-text="Instellingen"
                 :collapse-anchor="instellingenTab ? 'instellingen-pane-titel' : undefined"
               ></nldd-top-title-bar>
@@ -1648,12 +2516,31 @@ watch(activeTrajectRef, () => {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Main (taken-modus): heeft nooit content - een taak opent niet
-               hier, "Beoordelen" navigeert naar de editor of het werkdocument. -->
-          <nldd-split-view-pane v-else-if="isTakenMode" slot="main">
-            <nldd-page>
-              <nldd-simple-section width="full">
-                <nldd-inline-dialog text="Geen selectie"></nldd-inline-dialog>
+          <!-- Main (taken-modus): de takenlijst van de gekozen categorie. Een
+               taak zelf opent nog steeds niet hier - "Beoordelen" navigeert naar
+               de editor of het werkdocument. -->
+          <nldd-split-view-pane v-else-if="isTakenMode" slot="main" :has-content="takenCategorie || undefined">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar
+                slot="header"
+                :text="takenTitle"
+                back-text="Taken"
+                :collapse-anchor="takenCategorie ? 'taken-pane-titel' : undefined"
+              ></nldd-top-title-bar>
+              <nldd-simple-section v-if="takenCategorie">
+                <nldd-title id="taken-pane-titel" size="3"><h3>{{ takenTitle }}</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <TasksListPane
+                  :traject-ref="activeTrajectRef"
+                  :categorie="takenCategorie"
+                  :law-id="takenLawId"
+                  @upload="onDocUpload"
+                  @cancel-job="onCancelTaskJob"
+                  @view-job="onViewTaskJob"
+                ></TasksListPane>
+              </nldd-simple-section>
+              <nldd-simple-section v-else width="full">
+                <nldd-inline-dialog text="Kies een categorie"></nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
@@ -1687,6 +2574,22 @@ watch(activeTrajectRef, () => {
                 </nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
+            <!-- Werkdoc-404: het geadresseerde document bestaat niet. Staat vóór
+                 de hasOpenDoc-tak, want openDoc's 404 zet wél currentPath (dus
+                 hasOpenDoc is true) - zonder deze voorrang zou de editor met een
+                 lege body renderen. Een echte centrale melding met een uitweg,
+                 in de stijl van de artikel-404 verderop. -->
+            <nldd-page v-else-if="docNotFoundActive">
+              <nldd-simple-section width="full">
+                <nldd-inline-dialog
+                  variant="alert"
+                  :text="`Werkdocument ${docsMgr.displayTitle(openDocPath)} bestaat niet`"
+                  supporting-text="Mogelijk is het verwijderd of klopt de link niet. Ga terug naar de lijst om een ander document te openen of een nieuw document te maken."
+                >
+                  <nldd-button slot="actions" variant="primary" text="Terug naar werkdocumenten" @click="onDocBack"></nldd-button>
+                </nldd-inline-dialog>
+              </nldd-simple-section>
+            </nldd-page>
             <nldd-page v-else-if="hasOpenDoc" sticky-header sticky-footer>
               <!-- Review-modus (job_review-taak, payload.kind === 'document'):
                    a full-width, low bar above the document editor, same
@@ -1695,7 +2598,11 @@ watch(activeTrajectRef, () => {
                    DocumentEditor's default (body) slot, ahead of its own
                    nldd-simple-section - both land in nldd-page's body area,
                    in source order, so the banner sits above the editor. -->
-              <nldd-container v-if="docReviewActive || docReviewLoadError" padding="8">
+              <!-- Alleen bij een actief voorstel: een mislukte review-load zet
+                   geen banner meer (die viel eerder overal boven - zie de
+                   watcher-failure-tak), en `docReviewLoadError` dient nu enkel
+                   nog voor een mislukte Verwerpen-actie op een actieve review. -->
+              <nldd-container v-if="docReviewActive" padding="8">
                 <nldd-banner :variant="docReviewBannerVariant" text="Voorstel uit documentconversie" :supporting-text="docReviewBannerSupportingText">
                   <nldd-button
                     v-if="docReviewActive"
@@ -1716,14 +2623,14 @@ watch(activeTrajectRef, () => {
           </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane v-else slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
+          <nldd-split-view-pane v-else slot="main" :has-content="selectedArticle || isAlgemeen || lawError || articleNotFound ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
-                :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
-                :supporting-text="selectedArticle ? lawName : undefined"
+                :text="isAlgemeen ? 'Algemeen' : (selectedArticle ? `Artikel ${selectedArticle.number}` : undefined)"
+                :supporting-text="isAlgemeen || selectedArticle ? lawName : undefined"
                 :back-text="lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug')"
-                :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
+                :collapse-anchor="isAlgemeen ? 'algemeen-titel' : (selectedArticle ? 'article-titel' : undefined)"
               ></nldd-top-title-bar>
 
               <nldd-simple-section width="full" v-if="!selectedLawId">
@@ -1765,6 +2672,45 @@ watch(activeTrajectRef, () => {
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
+              <nldd-simple-section width="full" v-else-if="isAlgemeen">
+                <nldd-title id="algemeen-titel" size="3">
+                  <h3>Algemeen</h3>
+                  <span slot="subtitle">{{ lawName }}</span>
+                </nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-list variant="box" accessible-label="Algemene informatie">
+                  <nldd-list-item v-for="row in algemeenRows" :key="row.label">
+                    <nldd-text-cell :text="row.label" width="200px"></nldd-text-cell>
+                    <nldd-spacer-cell size="16"></nldd-spacer-cell>
+                    <nldd-text-cell :text="row.value"></nldd-text-cell>
+                  </nldd-list-item>
+                </nldd-list>
+                <template v-if="algemeenLegalBasis.length">
+                  <nldd-spacer size="24"></nldd-spacer>
+                  <nldd-title size="4">
+                    <h4>Grondslag</h4>
+                  </nldd-title>
+                  <nldd-spacer size="8"></nldd-spacer>
+                  <nldd-list variant="simple">
+                    <nldd-list-item
+                      v-for="basis in algemeenLegalBasis"
+                      :key="`${basis.law_id}-${basis.article}`"
+                      size="md"
+                      button
+                      @click="selectLawArticle(basis.law_id, basis.article)"
+                    >
+                      <nldd-text-cell
+                        :text="basis.article ? `Artikel ${basis.article}` : humanizeLawId(basis.law_id)"
+                        :supporting-text="basis.description || (basis.article ? humanizeLawId(basis.law_id) : undefined)"
+                      ></nldd-text-cell>
+                      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                      <nldd-icon-cell size="20">
+                        <nldd-icon name="chevron-right"></nldd-icon>
+                      </nldd-icon-cell>
+                    </nldd-list-item>
+                  </nldd-list>
+                </template>
+              </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="!selectedArticle">
                 <nldd-inline-dialog text="Selecteer een artikel"></nldd-inline-dialog>
               </nldd-simple-section>
@@ -1790,8 +2736,8 @@ watch(activeTrajectRef, () => {
                   <nldd-spacer size="24"></nldd-spacer>
                   <KeepAlive>
                     <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" centered />
-                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @open-action="activeAction = $event" />
-                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" />
+                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :review-article="reviewArticleForPane" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" @open-action="activeAction = $event" />
+                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" :can-create="!!selectedLawId" :can-enrich="canEnrich" :enriching="isEnriching" :review-ready="reviewReady" :review-article="reviewArticleForPane" :enrich-error="enrichError" :create-href="authenticated ? editLawHref : undefined" @create-mr="openEditor" @enrich="enrichSelectedLaw" @view-tasks="openTasksForLaw" @review="openReviewForLaw" />
                   </KeepAlive>
                 </nldd-simple-section>
               </template>
@@ -1812,6 +2758,13 @@ watch(activeTrajectRef, () => {
       @select-law="(lawId) => selectLaw(lawId, true)"
       @harvest-available="onHarvestAvailable"
     />
+    <AddLawSheet
+      ref="addLawSheetRef"
+      @promoted="onLawPromoted"
+      @harvest-requested="onTrajectHarvestRequested"
+      @upload-requested="onLawUpload"
+    />
+    <InviteMembersSheet ref="inviteMembersSheetRef" :traject-id="activeTraject?.id" />
   </Teleport>
   <!-- Unsaved-changes guard for in-view werkdocument navigation. -->
   <Teleport to="body">
@@ -1827,6 +2780,14 @@ watch(activeTrajectRef, () => {
       <nldd-button slot="actions" variant="destructive" text="Negeer wijzigingen en sluit" @click="confirmDocLeave"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
+
+  <!-- Tussen kiezen en versturen: wat er met dit bestand gaat gebeuren, en (waar
+       er te kiezen valt) of AI mee mag doen. -->
+  <UploadConfirmDialog
+    :file="pendingDocUpload"
+    @confirm="confirmDocUpload"
+    @cancel="cancelDocUpload"
+  />
 
   <Teleport to="body">
     <nldd-modal-dialog
@@ -1888,5 +2849,17 @@ nldd-navigation-split-view:not(.full-stack) .article-not-found__back-button {
    :not([hidden]) yields to the toolbar's own overflow hiding. */
 .job-back:not([hidden]) {
   display: var(--context-back-button-display, inline-flex);
+}
+
+/* The corpus-warning banner is a light-DOM sibling of the navigation-split-view,
+   so it is slotted straight into AppShell's main split-view-pane, whose
+   `::slotted(*)` sets `flex: 1` on every slotted child. Left as-is the banner
+   would grow to eat half the pane; pin it to its content height so it reads as
+   a thin bar above the panes and the split-view keeps the remaining space.
+   (Unlike the rules above this one would also work scoped - it targets an
+   element in this component's own template - but this whole block is global,
+   so it is stated plainly rather than singled out.) */
+nldd-banner.corpus-warning {
+  flex: 0 0 auto;
 }
 </style>

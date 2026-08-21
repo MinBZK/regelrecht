@@ -124,10 +124,21 @@ dev_ensure_wasm() {
 # per-service env vars and `cd` without leaking them into the recipe shell.
 # `setsid` makes the process its own session/group leader (PID == PGID), so
 # dev_stop can kill the whole subtree — npm → node, cargo → child — in one shot.
+# macOS ships no setsid(1), and without it dev_start silently started nothing:
+# the log held "setsid: command not found" and the port stayed dead. perl's
+# POSIX::setsid is the same syscall, and perl is on every mac by default.
+dev_setsid() {
+    if command -v setsid > /dev/null 2>&1; then
+        setsid "$@"
+    else
+        perl -e 'use POSIX qw(setsid); setsid() or die "setsid: $!\n"; exec @ARGV or die "exec: $!\n"' "$@"
+    fi
+}
+
 dev_start() {
     local label="$1" logfile="$2" cmd="$3"
     printf "${bold}=> Starting %s…${reset}\n" "$label"
-    setsid bash -c "$cmd" > "$logfile" 2>&1 &
+    dev_setsid bash -c "$cmd" > "$logfile" 2>&1 &
     echo "$!" >> "$PIDFILE"
 }
 

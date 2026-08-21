@@ -45,11 +45,23 @@ __pycache__/
 *.py[cod]
 .ruff_cache/
 
-# Mutation testing
-mutants.out/
+# Mutation testing. cargo-mutants hernoemt de vorige uitvoer bij een herrun
+# naar mutants.out.old/, en die naam matcht het patroon hierboven niet.
+mutants.out*/
 
 # BDD trace output
 trace_output/
+
+# Core dump van de headless Chromium die de frontend-tests en de docs-build
+# aansturen. `kernel.core_pattern` staat op de kale naam `core`, dus zo'n dump
+# landt in de werkmap van het proces. Geankerd op deze ene plek, want een kaal
+# `core` zou ook elke toekomstige map met die naam wegnemen.
+/frontend/core
+
+# Architecture model — generated on-demand by `arch-extract` for the local
+# architecture explorer (`just arch-generate`). Never committed: the explorer
+# regenerates it from the working tree, so it is always current by construction.
+docs/src/content/architecture/model.json
 
 # Dev stack
 .dev-pids
@@ -76,3 +88,7 @@ env.sso-local
 
 # Leak-guard laag 2 — casus-/sector-patronen blijven lokaal (zie script/check-skills-no-casus.sh)
 script/.skills-casus-denylist.local
+
+# Lokale DS-tarballs voor het testen van een storybook-branch (niet committen)
+.ds-tarballs/
+sync-ds.sh

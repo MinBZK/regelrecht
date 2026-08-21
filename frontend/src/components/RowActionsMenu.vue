@@ -1,6 +1,4 @@
 <script setup>
-import { useId } from 'vue';
-
 /**
  * Compact row-actions control: a single "more" icon-button that opens a
  * menu with Edit + Delete. Replaces the inline "Bewerk" button + "—"
@@ -20,33 +18,32 @@ defineProps({
 });
 
 defineEmits(['edit', 'delete']);
-
-// Unique id so multiple instances in the same list anchor their own menu.
-const anchorId = `row-actions-${useId()}`;
 </script>
 
 <template>
+  <!-- The menu sits in the button's popup slot: the button anchors and toggles
+       it itself, so no per-instance id is needed. -->
   <nldd-icon-button
-    :id="anchorId"
     icon="more"
     :text="accessibleLabel"
     tooltip-timing="never"
     variant="neutral-tinted"
-  ></nldd-icon-button>
-  <nldd-menu :anchor="anchorId">
-    <nldd-menu-item
-      text="Bewerk"
-      icon="edit"
-      :data-testid="editTestid"
-      @click.stop="$emit('edit')"
-    ></nldd-menu-item>
-    <nldd-menu-divider></nldd-menu-divider>
-    <nldd-menu-item
-      text="Verwijder"
-      icon="delete"
-      destructive
-      :data-testid="deleteTestid"
-      @click.stop="$emit('delete')"
-    ></nldd-menu-item>
-  </nldd-menu>
+  >
+    <nldd-menu slot="popup">
+      <nldd-menu-item
+        text="Bewerk"
+        icon="edit"
+        :data-testid="editTestid"
+        @click.stop="$emit('edit')"
+      ></nldd-menu-item>
+      <nldd-menu-divider></nldd-menu-divider>
+      <nldd-menu-item
+        text="Verwijder"
+        icon="delete"
+        destructive
+        :data-testid="deleteTestid"
+        @click.stop="$emit('delete')"
+      ></nldd-menu-item>
+    </nldd-menu>
+  </nldd-icon-button>
 </template>

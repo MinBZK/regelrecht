@@ -4,13 +4,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import { useAuth } from '../composables/useAuth.js';
 import { useLoginToChooser } from '../composables/useLoginToChooser.js';
-import { homeTarget, isHomeSection } from '../composables/useLastVisitedRoute.js';
+import { homeTarget, trajectSwitchTarget } from '../composables/useLastVisitedRoute.js';
 import TrajectCreateForm from './TrajectCreateForm.vue';
 
 const props = defineProps({
-  // Suffix to keep ids unique when this component is mounted in multiple
-  // responsive headers (md/lg/sm) at the same time.
-  idSuffix: { type: String, default: '' },
   // Mobile presentation: stretch the trigger button to the full toolbar
   // width with left-aligned content.
   fullWidth: { type: Boolean, default: false },
@@ -49,6 +46,13 @@ function goToWerkdocumenten() {
   router.push({ name: 'werkdocumenten-traject', params: { trajectRef: activeTrajectRef.value } });
 }
 
+// Open the active traject's taken - the same Home panel the sidebar's
+// Taken item opens, reachable without going back to Home first.
+function goToTaken() {
+  if (!activeTrajectRef.value) return;
+  router.push({ name: 'taken-traject', params: { trajectRef: activeTrajectRef.value } });
+}
+
 // Switch to the traject-less global corpus ("Corpus juris"): not a real traject,
 // but mutually exclusive with them, so it lives in the same switcher. Carries
 // the open law so you land on the same law, globally (homeTarget's no-traject
@@ -61,25 +65,18 @@ function goToCorpusJuris() {
 }
 
 /**
- * Navigate to a traject - push the user into the traject-scoped view of
- * the section they are currently in (bibliotheek or editor), at the same
- * law they were viewing. Picking a traject from the bibliotheek keeps you
- * in the bibliotheek; from the editor it keeps you in the editor. Per-tab
- * state: a switch here only affects this tab, never other open tabs.
+ * Navigate to a traject - push the user into the traject-scoped view of the
+ * section they are currently in (bibliotheek or editor), at that section's
+ * ROOT. A switch deliberately drops the law you were viewing: the new traject
+ * has its own corpus, so carrying the old lawId across would try to open a
+ * document it doesn't have (and leak the previous traject's tab). The editor
+ * shows the new traject's own saved tabs in the bar without auto-opening one.
+ * Per-tab state: a switch here only affects this tab, never other open tabs.
  */
 async function goToTraject(trajectRef) {
-  const lawId = route.params.lawId || undefined;
-  const articleNumber = route.params.articleNumber || undefined;
-  // Stay in the section you're in: Home keeps you on Home (bare traject or its
-  // corpus, per homeTarget); the editor keeps you in the editor.
-  const target = isHomeSection(route.name)
-    ? homeTarget({ trajectRef, lawId, articleNumber })
-    : { name: 'editor-traject', params: { trajectRef, lawId, articleNumber } };
-  await router.push(target);
+  await router.push(trajectSwitchTarget(route.name, trajectRef));
 }
 
-const menuBtnId = computed(() => `traject-menu-btn-${props.idSuffix}`);
-const menuId = computed(() => `traject-menu-${props.idSuffix}`);
 
 // A traject in the URL whose name hasn't resolved yet: the button shows a
 // spinner (see :loading) with the neutral 'Trajecten' label, not a '…'
@@ -190,97 +187,102 @@ async function submitCreate() {
 
 <template>
   <nldd-button
-    :id="menuBtnId"
+    data-testid="traject-menu-trigger"
     size="md"
     expandable
     :loading="menuLoading || undefined"
     :start-icon="fullWidth ? 'traject' : undefined"
     :text="activeLabel"
-    :popovertarget="menuId"
     :width="fullWidth ? 'full' : undefined"
+    :max-width="fullWidth ? undefined : '220px'"
     :horizontal-alignment="fullWidth ? 'left' : undefined"
-  ></nldd-button>
-  <!-- Logged in: the active traject's actions first, then the scope switcher
-       (Corpus juris + the trajecten) + create below a divider. -->
-  <nldd-menu v-if="authenticated" :id="menuId" :anchor="menuBtnId">
-    <nldd-menu-item
-      v-if="activeTraject"
-      text="Werkdocumenten"
-      icon="documents"
-      @click="goToWerkdocumenten"
-    ></nldd-menu-item>
-    <nldd-menu-item
-      v-if="activeTraject"
-      text="Leden"
-      icon="person-2"
-      @click="goToInstellingen('leden')"
-    ></nldd-menu-item>
-    <nldd-menu-item
-      v-if="activeTraject"
-      text="Traject details"
-      icon="traject"
-      @click="goToInstellingen('details')"
-    ></nldd-menu-item>
-    <!-- The group draws its own divider above (auto-suppressed when it's the
-         first child, i.e. no active-traject actions precede it), so no manual
-         nldd-menu-divider here. -->
-    <nldd-menu-group text="Trajecten">
-      <!-- "Corpus juris" is the traject-less global scope: not a real traject,
-           but mutually exclusive with them, so it's the default option here
-           (like `main` among the branches). -->
-      <nldd-menu-item
-        type="radio"
-        :selected="!activeTrajectRef || undefined"
-        text="Corpus juris"
-        @select="goToCorpusJuris"
-      ></nldd-menu-item>
-      <nldd-menu-item
-        v-for="t in trajects"
-        :key="t.id"
-        type="radio"
-        :selected="t.ref === activeTrajectRef || undefined"
-        :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
-        @select="selectTraject(t)"
-      ></nldd-menu-item>
-      <nldd-menu-item
-        text="Nieuw traject…"
-        icon="plus"
-        @click="openCreate"
-      ></nldd-menu-item>
-    </nldd-menu-group>
-  </nldd-menu>
-
-  <!-- Not logged in: no menu - a popover explaining that trajecten unlock
-       once you sign in. -->
-  <nldd-popover
-    v-else
-    :id="menuId"
-    :anchor="menuBtnId"
-    accessible-label="Trajecten"
-    width="320px"
   >
-    <nldd-container padding="16">
-      <nldd-inline-dialog
-        icon="login"
-        text="Log in om een traject te kiezen of aan te maken"
-        supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
-      >
-        <nldd-button
-          slot="actions"
-          variant="primary"
-          text="Inloggen"
-          @click="loginToChooser"
-        ></nldd-button>
-        <nldd-button
-          slot="actions"
-          variant="secondary"
-          text="Account aanvragen"
-          :href="accountRequestHref"
-          @click.prevent="goToAccountRequest"
-        ></nldd-button>
-      </nldd-inline-dialog>
-    </nldd-container>
-  </nldd-popover>
+    <!-- Logged in: the active traject's actions first, then the scope switcher
+         (Corpus juris + the trajecten) + create below a divider. -->
+    <nldd-menu v-if="authenticated" slot="popup">
+      <nldd-menu-item
+        v-if="activeTraject"
+        text="Werkdocumenten"
+        icon="documents"
+        @click="goToWerkdocumenten"
+      ></nldd-menu-item>
+      <nldd-menu-item
+        v-if="activeTraject"
+        text="Taken"
+        icon="tasks"
+        @click="goToTaken"
+      ></nldd-menu-item>
+      <!-- Zelfde nesting als de zijbalk: Instellingen met Algemeen en Leden
+           eronder, zodat het menu en de navigatie hetzelfde model tonen. -->
+      <nldd-menu-item v-if="activeTraject" text="Instellingen" icon="settings">
+        <nldd-menu>
+          <nldd-menu-item
+            text="Algemeen"
+            icon="traject"
+            @click="goToInstellingen('details')"
+          ></nldd-menu-item>
+          <nldd-menu-item
+            text="Leden"
+            icon="person-2"
+            @click="goToInstellingen('leden')"
+          ></nldd-menu-item>
+        </nldd-menu>
+      </nldd-menu-item>
+      <!-- The group draws its own divider above (auto-suppressed when it's the
+           first child, i.e. no active-traject actions precede it), so no manual
+           nldd-menu-divider here. -->
+      <nldd-menu-group text="Trajecten">
+        <!-- "Corpus juris" is the traject-less global scope: not a real traject,
+             but mutually exclusive with them, so it's the default option here
+             (like `main` among the branches). -->
+        <nldd-menu-item
+          type="radio"
+          :selected="!activeTrajectRef || undefined"
+          text="Corpus juris"
+          @select="goToCorpusJuris"
+        ></nldd-menu-item>
+        <nldd-menu-item
+          v-for="t in trajects"
+          :key="t.id"
+          type="radio"
+          :selected="t.ref === activeTrajectRef || undefined"
+          :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
+          @select="selectTraject(t)"
+        ></nldd-menu-item>
+        <nldd-menu-item
+          text="Nieuw traject…"
+          icon="plus"
+          @click="openCreate"
+        ></nldd-menu-item>
+      </nldd-menu-group>
+    </nldd-menu>
+
+    <!-- Not logged in: no menu - a popover explaining that trajecten unlock
+         once you sign in. -->
+    <nldd-popover v-else slot="popup" accessible-label="Trajecten" width="320px">
+      <nldd-container padding="16">
+        <nldd-inline-dialog
+          icon="login"
+          text="Log in om een traject te kiezen of aan te maken"
+          supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
+        >
+          <nldd-button
+            slot="actions"
+            variant="primary"
+            text="Inloggen"
+            @click="loginToChooser"
+          ></nldd-button>
+          <nldd-button
+            slot="actions"
+            variant="secondary"
+            text="Account aanvragen"
+            :href="accountRequestHref"
+            @click.prevent="goToAccountRequest"
+          ></nldd-button>
+        </nldd-inline-dialog>
+      </nldd-container>
+    </nldd-popover>
+  </nldd-button>
 
   <!-- Teleport the sheet out of the toolbar so it doesn't inherit the
        toolbar's positioning / clipping. Matches the ScenarioBuilder
