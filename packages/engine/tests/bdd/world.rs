@@ -42,6 +42,11 @@ pub struct RegelrechtWorld {
     pub data_sources: BTreeMap<String, (String, Vec<BTreeMap<String, Value>>)>,
     /// Outputs requested by the last canonical `evaluate`/`evaluate_outputs`
     pub requested_outputs: Vec<String>,
+    /// Feature file and scenario the runner is currently in (set by the
+    /// `before` hook in `main.rs`); used to label trace snapshots.
+    pub feature_name: String,
+    /// Scenario name, see `feature_name`.
+    pub scenario_name: String,
 }
 
 impl fmt::Debug for RegelrechtWorld {
@@ -86,6 +91,8 @@ impl RegelrechtWorld {
             note_result: None,
             data_sources: BTreeMap::new(),
             requested_outputs: Vec::new(),
+            feature_name: String::new(),
+            scenario_name: String::new(),
         }
     }
 
@@ -150,6 +157,31 @@ impl RegelrechtWorld {
         let path = dir.join(&filename);
 
         std::fs::write(&path, trace.render_box_drawing()).expect("Failed to write trace file");
+
+        // Machine-readable twin of the same trace. `PathNode` is `Serialize`,
+        // so the JSON carries the node types and resolve types that the
+        // box-drawing render flattens into text — enough to rebuild the
+        // derivation tree without parsing the ASCII.
+        let json_path = dir.join(format!(
+            "{:03}_{}_{}_{}.json",
+            seq, safe_law_id, safe_output, self.calculation_date
+        ));
+        let snapshot = serde_json::json!({
+            "feature": self.feature_name,
+            "scenario": self.scenario_name,
+            "law": law_id,
+            "output": output_name,
+            "calculation_date": self.calculation_date,
+            "requested_outputs": self.requested_outputs,
+            "parameters": self.parameters,
+            "outputs": result.outputs,
+            "trace": trace,
+        });
+        std::fs::write(
+            &json_path,
+            serde_json::to_string_pretty(&snapshot).expect("Failed to serialize trace"),
+        )
+        .expect("Failed to write trace JSON");
 
         eprintln!("  trace → {}", path.display());
     }

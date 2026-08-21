@@ -183,6 +183,13 @@ async fn main() {
     // `filter_run_and_exit` exits non-zero on test failures.
     world::RegelrechtWorld::cucumber::<&std::path::Path>()
         .with_parser::<ExplicitPaths, Vec<PathBuf>>(ExplicitPaths)
+        // Label each trace snapshot with the feature/scenario it came from,
+        // so a snapshot can be traced back without counting run order.
+        .before(|feature, _rule, scenario, world| {
+            world.feature_name = feature.name.clone();
+            world.scenario_name = scenario.name.clone();
+            Box::pin(async {})
+        })
         .max_concurrent_scenarios(1) // Run scenarios sequentially for predictable state
         .with_default_cli()
         .filter_run_and_exit(features, |feature, _rule, scenario| {
