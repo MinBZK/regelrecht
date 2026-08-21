@@ -74,6 +74,19 @@ const router = createRouter({
           meta: { title: 'Instellingen', requiresAuth: true },
         },
         {
+          // Structuurcontrole van een traject: `/trajecten/{ref}/structuur-controle`.
+          // Zelfde LibraryView als Instellingen: deze route toont de
+          // Algemeen-pane met het rapport als sheet erover. Zo houdt het rapport
+          // een deelbaar adres zonder een eigen pagina te zijn, en is de URL
+          // meteen de open-stand van die sheet.
+          //
+          // Geen `traject-` in het pad: `/trajecten/` staat er al voor.
+          path: 'trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/structuur-controle',
+          name: 'traject-structuur-controle',
+          component: LibraryView,
+          meta: { title: 'Traject-structuur controleren', requiresAuth: true },
+        },
+        {
           // The user's taken within a traject: `/trajecten/{ref}/taken`.
           // Rendered by the same LibraryView, shaped like Instellingen: the
           // secondary sidebar lists the categories, the chosen one opens its
@@ -191,19 +204,6 @@ const router = createRouter({
       name: 'trajecten',
       component: () => import('./TrajectChooserView.vue'),
       meta: { title: 'Trajecten', requiresAuth: true },
-    },
-    {
-      // Integriteit van een traject: de runtime-diagnose van het
-      // traject-corpus (mapnamen vs `$id`, dubbele id's, losse verwijzingen).
-      // Top-level route zoals de trajectkeuze: eigen chrome, geen app-shell -
-      // je pakt deze pagina erbij vanuit Instellingen en gaat daarna terug.
-      //
-      // `:trajectRef` is met hetzelfde `{slug}-{8hex}`-patroon gepind als de
-      // andere traject-routes, zodat een wet-slug hier nooit op matcht.
-      path: '/trajecten/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/integriteit',
-      name: 'traject-integriteit',
-      component: () => import('./TrajectIntegrityView.vue'),
-      meta: { title: 'Integriteit', requiresAuth: true },
     },
     {
       // Nieuw traject aanmaken - eigen pagina met het gedeelde aanmaakformulier

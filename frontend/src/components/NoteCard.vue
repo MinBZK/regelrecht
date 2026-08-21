@@ -1,7 +1,7 @@
 <script setup>
 /**
  * NoteCard — the inner rendering of a single note: comment (rich-text), author
- * byline, and a per-note action toolbar (edit / share / delete). Shared by the
+ * identity, and a per-note action toolbar (edit / share / delete). Shared by the
  * Notities pane and the annotation-badge popover so both render identically.
  *
  * Emits edit/share/delete; the parent owns the actual actions (and their confirm
@@ -40,7 +40,7 @@ const canShare = computed(() => isDraft.value && props.canEdit);
   </nldd-rich-text>
   <template v-if="creatorName">
     <nldd-spacer size="4"></nldd-spacer>
-    <nldd-byline :text="creatorName"></nldd-byline>
+    <nldd-identity :text="creatorName"></nldd-identity>
   </template>
   <template v-if="canShare || canDelete">
     <nldd-spacer size="8"></nldd-spacer>

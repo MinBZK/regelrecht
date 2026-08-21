@@ -396,6 +396,10 @@ async fn main() {
             get(corpus_handlers::list_traject_corpus_laws),
         )
         .route(
+            "/api/trajects/{traject_ref}/favorites",
+            get(favorites::list_traject),
+        )
+        .route(
             "/api/trajects/{traject_ref}/corpus/changed-laws",
             get(corpus_handlers::list_traject_changed_laws),
         )
@@ -471,6 +475,10 @@ async fn main() {
         .route(
             "/api/trajects/{id}",
             axum::routing::patch(trajects::update).delete(trajects::delete),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/favorites/{law_id}",
+            axum::routing::put(favorites::add_traject).delete(favorites::remove_traject),
         )
         .route(
             "/api/trajects/{id}/leave",

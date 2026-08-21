@@ -308,7 +308,7 @@ const dateErrorId = useId();
       <template v-if="hasExpectations">
         <nldd-title size="5"><h2>Verwachte uitkomsten</h2></nldd-title>
         <nldd-spacer size="8"></nldd-spacer>
-        <nldd-list variant="box">
+        <nldd-list variant="box-tinted">
           <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
             <nldd-text-cell size="md" :text="humanize(name)"></nldd-text-cell>
             <nldd-text-cell
@@ -340,7 +340,7 @@ const dateErrorId = useId();
       <nldd-spacer v-if="hasExpectations" size="16"></nldd-spacer>
       <nldd-title size="5"><h2>Invoer</h2></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box">
+      <nldd-list variant="box-tinted">
         <nldd-list-item size="md">
           <nldd-text-cell text="Datum" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -376,7 +376,7 @@ const dateErrorId = useId();
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box" arrow-navigation>
+      <nldd-list variant="box-tinted">
         <nldd-list-item
           v-for="(ds, i) in dataSources"
           :key="ds.sourceName"

@@ -397,7 +397,7 @@ const sectionLabels = {
       <nldd-simple-section v-if="item">
           <!-- Definition -->
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
-            <nldd-list variant="box" class="edit-settings-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list">
               <nldd-list-item size="md">
                 <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -450,7 +450,7 @@ const sectionLabels = {
 
           <!-- Parameter -->
           <template v-if="item.section === 'parameter' || item.section === 'add-parameter'">
-            <nldd-list variant="box" class="edit-settings-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list">
               <nldd-list-item size="md">
                 <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -481,7 +481,7 @@ const sectionLabels = {
 
           <!-- Input -->
           <template v-if="item.section === 'input' || item.section === 'add-input'">
-            <nldd-list variant="box" class="edit-settings-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list">
               <nldd-list-item size="md">
                 <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -559,7 +559,7 @@ const sectionLabels = {
             <nldd-spacer size="12"></nldd-spacer>
             <nldd-title size="6"><h6>Bron parameters</h6></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box" class="edit-settings-list" data-testid="source-parameters-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list" data-testid="source-parameters-list">
               <nldd-list-item
                 v-for="param in values.sourceParameters"
                 :key="param._rowId"
@@ -588,7 +588,7 @@ const sectionLabels = {
 
           <!-- Output -->
           <template v-if="item.section === 'output' || item.section === 'add-output'">
-            <nldd-list variant="box" class="edit-settings-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list">
               <nldd-list-item size="md">
                 <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>

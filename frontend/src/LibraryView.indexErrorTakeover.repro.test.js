@@ -172,7 +172,7 @@ beforeEach(() => {
 });
 
 // The warning banner LibraryView now raises over the non-library modes.
-const BANNER_TEXT = 'Wetten en regels van dit traject zijn niet geladen';
+const NOTIFICATION_TEXT = 'Wetten en regels van dit traject zijn niet geladen';
 // The fullscreen takeover that still owns the library routes themselves.
 const FULLSCREEN_TEXT = 'Wetten en regels zijn niet geladen';
 
@@ -194,11 +194,14 @@ describe('LibraryView index-error scoping', () => {
     expect(wrapper.findComponent({ name: 'TasksCategoriesPane' }).exists()).toBe(true);
     expect(wrapper.findComponent({ name: 'TasksListPane' }).exists()).toBe(true);
     const html = wrapper.html();
-    // ...with a warning banner instead of the fullscreen takeover.
-    expect(html).toContain(BANNER_TEXT);
-    const banner = wrapper.find('nldd-banner.corpus-warning');
-    expect(banner.exists()).toBe(true);
-    expect(banner.attributes('variant')).toBe('warning');
+    // ...with a warning notification instead of the fullscreen takeover.
+    expect(html).toContain(NOTIFICATION_TEXT);
+    const notification = wrapper.find('nldd-notification');
+    expect(notification.exists()).toBe(true);
+    expect(notification.attributes('variant')).toBe('warning');
+    // Beschrijft een toestand, geen gebeurtenis: hij mag niet wegtellen, want
+    // dan verdwijnt de retry-knop met hem mee.
+    expect(notification.attributes('duration')).toBe('0');
   });
 
   it('keeps the taken panes even when the corpus call fails mid-flight (no flash)', async () => {
@@ -222,7 +225,7 @@ describe('LibraryView index-error scoping', () => {
     // ...and it stays put once the unrelated corpus call fails - only the
     // warning banner appears on top.
     expect(wrapper.findComponent({ name: 'TasksCategoriesPane' }).exists()).toBe(true);
-    expect(wrapper.html()).toContain(BANNER_TEXT);
+    expect(wrapper.html()).toContain(NOTIFICATION_TEXT);
   });
 
   it('keeps the INSTELLINGEN route standing under a corpus 502', async () => {
@@ -230,7 +233,7 @@ describe('LibraryView index-error scoping', () => {
     routeState.params = { trajectRef: 'traject-abcd1234', tab: 'details' };
     const wrapper = await mountAfterFailedIndex();
     expect(wrapper.findComponent({ name: 'TrajectDetailsPane' }).exists()).toBe(true);
-    expect(wrapper.html()).toContain(BANNER_TEXT);
+    expect(wrapper.html()).toContain(NOTIFICATION_TEXT);
     routeState.name = 'taken-traject';
     routeState.params = { trajectRef: 'traject-abcd1234', categorie: 'alle' };
   });
@@ -243,7 +246,7 @@ describe('LibraryView index-error scoping', () => {
     // wettenindex, so the document list has to survive the corpus 502 too.
     expect(wrapper.find('nldd-navigation-split-view').exists()).toBe(true);
     expect(wrapper.html()).not.toContain(FULLSCREEN_TEXT);
-    expect(wrapper.html()).toContain(BANNER_TEXT);
+    expect(wrapper.html()).toContain(NOTIFICATION_TEXT);
     routeState.name = 'taken-traject';
     routeState.params = { trajectRef: 'traject-abcd1234', categorie: 'alle' };
   });
@@ -255,7 +258,7 @@ describe('LibraryView index-error scoping', () => {
   // perfectly healthy one.
   it('drops the error when switching to a healthy traject (banner does not stick)', async () => {
     const wrapper = await mountAfterFailedIndex();
-    expect(wrapper.html()).toContain(BANNER_TEXT);
+    expect(wrapper.html()).toContain(NOTIFICATION_TEXT);
 
     // Same view, other traject - and this one indexes fine.
     apiFetch.mockImplementation(async () => ({ ok: true, status: 200, json: async () => [] }));
@@ -263,8 +266,8 @@ describe('LibraryView index-error scoping', () => {
     trajectScope.activeTrajectRef.value = 'traject-99998888';
     for (let i = 0; i < 6; i++) await nextTick();
 
-    expect(wrapper.html()).not.toContain(BANNER_TEXT);
-    expect(wrapper.find('nldd-banner.corpus-warning').exists()).toBe(false);
+    expect(wrapper.html()).not.toContain(NOTIFICATION_TEXT);
+    expect(wrapper.find('nldd-notification').exists()).toBe(false);
     expect(wrapper.findComponent({ name: 'TasksCategoriesPane' }).exists()).toBe(true);
   });
 
@@ -292,7 +295,7 @@ describe('LibraryView index-error scoping', () => {
     // The library route DOES depend on the index, so it keeps the fullscreen
     // takeover (unchanged) - and does not fall back to the warning banner.
     expect(html).toContain(FULLSCREEN_TEXT);
-    expect(wrapper.find('nldd-banner.corpus-warning').exists()).toBe(false);
+    expect(wrapper.find('nldd-notification').exists()).toBe(false);
     routeState.name = 'taken-traject';
     routeState.params = { trajectRef: 'traject-abcd1234', categorie: 'alle' };
   });

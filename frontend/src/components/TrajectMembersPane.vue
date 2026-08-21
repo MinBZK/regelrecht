@@ -132,7 +132,7 @@ async function confirmRemoveInvite() {
     <nldd-activity-indicator v-if="loading" text="Leden laden" show-text></nldd-activity-indicator>
     <nldd-inline-dialog v-else-if="loadError" variant="alert" text="Leden niet geladen" :supporting-text="loadError.message"></nldd-inline-dialog>
     <template v-else>
-    <nldd-list variant="box">
+    <nldd-list variant="box-tinted">
       <template v-for="m in members" :key="m.account_id">
         <nldd-list-item size="md">
           <nldd-icon-cell size="24"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>

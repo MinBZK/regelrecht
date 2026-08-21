@@ -214,12 +214,12 @@ describe('TasksCategoriesPane', () => {
     ]);
   });
 
-  it('markeert de gekozen categorie als geselecteerd', async () => {
+  it('markeert de gekozen categorie als huidig', async () => {
     // Mét een werkdocument-taak: zonder werk bestaat die context niet meer.
     const wrapper = await mountPane([DOC_TASK], [], { categorie: 'werkdocumenten' });
-    const selected = wrapper.findAll('nldd-list-item').filter((i) => i.attributes('selected') !== undefined);
-    expect(selected).toHaveLength(1);
-    expect(selected[0].get('nldd-text-cell').attributes('text')).toBe('Werkdocumenten');
+    const current = wrapper.findAll('nldd-list-item').filter((i) => i.attributes('current') !== undefined);
+    expect(current).toHaveLength(1);
+    expect(current[0].get('nldd-text-cell').attributes('text')).toBe('Werkdocumenten');
   });
 
   it('licht bij een wet-context alleen die ene wet op', async () => {
@@ -227,9 +227,9 @@ describe('TasksCategoriesPane', () => {
       categorie: 'wet',
       lawId: 'wet_op_de_zorgtoeslag',
     });
-    const selected = wrapper.findAll('nldd-list-item').filter((i) => i.attributes('selected') !== undefined);
-    expect(selected).toHaveLength(1);
-    expect(selected[0].get('nldd-text-cell').attributes('text')).toBe('Wet op de zorgtoeslag');
+    const current = wrapper.findAll('nldd-list-item').filter((i) => i.attributes('current') !== undefined);
+    expect(current).toHaveLength(1);
+    expect(current[0].get('nldd-text-cell').attributes('text')).toBe('Wet op de zorgtoeslag');
   });
 
   it('emit de gekozen categorie', async () => {

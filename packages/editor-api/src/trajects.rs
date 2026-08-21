@@ -547,7 +547,7 @@ async fn member_role(
     Ok(row.map(|r| r.0))
 }
 
-async fn require_membership(
+pub(crate) async fn require_membership(
     pool: &PgPool,
     traject_id: Uuid,
     account_id: Uuid,

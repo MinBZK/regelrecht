@@ -506,7 +506,7 @@ function addValue() {
       </nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
     </template>
-    <nldd-list variant="box" class="settings-list">
+    <nldd-list variant="box-tinted" class="settings-list">
       <!-- Optional lead row, rendered as the first item of THIS list so
            the action sheet's Output field sits in the same box as Type /
            conditions on the root of an action. -->

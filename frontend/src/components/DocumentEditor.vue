@@ -234,6 +234,9 @@ function dismissDeleteNotice() {
         <!-- Document title with an integrated xs action button; its rename/delete
              menu is teleported to body and anchored to it by id. -->
         <nldd-toolbar-title v-if="paneChromeVisible(docLoading || creating)" slot="center" align="center" :text="docName">
+          <!-- Same icon as the row in the werkdocumenten list, so the title
+               echoes what you clicked. Decorative: the name is right beside it. -->
+          <nldd-icon slot="media" name="text-document" size="20"></nldd-icon>
           <nldd-icon-button
             slot="action"
             id="document-actions-btn"
