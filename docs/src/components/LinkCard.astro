@@ -1,0 +1,46 @@
+---
+/*
+ * One card in a landing-page collection: title, meta line, body text and a
+ * full-width "Lees …"/"Read …" button. The research and references sections
+ * render the same card; `tinted` picks the card surface for a section on the
+ * plain page background (a tinted section uses plain cards).
+ */
+interface Props {
+  lang: 'nl' | 'en';
+  title: string;
+  meta: string;
+  text: string;
+  href: string;
+  linkLabel: string;
+  tinted?: boolean;
+}
+
+const { lang, title, meta, text, href, linkLabel, tinted = false } =
+  Astro.props;
+const read = lang === 'en' ? 'Read' : 'Lees';
+---
+
+<nldd-card
+  background={tinted ? 'tinted' : undefined}
+  accessible-label={title}
+>
+  <nldd-container padding="20" padding-bottom="12">
+    <nldd-title size="3">
+      <h3>{title}</h3>
+      <p slot="subtitle">{meta}</p>
+    </nldd-title>
+    <nldd-spacer size="12" />
+    <nldd-rich-text>
+      <p>{text}</p>
+    </nldd-rich-text>
+  </nldd-container>
+  <nldd-container slot="footer" padding="20" padding-top="0">
+    <nldd-button
+      variant="secondary"
+      width="full"
+      href={href}
+      text={`${read} ${linkLabel}`}
+      accessible-label={`${read} ${linkLabel}: ${title}`}
+    />
+  </nldd-container>
+</nldd-card>

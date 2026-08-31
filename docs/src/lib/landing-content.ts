@@ -6,6 +6,21 @@
  * The EN strings are a translation kept in the same government register.
  */
 
+import paper from '~/research/rules-as-executed.meta.json';
+
+// The position paper's title, authors and date come from the generated
+// meta JSON next to its HTML, so a regenerated paper cannot drift from
+// the tile that announces it.
+const paperTitle = `${paper.title}: ${paper.subtitle}`;
+const paperAuthors = paper.authors.join(' & ');
+function paperDate(locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(`${paper.date}T00:00:00`));
+}
+
 export interface NavLink {
   label: string
   href: string
@@ -24,8 +39,9 @@ export interface LandingContent {
     jobs: string
     signup: string
     docs: string
+    research: string
   }
-  hero: { title: string; intro: string; cta: string }
+  hero: { title: string; intro: string }
   whatIsIt: { title: string; lede: string; cards: { h: string; p: string }[] }
   whyImportant: {
     title: string
@@ -57,6 +73,17 @@ export interface LandingContent {
   innovation: {
     title: string
     cards: { meta: string; h: string; p: string }[]
+  }
+  research: {
+    title: string
+    lede: string
+    items: {
+      title: string
+      meta: string
+      text: string
+      href: string
+      linkLabel: string
+    }[]
   }
   references: {
     title: string
@@ -149,12 +176,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       jobs: 'Werken bij',
       signup: 'Aanmelden',
       docs: 'Documentatie',
+      research: 'Onderzoek',
     },
     hero: {
       title: 'Van wet naar digitale werking',
       intro:
         'RegelRecht verkent of wetgeving als uitvoerbare code geschreven kan worden, zodat verschillende organisaties dezelfde wet ook hetzelfde toepassen en burgers kunnen volgen hoe een besluit tot stand komt.',
-      cta: 'Verken de mogelijkheden',
     },
     whatIsIt: {
       title: 'Wetten uitvoeren zonder te programmeren',
@@ -352,6 +379,19 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
       ],
     },
+    research: {
+      title: 'Onderzoek',
+      lede: 'De verkenning roept vragen op die verder reiken dan techniek: wat het voor de verhouding tussen de staatsmachten betekent als wetsuitvoering publiek en narekenbaar wordt, en welke juridische status een uitvoerbare specificatie heeft. Dat denkwerk schrijven we op voor een academisch publiek, zodat juristen en bestuurskundigen het kunnen toetsen en aanscherpen.',
+      items: [
+        {
+          title: paperTitle,
+          meta: `${paper.kind} • ${paperAuthors} • ${paperDate('nl-NL')}`,
+          text: 'Het paper betoogt dat de overheid haar wetsuitvoering moet publiceren als machine-uitvoerbare specificatie, waarbij elk besluit vastlegt met welke versie het is genomen. Wie een besluit ontvangt, kan het narekenen, en het parlement kan de regel zelf analyseren.',
+          href: '/research/rules-as-executed',
+          linkLabel: 'position paper (Engels)',
+        },
+      ],
+    },
     references: {
       title: 'Belangrijke rapporten, onderzoeken en bronnen over de noodzaak van machine-uitvoerbare wetgeving',
       items: [
@@ -536,6 +576,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Hoe het werkt', href: '/#how-it-works' },
         { label: 'Op de hoogte blijven', href: SIGNUP_NL_PATH },
         { label: 'Documentatie (Engels)', href: '/docs/' },
+        { label: 'Onderzoek (Engels)', href: '/research/' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -592,12 +633,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       jobs: 'Join us',
       signup: 'Sign up',
       docs: 'Documentation',
+      research: 'Research',
     },
     hero: {
       title: 'From statute to digital execution',
       intro:
         'RegelRecht explores whether legislation can be written as executable code, so that different organisations apply the same law the same way and citizens can follow how a decision is reached.',
-      cta: 'Explore the possibilities',
     },
     whatIsIt: {
       title: 'Running laws without programming',
@@ -795,6 +836,19 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
       ],
     },
+    research: {
+      title: 'Research',
+      lede: 'This exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status an executable specification has. We write that up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
+      items: [
+        {
+          title: paperTitle,
+          meta: `${paper.kind} • ${paperAuthors} • ${paperDate('en-GB')}`,
+          text: 'The paper argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
+          href: '/research/rules-as-executed',
+          linkLabel: 'position paper',
+        },
+      ],
+    },
     references: {
       title: 'Important reports, studies, and sources on the need for machine-executable legislation',
       items: [
@@ -978,6 +1032,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'How it works', href: '/en/#how-it-works' },
         { label: 'Stay informed', href: SIGNUP_EN_PATH },
         { label: 'Documentation', href: '/docs/' },
+        { label: 'Research', href: '/research/' },
       ],
       partOf: [
         'Bureau Architectuur',

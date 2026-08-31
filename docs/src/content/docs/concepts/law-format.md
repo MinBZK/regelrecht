@@ -276,3 +276,4 @@ For the authoritative, current set, see `corpus/regulation/` in the repository.
 - [Testing](/guide/testing) - writing BDD scenarios for laws
 - [Schema Reference](/reference/schema) - full schema specification
 - [Engine](/components/engine) - how the engine executes laws
+- [Rules as Executed, section 9.2](/research/rules-as-executed#sec:opset) - why the position paper restricts the operation set and demands termination

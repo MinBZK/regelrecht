@@ -72,7 +72,7 @@ When reproducing the decision, the engine uses these **sealed accepted values** 
 
 ## What this enables
 
-A citizen can request their trace and see which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. When a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash.
+A citizen can request their trace and see which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. When a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash. Section 4.5 of the position paper, [The Recipient's Check](/research/rules-as-executed#sec:traceaccess), spells out what this needs in practice: the attested trace has to reach the addressee together with the decision, without a procedure of their own.
 
 ## Further reading
 
@@ -80,3 +80,4 @@ A citizen can request their trace and see which rules applied. An auditor re-run
 - [Multi-Org Execution](./multi-org-execution) - cross-organization value exchange
 - [RFC-013: Execution Provenance](/rfcs/rfc-013) - full specification
 - [RFC-014: Engine Conformance](/rfcs/rfc-014) - conformance test suite
+- [Rules as Executed, sections 4.4 and 4.5](/research/rules-as-executed#sec:attestation) - the position paper's constitutional case for attestation and the recipient's re-execution check

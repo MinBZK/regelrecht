@@ -51,3 +51,4 @@ Writing the JSON test corpus and a runner that executes the cases against an arb
 - [Execution Provenance](../concepts/execution-provenance) - the receipt format a conformant engine produces
 - [Schema](./schema) - the versioned specification under test
 - [RFC-014: Engine Conformance Test Suite](/rfcs/rfc-014) - full specification and current status
+- [Rules as Executed, section 9.1](/research/rules-as-executed#sec:engines) - the position paper on multiple engines and semantic equivalence
