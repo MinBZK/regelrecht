@@ -55,7 +55,7 @@ const pathname = '/roadmap';
     md-padding-bottom="64"
     lg-padding-bottom="96"
   >
-    <div class="rr-roadmap">
+    <nldd-container class="rr-roadmap" gap="24">
       <RoadmapNav pathname={pathname} />
 
       <nldd-title size="1">
@@ -66,12 +66,20 @@ const pathname = '/roadmap';
         </p>
       </nldd-title>
 
-      {/* CSS-only filter: :has() on the checkboxes decides which cards show.
-          No script, so it survives ClientRouter and works without JS — and in
-          a browser without :has() everything stays visible, which is the right
-          way to fail. */}
+      {/*
+        The one control not built from the design system, and deliberately so:
+        the filter works without JavaScript, through :has() on the checkbox
+        state. nldd-checkbox-field keeps its <input> in shadow DOM, which a
+        page stylesheet cannot select across, so using it would mean adding a
+        script — and the docs site runs zero client islands on purpose.
+        Native inputs it is; the chip styling around them is tokens only.
+      */}
       <fieldset class="rr-filter">
-        <legend class="rr-filter__legend">Filter op categorie</legend>
+        <legend class="rr-filter__legend">
+          <nldd-text size="sm" weight="medium" color="secondary">
+            Filter op categorie
+          </nldd-text>
+        </legend>
         {
           FILTER_OPTIES.map((optie) => (
             <span class="rr-filter__option">
@@ -81,7 +89,9 @@ const pathname = '/roadmap';
                 id={`rr-cat-${optie.id}`}
               />
               <label class="rr-filter__label" for={`rr-cat-${optie.id}`}>
-                {optie.label}
+                <nldd-text size="sm" weight="medium">
+                  {optie.label}
+                </nldd-text>
               </label>
             </span>
           ))
@@ -106,11 +116,17 @@ const pathname = '/roadmap';
               {
                 fases.map((fase) => (
                   <th scope="col" class="rr-matrix__header rr-matrix__header--fase">
-                    <span class="rr-matrix__eyebrow">Fase {fase.volgnummer}</span>
-                    <span class="rr-matrix__naam">{fase.naam}</span>
-                    {fase.ondertitel && (
-                      <span class="rr-matrix__sub">{fase.ondertitel}</span>
-                    )}
+                    <nldd-container gap="4" horizontal-alignment="center">
+                      <nldd-text size="xs" weight="medium" color="secondary">
+                        Fase {fase.volgnummer}
+                      </nldd-text>
+                      <nldd-text size="md" weight="bold">{fase.naam}</nldd-text>
+                      {fase.ondertitel && (
+                        <nldd-text size="xs" color="secondary">
+                          {fase.ondertitel}
+                        </nldd-text>
+                      )}
+                    </nldd-container>
                   </th>
                 ))
               }
@@ -124,10 +140,16 @@ const pathname = '/roadmap';
                     scope="row"
                     class="rr-matrix__header rr-matrix__header--discipline"
                   >
-                    <span class="rr-matrix__naam">{discipline.naam}</span>
-                    {discipline.ondertitel && (
-                      <span class="rr-matrix__sub">{discipline.ondertitel}</span>
-                    )}
+                    <nldd-container gap="4">
+                      <nldd-text size="md" weight="bold">
+                        {discipline.naam}
+                      </nldd-text>
+                      {discipline.ondertitel && (
+                        <nldd-text size="xs" color="secondary">
+                          {discipline.ondertitel}
+                        </nldd-text>
+                      )}
+                    </nldd-container>
                   </th>
                   {
                     fases.map((fase) => {
@@ -138,59 +160,64 @@ const pathname = '/roadmap';
                       );
                       return (
                         <td class="rr-matrix__cell">
-                          {cel.map((wp) => {
-                            const prioriteit = getPrioriteit(wp.data.prioriteit);
-                            const categorie = getCategorie(wp.data.categorie);
-                            const capability = getCapability(wp.data.capability);
-                            return (
-                              <nldd-card
-                                class="rr-wp-card"
-                                href={`/roadmap/werkpakket/${wp.data.id}`}
-                                accessible-label={wp.data.titel}
-                                data-categorie={wp.data.categorie || GEEN_CATEGORIE}
-                              >
-                                <div class="rr-wp-card__body">
-                                  <p class="rr-wp-card__titel">{wp.data.titel}</p>
-                                  {(prioriteit ||
-                                    wp.data.omvang ||
-                                    categorie ||
-                                    capability) && (
-                                    <div class="rr-wp-card__meta">
-                                      {prioriteit && (
-                                        <nldd-tag
-                                          color={prioriteit.tagColor}
-                                          text={prioriteit.label}
-                                          size="sm"
-                                        />
-                                      )}
-                                      {wp.data.omvang && (
-                                        <nldd-tag
-                                          color="neutral"
-                                          text={wp.data.omvang}
-                                          size="sm"
-                                        />
-                                      )}
-                                      {categorie && (
-                                        <nldd-tag
-                                          color="neutral"
-                                          text={categorie.label}
-                                          size="sm"
-                                        />
-                                      )}
-                                      {capability && (
-                                        <nldd-tag
-                                          color="accent"
-                                          text={capability.label.split(' ')[0]}
-                                          accessible-label={capability.label}
-                                          size="sm"
-                                        />
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </nldd-card>
-                            );
-                          })}
+                          <nldd-container gap="8">
+                            {cel.map((wp) => {
+                              const prioriteit = getPrioriteit(wp.data.prioriteit);
+                              const categorie = getCategorie(wp.data.categorie);
+                              const capability = getCapability(wp.data.capability);
+                              const tags = [
+                                prioriteit && {
+                                  color: prioriteit.tagColor,
+                                  text: prioriteit.label,
+                                  label: prioriteit.label,
+                                },
+                                wp.data.omvang && {
+                                  color: 'neutral',
+                                  text: wp.data.omvang,
+                                  label: `Omvang ${wp.data.omvang}`,
+                                },
+                                categorie && {
+                                  color: 'neutral',
+                                  text: categorie.label,
+                                  label: categorie.label,
+                                },
+                                capability && {
+                                  color: 'accent',
+                                  text: capability.label.split(' ')[0],
+                                  label: capability.label,
+                                },
+                              ].filter(Boolean);
+                              return (
+                                <nldd-card
+                                  class="rr-wp-card"
+                                  href={`/roadmap/werkpakket/${wp.data.id}`}
+                                  accessible-label={wp.data.titel}
+                                  data-categorie={wp.data.categorie || GEEN_CATEGORIE}
+                                >
+                                  {/* nldd-card leaves padding to a nested
+                                      container by design; without one the
+                                      content sits flush against the border. */}
+                                  <nldd-container padding="12" gap="8">
+                                    <nldd-text size="sm" weight="medium">
+                                      {wp.data.titel}
+                                    </nldd-text>
+                                    {tags.length > 0 && (
+                                      <nldd-container layout="wrap" gap="4">
+                                        {tags.map((tag: any) => (
+                                          <nldd-tag
+                                            color={tag.color}
+                                            text={tag.text}
+                                            accessible-label={tag.label}
+                                            size="sm"
+                                          />
+                                        ))}
+                                      </nldd-container>
+                                    )}
+                                  </nldd-container>
+                                </nldd-card>
+                              );
+                            })}
+                          </nldd-container>
                         </td>
                       );
                     })
@@ -201,6 +228,6 @@ const pathname = '/roadmap';
           </tbody>
         </table>
       </div>
-    </div>
+    </nldd-container>
   </nldd-simple-section>
 </Base>

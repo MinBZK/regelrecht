@@ -7,8 +7,14 @@
  * control. Here every partner is on the page: without client state there is
  * nothing to switch, and four sections read fine.
  *
+ * Built from design-system components throughout: nldd-step-indicator for the
+ * seven steps (each one a link), nldd-table for the two grids, nldd-text for
+ * every run of text. The components bring their own responsive behaviour —
+ * nldd-table is its own scroll container, the step indicator reflows — so this
+ * page holds no layout CSS and no media queries.
+ *
  * The worksheet is nearly empty at the moment — only mission and the boundary
- * partners are filled — so every field falls back to a "nog niet ingevuld"
+ * partners are filled — so every field falls back to a "nog niets ingevuld"
  * line rather than rendering as a blank.
  */
 import Base from '~/layouts/Base.astro';
@@ -23,7 +29,6 @@ import {
   PRACTICE_LABELS,
 } from '~/lib/roadmap';
 import { renderMarkdown } from '~/lib/roadmap-markdown';
-import '~/styles/roadmap.css';
 
 export async function getStaticPaths() {
   return STEPS.map((step) => ({ params: { step: step.id }, props: { step } }));
@@ -58,7 +63,7 @@ const markdownValue =
     md-padding-bottom="64"
     lg-padding-bottom="96"
   >
-    <div class="rr-roadmap">
+    <nldd-container gap="24">
       <RoadmapNav pathname={pathname} />
 
       <nldd-title size="1">
@@ -66,244 +71,204 @@ const markdownValue =
         <p slot="subtitle">{heading}</p>
       </nldd-title>
 
-      <div class="rr-outcome-layout">
-        <nav class="rr-outcome-layout__menu" aria-label="Stappen">
-          <nldd-list>
-            {
-              STEPS.map((s, i) => (
-                <nldd-list-item
-                  href={`/roadmap/outcome-mapping/${s.id}`}
-                  selected={s.id === step.id ? true : undefined}
-                >
-                  <span slot="start" class="rr-steps__num">
-                    {i + 1}
-                  </span>
-                  {s.label}
+      {/* Each step is a link, so the indicator doubles as the navigation and
+          shows how far the worksheet has come. */}
+      <nldd-step-indicator current={index + 1} accessible-label="Stappen">
+        {
+          STEPS.map((s) => (
+            <nldd-step-indicator-item
+              href={`/roadmap/outcome-mapping/${s.id}`}
+              text={s.label}
+            />
+          ))
+        }
+      </nldd-step-indicator>
+
+      <nldd-container gap="24">
+        {/* Vision and Mission: one markdown field each. */}
+        {
+          (step.section === 'vision' || step.section === 'mission') &&
+            (markdownValue ? (
+              <nldd-rich-text>
+                <Fragment set:html={markdownValue} />
+              </nldd-rich-text>
+            ) : (
+              <nldd-text color="secondary">{LEEG}</nldd-text>
+            ))
+        }
+
+        {/* Boundary Partners: the four partners, as filled in. */}
+        {
+          step.section === 'boundaryPartners' && (
+            <nldd-list variant="box-tinted">
+              {partners.map((partner, i) => (
+                <nldd-list-item>
+                  <nldd-text-cell
+                    overline={`Partner ${i + 1}`}
+                    text={isLeeg(partner) ? LEEG : partner}
+                    width="full"
+                  />
                 </nldd-list-item>
-              ))
-            }
-          </nldd-list>
-        </nav>
+              ))}
+            </nldd-list>
+          )
+        }
 
-        <div class="rr-outcome-layout__content">
-          {/* Vision and Mission: one markdown field each. */}
-          {
-            (step.section === 'vision' || step.section === 'mission') && (
-              <nldd-box>
-                <nldd-title size="5">
-                  <h2>{step.label}</h2>
-                </nldd-title>
-                <nldd-rich-text>
-                  {markdownValue ? (
-                    <Fragment set:html={markdownValue} />
-                  ) : (
-                    <p class="rr-leeg">{LEEG}</p>
-                  )}
-                </nldd-rich-text>
-              </nldd-box>
-            )
-          }
+        {/* Outcome Challenges: one per boundary partner. */}
+        {
+          step.section === 'outcomeChallenges' && (
+            <nldd-list variant="box-tinted">
+              {ws.outcomeChallenges.map((challenge, i) => (
+                <nldd-list-item>
+                  <nldd-text-cell
+                    overline={partnerLabel(i)}
+                    text={isLeeg(challenge) ? LEEG : challenge}
+                    width="full"
+                  />
+                </nldd-list-item>
+              ))}
+            </nldd-list>
+          )
+        }
 
-          {/* Boundary Partners: the four partners, as filled in. */}
-          {
-            step.section === 'boundaryPartners' && (
-              <nldd-box>
-                <nldd-title size="5">
-                  <h2>Boundary partners</h2>
-                </nldd-title>
-                <nldd-rich-text>
-                  {partners.some((p) => !isLeeg(p)) ? (
-                    <ol>
-                      {partners.map((partner, i) => (
-                        <li>
-                          {isLeeg(partner) ? (
-                            <span class="rr-leeg">{`Partner ${i + 1}: nog niets ingevuld.`}</span>
-                          ) : (
-                            partner
-                          )}
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p class="rr-leeg">{LEEG}</p>
-                  )}
-                </nldd-rich-text>
-              </nldd-box>
-            )
-          }
-
-          {/* Outcome Challenges: one per boundary partner. */}
-          {
-            step.section === 'outcomeChallenges' && (
-              <nldd-box>
-                <nldd-title size="5">
-                  <h2>Outcome challenges</h2>
-                </nldd-title>
-                <nldd-rich-text>
-                  <dl>
-                    {ws.outcomeChallenges.map((challenge, i) => (
-                      <Fragment>
-                        <dt>{partnerLabel(i)}</dt>
-                        <dd>
-                          {isLeeg(challenge) ? (
-                            <span class="rr-leeg">{LEEG}</span>
-                          ) : (
-                            challenge
-                          )}
-                        </dd>
-                      </Fragment>
-                    ))}
-                  </dl>
-                </nldd-rich-text>
-              </nldd-box>
-            )
-          }
-
-          {/* Progress Markers: expect / like / love to see, per partner. */}
-          {
-            step.section === 'progressMarkers' &&
-              ws.progressMarkers.map((marker, i) => {
-                const groups = [
-                  { label: 'Expect to see', items: marker.expectToSee },
-                  { label: 'Like to see', items: marker.likeToSee },
-                  { label: 'Love to see', items: marker.loveToSee },
-                ];
-                return (
-                  <nldd-box>
-                    <nldd-title size="5">
-                      <h2>{partnerLabel(i)}</h2>
-                    </nldd-title>
-                    <nldd-rich-text>
-                      {groups.map((group) => (
-                        <Fragment>
-                          <h3 class="rr-group-heading">{group.label}</h3>
-                          {group.items.some((item) => !isLeeg(item)) ? (
-                            <ul>
-                              {group.items
-                                .filter((item) => !isLeeg(item))
-                                .map((item) => (
-                                  <li>{item}</li>
-                                ))}
-                            </ul>
-                          ) : (
-                            <p class="rr-leeg">{LEEG}</p>
-                          )}
-                        </Fragment>
-                      ))}
-                    </nldd-rich-text>
-                  </nldd-box>
-                );
-              })
-          }
-
-          {/* Strategy Maps: a 2x3 table (I/E rows, causal/persuasive/supportive)
-              per partner. A real table, like the roadmap matrix. */}
-          {
-            step.section === 'strategyMaps' &&
-              ws.strategyMaps.map((map, i) => (
-                <nldd-box>
-                  <nldd-title size="5">
+        {/* Progress Markers: expect / like / love to see, per partner. */}
+        {
+          step.section === 'progressMarkers' &&
+            ws.progressMarkers.map((marker, i) => {
+              const groups = [
+                { label: 'Expect to see', items: marker.expectToSee },
+                { label: 'Like to see', items: marker.likeToSee },
+                { label: 'Love to see', items: marker.loveToSee },
+              ];
+              return (
+                <nldd-container gap="12">
+                  <nldd-title size="4">
                     <h2>{partnerLabel(i)}</h2>
                   </nldd-title>
-                  {/* No tabindex/role here, unlike the roadmap matrix: this
-                      table fits its column, so a focus stop announcing a
-                      scrollable region would be an empty promise. The wrapper
-                      stays as the overflow guard for narrow viewports. */}
-                  <div class="rr-table-scroll">
-                    <table class="rr-strategy">
-                      <caption class="rr-visually-hidden">
-                        {`Strategiekaart voor ${partnerLabel(i)}`}
-                      </caption>
-                      <thead>
-                        <tr>
-                          <td></td>
-                          {STRATEGY_COLUMNS.map((column) => (
-                            <th scope="col">{column}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {STRATEGY_ROWS.map((row) => (
-                          <tr>
-                            <th scope="row">
-                              <span class="rr-strategy__code">{row.code}</span>
-                              <span class="rr-strategy__label">{row.label}</span>
-                            </th>
-                            {STRATEGY_COLUMNS.map((_, k) => {
-                              const value = map[row.key][k];
-                              return (
-                                <td>
-                                  {isLeeg(value) ? (
-                                    <span class="rr-leeg">Nog niets ingevuld.</span>
-                                  ) : (
-                                    value
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </nldd-box>
-              ))
-          }
+                  <nldd-list variant="box-tinted">
+                    {groups.map((group) => {
+                      const gevuld = group.items.filter(
+                        (item) => !isLeeg(item),
+                      );
+                      return (
+                        <nldd-list-item>
+                          <nldd-text-cell
+                            overline={group.label}
+                            text={gevuld.length ? gevuld.join(' · ') : LEEG}
+                            width="full"
+                          />
+                        </nldd-list-item>
+                      );
+                    })}
+                  </nldd-list>
+                </nldd-container>
+              );
+            })
+        }
 
-          {/* Organizational Practices: the eight practices and their key
-              actions. `disabled` marked a practice as not applicable. */}
-          {
-            step.section === 'organizationalPractices' && (
-              <nldd-box>
-                <nldd-title size="5">
-                  <h2>Organizational practices</h2>
+        {/* Strategy Maps: a 2x3 grid per partner. nldd-table brings the header
+            semantics and its own horizontal scrolling. */}
+        {
+          step.section === 'strategyMaps' &&
+            ws.strategyMaps.map((map, i) => (
+              <nldd-container gap="12">
+                <nldd-title size="4">
+                  <h2>{partnerLabel(i)}</h2>
                 </nldd-title>
-                <div class="rr-table-scroll">
-                  <table class="rr-practices">
-                    <caption class="rr-visually-hidden">
-                      De acht organisatiepraktijken en de bijbehorende key
-                      actions.
-                    </caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">Practice</th>
-                        <th scope="col">Key actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {PRACTICE_LABELS.map((practice, i) => {
-                        const p = ws.organizationalPractices[i];
+                <nldd-table
+                  background="tinted"
+                  columns="minmax(220px, 1.4fr) repeat(3, minmax(160px, 1fr))"
+                  accessible-label={`Strategiekaart voor ${partnerLabel(i)}`}
+                >
+                  <nldd-table-row slot="header">
+                    <nldd-cell width="full" />
+                    {STRATEGY_COLUMNS.map((column) => (
+                      <nldd-cell width="full">
+                        <nldd-text size="sm" weight="bold">
+                          {column}
+                        </nldd-text>
+                      </nldd-cell>
+                    ))}
+                  </nldd-table-row>
+                  {STRATEGY_ROWS.map((row) => (
+                    <nldd-table-row>
+                      <nldd-text-cell
+                        overline={row.code}
+                        text={row.label}
+                        width="full"
+                        vertical-alignment="top"
+                      />
+                      {STRATEGY_COLUMNS.map((_, k) => {
+                        const value = map[row.key][k];
                         return (
-                          <tr class={p.disabled ? 'rr-practices__rij--uit' : undefined}>
-                            <th scope="row">
-                              <span class="rr-practices__titel">
-                                {`Practice ${i + 1}. ${practice.title}`}
-                              </span>
-                              <span class="rr-practices__desc">{practice.nl}</span>
-                              {p.disabled && (
-                                <span class="rr-practices__uit">
-                                  Niet van toepassing
-                                </span>
-                              )}
-                            </th>
-                            <td>
-                              {isLeeg(p.keyActions) ? (
-                                <span class="rr-leeg">Nog niets ingevuld.</span>
-                              ) : (
-                                p.keyActions
-                              )}
-                            </td>
-                          </tr>
+                          <nldd-cell width="full" vertical-alignment="top">
+                            <nldd-text
+                              size="sm"
+                              color={isLeeg(value) ? 'secondary' : 'default'}
+                            >
+                              {isLeeg(value) ? LEEG : value}
+                            </nldd-text>
+                          </nldd-cell>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              </nldd-box>
-            )
-          }
-        </div>
-      </div>
-    </div>
+                    </nldd-table-row>
+                  ))}
+                </nldd-table>
+              </nldd-container>
+            ))
+        }
+
+        {/* Organizational Practices: the eight practices and their key
+            actions. `disabled` marked a practice as not applicable. */}
+        {
+          step.section === 'organizationalPractices' && (
+            <nldd-table
+              background="tinted"
+              columns="minmax(280px, 1.2fr) minmax(200px, 1fr)"
+              accessible-label="Organizational practices en hun key actions"
+            >
+              <nldd-table-row slot="header">
+                <nldd-cell width="full">
+                  <nldd-text size="sm" weight="bold">
+                    Practice
+                  </nldd-text>
+                </nldd-cell>
+                <nldd-cell width="full">
+                  <nldd-text size="sm" weight="bold">
+                    Key actions
+                  </nldd-text>
+                </nldd-cell>
+              </nldd-table-row>
+              {PRACTICE_LABELS.map((practice, i) => {
+                const p = ws.organizationalPractices[i];
+                return (
+                  <nldd-table-row>
+                    <nldd-text-cell
+                      overline={`Practice ${i + 1}`}
+                      text={practice.title}
+                      supporting-text={
+                        p.disabled
+                          ? `${practice.nl} — niet van toepassing`
+                          : practice.nl
+                      }
+                      width="full"
+                      vertical-alignment="top"
+                    />
+                    <nldd-cell width="full" vertical-alignment="top">
+                      <nldd-text
+                        size="sm"
+                        color={isLeeg(p.keyActions) ? 'secondary' : 'default'}
+                      >
+                        {isLeeg(p.keyActions) ? LEEG : p.keyActions}
+                      </nldd-text>
+                    </nldd-cell>
+                  </nldd-table-row>
+                );
+              })}
+            </nldd-table>
+          )
+        }
+      </nldd-container>
+    </nldd-container>
   </nldd-simple-section>
 </Base>

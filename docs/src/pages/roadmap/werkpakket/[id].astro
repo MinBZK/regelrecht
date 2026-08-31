@@ -7,13 +7,18 @@
  * The UUID stays in the URL because a title-derived slug would have to be kept
  * in sync with those references and would break on every rename.
  *
+ * Built entirely from design-system components: nldd-sidebar-section for the
+ * document layout (it collapses the sidebar into a sheet on narrow screens by
+ * itself), nldd-description-cell for the metadata pairs, nldd-text for every
+ * run of text. No layout CSS and no media queries live here — the components
+ * are responsive, so writing our own would fight them.
+ *
  * Section headings are <h2> under the page <h1>. The app used <h3> here, which
  * check-heading-order.mjs rejects as a rank skip; nldd-title's `size` carries
  * the visual weight instead.
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
-import RoadmapNav from '~/components/RoadmapNav.astro';
 import EditLink from '~/components/EditLink.astro';
 import {
   getFase,
@@ -26,7 +31,6 @@ import {
   NIET_GESPECIFICEERD,
 } from '~/lib/roadmap';
 import { renderMarkdown } from '~/lib/roadmap-markdown';
-import '~/styles/roadmap.css';
 
 export async function getStaticPaths() {
   const werkpakketten = await getCollection('werkpakketten');
@@ -50,8 +54,39 @@ const samenhang = wp.samenhangIds
   .map((id: string) => all.find((w) => w.data.id === id))
   .filter(Boolean);
 
-const toelichting = renderMarkdown(wp.toelichting);
+// The absolute path of the source file, so the toelichting's markdown can be
+// stamped with the line numbers the select-to-edit affordance reads.
+// entry.filePath is relative to the docs/ project root, which is where the
+// build runs, so resolving against cwd lands on the real file.
+const sourcePath = entry.filePath
+  ? `${process.cwd()}/${entry.filePath}`
+  : undefined;
+
+const toelichting = renderMarkdown(
+  wp.toelichting,
+  sourcePath ? { filePath: sourcePath, field: 'toelichting' } : undefined,
+);
+
+// Base.astro's select-to-edit button builds its URL from this attribute plus
+// the data-line values above; the same wiring the docs and RFC pages use.
+const editBase = entry.filePath
+  ? `https://github.com/MinBZK/regelrecht/edit/main/docs/${entry.filePath}`
+  : undefined;
+
 const pathname = `/roadmap/werkpakket/${wp.id}`;
+
+// The metadata pairs, so the sidebar is one loop instead of five near-copies.
+const kerngegevens = [
+  { label: 'Prioriteit', tag: prioriteit, value: '' },
+  { label: 'Geschatte omvang', value: wp.omvang, leeg: NIET_BEPAALD },
+  { label: 'Categorie', value: categorie?.label, leeg: NIET_BEPAALD },
+  { label: 'Capability', value: capability?.label, leeg: NIET_BEPAALD },
+  {
+    label: 'Benodigde capaciteit',
+    value: wp.capaciteit,
+    leeg: NIET_GESPECIFICEERD,
+  },
+];
 ---
 
 <Base
@@ -62,120 +97,128 @@ const pathname = `/roadmap/werkpakket/${wp.id}`;
   title={`${wp.titel} · Roadmap · RegelRecht`}
   description={`Werkpakket ${wp.titel} in de RegelRecht-roadmap.`}
 >
-  <nldd-simple-section
+  <nldd-sidebar-section
+    sidebar-label="Kerngegevens"
     sm-padding-bottom="32"
     md-padding-bottom="64"
     lg-padding-bottom="96"
   >
-    <div class="rr-roadmap rr-detail">
-      {/* Neither tab is current on a werkpakket page, so the bar shows where
-          this sits without marking a selection; the back button goes up. */}
-      <RoadmapNav pathname={pathname} />
+    <nldd-title slot="header" size="1">
+      <h1>{wp.titel}</h1>
+      <p slot="subtitle">
+        {[fase?.naam, discipline?.naam].filter(Boolean).join(' · ')}
+      </p>
+    </nldd-title>
 
-      <nldd-title size="1">
-        <h1>{wp.titel}</h1>
-      </nldd-title>
-
-      <div class="rr-detail__context">
-        {fase && <nldd-tag color="accent" text={fase.naam} />}
-        {discipline && <nldd-tag color="accent" text={discipline.naam} />}
-      </div>
-
-      <nldd-box>
-        <nldd-title size="5"><h2>Kerngegevens</h2></nldd-title>
-        <nldd-rich-text>
-          <dl>
-            <dt>Prioriteit</dt>
-            <dd>
-              {
-                prioriteit ? (
+    <nldd-container slot="sidebar" padding="16" gap="16">
+      {/* A stack of label/value pairs. nldd-description-cell is a table and
+          list cell: standalone it has no width context and collapses to zero
+          height, so the pair is an nldd-container of two nldd-texts. */}
+      <nldd-container gap="16">
+        {
+          kerngegevens.map((veld) => (
+            <nldd-container gap="2">
+              <nldd-text size="xs" weight="medium" color="secondary">
+                {veld.label}
+              </nldd-text>
+              {veld.tag ? (
+                <nldd-container layout="wrap" gap="4">
                   <nldd-tag
-                    color={prioriteit.tagColor}
-                    text={prioriteit.label}
+                    color={veld.tag.tagColor}
+                    text={veld.tag.label}
                     size="sm"
                   />
-                ) : (
-                  NIET_BEPAALD
-                )
-              }
-            </dd>
-            <dt>Geschatte omvang</dt>
-            <dd>{wp.omvang || NIET_BEPAALD}</dd>
-            <dt>Categorie</dt>
-            <dd>{categorie ? categorie.label : NIET_BEPAALD}</dd>
-            <dt>Capability</dt>
-            <dd>{capability ? capability.label : NIET_BEPAALD}</dd>
-            <dt>Benodigde capaciteit</dt>
-            <dd>{wp.capaciteit || NIET_GESPECIFICEERD}</dd>
-          </dl>
-        </nldd-rich-text>
-      </nldd-box>
+                </nldd-container>
+              ) : (
+                <nldd-text
+                  size="sm"
+                  color={veld.value ? 'default' : 'secondary'}
+                >
+                  {veld.value || veld.leeg || NIET_BEPAALD}
+                </nldd-text>
+              )}
+            </nldd-container>
+          ))
+        }
+      </nldd-container>
 
-      <nldd-box>
-        <nldd-title size="5"><h2>Onderzoeksvragen</h2></nldd-title>
-        <nldd-rich-text>
-          {
-            wp.onderzoeksvragen.length ? (
+      <nldd-divider />
+
+      <EditLink filePath={entry.filePath} text="Bewerk op GitHub" />
+    </nldd-container>
+
+    <nldd-container gap="32" data-edit-base={editBase}>
+      <nldd-container gap="12">
+        <nldd-title size="4"><h2>Onderzoeksvragen</h2></nldd-title>
+        {
+          wp.onderzoeksvragen.length ? (
+            <nldd-rich-text>
               <ol>
                 {wp.onderzoeksvragen.map((vraag: string) => (
                   <li>{vraag}</li>
                 ))}
               </ol>
-            ) : (
-              <p>Nog geen onderzoeksvragen geregistreerd.</p>
-            )
-          }
-        </nldd-rich-text>
-      </nldd-box>
+            </nldd-rich-text>
+          ) : (
+            <nldd-text size="sm" color="secondary">
+              Nog geen onderzoeksvragen geregistreerd.
+            </nldd-text>
+          )
+        }
+      </nldd-container>
 
-      <nldd-box>
-        <nldd-title size="5"><h2>Toelichting</h2></nldd-title>
-        <nldd-rich-text>
-          {
-            toelichting ? (
+      <nldd-container gap="12">
+        <nldd-title size="4"><h2>Toelichting</h2></nldd-title>
+        {
+          toelichting ? (
+            <nldd-rich-text>
               <Fragment set:html={toelichting} />
-            ) : (
-              <p>Geen toelichting toegevoegd.</p>
-            )
-          }
-        </nldd-rich-text>
-      </nldd-box>
+            </nldd-rich-text>
+          ) : (
+            <nldd-text size="sm" color="secondary">
+              Geen toelichting toegevoegd.
+            </nldd-text>
+          )
+        }
+      </nldd-container>
 
-      <nldd-box>
-        <nldd-title size="5"><h2>Samenhang met andere werkpakketten</h2></nldd-title>
+      <nldd-container gap="12">
+        <nldd-title size="4"><h2>Samenhang</h2></nldd-title>
         {
           samenhang.length ? (
-            <nldd-list>
+            <nldd-list type="navigation" variant="box-tinted">
               {samenhang.map((related) => {
                 const relatedFase = getFase(related!.data.faseId);
                 const relatedDiscipline = getDiscipline(
                   related!.data.disciplineId,
                 );
                 return (
-                  <nldd-list-item href={`/roadmap/werkpakket/${related!.data.id}`}>
-                    {related!.data.titel}
-                    <span slot="end">
-                      <nldd-tag
-                        size="sm"
-                        color="neutral"
-                        text={`${relatedFase?.naam ?? ''} · ${relatedDiscipline?.naam ?? ''}`}
-                      />
-                    </span>
+                  <nldd-list-item
+                    href={`/roadmap/werkpakket/${related!.data.id}`}
+                  >
+                    <nldd-text-cell
+                      text={related!.data.titel}
+                      supporting-text={[
+                        relatedFase?.naam,
+                        relatedDiscipline?.naam,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                      width="full"
+                    />
+                    <nldd-spacer-cell />
+                    <nldd-icon-cell size="20" icon="chevron-right" />
                   </nldd-list-item>
                 );
               })}
             </nldd-list>
           ) : (
-            <nldd-rich-text>
-              <p>Geen samenhang met andere werkpakketten geregistreerd.</p>
-            </nldd-rich-text>
+            <nldd-text size="sm" color="secondary">
+              Geen samenhang met andere werkpakketten geregistreerd.
+            </nldd-text>
           )
         }
-      </nldd-box>
-
-      <p class="rr-detail__edit">
-        <EditLink filePath={entry.filePath} text="Bewerk dit werkpakket op GitHub" />
-      </p>
-    </div>
-  </nldd-simple-section>
+      </nldd-container>
+    </nldd-container>
+  </nldd-sidebar-section>
 </Base>

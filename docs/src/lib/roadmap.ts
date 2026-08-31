@@ -353,7 +353,11 @@ export const PRACTICE_LABELS = [
  * no mention of the file it came from. Pinning the lengths against the lists
  * that drive the rendering turns that into a build error naming the field.
  */
-const PARTNER_COUNT = 4;
+// Derived from the data, not a literal: the invariant is that these arrays
+// agree with each other, not that there are exactly four partners. Pinning the
+// number here would mean a fifth boundary partner needs a code change.
+const PARTNER_COUNT = (worksheetJson as { boundaryPartners: unknown[] })
+  .boundaryPartners.length;
 const strategieRij = z.array(z.string()).length(STRATEGY_COLUMNS.length);
 
 const worksheetSchema = z.object({
