@@ -183,7 +183,10 @@ const pathname = '/roadmap';
                                 <nldd-card
                                   class="rr-wp-card"
                                   href={`/roadmap/werkpakket/${wp.data.id}`}
-                                  accessible-label={wp.data.titel}
+                                  accessible-label={[
+                                    wp.data.titel,
+                                    ...tags.map((t: any) => t.label),
+                                  ].join(', ')}
                                   data-categorie={wp.data.categorie || GEEN_CATEGORIE}
                                 >
                                   {/* nldd-card leaves padding to a nested

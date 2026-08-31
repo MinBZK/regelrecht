@@ -67,12 +67,29 @@ function fieldLines(
     const m = header.exec(lines[i]);
     if (!m) continue;
 
+    // The digits are YAML's explicit indentation indicator (`|2-`, `>2-`).
+    // Missing them made those forms match neither branch and fall through to
+    // the header-line case below, stamping the `toelichting:` line itself —
+    // a wrong range, which is worse than none.
     const rest = m[1].trim();
-    const literal = /^\|[-+]?$/.test(rest);
-    const folded = /^>[-+]?$/.test(rest);
+    const literal = /^\|\d*[-+]?$/.test(rest);
+    const folded = /^>\d*[-+]?$/.test(rest);
+    // An explicit indicator shifts where the content starts, so the per-line
+    // mapping no longer holds even for a literal scalar.
+    const indicator = /\d/.test(rest);
 
-    // A value on the header line itself (plain or quoted) occupies that line.
-    if (!literal && !folded) return { first: i + 1, last: i + 1, perLine: false };
+    // The value sits on the header line (plain or quoted), and may continue
+    // on the indented lines under it: YAML folds those into the same scalar.
+    // Running to the next key keeps the range over the whole value instead of
+    // just its first line.
+    if (!literal && !folded) {
+      let last = i + 1;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() !== '' && !/^\s/.test(lines[j])) break;
+        last = j + 1;
+      }
+      return { first: i + 1, last, perLine: false };
+    }
 
     // Block scalar: its content runs until the next line at column 0.
     let last = i + 1;
@@ -80,7 +97,7 @@ function fieldLines(
       if (lines[j].trim() !== '' && !/^\s/.test(lines[j])) break;
       last = j + 1;
     }
-    return { first: i + 2, last, perLine: literal };
+    return { first: i + 2, last, perLine: literal && !indicator };
   }
   return null;
 }
