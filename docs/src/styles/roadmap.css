@@ -159,13 +159,3 @@
 .rr-roadmap .rr-wp-card {
   display: block;
 }
-
-/* --- Verwijzing naar het position paper --------------------------------- */
-
-/* The reference sits inside the question's <li>, as a real <a> so
-   check-links.mjs validates the section anchor. Smaller and quieter than the
-   question itself: it is a pointer, not part of the sentence. */
-.rr-roadmap .rr-papersectie {
-  display: inline-block;
-  font: var(--primitives-font-body-xs-regular-snug, inherit);
-}

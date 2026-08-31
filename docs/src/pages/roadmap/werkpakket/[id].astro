@@ -187,14 +187,15 @@ const kerngegevens = [
                     data-line-end={vraagRegels[i]?.[1]}
                   >
                     {v.vraag}
+                    {/* On its own line, and short: the reference is a pointer,
+                        not part of the sentence. The section title would be a
+                        second English clause after every Dutch question, and
+                        the paper's own name repeated per item drowned out the
+                        questions. The full title is on the link's target. */}
                     {v.paper && (
-                      <>
-                        {' '}
-                        <a class="rr-papersectie" href={v.paper.href}>
-                          Rules as Executed, sectie {v.paper.nummer}:{' '}
-                          {v.paper.titel}
-                        </a>
-                      </>
+                      <a class="rr-papersectie" href={v.paper.href}>
+                        Rules as Executed §&nbsp;{v.paper.nummer}
+                      </a>
                     )}
                   </li>
                 ))}
@@ -263,3 +264,29 @@ const kerngegevens = [
     </nldd-container>
   </nldd-sidebar-section>
 </Base>
+
+<style>
+  /*
+   * The paper reference under a research question. Scoped to this page rather
+   * than living in roadmap.css: that stylesheet is imported by the matrix page
+   * and scopes everything under .rr-roadmap, which this page does not have.
+   *
+   * On its own line and visually quieter than the question. Running it on
+   * after the question mark made every item wrap into a second line of blue
+   * and buried the question itself; it is a pointer, not part of the sentence.
+   */
+  .rr-papersectie {
+    display: block;
+    width: fit-content;
+    margin-top: var(--primitives-space-4, 0.25rem);
+    font: var(--primitives-font-body-xs-regular-snug, inherit);
+    color: var(--semantics-content-secondary-color);
+    text-decoration-color: var(--semantics-surfaces-tinted-border-color);
+  }
+
+  .rr-papersectie:hover,
+  .rr-papersectie:focus-visible {
+    color: var(--semantics-content-accent-color);
+    text-decoration-color: currentColor;
+  }
+</style>
