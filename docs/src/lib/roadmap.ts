@@ -12,8 +12,9 @@
  * the labels the pages render, so a value can never render as a tag the schema
  * would have rejected.
  */
-import config from '~/data/roadmap-config.json';
-import worksheet from '~/data/outcome-mapping.json';
+import { z } from 'astro:content';
+import configJson from '~/data/roadmap-config.json';
+import worksheetJson from '~/data/outcome-mapping.json';
 
 export interface Fase {
   id: string;
@@ -69,15 +70,72 @@ export const CAPABILITIES = [
   { id: 'verifieren', label: 'Verifiëren en simuleren van besluitvorming' },
 ] as const;
 
-export const PRIORITEIT_IDS = PRIORITEITEN.map((p) => p.id);
-export const CATEGORIE_IDS = CATEGORIEEN.map((c) => c.id);
-export const CAPABILITY_IDS = CAPABILITIES.map((c) => c.id);
+/*
+ * The id lists the zod schema in content.config.ts builds its enums from.
+ *
+ * The tuple type is what z.enum() requires. Deriving the enums here rather
+ * than repeating the ids in the schema is what makes the "single source"
+ * above true: with two copies, adding a value to the schema alone would let
+ * it validate while getPrioriteit() returns undefined, and the card would
+ * silently render no tag for a value that was set.
+ */
+type NonEmpty = [string, ...string[]];
+/**
+ * The value `data-categorie` carries for a werkpakket without a categorie.
+ * Six of the nineteen have none, so the filter needs a way to show them:
+ * without one, checking any box hides them with no control to bring them
+ * back. Shared by the page and the stylesheet's selectors.
+ */
+export const GEEN_CATEGORIE = 'geen';
+
+/** The filter's checkboxes: every categorie, plus the ones without one. */
+export const FILTER_OPTIES = [
+  ...CATEGORIEEN.map((c) => ({ id: c.id, label: c.label })),
+  { id: GEEN_CATEGORIE, label: 'Zonder categorie' },
+];
+
+export const PRIORITEIT_IDS = PRIORITEITEN.map((p) => p.id) as NonEmpty;
+export const OMVANG_IDS = [...OMVANGEN] as NonEmpty;
+export const CATEGORIE_IDS = CATEGORIEEN.map((c) => c.id) as NonEmpty;
+export const CAPABILITY_IDS = CAPABILITIES.map((c) => c.id) as NonEmpty;
 
 export const getPrioriteit = (id: string) =>
   PRIORITEITEN.find((p) => p.id === id);
 export const getCategorie = (id: string) => CATEGORIEEN.find((c) => c.id === id);
 export const getCapability = (id: string) =>
   CAPABILITIES.find((c) => c.id === id);
+
+/*
+ * The two JSON files get the same build-time validation the werkpakketten get
+ * from their collection schema. Without it a hand-edit that drops a key fails
+ * far from its cause: a missing `individual` on a strategyMap surfaces as
+ * "Cannot read properties of undefined" out of a page template, naming
+ * neither the file nor the partner. parse() throws during the build instead,
+ * with the path to the offending field.
+ */
+const configSchema = z.object({
+  fases: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        volgnummer: z.number(),
+        naam: z.string().min(1),
+        ondertitel: z.string(),
+      }),
+    )
+    .min(1),
+  disciplines: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        naam: z.string().min(1),
+        ondertitel: z.string(),
+      }),
+    )
+    .min(1),
+});
+
+const config = configSchema.parse(configJson);
 
 export const fases: Fase[] = [...config.fases].sort(
   (a, b) => a.volgnummer - b.volgnummer,
@@ -106,7 +164,7 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
     .filter(
       (w) => w.data.faseId === faseId && w.data.disciplineId === disciplineId,
     )
-    .sort((a, b) => (a.data.volgorde ?? 0) - (b.data.volgorde ?? 0));
+    .sort((a, b) => a.data.volgorde - b.data.volgorde);
 }
 
 /**
@@ -122,10 +180,36 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
  * the fase/discipline JSON.
  */
 export function assertReferencesResolve(
-  werkpakketten: { data: WerkpakketData }[],
+  werkpakketten: { data: WerkpakketData; id?: string }[],
 ): void {
   const ids = new Set(werkpakketten.map((w) => w.data.id));
   const problems: string[] = [];
+
+  /*
+   * Two files carrying the same id would otherwise collapse into one Set
+   * entry and pass unnoticed, while getStaticPaths emits the route twice:
+   * Astro drops the second with a warning, the build still succeeds, and one
+   * werkpakket renders a card that links to another one's page. No gate
+   * catches it — check-links.mjs sees a link that resolves.
+   *
+   * This is the likelier mistake now that there is no write path: a new
+   * werkpakket starts as a copy of an existing file, and the filename is the
+   * part you remember to change.
+   */
+  const seen = new Set<string>();
+  for (const { data, id: bestandsnaam } of werkpakketten) {
+    if (seen.has(data.id)) {
+      problems.push(`id "${data.id}" wordt door meer dan één bestand gebruikt`);
+    }
+    seen.add(data.id);
+    // The filename is the werkpakket's id; keeping the two equal is what makes
+    // the content directory navigable.
+    if (bestandsnaam !== undefined && bestandsnaam !== data.id) {
+      problems.push(
+        `bestand "${bestandsnaam}.md" bevat id "${data.id}"; die horen gelijk te zijn`,
+      );
+    }
+  }
 
   for (const { data } of werkpakketten) {
     const waar = `werkpakket ${data.id} (${data.titel})`;
@@ -164,8 +248,6 @@ export interface Worksheet {
   strategyMaps: { individual: string[]; environment: string[] }[];
   organizationalPractices: { keyActions: string; disabled: boolean }[];
 }
-
-export const outcomeMapping = worksheet as Worksheet;
 
 export interface Step {
   id: string;
@@ -234,6 +316,42 @@ export const PRACTICE_LABELS = [
     nl: 'Gestructureerde reflectiemomenten inbouwen over wat werkt en wat niet',
   },
 ] as const;
+
+/*
+ * The worksheet's arrays are positional: index i of outcomeChallenges,
+ * progressMarkers and strategyMaps all describe boundaryPartners[i], and
+ * organizationalPractices lines up with PRACTICE_LABELS. The page templates
+ * loop over one array and index into another, so a length mismatch renders
+ * one partner's data under another's name, or throws out of a template with
+ * no mention of the file it came from. Pinning the lengths against the lists
+ * that drive the rendering turns that into a build error naming the field.
+ */
+const PARTNER_COUNT = 4;
+const strategieRij = z.array(z.string()).length(STRATEGY_COLUMNS.length);
+
+const worksheetSchema = z.object({
+  vision: z.string(),
+  mission: z.string(),
+  boundaryPartners: z.array(z.string()).length(PARTNER_COUNT),
+  outcomeChallenges: z.array(z.string()).length(PARTNER_COUNT),
+  progressMarkers: z
+    .array(
+      z.object({
+        expectToSee: z.array(z.string()),
+        likeToSee: z.array(z.string()),
+        loveToSee: z.array(z.string()),
+      }),
+    )
+    .length(PARTNER_COUNT),
+  strategyMaps: z
+    .array(z.object({ individual: strategieRij, environment: strategieRij }))
+    .length(PARTNER_COUNT),
+  organizationalPractices: z
+    .array(z.object({ keyActions: z.string(), disabled: z.boolean() }))
+    .length(PRACTICE_LABELS.length),
+});
+
+export const outcomeMapping: Worksheet = worksheetSchema.parse(worksheetJson);
 
 /** The partner's own name where the worksheet has one, else a stable label. */
 export function partnerLabel(index: number): string {

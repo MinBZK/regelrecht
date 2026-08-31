@@ -39,7 +39,7 @@ const partners = ws.boundaryPartners;
 const LEEG = 'Nog niets ingevuld.';
 
 // The two markdown steps; everything else is plain strings or tables.
-const markdownWaarde =
+const markdownValue =
   step.section === 'vision' || step.section === 'mission'
     ? renderMarkdown(ws[step.section] as string)
     : '';
@@ -49,6 +49,7 @@ const markdownWaarde =
   lang="nl"
   kind="docs"
   pathname={pathname}
+  noSearchIndex
   title={`${step.label} · Outcome mapping · RegelRecht`}
   description={`${heading} van het outcome-mappingwerkblad.`}
 >
@@ -93,8 +94,8 @@ const markdownWaarde =
                   <h2>{step.label}</h2>
                 </nldd-title>
                 <nldd-rich-text>
-                  {markdownWaarde ? (
-                    <Fragment set:html={markdownWaarde} />
+                  {markdownValue ? (
+                    <Fragment set:html={markdownValue} />
                   ) : (
                     <p class="rr-leeg">{LEEG}</p>
                   )}
@@ -162,7 +163,7 @@ const markdownWaarde =
           {
             step.section === 'progressMarkers' &&
               ws.progressMarkers.map((marker, i) => {
-                const groepen = [
+                const groups = [
                   { label: 'Expect to see', items: marker.expectToSee },
                   { label: 'Like to see', items: marker.likeToSee },
                   { label: 'Love to see', items: marker.loveToSee },
@@ -173,12 +174,12 @@ const markdownWaarde =
                       <h2>{partnerLabel(i)}</h2>
                     </nldd-title>
                     <nldd-rich-text>
-                      {groepen.map((groep) => (
+                      {groups.map((group) => (
                         <Fragment>
-                          <h3 class="rr-groep-kop">{groep.label}</h3>
-                          {groep.items.some((item) => !isLeeg(item)) ? (
+                          <h3 class="rr-group-heading">{group.label}</h3>
+                          {group.items.some((item) => !isLeeg(item)) ? (
                             <ul>
-                              {groep.items
+                              {group.items
                                 .filter((item) => !isLeeg(item))
                                 .map((item) => (
                                   <li>{item}</li>
@@ -204,7 +205,11 @@ const markdownWaarde =
                   <nldd-title size="5">
                     <h2>{partnerLabel(i)}</h2>
                   </nldd-title>
-                  <div class="rr-table-scroll" tabindex="0" role="region" aria-label={`Strategiekaart ${partnerLabel(i)}, horizontaal scrollbaar`}>
+                  {/* No tabindex/role here, unlike the roadmap matrix: this
+                      table fits its column, so a focus stop announcing a
+                      scrollable region would be an empty promise. The wrapper
+                      stays as the overflow guard for narrow viewports. */}
+                  <div class="rr-table-scroll">
                     <table class="rr-strategy">
                       <caption class="rr-visually-hidden">
                         {`Strategiekaart voor ${partnerLabel(i)}`}
@@ -212,26 +217,26 @@ const markdownWaarde =
                       <thead>
                         <tr>
                           <td></td>
-                          {STRATEGY_COLUMNS.map((kolom) => (
-                            <th scope="col">{kolom}</th>
+                          {STRATEGY_COLUMNS.map((column) => (
+                            <th scope="col">{column}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {STRATEGY_ROWS.map((rij) => (
+                        {STRATEGY_ROWS.map((row) => (
                           <tr>
                             <th scope="row">
-                              <span class="rr-strategy__code">{rij.code}</span>
-                              <span class="rr-strategy__label">{rij.label}</span>
+                              <span class="rr-strategy__code">{row.code}</span>
+                              <span class="rr-strategy__label">{row.label}</span>
                             </th>
                             {STRATEGY_COLUMNS.map((_, k) => {
-                              const waarde = map[rij.key][k];
+                              const value = map[row.key][k];
                               return (
                                 <td>
-                                  {isLeeg(waarde) ? (
+                                  {isLeeg(value) ? (
                                     <span class="rr-leeg">Nog niets ingevuld.</span>
                                   ) : (
-                                    waarde
+                                    value
                                   )}
                                 </td>
                               );
@@ -253,7 +258,7 @@ const markdownWaarde =
                 <nldd-title size="5">
                   <h2>Organizational practices</h2>
                 </nldd-title>
-                <div class="rr-table-scroll" tabindex="0" role="region" aria-label="Organizational practices, horizontaal scrollbaar">
+                <div class="rr-table-scroll">
                   <table class="rr-practices">
                     <caption class="rr-visually-hidden">
                       De acht organisatiepraktijken en de bijbehorende key
@@ -269,20 +274,20 @@ const markdownWaarde =
                       {PRACTICE_LABELS.map((practice, i) => {
                         const p = ws.organizationalPractices[i];
                         return (
-                          <tr class={p?.disabled ? 'rr-practices__rij--uit' : undefined}>
+                          <tr class={p.disabled ? 'rr-practices__rij--uit' : undefined}>
                             <th scope="row">
                               <span class="rr-practices__titel">
                                 {`Practice ${i + 1}. ${practice.title}`}
                               </span>
                               <span class="rr-practices__desc">{practice.nl}</span>
-                              {p?.disabled && (
+                              {p.disabled && (
                                 <span class="rr-practices__uit">
                                   Niet van toepassing
                                 </span>
                               )}
                             </th>
                             <td>
-                              {isLeeg(p?.keyActions) ? (
+                              {isLeeg(p.keyActions) ? (
                                 <span class="rr-leeg">Nog niets ingevuld.</span>
                               ) : (
                                 p.keyActions

@@ -23,6 +23,11 @@ interface Props {
   // narrower centered layout instead of the 3-column grid. Defaults to true
   // so the common sidebar'd docs pages need not pass it.
   hasSidebar?: boolean;
+  // Keep this page out of the Pagefind index. Pagefind indexes the whole
+  // <body> of every built page by default, so a page that is deliberately not
+  // linked would still be reachable through the site's own search box. Set
+  // this where "unlisted" is meant to include search.
+  noSearchIndex?: boolean;
 }
 
 const {
@@ -32,6 +37,7 @@ const {
   kind,
   pathname,
   hasSidebar = true,
+  noSearchIndex = false,
 } = Astro.props;
 
 const isLanding = kind === 'landing';
@@ -388,7 +394,7 @@ const legalLinks = [
       })();
     </script>
   </head>
-  <body>
+  <body data-pagefind-ignore={noSearchIndex ? 'all' : undefined}>
     <nldd-page background={isLanding ? 'base' : undefined}>
       {/* nldd-skip-link wraps the nav: its skip control sits before the nav and
           focuses the next sibling (the first main-content element) — no anchor

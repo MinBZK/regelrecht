@@ -1,5 +1,11 @@
 import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
+import {
+  PRIORITEIT_IDS,
+  OMVANG_IDS,
+  CATEGORIE_IDS,
+  CAPABILITY_IDS,
+} from '~/lib/roadmap';
 
 const docs = defineCollection({
   loader: glob({ pattern: '**/*.{md,mdx}', base: 'src/content/docs' }),
@@ -47,9 +53,12 @@ const rfcs = defineCollection({
  * body here, so it was dropped rather than kept as a second copy free to
  * drift. `toelichting` is the prose field, rendered by roadmap-markdown.ts.
  *
- * The enums mirror the lists in lib/roadmap.ts, which is also what the pages
- * render labels from — a value the schema accepts therefore always has a
- * label. Empty strings are allowed everywhere they occur in practice: most
+ * The enums are built from the id lists in lib/roadmap.ts, which is also what
+ * the pages render labels from, so a value the schema accepts always has a
+ * label. Repeating the ids here instead would let a value validate while
+ * getPrioriteit() returns undefined, and the card would render no tag at all
+ * for a value that was set. Empty strings are allowed everywhere they occur
+ * in practice: most
  * werkpakketten have no prioriteit, omvang, categorie or capability yet, and
  * an absent value is written as '' rather than omitted.
  *
@@ -67,23 +76,16 @@ const werkpakketten = defineCollection({
     titel: z.string(),
     faseId: z.string(),
     disciplineId: z.string(),
-    prioriteit: z.enum(['hoog', 'midden', 'laag']).or(z.literal('')),
-    omvang: z.enum(['S', 'M', 'L', 'XL']).or(z.literal('')),
-    categorie: z.enum(['lat', 'pivot', 'bet']).or(z.literal('')),
-    capability: z
-      .enum([
-        'basis',
-        'ontwikkelen',
-        'simuleren',
-        'publiceren',
-        'analyseren',
-        'implementeren',
-        'verifieren',
-      ])
-      .or(z.literal('')),
+    prioriteit: z.enum(PRIORITEIT_IDS).or(z.literal('')),
+    omvang: z.enum(OMVANG_IDS).or(z.literal('')),
+    categorie: z.enum(CATEGORIE_IDS).or(z.literal('')),
+    capability: z.enum(CAPABILITY_IDS).or(z.literal('')),
     capaciteit: z.string().default(''),
     toelichting: z.string().default(''),
-    volgorde: z.number().default(0),
+    // Required, not defaulted: `volgorde` places the werkpakket inside its
+    // matrix cell, and a default of 0 would silently sort a file that forgot
+    // it to the front rather than say so.
+    volgorde: z.number(),
     onderzoeksvragen: z.array(z.string()).default([]),
     samenhangIds: z.array(z.string().uuid()).default([]),
   }),

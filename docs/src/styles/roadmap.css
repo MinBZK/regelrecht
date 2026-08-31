@@ -21,7 +21,7 @@
   gap: var(--primitives-space-24, 1.5rem);
 }
 
-.rr-hoofdnav {
+.rr-roadmap .rr-hoofdnav {
   padding-bottom: var(--primitives-space-16, 1rem);
   border-bottom: 1px solid var(--semantics-surfaces-tinted-border-color);
 }
@@ -84,19 +84,30 @@
  * With nothing checked, everything shows. Check one or more categories and
  * only those cards remain. A browser without :has() matches none of these
  * rules and simply shows every card, which is the right way to degrade.
+ *
+ * Every option the filter offers has a rule below, "Zonder categorie"
+ * included: a filter that can hide cards it offers no way to show back is
+ * broken, and six of the nineteen werkpakketten have no categorie.
+ *
+ * DO NOT rewrite `#rr-cat-lat` as an attribute or class selector. The show
+ * rules only beat the hide rule above because :has() takes the specificity
+ * of its most specific argument, and an id makes these (1,3,0) against
+ * (0,3,0). Level them and the rules tie, source order lets the hide rule
+ * win, and every card disappears the moment any box is checked.
  */
 .rr-roadmap:has(.rr-filter__input:checked) .rr-wp-card {
   display: none;
 }
 .rr-roadmap:has(#rr-cat-lat:checked) .rr-wp-card[data-categorie='lat'],
 .rr-roadmap:has(#rr-cat-pivot:checked) .rr-wp-card[data-categorie='pivot'],
-.rr-roadmap:has(#rr-cat-bet:checked) .rr-wp-card[data-categorie='bet'] {
+.rr-roadmap:has(#rr-cat-bet:checked) .rr-wp-card[data-categorie='bet'],
+.rr-roadmap:has(#rr-cat-geen:checked) .rr-wp-card[data-categorie='geen'] {
   display: block;
 }
 
 /* --- Matrix ------------------------------------------------------------- */
 
-.rr-matrix-scroll {
+.rr-roadmap .rr-matrix-scroll {
   overflow-x: auto;
 }
 
@@ -119,7 +130,7 @@
 /* The caption names the table for a screen reader; the headers already carry
    the visible labels, so it does not need to be shown twice. */
 .rr-roadmap .rr-matrix__caption,
-.rr-visually-hidden {
+.rr-roadmap .rr-visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -253,7 +264,7 @@
   font: var(--primitives-font-body-sm-bold-snug, inherit);
 }
 
-.rr-roadmap .rr-groep-kop {
+.rr-roadmap .rr-group-heading {
   font: var(--primitives-font-body-sm-bold-snug, inherit);
   color: var(--semantics-content-secondary-color);
 }
@@ -265,7 +276,7 @@
   font-style: italic;
 }
 
-.rr-table-scroll {
+.rr-roadmap .rr-table-scroll {
   overflow-x: auto;
 }
 

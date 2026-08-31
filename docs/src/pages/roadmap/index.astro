@@ -17,7 +17,8 @@ import RoadmapNav from '~/components/RoadmapNav.astro';
 import {
   fases,
   disciplines,
-  CATEGORIEEN,
+  FILTER_OPTIES,
+  GEEN_CATEGORIE,
   getPrioriteit,
   getCategorie,
   getCapability,
@@ -39,6 +40,7 @@ const pathname = '/roadmap';
   lang="nl"
   kind="docs"
   pathname={pathname}
+  noSearchIndex
   title="Roadmap · RegelRecht"
   description="Werkpakketten van RegelRecht, geordend per fase en discipline."
 >
@@ -65,16 +67,15 @@ const pathname = '/roadmap';
       <fieldset class="rr-filter">
         <legend class="rr-filter__legend">Filter op categorie</legend>
         {
-          CATEGORIEEN.map((categorie) => (
+          FILTER_OPTIES.map((optie) => (
             <span class="rr-filter__option">
               <input
                 type="checkbox"
                 class="rr-filter__input"
-                id={`rr-cat-${categorie.id}`}
-                data-categorie={categorie.id}
+                id={`rr-cat-${optie.id}`}
               />
-              <label class="rr-filter__label" for={`rr-cat-${categorie.id}`}>
-                {categorie.label}
+              <label class="rr-filter__label" for={`rr-cat-${optie.id}`}>
+                {optie.label}
               </label>
             </span>
           ))
@@ -140,7 +141,7 @@ const pathname = '/roadmap';
                                 class="rr-wp-card"
                                 href={`/roadmap/werkpakket/${wp.data.id}`}
                                 accessible-label={wp.data.titel}
-                                data-categorie={wp.data.categorie || 'geen'}
+                                data-categorie={wp.data.categorie || GEEN_CATEGORIE}
                               >
                                 <div class="rr-wp-card__body">
                                   <p class="rr-wp-card__titel">{wp.data.titel}</p>

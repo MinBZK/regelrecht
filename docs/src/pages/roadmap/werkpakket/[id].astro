@@ -13,6 +13,7 @@
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
+import RoadmapNav from '~/components/RoadmapNav.astro';
 import EditLink from '~/components/EditLink.astro';
 import {
   getFase,
@@ -32,11 +33,11 @@ export async function getStaticPaths() {
   assertReferencesResolve(werkpakketten);
   return werkpakketten.map((entry) => ({
     params: { id: entry.data.id },
-    props: { entry, alle: werkpakketten },
+    props: { entry, all: werkpakketten },
   }));
 }
 
-const { entry, alle } = Astro.props;
+const { entry, all } = Astro.props;
 const wp = entry.data;
 
 const fase = getFase(wp.faseId);
@@ -46,7 +47,7 @@ const categorie = getCategorie(wp.categorie);
 const capability = getCapability(wp.capability);
 
 const samenhang = wp.samenhangIds
-  .map((id: string) => alle.find((w) => w.data.id === id))
+  .map((id: string) => all.find((w) => w.data.id === id))
   .filter(Boolean);
 
 const toelichting = renderMarkdown(wp.toelichting);
@@ -57,6 +58,7 @@ const pathname = `/roadmap/werkpakket/${wp.id}`;
   lang="nl"
   kind="docs"
   pathname={pathname}
+  noSearchIndex
   title={`${wp.titel} · Roadmap · RegelRecht`}
   description={`Werkpakket ${wp.titel} in de RegelRecht-roadmap.`}
 >
@@ -66,6 +68,10 @@ const pathname = `/roadmap/werkpakket/${wp.id}`;
     lg-padding-bottom="96"
   >
     <div class="rr-roadmap rr-detail">
+      {/* Neither tab is current on a werkpakket page, so the bar shows where
+          this sits without marking a selection; the back button goes up. */}
+      <RoadmapNav pathname={pathname} />
+
       <nldd-title size="1">
         <h1>{wp.titel}</h1>
       </nldd-title>
@@ -140,17 +146,19 @@ const pathname = `/roadmap/werkpakket/${wp.id}`;
         {
           samenhang.length ? (
             <nldd-list>
-              {samenhang.map((ander) => {
-                const anderFase = getFase(ander!.data.faseId);
-                const anderDiscipline = getDiscipline(ander!.data.disciplineId);
+              {samenhang.map((related) => {
+                const relatedFase = getFase(related!.data.faseId);
+                const relatedDiscipline = getDiscipline(
+                  related!.data.disciplineId,
+                );
                 return (
-                  <nldd-list-item href={`/roadmap/werkpakket/${ander!.data.id}`}>
-                    {ander!.data.titel}
+                  <nldd-list-item href={`/roadmap/werkpakket/${related!.data.id}`}>
+                    {related!.data.titel}
                     <span slot="end">
                       <nldd-tag
                         size="sm"
                         color="neutral"
-                        text={`${anderFase?.naam ?? ''} · ${anderDiscipline?.naam ?? ''}`}
+                        text={`${relatedFase?.naam ?? ''} · ${relatedDiscipline?.naam ?? ''}`}
                       />
                     </span>
                   </nldd-list-item>
