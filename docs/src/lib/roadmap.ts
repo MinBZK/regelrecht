@@ -356,8 +356,15 @@ export const PRACTICE_LABELS = [
 // Derived from the data, not a literal: the invariant is that these arrays
 // agree with each other, not that there are exactly four partners. Pinning the
 // number here would mean a fifth boundary partner needs a code change.
-const PARTNER_COUNT = (worksheetJson as { boundaryPartners: unknown[] })
-  .boundaryPartners.length;
+//
+// Validated on its own first, because the count is needed to build the schema
+// that validates everything else. Reading it straight off the JSON would let a
+// missing or renamed boundaryPartners throw "Cannot read properties of
+// undefined" from this line — the contextless failure the schema below exists
+// to replace, for the one field it depends on.
+const PARTNER_COUNT = z
+  .object({ boundaryPartners: z.array(z.unknown()).min(1) })
+  .parse(worksheetJson).boundaryPartners.length;
 const strategieRij = z.array(z.string()).length(STRATEGY_COLUMNS.length);
 
 const worksheetSchema = z.object({
