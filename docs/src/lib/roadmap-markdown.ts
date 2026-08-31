@@ -28,6 +28,24 @@ import rehypeStringify from 'rehype-stringify';
 import type { Root, Element, ElementContent } from 'hast';
 
 /**
+ * The frontmatter's lines, padded so indexes stay file line numbers.
+ *
+ * Both parsers below look for a key at column 0, and outside the frontmatter
+ * that is just prose: a body paragraph starting "onderzoeksvragen:" would be
+ * read as the field itself. Werkpakket files carry no body today, so this is
+ * a guard rather than a fix, but the alternative is a wrong edit link that
+ * nothing would catch.
+ */
+function frontmatterLines(text: string): string[] {
+  const lines = text.split(/\r?\n/);
+  if (lines[0]?.trim() !== '---') return [];
+  const end = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  if (end === -1) return [];
+  // Keep the array as long as the region so an index is still a file line.
+  return lines.slice(0, end);
+}
+
+/**
  * The file line range (1-based, inclusive) a field's value occupies.
  *
  * Only a LITERAL block scalar (`|`) keeps one source line per rendered line,
@@ -43,7 +61,7 @@ function fieldLines(
   text: string,
   field: string,
 ): { first: number; last: number; perLine: boolean } | null {
-  const lines = text.split(/\r?\n/);
+  const lines = frontmatterLines(text);
   const header = new RegExp(`^${field}:(.*)$`);
   for (let i = 0; i < lines.length; i++) {
     const m = header.exec(lines[i]);
@@ -82,7 +100,7 @@ export function yamlSequenceItemLines(
 ): [number, number][] {
   let lines: string[];
   try {
-    lines = readFileSync(filePath, 'utf8').split(/\r?\n/);
+    lines = frontmatterLines(readFileSync(filePath, 'utf8'));
   } catch {
     return [];
   }
