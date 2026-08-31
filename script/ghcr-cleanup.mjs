@@ -1,6 +1,20 @@
 #!/usr/bin/env node
-// Ruimt verweesde container-versies op in GHCR, zonder de manifesten te raken
-// waar een getagde image nog naar wijst.
+// Ruimt container-versies op in GHCR, zonder de manifesten te raken waar een
+// getagde image nog naar wijst of waar productie op draait.
+//
+// Dit is het enige opruimpad voor images. Drie soorten afval, één script, één
+// stap in scheduled-cleanup.yml:
+//
+//   1. getagde `pr-*`-versies van gesloten pull requests;
+//   2. getagde versies waarvan élke tag de `sha-`-vorm heeft, die nergens meer
+//      draaien en ouder zijn dan de retentietermijn;
+//   3. untagged versies waar geen getagde index meer naar wijst (de wezen).
+//
+// Ze staan hier bij elkaar omdat ze over dezelfde packages lopen en dezelfde
+// bescherming nodig hebben. Twee opruimers die onafhankelijk over dezelfde
+// registry gaan, kennen elkaars uitzonderingen niet: de een gaat op de tagvorm
+// af, de ander op de referentiegraaf, en samen halen ze weg wat elk apart had
+// laten staan.
 //
 // Het probleem dat dit script oplost: buildx zet provenance standaard aan, dus
 // elke push levert een OCI *index* met de tag plus twee untagged children (het
@@ -20,21 +34,31 @@
 // Dit is destructieve code tegen een productieregistry, dus elke twijfel valt
 // de kant van "niets verwijderen" op:
 //
+//   * Lukt het niet om bij ZAD op te halen wát er op dit moment draait, dan
+//     stopt de run zonder één DELETE. Productie draait op een `sha-`-tag en
+//     niet op `latest`, dus zonder die lijst is niet vast te stellen welke
+//     `sha-`-versie het draaiende image is.
 //   * Kan een manifest van een getagde versie niet worden opgehaald, dan is de
 //     graaf onvolledig en wordt er voor dat package géén enkele wees
 //     verwijderd. Liever een ronde niets opruimen dan één keer te veel weg.
 //   * Untagged versies jonger dan de respijttermijn blijven staan. Een push
 //     die tijdens deze run binnenkomt kan children hebben die in onze listing
 //     nog geen ouder hebben.
-//   * Versies met een beschermde tag (`latest`) worden nooit verwijderd, ook
-//     niet als er verder een stale `pr-*`-tag op zit.
+//   * Versies met een beschermde tag worden nooit verwijderd, ook niet als er
+//     verder een stale `pr-*`-tag op zit. Beschermd zijn `latest` en elke tag
+//     die ZAD op dit moment draait — productie én de nog levende previews.
 //   * Vlak voor het verwijderen wordt de deletelijst nog een keer tegen de
 //     referentieverzameling gehouden. Zit er een gerefereerde digest in, dan
 //     stopt de run zonder iets te verwijderen.
 //
+// Die twee laatste hekken werken samen voor het draaiende image: de index
+// waar productie op staat is getagd en dus beschermd, en omdat hij een wortel
+// van de referentiegraaf is staan zijn untagged children in `referenced` en
+// vallen ze nooit onder de wezen.
+//
 // Gebruik:
-//   GH_TOKEN=… node script/ghcr-cleanup.mjs --dry-run
-//   GH_TOKEN=… node script/ghcr-cleanup.mjs --packages regelrecht-docs
+//   GH_TOKEN=… ZAD_API_KEY=… node script/ghcr-cleanup.mjs --dry-run
+//   GH_TOKEN=… ZAD_API_KEY=… node script/ghcr-cleanup.mjs --packages regelrecht-docs
 //
 // Het token heeft `read:packages` nodig om te plannen en `delete:packages` om
 // daadwerkelijk op te ruimen.
@@ -49,18 +73,30 @@ export const PACKAGES = [
   'regelrecht-admin',
   'regelrecht-harvester-worker',
   'regelrecht-enrich-worker',
+  'regelrecht-pipeline-api',
+  'regelrecht-grafana',
   'regelrecht-lawmaking',
   'regelrecht-docs',
 ];
 
-// Tags die een versie onaanraakbaar maken, wat er verder ook op zit. `latest`
-// is waar de productie-deploy naar wijst.
+// Tags die een versie onaanraakbaar maken, wat er verder ook op zit. Dit is de
+// bodem; de tags die ZAD op dit moment draait komen er per run bij.
+//
+// `latest` alleen is niet genoeg. Productie draait op een `sha-`-tag, en zodra
+// een main-build `latest` doorschuift houdt het draaiende image alleen die
+// sha-tag over.
 export const PROTECTED_TAGS = new Set(['latest']);
 
 // Een untagged versie die jonger is dan dit blijft staan. Vangt de race tussen
 // onze versions-listing en een push die tijdens de run binnenkomt: de children
 // van die push zijn dan al wel gelist, maar de index met de tag nog niet.
 export const DEFAULT_GRACE_HOURS = 24;
+
+// Een getagde `sha-`-versie die nergens draait blijft nog zo lang staan. Dekt
+// de race met een deploy die doorschuift tussen het opvragen van de draaiende
+// lijst en het verwijderen, en houdt een terugrol naar de vorige build
+// mogelijk.
+export const DEFAULT_RETENTION_DAYS = 7;
 
 const INDEX_MEDIA_TYPES = new Set([
   'application/vnd.oci.image.index.v1+json',
@@ -92,6 +128,48 @@ export class HttpError extends Error {
 // --- pure logica (getest in ghcr-cleanup.test.mjs) ---------------------------
 
 export const tagsOf = (version) => version?.metadata?.container?.tags ?? [];
+
+/**
+ * Leest uit het ZAD-antwoord welke image-tags er op dit moment draaien.
+ *
+ * Elke twijfel is hier een fout en geen lege verzameling: een lege lijst is
+ * niet "er draait niets", het is ook wat een verlopen sleutel of een
+ * foutpagina oplevert — en dan zou élke `sha-`-tag als ongebruikt gelden,
+ * inclusief die van productie.
+ *
+ * De tag staat na de laatste `:` in het laatste padsegment. Op de hele URL zou
+ * een registry met poort (`registry.internal:5000/o/p:sha-abc`) een
+ * niet-bestaande "tag" opleveren, en geen match betekent hier: mag weg.
+ */
+export function runningTagsFrom(payload) {
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.deployments)) {
+    throw new Error('het antwoord van ZAD bevat geen deployments-lijst');
+  }
+
+  const tags = new Set();
+  for (const deployment of payload.deployments) {
+    for (const component of deployment?.components ?? []) {
+      const image = component?.image;
+      if (!image) continue;
+      const last = image.slice(image.lastIndexOf('/') + 1);
+      if (last.includes('@')) {
+        // Digest-gepind: de tag is niet af te leiden. Doorgaan zou de
+        // bescherming stil uitschakelen voor precies dit image.
+        throw new Error(
+          `ZAD rapporteert een digest-gepinde image (${image}); dan is niet vast te stellen welke tag draait`,
+        );
+      }
+      const colon = last.lastIndexOf(':');
+      // Geen tag betekent latest, en die is sowieso beschermd.
+      tags.add(colon === -1 ? 'latest' : last.slice(colon + 1));
+    }
+  }
+
+  if (tags.size === 0) {
+    throw new Error('ZAD gaf geen enkele draaiende image terug; zonder die lijst is niets veilig te verwijderen');
+  }
+  return tags;
+}
 
 export const isIndexMediaType = (mediaType) => INDEX_MEDIA_TYPES.has(mediaType);
 
@@ -209,20 +287,26 @@ export function graphGaps({ rootCount = 0, referenced, unresolved = [], missing 
 /**
  * Bepaalt wat er voor één package weg mag.
  *
- * Twee soorten kandidaten: getagde `pr-*`-versies van gesloten PR's (het
- * bestaande gedrag) en untagged versies waar geen getagde index naar wijst (de
- * wezen). Is de referentiegraaf onvolledig (`gaps` niet leeg), dan vervallen de
- * wezen — de `pr-*`-tak raakt alleen getagde versies en blijft dus wel gewoon
- * werken.
+ * Drie soorten kandidaten: getagde `pr-*`-versies van gesloten PR's, getagde
+ * versies waarvan élke tag de `sha-`-vorm heeft en die niemand meer draait, en
+ * untagged versies waar geen getagde index naar wijst (de wezen). Is de
+ * referentiegraaf onvolledig (`gaps` niet leeg), dan vervallen de wezen — de
+ * twee getagde takken hangen niet van de graaf af en blijven wel werken.
+ *
+ * `protectedTags` is de bodem (`latest`) plus wat ZAD op dit moment draait.
+ * Een versie met zo'n tag komt in geen enkele tak voor, wat er verder ook op
+ * zit.
  */
 export function planPackage({
   packageName,
   versions,
   openPrs,
   referenced,
+  protectedTags = PROTECTED_TAGS,
   gaps = [],
   now = Date.now(),
   graceMs = DEFAULT_GRACE_HOURS * 3600 * 1000,
+  retentionMs = DEFAULT_RETENTION_DAYS * 24 * 3600 * 1000,
 }) {
   const openPrSet = new Set([...openPrs].map(String));
   const tagged = [];
@@ -231,18 +315,37 @@ export function planPackage({
     (tagsOf(version).length > 0 ? tagged : untagged).push(version);
   }
 
-  const protectedVersions = tagged.filter((v) => tagsOf(v).some((t) => PROTECTED_TAGS.has(t)));
+  const protectedVersions = tagged.filter((v) => tagsOf(v).some((t) => protectedTags.has(t)));
   const protectedIds = new Set(protectedVersions.map((v) => v.id));
+
+  // Een getagde versie die zelf een child van een andere index is, hoort bij
+  // die index en niet bij deze opruimer. In de praktijk komt dat niet voor —
+  // buildx tagt alleen de index — maar als het gebeurt telt de graaf zwaarder
+  // dan de tagvorm, en dan hoeft de eindcontrole hieronder de hele run niet af
+  // te breken over iets wat hier af te vangen is.
+  const deletable = (version) => !protectedIds.has(version.id) && !referenced.has(version.name);
 
   // Een versie telt als stale PR-image wanneer er minstens één `pr-*`-tag op
   // zit en géén daarvan bij een open PR hoort. Verwijderen haalt ook de
   // meeliftende `sha-*`-tag weg; dat was al zo en is ook de bedoeling.
   const stalePr = tagged.filter((version) => {
-    if (protectedIds.has(version.id)) return false;
+    if (!deletable(version)) return false;
     const prNumbers = tagsOf(version)
       .filter((t) => t.startsWith('pr-'))
       .map((t) => t.slice('pr-'.length));
     return prNumbers.length > 0 && prNumbers.every((n) => !openPrSet.has(n));
+  });
+
+  // De sha-tak. Alléén afgaan op de tagvorm zou het image onder de draaiende
+  // deployment vandaan halen: `protectedTags` bevat daarom de tags die ZAD nu
+  // draait, en de leeftijdsgrens dekt de race met een deploy die doorschuift
+  // terwijl deze run bezig is.
+  const staleSha = tagged.filter((version) => {
+    if (!deletable(version)) return false;
+    if (!tagsOf(version).every((t) => t.startsWith('sha-'))) return false;
+    const age = now - Date.parse(version.updated_at ?? version.created_at);
+    // Een onleesbare datum slaat de versie over; onbekend is geen vrijbrief.
+    return Number.isFinite(age) && age >= retentionMs;
   });
 
   const referencedUntagged = untagged.filter((v) => referenced.has(v.name));
@@ -257,13 +360,15 @@ export function planPackage({
   }
 
   const blocked = gaps.length > 0;
+  const taggedDeletion = (reason) => (version) => ({
+    id: version.id,
+    digest: version.name,
+    tags: tagsOf(version),
+    reason,
+  });
   const deletions = [
-    ...stalePr.map((version) => ({
-      id: version.id,
-      digest: version.name,
-      tags: tagsOf(version),
-      reason: 'stale-pr',
-    })),
+    ...stalePr.map(taggedDeletion('stale-pr')),
+    ...staleSha.map(taggedDeletion('stale-sha')),
     ...(blocked
       ? []
       : orphans.map((version) => ({
@@ -287,6 +392,8 @@ export function planPackage({
       orphaned: orphans.length,
       skippedTooRecent: tooRecent.length,
       stalePr: stalePr.length,
+      staleSha: staleSha.length,
+      protectedByTag: protectedVersions.length,
     },
     deletions,
   };
@@ -308,23 +415,30 @@ export function assertNoReferencedDeletions(deletions, referenced) {
   return true;
 }
 
-export function formatSummary(results, { dryRun }) {
+export function formatSummary(results, { dryRun, runningTags = [] }) {
   const lines = [];
   lines.push(`## GHCR-opruiming${dryRun ? ' (dry-run)' : ''}`, '');
+  // Welke tags beschermd waren hoort in de samenvatting, want dat is het enige
+  // wat verklaart waarom een `sha-`-versie bleef staan of juist niet.
+  const running = [...runningTags].sort();
+  if (running.length > 0) {
+    lines.push(`Draait volgens ZAD (${running.length}): ${running.map((t) => `\`${t}\``).join(', ')}.`, '');
+  }
   lines.push(
-    '| package | versies | getagd | untagged | gerefereerd | wees | te vers | stale pr-* | te verwijderen | verwijderd | fouten |',
+    '| package | versies | getagd | untagged | gerefereerd | in gebruik | wees | te vers | stale pr-* | stale sha-* | te verwijderen | verwijderd | fouten |',
   );
-  lines.push('|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|');
+  lines.push('|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|');
   for (const result of results) {
     if (result.error) {
-      lines.push(`| ${result.packageName} | overgeslagen: ${result.error} | | | | | | | | | |`);
+      lines.push(`| ${result.packageName} | overgeslagen: ${result.error} | | | | | | | | | | | |`);
       continue;
     }
     const c = result.counts;
     lines.push(
       `| ${result.packageName} | ${c.total} | ${c.tagged} | ${c.untagged} | ${c.referencedUntagged} | ` +
-        `${c.orphaned} | ${c.skippedTooRecent} | ${c.stalePr} | ${result.deletions?.length ?? 0} | ` +
-        `${dryRun ? '—' : (result.deleted ?? 0)} | ${result.failures?.length ?? 0} |`,
+        `${c.protectedByTag} | ${c.orphaned} | ${c.skippedTooRecent} | ${c.stalePr} | ${c.staleSha} | ` +
+        `${result.deletions?.length ?? 0} | ${dryRun ? '—' : (result.deleted ?? 0)} | ` +
+        `${result.failures?.length ?? 0} |`,
     );
   }
   lines.push('');
@@ -457,7 +571,7 @@ async function request(url, { method = 'GET', headers = {}, attempts = 5 } = {})
   throw lastError ?? new Error(`geen antwoord van ${url}`);
 }
 
-function createClient({ token, org }) {
+function createClient({ token, org, zad }) {
   const apiHeaders = {
     accept: 'application/vnd.github+json',
     authorization: `Bearer ${token}`,
@@ -521,6 +635,19 @@ function createClient({ token, org }) {
         method: 'DELETE',
       });
     },
+
+    // Wat ZAD op dit moment draait. Niet via `gh`, maar rechtstreeks: dezelfde
+    // endpoint die de andere opruimscripts in scheduled-cleanup.yml gebruiken.
+    async fetchZadDeployments() {
+      const url = `${zad.apiBase.replace(/\/$/, '')}/v2/projects/${encodeURIComponent(zad.project)}/deployments`;
+      const response = await request(url, {
+        headers: { 'x-api-key': zad.apiKey, accept: 'application/json', 'user-agent': 'regelrecht-ghcr-cleanup' },
+      });
+      if (!response.ok) {
+        throw new HttpError(response.status, url, (await response.text()).slice(0, 200));
+      }
+      return response.json();
+    },
   };
 }
 
@@ -540,6 +667,7 @@ export function parseArgs(argv) {
     dryRun: false,
     packages: PACKAGES,
     graceHours: DEFAULT_GRACE_HOURS,
+    retentionDays: DEFAULT_RETENTION_DAYS,
     concurrency: 8,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -547,11 +675,15 @@ export function parseArgs(argv) {
     if (arg === '--dry-run') options.dryRun = true;
     else if (arg === '--packages') options.packages = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
     else if (arg === '--grace-hours') options.graceHours = Number(argv[++i]);
+    else if (arg === '--retention-days') options.retentionDays = Number(argv[++i]);
     else if (arg === '--concurrency') options.concurrency = Number(argv[++i]);
     else throw new Error(`onbekend argument: ${arg}`);
   }
   if (!Number.isFinite(options.graceHours) || options.graceHours < 0) {
     throw new Error('--grace-hours verwacht een niet-negatief getal');
+  }
+  if (!Number.isFinite(options.retentionDays) || options.retentionDays < 0) {
+    throw new Error('--retention-days verwacht een niet-negatief getal');
   }
   if (!Number.isInteger(options.concurrency) || options.concurrency < 1) {
     throw new Error('--concurrency verwacht een positief geheel getal');
@@ -569,13 +701,41 @@ async function main() {
   const org = process.env.ORG || process.env.GITHUB_REPOSITORY_OWNER;
   const repo = process.env.GITHUB_REPOSITORY || (org ? `${org}/regelrecht` : null);
 
+  const zad = {
+    apiBase: process.env.ZAD_API_BASE,
+    apiKey: process.env.ZAD_API_KEY,
+    project: process.env.ZAD_PROJECT,
+  };
+
   if (!token) throw new Error('GH_TOKEN ontbreekt');
   if (!org) throw new Error('ORG of GITHUB_REPOSITORY_OWNER ontbreekt');
+  // Geen stilzwijgende terugval op "dan maar zonder": zonder deze drie is niet
+  // vast te stellen welke `sha-`-tag productie draait, en dan mag er niets weg.
+  for (const [name, value] of [
+    ['ZAD_API_BASE', zad.apiBase],
+    ['ZAD_API_KEY', zad.apiKey],
+    ['ZAD_PROJECT', zad.project],
+  ]) {
+    if (!value) throw new Error(`${name} ontbreekt; zonder de draaiende deployments wordt er niets verwijderd`);
+  }
 
-  const client = createClient({ token, org });
+  const client = createClient({ token, org, zad });
   const graceMs = options.graceHours * 3600 * 1000;
+  const retentionMs = options.retentionDays * 24 * 3600 * 1000;
 
   log(`Opruiming van ${options.packages.length} package(s) in ${org}${dryRun ? ' — dry-run' : ''}`);
+
+  // Eerst vaststellen wat er draait, dan pas kijken wat er weg mag. Faalt dit,
+  // dan stopt de run hier — vóór de eerste DELETE.
+  let runningTags;
+  try {
+    runningTags = runningTagsFrom(await client.fetchZadDeployments());
+  } catch (err) {
+    throw new Error(`kon niet vaststellen wat er draait: ${err.message}; er wordt niets verwijderd`);
+  }
+  const protectedTags = new Set([...PROTECTED_TAGS, ...runningTags]);
+  log(`In gebruik volgens ZAD (${runningTags.size}): ${[...runningTags].sort().join(' ')}`);
+
   const openPrs = await client.listOpenPullRequests(repo);
   log(`Open PR's: ${openPrs.length}`);
 
@@ -617,8 +777,10 @@ async function main() {
         versions,
         openPrs,
         referenced: graph.referenced,
+        protectedTags,
         gaps,
         graceMs,
+        retentionMs,
       });
       // Geteld, niet aangenomen: dit is het getal waarmee de samenvatting
       // criterium 4 hardmaakt.
@@ -636,8 +798,9 @@ async function main() {
       const c = plan.counts;
       log(
         `  totaal ${c.total} | getagd ${c.tagged} | untagged ${c.untagged} | ` +
-          `gerefereerd ${c.referencedUntagged} | wees ${c.orphaned} | te vers ${c.skippedTooRecent} | ` +
-          `stale pr-* ${c.stalePr} | te verwijderen ${plan.deletions.length}`,
+          `gerefereerd ${c.referencedUntagged} | in gebruik ${c.protectedByTag} | wees ${c.orphaned} | ` +
+          `te vers ${c.skippedTooRecent} | stale pr-* ${c.stalePr} | stale sha-* ${c.staleSha} | ` +
+          `te verwijderen ${plan.deletions.length}`,
       );
       if (plan.blocked) {
         annotate(
@@ -681,8 +844,8 @@ async function main() {
     // moet eruit komen: bij destructief werk is "welke DELETE's zijn al
     // gedaan" precies wat je wilt weten als een run halverwege stopt.
     log('');
-    log(formatSummary(results, { dryRun }));
-    writeSummary(results, { dryRun });
+    log(formatSummary(results, { dryRun, runningTags }));
+    writeSummary(results, { dryRun, runningTags });
   }
 
   if (sawPackageError) process.exitCode = 1;

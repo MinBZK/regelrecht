@@ -59,41 +59,38 @@ jobs:
           DRY_RUN: ${{ inputs.dry-run || false }}
         run: script/prune-orphaned-deployments.sh
 
-      # Draaide in cleanup-preview bij elke gesloten PR. Hier draait hij één
-      # keer per nacht, en staat een rode uitkomst in een run die iemand leest.
-      - name: Ruim image-versies op die nergens meer bij horen
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-          ORG: ${{ github.repository_owner }}
-          PACKAGES: >-
-            regelrecht-editor regelrecht-admin regelrecht-harvester-worker
-            regelrecht-enrich-worker regelrecht-pipeline-api regelrecht-grafana
-            regelrecht-lawmaking regelrecht-docs
-          ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
-          ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
-          ZAD_PROJECT: ${{ env.ZAD_PROJECT }}
-          DRY_RUN: ${{ inputs.dry-run || false }}
-        run: script/prune-preview-images.sh
-
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '22'
 
-      # De opruimlogica staat in script/ghcr-cleanup.mjs, niet hier. Ze moet de
-      # referentiegraaf van de registry volgen om te weten welke untagged versie
-      # een levend onderdeel van een getagde image is en welke een wees, en die
-      # afweging hoort in code die je kunt testen (script/ghcr-cleanup.test.mjs)
-      # in plaats van in een pipeline die je alleen in productie kunt proberen.
+      # Eén stap voor alle image-opruiming: stale pr-tags, uitgediende
+      # sha-tags en verweesde untagged manifesten. Ze delen dezelfde
+      # bescherming — wat ZAD draait blijft staan, en wat een getagde index nog
+      # als child heeft ook — en die afweging valt niet te verdelen over twee
+      # opruimers die elkaars uitzonderingen niet kennen.
+      #
+      # De logica staat in script/ghcr-cleanup.mjs en niet hier: ze volgt de
+      # referentiegraaf van de registry om te weten welke untagged versie een
+      # levend onderdeel van een getagde image is en welke een wees, en dat
+      # hoort in code die je kunt testen (script/ghcr-cleanup.test.mjs) in
+      # plaats van in een pipeline die je alleen in productie kunt proberen.
       #
       # De opruimer doet duizenden manifest-lookups; een vastgelopen call mag
       # geen runner-uren opeten. Hij stopt zelf netjes bij een rate limit, dus
       # `timeout-minutes` is het vangnet daaronder, niet de normale afloop.
+      #
+      # Draaide voor de sha-tak in cleanup-preview bij elke gesloten PR. Hier
+      # draait hij één keer per nacht, en staat een rode uitkomst in een run
+      # die iemand leest.
       - name: Cleanup stale container images
         timeout-minutes: 45
         env:
           GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           ORG: ${{ github.repository_owner }}
+          ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
+          ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
+          ZAD_PROJECT: ${{ env.ZAD_PROJECT }}
           DRY_RUN: ${{ inputs.dry-run || false }}
         run: node script/ghcr-cleanup.mjs
 

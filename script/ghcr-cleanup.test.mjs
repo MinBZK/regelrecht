@@ -13,10 +13,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   DEFAULT_GRACE_HOURS,
+  DEFAULT_RETENTION_DAYS,
   HttpError,
+  PROTECTED_TAGS,
   RateLimitError,
   assertNoReferencedDeletions,
   collectReferencedDigests,
@@ -26,22 +29,32 @@ import {
   isManifestLike,
   mapLimit,
   nextLink,
+  PACKAGES,
   parseArgs,
   planPackage,
   rateLimitOf,
+  runningTagsFrom,
   tagsOf,
 } from './ghcr-cleanup.mjs';
 
 const HOUR = 3600 * 1000;
+const DAY = 24 * HOUR;
 const NOW = Date.parse('2026-08-03T03:00:00Z');
 const OLD = '2026-03-25T12:00:00Z';
 
 let nextId = 1;
-const version = (digest, tags = [], created_at = OLD) => ({
+const version = (digest, tags = [], created_at = OLD, updated_at = created_at) => ({
   id: nextId++,
   name: digest,
   created_at,
+  updated_at,
   metadata: { container: { tags } },
+});
+
+// Het ZAD-antwoord zoals de opruimer het krijgt: per deployment de componenten
+// met de image-URL die er op dat moment draait.
+const zadPayload = (images) => ({
+  deployments: [{ name: 'regelrecht', components: images.map((image) => ({ image })) }],
 });
 
 // Een getagde index met twee untagged children, zoals buildx met provenance ze
@@ -54,22 +67,79 @@ const buildxIndex = (children) => ({
   })),
 });
 
-const plan = (overrides) =>
+const plan = ({ runningTags = [], ...overrides } = {}) =>
   planPackage({
     packageName: 'regelrecht-editor',
     versions: [],
     openPrs: [],
     referenced: new Set(),
+    protectedTags: new Set([...PROTECTED_TAGS, ...runningTags]),
     gaps: [],
     now: NOW,
     graceMs: DEFAULT_GRACE_HOURS * HOUR,
+    retentionMs: DEFAULT_RETENTION_DAYS * DAY,
     ...overrides,
   });
+
+test('PACKAGES dekt elk image dat deploy.yml naar GHCR duwt', () => {
+  // Een package dat hier ontbreekt wordt nooit opgeruimd en groeit stil door;
+  // dat was precies het verschil tussen de twee opruimers die hiervoor naast
+  // elkaar liepen (zes packages tegenover acht). De lijst afleiden uit de
+  // workflow zou de opruimer laten meebewegen met een hernoemd image zonder dat
+  // iemand ernaar kijkt, dus hij staat expliciet in het script en wordt hier
+  // vergeleken.
+  const deploy = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
+  const built = [...deploy.matchAll(/^\s*image-name:\s*\S+\/(\S+)\s*$/gm)].map((m) => m[1]);
+
+  assert.ok(built.length > 0, 'geen image-name in deploy.yml gevonden');
+  assert.deepEqual(built.filter((name) => !PACKAGES.includes(name)), []);
+  assert.deepEqual(new Set(PACKAGES).size, PACKAGES.length);
+});
 
 test('tagsOf overleeft versies zonder metadata', () => {
   assert.deepEqual(tagsOf({}), []);
   assert.deepEqual(tagsOf({ metadata: {} }), []);
   assert.deepEqual(tagsOf({ metadata: { container: { tags: ['latest'] } } }), ['latest']);
+});
+
+// --- wat er draait: de lijst waar alle bescherming op steunt -----------------
+
+test('runningTagsFrom leest de tag uit het laatste padsegment', () => {
+  assert.deepEqual(
+    [...runningTagsFrom(zadPayload(['ghcr.io/o/regelrecht-editor:sha-abc1234', 'ghcr.io/o/regelrecht-docs:latest']))],
+    ['sha-abc1234', 'latest'],
+  );
+  // Een registry met poort: op de hele URL zou `5000/o/p` als tag gelden en
+  // beschermt de lijst niets meer.
+  assert.deepEqual([...runningTagsFrom(zadPayload(['registry.internal:5000/o/p:sha-abc1234']))], ['sha-abc1234']);
+  // Geen tag betekent latest, en die is sowieso beschermd.
+  assert.deepEqual([...runningTagsFrom(zadPayload(['ghcr.io/o/p']))], ['latest']);
+});
+
+test('runningTagsFrom weigert een antwoord waar de bescherming niet uit valt af te leiden', () => {
+  // Een lege lijst is niet "er draait niets"; het is ook wat een verlopen
+  // sleutel of een foutpagina oplevert. Zou dat als leeg doorgaan, dan gold
+  // élke sha-tag als ongebruikt — inclusief die van productie.
+  assert.throws(() => runningTagsFrom(zadPayload([])), /geen enkele draaiende image/);
+  assert.throws(() => runningTagsFrom({ deployments: [] }), /geen enkele draaiende image/);
+  assert.throws(() => runningTagsFrom({ error: 'unauthorized' }), /geen deployments-lijst/);
+  assert.throws(() => runningTagsFrom(null), /geen deployments-lijst/);
+  // Bij een digest-pin is de draaiende tag niet af te leiden; doorgaan zou de
+  // bescherming stil uitschakelen voor precies dat image.
+  assert.throws(() => runningTagsFrom(zadPayload(['ghcr.io/o/p@sha256:deadbeef'])), /digest-gepinde image/);
+});
+
+test('runningTagsFrom neemt elk component van elk deployment mee', () => {
+  // Ook de previews draaien op images uit dezelfde packages; die tellen net zo
+  // goed als "in gebruik".
+  const payload = {
+    deployments: [
+      { name: 'regelrecht', components: [{ image: 'ghcr.io/o/a:sha-1111111' }, { image: 'ghcr.io/o/b:sha-1111111' }] },
+      { name: 'pr1090', components: [{ image: 'ghcr.io/o/a:pr-1090' }] },
+      { name: 'zonder-componenten' },
+    ],
+  };
+  assert.deepEqual([...runningTagsFrom(payload)].sort(), ['pr-1090', 'sha-1111111']);
 });
 
 test('collectReferencedDigests verzamelt de children van elke getagde index', async () => {
@@ -254,9 +324,81 @@ test('planPackage verwijdert alleen untagged versies waar niets naar wijst', () 
   assert.equal(result.counts.orphaned, 1);
 });
 
-test('planPackage raakt geen enkele getagde versie zonder pr-tag', () => {
+test('planPackage laat latest en een draaiende sha-tag met rust', () => {
   const result = plan({
     versions: [version('sha256:a', ['latest']), version('sha256:b', ['sha-abc1234'])],
+    runningTags: ['sha-abc1234'],
+  });
+  assert.deepEqual(result.deletions, []);
+  assert.equal(result.counts.protectedByTag, 2);
+});
+
+// --- de sha-tak: dit is de vorm waarin productie draait ----------------------
+
+test('planPackage laat een sha-only versie staan die in ZAD draait', () => {
+  // Het geval dat ertoe doet. Zodra een main-build `latest` doorschuift houdt
+  // het draaiende image alleen zijn sha-tag over, en dan is de tagvorm alleen
+  // geen enkel onderscheid meer met een uitgediende build.
+  const result = plan({
+    versions: [version('sha256:prod', ['sha-abc1234'])],
+    runningTags: ['sha-abc1234'],
+  });
+  assert.deepEqual(result.deletions, []);
+});
+
+test('planPackage verwijdert een sha-only versie die nergens draait en oud is', () => {
+  const result = plan({
+    versions: [version('sha256:oud', ['sha-def5678'])],
+    runningTags: ['sha-abc1234'],
+  });
+  assert.deepEqual(result.deletions.map((d) => d.reason), ['stale-sha']);
+  assert.deepEqual(result.deletions[0].tags, ['sha-def5678']);
+});
+
+test('planPackage laat een sha-only versie binnen de retentietermijn staan', () => {
+  // Dekt de race met een deploy die doorschuift tussen het opvragen van de
+  // draaiende lijst en het verwijderen.
+  const fresh = new Date(NOW - 2 * DAY).toISOString();
+  const result = plan({
+    versions: [version('sha256:vers', ['sha-def5678'], fresh)],
+    runningTags: ['sha-abc1234'],
+  });
+  assert.deepEqual(result.deletions, []);
+});
+
+test('planPackage weegt de sha-tak op updated_at, niet op created_at', () => {
+  // Een versie kan lang geleden zijn aangemaakt en gisteren opnieuw zijn
+  // aangeraakt doordat een tag ernaartoe verhuisde.
+  const result = plan({
+    versions: [version('sha256:her', ['sha-def5678'], OLD, new Date(NOW - 1 * DAY).toISOString())],
+    runningTags: ['sha-abc1234'],
+  });
+  assert.deepEqual(result.deletions, []);
+});
+
+test('planPackage laat een sha-only versie met een onleesbare datum staan', () => {
+  const result = plan({
+    versions: [version('sha256:raar', ['sha-def5678'], 'geen datum')],
+    runningTags: ['sha-abc1234'],
+  });
+  assert.deepEqual(result.deletions, []);
+});
+
+test('planPackage rekent één draaiende tag als bescherming voor de hele versie', () => {
+  const result = plan({
+    versions: [version('sha256:prod', ['sha-def5678', 'sha-abc1234'])],
+    runningTags: ['sha-abc1234'],
+  });
+  assert.deepEqual(result.deletions, []);
+});
+
+test('planPackage laat een versie met een pr-tag buiten de sha-tak', () => {
+  // De pr-tak beslist over deze versie; de sha-tak eist dat élke tag de
+  // sha-vorm heeft, juist zodat de twee elkaar niet in de weg zitten.
+  const result = plan({
+    versions: [version('sha256:pr', ['pr-1090', 'sha-def5678'])],
+    openPrs: [1090],
+    runningTags: ['sha-abc1234'],
   });
   assert.deepEqual(result.deletions, []);
 });
@@ -324,10 +466,11 @@ test('assertNoReferencedDeletions stopt een deletelijst met een gerefereerde dig
   );
 });
 
-test('een realistisch package levert precies de losgeraakte children op', async () => {
-  // Twee builds van hetzelfde image: `latest` is verschoven van de eerste
-  // index naar de tweede. De children van de eerste index zijn daarmee wees
-  // geworden; die van de tweede horen bij wat er in productie draait.
+test('een realistisch package: de uitgediende build gaat weg, de draaiende blijft heel', async () => {
+  // Twee builds van hetzelfde image. `latest` is verschoven van de eerste index
+  // naar de tweede en productie draait op `sha-2222222`; de eerste build draait
+  // nergens meer. Daarnaast staat er nog een losgeraakt child van een build
+  // waarvan de index al eerder is opgeruimd.
   const versions = [
     version('sha256:idx2', ['latest', 'sha-2222222']),
     version('sha256:idx1', ['sha-1111111']),
@@ -345,12 +488,42 @@ test('een realistisch package levert precies de losgeraakte children op', async 
   const roots = versions.filter((v) => tagsOf(v).length > 0).map((v) => v.name);
   const graph = await collectReferencedDigests({ roots, fetchManifest: async (digest) => manifests[digest] });
   const { referenced } = graph;
-  const result = plan({ versions, referenced, gaps: graphGaps(graph) });
+  const result = plan({ versions, referenced, gaps: graphGaps(graph), runningTags: ['sha-2222222'] });
 
-  // `sha-1111111` blijft getagd, dus zijn children blijven staan: retentie
-  // voor oude sha-tags valt buiten deze opruimer.
-  assert.deepEqual(result.deletions.map((d) => d.digest), ['sha256:wees']);
+  // De draaiende index en zijn twee children blijven staan; `sha-1111111` gaat
+  // als uitgediende sha-tag weg. Zijn children blijven deze ronde nog staan:
+  // zolang de index in de listing staat wijst hij naar ze, en de graaf weegt
+  // zwaarder dan de tagvorm. Volgende ronde zijn het wezen.
+  assert.deepEqual(result.deletions.map((d) => [d.digest, d.reason]), [
+    ['sha256:idx1', 'stale-sha'],
+    ['sha256:wees', 'orphan'],
+  ]);
   assert.ok(assertNoReferencedDeletions(result.deletions, referenced));
+});
+
+test('de children van een draaiende index blijven ook zonder tag beschermd', async () => {
+  // Criterium: een versie waarvan een tag in productie draait, of een
+  // index-child daarvan, wordt nooit verwijderd. De index is beschermd door de
+  // draaiende tag, de children doordat ze in de referentiegraaf zitten — twee
+  // onafhankelijke wegen naar hetzelfde antwoord.
+  const versions = [
+    version('sha256:idxProd', ['sha-2222222']),
+    version('sha256:amdProd'),
+    version('sha256:attProd'),
+  ];
+  const graph = await collectReferencedDigests({
+    roots: ['sha256:idxProd'],
+    fetchManifest: async () => buildxIndex(['sha256:amdProd', 'sha256:attProd']),
+  });
+  const result = plan({
+    versions,
+    referenced: graph.referenced,
+    gaps: graphGaps(graph),
+    runningTags: ['sha-2222222'],
+  });
+
+  assert.deepEqual(result.deletions, []);
+  assert.equal(result.counts.referencedUntagged, 2);
 });
 
 const summaryResult = (overrides = {}) => ({
@@ -361,9 +534,11 @@ const summaryResult = (overrides = {}) => ({
     untagged: 6,
     referencedDigests: 8,
     referencedUntagged: 5,
+    protectedByTag: 2,
     orphaned: 1,
     skippedTooRecent: 0,
-    stalePr: 2,
+    stalePr: 1,
+    staleSha: 1,
   },
   blocked: false,
   gaps: [],
@@ -418,6 +593,13 @@ test('formatSummary meldt een gerefereerde digest in de deletelijst in plaats va
   assert.match(summary, /daarvan staan er \*\*2\*\* in de 3 geplande verwijdering/);
 });
 
+test('formatSummary noemt waar de bescherming vandaan kwam', () => {
+  // Zonder de draaiende tags in de samenvatting is er niets wat verklaart
+  // waarom een sha-versie bleef staan of juist niet.
+  const summary = formatSummary([summaryResult()], { dryRun: true, runningTags: ['sha-2222222', 'pr-1090'] });
+  assert.match(summary, /Draait volgens ZAD \(2\).*`pr-1090`.*`sha-2222222`/);
+});
+
 test('formatSummary telt de gerefereerde digests over alle packages op', () => {
   const summary = formatSummary(
     [summaryResult(), summaryResult({ packageName: 'regelrecht-admin' }), { packageName: 'x', error: 'stuk' }],
@@ -431,8 +613,11 @@ test('parseArgs leest de vlaggen en weigert onzin', () => {
   assert.equal(parseArgs(['--dry-run']).dryRun, true);
   assert.deepEqual(parseArgs(['--packages', 'a, b']).packages, ['a', 'b']);
   assert.equal(parseArgs(['--grace-hours', '0']).graceHours, 0);
+  assert.equal(parseArgs(['--retention-days', '30']).retentionDays, 30);
+  assert.equal(parseArgs([]).retentionDays, DEFAULT_RETENTION_DAYS);
   assert.throws(() => parseArgs(['--onzin']), /onbekend argument/);
   assert.throws(() => parseArgs(['--grace-hours', '-1']), /niet-negatief/);
+  assert.throws(() => parseArgs(['--retention-days', '-1']), /niet-negatief/);
   assert.throws(() => parseArgs(['--concurrency', '0']), /positief/);
 });
 

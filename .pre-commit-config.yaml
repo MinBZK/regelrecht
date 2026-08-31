@@ -140,12 +140,12 @@ repos:
         pass_filenames: false
         files: ^(script/prune-orphaned-deployments(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
 
-      - id: preview-images-tests
-        name: Opruimen van images laat draaiende versies staan
-        entry: script/prune-preview-images.test.sh
+      - id: ghcr-cleanup-tests
+        name: Opruimen van images laat draaiende versies en index-children staan
+        entry: just ghcr-cleanup-test
         language: system
         pass_filenames: false
-        files: ^(script/prune-preview-images(\.test)?\.sh|\.github/workflows/scheduled-cleanup\.yml)$
+        files: ^(script/ghcr-cleanup(\.test)?\.mjs|\.github/workflows/scheduled-cleanup\.yml)$
 
       - id: advisories-report-tests
         name: Advisory-melding komt aan en niet dubbel
