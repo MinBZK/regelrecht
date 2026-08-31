@@ -6,6 +6,21 @@
  * The EN strings are a translation kept in the same government register.
  */
 
+import paper from '~/research/rules-as-executed.meta.json';
+
+// The position paper's title, authors and date come from the generated
+// meta JSON next to its HTML, so a regenerated paper cannot drift from
+// the tile that announces it.
+const paperTitle = `${paper.title}: ${paper.subtitle}`;
+const paperAuthors = paper.authors.join(' & ');
+function paperDate(locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(`${paper.date}T00:00:00`));
+}
+
 export interface NavLink {
   label: string
   href: string
@@ -369,10 +384,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'De verkenning roept vragen op die verder reiken dan techniek: wat het voor de verhouding tussen de staatsmachten betekent als wetsuitvoering publiek en narekenbaar wordt, en welke juridische status een uitvoerbare specificatie heeft. Dat denkwerk schrijven we op voor een academisch publiek, zodat juristen en bestuurskundigen het kunnen toetsen en aanscherpen.',
       items: [
         {
-          title:
-            'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
-          meta: 'Position paper • Eelco Hotting & Anne Schuth • 31 augustus 2026',
-          text: 'Betoogt dat de overheid haar wetsuitvoering moet publiceren als machine-uitvoerbare specificatie, en dat elk besluit vastlegt met welke versie het is genomen. Wie een besluit ontvangt kan het narekenen, en het parlement kan de regel zelf analyseren.',
+          title: paperTitle,
+          meta: `${paper.kind} • ${paperAuthors} • ${paperDate('nl-NL')}`,
+          text: 'Het paper betoogt dat de overheid haar wetsuitvoering moet publiceren als machine-uitvoerbare specificatie, waarbij elk besluit vastlegt met welke versie het is genomen. Wie een besluit ontvangt, kan het narekenen, en het parlement kan de regel zelf analyseren.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper (Engels)',
         },
@@ -562,7 +576,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Hoe het werkt', href: '/#how-it-works' },
         { label: 'Op de hoogte blijven', href: SIGNUP_NL_PATH },
         { label: 'Documentatie (Engels)', href: '/docs/' },
-        { label: 'Research (Engels)', href: '/research/' },
+        { label: 'Onderzoek (Engels)', href: '/research/' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -824,13 +838,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     research: {
       title: 'Research',
-      lede: 'The exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status an executable specification has. We write that thinking up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
+      lede: 'This exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status an executable specification has. We write that up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
       items: [
         {
-          title:
-            'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
-          meta: 'Position paper • Eelco Hotting & Anne Schuth • 31 August 2026',
-          text: 'Argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
+          title: paperTitle,
+          meta: `${paper.kind} • ${paperAuthors} • ${paperDate('en-GB')}`,
+          text: 'The paper argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper',
         },
