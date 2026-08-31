@@ -305,6 +305,34 @@ test('collectReferencedDigests laat een rate limit doorslaan naar de aanroeper',
   );
 });
 
+test('collectReferencedDigests stopt na een rate limit ook de workers ernaast', async () => {
+  // `mapLimit` breekt alleen de runner af die struikelt. Zonder gedeelde
+  // stopvlag lopen de andere zeven hun deel van de frontier gewoon uit: de
+  // aanroeper heeft dan al een RateLimitError in handen terwijl er nog honderden
+  // lookups onderweg zijn naar de registry die net om rust vroeg. Elk daarvan
+  // loopt zijn eigen backoff af, en de stap eindigt op zijn `timeout-minutes` in
+  // plaats van op de nette melding.
+  const roots = Array.from({ length: 200 }, (_, i) => `sha256:r${i}`);
+  let calls = 0;
+  await assert.rejects(
+    collectReferencedDigests({
+      roots,
+      concurrency: 8,
+      fetchManifest: async () => {
+        const n = ++calls;
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        if (n === 3) throw new RateLimitError('te veel');
+        return buildxIndex([]);
+      },
+    }),
+    RateLimitError,
+  );
+
+  // De lookups die al onderweg waren lopen af; er mogen er geen nieuwe meer bij.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(calls <= 16, `${calls} van ${roots.length} lookups gedaan; verwacht hooguit wat al onderweg was`);
+});
+
 test('planPackage verwijdert alleen untagged versies waar niets naar wijst', () => {
   const referenced = new Set(['sha256:amd', 'sha256:att']);
   const result = plan({

@@ -209,10 +209,19 @@ export async function collectReferencedDigests({ roots, fetchManifest, concurren
   const visited = new Set();
   const uniqueRoots = [...new Set(roots)];
   let frontier = uniqueRoots;
+  // `mapLimit` breekt bij een fout alleen de runner af die struikelt; de andere
+  // lopen hun deel van de frontier gewoon uit. Bij een rate limit is dat precies
+  // verkeerd om: het besluit om te stoppen is dan al genomen, maar er vuren nog
+  // honderden lookups af tegen de registry die net om rust vroeg — elk met zijn
+  // eigen backoff, zodat de stap in zijn `timeout-minutes` loopt in plaats van
+  // netjes af te sluiten met de melding. Vandaar deze gedeelde stopvlag: wie nog
+  // niet begonnen was, begint niet meer.
+  let rateLimited = null;
 
   while (frontier.length > 0) {
     const next = [];
     await mapLimit(frontier, concurrency, async (digest) => {
+      if (rateLimited) return;
       if (visited.has(digest)) return;
       visited.add(digest);
 
@@ -220,7 +229,10 @@ export async function collectReferencedDigests({ roots, fetchManifest, concurren
       try {
         manifest = await fetchManifest(digest);
       } catch (err) {
-        if (err instanceof RateLimitError) throw err;
+        if (err instanceof RateLimitError) {
+          rateLimited = err;
+          throw err;
+        }
         // Een 404 wordt apart geteld omdat hij iets anders bétekent — de versie
         // is tussen listing en lookup verdwenen — maar hij blokkeert net zo
         // hard. Het is verleidelijk om hem af te doen als "weg is weg, dus die
