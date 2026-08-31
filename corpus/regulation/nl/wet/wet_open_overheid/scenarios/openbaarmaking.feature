@@ -1,4 +1,9 @@
 Feature: WOO Art 5.1 disclosure decision
+# Bron: encoder-derived. The expected values are the outcomes of the encoding
+#       in this repository, written by the encoders during drafting; no
+#       parliamentary worked example fixes these cases. See the mining
+#       instruction (skills/law-mvt-research) for the stamped form a
+#       record-derived scenario takes.
   Als bestuursorgaan
   Wil ik weten of informatie openbaar gemaakt mag worden
   Zodat ik de Wet open overheid correct toepas

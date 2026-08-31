@@ -156,17 +156,14 @@ articles:
                                     value: true
                                   then: $percentage_drempelinkomen_partner
                               default: $percentage_drempelinkomen_alleenstaande
-                            - operation: MIN
-                              values:
-                                - $toetsingsinkomen
-                                - operation: IF
-                                  cases:
-                                    - when:
-                                        operation: EQUALS
-                                        subject: $heeft_toeslagpartner
-                                        value: true
-                                      then: $drempelinkomen_aanvrager_met_toeslagpartner
-                                  default: $drempelinkomen_alleenstaande
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $heeft_toeslagpartner
+                                    value: true
+                                  then: $drempelinkomen_aanvrager_met_toeslagpartner
+                              default: $drempelinkomen_alleenstaande
                         - operation: IF
                           cases:
                             - when:

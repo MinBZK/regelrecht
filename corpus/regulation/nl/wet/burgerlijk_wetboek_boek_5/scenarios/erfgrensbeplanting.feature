@@ -1,4 +1,9 @@
 Feature: Erfgrensbeplanting via BW 5:42
+# Bron: encoder-derived. The expected values are the outcomes of the encoding
+#       in this repository, written by the encoders during drafting; no
+#       parliamentary worked example fixes these cases. See the mining
+#       instruction (skills/law-mvt-research) for the stamped form a
+#       record-derived scenario takes.
   Als perceeleigenaar
   Wil ik weten op welke afstand ik bomen of heggen mag planten
   Zodat ik geen conflict krijg met mijn buurman

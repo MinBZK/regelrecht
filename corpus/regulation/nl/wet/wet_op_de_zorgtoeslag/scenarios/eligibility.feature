@@ -1,4 +1,10 @@
 Feature: Zorgtoeslag eligibility
+# Bron: encoder-derived. The expected values below are the outcomes of the
+#       encoding in this repository at the commit that fixes the norm-premium
+#       formula of Art. 2(2-3) Wzt (first term: a flat percentage of the
+#       drempelinkomen, not of the income capped at it). No parliamentary
+#       worked example fixes these households; the memorandum's three
+#       households are transcribed separately, against the bill-era encodings.
 
   Background:
     Given the calculation date is "2025-01-01"
@@ -36,7 +42,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 209692
+    Then output "hoogte_zorgtoeslag" equals 135893
 
   # NB: Engine currently returns true for minors — age check was removed (#375)
   # because AWIR Art 10 (verzekeringsplicht vs meeverzekerd) is not yet modeled.
@@ -95,7 +101,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 210821
+    Then output "hoogte_zorgtoeslag" equals 135893
 
   Scenario: Student met studiefinanciering heeft recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
@@ -129,7 +135,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 210916
+    Then output "hoogte_zorgtoeslag" equals 135893
 
   # NB: Gezamenlijk toetsingsinkomen is NOT YET implemented (#377).
   # Expected amount reflects applicant income only, not combined partner income.
@@ -163,7 +169,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 272845
+    Then output "hoogte_zorgtoeslag" equals 183646
 
   # NB: Toetsingsinkomen excludes box3 — Art 5.2a forfaitair rendement is not
   # yet implemented (#383). Only box1 income counts toward the toeslag amount.
@@ -193,7 +199,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 173280
+    Then output "hoogte_zorgtoeslag" equals 135893
 
   Scenario: Verdragsinschrijving geeft verzekeringsdekking bij inactieve polis
     Given the following "personal_data" data with key "bsn":
@@ -221,7 +227,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 210726
+    Then output "hoogte_zorgtoeslag" equals 135893
 
   # === Standaardpremie (regeling_standaardpremie) ===
 
@@ -269,7 +275,7 @@ Feature: Zorgtoeslag eligibility
     # NB: ~197205 eurocent = EUR 1.972,05. Exact-decimal arithmetic (RFC-024)
     # yields a sub-cent amount; the model applies no whole-cent rounding (that
     # would be an explicit ROUND op, RFC-023/024), so the exact value stands.
-    Then output "hoogte_zorgtoeslag" equals 197205.31187
+    Then output "hoogte_zorgtoeslag" equals 128245.01600
 
   # NB: Art 2 no longer checks age directly — that was a scope violation.
   # The Zvw also does not check age for is_verzekerd (minors ARE verzekerd
@@ -304,7 +310,7 @@ Feature: Zorgtoeslag eligibility
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
     # NB: 198700 eurocent = EUR 1.987,00
-    Then output "hoogte_zorgtoeslag" equals 198700
+    Then output "hoogte_zorgtoeslag" equals 128245.01600
 
   # NB: Forensische zorg exclusion was removed as scope violation (#375).
   # It belongs in Zvw Art 24 or Wfz, not in the zorgtoeslag law.
@@ -334,4 +340,4 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 210726
+    Then output "hoogte_zorgtoeslag" equals 135893

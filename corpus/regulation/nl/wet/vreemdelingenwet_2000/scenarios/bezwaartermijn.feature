@@ -1,4 +1,9 @@
 Feature: Bezwaartermijn chain
+# Bron: encoder-derived. The expected values are the outcomes of the encoding
+#       in this repository, written by the encoders during drafting; no
+#       parliamentary worked example fixes these cases. See the mining
+#       instruction (skills/law-mvt-research) for the stamped form a
+#       record-derived scenario takes.
   As a citizen receiving a government decision
   I want to know when the objection deadline expires
   So that I can file an objection in time
