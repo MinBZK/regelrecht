@@ -9,7 +9,7 @@ RegelRecht turns Dutch legislation into structured files that a computer can exe
 
 When Parliament passes a law, government agencies translate it into software independently. The same law gets coded dozens of times by dozens of organizations. Nobody can check whether any of those implementations match what Parliament intended.
 
-That produces errors, opacity and duplication, and no way to test whether software follows the law correctly. The position paper [Rules as Executed](/research/rules-as-executed) argues that this opacity is a constitutional problem: no branch of government can see how the law runs.
+That produces errors, opacity and duplication, and no way to test whether software follows the law correctly. The position paper [Rules as Executed](/research/rules-as-executed) argues that this opacity is a constitutional problem: no branch of government fully sees how the law runs.
 
 ## The approach
 

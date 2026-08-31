@@ -72,7 +72,7 @@ When reproducing the decision, the engine uses these **sealed accepted values** 
 
 ## What this enables
 
-A citizen can request their trace and see which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. When a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash. That check by the party with standing is the constitutional core of the position paper ([Rules as Executed, section 4.5](/research/rules-as-executed#sec:traceaccess)).
+A citizen can request their trace and see which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. When a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash. Section 4.5 of the position paper, [The Recipient's Check](/research/rules-as-executed#sec:traceaccess), spells out what this needs in practice: the attested trace has to reach the addressee together with the decision, without a procedure of their own.
 
 ## Further reading
 
