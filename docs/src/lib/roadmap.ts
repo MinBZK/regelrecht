@@ -15,6 +15,7 @@
 import { z } from 'astro:content';
 import configJson from '~/data/roadmap-config.json';
 import worksheetJson from '~/data/outcome-mapping.json';
+import paperHeadings from '~/research/rules-as-executed.headings.json';
 
 export interface Fase {
   id: string;
@@ -42,7 +43,7 @@ export interface WerkpakketData {
   capaciteit: string;
   toelichting: string;
   volgorde: number;
-  onderzoeksvragen: string[];
+  onderzoeksvragen: (string | { vraag: string; paper: string })[];
   samenhangIds: string[];
 }
 
@@ -192,6 +193,104 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
       (w) => w.data.faseId === faseId && w.data.disciplineId === disciplineId,
     )
     .sort((a, b) => a.data.volgorde - b.data.volgorde);
+}
+
+/**
+ * A research question as the pages render it: the text, plus the paper section
+ * it belongs to when there is one.
+ */
+export interface Onderzoeksvraag {
+  vraag: string;
+  /** The paper section, resolved from its anchor. Absent when unlinked. */
+  paper?: PaperSectie;
+}
+
+/** A section of the position paper, addressable by its anchor. */
+export interface PaperSectie {
+  /** The anchor, e.g. "sec:traceaccess". */
+  slug: string;
+  /** The section number, e.g. "4.5". */
+  nummer: string;
+  /** The section title without its number, e.g. "The Recipient's Check". */
+  titel: string;
+  /** The href a link should use. */
+  href: string;
+}
+
+export const PAPER_PAD = '/research/rules-as-executed';
+
+/*
+ * The paper's sections, keyed by anchor.
+ *
+ * Read from the headings JSON the research page already ships, so a section
+ * number or title can never drift from the paper: both are the paper's own
+ * words. The heading text is "4.5 The Recipient's Check", number and title in
+ * one string, which is why they are split here.
+ */
+const paperSecties = new Map<string, PaperSectie>(
+  (paperHeadings as { slug: string; text: string }[]).map((h) => {
+    const m = /^([\d.]+)\s+(.*)$/.exec(h.text);
+    return [
+      h.slug,
+      {
+        slug: h.slug,
+        nummer: m ? m[1] : '',
+        titel: m ? m[2] : h.text,
+        href: `${PAPER_PAD}#${h.slug}`,
+      },
+    ];
+  }),
+);
+
+export const getPaperSectie = (slug: string) => paperSecties.get(slug);
+
+/**
+ * One shape for the page: both the plain-string and the linked form of a
+ * research question come out as an Onderzoeksvraag.
+ */
+export function onderzoeksvraagLijst(
+  vragen: WerkpakketData['onderzoeksvragen'],
+): Onderzoeksvraag[] {
+  return vragen.map((v) =>
+    typeof v === 'string'
+      ? { vraag: v }
+      : { vraag: v.vraag, paper: getPaperSectie(v.paper) },
+  );
+}
+
+/**
+ * Fail the build on a research question pointing at a paper section that does
+ * not exist.
+ *
+ * check-links.mjs does catch a dead anchor once the link is in the HTML, but
+ * it reports the route and the anchor, not which werkpakket wrote it — with 53
+ * questions that is a search. This names the file and the question instead,
+ * and it is what keeps the mapping honest when the paper is revised: drop a
+ * section and the build says which werkpakket pointed at it.
+ */
+export function assertPaperSections(
+  werkpakketten: { data: WerkpakketData; id?: string }[],
+): void {
+  const problems: string[] = [];
+
+  for (const { data } of werkpakketten) {
+    for (const vraag of data.onderzoeksvragen) {
+      if (typeof vraag === 'string') continue;
+      if (paperSecties.has(vraag.paper)) continue;
+      problems.push(
+        `werkpakket ${data.id} (${data.titel}): onbekende papersectie ` +
+          `"${vraag.paper}" bij de vraag "${vraag.vraag.slice(0, 60)}…"`,
+      );
+    }
+  }
+
+  if (problems.length) {
+    throw new Error(
+      `Verwijzingen naar het position paper kloppen niet:\n  ${problems.join(
+        '\n  ',
+      )}`,
+    );
+  }
 }
 
 /**

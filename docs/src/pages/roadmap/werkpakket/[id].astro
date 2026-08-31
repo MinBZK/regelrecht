@@ -27,6 +27,8 @@ import {
   getCategorie,
   getCapability,
   assertReferencesResolve,
+  assertPaperSections,
+  onderzoeksvraagLijst,
   NIET_BEPAALD,
   NIET_GESPECIFICEERD,
 } from '~/lib/roadmap';
@@ -38,6 +40,8 @@ import {
 export async function getStaticPaths() {
   const werkpakketten = await getCollection('werkpakketten');
   assertReferencesResolve(werkpakketten);
+  // Fails the build on a question pointing at a paper section that is gone.
+  assertPaperSections(werkpakketten);
   return werkpakketten.map((entry) => ({
     params: { id: entry.data.id },
     props: { entry, all: werkpakketten },
@@ -64,6 +68,10 @@ const samenhang = wp.samenhangIds
 const sourcePath = entry.filePath
   ? `${process.cwd()}/${entry.filePath}`
   : undefined;
+
+// Both forms of a research question — plain text, or text plus a paper
+// section — come out of this as one shape.
+const vragen = onderzoeksvraagLijst(wp.onderzoeksvragen);
 
 const toelichting = renderMarkdown(
   wp.toelichting,
@@ -170,15 +178,24 @@ const kerngegevens = [
       <nldd-container gap="12">
         <nldd-title size="4"><h2>Onderzoeksvragen</h2></nldd-title>
         {
-          wp.onderzoeksvragen.length ? (
+          vragen.length ? (
             <nldd-rich-text>
               <ol>
-                {wp.onderzoeksvragen.map((vraag: string, i: number) => (
+                {vragen.map((v, i) => (
                   <li
                     data-line={vraagRegels[i]?.[0]}
                     data-line-end={vraagRegels[i]?.[1]}
                   >
-                    {vraag}
+                    {v.vraag}
+                    {v.paper && (
+                      <>
+                        {' '}
+                        <a class="rr-papersectie" href={v.paper.href}>
+                          Rules as Executed, sectie {v.paper.nummer}:{' '}
+                          {v.paper.titel}
+                        </a>
+                      </>
+                    )}
                   </li>
                 ))}
               </ol>

@@ -86,7 +86,23 @@ const werkpakketten = defineCollection({
     // matrix cell, and a default of 0 would silently sort a file that forgot
     // it to the front rather than say so.
     volgorde: z.number(),
-    onderzoeksvragen: z.array(z.string()).default([]),
+    // A question is either plain text or text with a pointer into the
+    // position paper. The union keeps every question that has no counterpart
+    // in the paper exactly as it was, so only the files that gain a reference
+    // change. Normalised for rendering by onderzoeksvraagLijst().
+    onderzoeksvragen: z
+      .array(
+        z.union([
+          z.string(),
+          z.object({
+            vraag: z.string(),
+            // A section anchor from the paper, without the '#'.
+            // assertPaperSections() checks it exists.
+            paper: z.string().min(1),
+          }),
+        ]),
+      )
+      .default([]),
     samenhangIds: z.array(z.string().uuid()).default([]),
   }),
 });
