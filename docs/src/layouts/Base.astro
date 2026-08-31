@@ -83,7 +83,7 @@ if (isStatusPage) {
   globalLinks = [];
   const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
   const isResearchRoot = pathname === '/research/' || pathname === '/research';
-  const inResearch = pathname.startsWith('/research');
+  const inResearch = isResearchRoot || pathname.startsWith('/research/');
   const cat = categoryForPath(pathname);
   const onCategoryPage = cat !== null && pathname === cat.prefix;
   if (isDocsRoot || isResearchRoot) {
@@ -165,7 +165,11 @@ const docsHref = '/docs/';
 const docsText = 'Documentation';
 const pageTitle = title.replace(/\s·\sRegelRecht$/, '');
 let breadcrumbs: BreadcrumbCrumb[] = [];
-if (!isLanding && !isNotFound && pathname.startsWith('/research')) {
+if (
+  !isLanding &&
+  !isNotFound &&
+  (pathname === '/research' || pathname.startsWith('/research/'))
+) {
   // Research pages sit next to the documentation: Home → Research → page.
   const isResearchRoot =
     pathname === '/research/' || pathname === '/research';
@@ -897,29 +901,44 @@ const legalLinks = [
     <script>
       // Re-anchor after the page settles. The browser scrolls to the
       // #fragment before RijksSans swaps in and before the nldd-code-viewer
-      // blocks upgrade; the accumulated height change above the target puts
+      // blocks render; the accumulated height change above the target puts
       // it off — a full section off on a long page like the research paper,
       // tens of pixels on a docs page reached through a search deep link.
-      // Once fonts and custom elements are ready, scroll to the fragment
+      // Once fonts and the code viewers are ready, scroll to the fragment
       // again, unless the reader has scrolled in the meantime.
       //
-      // The interaction listeners are bound once for the document lifetime
-      // (same pattern as setupEditSelection below): window survives
-      // ClientRouter swaps, so per-navigation `once` listeners that never
-      // fire would pile up. The flag is reset on every hash landing instead.
+      // Only on navigations where the browser (or Astro's router) anchored
+      // on the fragment: a back/forward traversal or a reload restores the
+      // previous scroll position instead, and that position must win.
       let userScrolled = false;
-      function wireReanchorListeners() {
-        if (window.__rrReanchorWired) return;
-        window.__rrReanchorWired = true;
-        const markScrolled = () => {
-          userScrolled = true;
-        };
-        ['wheel', 'touchmove', 'keydown'].forEach((t) =>
-          window.addEventListener(t, markScrolled, { passive: true })
-        );
+      let navigationType: string | null = null;
+      const SCROLL_KEYS = new Set([
+        'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ',
+      ]);
+      // Module scripts run once per document (ClientRouter does not re-run
+      // them), so binding here is binding once.
+      window.addEventListener('wheel', () => { userScrolled = true; }, { passive: true });
+      window.addEventListener('touchmove', () => { userScrolled = true; }, { passive: true });
+      window.addEventListener('keydown', (e) => {
+        if (SCROLL_KEYS.has(e.key)) userScrolled = true;
+      });
+      document.addEventListener('astro:before-swap', (e) => {
+        navigationType = (e as { navigationType?: string }).navigationType ?? null;
+      });
+      function anchoredOnThisLoad(): boolean {
+        if (navigationType !== null) {
+          const t = navigationType;
+          navigationType = null;
+          return t !== 'traverse';
+        }
+        const nav = performance.getEntriesByType('navigation')[0] as
+          | PerformanceNavigationTiming
+          | undefined;
+        return !nav || nav.type === 'navigate';
       }
       function reanchor() {
-        if (!location.hash) return;
+        const anchored = anchoredOnThisLoad();
+        if (!location.hash || !anchored) return;
         let el: Element | null = null;
         try {
           el = document.getElementById(
@@ -930,10 +949,14 @@ const legalLinks = [
         }
         if (!el) return;
         userScrolled = false;
-        wireReanchorListeners();
+        const viewers = Array.from(
+          document.querySelectorAll('nldd-code-viewer')
+        ) as Array<Element & { updateComplete?: Promise<unknown> }>;
         Promise.all([
           document.fonts ? document.fonts.ready : Promise.resolve(),
-          customElements.whenDefined('nldd-code-viewer'),
+          customElements.whenDefined('nldd-code-viewer').then(() =>
+            Promise.all(viewers.map((v) => v.updateComplete ?? null))
+          ),
         ]).then(() => {
           requestAnimationFrame(() => {
             if (!userScrolled && el) el.scrollIntoView();
