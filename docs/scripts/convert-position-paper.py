@@ -25,6 +25,8 @@ SRC = Path("/Users/anneschuth/regelrecht-research/position-paper")
 TEX = SRC / "position-paper.tex"
 GLOSSARY = SRC / "glossary.tex"
 BIB = SRC / "regelrecht.bib"
+# pandoc's Chicago author-date CSL, minus the em-dash author substitute
+CSL = Path(__file__).resolve().parent / "chicago-author-date.csl"
 OUT_DIR = Path("/Users/anneschuth/regelrecht/docs/src/research")
 SCRATCH = Path("/tmp")
 
@@ -384,7 +386,7 @@ def main():
     # -- 9. pandoc -------------------------------------------------------------------
     html = subprocess.run(
         ["pandoc", str(pre), "-f", "latex", "-t", "html5",
-         "--citeproc", "--bibliography", str(BIB),
+         "--citeproc", "--bibliography", str(BIB), "--csl", str(CSL),
          "--metadata", "link-citations=true",
          "--metadata", "lang=en-US",
          "--shift-heading-level-by=1",
