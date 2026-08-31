@@ -145,7 +145,7 @@ repos:
         entry: just ghcr-cleanup-test
         language: system
         pass_filenames: false
-        files: ^(script/ghcr-cleanup(\.test)?\.mjs|\.github/workflows/scheduled-cleanup\.yml)$
+        files: ^(script/ghcr-cleanup(\.test)?\.mjs|\.github/workflows/(scheduled-cleanup|deploy)\.yml)$
 
       - id: advisories-report-tests
         name: Advisory-melding komt aan en niet dubbel
