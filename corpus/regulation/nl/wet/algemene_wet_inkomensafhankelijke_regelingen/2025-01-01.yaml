@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
 $id: algemene_wet_inkomensafhankelijke_regelingen
 regulatory_layer: WET
 publication_date: '2022-12-27'
@@ -298,6 +298,43 @@ articles:
       tegemoetkoming uitsluitend toegekend aan de aanvrager. 3. Het bedrag van de tegemoetkoming wordt rekenkundig
       afgerond op hele euro’s. 4. Een tegemoetkoming wordt niet toegekend indien deze minder dan € 24. zou bedragen.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel14
+    machine_readable:
+      # Art. 14 lid 3: het bedrag van de tegemoetkoming wordt rekenkundig
+      # afgerond op hele euro's. Lid 4: een tegemoetkoming onder EUR 24 wordt
+      # niet toegekend. Beide gelden voor iedere inkomensafhankelijke regeling
+      # die onder deze wet valt; de bedragen staan in eurocent (RFC-023), dus
+      # afronden op hele euro's is precision -2 in de eenheid van de waarde.
+      definitions:
+        uitkeringsdrempel:
+          value: 2400
+          type: amount
+          type_spec:
+            unit: eurocent
+      execution:
+        parameters:
+          - name: berekende_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+        output:
+          - name: toegekende_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: toegekende_tegemoetkoming
+            operation: ROUND
+            precision: -2
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN
+                    subject: $berekende_tegemoetkoming
+                    value: $uitkeringsdrempel
+                  then: 0
+              default: $berekende_tegemoetkoming
   - number: '15'
     text: >-
       Artikel 15. Aanvraag tegemoetkoming 1. Een aanvraag om een tegemoetkoming met betrekking tot een berekeningsjaar
