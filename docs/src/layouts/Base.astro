@@ -902,6 +902,22 @@ const legalLinks = [
       // tens of pixels on a docs page reached through a search deep link.
       // Once fonts and custom elements are ready, scroll to the fragment
       // again, unless the reader has scrolled in the meantime.
+      //
+      // The interaction listeners are bound once for the document lifetime
+      // (same pattern as setupEditSelection below): window survives
+      // ClientRouter swaps, so per-navigation `once` listeners that never
+      // fire would pile up. The flag is reset on every hash landing instead.
+      let userScrolled = false;
+      function wireReanchorListeners() {
+        if (window.__rrReanchorWired) return;
+        window.__rrReanchorWired = true;
+        const markScrolled = () => {
+          userScrolled = true;
+        };
+        ['wheel', 'touchmove', 'keydown'].forEach((t) =>
+          window.addEventListener(t, markScrolled, { passive: true })
+        );
+      }
       function reanchor() {
         if (!location.hash) return;
         let el: Element | null = null;
@@ -913,16 +929,8 @@ const legalLinks = [
           return;
         }
         if (!el) return;
-        let userScrolled = false;
-        const markScrolled = () => {
-          userScrolled = true;
-        };
-        ['wheel', 'touchmove', 'keydown'].forEach((t) =>
-          window.addEventListener(t, markScrolled, {
-            passive: true,
-            once: true,
-          })
-        );
+        userScrolled = false;
+        wireReanchorListeners();
         Promise.all([
           document.fonts ? document.fonts.ready : Promise.resolve(),
           customElements.whenDefined('nldd-code-viewer'),
