@@ -23,19 +23,19 @@
 <p class="rr-caption"><strong>Table 1:</strong> Prior approaches to machine-readable law, grouped by the goal they optimize for. <em>Bound to exec.</em> means that the organization must decide with the specification it publishes, and that each decision attests which specifications it ran, so that a reader can establish that the published rule decided the case. The rightmost column states the property this paper’s constitutional argument requires, and no prior approach was designed to provide it.</p>
 <div class="rr-table-scroll"><table class="rr-landscape">
 <thead>
-<tr><td></td><th scope="colgroup" colspan="2"><em>authoring &amp; execution</em></th><th scope="col"><em>reader-side</em></th></tr>
-<tr><th scope="col">Approach</th><th scope="col">exec.</th><th scope="col">publ.</th><th scope="col">bound to exec.</th></tr>
+<tr><th id="lt-approach" scope="col" rowspan="2">Approach</th><th id="lt-auth" scope="colgroup" colspan="2"><em>authoring &amp; execution</em></th><th id="lt-reader" scope="colgroup"><em>reader-side</em></th></tr>
+<tr><th id="lt-exec" scope="col" headers="lt-auth">exec.</th><th id="lt-publ" scope="col" headers="lt-auth">publ.</th><th id="lt-bound" scope="col" headers="lt-reader">bound to exec.</th></tr>
 </thead>
 <tbody>
-<tr><td>Akoma Ntoso / LegalRuleML</td><td>&ndash;</td><td>yes</td><td>&ndash;</td></tr>
-<tr><td>RegelSpraak / ALEF (Netherlands)</td><td>yes</td><td>part</td><td>&ndash;</td></tr>
-<tr><td>FLINT / Calculemus (Netherlands)</td><td>yes</td><td>part</td><td>&ndash;</td></tr>
-<tr><td>Oracle Policy Automation</td><td>yes</td><td>&ndash;</td><td>&ndash;</td></tr>
-<tr><td>OpenFisca (France)</td><td>yes</td><td>yes</td><td>&ndash;</td></tr>
-<tr><td>Catala (France)</td><td>yes</td><td>yes</td><td>&ndash;</td></tr>
-<tr><td>Better Rules (New Zealand)</td><td>yes</td><td>yes</td><td>&ndash;</td></tr>
-<tr><td>STOP/TPOD, toepasbare regel (Netherlands)</td><td>yes</td><td>yes</td><td>&ndash;</td></tr>
-<tr class="rr-rule"><td>This paper</td><td>yes</td><td>yes</td><td>yes</td></tr>
+<tr><td headers="lt-approach">Akoma Ntoso / LegalRuleML</td><td headers="lt-auth lt-exec">&ndash;</td><td headers="lt-auth lt-publ">yes</td><td headers="lt-reader lt-bound">&ndash;</td></tr>
+<tr><td headers="lt-approach">RegelSpraak / ALEF (Netherlands)</td><td headers="lt-auth lt-exec">yes</td><td headers="lt-auth lt-publ">part</td><td headers="lt-reader lt-bound">&ndash;</td></tr>
+<tr><td headers="lt-approach">FLINT / Calculemus (Netherlands)</td><td headers="lt-auth lt-exec">yes</td><td headers="lt-auth lt-publ">part</td><td headers="lt-reader lt-bound">&ndash;</td></tr>
+<tr><td headers="lt-approach">Oracle Policy Automation</td><td headers="lt-auth lt-exec">yes</td><td headers="lt-auth lt-publ">&ndash;</td><td headers="lt-reader lt-bound">&ndash;</td></tr>
+<tr><td headers="lt-approach">OpenFisca (France)</td><td headers="lt-auth lt-exec">yes</td><td headers="lt-auth lt-publ">yes</td><td headers="lt-reader lt-bound">&ndash;</td></tr>
+<tr><td headers="lt-approach">Catala (France)</td><td headers="lt-auth lt-exec">yes</td><td headers="lt-auth lt-publ">yes</td><td headers="lt-reader lt-bound">&ndash;</td></tr>
+<tr><td headers="lt-approach">Better Rules (New Zealand)</td><td headers="lt-auth lt-exec">yes</td><td headers="lt-auth lt-publ">yes</td><td headers="lt-reader lt-bound">&ndash;</td></tr>
+<tr><td headers="lt-approach">STOP/TPOD, toepasbare regel (Netherlands)</td><td headers="lt-auth lt-exec">yes</td><td headers="lt-auth lt-publ">yes</td><td headers="lt-reader lt-bound">&ndash;</td></tr>
+<tr class="rr-rule"><td headers="lt-approach">This paper</td><td headers="lt-auth lt-exec">yes</td><td headers="lt-auth lt-publ">yes</td><td headers="lt-reader lt-bound">yes</td></tr>
 </tbody>
 </table></div>
 <p>Table <a href="#tab:landscape">1</a> is not a scorecard on which this paper’s proposal outscores the others; each prior system is strong at the goal it was built for, which is helping specialists author and run rules. The right-hand property (whether the published rule is guaranteed to be the rule that runs) is one that none of them set out to provide, because their purpose lies at the writing and execution end. Catala, for instance, can prove properties of its encodings and that compilation preserves them, but not that the system deciding a citizen’s case ran the published version. The constitutional problem of Section <a href="#sec:constitutional">3</a> is at the reading end instead.</p>

@@ -47,6 +47,10 @@
 .rr-paper table.rr-landscape thead {
   border-bottom: 1px solid currentColor;
 }
+/* "Approach" spans both header rows; sit it on the baseline of the second. */
+.rr-paper table.rr-landscape thead th {
+  vertical-align: bottom;
+}
 .rr-paper table.rr-landscape tr.rr-rule td {
   border-top: 1px solid currentColor;
 }
