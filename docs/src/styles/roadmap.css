@@ -45,43 +45,12 @@
   padding-inline-end: var(--primitives-space-8, 0.5rem);
 }
 
-/* Each option is a chip. The checkbox stays a real focusable control (never
-   display:none): it carries the state the :has() rules read, and it is what a
-   keyboard reaches and a screen reader announces. */
-.rr-roadmap .rr-filter__option {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--primitives-space-8, 0.5rem);
-  padding: var(--primitives-space-4, 0.25rem) var(--primitives-space-12, 0.75rem);
-  border: 1px solid var(--semantics-surfaces-tinted-border-color);
-  border-radius: var(--semantics-surfaces-corner-radius, 8px);
-  background: var(--semantics-surfaces-base-background-color);
-}
-
-/* Focus lands on the checkbox, but the chip is what the eye follows. */
-.rr-roadmap .rr-filter__option:has(.rr-filter__input:focus-visible) {
-  outline: 2px solid var(--semantics-content-accent-color);
-  outline-offset: 2px;
-}
-
-.rr-roadmap .rr-filter__option:has(.rr-filter__input:checked) {
-  border-color: var(--semantics-content-accent-color);
-  background: var(--semantics-surfaces-tinted-background-color);
-}
-
-.rr-roadmap .rr-filter__input {
-  margin: 0;
-  accent-color: var(--semantics-content-accent-color);
-}
-
-.rr-roadmap .rr-filter__label {
-  cursor: pointer;
-}
-
 /*
  * With nothing checked, everything shows. Check one or more categories and
- * only those cards remain. A browser without :has() matches none of these
- * rules and simply shows every card, which is the right way to degrade.
+ * only those cards remain. No script: nldd-checkbox-field reflects `checked`
+ * onto its host, so these rules read the component's own state. A browser
+ * without :has() matches none of them and simply shows every card, which is
+ * the right way to degrade.
  *
  * Every option the filter offers has a rule below, "Zonder categorie"
  * included: a filter that can hide cards it offers no way to show back is
@@ -100,13 +69,13 @@
  * (0,3,0). Level them and the rules tie, source order lets the hide rule
  * win, and every card disappears the moment any box is checked.
  */
-.rr-roadmap:has(.rr-filter__input:checked) .rr-wp-card {
+.rr-roadmap:has(.rr-filter__option[checked]) .rr-wp-card {
   display: none;
 }
-.rr-roadmap:has(#rr-cat-lat:checked) .rr-wp-card[data-categorie='lat'],
-.rr-roadmap:has(#rr-cat-pivot:checked) .rr-wp-card[data-categorie='pivot'],
-.rr-roadmap:has(#rr-cat-bet:checked) .rr-wp-card[data-categorie='bet'],
-.rr-roadmap:has(#rr-cat-geen:checked) .rr-wp-card[data-categorie='geen'] {
+.rr-roadmap:has(#rr-cat-lat[checked]) .rr-wp-card[data-categorie='lat'],
+.rr-roadmap:has(#rr-cat-pivot[checked]) .rr-wp-card[data-categorie='pivot'],
+.rr-roadmap:has(#rr-cat-bet[checked]) .rr-wp-card[data-categorie='bet'],
+.rr-roadmap:has(#rr-cat-geen[checked]) .rr-wp-card[data-categorie='geen'] {
   display: block;
 }
 

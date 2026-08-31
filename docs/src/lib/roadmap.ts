@@ -107,7 +107,7 @@ export const FILTER_OPTIES = [
  */
 export function assertFilterRules(css: string): void {
   const missing = FILTER_OPTIES.filter(
-    (optie) => !css.includes(`#rr-cat-${optie.id}:checked`),
+    (optie) => !css.includes(`#rr-cat-${optie.id}[checked]`),
   ).map((optie) => optie.id);
 
   if (missing.length) {
@@ -115,7 +115,7 @@ export function assertFilterRules(css: string): void {
       `roadmap.css mist een toon-regel voor filteroptie(s) ${missing
         .map((id) => `"${id}"`)
         .join(', ')}. Voeg een ` +
-        `\`.rr-roadmap:has(#rr-cat-<id>:checked) .rr-wp-card[data-categorie='<id>']\`-regel toe, ` +
+        `\`.rr-roadmap:has(#rr-cat-<id>[checked]) .rr-wp-card[data-categorie='<id>']\`-regel toe, ` +
         'anders blijven die kaarten verborgen zodra er gefilterd wordt.',
     );
   }

@@ -67,12 +67,11 @@ const pathname = '/roadmap';
       </nldd-title>
 
       {/*
-        The one control not built from the design system, and deliberately so:
-        the filter works without JavaScript, through :has() on the checkbox
-        state. nldd-checkbox-field keeps its <input> in shadow DOM, which a
-        page stylesheet cannot select across, so using it would mean adding a
-        script — and the docs site runs zero client islands on purpose.
-        Native inputs it is; the chip styling around them is tokens only.
+        The filter works without any JavaScript of our own: nldd-checkbox-field
+        reflects `checked` onto its host element, so the :has() rules in
+        roadmap.css can read the state straight off the component. A <fieldset>
+        and <legend> group the controls, which is what a group of checkboxes
+        needs and what the design system has no component for.
       */}
       <fieldset class="rr-filter">
         <legend class="rr-filter__legend">
@@ -82,18 +81,11 @@ const pathname = '/roadmap';
         </legend>
         {
           FILTER_OPTIES.map((optie) => (
-            <span class="rr-filter__option">
-              <input
-                type="checkbox"
-                class="rr-filter__input"
-                id={`rr-cat-${optie.id}`}
-              />
-              <label class="rr-filter__label" for={`rr-cat-${optie.id}`}>
-                <nldd-text size="sm" weight="medium">
-                  {optie.label}
-                </nldd-text>
-              </label>
-            </span>
+            <nldd-checkbox-field
+              class="rr-filter__option"
+              id={`rr-cat-${optie.id}`}
+              label={optie.label}
+            />
           ))
         }
       </fieldset>

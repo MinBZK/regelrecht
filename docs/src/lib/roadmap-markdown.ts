@@ -41,6 +41,53 @@ function blockScalarFirstLine(text: string, field: string): number | null {
   return null;
 }
 
+/**
+ * Line ranges (1-based, inclusive) of the items of a YAML sequence field.
+ *
+ * The onderzoeksvragen are a list in the frontmatter, not markdown, so they
+ * never pass through remark and have no positions of their own. Reading the
+ * file gives each item its range, which is what the select-to-edit affordance
+ * needs to build a `#L<a>-L<b>` link. Returns [] when the field is absent or
+ * is not a sequence (`onderzoeksvragen: []`).
+ */
+export function yamlSequenceItemLines(
+  filePath: string,
+  field: string,
+): [number, number][] {
+  let lines: string[];
+  try {
+    lines = readFileSync(filePath, 'utf8').split(/\r?\n/);
+  } catch {
+    return [];
+  }
+
+  const header = lines.findIndex((l) => new RegExp(`^${field}:\\s*$`).test(l));
+  if (header === -1) return [];
+
+  const ranges: [number, number][] = [];
+  let start = -1;
+  for (let i = header + 1; i < lines.length; i++) {
+    const line = lines[i];
+    // A line at column 0 that is not blank ends the sequence: the next key.
+    if (line.trim() !== '' && !/^\s/.test(line)) break;
+    if (/^\s+-\s/.test(line) || /^\s+-\s*$/.test(line)) {
+      if (start !== -1) ranges.push([start, i]);
+      start = i + 1; // 1-based
+    }
+  }
+  if (start !== -1) {
+    let end = lines.length;
+    for (let i = start; i < lines.length; i++) {
+      if (lines[i].trim() !== '' && !/^\s/.test(lines[i])) {
+        end = i;
+        break;
+      }
+    }
+    ranges.push([start, end]);
+  }
+  return ranges;
+}
+
 function stamp(node: Element, offset: number): void {
   const pos = node.position;
   if (!pos?.start?.line || !pos?.end?.line) return;

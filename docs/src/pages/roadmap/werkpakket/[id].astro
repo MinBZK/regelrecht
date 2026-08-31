@@ -30,7 +30,10 @@ import {
   NIET_BEPAALD,
   NIET_GESPECIFICEERD,
 } from '~/lib/roadmap';
-import { renderMarkdown } from '~/lib/roadmap-markdown';
+import {
+  renderMarkdown,
+  yamlSequenceItemLines,
+} from '~/lib/roadmap-markdown';
 
 export async function getStaticPaths() {
   const werkpakketten = await getCollection('werkpakketten');
@@ -66,6 +69,13 @@ const toelichting = renderMarkdown(
   wp.toelichting,
   sourcePath ? { filePath: sourcePath, field: 'toelichting' } : undefined,
 );
+
+// The onderzoeksvragen are a YAML sequence, not markdown, so they carry no
+// positions of their own; read their line ranges from the file so selecting
+// one offers the same edit link as the toelichting.
+const vraagRegels = sourcePath
+  ? yamlSequenceItemLines(sourcePath, 'onderzoeksvragen')
+  : [];
 
 // Base.astro's select-to-edit button builds its URL from this attribute plus
 // the data-line values above; the same wiring the docs and RFC pages use.
@@ -154,8 +164,13 @@ const kerngegevens = [
           wp.onderzoeksvragen.length ? (
             <nldd-rich-text>
               <ol>
-                {wp.onderzoeksvragen.map((vraag: string) => (
-                  <li>{vraag}</li>
+                {wp.onderzoeksvragen.map((vraag: string, i: number) => (
+                  <li
+                    data-line={vraagRegels[i]?.[0]}
+                    data-line-end={vraagRegels[i]?.[1]}
+                  >
+                    {vraag}
+                  </li>
                 ))}
               </ol>
             </nldd-rich-text>
