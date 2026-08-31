@@ -1,0 +1,319 @@
+/*
+ * Roadmap pages (/roadmap/…). Imported by those pages only, not globally.
+ *
+ * Ported from the standalone app's style.css. Two deliberate changes:
+ *
+ * - Every rule is scoped under .rr-roadmap. The original had bare element
+ *   selectors on design-system tags (`nldd-box { … }`), which was fine in a
+ *   one-page app but here would reach the layout chrome around the content.
+ * - The matrix is a <table> instead of a grid of divs, so a screen reader can
+ *   place a card in its fase/discipline. `display: contents` on the table
+ *   internals hands the layout back to one grid, exactly as before.
+ *
+ * Colours come from NLDD tokens, which are light-dark() pairs, so the pages
+ * follow the theme toggle without a dark-mode block of their own. Nothing here
+ * hardcodes a colour.
+ */
+
+.rr-roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-24, 1.5rem);
+}
+
+.rr-hoofdnav {
+  padding-bottom: var(--primitives-space-16, 1rem);
+  border-bottom: 1px solid var(--semantics-surfaces-tinted-border-color);
+}
+
+/* --- Filter ------------------------------------------------------------- */
+
+.rr-roadmap .rr-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--primitives-space-8, 0.5rem);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.rr-roadmap .rr-filter__legend {
+  padding: 0;
+  padding-inline-end: var(--primitives-space-8, 0.5rem);
+  font: var(--primitives-font-body-sm-medium-snug, inherit);
+  color: var(--semantics-content-secondary-color);
+}
+
+/* Each option is a chip: the checkbox itself stays a real focusable control
+   (never display:none) because it carries the state the :has() rules read and
+   is what a keyboard reaches; the label around it supplies the chip surface. */
+.rr-roadmap .rr-filter__option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--primitives-space-8, 0.5rem);
+  padding: var(--primitives-space-4, 0.25rem) var(--primitives-space-12, 0.75rem);
+  border: 1px solid var(--semantics-surfaces-tinted-border-color);
+  border-radius: var(--semantics-surfaces-corner-radius, 8px);
+  background: var(--semantics-surfaces-base-background-color);
+}
+
+/* Focus lands on the checkbox, but the chip is what the eye follows. */
+.rr-roadmap .rr-filter__option:has(.rr-filter__input:focus-visible) {
+  outline: 2px solid var(--semantics-content-accent-color);
+  outline-offset: 2px;
+}
+
+.rr-roadmap .rr-filter__option:has(.rr-filter__input:checked) {
+  border-color: var(--semantics-content-accent-color);
+  background: var(--semantics-surfaces-tinted-background-color);
+}
+
+.rr-roadmap .rr-filter__input {
+  margin: 0;
+  accent-color: var(--semantics-content-accent-color);
+}
+
+.rr-roadmap .rr-filter__label {
+  font: var(--primitives-font-body-sm-medium-snug, inherit);
+  color: var(--semantics-content-primary-color);
+  cursor: pointer;
+}
+
+/*
+ * With nothing checked, everything shows. Check one or more categories and
+ * only those cards remain. A browser without :has() matches none of these
+ * rules and simply shows every card, which is the right way to degrade.
+ */
+.rr-roadmap:has(.rr-filter__input:checked) .rr-wp-card {
+  display: none;
+}
+.rr-roadmap:has(#rr-cat-lat:checked) .rr-wp-card[data-categorie='lat'],
+.rr-roadmap:has(#rr-cat-pivot:checked) .rr-wp-card[data-categorie='pivot'],
+.rr-roadmap:has(#rr-cat-bet:checked) .rr-wp-card[data-categorie='bet'] {
+  display: block;
+}
+
+/* --- Matrix ------------------------------------------------------------- */
+
+.rr-matrix-scroll {
+  overflow-x: auto;
+}
+
+/* The table lays out as one grid: `display: contents` on thead/tbody/tr lifts
+   the cells into it, so the columns line up across every row while the table
+   semantics stay intact in the accessibility tree. */
+.rr-roadmap .rr-matrix {
+  display: grid;
+  grid-template-columns: 200px repeat(var(--rr-fase-count, 5), minmax(240px, 1fr));
+  gap: var(--primitives-space-8, 0.5rem);
+  border-collapse: separate;
+}
+
+.rr-roadmap .rr-matrix thead,
+.rr-roadmap .rr-matrix tbody,
+.rr-roadmap .rr-matrix tr {
+  display: contents;
+}
+
+/* The caption names the table for a screen reader; the headers already carry
+   the visible labels, so it does not need to be shown twice. */
+.rr-roadmap .rr-matrix__caption,
+.rr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.rr-roadmap .rr-matrix__corner {
+  min-height: 1px;
+  padding: 0;
+  border: 0;
+}
+
+.rr-roadmap .rr-matrix__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-4, 0.25rem);
+  padding: var(--primitives-space-12, 0.75rem);
+  border-radius: var(--semantics-surfaces-corner-radius, 8px);
+  background: var(--semantics-surfaces-tinted-background-color);
+  text-align: start;
+  font-weight: inherit;
+}
+
+.rr-roadmap .rr-matrix__header--fase {
+  text-align: center;
+}
+
+.rr-roadmap .rr-matrix__header--discipline {
+  justify-content: center;
+}
+
+.rr-roadmap .rr-matrix__eyebrow {
+  font: var(--primitives-font-body-xs-medium-snug, inherit);
+  color: var(--semantics-content-secondary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rr-roadmap .rr-matrix__naam {
+  font: var(--primitives-font-body-md-bold-snug, inherit);
+  color: var(--semantics-content-primary-color);
+}
+
+.rr-roadmap .rr-matrix__sub {
+  font: var(--primitives-font-body-xs-regular-snug, inherit);
+  color: var(--semantics-content-secondary-color);
+}
+
+.rr-roadmap .rr-matrix__cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-8, 0.5rem);
+  padding: var(--primitives-space-8, 0.5rem);
+  border-radius: var(--semantics-surfaces-corner-radius, 8px);
+  background: var(--semantics-surfaces-base-background-color);
+  min-height: var(--primitives-space-48, 3rem);
+}
+
+/* --- Werkpakketkaart ---------------------------------------------------- */
+
+.rr-roadmap .rr-wp-card {
+  display: block;
+}
+
+.rr-roadmap .rr-wp-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-8, 0.5rem);
+}
+
+.rr-roadmap .rr-wp-card__titel {
+  margin: 0;
+  font: var(--primitives-font-body-sm-medium-snug, inherit);
+  color: var(--semantics-content-primary-color);
+}
+
+.rr-roadmap .rr-wp-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--primitives-space-4, 0.25rem);
+}
+
+/* --- Detailpagina ------------------------------------------------------- */
+
+.rr-roadmap .rr-detail__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--primitives-space-8, 0.5rem);
+}
+
+.rr-roadmap .rr-detail__edit {
+  margin: 0;
+}
+
+/* --- Outcome mapping ---------------------------------------------------- */
+
+.rr-roadmap .rr-outcome-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) 1fr;
+  gap: var(--primitives-space-24, 1.5rem);
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .rr-roadmap .rr-outcome-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rr-roadmap .rr-outcome-layout__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-16, 1rem);
+  min-width: 0;
+}
+
+.rr-roadmap .rr-steps__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--semantics-surfaces-tinted-background-color);
+  color: var(--semantics-content-secondary-color);
+  font: var(--primitives-font-body-sm-bold-snug, inherit);
+}
+
+.rr-roadmap .rr-groep-kop {
+  font: var(--primitives-font-body-sm-bold-snug, inherit);
+  color: var(--semantics-content-secondary-color);
+}
+
+/* A field the worksheet has not filled in yet. Muted, but still real text so
+   it is announced rather than read as an empty cell. */
+.rr-roadmap .rr-leeg {
+  color: var(--semantics-content-secondary-color);
+  font-style: italic;
+}
+
+.rr-table-scroll {
+  overflow-x: auto;
+}
+
+.rr-roadmap .rr-strategy,
+.rr-roadmap .rr-practices {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rr-roadmap .rr-strategy th,
+.rr-roadmap .rr-strategy td,
+.rr-roadmap .rr-practices th,
+.rr-roadmap .rr-practices td {
+  padding: var(--primitives-space-8, 0.5rem);
+  border: 1px solid var(--semantics-surfaces-tinted-border-color);
+  text-align: start;
+  vertical-align: top;
+  font-weight: inherit;
+}
+
+.rr-roadmap .rr-strategy thead th,
+.rr-roadmap .rr-practices thead th {
+  font: var(--primitives-font-body-sm-bold-snug, inherit);
+  background: var(--semantics-surfaces-tinted-background-color);
+}
+
+.rr-roadmap .rr-strategy__code {
+  display: block;
+  font: var(--primitives-font-body-sm-bold-snug, inherit);
+}
+
+.rr-roadmap .rr-strategy__label,
+.rr-roadmap .rr-practices__desc {
+  display: block;
+  font: var(--primitives-font-body-xs-regular-snug, inherit);
+  color: var(--semantics-content-secondary-color);
+}
+
+.rr-roadmap .rr-practices__titel {
+  display: block;
+  font: var(--primitives-font-body-sm-medium-snug, inherit);
+}
+
+.rr-roadmap .rr-practices__uit {
+  display: inline-block;
+  margin-top: var(--primitives-space-4, 0.25rem);
+  font: var(--primitives-font-body-xs-medium-snug, inherit);
+  color: var(--semantics-content-secondary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

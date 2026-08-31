@@ -1,0 +1,35 @@
+---
+/*
+ * The two roadmap tabs (matrix / outcome mapping).
+ *
+ * The app built this from a hash router; here the hrefs are real routes and
+ * the selected tab is decided at build time from the page's own pathname, so
+ * there is no client state to keep in sync.
+ */
+interface Props {
+  /** The page's pathname, used to mark the active tab. */
+  pathname: string;
+}
+const { pathname } = Astro.props;
+
+const items = [
+  { href: '/roadmap', text: 'Roadmap', match: (p: string) => p === '/roadmap' },
+  {
+    href: '/roadmap/outcome-mapping',
+    text: 'Outcome mapping',
+    match: (p: string) => p.startsWith('/roadmap/outcome-mapping'),
+  },
+];
+---
+
+<nldd-tab-bar navigation centered accessible-label="Roadmap-navigatie" class="rr-hoofdnav">
+  {
+    items.map((item) => (
+      <nldd-tab-bar-item
+        href={item.href}
+        text={item.text}
+        selected={item.match(pathname) ? true : undefined}
+      />
+    ))
+  }
+</nldd-tab-bar>

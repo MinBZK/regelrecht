@@ -1,0 +1,54 @@
+---
+/*
+ * /roadmap/outcome-mapping — the seven steps of the worksheet.
+ *
+ * A list of the steps rather than a copy of step 1: two routes with the same
+ * heading and the same content would be a duplicate for Pagefind and give the
+ * tab bar a destination that is not its own page.
+ */
+import Base from '~/layouts/Base.astro';
+import RoadmapNav from '~/components/RoadmapNav.astro';
+import { STEPS } from '~/lib/roadmap';
+import '~/styles/roadmap.css';
+
+const pathname = '/roadmap/outcome-mapping';
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  title="Outcome mapping · Roadmap · RegelRecht"
+  description="Outcome-mappingwerkblad bij de RegelRecht-roadmap."
+>
+  <nldd-simple-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <div class="rr-roadmap">
+      <RoadmapNav pathname={pathname} />
+
+      <nldd-title size="1">
+        <h1>Outcome mapping</h1>
+        <p slot="subtitle">
+          Het werkblad wordt stap voor stap ingevuld. Deze weergave is
+          read-only; wijzigen gaat via een pull request op GitHub.
+        </p>
+      </nldd-title>
+
+      <nldd-list>
+        {
+          STEPS.map((step, i) => (
+            <nldd-list-item href={`/roadmap/outcome-mapping/${step.id}`}>
+              <span slot="start" class="rr-steps__num">
+                {i + 1}
+              </span>
+              {step.label}
+            </nldd-list-item>
+          ))
+        }
+      </nldd-list>
+    </div>
+  </nldd-simple-section>
+</Base>

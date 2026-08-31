@@ -84,9 +84,19 @@ if (isStatusPage) {
   const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
   const isResearchRoot = pathname === '/research/' || pathname === '/research';
   const inResearch = isResearchRoot || pathname.startsWith('/research/');
+  const isRoadmapRoot = pathname === '/roadmap/' || pathname === '/roadmap';
+  const inRoadmap = isRoadmapRoot || pathname.startsWith('/roadmap/');
   const cat = categoryForPath(pathname);
   const onCategoryPage = cat !== null && pathname === cat.prefix;
-  if (isDocsRoot || isResearchRoot) {
+  if (isRoadmapRoot) {
+    // The roadmap root goes up to the site home, in the page's own language.
+    backHref = landingHome;
+    backText = t.nav.home;
+  } else if (inRoadmap) {
+    // A werkpakket or an outcome-mapping step goes up to the roadmap itself.
+    backHref = '/roadmap';
+    backText = 'Roadmap';
+  } else if (isDocsRoot || isResearchRoot) {
     // The documentation and research roots go up to the site home.
     backHref = '/en/';
     backText = 'Home';
@@ -180,6 +190,24 @@ if (
     current: isResearchRoot,
   });
   if (!isResearchRoot) {
+    breadcrumbs.push({ text: pageTitle, current: true });
+  }
+} else if (
+  !isLanding &&
+  !isNotFound &&
+  (pathname === '/roadmap' || pathname.startsWith('/roadmap/'))
+) {
+  // The roadmap sits next to the documentation rather than under it, like
+  // /research: without this branch it would fall through to the docs trail
+  // below and claim to live under Documentation, which it does not.
+  const isRoadmapRoot = pathname === '/roadmap/' || pathname === '/roadmap';
+  breadcrumbs.push({ text: homeText, href: homeHref });
+  breadcrumbs.push({
+    text: 'Roadmap',
+    href: '/roadmap',
+    current: isRoadmapRoot,
+  });
+  if (!isRoadmapRoot) {
     breadcrumbs.push({ text: pageTitle, current: true });
   }
 } else if (!isLanding && !isNotFound) {

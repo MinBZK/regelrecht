@@ -1,0 +1,173 @@
+---
+/*
+ * /roadmap/werkpakket/<uuid> — one werkpakket.
+ *
+ * Keyed on the frontmatter `id`, not on the filename slug: samenhangIds point
+ * at that value, so keying on it makes the cross-links correct by construction.
+ * The UUID stays in the URL because a title-derived slug would have to be kept
+ * in sync with those references and would break on every rename.
+ *
+ * Section headings are <h2> under the page <h1>. The app used <h3> here, which
+ * check-heading-order.mjs rejects as a rank skip; nldd-title's `size` carries
+ * the visual weight instead.
+ */
+import { getCollection } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import EditLink from '~/components/EditLink.astro';
+import {
+  getFase,
+  getDiscipline,
+  getPrioriteit,
+  getCategorie,
+  getCapability,
+  assertReferencesResolve,
+  NIET_BEPAALD,
+  NIET_GESPECIFICEERD,
+} from '~/lib/roadmap';
+import { renderMarkdown } from '~/lib/roadmap-markdown';
+import '~/styles/roadmap.css';
+
+export async function getStaticPaths() {
+  const werkpakketten = await getCollection('werkpakketten');
+  assertReferencesResolve(werkpakketten);
+  return werkpakketten.map((entry) => ({
+    params: { id: entry.data.id },
+    props: { entry, alle: werkpakketten },
+  }));
+}
+
+const { entry, alle } = Astro.props;
+const wp = entry.data;
+
+const fase = getFase(wp.faseId);
+const discipline = getDiscipline(wp.disciplineId);
+const prioriteit = getPrioriteit(wp.prioriteit);
+const categorie = getCategorie(wp.categorie);
+const capability = getCapability(wp.capability);
+
+const samenhang = wp.samenhangIds
+  .map((id: string) => alle.find((w) => w.data.id === id))
+  .filter(Boolean);
+
+const toelichting = renderMarkdown(wp.toelichting);
+const pathname = `/roadmap/werkpakket/${wp.id}`;
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  title={`${wp.titel} · Roadmap · RegelRecht`}
+  description={`Werkpakket ${wp.titel} in de RegelRecht-roadmap.`}
+>
+  <nldd-simple-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <div class="rr-roadmap rr-detail">
+      <nldd-title size="1">
+        <h1>{wp.titel}</h1>
+      </nldd-title>
+
+      <div class="rr-detail__context">
+        {fase && <nldd-tag color="accent" text={fase.naam} />}
+        {discipline && <nldd-tag color="accent" text={discipline.naam} />}
+      </div>
+
+      <nldd-box>
+        <nldd-title size="5"><h2>Kerngegevens</h2></nldd-title>
+        <nldd-rich-text>
+          <dl>
+            <dt>Prioriteit</dt>
+            <dd>
+              {
+                prioriteit ? (
+                  <nldd-tag
+                    color={prioriteit.tagColor}
+                    text={prioriteit.label}
+                    size="sm"
+                  />
+                ) : (
+                  NIET_BEPAALD
+                )
+              }
+            </dd>
+            <dt>Geschatte omvang</dt>
+            <dd>{wp.omvang || NIET_BEPAALD}</dd>
+            <dt>Categorie</dt>
+            <dd>{categorie ? categorie.label : NIET_BEPAALD}</dd>
+            <dt>Capability</dt>
+            <dd>{capability ? capability.label : NIET_BEPAALD}</dd>
+            <dt>Benodigde capaciteit</dt>
+            <dd>{wp.capaciteit || NIET_GESPECIFICEERD}</dd>
+          </dl>
+        </nldd-rich-text>
+      </nldd-box>
+
+      <nldd-box>
+        <nldd-title size="5"><h2>Onderzoeksvragen</h2></nldd-title>
+        <nldd-rich-text>
+          {
+            wp.onderzoeksvragen.length ? (
+              <ol>
+                {wp.onderzoeksvragen.map((vraag: string) => (
+                  <li>{vraag}</li>
+                ))}
+              </ol>
+            ) : (
+              <p>Nog geen onderzoeksvragen geregistreerd.</p>
+            )
+          }
+        </nldd-rich-text>
+      </nldd-box>
+
+      <nldd-box>
+        <nldd-title size="5"><h2>Toelichting</h2></nldd-title>
+        <nldd-rich-text>
+          {
+            toelichting ? (
+              <Fragment set:html={toelichting} />
+            ) : (
+              <p>Geen toelichting toegevoegd.</p>
+            )
+          }
+        </nldd-rich-text>
+      </nldd-box>
+
+      <nldd-box>
+        <nldd-title size="5"><h2>Samenhang met andere werkpakketten</h2></nldd-title>
+        {
+          samenhang.length ? (
+            <nldd-list>
+              {samenhang.map((ander) => {
+                const anderFase = getFase(ander!.data.faseId);
+                const anderDiscipline = getDiscipline(ander!.data.disciplineId);
+                return (
+                  <nldd-list-item href={`/roadmap/werkpakket/${ander!.data.id}`}>
+                    {ander!.data.titel}
+                    <span slot="end">
+                      <nldd-tag
+                        size="sm"
+                        color="neutral"
+                        text={`${anderFase?.naam ?? ''} · ${anderDiscipline?.naam ?? ''}`}
+                      />
+                    </span>
+                  </nldd-list-item>
+                );
+              })}
+            </nldd-list>
+          ) : (
+            <nldd-rich-text>
+              <p>Geen samenhang met andere werkpakketten geregistreerd.</p>
+            </nldd-rich-text>
+          )
+        }
+      </nldd-box>
+
+      <p class="rr-detail__edit">
+        <EditLink filePath={entry.filePath} text="Bewerk dit werkpakket op GitHub" />
+      </p>
+    </div>
+  </nldd-simple-section>
+</Base>

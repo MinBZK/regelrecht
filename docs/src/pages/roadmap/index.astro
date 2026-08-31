@@ -1,0 +1,199 @@
+---
+/*
+ * /roadmap — werkpakketten on a fase x discipline matrix.
+ *
+ * A read-only rendering of src/content/roadmap/; editing goes through a pull
+ * request (every werkpakket page links to its own source on GitHub). The app
+ * this came from could add, move and delete werkpakketten against a write API;
+ * none of that survives here, because the site is a static build behind nginx.
+ *
+ * The matrix is a real <table>: fases are columns, disciplines are rows, and a
+ * screen reader needs that relationship to place a card. CSS gives it back the
+ * grid layout (see roadmap.css).
+ */
+import { getCollection } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import RoadmapNav from '~/components/RoadmapNav.astro';
+import {
+  fases,
+  disciplines,
+  CATEGORIEEN,
+  getPrioriteit,
+  getCategorie,
+  getCapability,
+  werkpakkettenInCel,
+  assertReferencesResolve,
+} from '~/lib/roadmap';
+import '~/styles/roadmap.css';
+
+const werkpakketten = await getCollection('werkpakketten');
+// Fails the build on a faseId, disciplineId or samenhangId that goes nowhere.
+// check-links.mjs cannot see these: they end up on NLDD component attributes,
+// not on <a href>.
+assertReferencesResolve(werkpakketten);
+
+const pathname = '/roadmap';
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  title="Roadmap · RegelRecht"
+  description="Werkpakketten van RegelRecht, geordend per fase en discipline."
+>
+  <nldd-simple-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <div class="rr-roadmap">
+      <RoadmapNav pathname={pathname} />
+
+      <nldd-title size="1">
+        <h1>Roadmap</h1>
+        <p slot="subtitle">
+          Werkpakketten per fase en discipline. Deze weergave is read-only;
+          wijzigen gaat via een pull request op GitHub.
+        </p>
+      </nldd-title>
+
+      {/* CSS-only filter: :has() on the checkboxes decides which cards show.
+          No script, so it survives ClientRouter and works without JS — and in
+          a browser without :has() everything stays visible, which is the right
+          way to fail. */}
+      <fieldset class="rr-filter">
+        <legend class="rr-filter__legend">Filter op categorie</legend>
+        {
+          CATEGORIEEN.map((categorie) => (
+            <span class="rr-filter__option">
+              <input
+                type="checkbox"
+                class="rr-filter__input"
+                id={`rr-cat-${categorie.id}`}
+                data-categorie={categorie.id}
+              />
+              <label class="rr-filter__label" for={`rr-cat-${categorie.id}`}>
+                {categorie.label}
+              </label>
+            </span>
+          ))
+        }
+      </fieldset>
+
+      {/* tabindex + role make the horizontally scrolling matrix reachable by
+          keyboard; without it axe flags scrollable-region-focusable. */}
+      <div
+        class="rr-matrix-scroll"
+        tabindex="0"
+        role="region"
+        aria-label="Roadmapmatrix, horizontaal scrollbaar"
+      >
+        <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
+          <caption class="rr-matrix__caption">
+            Werkpakketten per fase (kolommen) en discipline (rijen).
+          </caption>
+          <thead>
+            <tr>
+              <td class="rr-matrix__corner"></td>
+              {
+                fases.map((fase) => (
+                  <th scope="col" class="rr-matrix__header rr-matrix__header--fase">
+                    <span class="rr-matrix__eyebrow">Fase {fase.volgnummer}</span>
+                    <span class="rr-matrix__naam">{fase.naam}</span>
+                    {fase.ondertitel && (
+                      <span class="rr-matrix__sub">{fase.ondertitel}</span>
+                    )}
+                  </th>
+                ))
+              }
+            </tr>
+          </thead>
+          <tbody>
+            {
+              disciplines.map((discipline) => (
+                <tr>
+                  <th
+                    scope="row"
+                    class="rr-matrix__header rr-matrix__header--discipline"
+                  >
+                    <span class="rr-matrix__naam">{discipline.naam}</span>
+                    {discipline.ondertitel && (
+                      <span class="rr-matrix__sub">{discipline.ondertitel}</span>
+                    )}
+                  </th>
+                  {
+                    fases.map((fase) => {
+                      const cel = werkpakkettenInCel(
+                        werkpakketten,
+                        fase.id,
+                        discipline.id,
+                      );
+                      return (
+                        <td class="rr-matrix__cell">
+                          {cel.map((wp) => {
+                            const prioriteit = getPrioriteit(wp.data.prioriteit);
+                            const categorie = getCategorie(wp.data.categorie);
+                            const capability = getCapability(wp.data.capability);
+                            return (
+                              <nldd-card
+                                class="rr-wp-card"
+                                href={`/roadmap/werkpakket/${wp.data.id}`}
+                                accessible-label={wp.data.titel}
+                                data-categorie={wp.data.categorie || 'geen'}
+                              >
+                                <div class="rr-wp-card__body">
+                                  <p class="rr-wp-card__titel">{wp.data.titel}</p>
+                                  {(prioriteit ||
+                                    wp.data.omvang ||
+                                    categorie ||
+                                    capability) && (
+                                    <div class="rr-wp-card__meta">
+                                      {prioriteit && (
+                                        <nldd-tag
+                                          color={prioriteit.tagColor}
+                                          text={prioriteit.label}
+                                          size="sm"
+                                        />
+                                      )}
+                                      {wp.data.omvang && (
+                                        <nldd-tag
+                                          color="neutral"
+                                          text={wp.data.omvang}
+                                          size="sm"
+                                        />
+                                      )}
+                                      {categorie && (
+                                        <nldd-tag
+                                          color="neutral"
+                                          text={categorie.label}
+                                          size="sm"
+                                        />
+                                      )}
+                                      {capability && (
+                                        <nldd-tag
+                                          color="accent"
+                                          text={capability.label.split(' ')[0]}
+                                          accessible-label={capability.label}
+                                          size="sm"
+                                        />
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </nldd-card>
+                            );
+                          })}
+                        </td>
+                      );
+                    })
+                  }
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </nldd-simple-section>
+</Base>
