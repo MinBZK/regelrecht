@@ -24,14 +24,20 @@ import {
   getCapability,
   werkpakkettenInCel,
   assertReferencesResolve,
+  assertFilterRules,
 } from '~/lib/roadmap';
 import '~/styles/roadmap.css';
+// The stylesheet's own text, so the filter check below can read the rules it
+// is about. ?raw gives the source; the ordinary import above is what ships.
+import roadmapCss from '~/styles/roadmap.css?raw';
 
 const werkpakketten = await getCollection('werkpakketten');
 // Fails the build on a faseId, disciplineId or samenhangId that goes nowhere.
 // check-links.mjs cannot see these: they end up on NLDD component attributes,
 // not on <a href>.
 assertReferencesResolve(werkpakketten);
+// Fails the build when a filter option has no rule to show its cards again.
+assertFilterRules(roadmapCss);
 
 const pathname = '/roadmap';
 ---

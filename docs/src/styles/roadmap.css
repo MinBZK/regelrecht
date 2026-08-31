@@ -89,6 +89,13 @@
  * included: a filter that can hide cards it offers no way to show back is
  * broken, and six of the nineteen werkpakketten have no categorie.
  *
+ * These ids are written out because CSS cannot read FILTER_OPTIES. Add a
+ * categorie to CATEGORIEEN and its checkbox renders without a rule here, so
+ * its cards would be hidden by the rule above with nothing to show them
+ * again — the very bug this block was rewritten to fix. assertFilterRules()
+ * in lib/roadmap.ts reads this file during the build and fails when the two
+ * drift, so the omission cannot ship.
+ *
  * DO NOT rewrite `#rr-cat-lat` as an attribute or class selector. The show
  * rules only beat the hide rule above because :has() takes the specificity
  * of its most specific argument, and an id makes these (1,3,0) against

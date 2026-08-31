@@ -80,6 +80,7 @@ export const CAPABILITIES = [
  * silently render no tag for a value that was set.
  */
 type NonEmpty = [string, ...string[]];
+
 /**
  * The value `data-categorie` carries for a werkpakket without a categorie.
  * Six of the nineteen have none, so the filter needs a way to show them:
@@ -93,6 +94,32 @@ export const FILTER_OPTIES = [
   ...CATEGORIEEN.map((c) => ({ id: c.id, label: c.label })),
   { id: GEEN_CATEGORIE, label: 'Zonder categorie' },
 ];
+
+/**
+ * Fail the build when the filter's stylesheet has no show-rule for an option
+ * the page renders.
+ *
+ * The checkboxes come from FILTER_OPTIES, but the rules that show their cards
+ * again live in roadmap.css, which cannot read this list. Add a categorie and
+ * its checkbox appears while its cards stay hidden behind the blanket
+ * hide-rule, with nothing to bring them back — silent, and only on the
+ * filtered view. Reading the stylesheet here keeps the two in step.
+ */
+export function assertFilterRules(css: string): void {
+  const missing = FILTER_OPTIES.filter(
+    (optie) => !css.includes(`#rr-cat-${optie.id}:checked`),
+  ).map((optie) => optie.id);
+
+  if (missing.length) {
+    throw new Error(
+      `roadmap.css mist een toon-regel voor filteroptie(s) ${missing
+        .map((id) => `"${id}"`)
+        .join(', ')}. Voeg een ` +
+        `\`.rr-roadmap:has(#rr-cat-<id>:checked) .rr-wp-card[data-categorie='<id>']\`-regel toe, ` +
+        'anders blijven die kaarten verborgen zodra er gefilterd wordt.',
+    );
+  }
+}
 
 export const PRIORITEIT_IDS = PRIORITEITEN.map((p) => p.id) as NonEmpty;
 export const OMVANG_IDS = [...OMVANGEN] as NonEmpty;
