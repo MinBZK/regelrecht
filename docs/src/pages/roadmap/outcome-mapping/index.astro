@@ -1,0 +1,60 @@
+---
+/*
+ * /roadmap/outcome-mapping — the seven steps of the worksheet.
+ *
+ * A list of the steps rather than a copy of step 1: two routes with the same
+ * heading and the same content would be a duplicate for Pagefind and give the
+ * tab bar a destination that is not its own page.
+ */
+import Base from '~/layouts/Base.astro';
+import RoadmapNav from '~/components/RoadmapNav.astro';
+import { STEPS } from '~/lib/roadmap';
+
+const pathname = '/roadmap/outcome-mapping';
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  noSearchIndex
+  title="Outcome mapping · Roadmap · RegelRecht"
+  description="Outcome-mappingwerkblad bij de RegelRecht-roadmap."
+>
+  <nldd-simple-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <nldd-container gap="24">
+      <RoadmapNav pathname={pathname} />
+
+      <nldd-title size="1">
+        <h1>Outcome mapping</h1>
+        <p slot="subtitle">
+          Het werkblad wordt stap voor stap ingevuld. Deze weergave is
+          read-only; wijzigen gaat via een pull request op GitHub.
+        </p>
+      </nldd-title>
+
+      {/* nldd-text-cell carries the label: text slotted straight into
+          nldd-list-item inherits from <body>, which the design system does not
+          set, so it would render in the serif fallback. */}
+      <nldd-list type="navigation" variant="box-tinted">
+        {
+          STEPS.map((step, i) => (
+            <nldd-list-item href={`/roadmap/outcome-mapping/${step.id}`}>
+              <nldd-text-cell
+                overline={`Stap ${i + 1}`}
+                text={step.label}
+                width="full"
+              />
+              <nldd-spacer-cell />
+              <nldd-icon-cell size="20" icon="chevron-right" />
+            </nldd-list-item>
+          ))
+        }
+      </nldd-list>
+    </nldd-container>
+  </nldd-simple-section>
+</Base>
