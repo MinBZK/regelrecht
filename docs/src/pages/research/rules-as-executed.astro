@@ -3,8 +3,9 @@
  * "Rules as Executed" position paper, rendered in full. The body HTML and the
  * outline headings are generated from the paper's LaTeX source with pandoc
  * (citeproc bibliography, glossary first-use expansion, numbered sections);
- * this page only wraps that output in the site chrome. The PDF in
- * public/research/ is the authoritative typeset version.
+ * this page only wraps that output in the site chrome. The typeset PDF is
+ * archived on Zenodo (doi:10.5281/zenodo.22201094) and is the authoritative
+ * version; the button links there rather than to a local copy.
  */
 import Base from '~/layouts/Base.astro';
 import DocsOutline from '~/components/DocsOutline.astro';
@@ -38,9 +39,11 @@ const description =
     </nldd-title>
     <div slot="left">
       <nldd-button
-        href="/research/rules-as-executed.pdf"
-        text="Download PDF"
-        start-icon="download"
+        href="https://doi.org/10.5281/zenodo.22201094"
+        text="PDF on Zenodo"
+        start-icon="external-link"
+        target="_blank"
+        rel="noopener"
         variant="secondary"
       ></nldd-button>
       <nldd-spacer size="24" sm-size="16" />
@@ -54,7 +57,8 @@ const description =
           <a href="mailto:eelco.hotting@minbzk.nl">eelco.hotting@minbzk.nl</a>
           · <a href="mailto:anne.schuth@minbzk.nl">anne.schuth@minbzk.nl</a
           ><br />
-          Position paper, 12 July 2026
+          Position paper, 31 August 2026<br />
+          <a href="https://doi.org/10.5281/zenodo.22201094">doi:10.5281/zenodo.22201094</a>
         </p>
         <p class="rr-paper-note">
           Equal contribution. The authors are now with the Dutch Digital

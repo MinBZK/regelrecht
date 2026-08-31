@@ -371,7 +371,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title:
             'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
-          meta: 'Position paper • Eelco Hotting & Anne Schuth • 12 juli 2026',
+          meta: 'Position paper • Eelco Hotting & Anne Schuth • 31 augustus 2026',
           text: 'Betoogt dat de overheid haar wetsuitvoering moet publiceren als machine-uitvoerbare specificatie, en dat elk besluit vastlegt met welke versie het is genomen. Wie een besluit ontvangt kan het narekenen, en het parlement kan de regel zelf analyseren.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper (Engels)',
@@ -829,7 +829,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title:
             'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
-          meta: 'Position paper • Eelco Hotting & Anne Schuth • 12 July 2026',
+          meta: 'Position paper • Eelco Hotting & Anne Schuth • 31 August 2026',
           text: 'Argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper',

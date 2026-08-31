@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert position-paper.tex to HTML for the regelrecht docs site.
+r"""Convert position-paper.tex to HTML for the regelrecht docs site.
 
 Usage: python3 docs/scripts/convert-position-paper.py
 Needs: pandoc (with citeproc), and the paper source checked out at
