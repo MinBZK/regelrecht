@@ -907,9 +907,13 @@ const legalLinks = [
       // Once fonts and the code viewers are ready, scroll to the fragment
       // again, unless the reader has scrolled in the meantime.
       //
-      // Only on navigations where the browser (or Astro's router) anchored
-      // on the fragment: a back/forward traversal or a reload restores the
-      // previous scroll position instead, and that position must win.
+      // Which navigation brought us here decides what "settled" should
+      // restore. A fresh load or a router push/replace anchored on the
+      // fragment: re-anchor. A router traverse (back/forward) restored the
+      // saved scroll position, but did so before the code viewers rendered,
+      // so the document may still have been too short to reach it: re-apply
+      // that position. A hard reload or back/forward is left to the browser,
+      // which keeps restoring on its own as the page grows.
       let userScrolled = false;
       let navigationType: string | null = null;
       const SCROLL_KEYS = new Set([
@@ -923,43 +927,64 @@ const legalLinks = [
         if (SCROLL_KEYS.has(e.key)) userScrolled = true;
       });
       document.addEventListener('astro:before-swap', (e) => {
-        navigationType = (e as { navigationType?: string }).navigationType ?? null;
+        navigationType =
+          (e as Event & { navigationType?: string }).navigationType ?? null;
       });
-      function anchoredOnThisLoad(): boolean {
+      function consumeNavigationType(): string {
         if (navigationType !== null) {
           const t = navigationType;
           navigationType = null;
-          return t !== 'traverse';
+          return t;
         }
         const nav = performance.getEntriesByType('navigation')[0] as
           | PerformanceNavigationTiming
           | undefined;
-        return !nav || nav.type === 'navigate';
+        return nav?.type ?? 'navigate';
       }
-      function reanchor() {
-        const anchored = anchoredOnThisLoad();
-        if (!location.hash || !anchored) return;
-        let el: Element | null = null;
-        try {
-          el = document.getElementById(
-            decodeURIComponent(location.hash.slice(1))
-          );
-        } catch {
-          return;
-        }
-        if (!el) return;
-        userScrolled = false;
+      function settled(): Promise<unknown> {
         const viewers = Array.from(
           document.querySelectorAll('nldd-code-viewer')
         ) as Array<Element & { updateComplete?: Promise<unknown> }>;
-        Promise.all([
+        return Promise.all([
           document.fonts ? document.fonts.ready : Promise.resolve(),
           customElements.whenDefined('nldd-code-viewer').then(() =>
             Promise.all(viewers.map((v) => v.updateComplete ?? null))
           ),
-        ]).then(() => {
+        ]);
+      }
+      function reanchor() {
+        const type = consumeNavigationType();
+        if (type === 'reload' || type === 'back_forward') return;
+        const saved = history.state as
+          | { scrollX?: number; scrollY?: number }
+          | null;
+        let target: Element | null = null;
+        if (type === 'traverse') {
+          if (typeof saved?.scrollY !== 'number') return;
+        } else {
+          if (!location.hash) return;
+          try {
+            target = document.getElementById(
+              decodeURIComponent(location.hash.slice(1))
+            );
+          } catch {
+            return;
+          }
+          if (!target) return;
+        }
+        userScrolled = false;
+        settled().then(() => {
           requestAnimationFrame(() => {
-            if (!userScrolled && el) el.scrollIntoView();
+            if (userScrolled) return;
+            if (target) {
+              target.scrollIntoView();
+            } else if (saved && typeof saved.scrollY === 'number') {
+              scrollTo({
+                left: saved.scrollX ?? 0,
+                top: saved.scrollY,
+                behavior: 'instant',
+              });
+            }
           });
         });
       }
