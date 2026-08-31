@@ -66,25 +66,36 @@ export function yamlSequenceItemLines(
 
   const ranges: [number, number][] = [];
   let start = -1;
+  // The indent of the first "- " fixes what counts as an item. Without it a
+  // deeper "- " inside an item's own text — a markdown bullet in a block
+  // scalar, say — would start a phantom item and shift every range after it.
+  let itemIndent: number | null = null;
+
+  const isItem = (line: string): boolean => {
+    const m = /^(\s+)-(\s|$)/.exec(line);
+    if (!m) return false;
+    const indent = m[1].length;
+    if (itemIndent === null) {
+      itemIndent = indent;
+      return true;
+    }
+    return indent === itemIndent;
+  };
+
+  let end = lines.length;
   for (let i = header + 1; i < lines.length; i++) {
     const line = lines[i];
-    // A line at column 0 that is not blank ends the sequence: the next key.
-    if (line.trim() !== '' && !/^\s/.test(line)) break;
-    if (/^\s+-\s/.test(line) || /^\s+-\s*$/.test(line)) {
+    // A non-blank line at column 0 ends the sequence: it is the next key.
+    if (line.trim() !== '' && !/^\s/.test(line)) {
+      end = i;
+      break;
+    }
+    if (isItem(line)) {
       if (start !== -1) ranges.push([start, i]);
       start = i + 1; // 1-based
     }
   }
-  if (start !== -1) {
-    let end = lines.length;
-    for (let i = start; i < lines.length; i++) {
-      if (lines[i].trim() !== '' && !/^\s/.test(lines[i])) {
-        end = i;
-        break;
-      }
-    }
-    ranges.push([start, end]);
-  }
+  if (start !== -1) ranges.push([start, end]);
   return ranges;
 }
 
@@ -136,7 +147,7 @@ export function renderMarkdown(
   if (!value || !value.trim()) return '';
   if (!source) return String(plain.processSync(value));
 
-  let offset = 0;
+  let offset: number | null = null;
   try {
     const text = readFileSync(source.filePath, 'utf8');
     const firstLine = blockScalarFirstLine(text, source.field);
@@ -144,8 +155,13 @@ export function renderMarkdown(
     // `firstLine` in the file, so everything shifts by their difference.
     if (firstLine != null) offset = firstLine - 1;
   } catch {
-    // An unreadable file only costs the edit affordance, not the render.
+    // An unreadable file costs the edit affordance, not the render.
   }
+
+  // No offset means no provenance: stamping anyway would point the edit link
+  // at whatever happens to sit on those lines, which is worse than offering
+  // no link at all. The markdown still renders.
+  if (offset == null) return String(plain.processSync(value));
 
   const processor = base()
     .use(rehypeFieldSourceLines, { offset })
