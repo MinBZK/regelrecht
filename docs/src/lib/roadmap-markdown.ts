@@ -28,15 +28,41 @@ import rehypeStringify from 'rehype-stringify';
 import type { Root, Element, ElementContent } from 'hast';
 
 /**
- * File line (1-based) where a block scalar's content starts, i.e. the line
- * after `<field>: |-` / `>-`. Returns null when the field is absent or is a
- * plain inline scalar, in which case there is nothing useful to stamp.
+ * The file line range (1-based, inclusive) a field's value occupies.
+ *
+ * Only a LITERAL block scalar (`|`) keeps one source line per rendered line,
+ * so only there can a paragraph be mapped back to its own lines. A folded
+ * scalar (`>`) joins several source lines into one logical line and a plain
+ * or quoted scalar has no line structure at all; for those, per-paragraph
+ * arithmetic silently drifts — in one werkpakket the third paragraph came out
+ * four lines above where it actually sits. So they report the whole field
+ * instead: the edit link then opens the right region every time, which is the
+ * honest answer.
  */
-function blockScalarFirstLine(text: string, field: string): number | null {
-  const lines = text.split('\n');
-  const header = new RegExp(`^${field}:\\s*[|>][-+]?\\s*$`);
+function fieldLines(
+  text: string,
+  field: string,
+): { first: number; last: number; perLine: boolean } | null {
+  const lines = text.split(/\r?\n/);
+  const header = new RegExp(`^${field}:(.*)$`);
   for (let i = 0; i < lines.length; i++) {
-    if (header.test(lines[i])) return i + 2; // 1-based, line after the header
+    const m = header.exec(lines[i]);
+    if (!m) continue;
+
+    const rest = m[1].trim();
+    const literal = /^\|[-+]?$/.test(rest);
+    const folded = /^>[-+]?$/.test(rest);
+
+    // A value on the header line itself (plain or quoted) occupies that line.
+    if (!literal && !folded) return { first: i + 1, last: i + 1, perLine: false };
+
+    // Block scalar: its content runs until the next line at column 0.
+    let last = i + 1;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() !== '' && !/^\s/.test(lines[j])) break;
+      last = j + 1;
+    }
+    return { first: i + 2, last, perLine: literal };
   }
   return null;
 }
@@ -99,30 +125,47 @@ export function yamlSequenceItemLines(
   return ranges;
 }
 
-function stamp(node: Element, offset: number): void {
+/**
+ * How a node's own position maps to file lines. `perLine` shifts each node by
+ * `offset`; otherwise every node reports the whole field, because the source
+ * lines cannot be told apart (see fieldLines).
+ */
+interface LineMap {
+  perLine: boolean;
+  offset: number;
+  first: number;
+  last: number;
+}
+
+function stamp(node: Element, map: LineMap): void {
   const pos = node.position;
   if (!pos?.start?.line || !pos?.end?.line) return;
   node.properties = node.properties ?? {};
-  node.properties['data-line'] = pos.start.line + offset;
-  node.properties['data-line-end'] = pos.end.line + offset;
-}
-
-function walkListItems(children: ElementContent[], offset: number): void {
-  for (const child of children) {
-    if (child.type !== 'element') continue;
-    if (child.tagName === 'li') stamp(child, offset);
-    if (child.children) walkListItems(child.children, offset);
+  if (map.perLine) {
+    node.properties['data-line'] = pos.start.line + map.offset;
+    node.properties['data-line-end'] = pos.end.line + map.offset;
+  } else {
+    node.properties['data-line'] = map.first;
+    node.properties['data-line-end'] = map.last;
   }
 }
 
-/** Stamp data-line/-end, shifted so the numbers point at lines in the file. */
-function rehypeFieldSourceLines(options: { offset: number }) {
+function walkListItems(children: ElementContent[], map: LineMap): void {
+  for (const child of children) {
+    if (child.type !== 'element') continue;
+    if (child.tagName === 'li') stamp(child, map);
+    if (child.children) walkListItems(child.children, map);
+  }
+}
+
+/** Stamp data-line/-end so the numbers point at lines in the source file. */
+function rehypeFieldSourceLines(map: LineMap) {
   return (tree: Root) => {
     for (const node of tree.children) {
       if (node.type !== 'element') continue;
-      stamp(node, options.offset);
+      stamp(node, map);
       if ((node.tagName === 'ul' || node.tagName === 'ol') && node.children) {
-        walkListItems(node.children, options.offset);
+        walkListItems(node.children, map);
       }
     }
   };
@@ -147,24 +190,26 @@ export function renderMarkdown(
   if (!value || !value.trim()) return '';
   if (!source) return String(plain.processSync(value));
 
-  let offset: number | null = null;
+  let map: LineMap | null = null;
   try {
     const text = readFileSync(source.filePath, 'utf8');
-    const firstLine = blockScalarFirstLine(text, source.field);
-    // remark counts the field's content from 1; the same content sits on
-    // `firstLine` in the file, so everything shifts by their difference.
-    if (firstLine != null) offset = firstLine - 1;
+    const range = fieldLines(text, source.field);
+    if (range) {
+      // remark counts the field's content from 1; the same content sits on
+      // `first` in the file, so everything shifts by their difference.
+      map = { ...range, offset: range.first - 1 };
+    }
   } catch {
     // An unreadable file costs the edit affordance, not the render.
   }
 
-  // No offset means no provenance: stamping anyway would point the edit link
+  // No range means no provenance: stamping anyway would point the edit link
   // at whatever happens to sit on those lines, which is worse than offering
   // no link at all. The markdown still renders.
-  if (offset == null) return String(plain.processSync(value));
+  if (!map) return String(plain.processSync(value));
 
   const processor = base()
-    .use(rehypeFieldSourceLines, { offset })
+    .use(rehypeFieldSourceLines, map)
     .use(rehypeStringify);
   return String(processor.processSync(value));
 }

@@ -107,7 +107,16 @@ const kerngegevens = [
   title={`${wp.titel} · Roadmap · RegelRecht`}
   description={`Werkpakket ${wp.titel} in de RegelRecht-roadmap.`}
 >
+  {/*
+    no-collapse is load-bearing, not decoration. Without it the section turns
+    the sidebar into a sheet below 1008px and leaves the trigger to the
+    consumer — and a page with no client script has none, so every bit of
+    metadata and the edit link were simply absent on phone and tablet.
+    Stacking is what this page wants anyway: the metadata is short and there
+    is no sticky chrome to escape.
+  */}
   <nldd-sidebar-section
+    no-collapse
     sidebar-label="Kerngegevens"
     sm-padding-bottom="32"
     md-padding-bottom="64"
