@@ -1,23 +1,29 @@
 ---
 /*
- * "Rules as Executed" position paper, rendered in full. The body HTML and the
- * outline headings in src/research/ are generated from the paper's LaTeX
- * source with pandoc (citeproc bibliography, glossary first-use expansion,
- * numbered sections) by convert-html.py, which lives next to that source in
- * the research repository; this page only wraps the output in the site chrome. The typeset PDF is
- * archived on Zenodo (doi:10.5281/zenodo.22201094) and is the authoritative
- * version; the button links there rather than to a local copy.
+ * "Rules as Executed" position paper, rendered in full. Everything under
+ * src/research/ is generated from the paper's LaTeX source by convert-html.py
+ * (pandoc + citeproc; glossary first-use expansion, numbered sections), which
+ * lives next to that source in the research repository: the body HTML, the
+ * outline headings, and the meta JSON with title, authors, date and DOI that
+ * this page, the research index and the landing tile all read. This page only
+ * wraps that output in the site chrome. The typeset PDF is archived on Zenodo
+ * under the DOI and is the authoritative version; the button links there.
  */
 import Base from '~/layouts/Base.astro';
 import DocsOutline from '~/components/DocsOutline.astro';
 import paperHtml from '~/research/rules-as-executed.html?raw';
 import headings from '~/research/rules-as-executed.headings.json';
+import meta from '~/research/rules-as-executed.meta.json';
 import '~/styles/research.css';
 
 const pathname = '/research/rules-as-executed';
-const title = 'Rules as Executed · RegelRecht';
+const title = `${meta.title} · RegelRecht`;
+const authors = meta.authors.join(' and ');
 const description =
-  'Publishing Machine-Executable Law to Rebalance the Powers';
+  `${meta.kind} by ${authors} (${meta.date_display}): government should ` +
+  'publish its law execution as machine-executable specifications, so that ' +
+  'a decision can be re-executed and the rule itself analyzed.';
+const doiUrl = `https://doi.org/${meta.doi}`;
 ---
 
 <Base
@@ -33,14 +39,12 @@ const description =
     lg-padding-bottom="96"
   >
     <nldd-title slot="header" size="1">
-      <h1>Rules as Executed</h1>
-      <p slot="subtitle">
-        Publishing Machine-Executable Law to Rebalance the Powers
-      </p>
+      <h1>{meta.title}</h1>
+      <p slot="subtitle">{meta.subtitle}</p>
     </nldd-title>
     <div slot="left">
       <nldd-button
-        href="https://doi.org/10.5281/zenodo.22201094"
+        href={doiUrl}
         text="PDF on Zenodo"
         start-icon="external-link"
         target="_blank"
@@ -50,22 +54,23 @@ const description =
       <nldd-spacer size="24" sm-size="16" />
       <DocsOutline headings={headings} />
     </div>
-    <div slot="right" class="rr-min-width-0 rr-paper">
+    <div slot="right" class="rr-paper">
       <nldd-rich-text>
         <p class="rr-paper-byline">
-          <strong>Eelco Hotting and Anne Schuth</strong><br />
-          <em>Dutch Ministry of the Interior and Kingdom Relations</em><br />
-          <a href="mailto:eelco.hotting@minbzk.nl">eelco.hotting@minbzk.nl</a>
-          · <a href="mailto:anne.schuth@minbzk.nl">anne.schuth@minbzk.nl</a
-          ><br />
-          Position paper, 31 August 2026<br />
-          <a href="https://doi.org/10.5281/zenodo.22201094">doi:10.5281/zenodo.22201094</a>
+          <strong>{authors}</strong><br />
+          <em>{meta.affiliation}</em><br />
+          {
+            meta.emails.map((email, i) => (
+              <Fragment>
+                {i > 0 && ' · '}
+                <a href={`mailto:${email}`}>{email}</a>
+              </Fragment>
+            ))
+          }<br />
+          {meta.kind}, {meta.date_display}<br />
+          <a href={doiUrl}>doi:{meta.doi}</a>
         </p>
-        <p class="rr-paper-note">
-          Equal contribution. The authors are now with the Dutch Digital
-          Service, Ministry of Economic Affairs and Climate. The work was done
-          at the Ministry of the Interior and Kingdom Relations.
-        </p>
+        <p class="rr-paper-note">{meta.note}</p>
         <Fragment set:html={paperHtml} />
       </nldd-rich-text>
     </div>

@@ -1,9 +1,10 @@
 ---
 /*
- * Research overview — papers and other research output around RegelRecht.
+ * Research overview: papers and other research output around RegelRecht.
  * Follows the /rfcs/ category-page pattern: intro left, item list right.
  */
 import Base from '~/layouts/Base.astro';
+import paper from '~/research/rules-as-executed.meta.json';
 
 const pathname = '/research/';
 
@@ -17,20 +18,11 @@ interface ResearchItem {
 
 const items: ResearchItem[] = [
   {
-    overline: 'Position paper · 31 August 2026',
-    title:
-      'Rules as Executed: Publishing Machine-Executable Law to Rebalance the Powers',
-    authors: 'Eelco Hotting and Anne Schuth',
-    // Opening of the paper's abstract, verbatim.
-    abstract:
-      'Government law execution is formalized in software, but that ' +
-      'software is not published. This deepens the executive’s ' +
-      'structural advantage in the separation of powers: it alone can see ' +
-      'how operative law is applied, while Parliament, courts, and ' +
-      'citizens cannot verify, review, or predict its application. This ' +
-      'paper proposes that law execution be published as ' +
-      'machine-executable specifications in a restricted, declarative ' +
-      'format designed to be readable by legal professionals.',
+    overline: `${paper.kind} · ${paper.date_display}`,
+    title: `${paper.title}: ${paper.subtitle}`,
+    authors: paper.authors.join(' and '),
+    // Opening of the abstract, verbatim (generated with the paper HTML).
+    abstract: paper.abstract_lead,
     link: '/research/rules-as-executed',
   },
 ];

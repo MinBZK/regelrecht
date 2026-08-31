@@ -1,6 +1,11 @@
 [
   {
     "depth": 2,
+    "slug": "abstract",
+    "text": "Abstract"
+  },
+  {
+    "depth": 2,
     "slug": "sec:introduction",
     "text": "1 Introduction"
   },
@@ -323,5 +328,15 @@
     "depth": 2,
     "slug": "sec:conclusion",
     "text": "14 Conclusion"
+  },
+  {
+    "depth": 2,
+    "slug": "acknowledgements",
+    "text": "Acknowledgements"
+  },
+  {
+    "depth": 2,
+    "slug": "references",
+    "text": "References"
   }
 ]

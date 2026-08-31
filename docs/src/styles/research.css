@@ -17,6 +17,23 @@
   color: var(--primitives-color-neutral-700);
 }
 
+/* The paper column must be allowed to shrink below its content width;
+   otherwise a wide code block or the comparison table widens the page
+   instead of scrolling inside .rr-table-scroll. */
+.rr-paper {
+  min-width: 0;
+}
+
+/* Floats: a <figure> carries the anchor for "Figure n"/"Table n" links, so
+   the link lands on the content, not on the caption below it. */
+.rr-paper figure {
+  margin: 0 0 var(--primitives-space-16);
+}
+.rr-paper figure img {
+  display: block;
+  margin-inline: auto;
+}
+
 /* Figure/table captions: smaller and muted, like the paper's caption font. */
 .rr-paper .rr-caption {
   font-size: 0.875rem;
