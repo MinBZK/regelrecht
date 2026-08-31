@@ -18,7 +18,6 @@ interface Props {
 
 const { lang, showSignup } = Astro.props;
 const t = content[lang];
-const home = lang === 'en' ? '/en/' : '/';
 
 // Vacancy closing dates render as an absolute date at build time (also the
 // no-JS text); the script at the bottom rewrites them relative to the
