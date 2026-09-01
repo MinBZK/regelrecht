@@ -44,7 +44,11 @@ const implemented = readdirSync(RFC_DIR)
 const referenced = new Set();
 for (const f of readdirSync(WP_DIR).filter((x) => x.endsWith('.md'))) {
   const text = readFileSync(`${WP_DIR}/${f}`, 'utf8');
-  const block = text.match(/^rfcs:\n((?:\s+-\s*\d+\n)+)/m);
+  // \r? throughout, and [ \t] rather than \s for the indent: a file written on
+  // Windows has CRLF endings, and without this the block simply does not match
+  // — under-reporting coverage instead of failing, which is the hardest kind of
+  // wrong to notice. (\s would also swallow the newline and span list items.)
+  const block = text.match(/^rfcs:\r?\n((?:[ \t]+-[ \t]*\d+\r?\n)+)/m);
   if (!block) continue;
   for (const m of block[1].matchAll(/-\s*(\d+)/g)) {
     referenced.add(parseInt(m[1], 10));
