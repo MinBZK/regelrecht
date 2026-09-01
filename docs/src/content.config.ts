@@ -1,6 +1,8 @@
 import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
 import {
+  ONDERZOEK_IDS,
+  BOUW_IDS,
   PRIORITEIT_IDS,
   OMVANG_IDS,
   CATEGORIE_IDS,
@@ -104,6 +106,21 @@ const werkpakketten = defineCollection({
       )
       .default([]),
     samenhangIds: z.array(z.string().uuid()).default([]),
+    // Two axes that genuinely diverge, so two fields rather than one.
+    // A question can be answered without anything being built (onderzoek
+    // 'beantwoord', bouw 'niet'), and a thing can be built while the question
+    // behind it stays open (the reverse). Collapsing them into one status
+    // would force a choice the roadmap cannot make.
+    //
+    // Both default to the least-claim value, so an existing werkpakket keeps
+    // meaning what it meant: nothing asserted is not the same as "nothing
+    // done", and the pages render an unset field as "niet bepaald".
+    onderzoek: z.enum(ONDERZOEK_IDS).or(z.literal('')).default(''),
+    bouw: z.enum(BOUW_IDS).or(z.literal('')).default(''),
+    // RFC numbers whose design work belongs to this werkpakket, e.g. [13, 21].
+    // The RFC keeps its own `implementation` field; this is a pointer, not a
+    // copy of it. assertRfcReferences() checks each number exists.
+    rfcs: z.array(z.number().int().positive()).default([]),
   }),
 });
 

@@ -186,6 +186,9 @@ const pathname = '/roadmap';
                                   accessible-label={[
                                     wp.data.titel,
                                     ...tags.map((t: any) => t.label),
+                                    ...(wp.data.rfcs.length
+                                      ? [`${wp.data.rfcs.length} RFC${wp.data.rfcs.length > 1 ? "'s" : ''}`]
+                                      : []),
                                   ].join(', ')}
                                   data-categorie={wp.data.categorie || GEEN_CATEGORIE}
                                 >
@@ -196,8 +199,12 @@ const pathname = '/roadmap';
                                     <nldd-text size="sm" weight="medium">
                                       {wp.data.titel}
                                     </nldd-text>
-                                    {tags.length > 0 && (
-                                      <nldd-container layout="wrap" gap="4">
+                                    {(tags.length > 0 || wp.data.rfcs.length > 0) && (
+                                      <nldd-container
+                                        layout="wrap"
+                                        gap="4"
+                                        vertical-alignment="center"
+                                      >
                                         {tags.map((tag: any) => (
                                           <nldd-tag
                                             color={tag.color}
@@ -206,6 +213,17 @@ const pathname = '/roadmap';
                                             size="sm"
                                           />
                                         ))}
+                                        {/* Not a tag: the card already carries
+                                            up to four, and a fifth would make
+                                            the title compete with its own
+                                            metadata. This is a quiet count of
+                                            the design behind the werkpakket —
+                                            the detail page names them. */}
+                                        {wp.data.rfcs.length > 0 && (
+                                          <nldd-text size="xs" color="secondary">
+                                            {wp.data.rfcs.length} RFC{wp.data.rfcs.length > 1 ? "'s" : ''}
+                                          </nldd-text>
+                                        )}
                                       </nldd-container>
                                     )}
                                   </nldd-container>
