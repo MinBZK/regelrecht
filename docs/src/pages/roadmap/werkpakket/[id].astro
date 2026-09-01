@@ -245,12 +245,16 @@ const kerngegevens = [
             <nldd-list type="navigation" variant="box-tinted">
               {rfcs.map((rfc) => (
                 <nldd-list-item href={rfc.link}>
-                  <nldd-text-cell
-                    overline={rfc.id}
-                    text={rfc.title}
-                    supporting-text={rfc.implementation}
-                    width="full"
-                  />
+                  {/* The implementation state renders as a tag, the same
+                      treatment /rfcs gives the same field. A bare string here
+                      would have the site showing one value two ways. */}
+                  <nldd-text-cell overline={rfc.id} text={rfc.title} width="full">
+                    <nldd-container slot="supporting-text" layout="wrap" gap="4">
+                      <nldd-tag color="neutral" size="md">
+                        {rfc.implementation}
+                      </nldd-tag>
+                    </nldd-container>
+                  </nldd-text-cell>
                   <nldd-spacer-cell />
                   <nldd-icon-cell size="20" icon="chevron-right" />
                 </nldd-list-item>

@@ -309,7 +309,9 @@ export interface RfcVerwijzing {
  */
 export function rfcVerwijzingen(nummers: number[]): RfcVerwijzing[] {
   const alle = new Map(getRfcs().map((r) => [r.num, r]));
-  return nummers
+  // Deduped: the same number twice used to render two identical rows, and the
+  // build said nothing. Harmless to write by accident, invisible once shipped.
+  return [...new Set(nummers)]
     .map((n) => alle.get(n))
     .filter((r): r is NonNullable<typeof r> => Boolean(r))
     .map((r) => ({

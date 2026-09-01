@@ -77,9 +77,11 @@ omvang: ''
 categorie: ''
 capability: ''
 capaciteit: ''
-toelichting: >-
+toelichting: |-
   Twee of drie alinea's die uitleggen wat de opgave is. Markdown mag:
   **vet**, een lijst, een link.
+
+  Een lege regel wordt alleen een alinea-einde onder `|`.
 volgorde: 1000
 onderzoek: ''
 bouw: ''
@@ -109,6 +111,16 @@ werkpakketten hebben geen prioriteit, zes geen categorie. De roadmap groeit door
 eerst een titel en een plek vast te leggen en de rest later in te vullen. Vul
 niets in om het vakje te vullen; een verzonnen prioriteit is slechter dan een
 lege.
+
+`toelichting` — markdown, als **letterlijke** blok-scalar (`|-`). Neem geen
+`>-`: dat is een gevouwen scalar, en YAML plakt daarin een lege regel samen tot
+één regelovergang. Remark leest dat als een zachte afbreking, niet als een
+nieuwe alinea, dus je krijgt één doorlopende lap tekst — zonder dat de build
+iets zegt. Alleen onder `|` telt een lege regel als alinea-einde, en alleen daar
+wijst de bewerkknop naar de juiste regels in plaats van naar het hele veld.
+
+`capaciteit` — vrije tekst, bijvoorbeeld "2 fte, 6 maanden". Geen enum, geen
+getal; leeg laten mag.
 
 `onderzoek` — `open`, `loopt`, `beantwoord`, of `''`.
 `bouw` — `niet`, `deels`, `wel`, of `''`.
@@ -182,17 +194,28 @@ RFC van `Not implemented` naar `Implemented`, dan verandert de roadmap mee
 zonder dat je iets aanraakt.
 
 Een nummer dat niet bestaat laat de build vallen (`RFC 99 bestaat niet`), met
-het werkpakket erbij.
+het werkpakket erbij. Dezelfde RFC bij meerdere werkpakketten mag: RFC-013 hangt
+nu aan drie. Twee keer hetzelfde nummer in één lijst levert één regel op, geen
+twee.
 
 ### Welke RFC's nog nergens hangen
 
 Elke RFC met `implementation: Implemented` hoort ergens in de roadmap terug te
-komen: hij beschrijft werk dat gedaan is. De build zegt bij `just docs-build`
-welke dat nog niet doen:
+komen: hij beschrijft werk dat gedaan is. Eén commando zegt welke dat nog niet
+doen:
+
+```bash
+cd docs && node scripts/check-roadmap-rfcs.mjs
+```
 
 ```
-[roadmap] 4 geïmplementeerde RFC(s) zonder werkpakket: RFC-000, RFC-005, …
+Roadmap-RFC-dekking: 5 van 15 geïmplementeerde RFC(s) hangen nog aan geen
+enkel werkpakket:
+  RFC-002  Bevoegdheid (Authority) in Machine-Readable Law
+  …
 ```
+
+Het draait ook mee in `just docs-a11y`, naast de andere `check-*`-scripts.
 
 Dat is een melding en geen fout, met opzet. Een RFC die eerder landt dan de
 roadmap-bijwerking is een redactionele achterstand, geen defect, en een poort
@@ -272,9 +295,12 @@ onder de naam van een andere zetten, en dat zie je aan niets.
 ## Verifiëren
 
 ```bash
-just docs-build     # schema + de drie controles hieronder
-just docs           # dev-server op :4321, kijk het na op /roadmap
+just docs-build     # schema + de controles hieronder; dit is de echte poort
+just docs           # dev-server op :4321, om het na te kijken
 ```
+
+De controles zitten in de paginasjablonen, dus onder de dev-server slaan ze pas
+aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 
 `docs-build` faalt met een leesbare melding bij:
 

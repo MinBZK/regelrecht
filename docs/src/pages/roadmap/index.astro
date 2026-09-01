@@ -25,7 +25,6 @@ import {
   werkpakkettenInCel,
   assertReferencesResolve,
   assertFilterRules,
-  ongekoppeldeRfcs,
 } from '~/lib/roadmap';
 import '~/styles/roadmap.css';
 // The stylesheet's own text, so the filter check below can read the rules it
@@ -40,16 +39,6 @@ assertReferencesResolve(werkpakketten);
 // Fails the build when a filter option has no rule to show its cards again.
 assertFilterRules(roadmapCss);
 
-// Reported, not enforced: an implemented RFC that no werkpakket points at is a
-// gap in the roadmap, not a defect in the build. Blocking on it would put the
-// roadmap in the way of the work it describes.
-const zonderWerkpakket = ongekoppeldeRfcs(werkpakketten);
-if (zonderWerkpakket.length) {
-  console.info(
-    `[roadmap] ${zonderWerkpakket.length} geïmplementeerde RFC(s) zonder werkpakket: ` +
-      zonderWerkpakket.map((r) => r.id).join(', '),
-  );
-}
 
 const pathname = '/roadmap';
 ---
