@@ -34,11 +34,35 @@ matrix toont dan twee kaarten die naar dezelfde pagina wijzen. De build vangt
 het (`id "…" wordt door meer dan één bestand gebruikt`), maar je hebt dan al
 gewerkt aan het verkeerde bestand.
 
-Genereer een nieuwe UUID en gebruik die als bestandsnaam én als `id`:
+### De UUID moet gegenereerd worden
+
+**Schrijf nooit zelf een UUID op.** Een verzonnen UUID ziet er goed uit en komt
+door het schema — dat toetst alleen de vorm — maar hij is niet uniform
+getrokken. Een taalmodel dat er een "bedenkt" grijpt terug op patronen uit zijn
+invoer en herhaalt cijferreeksen; de kans op een botsing met een bestaand id is
+dan niet meer verwaarloosbaar. En een botsing is precies de fout die twee
+kaarten naar dezelfde pagina laat wijzen. Laat een generator het doen:
 
 ```bash
-uuidgen | tr 'A-Z' 'a-z'
+node -e "console.log(require('node:crypto').randomUUID())"
 ```
+
+Node is de veilige keuze omdat de docs-build er toch al op draait, en het geeft
+op elk platform hetzelfde resultaat: kleine letters, versie 4. Alternatieven,
+als je die liever hebt:
+
+| Waar | Commando |
+|---|---|
+| Overal met Python | `python3 -c "import uuid; print(uuid.uuid4())"` |
+| macOS, Linux met util-linux | `uuidgen \| tr 'A-Z' 'a-z'` |
+| Windows PowerShell | `[guid]::NewGuid().ToString()` |
+
+**Kleine letters, altijd.** `uuidgen` geeft op macOS hoofdletters terug, vandaar
+de `tr` erachter; PowerShell geeft al kleine letters. Het schema accepteert
+hoofdletters wel, maar de controle op bestandsnaam-is-id vergelijkt letterlijk,
+en op macOS is het bestandssysteem hoofdletter-ongevoelig: lokaal lijkt dan
+alles in orde terwijl git de afwijkende schrijfwijze vastlegt en de build bij
+een ander valt. Alle negentien bestaande ids zijn kleine letters; houd dat zo.
 
 Het bestand bevat alleen frontmatter, geen body:
 
