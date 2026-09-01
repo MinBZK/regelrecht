@@ -83,10 +83,16 @@ jobs:
       # Draaide voor de sha-tak in cleanup-preview bij elke gesloten PR. Hier
       # draait hij één keer per nacht, en staat een rode uitkomst in een run
       # die iemand leest.
+      #
+      # Het automatische token volstaat: de images worden door deze repo zelf
+      # gepubliceerd (build-image.yml), dus de repo heeft de admin-rol op de
+      # packages en mag met `packages: write` versies opvragen en verwijderen.
+      # ADMIN_TOKEN is hier niet nodig — dat blijft alleen voor het verwijderen
+      # van GitHub-environments, waar geen automatische permissie voor bestaat.
       - name: Cleanup stale container images
         timeout-minutes: 45
         env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ORG: ${{ github.repository_owner }}
           ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
           ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
