@@ -16,6 +16,7 @@ import { z } from 'astro:content';
 import configJson from '~/data/roadmap-config.json';
 import worksheetJson from '~/data/outcome-mapping.json';
 import paperHeadings from '~/research/rules-as-executed.headings.json';
+import { getRfcs } from '~/lib/rfcs';
 
 export interface Fase {
   id: string;
@@ -45,6 +46,9 @@ export interface WerkpakketData {
   volgorde: number;
   onderzoeksvragen: (string | { vraag: string; paper: string })[];
   samenhangIds: string[];
+  onderzoek: string;
+  bouw: string;
+  rfcs: number[];
 }
 
 export const PRIORITEITEN = [
@@ -54,6 +58,32 @@ export const PRIORITEITEN = [
 ] as const;
 
 export const OMVANGEN = ['S', 'M', 'L', 'XL'] as const;
+
+/*
+ * Two axes, deliberately separate.
+ *
+ * `onderzoek` is how far the question is answered; `bouw` is how much of it
+ * stands in the codebase. They diverge in both directions, which is why one
+ * combined status would be a lie in half the cases.
+ *
+ * The tag colours follow the same reading as elsewhere on the site: neutral
+ * for "not started", warning for "under way", success for "done".
+ */
+export const ONDERZOEK_STANDEN = [
+  { id: 'open', label: 'Open', tagColor: 'neutral' },
+  { id: 'loopt', label: 'Loopt', tagColor: 'warning' },
+  { id: 'beantwoord', label: 'Beantwoord', tagColor: 'success' },
+] as const;
+
+export const BOUW_STANDEN = [
+  { id: 'niet', label: 'Niet gebouwd', tagColor: 'neutral' },
+  { id: 'deels', label: 'Deels gebouwd', tagColor: 'warning' },
+  { id: 'wel', label: 'Gebouwd', tagColor: 'success' },
+] as const;
+
+export const getOnderzoek = (id: string) =>
+  ONDERZOEK_STANDEN.find((s) => s.id === id);
+export const getBouw = (id: string) => BOUW_STANDEN.find((s) => s.id === id);
 
 export const CATEGORIEEN = [
   { id: 'lat', label: 'Lat' },
@@ -122,6 +152,8 @@ export function assertFilterRules(css: string): void {
   }
 }
 
+export const ONDERZOEK_IDS = ONDERZOEK_STANDEN.map((s) => s.id) as NonEmpty;
+export const BOUW_IDS = BOUW_STANDEN.map((s) => s.id) as NonEmpty;
 export const PRIORITEIT_IDS = PRIORITEITEN.map((p) => p.id) as NonEmpty;
 export const OMVANG_IDS = [...OMVANGEN] as NonEmpty;
 export const CATEGORIE_IDS = CATEGORIEEN.map((c) => c.id) as NonEmpty;
@@ -256,6 +288,87 @@ export function onderzoeksvraagLijst(
       ? { vraag: v }
       : { vraag: v.vraag, paper: getPaperSectie(v.paper) },
   );
+}
+
+/** An RFC a werkpakket points at, with the RFC's own implementation state. */
+export interface RfcVerwijzing {
+  /** Zero-padded id, e.g. "RFC-013". */
+  id: string;
+  title: string;
+  /** "Implemented" | "Partially implemented" | "Not implemented". */
+  implementation: string;
+  link: string;
+}
+
+/**
+ * The RFCs a werkpakket points at, resolved against the RFC collection.
+ *
+ * The implementation state is read from the RFC and never copied into the
+ * werkpakket: the RFC is the thing that gets built, so it owns that fact. A
+ * copy would be a second truth that nobody updates.
+ */
+export function rfcVerwijzingen(nummers: number[]): RfcVerwijzing[] {
+  const alle = new Map(getRfcs().map((r) => [r.num, r]));
+  return nummers
+    .map((n) => alle.get(n))
+    .filter((r): r is NonNullable<typeof r> => Boolean(r))
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      implementation: r.implementation ?? 'Not implemented',
+      link: r.link,
+    }));
+}
+
+/**
+ * Fail the build on a werkpakket pointing at an RFC that does not exist.
+ *
+ * Same reason as assertPaperSections: check-links.mjs would catch the dead
+ * link once it is in the HTML, but it reports the route, not the werkpakket
+ * that wrote it.
+ */
+export function assertRfcReferences(
+  werkpakketten: { data: WerkpakketData }[],
+): void {
+  const bestaande = new Set(getRfcs().map((r) => r.num));
+  const problems: string[] = [];
+
+  for (const { data } of werkpakketten) {
+    for (const nummer of data.rfcs) {
+      if (bestaande.has(nummer)) continue;
+      problems.push(
+        `werkpakket ${data.id} (${data.titel}): RFC ${nummer} bestaat niet`,
+      );
+    }
+  }
+
+  if (problems.length) {
+    throw new Error(
+      `Verwijzingen naar RFC's kloppen niet:\n  ${problems.join('\n  ')}`,
+    );
+  }
+}
+
+/**
+ * The implemented RFCs no werkpakket points at.
+ *
+ * Reported, not enforced. An RFC that lands before anyone updates the roadmap
+ * is a redactional gap, not a defect, and a gate that blocked the RFC on it
+ * would put the roadmap in the way of the work it describes. Printing the
+ * list at build time keeps it visible without that cost.
+ */
+export function ongekoppeldeRfcs(
+  werkpakketten: { data: WerkpakketData }[],
+): RfcVerwijzing[] {
+  const gekoppeld = new Set(werkpakketten.flatMap((w) => w.data.rfcs));
+  return getRfcs()
+    .filter((r) => r.implementation === 'Implemented' && !gekoppeld.has(r.num))
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      implementation: r.implementation ?? '',
+      link: r.link,
+    }));
 }
 
 /**

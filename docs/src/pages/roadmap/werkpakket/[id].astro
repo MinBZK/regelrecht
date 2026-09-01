@@ -28,7 +28,11 @@ import {
   getCapability,
   assertReferencesResolve,
   assertPaperSections,
+  assertRfcReferences,
   onderzoeksvraagLijst,
+  rfcVerwijzingen,
+  getOnderzoek,
+  getBouw,
   NIET_BEPAALD,
   NIET_GESPECIFICEERD,
 } from '~/lib/roadmap';
@@ -42,6 +46,8 @@ export async function getStaticPaths() {
   assertReferencesResolve(werkpakketten);
   // Fails the build on a question pointing at a paper section that is gone.
   assertPaperSections(werkpakketten);
+  // Fails the build on a werkpakket pointing at an RFC that does not exist.
+  assertRfcReferences(werkpakketten);
   return werkpakketten.map((entry) => ({
     params: { id: entry.data.id },
     props: { entry, all: werkpakketten },
@@ -93,8 +99,14 @@ const editBase = entry.filePath
 
 const pathname = `/roadmap/werkpakket/${wp.id}`;
 
+// The RFCs whose design work belongs here. Their implementation state comes
+// from the RFC itself, so it cannot drift from what was actually decided.
+const rfcs = rfcVerwijzingen(wp.rfcs);
+
 // The metadata pairs, so the sidebar is one loop instead of five near-copies.
 const kerngegevens = [
+  { label: 'Onderzoek', tag: getOnderzoek(wp.onderzoek), value: '' },
+  { label: 'Bouw', tag: getBouw(wp.bouw), value: '' },
   { label: 'Prioriteit', tag: prioriteit, value: '' },
   { label: 'Geschatte omvang', value: wp.omvang, leeg: NIET_BEPAALD },
   { label: 'Categorie', value: categorie?.label, leeg: NIET_BEPAALD },
@@ -223,6 +235,30 @@ const kerngegevens = [
           )
         }
       </nldd-container>
+
+      {
+        rfcs.length > 0 && (
+          <nldd-container gap="12">
+            <nldd-title size="4">
+              <h2>Ontwerp en implementatie</h2>
+            </nldd-title>
+            <nldd-list type="navigation" variant="box-tinted">
+              {rfcs.map((rfc) => (
+                <nldd-list-item href={rfc.link}>
+                  <nldd-text-cell
+                    overline={rfc.id}
+                    text={rfc.title.replace(/^RFC-\d+:\s*/, '')}
+                    supporting-text={rfc.implementation}
+                    width="full"
+                  />
+                  <nldd-spacer-cell />
+                  <nldd-icon-cell size="20" icon="chevron-right" />
+                </nldd-list-item>
+              ))}
+            </nldd-list>
+          </nldd-container>
+        )
+      }
 
       <nldd-container gap="12">
         <nldd-title size="4"><h2>Samenhang</h2></nldd-title>

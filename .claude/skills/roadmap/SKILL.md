@@ -1,6 +1,6 @@
 ---
 name: roadmap
-description: Onderhoudt de inhoud van de roadmap op /roadmap — werkpakketten toevoegen, wijzigen, verplaatsen of verwijderen, onderzoeksvragen schrijven en aan een sectie van het position paper koppelen, en het outcome-mappingwerkblad invullen. Gebruik dit bij "voeg een werkpakket toe", "verplaats X naar de Hoe-fase", "zet er een onderzoeksvraag bij", of het bijwerken van fases en disciplines.
+description: Onderhoudt de inhoud van de roadmap op /roadmap — werkpakketten toevoegen, wijzigen, verplaatsen of verwijderen, onderzoeksvragen schrijven en aan een sectie van het position paper koppelen, RFC's koppelen die het ontwerp beschrijven, en het outcome-mappingwerkblad invullen. Gebruik dit bij "voeg een werkpakket toe", "verplaats X naar de Hoe-fase", "zet er een onderzoeksvraag bij", of het bijwerken van fases en disciplines.
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write
 ---
@@ -81,6 +81,9 @@ toelichting: >-
   Twee of drie alinea's die uitleggen wat de opgave is. Markdown mag:
   **vet**, een lijst, een link.
 volgorde: 1000
+onderzoek: ''
+bouw: ''
+rfcs: []
 onderzoeksvragen: []
 samenhangIds: []
 ---
@@ -106,6 +109,14 @@ werkpakketten hebben geen prioriteit, zes geen categorie. De roadmap groeit door
 eerst een titel en een plek vast te leggen en de rest later in te vullen. Vul
 niets in om het vakje te vullen; een verzonnen prioriteit is slechter dan een
 lege.
+
+`onderzoek` — `open`, `loopt`, `beantwoord`, of `''`.
+`bouw` — `niet`, `deels`, `wel`, of `''`.
+
+Dat zijn twee assen en met opzet geen één. Een vraag kan beantwoord zijn zonder
+dat er iets gebouwd is, en er kan iets staan terwijl de vraag erachter nog open
+is. Eén gecombineerde status zou in de helft van de gevallen een verkeerd beeld
+geven. Beide mogen leeg blijven; de pagina toont dan "Nog niet bepaald".
 
 `volgorde` — een getal dat de plek binnen één matrixcel bepaalt, laag eerst.
 Dit veld is verplicht en heeft met opzet geen default: een ontbrekend veld zou
@@ -152,6 +163,42 @@ antwoord in plaats van dezelfde vraag.
 sectie omdat ze te algemeen zijn ("Hoe navolgbaar is het?"). Een gedwongen
 verwijzing kost de lezer een klik en levert niets op. Een verzonnen anker laat
 de build vallen met het werkpakket en de vraag erbij.
+
+## RFC's koppelen
+
+`rfcs` is een lijst met RFC-nummers, als getal:
+
+```yaml
+rfcs:
+  - 13
+  - 21
+```
+
+De pagina toont ze onder "Ontwerp en implementatie", met de titel van de RFC en
+zijn eigen `implementation`-waarde erbij. **Die waarde wordt niet overgenomen in
+het werkpakket.** De RFC is het ding dat gebouwd wordt, dus die bezit dat feit;
+een kopie hier zou een tweede waarheid zijn die niemand bijwerkt. Verandert een
+RFC van `Not implemented` naar `Implemented`, dan verandert de roadmap mee
+zonder dat je iets aanraakt.
+
+Een nummer dat niet bestaat laat de build vallen (`RFC 99 bestaat niet`), met
+het werkpakket erbij.
+
+### Welke RFC's nog nergens hangen
+
+Elke RFC met `implementation: Implemented` hoort ergens in de roadmap terug te
+komen: hij beschrijft werk dat gedaan is. De build zegt bij `just docs-build`
+welke dat nog niet doen:
+
+```
+[roadmap] 4 geïmplementeerde RFC(s) zonder werkpakket: RFC-000, RFC-005, …
+```
+
+Dat is een melding en geen fout, met opzet. Een RFC die eerder landt dan de
+roadmap-bijwerking is een redactionele achterstand, geen defect, en een poort
+die daarop blokkeert zet de roadmap in de weg van het werk dat hij beschrijft.
+Niet elke RFC hoort trouwens bij een werkpakket — RFC-000 gaat over het
+RFC-proces zelf.
 
 ## Een werkpakket verplaatsen
 
@@ -233,6 +280,7 @@ just docs           # dev-server op :4321, kijk het na op /roadmap
 - een `samenhangId` dat nergens heen wijst
 - twee bestanden met hetzelfde `id`, of een bestandsnaam die niet het `id` is
 - een `paper:`-anker dat niet in het paper staat
+- een RFC-nummer in `rfcs` dat niet bestaat
 - een ontbrekende of foute waarde volgens het zod-schema
 
 Raak je ook de pagina's aan, draai dan `just docs-a11y` (duurt ~10 minuten en
