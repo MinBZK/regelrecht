@@ -1,6 +1,6 @@
 ---
 name: roadmap
-description: Onderhoudt de inhoud van de roadmap op /roadmap — werkpakketten toevoegen, wijzigen of verplaatsen, onderzoeksvragen schrijven en aan een sectie van het position paper koppelen. Gebruik dit bij "voeg een werkpakket toe", "verplaats X naar de Hoe-fase", "zet er een onderzoeksvraag bij", of het bijwerken van fases en disciplines.
+description: Onderhoudt de inhoud van de roadmap op /roadmap — werkpakketten toevoegen, wijzigen, verplaatsen of verwijderen, onderzoeksvragen schrijven en aan een sectie van het position paper koppelen, en het outcome-mappingwerkblad invullen. Gebruik dit bij "voeg een werkpakket toe", "verplaats X naar de Hoe-fase", "zet er een onderzoeksvraag bij", of het bijwerken van fases en disciplines.
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write
 ---
@@ -159,6 +159,30 @@ Binnen een cel: pas `volgorde` aan. Naar een andere cel: pas `faseId` of
 `disciplineId` aan, en geef het een `volgorde` die past tussen de buren in de
 nieuwe cel.
 
+## Een werkpakket verwijderen
+
+Het bestand weggooien is niet genoeg: andere werkpakketten kunnen er via
+`samenhangIds` naar wijzen, en die verwijzingen blijven achter. De build valt
+daarop, en noemt elk bestand dat opgeruimd moet worden:
+
+```
+werkpakket 8faa572b-… (Controle en herstel): samenhangId "413459cd-…" bestaat niet
+werkpakket 992fa816-… (Discretionaire ruimte): samenhangId "413459cd-…" bestaat niet
+```
+
+Kijk dus eerst wie er naar verwijst, dan weet je vooraf wat je aanpast:
+
+```bash
+grep -l '<uuid>' docs/src/content/roadmap/werkpakketten/*.md
+```
+
+Het bestand zelf staat ook in die uitkomst, want zijn eigen `id` staat erin;
+de rest zijn de verwijzers.
+
+De app die hier ooit stond ruimde die verwijzingen zelf op bij het verwijderen;
+dat deed een server die er niet meer is. Nu doet de build het niet voor je, hij
+zegt alleen waar het misgaat.
+
 ## Fases en disciplines wijzigen
 
 Die staan in `roadmap-config.json`. Een fase heeft een `volgnummer` dat de
@@ -176,6 +200,25 @@ geen inhoudelijke wijziging maar een codewijziging**, en er hoort een regel bij
 in `docs/src/styles/roadmap.css`. Zonder die regel rendert het filtervakje wel,
 maar blijven die kaarten verborgen zodra er gefilterd wordt. `assertFilterRules`
 laat de build daarop vallen en zegt welke regel ontbreekt; volg die melding.
+
+## Het outcome-mappingwerkblad
+
+`docs/src/data/outcome-mapping.json` voedt `/roadmap/outcome-mapping`. Het staat
+grotendeels leeg: alleen `mission` en de vier boundary partners zijn ingevuld.
+Aanvullen is gewoon het JSON-bestand bewerken.
+
+Eén regel maakt het lastiger dan het eruitziet: **de arrays zijn positioneel**.
+Index i van `outcomeChallenges`, `progressMarkers` en `strategyMaps` hoort bij
+`boundaryPartners[i]`, en `organizationalPractices` loopt gelijk op met de acht
+praktijken in de code. Een vijfde boundary partner toevoegen betekent dus alle
+vier de arrays uitbreiden; doe je er één, dan valt de build met het veld erbij:
+
+```
+too_small … "outcomeChallenges"
+```
+
+Dat is opzet: zonder die controle zou de pagina de gegevens van de ene partner
+onder de naam van een andere zetten, en dat zie je aan niets.
 
 ## Verifiëren
 
