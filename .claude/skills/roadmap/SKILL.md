@@ -1,6 +1,6 @@
 ---
 name: roadmap
-description: Onderhoudt de inhoud van de roadmap op /roadmap — werkpakketten toevoegen, wijzigen, verplaatsen of verwijderen, onderzoeksvragen schrijven en aan een sectie van het position paper koppelen, RFC's koppelen die het ontwerp beschrijven, en het outcome-mappingwerkblad invullen. Gebruik dit bij "voeg een werkpakket toe", "verplaats X naar de Hoe-fase", "zet er een onderzoeksvraag bij", of het bijwerken van fases en disciplines.
+description: Onderhoudt de inhoud van de roadmap op /roadmap — werkpakketten toevoegen, wijzigen, verplaatsen of verwijderen, onderzoeksvragen schrijven en aan een sectie van het position paper koppelen, en RFC's koppelen die het ontwerp beschrijven. Gebruik dit bij "voeg een werkpakket toe", "verplaats X naar de Hoe-fase", "zet er een onderzoeksvraag bij", of het bijwerken van fases en disciplines.
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write
 ---
@@ -20,7 +20,6 @@ redenering erachter in de commits van PR #1317.
 ```
 docs/src/content/roadmap/werkpakketten/<uuid>.md   één bestand per werkpakket
 docs/src/data/roadmap-config.json                  de fases en de disciplines
-docs/src/data/outcome-mapping.json                 het outcome-mappingwerkblad
 ```
 
 De bestandsnaam ís het `id` uit de frontmatter. Dat wordt bij de build
@@ -270,27 +269,6 @@ geen inhoudelijke wijziging maar een codewijziging**, en er hoort een regel bij
 in `docs/src/styles/roadmap.css`. Zonder die regel rendert het filtervakje wel,
 maar blijven die kaarten verborgen zodra er gefilterd wordt. `assertFilterRules`
 laat de build daarop vallen en zegt welke regel ontbreekt; volg die melding.
-
-## Het outcome-mappingwerkblad
-
-`docs/src/data/outcome-mapping.json` voedt `/roadmap/outcome-mapping`. Het staat
-grotendeels leeg: gevuld zijn `mission`, de vier boundary partners en de
-eerste outcome challenge. De rest staat op lege strings. Aanvullen is gewoon
-het JSON-bestand bewerken, maar kijk eerst wat er staat: overschrijven is net
-zo makkelijk als aanvullen.
-
-Eén regel maakt het lastiger dan het eruitziet: **de arrays zijn positioneel**.
-Index i van `outcomeChallenges`, `progressMarkers` en `strategyMaps` hoort bij
-`boundaryPartners[i]`, en `organizationalPractices` loopt gelijk op met de acht
-praktijken in de code. Een vijfde boundary partner toevoegen betekent dus alle
-vier de arrays uitbreiden; doe je er één, dan valt de build met het veld erbij:
-
-```
-too_small … "outcomeChallenges"
-```
-
-Dat is opzet: zonder die controle zou de pagina de gegevens van de ene partner
-onder de naam van een andere zetten, en dat zie je aan niets.
 
 ## Verifiëren
 

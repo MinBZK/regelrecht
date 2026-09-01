@@ -13,7 +13,6 @@
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
-import RoadmapNav from '~/components/RoadmapNav.astro';
 import {
   fases,
   disciplines,
@@ -56,8 +55,6 @@ const pathname = '/roadmap';
     lg-padding-bottom="96"
   >
     <nldd-container class="rr-roadmap" gap="24">
-      <RoadmapNav pathname={pathname} />
-
       <nldd-title size="1">
         <h1>Roadmap</h1>
         <p slot="subtitle">
