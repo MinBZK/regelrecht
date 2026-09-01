@@ -294,11 +294,30 @@ export function onderzoeksvraagLijst(
 export interface RfcVerwijzing {
   /** Zero-padded id, e.g. "RFC-013". */
   id: string;
+  /** The RFC's own English title; a name, not a label, so not translated. */
   title: string;
-  /** "Implemented" | "Partially implemented" | "Not implemented". */
+  /** The RFC's `implementation` value, in Dutch — this page is lang="nl". */
   implementation: string;
   link: string;
 }
+
+/*
+ * The RFC's implementation state, in Dutch.
+ *
+ * The RFC pages are lang="en" and show the frontmatter value as it stands; a
+ * werkpakket page is lang="nl", and an English string there is not only
+ * inconsistent but read aloud with Dutch pronunciation rules. The RFC's own
+ * title stays English: that is its name, and translating it would stop
+ * matching the page the link goes to.
+ *
+ * An unknown value falls through unchanged rather than being dropped, so a new
+ * state added to the RFC schema shows up as itself instead of disappearing.
+ */
+const IMPLEMENTATIE_NL: Record<string, string> = {
+  Implemented: 'Gebouwd',
+  'Partially implemented': 'Deels gebouwd',
+  'Not implemented': 'Niet gebouwd',
+};
 
 /**
  * The RFCs a werkpakket points at, resolved against the RFC collection.
@@ -317,7 +336,10 @@ export function rfcVerwijzingen(nummers: number[]): RfcVerwijzing[] {
     .map((r) => ({
       id: r.id,
       title: r.title,
-      implementation: r.implementation ?? 'Not implemented',
+      implementation:
+        IMPLEMENTATIE_NL[r.implementation ?? ''] ??
+        r.implementation ??
+        'Niet gebouwd',
       link: r.link,
     }));
 }
