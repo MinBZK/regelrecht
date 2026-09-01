@@ -484,11 +484,26 @@ read-only `GITHUB_TOKEN`, so the push to GHCR could never succeed.
 
 ### Opruimen
 
-Productie draait op een `sha-`-tag, niet op `latest`. Een opruiming die op de
-tagvorm afgaat kan dus het image onder de draaiende deployment vandaan halen;
-`script/prune-preview-images.sh` toetst daarom aan wat ZAD op dat moment draait
-en verwijdert niets als het die lijst niet krijgt. Hij draait in
-`scheduled-cleanup.yml` en niet bij elke gesloten pull request.
+Alle image-opruiming loopt via één script, `script/ghcr-cleanup.mjs`, in één
+stap van `scheduled-cleanup.yml` en niet bij elke gesloten pull request. Het
+verwijdert drie dingen: `pr-`-versies van gesloten pull requests, `sha-`-versies
+die nergens meer draaien en ouder zijn dan een week, en untagged manifesten waar
+geen getagde index meer naar wijst.
+
+Die drie horen bij elkaar omdat ze dezelfde bescherming delen, en twee
+opruimers naast elkaar zouden elkaars uitzonderingen niet kennen:
+
+- Productie draait op een `sha-`-tag, niet op `latest`. Wie op de tagvorm afgaat
+  haalt dus het image onder de draaiende deployment vandaan. Het script toetst
+  daarom aan wat ZAD op dat moment draait en verwijdert niets — geen enkele van
+  de drie soorten — als het die lijst niet krijgt.
+- Untagged is niet hetzelfde als afval. Buildx zet provenance aan, dus elke push
+  levert een OCI-index met de tag plus twee untagged children (het
+  platform-image en een attestation-manifest). Het script bouwt eerst de
+  referentiegraaf op en verwijdert alleen untagged versies die daar niet in
+  voorkomen; lukt één manifest-lookup niet, dan blijft voor dat package élke
+  wees staan. De children van een draaiende index zitten in die graaf en zijn
+  daarmee langs twee wegen beschermd.
 
 De opruiming inventariseert GitHub-environments, en mist daarmee elk
 ZAD-deployment waarvan de environment al weg is.
