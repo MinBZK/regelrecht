@@ -251,8 +251,10 @@ laat de build daarop vallen en zegt welke regel ontbreekt; volg die melding.
 ## Het outcome-mappingwerkblad
 
 `docs/src/data/outcome-mapping.json` voedt `/roadmap/outcome-mapping`. Het staat
-grotendeels leeg: alleen `mission` en de vier boundary partners zijn ingevuld.
-Aanvullen is gewoon het JSON-bestand bewerken.
+grotendeels leeg: gevuld zijn `mission`, de vier boundary partners en de
+eerste outcome challenge. De rest staat op lege strings. Aanvullen is gewoon
+het JSON-bestand bewerken, maar kijk eerst wat er staat: overschrijven is net
+zo makkelijk als aanvullen.
 
 Eén regel maakt het lastiger dan het eruitziet: **de arrays zijn positioneel**.
 Index i van `outcomeChallenges`, `progressMarkers` en `strategyMaps` hoort bij
