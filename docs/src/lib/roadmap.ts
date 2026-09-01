@@ -3,18 +3,16 @@
  *
  * The pages are a read-only rendering of content that lives in the repo:
  * werkpakketten as a content collection (src/content/roadmap/werkpakketten/),
- * the fase/discipline matrix and the outcome-mapping worksheet as JSON under
- * src/data/. Editing goes through a pull request; there is no write path.
+ * the fase/discipline matrix as JSON under src/data/. Editing goes through a
+ * pull request; there is no write path.
  *
- * The lists below were the app's shared/constants.js and outcome-constants.js,
- * imported by both its server (validation) and its client (rendering). Here
- * they are the single source for the zod enums in content.config.ts and for
- * the labels the pages render, so a value can never render as a tag the schema
- * would have rejected.
+ * The lists below were the app's shared/constants.js, imported by both its
+ * server (validation) and its client (rendering). Here they are the single
+ * source for the zod enums in content.config.ts and for the labels the pages
+ * render, so a value can never render as a tag the schema would have rejected.
  */
 import { z } from 'astro:content';
 import configJson from '~/data/roadmap-config.json';
-import worksheetJson from '~/data/outcome-mapping.json';
 import paperHeadings from '~/research/rules-as-executed.headings.json';
 import { getRfcs } from '~/lib/rfcs';
 
@@ -166,12 +164,12 @@ export const getCapability = (id: string) =>
   CAPABILITIES.find((c) => c.id === id);
 
 /*
- * The two JSON files get the same build-time validation the werkpakketten get
+ * The config JSON gets the same build-time validation the werkpakketten get
  * from their collection schema. Without it a hand-edit that drops a key fails
- * far from its cause: a missing `individual` on a strategyMap surfaces as
- * "Cannot read properties of undefined" out of a page template, naming
- * neither the file nor the partner. parse() throws during the build instead,
- * with the path to the offending field.
+ * far from its cause: a missing `naam` on a fase surfaces as "Cannot read
+ * properties of undefined" out of a page template, naming neither the file nor
+ * the entry. parse() throws during the build instead, with the path to the
+ * offending field.
  */
 const configSchema = z.object({
   fases: z
@@ -495,142 +493,3 @@ export function assertReferencesResolve(
     );
   }
 }
-
-// --- Outcome mapping -------------------------------------------------------
-
-export interface Worksheet {
-  vision: string;
-  mission: string;
-  boundaryPartners: string[];
-  outcomeChallenges: string[];
-  progressMarkers: {
-    expectToSee: string[];
-    likeToSee: string[];
-    loveToSee: string[];
-  }[];
-  strategyMaps: { individual: string[]; environment: string[] }[];
-  organizationalPractices: { keyActions: string; disabled: boolean }[];
-}
-
-export interface Step {
-  id: string;
-  label: string;
-  section: keyof Worksheet;
-  /** Rendered once per boundary partner rather than once for the worksheet. */
-  perPartner?: boolean;
-}
-
-export const STEPS: Step[] = [
-  { id: 'vision', label: 'Vision', section: 'vision' },
-  { id: 'mission', label: 'Mission', section: 'mission' },
-  { id: 'boundary-partners', label: 'Boundary Partners', section: 'boundaryPartners' },
-  { id: 'outcome-challenges', label: 'Outcome Challenges', section: 'outcomeChallenges' },
-  { id: 'progress-markers', label: 'Progress Markers', section: 'progressMarkers', perPartner: true },
-  { id: 'strategy-maps', label: 'Strategy Maps', section: 'strategyMaps', perPartner: true },
-  { id: 'organizational-practices', label: 'Organizational Practices', section: 'organizationalPractices' },
-];
-
-export const STRATEGY_COLUMNS = ['Causal', 'Persuasive', 'Supportive'] as const;
-
-export const STRATEGY_ROWS = [
-  {
-    key: 'individual',
-    code: 'I',
-    label: 'Strategies and Activities Aimed at a Specific Individual or Group',
-  },
-  {
-    key: 'environment',
-    code: 'E',
-    label: "Strategies and Activities Aimed at Individual's or Group's Environment",
-  },
-] as const;
-
-export const PRACTICE_LABELS = [
-  {
-    title: 'Prospecting for new ideas, opportunities, and resources',
-    nl: 'Actief zoeken naar nieuwe ideeën, kansen en middelen buiten de eigen kring',
-  },
-  {
-    title: 'Seeking feedback from key informants',
-    nl: 'Systematisch feedback ophalen bij sleutelinformanten, ook kritische stemmen',
-  },
-  {
-    title: 'Obtaining the support of your next highest power',
-    nl: 'Steun en legitimiteit verwerven bij het naasthogere niveau (bestuur, moederorganisatie, donor, ministerie)',
-  },
-  {
-    title: 'Assessing and (re)designing products, services, systems, and procedures',
-    nl: 'De eigen producten, diensten en werkwijzen periodiek tegen het licht houden en herontwerpen',
-  },
-  {
-    title: 'Checking up on those already served to add value',
-    nl: 'Terugkeren naar partners die je eerder hebt ondersteund, om waarde toe te voegen in plaats van door te schuiven naar de volgende',
-  },
-  {
-    title: 'Sharing your best wisdom with the world',
-    nl: 'Kennis en ervaring actief naar buiten brengen, niet alleen intern houden',
-  },
-  {
-    title: 'Experimenting to remain innovative',
-    nl: 'Ruimte houden voor experiment en risico, ook als de uitkomst onzeker is',
-  },
-  {
-    title: 'Engaging in organizational reflection',
-    nl: 'Gestructureerde reflectiemomenten inbouwen over wat werkt en wat niet',
-  },
-] as const;
-
-/*
- * The worksheet's arrays are positional: index i of outcomeChallenges,
- * progressMarkers and strategyMaps all describe boundaryPartners[i], and
- * organizationalPractices lines up with PRACTICE_LABELS. The page templates
- * loop over one array and index into another, so a length mismatch renders
- * one partner's data under another's name, or throws out of a template with
- * no mention of the file it came from. Pinning the lengths against the lists
- * that drive the rendering turns that into a build error naming the field.
- */
-// Derived from the data, not a literal: the invariant is that these arrays
-// agree with each other, not that there are exactly four partners. Pinning the
-// number here would mean a fifth boundary partner needs a code change.
-//
-// Validated on its own first, because the count is needed to build the schema
-// that validates everything else. Reading it straight off the JSON would let a
-// missing or renamed boundaryPartners throw "Cannot read properties of
-// undefined" from this line — the contextless failure the schema below exists
-// to replace, for the one field it depends on.
-const PARTNER_COUNT = z
-  .object({ boundaryPartners: z.array(z.unknown()).min(1) })
-  .parse(worksheetJson).boundaryPartners.length;
-const strategieRij = z.array(z.string()).length(STRATEGY_COLUMNS.length);
-
-const worksheetSchema = z.object({
-  vision: z.string(),
-  mission: z.string(),
-  boundaryPartners: z.array(z.string()).length(PARTNER_COUNT),
-  outcomeChallenges: z.array(z.string()).length(PARTNER_COUNT),
-  progressMarkers: z
-    .array(
-      z.object({
-        expectToSee: z.array(z.string()),
-        likeToSee: z.array(z.string()),
-        loveToSee: z.array(z.string()),
-      }),
-    )
-    .length(PARTNER_COUNT),
-  strategyMaps: z
-    .array(z.object({ individual: strategieRij, environment: strategieRij }))
-    .length(PARTNER_COUNT),
-  organizationalPractices: z
-    .array(z.object({ keyActions: z.string(), disabled: z.boolean() }))
-    .length(PRACTICE_LABELS.length),
-});
-
-export const outcomeMapping: Worksheet = worksheetSchema.parse(worksheetJson);
-
-/** The partner's own name where the worksheet has one, else a stable label. */
-export function partnerLabel(index: number): string {
-  return outcomeMapping.boundaryPartners[index] || `Partner ${index + 1}`;
-}
-
-/** True when a worksheet field is still empty, so pages can say so uniformly. */
-export const isLeeg = (value: string | undefined) => !value || !value.trim();
