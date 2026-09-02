@@ -107,6 +107,26 @@ describe('useEnrichState', () => {
     expect(reviewReady.value).toBe(false);
   });
 
+  // De takenlijst is account-breed. Een open taak voor dezelfde wet in een
+  // ander traject (of in een traject dat inmiddels verwijderd is, waarvan de
+  // taak bleef staan) mag hier geen voorstel melden: de "Beoordelen"-knop zou
+  // naar dat andere traject navigeren en de "Genereer een voorstel"-knop van
+  // het actieve traject verdringen.
+  it('negeert taken van een ander traject', async () => {
+    apiFetch.mockResolvedValue(
+      tasksResponse({
+        tasks: [
+          reviewTask('2', {
+            payload: { traject_ref: 'ander-traject-9f8e7d6c', law_id: LAW, article: '2' },
+          }),
+        ],
+      }),
+    );
+    const { pendingReviewTask, reviewReady } = await mountState({ articleNumber: '2' });
+    expect(pendingReviewTask.value).toBeNull();
+    expect(reviewReady.value).toBe(false);
+  });
+
   it('staat in de bezig-staat zolang er een enrich-job voor deze wet loopt', async () => {
     apiFetch.mockResolvedValue(
       tasksResponse({ running: [{ job_id: 'j1', job_type: 'enrich', law_id: LAW }] }),

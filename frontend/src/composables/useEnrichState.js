@@ -61,9 +61,21 @@ export function useEnrichState({ trajectRef, lawId, articleNumber, reviewActive 
   // voor deze wet. Je kijkt naar één artikel, dus de taak van dát artikel gaat
   // voor; is die er niet, dan de eerste van de wet - beter naar een naburig
   // voorstel wijzen dan naar niets.
+  //
+  // Ook op traject matchen, niet alleen op wet: de takenlijst is account-breed
+  // en dezelfde wet leeft in meerdere trajecten. Een open taak uit traject A
+  // kaapte anders de pane in traject B - inclusief de "Beoordeel voorstel"-knop,
+  // die dan naar A navigeert en de "Genereer een voorstel"-knop van B verdringt.
+  // Zonder actief traject (globale corpus-weergave) matcht er dus niets: een
+  // voorstel hoort bij een traject en valt daarbuiten niet te beoordelen.
   const pendingReviewTask = computed(() => {
+    const traject = toValue(trajectRef);
+    if (!traject) return null;
     const forLaw = openTasks.value.filter(
-      (t) => t.task_type === 'job_review' && t.payload?.law_id === toValue(lawId),
+      (t) =>
+        t.task_type === 'job_review' &&
+        t.payload?.law_id === toValue(lawId) &&
+        t.payload?.traject_ref === traject,
     );
     if (!forLaw.length) return null;
     const here = String(toValue(articleNumber) ?? '');
