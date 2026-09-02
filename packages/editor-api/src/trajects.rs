@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use regelrecht_pipeline::tasks;
+
 use crate::accounts::AccountRecord;
 use crate::state::AppState;
 
@@ -1291,6 +1293,17 @@ pub async fn update(
 /// touched — that's a manual cleanup decision and there's no way to
 /// know whether the user still wants the in-flight edits preserved
 /// elsewhere.
+///
+/// Open review tasks are a different story: `tasks.traject_id` is
+/// `ON DELETE SET NULL`, so the delete would only cut the link and leave
+/// an unresolvable task behind — it keeps showing up in the account-wide
+/// task list and its `payload.traject_ref` points at a traject that no
+/// longer exists, so "review" lands on the traject picker. They are
+/// therefore dismissed in the same transaction as the delete (before it,
+/// since afterwards there is no way to tell which tasks belonged here),
+/// and the result blobs of the jobs involved are cleaned up along the
+/// same "only when no open task is left on that job" path that `resolve`
+/// uses.
 pub async fn delete(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -1299,16 +1312,37 @@ pub async fn delete(
     let pool = get_pool(&state)?;
     require_owner(pool, id, account.id).await?;
 
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(db_err("begin delete traject tx"))?;
+
+    let job_ids = tasks::dismiss_open_tasks_for_traject(&mut *tx, id)
+        .await
+        .map_err(db_err("dismiss open tasks of deleted traject"))?;
+
     let affected = sqlx::query("DELETE FROM trajects WHERE id = $1")
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(db_err("delete traject"))?
         .rows_affected();
 
     if affected == 0 {
+        // Dropping the tx rolls the dismissals back with it — nothing was
+        // deleted, so nothing should have been closed either.
         return Err(StatusCode::NOT_FOUND);
     }
+
+    for job_id in job_ids {
+        tasks::delete_blobs_for_finished_job(&mut *tx, job_id)
+            .await
+            .map_err(db_err("cleanup job blobs of deleted traject"))?;
+    }
+
+    tx.commit()
+        .await
+        .map_err(db_err("commit delete traject tx"))?;
 
     state.trajects.invalidate(id).await;
     Ok(StatusCode::NO_CONTENT)
