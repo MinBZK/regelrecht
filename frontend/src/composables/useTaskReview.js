@@ -55,17 +55,25 @@ export function useTaskReview() {
     }
   }
 
-  async function approveAfterSave() {
-    if (reviewTask.value) await resolveTask(reviewTask.value.id, 'approved');
+  // Terug naar "geen review". Ook `stale` en `loadError` gaan mee: een
+  // foutmelding van de vorige taak hoort niet boven de volgende (of boven een
+  // artikel waar helemaal geen taak op staat) te blijven hangen.
+  function reset() {
     reviewTask.value = null;
     proposedContent.value = null;
+    stale.value = false;
+    loadError.value = null;
+  }
+
+  async function approveAfterSave() {
+    if (reviewTask.value) await resolveTask(reviewTask.value.id, 'approved');
+    reset();
   }
 
   async function reject() {
     if (reviewTask.value) await resolveTask(reviewTask.value.id, 'rejected');
-    reviewTask.value = null;
-    proposedContent.value = null;
+    reset();
   }
 
-  return { reviewTask, proposedContent, stale, loadError, loadReview, approveAfterSave, reject };
+  return { reviewTask, proposedContent, stale, loadError, loadReview, reset, approveAfterSave, reject };
 }

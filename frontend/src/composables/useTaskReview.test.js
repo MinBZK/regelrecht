@@ -125,6 +125,33 @@ describe('useTaskReview', () => {
     expect(proposedContent.value).toBeNull();
   });
 
+  it('reset ruimt ook stale en loadError op, niet alleen de taak', async () => {
+    fetchTask.mockResolvedValue(openTask());
+    const { reviewTask, proposedContent, stale, loadError, loadReview, reset } = useTaskReview();
+    await loadReview('t1', 'etag-2');
+    expect(stale.value).toBe(true);
+
+    reset();
+
+    expect(reviewTask.value).toBeNull();
+    expect(proposedContent.value).toBeNull();
+    expect(stale.value).toBe(false);
+    expect(loadError.value).toBeNull();
+    // Puur lokaal: de taak zelf blijft open, reset is geen afhandeling.
+    expect(resolveTask).not.toHaveBeenCalled();
+  });
+
+  it('reset laat een foutmelding van een mislukte load niet blijven staan', async () => {
+    fetchTask.mockRejectedValue(new Error('netwerk'));
+    const { loadError, loadReview, reset } = useTaskReview();
+    await loadReview('t1', 'etag-1');
+    expect(loadError.value).toBe('Taak laden mislukt.');
+
+    reset();
+
+    expect(loadError.value).toBeNull();
+  });
+
   it('approveAfterSave/reject zijn een no-op zonder actieve review', async () => {
     const { approveAfterSave, reject } = useTaskReview();
     await approveAfterSave();
