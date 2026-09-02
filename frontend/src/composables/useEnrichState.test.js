@@ -28,6 +28,13 @@ function reviewTask(article, overrides = {}) {
   };
 }
 
+// Een lopende taak-flow-job zoals /api/tasks hem teruggeeft: altijd mét
+// traject_ref (`RunningTaskJob`), want elke taak-flow-job wordt met een
+// traject aangemaakt.
+function runningEnrich(overrides = {}) {
+  return { job_id: 'j1', job_type: 'enrich', law_id: LAW, traject_ref: TRAJECT, ...overrides };
+}
+
 function tasksResponse({ tasks = [], running = [] } = {}) {
   return { status: 200, json: async () => ({ tasks, open_count: tasks.length, running }) };
 }
@@ -127,12 +134,38 @@ describe('useEnrichState', () => {
     expect(reviewReady.value).toBe(false);
   });
 
-  it('staat in de bezig-staat zolang er een enrich-job voor deze wet loopt', async () => {
+  // Hernoemen verandert het slug-deel van de ref; de taak draagt nog die van
+  // het aanvraagmoment. Dat is hetzelfde traject en het voorstel hoort gewoon
+  // in de pane te blijven staan.
+  it('herkent de taak nog na een hernoeming van het traject', async () => {
     apiFetch.mockResolvedValue(
-      tasksResponse({ running: [{ job_id: 'j1', job_type: 'enrich', law_id: LAW }] }),
+      tasksResponse({
+        tasks: [
+          reviewTask('2', {
+            payload: { traject_ref: 'oude-naam-1a2b3c4d', law_id: LAW, article: '2' },
+          }),
+        ],
+      }),
     );
+    const { reviewReady } = await mountState({ articleNumber: '2' });
+    expect(reviewReady.value).toBe(true);
+  });
+
+  it('staat in de bezig-staat zolang er een enrich-job voor deze wet loopt', async () => {
+    apiFetch.mockResolvedValue(tasksResponse({ running: [runningEnrich()] }));
     const { isEnriching } = await mountState();
     expect(isEnriching.value).toBe(true);
+  });
+
+  // `running` is net zo account-breed als de takenlijst, terwijl de 409 op een
+  // tweede aanvraag per (wet, traject) geldt. Een verrijking in traject A mag
+  // hier dus niet "bezig" melden en de "Genereer een voorstel"-knop verbergen.
+  it('negeert een lopende verrijking van een ander traject', async () => {
+    apiFetch.mockResolvedValue(
+      tasksResponse({ running: [runningEnrich({ traject_ref: 'ander-traject-9f8e7d6c' })] }),
+    );
+    const { isEnriching } = await mountState();
+    expect(isEnriching.value).toBe(false);
   });
 
   // De bug die deze composable opheft: zonder refresh na de aanvraag blijft
@@ -146,7 +179,7 @@ describe('useEnrichState', () => {
     apiFetch.mockImplementation(async (url) =>
       url.endsWith('/enrich')
         ? { status: 200 }
-        : tasksResponse({ running: [{ job_id: 'j1', job_type: 'enrich', law_id: LAW }] }),
+        : tasksResponse({ running: [runningEnrich()] }),
     );
     const result = await requestEnrich();
     expect(result).toEqual({ alreadyRunning: false, tooMany: false });
