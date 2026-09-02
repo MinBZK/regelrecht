@@ -5,11 +5,11 @@ faseId: wat
 disciplineId: recht
 prioriteit: ''
 omvang: ''
-categorie: ''
+categorie: lat
 capability: ''
 capaciteit: ''
 toelichting: ''
-volgorde: 2100
+volgorde: 6000
 onderzoeksvragen:
   - vraag: >-
       Als we nu technisch in staat zijn om automatisch te detecteren wanneer
