@@ -256,4 +256,31 @@ describe('useTaskReview', () => {
     expect(resolveTask).not.toHaveBeenCalled();
     expect(applyEnrichment).not.toHaveBeenCalled();
   });
+
+  it('reset ruimt ook loadError op, niet alleen de taak', async () => {
+    fetchTask.mockResolvedValue(openTask());
+    fetchJobTasks.mockResolvedValue(twoParts());
+    const { reviewTask, proposedContent, jobParts, loadReview, reset } = useTaskReview();
+    await loadReview('t1');
+    expect(reviewTask.value).not.toBeNull();
+
+    reset();
+
+    expect(reviewTask.value).toBeNull();
+    expect(proposedContent.value).toBeNull();
+    expect(jobParts.value).toEqual([]);
+    // Puur lokaal: de taak zelf blijft open, reset is geen afhandeling.
+    expect(resolveTask).not.toHaveBeenCalled();
+  });
+
+  it('reset laat een foutmelding van een mislukte load niet blijven staan', async () => {
+    fetchTask.mockRejectedValue(new Error('netwerk'));
+    const { loadError, loadReview, reset } = useTaskReview();
+    await loadReview('t1');
+    expect(loadError.value).toBe('Taak laden mislukt.');
+
+    reset();
+
+    expect(loadError.value).toBeNull();
+  });
 });

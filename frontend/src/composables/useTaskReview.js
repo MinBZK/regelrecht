@@ -201,9 +201,7 @@ export function useTaskReview() {
       .filter(Boolean);
     const result = await applyEnrichment(key, decisions, etag);
     clearVerdicts(key);
-    reviewTask.value = null;
-    proposedContent.value = null;
-    jobParts.value = [];
+    reset();
     return result;
   }
 
@@ -214,17 +212,21 @@ export function useTaskReview() {
    */
   async function approveAfterSave() {
     if (reviewTask.value) await resolveTask(reviewTask.value.id, 'approved');
-    resetReview();
+    reset();
   }
 
   async function reject() {
     if (reviewTask.value) await resolveTask(reviewTask.value.id, 'rejected');
-    resetReview();
+    reset();
   }
 
-  function resetReview() {
+  // Terug naar "geen review". Ook `loadError` gaat mee: een foutmelding van de
+  // vorige taak hoort niet boven de volgende (of boven een artikel waar
+  // helemaal geen taak op staat) te blijven hangen.
+  function reset() {
     reviewTask.value = null;
     proposedContent.value = null;
+    loadError.value = null;
     jobParts.value = [];
   }
 
@@ -242,5 +244,6 @@ export function useTaskReview() {
     processEnrichment,
     approveAfterSave,
     reject,
+    reset,
   };
 }
