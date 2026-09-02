@@ -244,6 +244,17 @@ where
     .fetch_all(executor)
     .await?;
 
+    if !rows.is_empty() {
+        // Zelfde reden als de log in `resolve_task`: een taak die dichtgaat is
+        // een gebeurtenis die iemand later wil kunnen terugvinden, en deze gaan
+        // dicht zonder dat een gebruiker erop klikte.
+        tracing::info!(
+            traject_id = %traject_id,
+            tasks = rows.len(),
+            "open tasks dismissed with deleted traject"
+        );
+    }
+
     let mut job_ids: Vec<Uuid> = Vec::new();
     for (job_id,) in rows {
         // Eén verrijking levert een taak per gewijzigd artikel op dezelfde job;
