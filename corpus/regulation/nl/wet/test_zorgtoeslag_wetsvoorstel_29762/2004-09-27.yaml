@@ -1,0 +1,170 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: test_zorgtoeslag_wetsvoorstel_29762
+name: Wet op de zorgtoeslag (voorstel van wet, Kamerstukken II 2003/04, 29 762, nr. 2)
+regulatory_layer: WET
+bwb_id: BWBR9999801
+publication_date: '2004-09-27'
+valid_from: '2004-09-27'
+url: https://zoek.officielebekendmakingen.nl/kst-29762-2.html
+
+# Synthetische, self-contained encoding van het VOORSTEL VAN WET zoals ingediend
+# (Kamerstukken II 2003/04, 29 762, nr. 2). Parameters zijn directe inputs, zodat
+# de drie MvT-voorbeeldhuishoudens rechtstreeks kunnen worden gedraaid zonder
+# kruisverwijzingen. Bedragen in eurocent. De artikelteksten hieronder zijn
+# VERBATIM overgenomen uit de authentieke PDF kst-29762-2.
+
+articles:
+  - number: '2'
+    url: https://zoek.officielebekendmakingen.nl/kst-29762-2.html#Artikel2
+    # VERBATIM uit kst-29762-2 (nr. 2), Artikel 2, leden 1-4:
+    text: >-
+      1. Indien de normpremie voor een verzekerde in het berekeningsjaar minder
+      bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak
+      op een zorgtoeslag ter grootte van dat verschil. Voor een verzekerde met
+      een partner die verzekerde is, wordt daarbij tweemaal de standaardpremie in
+      aanmerking genomen; in dat geval worden de verzekerde en zijn partner voor
+      de toepassing van deze wet geacht gezamenlijk één aanspraak te hebben.
+
+
+      2. De normpremie bedraagt een percentage van het drempelinkomen in het
+      berekeningsjaar, vermeerderd met een percentage van het toetsingsinkomen
+      van de verzekerde in dat jaar voorzover dat toetsingsinkomen het
+      drempelinkomen te boven gaat. Voor een verzekerde met een partner wordt
+      daarbij het gezamenlijke toetsingsinkomen in aanmerking genomen.
+
+
+      3. De percentages worden voor verzekerden met een partner vastgesteld op
+      6,5% van het drempelinkomen, vermeerderd met 4% van het toetsingsinkomen
+      voorzover dat boven het drempelinkomen uitgaat en voor een verzekerde
+      zonder partner op 4% van het drempelinkomen, vermeerderd met 4% van het
+      toetsingsinkomen voorzover dat boven het drempelinkomen uitgaat. Deze
+      percentages kunnen bij algemene maatregel van bestuur worden gewijzigd.
+
+
+      4. Voor de toepassing van het eerste lid kan Onze Minister in bijzondere
+      gevallen de niet-verzekerde partner van de verzekerde, als verzekerde
+      aanmerken.
+    machine_readable:
+      definitions:
+        # Art. 2 lid 3 (nr. 2): percentages als 0-1 ratio opgeslagen.
+        percentage_drempelinkomen_alleenstaande:
+          value: 0.04
+          type: number
+          type_spec:
+            unit: ratio
+        percentage_drempelinkomen_partner:
+          value: 0.065
+          type: number
+          type_spec:
+            unit: ratio
+        percentage_toetsingsinkomen:
+          value: 0.04
+          type: number
+          type_spec:
+            unit: ratio
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: drempelinkomen
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+          - name: standaardpremie
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+          - name: toetsingsinkomen
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+          - name: heeft_partner
+            type: boolean
+            required: true
+          - name: partner_verzekerd
+            type: boolean
+            required: true
+        output:
+          - name: normpremie
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: hoogte_zorgtoeslag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          # Art. 2 lid 2 en lid 3: normpremie = percentage van drempelinkomen +
+          # 4% van (toetsingsinkomen - drempelinkomen), voorzover positief.
+          # De MvT-voorbeeldberekening rondt de normpremie op hele euro's af
+          # (131750 ct -> 1318 euro), daarom een expliciete ROUND op 100 eurocent.
+          - output: normpremie
+            operation: MULTIPLY
+            values:
+              - operation: ROUND
+                precision: 0
+                value:
+                  operation: MULTIPLY
+                  values:
+                    - operation: ADD
+                      values:
+                        - operation: MULTIPLY
+                          values:
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $heeft_partner
+                                    value: true
+                                  then: $percentage_drempelinkomen_partner
+                              default: $percentage_drempelinkomen_alleenstaande
+                            - $drempelinkomen
+                        - operation: MULTIPLY
+                          values:
+                            - $percentage_toetsingsinkomen
+                            - operation: MAX
+                              values:
+                                - 0
+                                - operation: SUBTRACT
+                                  values:
+                                    - $toetsingsinkomen
+                                    - $drempelinkomen
+                    - 0.01
+              - 100
+          # Art. 2 lid 1: aanspraak = in aanmerking genomen standaardpremie -
+          # normpremie, ondergrens 0. Tweemaal de standaardpremie GELDT ALLEEN
+          # voor een "partner die verzekerde is" (lid 1). Bij een niet-verzekerde
+          # partner wordt slechts eenmaal de standaardpremie in aanmerking genomen
+          # (MvT nr. 3: "Zonder nadere regeling zou ... slechts eenmaal de
+          # standaardpremie in aanmerking worden genomen"). Lid 4 (ministeriele
+          # discretie) is niet-automatisch en wordt hier niet toegepast.
+          - output: hoogte_zorgtoeslag
+            operation: MAX
+            values:
+              - 0
+              - operation: SUBTRACT
+                values:
+                  - operation: IF
+                    cases:
+                      - when:
+                          operation: AND
+                          conditions:
+                            - operation: EQUALS
+                              subject: $heeft_partner
+                              value: true
+                            - operation: EQUALS
+                              subject: $partner_verzekerd
+                              value: true
+                        then:
+                          operation: MULTIPLY
+                          values:
+                            - 2
+                            - $standaardpremie
+                    default: $standaardpremie
+                  - $normpremie

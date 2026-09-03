@@ -1,0 +1,184 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: test_zorgtoeslag_2006
+name: Wet op de zorgtoeslag (zoals vastgesteld, Stb. 2005, 369; in werking 2006-01-01)
+regulatory_layer: WET
+bwb_id: BWBR9999802
+publication_date: '2005-07-26'
+valid_from: '2006-01-01'
+url: https://zoek.officielebekendmakingen.nl/stb-2005-369.html
+
+# Synthetische, self-contained encoding van de VASTGESTELDE wet zoals in werking
+# op 2006-01-01 (Stb. 2005, 369). Zelfde parameters/normpremie-formule als de
+# bill-encoding; het verschil zit in Artikel 2: lid 1 telt tweemaal de
+# standaardpremie voor ELKE partner (niet alleen een "partner die verzekerde
+# is"), en het NIEUWE lid 4 halveert de aanspraak voor een partner die geen
+# verzekerde is (vijftig-procent-regel). Bedragen in eurocent. De artikeltekst
+# hieronder is VERBATIM overgenomen uit de authentieke PDF stb-2005-369.
+
+articles:
+  - number: '2'
+    url: https://zoek.officielebekendmakingen.nl/stb-2005-369.html#Artikel2
+    # VERBATIM uit Stb. 2005, 369, Artikel 2, leden 1-5:
+    text: >-
+      1. Indien de normpremie voor een verzekerde in het berekeningsjaar minder
+      bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak
+      op een zorgtoeslag ter grootte van dat verschil. Voor een verzekerde met
+      een partner wordt daarbij tweemaal de standaardpremie in aanmerking
+      genomen; in dat geval worden de verzekerde en zijn partner voor de
+      toepassing van deze wet geacht gezamenlijk één aanspraak te hebben.
+
+
+      2. De normpremie bedraagt een percentage van het drempelinkomen in het
+      berekeningsjaar, vermeerderd met een percentage van het toetsingsinkomen
+      van de verzekerde in dat jaar voorzover dat toetsingsinkomen het
+      drempelinkomen te boven gaat. Voor een verzekerde met een partner wordt
+      daarbij het gezamenlijke toetsingsinkomen in aanmerking genomen.
+
+
+      3. De percentages worden voor verzekerden met een partner vastgesteld op
+      6,5% van het drempelinkomen, vermeerderd met 4% van het toetsingsinkomen
+      voorzover dat boven het drempelinkomen uitgaat en voor een verzekerde
+      zonder partner op 4% van het drempelinkomen, vermeerderd met 4% van het
+      toetsingsinkomen voorzover dat boven het drempelinkomen uitgaat. Deze
+      percentages kunnen bij algemene maatregel van bestuur worden gewijzigd.
+
+
+      4. In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag
+      voor een verzekerde met een partner die geen verzekerde is, vijftig procent
+      van het op grond van het eerste lid berekende bedrag.
+
+
+      5. In afwijking van het eerste lid heeft een verzekerde met een partner die
+      niet heeft voldaan aan de voor hem op grond van artikel 2 van de
+      Zorgverzekeringswet geldende verplichting zich krachtens een zorgverzekering
+      te verzekeren, geen aanspraak op een zorgtoeslag.
+    machine_readable:
+      definitions:
+        # Art. 2 lid 3 (Stb. 2005, 369): identieke percentages als in het voorstel.
+        percentage_drempelinkomen_alleenstaande:
+          value: 0.04
+          type: number
+          type_spec:
+            unit: ratio
+        percentage_drempelinkomen_partner:
+          value: 0.065
+          type: number
+          type_spec:
+            unit: ratio
+        percentage_toetsingsinkomen:
+          value: 0.04
+          type: number
+          type_spec:
+            unit: ratio
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: drempelinkomen
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+          - name: standaardpremie
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+          - name: toetsingsinkomen
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+          - name: heeft_partner
+            type: boolean
+            required: true
+          - name: partner_verzekerd
+            type: boolean
+            required: true
+        output:
+          - name: normpremie
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: hoogte_zorgtoeslag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          # Identieke normpremie-formule als de bill-encoding (Art. 2 lid 2/3),
+          # inclusief afronding op hele euro's (MvT-voorbeeldberekening).
+          - output: normpremie
+            operation: MULTIPLY
+            values:
+              - operation: ROUND
+                precision: 0
+                value:
+                  operation: MULTIPLY
+                  values:
+                    - operation: ADD
+                      values:
+                        - operation: MULTIPLY
+                          values:
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $heeft_partner
+                                    value: true
+                                  then: $percentage_drempelinkomen_partner
+                              default: $percentage_drempelinkomen_alleenstaande
+                            - $drempelinkomen
+                        - operation: MULTIPLY
+                          values:
+                            - $percentage_toetsingsinkomen
+                            - operation: MAX
+                              values:
+                                - 0
+                                - operation: SUBTRACT
+                                  values:
+                                    - $toetsingsinkomen
+                                    - $drempelinkomen
+                    - 0.01
+              - 100
+          # Art. 2 lid 1 + lid 4. Lid 1: tweemaal de standaardpremie voor ELKE
+          # partner (de vastgestelde wet laat "die verzekerde is" weg). Lid 4:
+          # voor een partner die GEEN verzekerde is bedraagt de aanspraak vijftig
+          # procent van het op grond van lid 1 berekende bedrag.
+          - output: hoogte_zorgtoeslag
+            operation: MULTIPLY
+            values:
+              - operation: MAX
+                values:
+                  - 0
+                  - operation: SUBTRACT
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $heeft_partner
+                              value: true
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - 2
+                                - $standaardpremie
+                        default: $standaardpremie
+                      - $normpremie
+              # vijftig-procent-factor (lid 4) bij een niet-verzekerde partner.
+              - operation: IF
+                cases:
+                  - when:
+                      operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $heeft_partner
+                          value: true
+                        - operation: EQUALS
+                          subject: $partner_verzekerd
+                          value: false
+                    then: 0.5
+                default: 1

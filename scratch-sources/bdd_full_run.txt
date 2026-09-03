@@ -1,0 +1,1178 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/anneschuth/regelrecht-wt-bill/packages/engine/Cargo.toml
+workspace: /Users/anneschuth/regelrecht-wt-bill/packages/Cargo.toml
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running tests/bdd/main.rs (/Users/anneschuth/regelrecht-wt-bill/packages/target/debug/deps/bdd-9998bcced2acb075)
+Feature: Date comparison and difference operations
+  Scenario: A request filed before the peildatum is timely, with its duration measured
+   ✔  Given the calculation date is "2025-07-01"
+   ✔  Given the following parameters:
+       | indieningsdatum | 2025-01-01 |
+   ✔  When I evaluate "tijdig_ingediend" of "test_date_operations"
+   ✔  Then output "tijdig_ingediend" is true
+   ✔  When I evaluate "op_peildatum_ingediend" of "test_date_operations"
+   ✔  Then output "op_peildatum_ingediend" is false
+   ✔  When I evaluate "doorlooptijd_dagen" of "test_date_operations"
+   ✔  Then output "doorlooptijd_dagen" equals 181
+   ✔  When I evaluate "doorlooptijd_maanden" of "test_date_operations"
+   ✔  Then output "doorlooptijd_maanden" equals 6
+   ✔  When I evaluate "doorlooptijd_jaren" of "test_date_operations"
+   ✔  Then output "doorlooptijd_jaren" equals 0
+  Scenario: A request filed on the peildatum is timely with zero duration
+   ✔  Given the calculation date is "2025-07-01"
+   ✔  Given the following parameters:
+       | indieningsdatum | 2025-07-01 |
+   ✔  When I evaluate "tijdig_ingediend" of "test_date_operations"
+   ✔  Then output "tijdig_ingediend" is true
+   ✔  When I evaluate "op_peildatum_ingediend" of "test_date_operations"
+   ✔  Then output "op_peildatum_ingediend" is true
+   ✔  When I evaluate "doorlooptijd_dagen" of "test_date_operations"
+   ✔  Then output "doorlooptijd_dagen" equals 0
+  Scenario: A request filed after the peildatum is not timely, with a negative span
+   ✔  Given the calculation date is "2025-01-01"
+   ✔  Given the following parameters:
+       | indieningsdatum | 2025-07-01 |
+   ✔  When I evaluate "tijdig_ingediend" of "test_date_operations"
+   ✔  Then output "tijdig_ingediend" is false
+   ✔  When I evaluate "doorlooptijd_dagen" of "test_date_operations"
+   ✔  Then output "doorlooptijd_dagen" equals -181
+  Scenario: A multi-year span is measured in whole years
+   ✔  Given the calculation date is "2025-06-01"
+   ✔  Given the following parameters:
+       | indieningsdatum | 2020-06-01 |
+   ✔  When I evaluate "doorlooptijd_jaren" of "test_date_operations"
+   ✔  Then output "doorlooptijd_jaren" equals 5
+  Scenario: An end-of-month span counts as a whole month
+   ✔  Given the calculation date is "2025-02-28"
+   ✔  Given the following parameters:
+       | indieningsdatum | 2025-01-31 |
+   ✔  When I evaluate "doorlooptijd_maanden" of "test_date_operations"
+   ✔  Then output "doorlooptijd_maanden" equals 1
+Feature: Law end dates (valid_to) — RFC-019
+  Scenario: A law resolves while it is in force
+   ✔  Given the calculation date is "2024-06-01"
+   ✔  When I evaluate "normbedrag" of "test_einddatum"
+   ✔  Then the execution succeeds
+   ✔  Then output "normbedrag" equals 500
+  Scenario: A law still resolves on its last day in force (inclusive bound)
+   ✔  Given the calculation date is "2024-12-31"
+   ✔  When I evaluate "normbedrag" of "test_einddatum"
+   ✔  Then the execution succeeds
+   ✔  Then output "normbedrag" equals 500
+  Scenario: A law no longer resolves after its end date
+   ✔  Given the calculation date is "2025-06-01"
+   ✔  When I evaluate "normbedrag" of "test_einddatum"
+   ✔  Then the execution fails with "No version of law 'test_einddatum' in force on 2025-06-01; last in force until 2024-12-31"
+  Scenario: A cross-law reference to an ended law states the data fact
+   ✔  Given the calculation date is "2025-06-01"
+   ✔  When I evaluate "afgeleid_bedrag" of "test_einddatum_afnemer"
+   ✔  Then the execution fails with "No version of law 'test_einddatum' in force on 2025-06-01"
+  Scenario: The dependent law works while the referenced law is in force
+   ✔  Given the calculation date is "2024-06-01"
+   ✔  When I evaluate "afgeleid_bedrag" of "test_einddatum_afnemer"
+   ✔  Then the execution succeeds
+   ✔  Then output "afgeleid_bedrag" equals 500
+Feature: Engine error handling
+  Scenario: A non-existent output fails with the output name
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  When I evaluate "nonexistent_output" of "test_untranslatables"
+   ✔  Then the execution fails with "nonexistent_output"
+Feature: Multi-output evaluation
+  Scenario: Request two outputs from different articles in the same law
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "error"
+   ✔  When I evaluate outputs "basistoeslag, toegekende_toeslag" of "test_untranslatables"
+   ✔  Then the execution succeeds
+   ✔  Then output "basistoeslag" equals 1000
+   ✔  Then output "toegekende_toeslag" equals 2000
+   ✔  Then output "basistoeslag" has direct provenance
+   ✔  Then output "toegekende_toeslag" has direct provenance
+  Scenario: Single output via multi-output API returns only that output
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "error"
+   ✔  When I evaluate outputs "basistoeslag" of "test_untranslatables"
+   ✔  Then the execution succeeds
+   ✔  Then the result contains exactly the outputs "basistoeslag"
+   ✔  Then output "basistoeslag" equals 1000
+  Scenario: Non-existent output returns error
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  When I evaluate outputs "nonexistent_output" of "test_untranslatables"
+   ✔  Then the execution fails with "Output 'nonexistent_output' not found"
+  Scenario: Hook outputs are included when requesting a BESCHIKKING output
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the calculation date is "2026-01-01"
+   ✔  When I evaluate outputs "minister_is_bevoegd" of "vreemdelingenwet_2000"
+   ✔  Then the execution succeeds
+   ✔  Then output "minister_is_bevoegd" is true
+   ✔  Then output "minister_is_bevoegd" has direct provenance
+   ✔  Then output "motivering_vereist" is true
+   ✔  Then output "motivering_vereist" has reactive provenance
+   ✔  Then output "bezwaartermijn_weken" equals 4
+   ✔  Then output "bezwaartermijn_weken" has reactive provenance
+Feature: Note resolution (RFC-005, RFC-018)
+  Scenario: Exact match
+   ✔  Given a law with the following articles:
+       | number | text                                                                          |
+       | 2      | heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil |
+   ✔  And a note selecting "zorgtoeslag" with prefix "op een " and suffix " ter grootte"
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "2"
+   ✔  And the note is an exact match
+  Scenario: Article renumbered keeps the note anchored to the text
+   ✔  Given a law with the following articles:
+       | number | text                                                                          |
+       | 1a     | Een nieuw ingevoegd artikel zonder relevante inhoud.                          |
+       | 4a     | heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil |
+   ✔  And a note selecting "zorgtoeslag" with prefix "op een " and suffix " ter grootte"
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "4a"
+  Scenario: Minor text change still resolves via fuzzy matching
+   ✔  Given a law with the following articles:
+       | number | text                                                                      |
+       | 2      | heeft de verzekerde recht op een zorgtoeslag ter grootte van het verschil |
+   ✔  And a note selecting "aanspraak op een zorgtoeslag" with prefix "heeft de verzekerde " and suffix " ter grootte van dat verschil"
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "2"
+   ✔  And the note is a fuzzy match
+  Scenario: A near-identical change stays above the fuzzy threshold
+   ✔  Given a law with the following articles:
+       | number | text                                                                  |
+       | 2      | de inspecteur die het verzamelinkomen van de belanghebbende vaststelt |
+   ✔  And a note selecting "het verzamelinkomen van de belanghebbende stelt vast" with prefix "de inspecteur die " and suffix ""
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "2"
+   ✔  And the note is a fuzzy match
+  Scenario: A wholesale rewrite falls below the fuzzy threshold
+   ✔  Given a law with the following articles:
+       | number | text                                                   |
+       | 2      | De Belastingdienst kent op aanvraag een voorschot toe. |
+   ✔  And a note selecting "stelt het verzamelinkomen van de belanghebbende ambtshalve vast" with prefix "de inspecteur " and suffix " voor het jaar"
+   ✔  When the note is resolved
+   ✔  Then the note is orphaned
+  Scenario: Text removed orphans the note
+   ✔  Given a law with the following articles:
+       | number | text                                        |
+       | 2      | Geheel andere tekst zonder de gezochte zin. |
+   ✔  And a note selecting "zorgtoeslag ter grootte van dat verschil" with prefix "aanspraak op een " and suffix ""
+   ✔  When the note is resolved
+   ✔  Then the note is orphaned
+  Scenario: Common word without context is ambiguous
+   ✔  Given a law with the following articles:
+       | number | text                                                 |
+       | 2      | de verzekerde en de verzekerde en nog een verzekerde |
+   ✔  And a note selecting "verzekerde"
+   ✔  When the note is resolved
+   ✔  Then the note is ambiguous
+  Scenario: Context disambiguates a common word
+   ✔  Given a law with the following articles:
+       | number | text                                                                                        |
+       | 2      | de verzekerde betaalt; de verzekerde ontvangt; heeft de verzekerde aanspraak op zorgtoeslag |
+   ✔  And a note selecting "verzekerde" with prefix "heeft de " and suffix " aanspraak"
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "2"
+  Scenario: A correct hint finds the match
+   ✔  Given a law with the following articles:
+       | number | text                                                  |
+       | 1      | Onbelangrijke inleidende tekst.                       |
+       | 2      | heeft de verzekerde aanspraak op een zorgtoeslag hier |
+   ✔  And a note selecting "zorgtoeslag" with prefix "op een " and suffix " hier"
+   ✔  And the note hints article "2"
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "2"
+  Scenario: An outdated hint falls back to a full search
+   ✔  Given a law with the following articles:
+       | number | text                                                  |
+       | 2      | heeft de verzekerde aanspraak op een zorgtoeslag hier |
+       | 9      | Niets relevants in dit artikel.                       |
+   ✔  And a note selecting "zorgtoeslag" with prefix "op een " and suffix " hier"
+   ✔  And the note hints article "9" at position 0 to 5
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "2"
+  Scenario: A questioning note over an open norm resolves to the delegating text
+   ✔  Given a law with the following articles:
+       | number | text                                                                               |
+       | 2      | Bij ministeriële regeling worden nadere regels gesteld over de hardheidsclausule.  |
+   ✔  And a note selecting "bij ministeriële regeling" with prefix "" and suffix " worden nadere regels"
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "2"
+  Scenario: A note about a missing document anchors to the text that requires it
+   ✔  Given a law with the following articles:
+       | number | text                                                                                                |
+       | 5      | De Belastingdienst handelt overeenkomstig de beleidsregels van de Belastingdienst omtrent hardheid. |
+   ✔  And a note selecting "beleidsregels van de Belastingdienst" with prefix "overeenkomstig de " and suffix " omtrent"
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "5"
+  Scenario: A resolved questioning note anchors to the now-filled-in norm
+   ✔  Given a law with the following articles:
+       | number | text                                                                                             |
+       | 3      | De normpremie bedraagt 2,7 procent van het drempelinkomen, vermeerderd met het toetsingsinkomen. |
+   ✔  And a note selecting "2,7 procent van het drempelinkomen" with prefix "bedraagt " and suffix ", vermeerderd"
+   ✔  When the note is resolved
+   ✔  Then the note resolves to article "3"
+Feature: Untranslatables — RFC-012
+  Scenario: Error mode rejects unaccepted untranslatable
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "error"
+   ✔  When I evaluate "afgerond_bedrag" of "test_untranslatables"
+   ✔  Then the execution fails with "Untranslatable construct"
+  Scenario: Error mode allows accepted untranslatable
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "error"
+   ✔  When I evaluate "som_deeltoeslagen" of "test_untranslatables"
+   ✔  Then the execution succeeds
+  Scenario: Propagate mode taints outputs from articles with untranslatables
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "propagate"
+   ✔  Given the following parameters:
+       | bedrag | 1234 |
+   ✔  When I evaluate "afgerond_bedrag" of "test_untranslatables"
+   ✔  Then the execution succeeds
+   ✔  Then output "afgerond_bedrag" is tainted as untranslatable
+  Scenario: Propagate mode allows clean articles to execute normally
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "propagate"
+   ✔  When I evaluate "basistoeslag" of "test_untranslatables"
+   ✔  Then the execution succeeds
+   ✔  Then output "basistoeslag" equals 1000
+  Scenario: Propagate mode taints downstream outputs via cross-ref
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "propagate"
+   ✔  When I evaluate "som_deeltoeslagen" of "test_untranslatables"
+   ✔  Then the execution succeeds
+   ✔  Then output "som_deeltoeslagen" is tainted as untranslatable
+  Scenario: Warn mode executes unaccepted untranslatable with partial logic
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "warn"
+   ✔  Given the following parameters:
+       | bedrag | 1234 |
+   ✔  When I evaluate "afgerond_bedrag" of "test_untranslatables"
+   ✔  Then the execution succeeds
+   ✔  Then output "afgerond_bedrag" equals 1234
+  Scenario: Ignore mode rejects unaccepted untranslatable
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "ignore"
+   ✔  When I evaluate "afgerond_bedrag" of "test_untranslatables"
+   ✔  Then the execution fails with "Untranslatable construct"
+  Scenario: Ignore mode allows accepted untranslatable
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "ignore"
+   ✔  When I evaluate "som_deeltoeslagen" of "test_untranslatables"
+   ✔  Then the execution succeeds
+  Scenario: Clean article executes normally in error mode
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "error"
+   ✔  When I evaluate "basistoeslag" of "test_untranslatables"
+   ✔  Then the execution succeeds
+   ✔  Then output "basistoeslag" equals 1000
+  Scenario: Clean article with cross-ref executes normally
+   ✔> Given the calculation date is "2025-01-01"
+   ✔  Given the untranslatable mode is "error"
+   ✔  When I evaluate "toegekende_toeslag" of "test_untranslatables"
+   ✔  Then the execution succeeds
+   ✔  Then output "toegekende_toeslag" equals 2000
+Feature: Erfgrensbeplanting via BW 5:42
+  Scenario: Boom in Amsterdam centrum - gemeente wijkt af van rijkswet
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "apv_erfgrens_amsterdam" is loaded
+   ✔  Given the following parameters:
+       | gemeente_code   | GM0363 |
+       | type_beplanting | boom   |
+       | postcode        | 1012   |
+   ✔  When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_cm" equals 100
+   ✔  When I evaluate "minimale_afstand_m" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_m" equals 1
+  Scenario: Boom buiten Amsterdam centrum - APV zwijgt, BW default via null fallthrough
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "apv_erfgrens_amsterdam" is loaded
+   ✔  Given the following parameters:
+       | gemeente_code   | GM0363 |
+       | type_beplanting | boom   |
+       | postcode        | 1081   |
+   ✔  When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_cm" equals 200
+   ✔  When I evaluate "minimale_afstand_m" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_m" equals 2
+  Scenario: Heg in Amsterdam - gemeente volgt rijkswet
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "apv_erfgrens_amsterdam" is loaded
+   ✔  Given the following parameters:
+       | gemeente_code   | GM0363         |
+       | type_beplanting | heg_of_heester |
+   ✔  When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_cm" equals 50
+   ✔  When I evaluate "minimale_afstand_m" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_m" equals 0.5
+  Scenario: Boom in gemeente zonder verordening - open_term null, BW default via null fallthrough
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "apv_erfgrens_amsterdam" is loaded
+   ✔  Given the following parameters:
+       | gemeente_code   | GM9999 |
+       | type_beplanting | boom   |
+   ✔  When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_cm" equals 200
+   ✔  When I evaluate "minimale_afstand_m" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_m" equals 2
+  Scenario: Heg in gemeente zonder verordening - rijkswet defaults
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "apv_erfgrens_amsterdam" is loaded
+   ✔  Given the following parameters:
+       | gemeente_code   | GM9999         |
+       | type_beplanting | heg_of_heester |
+   ✔  When I evaluate "minimale_afstand_cm" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_cm" equals 50
+   ✔  When I evaluate "minimale_afstand_m" of "burgerlijk_wetboek_boek_5"
+   ✔  Then output "minimale_afstand_m" equals 0.5
+Feature: Bijstandsaanvraag via Participatiewet
+  Scenario: Alleenstaande burger krijgt volledige bijstand
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM0384    |
+       | leeftijd                                   | 35        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 0         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 109171
+  Scenario: Gehuwde burger krijgt volledige bijstand
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM0384    |
+       | leeftijd                                   | 42        |
+       | is_alleenstaande                           | false     |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 0         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 155958
+  Scenario: Burger met gedragscategorie 1 krijgt 5% verlaging (Diemen)
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM0384    |
+       | leeftijd                                   | 28        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 1         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 103712.45
+  Scenario: Burger met gedragscategorie 2 krijgt 30% verlaging (Diemen)
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM0384    |
+       | leeftijd                                   | 45        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 2         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 76419.70
+  Scenario: Burger met gedragscategorie 3 krijgt 100% verlaging (Diemen)
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM0384    |
+       | leeftijd                                   | 30        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 3         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 0
+  Scenario: Burger jonger dan 21 krijgt geen bijstand
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM0384    |
+       | leeftijd                                   | 19        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 0         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then output "heeft_recht_op_bijstand" is false
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 0
+  Scenario: Bijstand op exact leeftijd 21 — grens wordt geaccepteerd
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM0384    |
+       | leeftijd                                   | 21        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 0         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 109171
+  Scenario: Bijstand op leeftijd 20 — grens wordt afgewezen
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM0384    |
+       | leeftijd                                   | 20        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 0         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then output "heeft_recht_op_bijstand" is false
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 0
+  Scenario: Burger uit gemeente zonder verordening krijgt volledige bijstand
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM9999    |
+       | leeftijd                                   | 35        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 1         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 109171
+  Scenario: Bijstand zonder gemeente_code valt terug op volledige bijstand
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | leeftijd                                   | 35        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 0         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 109171
+  Scenario: Bijstand zonder verordening — verlaging valt weg
+   ✔> Given the calculation date is "2024-06-01"
+   ✔> Given law "afstemmingsverordening_participatiewet_diemen" is loaded
+   ✔  Given the following parameters:
+       | bsn                                        | 123456789 |
+       | gemeente_code                              | GM9999    |
+       | leeftijd                                   | 35        |
+       | is_alleenstaande                           | true      |
+       | heeft_kostendelende_medebewoners           | false     |
+       | heeft_pensioengerechtigde_leeftijd_bereikt | false     |
+       | gedragscategorie                           | 3         |
+   ✔  When I evaluate "heeft_recht_op_bijstand" of "participatiewet"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_bijstand" is true
+   ✔  When I evaluate "uitkering_bedrag" of "participatiewet"
+   ✔  Then output "uitkering_bedrag" equals 109171
+Feature: MvT-voorbeeldberekening tegen de vastgestelde wet (Stb. 2005, 369)
+  Scenario: Verzekerde zonder partner (MvT-huishouden 1, belofte 120)
+   ✔  Given the calculation date is "2006-01-01"
+   ✔  Given the following parameters:
+       | drempelinkomen    | 1750000 |
+       | standaardpremie   | 100000  |
+       | toetsingsinkomen  | 2200000 |
+       | heeft_partner     | false   |
+       | partner_verzekerd | false   |
+   ✔  When I evaluate "hoogte_zorgtoeslag" of "test_zorgtoeslag_2006"
+   ✔  Then the execution succeeds
+   ✔  Then output "normpremie" equals 88000
+   ✔  Then output "hoogte_zorgtoeslag" equals 12000
+  Scenario: Verzekerde met partner die verzekerde is (MvT-huishouden 2, belofte 682)
+   ✔  Given the calculation date is "2006-01-01"
+   ✔  Given the following parameters:
+       | drempelinkomen    | 1750000 |
+       | standaardpremie   | 100000  |
+       | toetsingsinkomen  | 2200000 |
+       | heeft_partner     | true    |
+       | partner_verzekerd | true    |
+   ✔  When I evaluate "hoogte_zorgtoeslag" of "test_zorgtoeslag_2006"
+   ✔  Then the execution succeeds
+   ✔  Then output "normpremie" equals 131800
+   ✔  Then output "hoogte_zorgtoeslag" equals 68200
+  Scenario: Verzekerde met partner die geen verzekerde is (MvT-belofte 0, FAALT tegen Stb. 2005, 369)
+   ✔  Given the calculation date is "2006-01-01"
+   ✔  Given the following parameters:
+       | drempelinkomen    | 1750000 |
+       | standaardpremie   | 100000  |
+       | toetsingsinkomen  | 2200000 |
+       | heeft_partner     | true    |
+       | partner_verzekerd | false   |
+   ✔  When I evaluate "hoogte_zorgtoeslag" of "test_zorgtoeslag_2006"
+   ✔  Then the execution succeeds
+   ✔  Then output "normpremie" equals 131800
+   ✘  Then output "hoogte_zorgtoeslag" equals 0
+      Step failed:
+      Defined: Users/anneschuth/regelrecht-wt-bill/corpus/regulation/nl/wet/test_zorgtoeslag_2006/scenarios/mvt_voorbeeldberekening.feature:58:5
+      Matched: /Users/anneschuth/regelrecht-wt-bill/packages/target/debug/build/regelrecht-engine-45ce00b91174ca46/out/bdd_generated_steps.rs:103:1
+      Step panicked. Captured output: output hoogte_zorgtoeslag = Decimal(34100.0), expected Int(0)
+  Scenario: Verzekerde met partner die geen verzekerde is (vastgestelde uitkomst 341)
+   ✔  Given the calculation date is "2006-01-01"
+   ✔  Given the following parameters:
+       | drempelinkomen    | 1750000 |
+       | standaardpremie   | 100000  |
+       | toetsingsinkomen  | 2200000 |
+       | heeft_partner     | true    |
+       | partner_verzekerd | false   |
+   ✔  When I evaluate "hoogte_zorgtoeslag" of "test_zorgtoeslag_2006"
+   ✔  Then the execution succeeds
+   ✔  Then output "normpremie" equals 131800
+   ✔  Then output "hoogte_zorgtoeslag" equals 34100
+Feature: MvT-voorbeeldberekening tegen het voorstel van wet (29 762, nr. 2)
+  Scenario: Verzekerde zonder partner (MvT-huishouden 1, belofte 120)
+   ✔  Given the calculation date is "2004-09-27"
+   ✔  Given the following parameters:
+       | drempelinkomen    | 1750000 |
+       | standaardpremie   | 100000  |
+       | toetsingsinkomen  | 2200000 |
+       | heeft_partner     | false   |
+       | partner_verzekerd | false   |
+   ✔  When I evaluate "hoogte_zorgtoeslag" of "test_zorgtoeslag_wetsvoorstel_29762"
+   ✔  Then the execution succeeds
+   ✔  Then output "normpremie" equals 88000
+   ✔  Then output "hoogte_zorgtoeslag" equals 12000
+  Scenario: Verzekerde met partner die verzekerde is (MvT-huishouden 2, belofte 682)
+   ✔  Given the calculation date is "2004-09-27"
+   ✔  Given the following parameters:
+       | drempelinkomen    | 1750000 |
+       | standaardpremie   | 100000  |
+       | toetsingsinkomen  | 2200000 |
+       | heeft_partner     | true    |
+       | partner_verzekerd | true    |
+   ✔  When I evaluate "hoogte_zorgtoeslag" of "test_zorgtoeslag_wetsvoorstel_29762"
+   ✔  Then the execution succeeds
+   ✔  Then output "normpremie" equals 131800
+   ✔  Then output "hoogte_zorgtoeslag" equals 68200
+  Scenario: Verzekerde met partner die geen verzekerde is (MvT-huishouden 3, belofte 0)
+   ✔  Given the calculation date is "2004-09-27"
+   ✔  Given the following parameters:
+       | drempelinkomen    | 1750000 |
+       | standaardpremie   | 100000  |
+       | toetsingsinkomen  | 2200000 |
+       | heeft_partner     | true    |
+       | partner_verzekerd | false   |
+   ✔  When I evaluate "hoogte_zorgtoeslag" of "test_zorgtoeslag_wetsvoorstel_29762"
+   ✔  Then the execution succeeds
+   ✔  Then output "normpremie" equals 131800
+   ✔  Then output "hoogte_zorgtoeslag" equals 0
+Feature: Bezwaartermijn chain
+  Scenario: Vreemdelingenwet beschikking triggers AWB hooks with override
+   ✔> Given the calculation date is "2026-01-01"
+   ✔> Given law "algemene_wet_bestuursrecht" is loaded
+   ✔  When I evaluate "minister_is_bevoegd" of "vreemdelingenwet_2000"
+   ✔  Then the execution succeeds
+   ✔  Then output "minister_is_bevoegd" is true
+   ✔  Then output "motivering_vereist" is true
+   ✔  Then output "bezwaartermijn_weken" equals 4
+  Scenario: Vreemdelingenwet Art 14 — minister_is_bevoegd is always true
+   ✔> Given the calculation date is "2026-01-01"
+   ✔> Given law "algemene_wet_bestuursrecht" is loaded
+   ✔  When I evaluate "minister_is_bevoegd" of "vreemdelingenwet_2000"
+   ✔  Then the execution succeeds
+   ✔  Then output "minister_is_bevoegd" is true
+Feature: Zorgtoeslag eligibility
+  Scenario: Meerderjarige met actieve polis heeft recht op zorgtoeslag
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 2005-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | GEEN              | null        |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | ACTIEF       | false                |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 0         | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | null     | null                 |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 209692
+  Scenario: Laag inkomen alleenstaande heeft recht op zorgtoeslag
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 1998-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | GEEN              | null        |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | ACTIEF       | false                |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 10000     | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | null     | null                 |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 210821
+  Scenario: Student met studiefinanciering heeft recht op zorgtoeslag
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 2004-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | GEEN              | null        |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | ACTIEF       | false                |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 15000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 0         | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | null     | null                 |
+   ✔  Given the following "inschrijvingen" data with key "bsn":
+       | bsn       | onderwijstype |
+       | 999993653 | WO            |
+   ✔  Given the following "studiefinanciering" data with key "bsn":
+       | bsn       | aantal_studerend_gezin |
+       | 999993653 | 0                      |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 210916
+  Scenario: Partner met gecombineerd inkomen heeft recht op zorgtoeslag
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 1990-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | HUWELIJK          | 999993654   |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | ACTIEF       | false                |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 3500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+       | 999993654 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+       | 999993654 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 0         | 0           | 0              | 0        |
+       | 999993654 | 0         | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | null     | null                 |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 272845
+  Scenario: Alleenstaande met box3 vermogen heeft recht op zorgtoeslag
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 1990-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | GEEN              | null        |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | ACTIEF       | false                |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 7000000   | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | null     | null                 |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 173280
+  Scenario: Verdragsinschrijving geeft verzekeringsdekking bij inactieve polis
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 1985-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | GEEN              | null        |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | VERLOPEN     | true                 |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 0         | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | null     | null                 |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 210726
+  Scenario: Standaardpremie 2025 uit regeling_standaardpremie
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the calculation date is "2025-01-01"
+   ✔  When I evaluate "standaardpremie" of "regeling_standaardpremie"
+   ✔  Then the execution succeeds
+   ✔  Then output "standaardpremie" equals 211200
+  Scenario: Standaardpremie 2024 uit regeling_standaardpremie
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the calculation date is "2024-01-01"
+   ✔  When I evaluate "standaardpremie" of "regeling_standaardpremie"
+   ✔  Then the execution succeeds
+   ✔  Then output "standaardpremie" equals 198700
+  Scenario: Meerderjarige heeft recht op zorgtoeslag (2024)
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the calculation date is "2024-01-01"
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 2005-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | GEEN              | null        |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | ACTIEF       | false                |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 0         | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | null     | null                 |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 197205.31187
+  Scenario: Minderjarige met actieve polis heeft recht op zorgtoeslag (2024)
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the calculation date is "2024-01-01"
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 2007-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | GEEN              | null        |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | ACTIEF       | false                |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 0         | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | null     | null                 |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 198700
+  Scenario: Forensische zorg heeft geen invloed op zorgtoeslag
+   ✔> Given the calculation date is "2025-01-01"
+   ✔> Given law "wet_basisregistratie_personen" is loaded
+   ✔> Given law "zorgverzekeringswet" is loaded
+   ✔> Given law "penitentiaire_beginselenwet" is loaded
+   ✔> Given law "regeling_standaardpremie" is loaded
+   ✔> Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
+   ✔> Given law "wet_inkomstenbelasting_2001" is loaded
+   ✔> Given law "wet_forensische_zorg" is loaded
+   ✔  Given the following "personal_data" data with key "bsn":
+       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+       | 999993653 | 1985-01-01    | Amsterdam      | NEDERLAND     |
+   ✔  Given the following "relationship_data" data with key "bsn":
+       | bsn       | partnerschap_type | partner_bsn |
+       | 999993653 | GEEN              | null        |
+   ✔  Given the following "insurance" data with key "bsn":
+       | bsn       | polis_status | verdragsinschrijving |
+       | 999993653 | ACTIEF       | false                |
+   ✔  Given the following "box1" data with key "bsn":
+       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+       | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+   ✔  Given the following "box2" data with key "bsn":
+       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+       | 999993653 | 0                   | 0                      |
+   ✔  Given the following "box3" data with key "bsn":
+       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+       | 999993653 | 0         | 0           | 0              | 0        |
+   ✔  Given the following "detenties" data with key "bsn":
+       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+       | 999993653 | null           | null            | GGZ      | TBS                  |
+   ✔  Given parameter "bsn" is "999993653"
+   ✔  When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_recht_op_zorgtoeslag" is true
+   ✔  Then output "hoogte_zorgtoeslag" equals 210726
+Feature: WOO Art 5.1 disclosure decision
+  Scenario: Lid 5 blocks disclosure for non-environmental info with disproportionate harm
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | raakt_eenheid_kroon                         | false |
+       | raakt_veiligheid_staat                      | false |
+       | bevat_vertrouwelijke_bedrijfsgegevens       | false |
+       | bevat_bijzondere_persoonsgegevens           | false |
+       | bevat_identificatienummers                  | false |
+       | betrokkene_heeft_toestemming                | false |
+       | persoonsgegevens_kennelijk_openbaar_gemaakt | false |
+       | verstrekking_geen_inbreuk_levenssfeer       | false |
+       | is_milieu_informatie                        | false |
+       | betreft_emissies                            | false |
+       | raakt_internationale_betrekkingen           | false |
+       | raakt_economische_belangen                  | false |
+       | raakt_opsporing_vervolging                  | false |
+       | raakt_inspectie_toezicht                    | false |
+       | raakt_persoonlijke_levenssfeer              | false |
+       | raakt_concurrentiegevoelige_gegevens        | false |
+       | raakt_milieubescherming                     | false |
+       | raakt_beveiliging_personen                  | false |
+       | raakt_goed_functioneren_staat               | false |
+       | belang_openbaarheid_weegt_zwaarder          | false |
+       | onevenredige_benadeling_ander_belang        | true  |
+       | bedrijfsgegevens_ernstig_geschaad           | false |
+       | milieu_belang_openbaarheid_weegt_op         | false |
+   ✔  When I evaluate "heeft_lid5_weigeringsgrond" of "wet_open_overheid"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_lid5_weigeringsgrond" is true
+   ✔  When I evaluate "openbaarmaking_toegestaan" of "wet_open_overheid"
+   ✔  Then output "openbaarmaking_toegestaan" is false
+  Scenario: Lid 5 does not apply to environmental information
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | raakt_eenheid_kroon                         | false |
+       | raakt_veiligheid_staat                      | false |
+       | bevat_vertrouwelijke_bedrijfsgegevens       | false |
+       | bevat_bijzondere_persoonsgegevens           | false |
+       | bevat_identificatienummers                  | false |
+       | betrokkene_heeft_toestemming                | false |
+       | persoonsgegevens_kennelijk_openbaar_gemaakt | false |
+       | verstrekking_geen_inbreuk_levenssfeer       | false |
+       | is_milieu_informatie                        | true  |
+       | betreft_emissies                            | false |
+       | raakt_internationale_betrekkingen           | false |
+       | raakt_economische_belangen                  | false |
+       | raakt_opsporing_vervolging                  | false |
+       | raakt_inspectie_toezicht                    | false |
+       | raakt_persoonlijke_levenssfeer              | false |
+       | raakt_concurrentiegevoelige_gegevens        | false |
+       | raakt_milieubescherming                     | false |
+       | raakt_beveiliging_personen                  | false |
+       | raakt_goed_functioneren_staat               | false |
+       | belang_openbaarheid_weegt_zwaarder          | false |
+       | onevenredige_benadeling_ander_belang        | true  |
+       | bedrijfsgegevens_ernstig_geschaad           | false |
+       | milieu_belang_openbaarheid_weegt_op         | false |
+   ✔  When I evaluate "heeft_lid5_weigeringsgrond" of "wet_open_overheid"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_lid5_weigeringsgrond" is false
+   ✔  When I evaluate "openbaarmaking_toegestaan" of "wet_open_overheid"
+   ✔  Then output "openbaarmaking_toegestaan" is true
+  Scenario: Lid 6 blocks milieu-informatie with confidential business data seriously harmed
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | raakt_eenheid_kroon                         | false |
+       | raakt_veiligheid_staat                      | false |
+       | bevat_vertrouwelijke_bedrijfsgegevens       | true  |
+       | bevat_bijzondere_persoonsgegevens           | false |
+       | bevat_identificatienummers                  | false |
+       | betrokkene_heeft_toestemming                | false |
+       | persoonsgegevens_kennelijk_openbaar_gemaakt | false |
+       | verstrekking_geen_inbreuk_levenssfeer       | false |
+       | is_milieu_informatie                        | true  |
+       | betreft_emissies                            | false |
+       | raakt_internationale_betrekkingen           | false |
+       | raakt_economische_belangen                  | false |
+       | raakt_opsporing_vervolging                  | false |
+       | raakt_inspectie_toezicht                    | false |
+       | raakt_persoonlijke_levenssfeer              | false |
+       | raakt_concurrentiegevoelige_gegevens        | false |
+       | raakt_milieubescherming                     | false |
+       | raakt_beveiliging_personen                  | false |
+       | raakt_goed_functioneren_staat               | false |
+       | belang_openbaarheid_weegt_zwaarder          | false |
+       | onevenredige_benadeling_ander_belang        | false |
+       | bedrijfsgegevens_ernstig_geschaad           | true  |
+       | milieu_belang_openbaarheid_weegt_op         | false |
+   ✔  When I evaluate "heeft_absolute_weigeringsgrond" of "wet_open_overheid"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_absolute_weigeringsgrond" is true
+   ✔  When I evaluate "openbaarmaking_toegestaan" of "wet_open_overheid"
+   ✔  Then output "openbaarmaking_toegestaan" is false
+  Scenario: Lid 6 allows milieu-informatie when public interest outweighs business harm
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | raakt_eenheid_kroon                         | false |
+       | raakt_veiligheid_staat                      | false |
+       | bevat_vertrouwelijke_bedrijfsgegevens       | true  |
+       | bevat_bijzondere_persoonsgegevens           | false |
+       | bevat_identificatienummers                  | false |
+       | betrokkene_heeft_toestemming                | false |
+       | persoonsgegevens_kennelijk_openbaar_gemaakt | false |
+       | verstrekking_geen_inbreuk_levenssfeer       | false |
+       | is_milieu_informatie                        | true  |
+       | betreft_emissies                            | false |
+       | raakt_internationale_betrekkingen           | false |
+       | raakt_economische_belangen                  | false |
+       | raakt_opsporing_vervolging                  | false |
+       | raakt_inspectie_toezicht                    | false |
+       | raakt_persoonlijke_levenssfeer              | false |
+       | raakt_concurrentiegevoelige_gegevens        | false |
+       | raakt_milieubescherming                     | false |
+       | raakt_beveiliging_personen                  | false |
+       | raakt_goed_functioneren_staat               | false |
+       | belang_openbaarheid_weegt_zwaarder          | false |
+       | onevenredige_benadeling_ander_belang        | false |
+       | bedrijfsgegevens_ernstig_geschaad           | true  |
+       | milieu_belang_openbaarheid_weegt_op         | true  |
+   ✔  When I evaluate "heeft_absolute_weigeringsgrond" of "wet_open_overheid"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_absolute_weigeringsgrond" is false
+   ✔  When I evaluate "openbaarmaking_toegestaan" of "wet_open_overheid"
+   ✔  Then output "openbaarmaking_toegestaan" is true
+  Scenario: Milieu-informatie with business data not seriously harmed is disclosed
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | raakt_eenheid_kroon                         | false |
+       | raakt_veiligheid_staat                      | false |
+       | bevat_vertrouwelijke_bedrijfsgegevens       | true  |
+       | bevat_bijzondere_persoonsgegevens           | false |
+       | bevat_identificatienummers                  | false |
+       | betrokkene_heeft_toestemming                | false |
+       | persoonsgegevens_kennelijk_openbaar_gemaakt | false |
+       | verstrekking_geen_inbreuk_levenssfeer       | false |
+       | is_milieu_informatie                        | true  |
+       | betreft_emissies                            | false |
+       | raakt_internationale_betrekkingen           | false |
+       | raakt_economische_belangen                  | false |
+       | raakt_opsporing_vervolging                  | false |
+       | raakt_inspectie_toezicht                    | false |
+       | raakt_persoonlijke_levenssfeer              | false |
+       | raakt_concurrentiegevoelige_gegevens        | false |
+       | raakt_milieubescherming                     | false |
+       | raakt_beveiliging_personen                  | false |
+       | raakt_goed_functioneren_staat               | false |
+       | belang_openbaarheid_weegt_zwaarder          | false |
+       | onevenredige_benadeling_ander_belang        | false |
+       | bedrijfsgegevens_ernstig_geschaad           | false |
+       | milieu_belang_openbaarheid_weegt_op         | false |
+   ✔  When I evaluate "heeft_absolute_weigeringsgrond" of "wet_open_overheid"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_absolute_weigeringsgrond" is false
+   ✔  When I evaluate "openbaarmaking_toegestaan" of "wet_open_overheid"
+   ✔  Then output "openbaarmaking_toegestaan" is true
+  Scenario: Lid 7 — emissies override all refusal grounds
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | raakt_eenheid_kroon                         | true  |
+       | raakt_veiligheid_staat                      | true  |
+       | bevat_vertrouwelijke_bedrijfsgegevens       | true  |
+       | bevat_bijzondere_persoonsgegevens           | false |
+       | bevat_identificatienummers                  | false |
+       | betrokkene_heeft_toestemming                | false |
+       | persoonsgegevens_kennelijk_openbaar_gemaakt | false |
+       | verstrekking_geen_inbreuk_levenssfeer       | false |
+       | is_milieu_informatie                        | true  |
+       | betreft_emissies                            | true  |
+       | raakt_internationale_betrekkingen           | true  |
+       | raakt_economische_belangen                  | true  |
+       | raakt_opsporing_vervolging                  | true  |
+       | raakt_inspectie_toezicht                    | true  |
+       | raakt_persoonlijke_levenssfeer              | true  |
+       | raakt_concurrentiegevoelige_gegevens        | true  |
+       | raakt_milieubescherming                     | true  |
+       | raakt_beveiliging_personen                  | true  |
+       | raakt_goed_functioneren_staat               | true  |
+       | belang_openbaarheid_weegt_zwaarder          | false |
+       | onevenredige_benadeling_ander_belang        | true  |
+       | bedrijfsgegevens_ernstig_geschaad           | true  |
+       | milieu_belang_openbaarheid_weegt_op         | false |
+   ✔  When I evaluate "heeft_absolute_weigeringsgrond" of "wet_open_overheid"
+   ✔  Then the execution succeeds
+   ✔  Then output "heeft_absolute_weigeringsgrond" is false
+   ✔  When I evaluate "heeft_relatieve_weigeringsgrond" of "wet_open_overheid"
+   ✔  Then output "heeft_relatieve_weigeringsgrond" is false
+   ✔  When I evaluate "openbaarmaking_toegestaan" of "wet_open_overheid"
+   ✔  Then output "openbaarmaking_toegestaan" is true
+  Scenario: Art 5.3 without informatie_datum fails
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | peildatum | 2025-03-01 |
+   ✔  When I evaluate "verzwaarde_motiveringsplicht" of "wet_open_overheid"
+   ✔  Then the execution fails with "informatie_datum"
+  Scenario: Art 5.3 — exactly 5 years old does NOT trigger enhanced motivation
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | informatie_datum | 2020-03-01 |
+       | peildatum        | 2025-03-01 |
+   ✔  When I evaluate "informatie_leeftijd_jaren" of "wet_open_overheid"
+   ✔  Then the execution succeeds
+   ✔  Then output "informatie_leeftijd_jaren" equals 5
+   ✔  When I evaluate "verzwaarde_motiveringsplicht" of "wet_open_overheid"
+   ✔  Then output "verzwaarde_motiveringsplicht" is false
+  Scenario: Art 5.3 — over 5 years old triggers enhanced motivation
+   ✔> Given the calculation date is "2025-03-01"
+   ✔  Given the following parameters:
+       | informatie_datum | 2019-01-01 |
+       | peildatum        | 2025-03-01 |
+   ✔  When I evaluate "verzwaarde_motiveringsplicht" of "wet_open_overheid"
+   ✔  Then the execution succeeds
+   ✔  Then output "verzwaarde_motiveringsplicht" is true
+[Summary]
+13 features
+83 scenarios (82 passed, 1 failed)
+629 steps (628 passed, 1 failed)
+
+thread 'main' (67121265) panicked at /Users/anneschuth/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cucumber-0.23.0/src/cucumber.rs:1243:13:
+1 step failed
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `--test bdd`
