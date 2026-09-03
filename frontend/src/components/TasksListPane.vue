@@ -139,6 +139,55 @@ function review(task) {
   router.push(target);
 }
 
+// Beoordelen is een echte link en geen knop: de bestemming is volledig
+// deep-linkbaar (alle review-logica hangt aan de URL - EditorView leest
+// `?task=` bij binnenkomst - en de klik zelf doet niets anders dan navigeren),
+// dus hoort hij ook te doen wat een link doet: middenklik, ctrl/cmd-klik,
+// "open in nieuw tabblad", "kopieer linkadres". nldd-menu-item rendert met een
+// `href` een <a> met dezelfde role="menuitem", dus de ARIA van het menu blijft
+// gelijk. Een taak zonder bruikbare bestemming krijgt geen href: `disabled`
+// houdt het item dan op de <button>-tak, dus er is geen kapotte link.
+// `router.resolve` bouwt de url, zodat de route-definitie de enige bron van
+// waarheid blijft (geen handgemaakte url-strings).
+function reviewHref(task) {
+  const target = reviewTarget(task);
+  return target ? router.resolve(target).href : undefined;
+}
+
+// Een gewone klik moet SPA-navigatie blijven; het menu-item doet zelf geen
+// preventDefault, dus zonder deze guard herlaadt de browser de hele pagina.
+// Hetzelfde patroon als router-link: alleen een onbewerkte primaire klik
+// afvangen, de rest aan de browser laten (nieuw tabblad/venster).
+//
+// De guard hangt in de capture-fase op het host-element, dus vóór de
+// click-handler in de shadow root van het item. Die handler vuurt `select`, en
+// dat pad navigeert ook (zie hieronder) - bij een ctrl-klik zou je anders in
+// het nieuwe tabblad én in het huidige belanden. `activatedByClick` markeert
+// dat er een echte klik in het spel is; de bubble-fase (die ná `select` komt)
+// zet 'm weer terug.
+let activatedByClick = false;
+function onReviewClickCapture(event, task) {
+  activatedByClick = true;
+  if (event.defaultPrevented || event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  review(task);
+}
+function onReviewClick() {
+  activatedByClick = false;
+}
+
+// `select` zonder klik erachter is een programmatische activatie door het menu
+// zelf - pointerdown op het ene item en loslaten op het andere, of een
+// aanroep van item.select(). Er is dan geen link-navigatie die het overneemt,
+// dus doen we het hier. Enter op een gefocust item loopt wél via een echte
+// click (het menu heeft geen eigen Enter-afhandeling), en dus via de guard
+// hierboven.
+function onReviewSelect(task) {
+  if (activatedByClick) return;
+  review(task);
+}
+
 // "Bekijk document" op een lopende conversie: de .md bestaat nog niet, dus we
 // willen de job-weergave ("Aan het converteren…"), niet het document. Via een
 // emit i.p.v. router.push, zodat LibraryView viewingJobPath vóór de navigatie
@@ -193,10 +242,14 @@ function viewLaw(job) {
                 <nldd-menu-item text="Probeer opnieuw" @select="retry(task)"></nldd-menu-item>
               </template>
               <template v-else>
+                <!-- Echte link: zie reviewHref/onReviewClickCapture hierboven. -->
                 <nldd-menu-item
                   text="Beoordelen"
+                  :href="reviewHref(task)"
                   :disabled="!reviewTarget(task) || undefined"
-                  @select="review(task)"
+                  @click.capture="onReviewClickCapture($event, task)"
+                  @click="onReviewClick()"
+                  @select="onReviewSelect(task)"
                 ></nldd-menu-item>
               </template>
               <nldd-menu-divider></nldd-menu-divider>
