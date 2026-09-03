@@ -212,6 +212,62 @@ pub async fn resolve_task(
     Ok(task)
 }
 
+/// Sluit alle open taken van een traject als `dismissed` en levert de job-ids
+/// van die taken terug (ontdubbeld) zodat de aanroeper per job de blobs kan
+/// opruimen met [`delete_blobs_for_finished_job`].
+///
+/// Bedoeld voor het verwijderen van een traject. Zonder dit blijven de open
+/// taken staan: `tasks.traject_id` is `ON DELETE SET NULL` (migratie 0028), dus
+/// de traject-DELETE knipt alleen de koppeling door en laat een taak achter die
+/// in de account-brede takenlijst blijft hangen en via `payload.traject_ref`
+/// naar een traject wijst dat niet meer bestaat.
+///
+/// Moet daarom lópen vóór de traject-DELETE en in dezelfde transactie: erna is
+/// niet meer te achterhalen welke taken bij dit traject hoorden.
+///
+/// De taakrij blijft bestaan (audit-spoor, zelfde afweging als `resolve_task`);
+/// `resolved_by` blijft leeg, want niemand heeft deze taak beoordeeld — het
+/// traject verdween eronder.
+pub async fn dismiss_open_tasks_for_traject<'e, E>(
+    executor: E,
+    traject_id: Uuid,
+) -> Result<Vec<Uuid>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let rows = sqlx::query_as::<_, (Option<Uuid>,)>(
+        "UPDATE tasks SET status = 'dismissed', resolved_at = now() \
+         WHERE traject_id = $1 AND status = 'open' \
+         RETURNING job_id",
+    )
+    .bind(traject_id)
+    .fetch_all(executor)
+    .await?;
+
+    if !rows.is_empty() {
+        // Zelfde reden als de log in `resolve_task`: een taak die dichtgaat is
+        // een gebeurtenis die iemand later wil kunnen terugvinden, en deze gaan
+        // dicht zonder dat een gebruiker erop klikte.
+        tracing::info!(
+            traject_id = %traject_id,
+            tasks = rows.len(),
+            "open tasks dismissed with deleted traject"
+        );
+    }
+
+    let mut job_ids: Vec<Uuid> = Vec::new();
+    for (job_id,) in rows {
+        // Eén verrijking levert een taak per gewijzigd artikel op dezelfde job;
+        // die job hoeft maar één keer opgeruimd te worden.
+        if let Some(id) = job_id {
+            if !job_ids.contains(&id) {
+                job_ids.push(id);
+            }
+        }
+    }
+    Ok(job_ids)
+}
+
 /// Target paths reserved by OPEN document-review tasks of a traject: a
 /// task-delivered conversion is already `completed` on the underlying job
 /// (see `finish_document_convert_task_job`) while the review itself is still
