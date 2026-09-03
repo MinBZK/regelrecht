@@ -1,8 +1,9 @@
 // Report which implemented RFCs no werkpakket on the roadmap points at.
 //
-// An RFC with `implementation: Implemented` describes work that is done, so it
-// belongs somewhere in the roadmap. Nothing enforces that: an RFC lands, the
-// roadmap is updated later or not at all, and the gap is invisible.
+// An RFC with `implementation: Implemented` describes work that is done, and
+// one on `Partially implemented` work that is under way; both belong somewhere
+// in the roadmap. Nothing enforces that: an RFC lands, the roadmap is updated
+// later or not at all, and the gap is invisible.
 //
 // This REPORTS and always exits 0. Failing would put the roadmap in the way of
 // the work it describes — an RFC could not merge until someone edited a
@@ -27,7 +28,7 @@ const EXEMPT = new Set(['RFC-000']);
 const field = (text, name) =>
   (text.match(new RegExp(`^${name}:\\s*(.*)$`, 'm')) ?? [])[1]?.trim() ?? '';
 
-const implemented = readdirSync(RFC_DIR)
+const rfcs = readdirSync(RFC_DIR)
   .filter((f) => /^rfc-\d+\.md$/.test(f))
   .map((f) => {
     const text = readFileSync(`${RFC_DIR}/${f}`, 'utf8');
@@ -38,7 +39,15 @@ const implemented = readdirSync(RFC_DIR)
       implementation: field(text, 'implementation'),
     };
   })
-  .filter((r) => r.implementation === 'Implemented' && !EXEMPT.has(r.id));
+  .filter((r) => !EXEMPT.has(r.id));
+
+// Partially implemented counts too: it describes work that is under way, and
+// an RFC whose build is half done is exactly the kind the roadmap should be
+// showing. Only "Not implemented" (drafts included) may float free.
+const groups = [
+  { label: 'geïmplementeerde', status: 'Implemented' },
+  { label: 'deels geïmplementeerde', status: 'Partially implemented' },
+];
 
 // Every RFC number any werkpakket references, from the `rfcs:` sequence.
 const referenced = new Set();
@@ -55,19 +64,25 @@ for (const f of readdirSync(WP_DIR).filter((x) => x.endsWith('.md'))) {
   }
 }
 
-const missing = implemented.filter((r) => !referenced.has(r.num));
-
-if (missing.length === 0) {
-  console.log(
-    `Roadmap-RFC-dekking: alle ${implemented.length} geïmplementeerde RFC(s) ` +
-      `hangen aan een werkpakket (${[...EXEMPT].join(', ')} uitgezonderd).`,
-  );
-} else {
-  console.log(
-    `Roadmap-RFC-dekking: ${missing.length} van ${implemented.length} ` +
-      'geïmplementeerde RFC(s) hangen nog aan geen enkel werkpakket:',
-  );
-  for (const r of missing) console.log(`  ${r.id}  ${r.title}`);
+let onvolledig = false;
+for (const { label, status } of groups) {
+  const all = rfcs.filter((r) => r.implementation === status);
+  const missing = all.filter((r) => !referenced.has(r.num));
+  if (missing.length === 0) {
+    console.log(
+      `Roadmap-RFC-dekking: alle ${all.length} ${label} RFC(s) hangen aan ` +
+        `een werkpakket (${[...EXEMPT].join(', ')} uitgezonderd).`,
+    );
+  } else {
+    onvolledig = true;
+    console.log(
+      `Roadmap-RFC-dekking: ${missing.length} van ${all.length} ${label} ` +
+        'RFC(s) hangen nog aan geen enkel werkpakket:',
+    );
+    for (const r of missing) console.log(`  ${r.id}  ${r.title}`);
+  }
+}
+if (onvolledig) {
   console.log(
     '\nDat is een melding, geen fout: niet elke RFC hoort bij een werkpakket, ' +
       'en de roadmap mag achterlopen op het werk dat hij beschrijft.',
