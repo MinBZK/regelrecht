@@ -38,9 +38,9 @@
       "ondertitel": "Van standaarden naar intelligente tooling"
     },
     {
-      "id": "recht",
-      "naam": "Recht & Instituties",
-      "ondertitel": "Van kaders naar herinrichting van de macht"
+      "id": "service-design",
+      "naam": "Service Design",
+      "ondertitel": ""
     },
     {
       "id": "mensen",
@@ -48,14 +48,14 @@
       "ondertitel": "Van competenties naar een interdisciplinaire cultuur"
     },
     {
+      "id": "recht",
+      "naam": "Recht & Instituties",
+      "ondertitel": "Van kaders naar herinrichting van de macht"
+    },
+    {
       "id": "ethiek",
       "naam": "Ethiek & Waarden",
       "ondertitel": "Van principes naar toetsbare waarborgen"
-    },
-    {
-      "id": "service-design",
-      "naam": "Service Design",
-      "ondertitel": ""
     }
   ]
 }

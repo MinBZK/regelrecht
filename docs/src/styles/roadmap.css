@@ -2,10 +2,9 @@
  * Roadmap pages (/roadmap/…). Imported by the matrix page only.
  *
  * Almost everything the roadmap renders is a design-system component:
- * nldd-sidebar-section for the werkpakket layout, nldd-table for the
- * worksheet grids, nldd-step-indicator for the steps, nldd-container for
- * spacing and nldd-text for every run of text. Those bring their own
- * responsive behaviour, so this file deliberately holds no media queries.
+ * nldd-sidebar-section for the werkpakket layout, nldd-container for spacing
+ * and nldd-text for every run of text. Those bring their own responsive
+ * behaviour, so this file deliberately holds no media queries.
  *
  * What is left are the two things the design system has no component for:
  *
@@ -22,11 +21,6 @@
  * pairs, so both blocks follow the theme toggle. Nothing here sets a font or
  * hardcodes a colour.
  */
-
-.rr-roadmap .rr-hoofdnav {
-  padding-bottom: var(--primitives-space-16, 1rem);
-  border-bottom: 1px solid var(--semantics-surfaces-tinted-border-color);
-}
 
 /* --- Filter ------------------------------------------------------------- */
 
