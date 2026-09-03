@@ -1,0 +1,26 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: wet_verlaging_eigen_bijdrage_huurtoeslag
+name: Wet verlaging eigen bijdrage huurtoeslag
+regulatory_layer: WET
+bwb_id: BWBR0049106
+publication_date: '2023-12-28'
+valid_from: '2026-01-01'
+url: https://wetten.overheid.nl/BWBR0049106/2026-01-01
+articles:
+  - number: '1'
+    url: https://wetten.overheid.nl/BWBR0049106/2026-01-01#Artikel1
+    text: >-
+      De overeenkomstig artikel 16 van de Wet op de huurtoeslag berekende basishuur wordt: a. in 2024
+      verlaagd met € 37,72; b. in 2025 verlaagd met € 37,14; c. in 2026 verlaagd met € 48,15; d. in 2027
+      verlaagd met € 47,57; e. in 2028 verlaagd met € 46,99; f. in 2029 en latere jaren verlaagd met €
+      46,42.
+  - number: '2'
+    url: https://wetten.overheid.nl/BWBR0049106/2026-01-01#Artikel2
+    text: >-
+      Deze wet treedt in werking met ingang van 1 januari 2024.
+  - number: '3'
+    url: https://wetten.overheid.nl/BWBR0049106/2026-01-01#Artikel3
+    text: >-
+      Deze wet wordt aangehaald als: Wet verlaging eigen bijdrage huurtoeslag.
