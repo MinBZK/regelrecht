@@ -105,11 +105,11 @@ articles:
   - number: '4'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel4
     text: >-
-
+      [Red: Vervallen]
   - number: '5'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel5
     text: >-
-
+      [Red: Vervallen]
   - number: '6'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel6
     text: >-
@@ -123,30 +123,54 @@ articles:
     text: >-
       1 Het percentage, bedoeld in artikel 21, eerste lid, onder b, van de wet , is 65. 2 Het percentage,
       bedoeld in artikel 21, eerste lid, onder c, van de wet , is 40.
+    machine_readable:
+      definitions:
+        PERCENTAGE_B:
+          value: 0.65
+          description: 'Art. 7 lid 1: het percentage bedoeld in art. 21 lid 1 onder b van de wet is
+            65'
+        PERCENTAGE_C:
+          value: 0.4
+          description: 'Art. 7 lid 2: het percentage bedoeld in art. 21 lid 1 onder c van de wet is
+            40'
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        output:
+          - name: percentage_kwaliteitskorting
+            type: number
+          - name: percentage_boven_aftoppingsgrens
+            type: number
+        actions:
+          - output: percentage_kwaliteitskorting
+            value: $PERCENTAGE_B
+          - output: percentage_boven_aftoppingsgrens
+            value: $PERCENTAGE_C
   - number: '8'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel8
     text: >-
-
+      [Red: Wijzigt het Besluit draagkrachtcriteria rechtsbijstand.]
   - number: '9'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel9
     text: >-
-
+      [Red: Wijzigt het Besluit financiële toevoegingsgrenzen.]
   - number: '10'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel10
     text: >-
-
+      [Red: Wijzigt het Bijstandsbesluit krediethypotheek.]
   - number: '11'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel11
     text: >-
-
+      [Red: Wijzigt het Besluit gegevensverstrekking sociale verzekeringen 1997.]
   - number: '12'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel12
     text: >-
-
+      [Red: Wijzigt het Huisvestingsbesluit.]
   - number: '13'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel13
     text: >-
-
+      [Red: Wijzigt het Besluit beheer sociale-huursector.]
   - number: '14'
     url: https://wetten.overheid.nl/BWBR0008763/2026-01-01#Artikel14
     text: >-

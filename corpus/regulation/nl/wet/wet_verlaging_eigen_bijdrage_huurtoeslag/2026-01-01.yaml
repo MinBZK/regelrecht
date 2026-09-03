@@ -16,6 +16,24 @@ articles:
       verlaagd met € 37,72; b. in 2025 verlaagd met € 37,14; c. in 2026 verlaagd met € 48,15; d. in 2027
       verlaagd met € 47,57; e. in 2028 verlaagd met € 46,99; f. in 2029 en latere jaren verlaagd met €
       46,42.
+    machine_readable:
+      definitions:
+        VERLAGING_2026:
+          value: 4815
+          description: 'Art. 1 onder c: in 2026 verlaagd met EUR 48,15; deze corpusversie (valid_from
+            2026-01-01) codeert het bedrag voor 2026'
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        output:
+          - name: verlaging_basishuur
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: verlaging_basishuur
+            value: $VERLAGING_2026
   - number: '2'
     url: https://wetten.overheid.nl/BWBR0049106/2026-01-01#Artikel2
     text: >-

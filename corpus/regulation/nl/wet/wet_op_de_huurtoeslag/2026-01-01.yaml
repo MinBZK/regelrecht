@@ -51,14 +51,36 @@ articles:
       de onderhuurder behorende personen, als enige een woning bewoont; b. meerpersoonshuishouden: het
       huishouden van een huurder die samen met diens partner of een of meer medebewoners een woning
       bewoont.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: woont_met_partner_of_medebewoners
+            type: boolean
+            required: true
+            description: 'Feit: bewoont de huurder de woning samen met partner of een of meer medebewoners
+              (onderhuurders tellen niet mee)'
+        output:
+          - name: is_meerpersoonshuishouden
+            type: boolean
+          - name: is_eenpersoonshuishouden
+            type: boolean
+        actions:
+          - output: is_meerpersoonshuishouden
+            value: $woont_met_partner_of_medebewoners
+          - output: is_eenpersoonshuishouden
+            operation: NOT
+            value: $woont_met_partner_of_medebewoners
   - number: '3'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel3
     text: >-
-
+      [Red: Vervallen]
   - number: '4'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel4
     text: >-
-
+      [Red: Vervallen]
   - number: '5'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel5
     text: >-
@@ -73,10 +95,41 @@ articles:
       de Dienst Toeslagen en aan de huurder advies heeft uitgebracht, dan wel een verklaring heeft
       verstrekt, over de redelijk te achten huurprijs. Bij algemene maatregel van bestuur kunnen omtrent
       die verklaring nadere regels worden gesteld.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: huurprijs
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: 'Art. 1(d): prijs voor het enkele gebruik van de woning, per maand'
+          - name: maximale_huurprijsgrens_uhw
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: Maximale huurprijsgrens krachtens art. 10 lid 1 en 12 lid 2 Uitvoeringswet
+              huurprijzen woonruimte; lid 2 stelt een procedurele voorwaarde (advies huurcommissie)
+              die hier niet is gemodelleerd
+        output:
+          - name: rekenhuur
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: rekenhuur
+            operation: MIN
+            values:
+              - $huurprijs
+              - $maximale_huurprijsgrens_uhw
   - number: '6'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel6
     text: >-
-
+      [Red: Vervallen]
   - number: '7'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel7
     text: >-
@@ -86,7 +139,7 @@ articles:
   - number: 7a
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel7a
     text: >-
-
+      [Red: Vervallen]
   - number: '8'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel8
     text: >-
@@ -127,7 +180,7 @@ articles:
   - number: '12'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel12
     text: >-
-
+      [Red: Vervallen]
   - number: '13'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel13
     text: >-
@@ -137,6 +190,49 @@ articles:
       jaar is, en een handicap heeft of b. € 498,20 per maand in andere gevallen dan bedoeld onder a. 2 De
       in het eerste lid, onder a en b, genoemde bedragen worden met ingang van 1 januari van elk jaar
       gewijzigd overeenkomstig artikel 27 .
+    machine_readable:
+      definitions:
+        MAXIMALE_HUURGRENS_HOOG:
+          value: 93293
+          description: 'Art. 13 lid 1 onder a: EUR 932,93 per maand (geindexeerd Stcrt. 2025, 39783)'
+        MAXIMALE_HUURGRENS_LAAG:
+          value: 49820
+          description: 'Art. 13 lid 1 onder b: EUR 498,20 per maand'
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: bewoner_21_of_ouder_of_kind_in_woning
+            type: boolean
+            required: true
+            description: 'Art. 13 lid 1 onder a sub 1: huurder, partner of medebewoner is 21 of ouder,
+              dan wel deelt de woning met een kind of pleegkind'
+          - name: jonger_dan_21_met_handicap
+            type: boolean
+            required: true
+            description: Art. 13 lid 1 onder a sub 2
+        output:
+          - name: maximale_huurgrens
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: maximale_huurgrens
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $bewoner_21_of_ouder_of_kind_in_woning
+                        value: true
+                      - operation: EQUALS
+                        subject: $jonger_dan_21_met_handicap
+                        value: true
+                  then: $MAXIMALE_HUURGRENS_HOOG
+              default: $MAXIMALE_HUURGRENS_LAAG
   - number: '14'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel14
     text: >-
@@ -148,12 +244,52 @@ articles:
   - number: '15'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel15
     text: >-
-
+      [Red: Vervallen]
   - number: '16'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel16
     text: >-
       De basishuur is het gedeelte van de rekenhuur dat minimaal voor rekening van de huurder blijft. De
-      basishuur is het overeenkomstig artikel 17 berekende bedrag van de normhuur verhoogd met € 12
+      basishuur is het overeenkomstig artikel 17 berekende bedrag van de normhuur verhoogd met € 12 [Red:
+      per 1 januari 2023 bij Stb. 2022/528: € 0.] [Red: In Stb. 2023/494 wordt de basishuur aangepast
+      vanaf 1 januari 2024.]
+    machine_readable:
+      definitions:
+        OPSLAG_BASISHUUR:
+          value: 0
+          description: 'Art. 16: "verhoogd met EUR 12"; redactionele correctie bij Stb. 2022/528:
+            per 1 januari 2023 EUR 0'
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        input:
+          - name: normhuur
+            type: amount
+            source:
+              output: normhuur
+            type_spec:
+              unit: eurocent
+          - name: verlaging_basishuur
+            type: amount
+            source:
+              regulation: wet_verlaging_eigen_bijdrage_huurtoeslag
+              output: verlaging_basishuur
+            type_spec:
+              unit: eurocent
+        output:
+          - name: basishuur
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: basishuur
+            operation: SUBTRACT
+            values:
+              - operation: ADD
+                values:
+                  - $normhuur
+                  - $OPSLAG_BASISHUUR
+              - $verlaging_basishuur
   - number: '17'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel17
     text: >-
@@ -175,14 +311,105 @@ articles:
       eenpersoonshuishouden, en b. € 3,63 als sprake is van een meerpersoonshuishouden. 4 Het in het
       tweede lid genoemde bedrag wordt met ingang van 1 januari van elk jaar gewijzigd overeenkomstig
       artikel 27 .
+    machine_readable:
+      definitions:
+        OPHOGING_EENPERSOONS:
+          value: 234000
+          description: 'Art. 17 lid 1 onder a: EUR 2 340'
+        OPHOGING_MEERPERSOONS:
+          value: 251200
+          description: 'Art. 17 lid 1 onder b: EUR 2 512'
+        NORMHUUR_BIJ_IJKPUNT:
+          value: 25249
+          description: 'Art. 17 lid 2: EUR 252,49 (geindexeerd Stcrt. 2025, 39783)'
+        VERLAGING_EENPERSOONS:
+          value: 182
+          description: 'Art. 17 lid 3 onder a: EUR 1,82'
+        VERLAGING_MEERPERSOONS:
+          value: 363
+          description: 'Art. 17 lid 3 onder b: EUR 3,63'
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: aow_bruto_jaarbedrag_alleenstaande
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: Bruto-ouderdomspensioen art. 9 lid 1 onder a AOW plus vakantie-uitkering
+              art. 29 lid 1 onder a AOW, naar redelijke verwachting in het berekeningsjaar, herrekend
+              naar een jaarinkomen; de herrekening laat de wet open en wordt als gegeven aangeleverd
+          - name: aow_bruto_jaarbedrag_gehuwde
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: Idem, art. 9 lid 1 onder b en art. 29 lid 1 onder b AOW (bedrag per gehuwde
+              pensioengerechtigde)
+        input:
+          - name: is_meerpersoonshuishouden
+            type: boolean
+            source:
+              output: is_meerpersoonshuishouden
+        output:
+          - name: minimum_inkomensijkpunt
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: normhuur
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: minimum_inkomensijkpunt
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_meerpersoonshuishouden
+                    value: true
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - 2
+                          - $aow_bruto_jaarbedrag_gehuwde
+                      - $OPHOGING_MEERPERSOONS
+              default:
+                operation: ADD
+                values:
+                  - $aow_bruto_jaarbedrag_alleenstaande
+                  - $OPHOGING_EENPERSOONS
+          - output: normhuur
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_meerpersoonshuishouden
+                    value: true
+                  then:
+                    operation: SUBTRACT
+                    values:
+                      - $NORMHUUR_BIJ_IJKPUNT
+                      - $VERLAGING_MEERPERSOONS
+              default:
+                operation: SUBTRACT
+                values:
+                  - $NORMHUUR_BIJ_IJKPUNT
+                  - $VERLAGING_EENPERSOONS
   - number: '18'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel18
     text: >-
-
+      [Red: Vervallen]
   - number: '19'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel19
     text: >-
-
+      [Red: Vervallen]
   - number: '20'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel20
     text: >-
@@ -192,6 +419,49 @@ articles:
       de huurder, afgezien van eventuele onderhuurders en personen die tot diens huishouden behoren, uit
       drie of meer personen bestaat. 3 De in het eerste en tweede lid genoemde bedragen worden met ingang
       van 1 januari van elk jaar gewijzigd overeenkomstig artikel 27 .
+    machine_readable:
+      definitions:
+        KWALITEITSKORTINGSGRENS:
+          value: 49820
+          description: 'Art. 20 lid 1: EUR 498,20 per maand'
+        AFTOPPINGSGRENS_LAAG:
+          value: 71302
+          description: 'Art. 20 lid 2 onder a: EUR 713,02 (een of twee personen)'
+        AFTOPPINGSGRENS_HOOG:
+          value: 76414
+          description: 'Art. 20 lid 2 onder b: EUR 764,14 (drie of meer personen)'
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: huishouden_drie_of_meer_personen
+            type: boolean
+            required: true
+            description: 'Art. 20 lid 2: bestaat het huishouden (afgezien van onderhuurders c.s.)
+              uit drie of meer personen'
+        output:
+          - name: kwaliteitskortingsgrens
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: aftoppingsgrens
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: kwaliteitskortingsgrens
+            value: $KWALITEITSKORTINGSGRENS
+          - output: aftoppingsgrens
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $huishouden_drie_of_meer_personen
+                    value: true
+                  then: $AFTOPPINGSGRENS_HOOG
+              default: $AFTOPPINGSGRENS_LAAG
   - number: '21'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel21
     text: >-
@@ -206,14 +476,162 @@ articles:
       huurtoeslag, verlaagd met de uitkomst van de formule: Y x (afbouwpercentage/12) in welke formule
       voorstelt: Y: het rekeninkomen verminderd met het minimum-inkomensijkpunt, bedoeld in artikel 17 ;
       afbouwpercentage: a. 27% voor eenpersoonshuishoudens, of b. 22% voor meerpersoonshuishoudens.
+    machine_readable:
+      definitions:
+        AFBOUWPERCENTAGE_EENPERSOONS:
+          value: 0.27
+          description: 'Art. 21 lid 2 onder a: 27%'
+        AFBOUWPERCENTAGE_MEERPERSOONS:
+          value: 0.22
+          description: 'Art. 21 lid 2 onder b: 22%'
+        MAANDEN_PER_JAAR:
+          value: 12
+          description: 'Art. 21 lid 2: afbouwpercentage/12'
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: rekeninkomen
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: 'Art. 1(i): gezamenlijke toetsingsinkomens (art. 8 Awir), per jaar'
+        input:
+          - name: rekenhuur
+            type: amount
+            source:
+              output: rekenhuur
+            type_spec:
+              unit: eurocent
+          - name: basishuur
+            type: amount
+            source:
+              output: basishuur
+            type_spec:
+              unit: eurocent
+          - name: kwaliteitskortingsgrens
+            type: amount
+            source:
+              output: kwaliteitskortingsgrens
+            type_spec:
+              unit: eurocent
+          - name: aftoppingsgrens
+            type: amount
+            source:
+              output: aftoppingsgrens
+            type_spec:
+              unit: eurocent
+          - name: maximale_huurgrens
+            type: amount
+            source:
+              output: maximale_huurgrens
+            type_spec:
+              unit: eurocent
+          - name: minimum_inkomensijkpunt
+            type: amount
+            source:
+              output: minimum_inkomensijkpunt
+            type_spec:
+              unit: eurocent
+          - name: is_meerpersoonshuishouden
+            type: boolean
+            source:
+              output: is_meerpersoonshuishouden
+          - name: percentage_kwaliteitskorting
+            type: number
+            source:
+              regulation: besluit_op_de_huurtoeslag
+              output: percentage_kwaliteitskorting
+          - name: percentage_boven_aftoppingsgrens
+            type: number
+            source:
+              regulation: besluit_op_de_huurtoeslag
+              output: percentage_boven_aftoppingsgrens
+        output:
+          - name: hoogte_huurtoeslag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: hoogte_huurtoeslag
+            operation: ROUND
+            precision: 0
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - operation: ADD
+                      values:
+                        - operation: MAX
+                          values:
+                            - 0
+                            - operation: SUBTRACT
+                              values:
+                                - operation: MIN
+                                  values:
+                                    - $rekenhuur
+                                    - $kwaliteitskortingsgrens
+                                - $basishuur
+                        - operation: ADD
+                          values:
+                            - operation: MULTIPLY
+                              values:
+                                - $percentage_kwaliteitskorting
+                                - operation: MAX
+                                  values:
+                                    - 0
+                                    - operation: SUBTRACT
+                                      values:
+                                        - operation: MIN
+                                          values:
+                                            - $rekenhuur
+                                            - $aftoppingsgrens
+                                        - $kwaliteitskortingsgrens
+                            - operation: MULTIPLY
+                              values:
+                                - $percentage_boven_aftoppingsgrens
+                                - operation: MAX
+                                  values:
+                                    - 0
+                                    - operation: SUBTRACT
+                                      values:
+                                        - operation: MIN
+                                          values:
+                                            - $rekenhuur
+                                            - $maximale_huurgrens
+                                        - $aftoppingsgrens
+                    - operation: MULTIPLY
+                      values:
+                        - operation: MAX
+                          values:
+                            - 0
+                            - operation: SUBTRACT
+                              values:
+                                - $rekeninkomen
+                                - $minimum_inkomensijkpunt
+                        - operation: DIVIDE
+                          values:
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $is_meerpersoonshuishouden
+                                    value: true
+                                  then: $AFBOUWPERCENTAGE_MEERPERSOONS
+                              default: $AFBOUWPERCENTAGE_EENPERSOONS
+                            - $MAANDEN_PER_JAAR
   - number: '22'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel22
     text: >-
-
+      [Red: Vervallen]
   - number: 22a
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel22a
     text: >-
-
+      [Red: Vervallen]
   - number: '23'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel23
     text: >-
@@ -224,43 +642,43 @@ articles:
   - number: '24'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel24
     text: >-
-
+      [Red: Vervallen]
   - number: '25'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel25
     text: >-
-
+      [Red: Vervallen]
   - number: '26'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel26
     text: >-
-
+      [Red: Vervallen]
   - number: 26a
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel26a
     text: >-
-
+      [Red: Vervallen]
   - number: 26b
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel26b
     text: >-
-
+      [Red: Vervallen]
   - number: 26c
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel26c
     text: >-
-
+      [Red: Vervallen]
   - number: 26d
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel26d
     text: >-
-
+      [Red: Vervallen]
   - number: 26e
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel26e
     text: >-
-
+      [Red: Vervallen]
   - number: 26f
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel26f
     text: >-
-
+      [Red: Vervallen]
   - number: 26g
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel26g
     text: >-
-
+      [Red: Vervallen]
   - number: '27'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel27
     text: >-
@@ -311,115 +729,115 @@ articles:
   - number: '29'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel29
     text: >-
-
+      [Red: Vervallen]
   - number: '30'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel30
     text: >-
-
+      [Red: Vervallen]
   - number: 30a
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel30a
     text: >-
-
+      [Red: Vervallen]
   - number: 30aa
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel30aa
     text: >-
-
+      [Red: Vervallen]
   - number: 30ab
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel30ab
     text: >-
-
+      [Red: Vervallen]
   - number: 30b
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel30b
     text: >-
-
+      [Red: Vervallen]
   - number: 30c
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel30c
     text: >-
-
+      [Red: Vervallen]
   - number: 30d
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel30d
     text: >-
-
+      [Red: Vervallen]
   - number: '31'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel31
     text: >-
-
+      [Red: Vervallen]
   - number: '32'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel32
     text: >-
-
+      [Red: Vervallen]
   - number: '33'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel33
     text: >-
-
+      [Red: Vervallen]
   - number: '34'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel34
     text: >-
-
+      [Red: Vervallen]
   - number: '35'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel35
     text: >-
-
+      [Red: Vervallen]
   - number: '36'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel36
     text: >-
-
+      [Red: Vervallen]
   - number: '37'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel37
     text: >-
-
+      [Red: Vervallen]
   - number: '38'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel38
     text: >-
-
+      [Red: Vervallen]
   - number: '39'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel39
     text: >-
-
+      [Red: Vervallen]
   - number: '40'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel40
     text: >-
-
+      [Red: Vervallen]
   - number: '41'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel41
     text: >-
-
+      [Red: Vervallen]
   - number: '42'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel42
     text: >-
-
+      [Red: Vervallen]
   - number: '43'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel43
     text: >-
-
+      [Red: Vervallen]
   - number: '44'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel44
     text: >-
-
+      [Red: Vervallen]
   - number: '45'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel45
     text: >-
-
+      [Red: Vervallen]
   - number: '46'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel46
     text: >-
-
+      [Red: Vervallen]
   - number: '47'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel47
     text: >-
-
+      [Red: Vervallen]
   - number: '48'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel48
     text: >-
-
+      [Red: Vervallen]
   - number: 48a
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel48a
     text: >-
-
+      [Red: Vervallen]
   - number: 48b
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel48b
     text: >-
-
+      [Red: Vervallen]
   - number: 48c
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel48c
     text: >-
@@ -449,15 +867,15 @@ articles:
   - number: '51'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel51
     text: >-
-
+      [Red: Vervallen]
   - number: '52'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel52
     text: >-
-
+      [Red: Vervallen]
   - number: '53'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel53
     text: >-
-
+      [Red: Vervallen]
   - number: '54'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel54
     text: >-
@@ -477,25 +895,25 @@ articles:
       van een huurder van onzelfstandige woonruimte, anders dan bedoeld in dat artikel, indien die
       woonruimte onmiddellijk voorafgaand aan het moment dat de Wet individuele huursubsidie werd
       ingetrokken, was aangewezen als woonruimte aan de huurder waarvan een bijdrage op voet van die wet
-      kon worden verstrekt. 4 5 Bij de toepassing van artikel 2 , en bij de toepassing van artikel 7 van
-      de Algemene wet inkomensafhankelijke regelingen kan de Dienst Toeslagen op verzoek van de huurder
-      het op 31 december 2005 van kracht zijnde beleid toepassen dat Onze Minister heeft getroffen op
-      grond van artikel 9 en artikel 26 , eerste lid, zoals die artikelen onmiddellijk voorafgaand aan de
-      inwerkingtreding van de Aanpassingswet Algemene wet inkomensafhankelijke regelingen luidden. 6 Het
-      vijfde lid geldt uitsluitend in bij of krachtens algemene maatregel van bestuur vast te stellen
-      gevallen.
+      kon worden verstrekt. 4 [Red: Vervallen.] 5 Bij de toepassing van artikel 2 , en bij de toepassing
+      van artikel 7 van de Algemene wet inkomensafhankelijke regelingen kan de Dienst Toeslagen op verzoek
+      van de huurder het op 31 december 2005 van kracht zijnde beleid toepassen dat Onze Minister heeft
+      getroffen op grond van artikel 9 en artikel 26 , eerste lid, zoals die artikelen onmiddellijk
+      voorafgaand aan de inwerkingtreding van de Aanpassingswet Algemene wet inkomensafhankelijke
+      regelingen luidden. 6 Het vijfde lid geldt uitsluitend in bij of krachtens algemene maatregel van
+      bestuur vast te stellen gevallen.
   - number: '56'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel56
     text: >-
-
+      [Red: Vervallen]
   - number: 56a
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel56a
     text: >-
-
+      [Red: Vervallen]
   - number: 56b
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel56b
     text: >-
-
+      [Red: Vervallen]
   - number: '57'
     url: https://wetten.overheid.nl/BWBR0008659/2026-01-01#Artikel57
     text: >-
