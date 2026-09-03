@@ -249,9 +249,13 @@ describe('TasksListPane', () => {
     ]);
     const item = findItem(wrapper, 'Beoordelen');
     expect(item.attributes('disabled')).toBeDefined();
-    // Geen href: zonder bestemming is er niets om naartoe te linken, en een
-    // disabled item blijft een <button>. Zo ontstaat er geen kapotte link.
-    expect(item.attributes('href')).toBeUndefined();
+    // Geen bruikbare href: zonder bestemming is er niets om naartoe te linken,
+    // dus houdt het ontwerpsysteem het item op de <button>-tak en ontstaat er
+    // geen kapotte link. Niet `toBeUndefined()`: in deze test is het item een
+    // onbekend element en verdwijnt het attribuut, maar in de app reflecteert
+    // een opgewaardeerde nldd-menu-item zijn lege standaardwaarde terug als
+    // `href=""`. Leeg óf afwezig is wat telt - beide vallen op de button-tak.
+    expect(item.attributes('href')).toBeFalsy();
     await item.trigger('select');
     expect(pushMock).not.toHaveBeenCalled();
   });
@@ -309,6 +313,13 @@ describe('TasksListPane', () => {
     // Ook het select-event dat het menu-item bij zo'n klik meestuurt mag niet
     // alsnog het huidige tabblad meenemen.
     expect(pushMock).not.toHaveBeenCalled();
+
+    // En het overslaan geldt alleen voor die klik: een select zónder klik
+    // erachter (het menu activeert een item programmatisch als je op het ene
+    // item indrukt en op het andere loslaat) moet daarna gewoon weer
+    // navigeren. Zonder de terugzetter zou dat pad hierna dood blijven.
+    await selectItem(wrapper, 'Beoordelen');
+    expect(pushMock).toHaveBeenCalledTimes(1);
   });
 
   // --- Probeer opnieuw: één bedoeling, twee mechanieken ---

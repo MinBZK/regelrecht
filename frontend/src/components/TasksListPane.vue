@@ -182,7 +182,11 @@ function onReviewClick() {
 // aanroep van item.select(). Er is dan geen link-navigatie die het overneemt,
 // dus doen we het hier. Enter op een gefocust item loopt wél via een echte
 // click (het menu heeft geen eigen Enter-afhandeling), en dus via de guard
-// hierboven.
+// hierboven. Spatie niet: dat activeert een <a> nergens op het web, terwijl de
+// <button>-takken van de andere items er wél op reageren. Dat verschil hoort
+// bij het ontwerpsysteem (het rendert de href-tak), niet bij dit component -
+// hier het gedrag van één item nabouwen zou het juist uit de pas laten lopen
+// met elk ander link-menu-item.
 function onReviewSelect(task) {
   if (activatedByClick) return;
   review(task);
