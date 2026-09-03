@@ -37,6 +37,7 @@ import { useDocumentUpload } from './composables/useDocumentUpload.js';
 import { useAddActions } from './composables/useAddActions.js';
 import { useDocumentTaskReview } from './composables/useDocumentTaskReview.js';
 import { humanizeLawId } from './lib/lawName.js';
+import { sameTraject } from './lib/taskReview.js';
 import { apiFetch, apiFetchJson, ApiError } from './lib/apiFetch.js';
 import { uploadMultipart } from './lib/uploadMultipart.js';
 import { useLatest } from './lib/useLatest.js';
@@ -735,7 +736,10 @@ watch(
       // both the body and any docError alone rather than seeding the wrong
       // document (or wiping a real 'not-found'/'load-error' for it).
       const payload = docReviewTask.value?.payload;
-      if (payload?.target_path !== openDocPath.value || payload?.traject_ref !== activeTrajectRef.value) {
+      if (
+        payload?.target_path !== openDocPath.value ||
+        !sameTraject(payload?.traject_ref, activeTrajectRef.value)
+      ) {
         return;
       }
       // The target document doesn't exist yet on the branch (the usual
@@ -823,7 +827,8 @@ async function onDocSaved(savedPath) {
   if (!docReviewActive.value) return;
   const path = savedPath ?? openDocPath.value;
   const payload = docReviewTask.value?.payload;
-  if (payload?.target_path !== path || payload?.traject_ref !== activeTrajectRef.value) return;
+  if (payload?.target_path !== path || !sameTraject(payload?.traject_ref, activeTrajectRef.value))
+    return;
   try {
     await docReviewApproveAfterSave();
   } catch (e) {
