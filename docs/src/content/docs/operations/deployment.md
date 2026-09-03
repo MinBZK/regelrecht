@@ -45,7 +45,7 @@ The preview deployment and its GHCR images are cleaned up automatically.
 | Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
-The docs image also serves `/roadmap`, a read-only rendering of the werkpakketten in `docs/src/content/roadmap/` and the two JSON files in `docs/src/data/`. It is not a component of its own and has no write path: changing the roadmap means editing those files through a pull request, and every werkpakket page links to its own source on GitHub. The page is deliberately not linked from the navigation or the landing page.
+The docs image also serves `/roadmap`, a read-only rendering of the werkpakketten in `docs/src/content/roadmap/` and the JSON file in `docs/src/data/`. It is not a component of its own and has no write path: changing the roadmap means editing those files through a pull request, and every werkpakket page links to its own source on GitHub. The page is deliberately not linked from the navigation or the landing page.
 
 ## ZAD CLI
 
