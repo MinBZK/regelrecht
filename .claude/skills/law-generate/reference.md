@@ -129,7 +129,7 @@ procedure:
         description: Bezwaarperiode (AWB 6:4 e.v.)
 ```
 
-## Operation Types (all 21)
+## Operation Types (all 26)
 
 ### Arithmetic Operations — use `values` array
 ```yaml
@@ -227,6 +227,28 @@ items:
   - $item_2
   - "literal_value"
 ```
+
+### FOREACH — iterate over a collection (RFC-016, schema v0.5.7+)
+```yaml
+operation: FOREACH
+collection: $medebewoners          # expression evaluating to an array
+as: medebewoner                    # names the element; defaults to "item"
+filter:                            # optional: skip elements where this is false
+  operation: GREATER_THAN_OR_EQUAL
+  subject: $medebewoner.leeftijd
+  value: 21
+body: $medebewoner.bijdrage        # evaluated once per surviving element
+combine: ADD                       # optional: ADD | OR | AND | MIN | MAX
+```
+
+Use it when the law counts or totals over a group whose size is not fixed, so
+the legal threshold stays in the law instead of in the data source. Count with
+`body: 1` and `combine: ADD`. Without `combine` the result is an array.
+
+`as` is bound only inside `filter` and `body`. In a nested FOREACH the inner
+`collection` can read the outer binding; the inner `body` cannot. Empty
+collections give `0` for ADD, `false` for OR, `true` for AND, and `null` for
+MIN/MAX. See [Collections](../../../docs/src/content/docs/concepts/collections.md).
 
 ### AGE — calculate age in complete years
 ```yaml

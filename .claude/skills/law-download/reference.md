@@ -152,7 +152,7 @@ Map `<bwb-dl:soort>` to `regulatory_layer`:
 | koninklijk besluit | KONINKLIJK_BESLUIT |
 | waterschapsverordening | WATERSCHAPS_VERORDENING |
 
-**Note:** `VERORDENING` and `REGELING` are NOT valid schema v0.5.6 enum values.
+**Note:** `VERORDENING` and `REGELING` are NOT valid schema enum values.
 Valid values: GRONDWET, WET, AMVB, KONINKLIJK_BESLUIT, MINISTERIELE_REGELING,
 BELEIDSREGEL, EU_VERORDENING, EU_RICHTLIJN, VERDRAG, UITVOERINGSBELEID,
 GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING, WATERSCHAPS_VERORDENING.
@@ -161,7 +161,7 @@ GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING, WATERSCHAPS_VERORDENING.
 
 **Schema URL:**
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.6/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
 ```
 
 **Required Fields (always):**

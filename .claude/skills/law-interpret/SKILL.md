@@ -58,12 +58,26 @@ the pipeline.
 
 ## Step 2.5: Schema Version Check
 
-Before generating, verify the target file's `$schema` URL points to v0.5.6. If it points
-to an older version (e.g., v0.3.2, v0.4.0, or v0.5.0), update it to:
+Before generating, verify the target file's `$schema` URL points to the current
+version. Read it from the `schema/latest` symlink rather than from this page, which
+goes stale on every bump:
+
+```bash
+readlink schema/latest        # e.g. v0.5.7
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.6/schema.json
+
+If the file points to an older version (e.g. v0.3.2, v0.4.0, or v0.5.0), update it
+to the tag form for that version:
+
 ```
-This prevents generating v0.5.6 logic against an old schema declaration.
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-vX.Y.Z/schema/vX.Y.Z/schema.json
+```
+
+The tag form is required by RFC-013: a `refs/heads/main` URL points at a moving
+target, so the schema a law validates against could change underneath it.
+
+This prevents generating logic against an old schema declaration. Never lower a
+file's version to match this page.
 
 ## Step 3: Generate Machine-Readable Logic
 

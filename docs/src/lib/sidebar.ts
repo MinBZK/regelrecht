@@ -53,6 +53,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
         { text: 'Multi-Org Execution', link: '/concepts/multi-org-execution' },
         { text: 'Federated Corpus', link: '/concepts/federated-corpus' },
         { text: 'Notes and Annotations', link: '/concepts/notes-and-annotations' },
+        { text: 'Collections', link: '/concepts/collections' },
         { text: 'Temporal Validity and Dates', link: '/concepts/temporal-and-dates' },
         { text: 'Untranslatables', link: '/concepts/untranslatables' },
         { text: 'Execution Provenance', link: '/concepts/execution-provenance' },

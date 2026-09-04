@@ -112,12 +112,15 @@ does not close it.
 ## Operation Correctness Check
 
 Verify that none of these operations, removed from the schema as of v0.5.0 and still absent
-in v0.5.6, are used:
+in v0.5.7, are used:
 - No `when`/`then`/`else` on IF operations (must be `cases`/`default`)
 - No SUBTRACT_DATE (must be AGE)
 - No CONCAT (must be ADD with string values)
 - No NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN (must use NOT wrapper)
-- No FOREACH (removed from schema)
+
+FOREACH was removed at v0.5.0 and restored at v0.5.7 (RFC-016). It is a valid
+operation again, with the fields `collection`, `as`, `filter`, `body` and
+`combine`. Do not flag it, and do not flag `type: array` inputs.
 
 ## Workaround Detection — Untranslatables (RFC-012)
 
