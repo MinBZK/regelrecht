@@ -18,6 +18,9 @@ if (!sourceDir || !importsFile) {
   process.exit(2);
 }
 
+// The generated file lives inside the tree it is generated from, so the scan
+// re-reads it. It contributes nothing because every line quotes
+// '@nldd/design-system/x' — the quote is followed by @, never by nldd-.
 const HEADER = `// Design-system components this app renders, one entry point each.
 // The package root would pull in all ~110 components; this list is generated
 // from the nldd-* tags in the source and checked on every build by

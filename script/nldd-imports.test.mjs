@@ -1,11 +1,15 @@
 // De guard die de per-component imports bij de gebruikte tags houdt, leest de
-// bron met twee reguliere expressies. De tweede — de naam tussen quotes, voor
-// componenten die in JS worden aangemaakt — matcht in markdown ook gewone
-// opmaak: `nldd-tab-bar` in een tabel die beschrijft wat de *frontend* rendert,
-// is proza en geen gebruik. Dat verschil is precies wat deze test vastlegt;
-// zonder hem dwingt elke documentatiezin een dode import af, en zonder de
-// bestaanscontrole aan de andere kant blijft een component dat het
-// ontwerpsysteem heeft verwijderd ongemerkt in de tekst staan.
+// bron met twee reguliere expressies: de markup-vorm, en de naam tussen quotes
+// voor componenten die in JS worden aangemaakt. Die tweede matcht in markdown
+// ook inline-code-opmaak: `nldd-tab-bar` in een tabel die beschrijft wat de
+// *frontend* rendert, is proza en geen gebruik. Alleen de backtick is die
+// uitzondering — een enkele of dubbele quote telt ook in markdown gewoon mee,
+// want rauwe HTML komt op de pagina terecht.
+//
+// Dat onderscheid is wat deze tests vastleggen. Zonder de uitzondering dwingt
+// elke documentatiezin een dode import af; zonder de bestaanscontrole aan de
+// andere kant blijft proza staan over een component dat het ontwerpsysteem
+// niet meer levert.
 //
 // Node's ingebouwde runner, geen dependency, en geen @nldd/design-system nodig:
 // alles hieronder werkt op een bronmap en een meegegeven set entry points.
@@ -31,12 +35,18 @@ function sourceTree(t, files) {
 }
 
 test('markup telt als gebruik, in elke ondersteunde extensie', (t) => {
-  const dir = sourceTree(t, {
-    'App.vue': '<template><nldd-button></nldd-button></template>',
-    'page.md': 'Een voorbeeld:\n\n<nldd-hero></nldd-hero>\n',
-  });
-  const { rendered, mentioned } = usedTags(dir, EXTENSIONS);
-  assert.deepEqual([...rendered].sort(), ['button', 'hero']);
+  // Eén bestand per extensie, elk met een eigen component: valt er een
+  // extensie uit EXTENSIONS, dan verdwijnt precies dat component uit de
+  // uitkomst. Zonder deze test is `astro` eruit halen onzichtbaar, en dat
+  // scheelt de docs-site 45 van de 45 imports terwijl de guard groen blijft.
+  const tags = ['button', 'hero', 'card', 'list', 'divider', 'tag', 'sheet'];
+  const files = Object.fromEntries(
+    [...EXTENSIONS].map((ext, i) => [`page.${ext}`, `<nldd-${tags[i]}></nldd-${tags[i]}>`]),
+  );
+  assert.equal(EXTENSIONS.size, tags.length, 'geef elke nieuwe extensie een eigen component');
+
+  const { rendered, mentioned } = usedTags(sourceTree(t, files), EXTENSIONS);
+  assert.deepEqual([...rendered].sort(), [...tags].sort());
   assert.deepEqual([...mentioned], []);
 });
 
@@ -69,7 +79,29 @@ test('een naam tussen backticks in markdown is proza, geen gebruik', (t) => {
   assert.deepEqual([...mentioned].sort(), ['menu', 'tab-bar']);
 });
 
-test('mdx krijgt dezelfde proza-uitzondering als md', (t) => {
+test('echte quotes in markdown tellen wél als gebruik', (t) => {
+  // Rauwe HTML in markdown komt op de pagina terecht en draait daar ook, dus
+  // dit is geen proza. Alleen de backtick is de uitzondering; zou de hele
+  // markdown-regel op de extensie hangen, dan verdwijnt deze import.
+  const dir = sourceTree(t, {
+    'demo.md': "<script>document.createElement('nldd-sheet');</script>\n",
+    'demo.mdx': '<Demo tag="nldd-hero" />\n',
+  });
+  const { rendered, mentioned } = usedTags(dir, EXTENSIONS);
+  assert.deepEqual([...rendered].sort(), ['hero', 'sheet']);
+  assert.deepEqual([...mentioned], []);
+});
+
+test('een naam tussen ongelijke aanhalingstekens telt niet mee', (t) => {
+  const dir = sourceTree(t, {
+    'raar.js': "const a = 'nldd-sheet`; const b = `nldd-menu';",
+  });
+  const { rendered, mentioned } = usedTags(dir, EXTENSIONS);
+  assert.deepEqual([...rendered], []);
+  assert.deepEqual([...mentioned], []);
+});
+
+test('mdx krijgt dezelfde backtick-uitzondering als md', (t) => {
   // Een documentatiepagina die één component nodig heeft wordt .mdx; zonder
   // deze regel zou die hernoeming de dode imports terugbrengen.
   const dir = sourceTree(t, {
@@ -101,7 +133,7 @@ test('node_modules en verborgen mappen blijven buiten de scan', (t) => {
   assert.deepEqual([...rendered], ['button']);
 });
 
-test('proza levert geen import op, maar moet wel een bestaand component noemen', (t) => {
+test('proza levert geen import op, maar moet wel een bestaand component noemen', () => {
   const entries = new Set(['button', 'tab-bar']);
 
   const alleenGenoemd = resolveUsage(
@@ -123,7 +155,19 @@ test('proza levert geen import op, maar moet wel een bestaand component noemen',
   );
 });
 
-test('een onbekende naam uit markup landt in unknown, en niet dubbel', (t) => {
+test('proza over een subcomponent lost op via zijn ouder', () => {
+  // De keerzijde van de prefix-fallback, en de reden dat de belofte hierboven
+  // alleen geldt voor namen op het hoogste niveau: `nldd-menu-item` blijft
+  // stil oplossen zolang `menu` bestaat.
+  const { needed, unknown } = resolveUsage(
+    { rendered: new Set(), mentioned: new Set(['menu-item']) },
+    new Set(['menu']),
+  );
+  assert.deepEqual(needed, [], 'een genoemde subcomponent hoort geen import af te dwingen');
+  assert.deepEqual(unknown, []);
+});
+
+test('een onbekende naam uit markup landt in unknown, en niet dubbel', () => {
   const { needed, unknown } = resolveUsage(
     { rendered: new Set(['tab-bra']), mentioned: new Set(['tab-bra', 'nonsens']) },
     new Set(['tab-bar']),
@@ -132,7 +176,7 @@ test('een onbekende naam uit markup landt in unknown, en niet dubbel', (t) => {
   assert.deepEqual(unknown, ['nonsens', 'tab-bra']);
 });
 
-test('een subcomponent valt onder het langste entry point dat hem bevat', (t) => {
+test('een subcomponent valt onder het langste entry point dat hem bevat', () => {
   const entries = new Set(['button', 'button-bar']);
   const { needed, unresolved } = resolveEntries(new Set(['button-bar-divider']), entries);
   assert.deepEqual(needed, ['button-bar']);

@@ -6,7 +6,9 @@
 //
 // Not every mention of a tag is a use. A name in markdown inline code is
 // prose — documentation that describes another app's markup — and only has to
-// name a component that exists. Everything else needs its entry point.
+// name a component that exists. Everything else needs its entry point. That
+// existence check reaches top-level names: a sub-component still resolves
+// through its parent entry, so prose naming a dropped nldd-menu-item passes.
 //
 // Sub-components ship with their parent (nldd-menu-item lives in ./menu,
 // nldd-toolbar-item in ./toolbar), so a tag without its own entry maps to the
@@ -25,8 +27,8 @@ import { fileURLToPath } from 'node:url';
 /** The file types a source tree can render `nldd-*` tags from. */
 export const EXTENSIONS = new Set(['vue', 'js', 'ts', 'astro', 'mdx', 'md', 'html']);
 
-/** Where a backtick means inline code rather than a string. */
-const MARKDOWN = new Set(['.md', '.mdx']);
+/** De subset van EXTENSIONS waar een backtick inline-code is, geen string. */
+const MARKDOWN = new Set(['md', 'mdx']);
 
 /** Every `./x` entry the package exposes, without the leading `./`. */
 export function packageEntries() {
@@ -66,14 +68,17 @@ export function usedTags(dir, extensions) {
     // The quoted form used by createElement/querySelector — the org picker
     // builds its rows in JS, so markup alone would miss them.
     //
-    // Except between backticks in markdown: there a backtick is inline-code
-    // formatting, not a string. The docs describe which components the
-    // *frontend* renders, and importing those into the docs site only grows a
-    // bundle that never uses them. Such a name still has to resolve to a real
-    // entry point, so prose that has gone stale — a component the design
-    // system dropped — keeps failing the build. Everywhere else a backtick
-    // delimits a template literal, so the exception stays in markdown.
-    const prose = MARKDOWN.has(extname(file));
+    // One exception: a backtick in markdown, where it is inline-code
+    // formatting rather than a string. The docs name the components the
+    // *frontend* renders, and importing those here would only grow a bundle
+    // that never uses them. Single and double quotes keep counting even in
+    // markdown, because raw HTML passes through to the page — a `<script>`
+    // in a .md really runs.
+    //
+    // Known rough edge: markup inside a fenced code block also counts as a
+    // use, although the fence renders as escaped text. Nothing in the corpus
+    // hits it; closing it means stripping fences and code spans first.
+    const prose = MARKDOWN.has(extname(file).slice(1));
     for (const [, quote, tag] of text.matchAll(/(['"`])(nldd-[a-z0-9-]+)\1/g)) {
       (prose && quote === '`' ? mentioned : rendered).add(tag.slice(5));
     }
