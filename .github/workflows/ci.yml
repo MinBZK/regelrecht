@@ -496,6 +496,45 @@ jobs:
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture
 
+  nldd-imports:
+    name: Ontwerpsysteem-imports
+    needs: changes
+    # Deze guard bewaakt frontend/src en docs/src, maar stond als stap in
+    # frontend-tests en draaide dus alleen bij `ci`. Een docs-only PR liet hem
+    # over en kon docs/src/nldd-components.js ongemerkt uit de pas laten lopen;
+    # de volgende PR die wel frontend raakte, kreeg de rekening. Vandaar een
+    # eigen baan op beide filters.
+    if: needs.changes.outputs.ci == 'true' || needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+          registry-url: https://npm.pkg.github.com
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      # --ignore-scripts om dezelfde reden als in frontend-tests: een gekaapte
+      # release mag zijn install-hooks hier niet draaien.
+      #
+      # De hele werkruimte installeren is nodig omdat de guard de entry points
+      # van @nldd/design-system uit de geïnstalleerde package leest.
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      # Niet in `npm run build`: de Docker-images bouwen met alleen hun eigen
+      # workspace als context (docs/Dockerfile doet `COPY docs/ .`), dus een
+      # script buiten die map is daar onbereikbaar. Hier is de hele repo
+      # uitgecheckt.
+      - name: Ontwerpsysteem-imports in sync met de gebruikte tags
+        run: |
+          node script/check-nldd-imports.mjs frontend/src frontend/src/nldd-components.js
+          node script/check-nldd-imports.mjs docs/src docs/src/nldd-components.js
+
   frontend-tests:
     name: Frontend tests
     needs: changes
@@ -529,15 +568,6 @@ jobs:
           node bdd/codegen/gen-js.mjs
           git diff --exit-code frontend/src/gherkin/grammar.generated.js \
             || { echo "::error::grammar.generated.js is stale — run 'just bdd-codegen' and commit the result"; exit 1; }
-
-      # Niet in `npm run build`: de Docker-images bouwen met alleen hun eigen
-      # workspace als context (docs/Dockerfile doet `COPY docs/ .`), dus een
-      # script buiten die map is daar onbereikbaar. Hier is de hele repo
-      # uitgecheckt.
-      - name: Ontwerpsysteem-imports in sync met de gebruikte tags
-        run: |
-          node script/check-nldd-imports.mjs frontend/src frontend/src/nldd-components.js
-          node script/check-nldd-imports.mjs docs/src docs/src/nldd-components.js
 
       - name: Run frontend tests
         # Directory form (`-w frontend`) rather than the package name, so a
@@ -586,6 +616,7 @@ jobs:
       - rust-tests
       - bdd-conformance
       - frontend-tests
+      - nldd-imports
       # Deze vier draaiden al bij elke PR maar blokkeerden niets. Ze hier
       # aanhangen kost geen runnerminuut en geen nieuwe required context bij
       # branch protection.
@@ -627,6 +658,7 @@ jobs:
           check rust-tests "${{ needs.rust-tests.result }}"
           check bdd-conformance "${{ needs.bdd-conformance.result }}"
           check frontend-tests "${{ needs.frontend-tests.result }}"
+          check nldd-imports "${{ needs.nldd-imports.result }}"
           check e2e "${{ needs.e2e.result }}"
           check cross-law-integrity "${{ needs.cross-law-integrity.result }}"
           check provenance-checks "${{ needs.provenance-checks.result }}"
