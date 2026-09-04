@@ -3764,17 +3764,32 @@ mod tests {
                 Err(EngineError::MaxDepthExceeded(_))
             ));
 
+            // The filter is evaluated one level deeper too, and it runs
+            // before the body. A literal body keeps the body path within the
+            // limit, so only the filter's own increment can trip this.
             let with_filter = ActionOperation::Foreach {
                 collection: var("items"),
                 as_name: "x".to_string(),
-                body: var("x"),
-                filter: Some(lit(true)),
+                body: lit(1i64),
+                filter: Some(ActionValue::Operation(Box::new(ActionOperation::Not {
+                    value: lit(false),
+                }))),
                 combine: Some(CombineOp::Add),
             };
+            // One below the ceiling is the depth that pins the filter's own
+            // increment: the FOREACH itself still fits, and only because the
+            // filter is evaluated a level deeper does its nested operation run
+            // over the limit.
             assert!(matches!(
-                execute_operation(&with_filter, &context, MAX_OPERATION_DEPTH),
+                execute_operation(&with_filter, &context, MAX_OPERATION_DEPTH - 1),
                 Err(EngineError::MaxDepthExceeded(_))
             ));
+            // A step further down and both fit, so the rejection above is the
+            // depth limit and not the shape of the operation.
+            assert_eq!(
+                execute_operation(&with_filter, &context, MAX_OPERATION_DEPTH - 2).unwrap(),
+                Value::Int(1)
+            );
         }
 
         #[test]
