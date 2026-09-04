@@ -1625,10 +1625,19 @@ const reviewHasHiddenChanges = ref(false);
 // dan terug naar de opgeslagen wet. Het verschil is precies het signaal om bij
 // terugkomst opnieuw te seeden.
 const reviewSeedTarget = ref(null);
-const reviewSeededArticle = ref(null);
-watch(selectedArticleNumber, (nr) => {
-  if (reviewSeededArticle.value && reviewSeededArticle.value !== String(nr)) {
-    reviewSeededArticle.value = null;
+// Waar het voorstel op dit moment daadwerkelijk in de panes staat, als
+// `wet::artikel`. De wet hoort in die sleutel: twee wetten in hetzelfde traject
+// kunnen dezelfde artikelnummers hebben ("B 5", "1", "2" zijn niet uniek), en
+// bij een wetwissel verandert `selectedArticleNumber` dan niet terwijl
+// `watch(selectedArticle)` de panes wél heeft teruggezet naar de opgeslagen wet.
+// Op het nummer alleen zou het voorstel er bij terugkomst niet opnieuw in gaan.
+const reviewSeededAt = ref(null);
+function reviewSeedKey(number) {
+  return `${lawId.value ?? ''}::${number ?? ''}`;
+}
+watch([lawId, selectedArticleNumber], ([, nr]) => {
+  if (reviewSeededAt.value && reviewSeededAt.value !== reviewSeedKey(nr)) {
+    reviewSeededAt.value = null;
   }
 });
 
@@ -1660,7 +1669,7 @@ function applyProposedContent(proposedYaml) {
   // artikelwissel opruimt en de her-seed-watch draaien in de flush ertussen, en
   // moeten dit al als "geseed" zien - anders seeden ze er direct nog eens
   // overheen.
-  reviewSeededArticle.value = String(target.number);
+  reviewSeededAt.value = reviewSeedKey(String(target.number));
   selectedArticleNumber.value = String(target.number);
   // `watch(selectedArticle)` (above) resets editedText/machineReadable to
   // the (still-saved) newly selected article; wait a tick so the seed
@@ -1762,17 +1771,19 @@ watch(
     reviewAttemptedForTaskId = taskId;
     loadReview(taskId, currentEtag.value).then(() => {
       if (!reviewProposedContent.value) return;
-      // Een taak die één artikel aanwijst hoort in dát artikel te landen, en
-      // `applyProposedContent` springt er zo nodig heen. Meestal ben je er al
-      // (de takenlijst linkt erheen), maar doordat de taak meereist met de
-      // navigatie kun je met `?task=` op een ánder artikel binnenkomen - een
-      // refresh terwijl je even elders keek. Dan wint het artikel uit de URL:
-      // niet ongevraagd wegspringen. Het seed-doel wordt wel vastgelegd, zodat
-      // de her-seed-watch het voorstel oppakt zodra je er terug bent.
-      const taskArticle = reviewArticleNumber.value;
-      const urlArticle = route.params.articleNumber;
-      if (taskArticle && urlArticle && String(urlArticle) !== taskArticle) {
-        reviewSeedTarget.value = taskArticle;
+      // Alleen seeden waar de taak over gaat - dezelfde vraag als voor de balk,
+      // dus dezelfde `reviewOnTarget`. Een taak die één artikel aanwijst hoort
+      // in dát artikel te landen, en `applyProposedContent` springt er zo nodig
+      // heen. Meestal ben je er al (de takenlijst linkt erheen), maar doordat de
+      // taak meereist met de navigatie staat `?task=` ook op de route van een
+      // ander artikel - en van een andere wet. Kom je daar binnen (een refresh
+      // terwijl je even elders keek), dan wint wat er op het scherm staat: niet
+      // ongevraagd wegspringen, en zeker het voorstel niet in vreemde inhoud
+      // laten landen. Het artikelnummer alleen is daarvoor geen toets: nummers
+      // als "B 5" bestaan in meerdere wetten. Het seed-doel wordt wel
+      // vastgelegd, zodat de her-seed-watch het oppakt zodra je er terug bent.
+      if (!reviewOnTarget.value) {
+        reviewSeedTarget.value = reviewArticleNumber.value;
         return;
       }
       applyProposedContent(reviewProposedContent.value);
@@ -1833,7 +1844,7 @@ watch(reviewTaskIdParam, (taskId) => {
   reviewSeeded.value = false;
   reviewHasHiddenChanges.value = false;
   reviewSeedTarget.value = null;
-  reviewSeededArticle.value = null;
+  reviewSeededAt.value = null;
 });
 
 // Terug op het artikel van de taak: zet het voorstel er weer in. De panes zijn
@@ -1845,9 +1856,19 @@ watch(reviewTaskIdParam, (taskId) => {
 // integraal geseed (`seedFromYaml`), niet als artikel-splice.
 watch([reviewOnTarget, selectedArticle], ([onTarget, article]) => {
   if (!onTarget || !article || reviewIsLawCreate.value) return;
-  if (!reviewProposedContent.value || !reviewSeedTarget.value) return;
-  if (String(article.number) !== reviewSeedTarget.value) return;
-  if (reviewSeededArticle.value === String(article.number)) return;
+  if (!reviewProposedContent.value) return;
+  if (reviewSeededAt.value === reviewSeedKey(String(article.number))) return;
+  // Waar het voorstel heen moet. Bij een taak over één artikel ligt dat vast;
+  // bij een voorstel over de hele wet kiest `proposalDivergence` het artikel, en
+  // is het doel dus pas bekend na de eerste keer seeden. Kwam je binnen op een
+  // andere wet, dan is dat nog niet gebeurd - laat `applyProposedContent` het
+  // dan alsnog bepalen (die springt zo nodig zelf naar het juiste artikel).
+  if (reviewSeedTarget.value) {
+    if (String(article.number) !== reviewSeedTarget.value) return;
+  } else if (reviewArticleNumber.value) {
+    // Artikel-taak zonder doel: `applyProposedContent` vond niets seedbaars.
+    return;
+  }
   applyProposedContent(reviewProposedContent.value);
 });
 

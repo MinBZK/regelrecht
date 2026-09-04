@@ -141,6 +141,26 @@ describe('useTaskReview', () => {
     expect(resolveTask).not.toHaveBeenCalled();
   });
 
+  // Vanuit de editor kun je via de takenlijst rechtstreeks van de ene taak naar
+  // de andere - `?task=` gaat dan van A naar B zonder tussenstop op "geen taak",
+  // dus zonder dat er iets `reset()` aanroept. Een nieuwe load hoort daarom zelf
+  // schoon te beginnen; anders staat de foutmelding van A boven het voorstel
+  // van B (en kleurt de balk kritiek terwijl er niets mis is).
+  it('begint schoon bij een volgende load, ook zonder reset ertussen', async () => {
+    fetchTask.mockResolvedValueOnce(openTask({ status: 'resolved' }));
+    const { reviewTask, proposedContent, stale, loadError, loadReview } = useTaskReview();
+    await loadReview('t1', 'etag-1');
+    expect(loadError.value).toBe('Deze taak is al afgehandeld.');
+
+    fetchTask.mockResolvedValueOnce(openTask({ id: 't2' }));
+    await loadReview('t2', 'etag-1');
+
+    expect(reviewTask.value?.id).toBe('t2');
+    expect(proposedContent.value).toBe('proposed: yaml');
+    expect(loadError.value).toBeNull();
+    expect(stale.value).toBe(false);
+  });
+
   it('reset laat een foutmelding van een mislukte load niet blijven staan', async () => {
     fetchTask.mockRejectedValue(new Error('netwerk'));
     const { loadError, loadReview, reset } = useTaskReview();

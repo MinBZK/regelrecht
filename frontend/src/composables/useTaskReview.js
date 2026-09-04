@@ -22,6 +22,13 @@ export function useTaskReview() {
   const loadError = ref(null);
 
   async function loadReview(taskId, currentLawEtag) {
+    // Elke load begint schoon. Niet elke wissel van taak gaat langs `reset()`:
+    // via de takenlijst springt `?task=` rechtstreeks van de ene taak naar de
+    // andere, en dan zou de uitkomst van de vorige (een foutmelding, of een
+    // stale-vlag die tegen een andere wet is berekend) boven de nieuwe blijven
+    // hangen.
+    stale.value = false;
+    loadError.value = null;
     try {
       const detail = await fetchTask(taskId);
       if (detail.task_type !== 'job_review' || detail.status !== 'open') {
