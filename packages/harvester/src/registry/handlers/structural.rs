@@ -178,6 +178,45 @@ impl ElementHandler for SkipHandler {
     }
 }
 
+/// Marker left where a non-text element carried part of the norm.
+///
+/// Deliberately unmistakable: a reader can see it, a grep can find it, and it
+/// cannot be confused for wettekst.
+pub const UNRENDERABLE_MARKER: &str = "[formule niet in tekst beschikbaar]";
+
+/// Handler for elements whose content is an image rather than text.
+///
+/// The BWB XML states some norms as a picture: artikel 22a Participatiewet puts
+/// the whole kostendelersnorm formula in an `<illustratie>`, and there are
+/// `<formule>` elements elsewhere. The harvester cannot render those, and that
+/// is not the problem — dropping them *silently* is. The sentence that
+/// introduces the formula then ends on its colon, and nothing downstream can
+/// tell an incomplete article from one that genuinely says nothing there.
+///
+/// So the element is still not rendered, but it leaves a marker. What the text
+/// misses is then visible in the text itself, which is the only place a reader
+/// of the corpus will look.
+pub struct UnrenderableHandler;
+
+impl ElementHandler for UnrenderableHandler {
+    fn element_type(&self) -> ElementType {
+        ElementType::Inline
+    }
+
+    fn handle<'a, 'input>(
+        &self,
+        node: Node<'a, 'input>,
+        _context: &mut ParseContext<'_>,
+        _recurse: &RecurseFn<'a, 'input>,
+    ) -> ParseResult {
+        tracing::warn!(
+            tag = %get_tag_name(node),
+            "Non-text element in law content; leaving a marker in the text"
+        );
+        ParseResult::new(UNRENDERABLE_MARKER)
+    }
+}
+
 /// Handler that extracts text from element and all children.
 ///
 /// Used for container elements that should contribute their text content.

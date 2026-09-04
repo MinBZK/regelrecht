@@ -392,3 +392,53 @@ fn test_references_extracted() {
         );
     }
 }
+
+/// A skipped `<illustratie>` must leave a mark in the text.
+///
+/// Artikel 22a Participatiewet states the kostendelersnorm as a formula, and in
+/// the BWB XML that formula is a PNG (`<illustratie>`), not text. The element is
+/// on the skip list, so the sentence that introduces it ("is de norm per
+/// kalendermaand voor de belanghebbende:") used to end on its colon and the norm
+/// itself simply disappeared. Nothing downstream could tell that from a law that
+/// genuinely says nothing there.
+///
+/// Dropping the image is fine; dropping it silently is not. The harvester leaves
+/// a marker so a reader, and the schema validation behind it, can see that the
+/// text is incomplete at that point.
+#[test]
+fn test_illustratie_leaves_a_marker_in_the_text() {
+    use regelrecht_harvester::splitting::{
+        create_dutch_law_hierarchy, LeafSplitStrategy, SplitContext, SplitEngine,
+    };
+
+    let xml = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/formule/artikel22a_lid1.xml"),
+    )
+    .expect("fixture readable");
+    let doc = roxmltree::Document::parse(&xml).expect("fixture parses");
+
+    let hierarchy = create_dutch_law_hierarchy();
+    let engine = SplitEngine::new(hierarchy, LeafSplitStrategy).with_article_level(true);
+    let artikel = doc.root_element();
+    let context = SplitContext::new(
+        "BWBR0015703",
+        "2022-03-15",
+        "https://wetten.overheid.nl/BWBR0015703/2022-03-15#Artikel22a".to_string(),
+    );
+
+    let components = engine.split(artikel, context);
+    let text = components
+        .iter()
+        .map(|c| c.text.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        text.contains("is de norm per kalendermaand voor de belanghebbende:"),
+        "the sentence introducing the formula should survive; got:\n{text}"
+    );
+    assert!(
+        text.contains("[formule niet in tekst beschikbaar]"),
+        "a skipped illustratie should leave a marker so the gap is visible; got:\n{text}"
+    );
+}

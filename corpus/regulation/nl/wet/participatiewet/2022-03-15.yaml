@@ -309,9 +309,12 @@ articles:
       **Kostendelersnorm**
 
       1. Indien de belanghebbende van 21 jaar of ouder een of meer kostendelende medebewoners heeft, is de norm per
-      kalendermaand voor de belanghebbende: Hierbij staat:    • A voor het aantal kostendelende medebewoners plus de
-      belanghebbende en zijn echtgenoot van 21 jaar of ouder indien hij gehuwd is; en    • B voor de norm, bedoeld in
-      artikel:
+      kalendermaand voor de belanghebbende: [formule niet in tekst beschikbaar] Hierbij staat:    • A voor het aantal
+      kostendelende medebewoners plus de belanghebbende en zijn echtgenoot van 21 jaar of ouder indien hij gehuwd is;
+      en    • B voor de norm, bedoeld in artikel:    a. artikel 21, onderdeel b, indien de belanghebbende jonger dan de
+      pensioengerechtigde leeftijd is;    b. artikel 22, onderdeel c, indien de belanghebbende jonger dan de
+      pensioengerechtigde leeftijd is en zijn echtgenoot de pensioengerechtigde leeftijd heeft bereikt;    c. artikel
+      22, onderdeel b, indien de belanghebbende de pensioengerechtigde leeftijd heeft bereikt.
 
       2. De norm voor gehuwden, op wie het eerste lid van toepassing is, is gelijk aan de som van de normen, bedoeld in
       dat lid, die voor ieder van de rechthebbende echtgenoten afzonderlijk van toepassing is.
@@ -325,27 +328,26 @@ articles:
     machine_readable:
       # Alleen A uit lid 1 is hier gemodelleerd: "het aantal kostendelende
       # medebewoners plus de belanghebbende en zijn echtgenoot van 21 jaar of
-      # ouder indien hij gehuwd is".
+      # ouder indien hij gehuwd is". B volgt wel uit de tekst: het is de norm
+      # uit artikel 21 onderdeel b, 22 onderdeel c, of 22 onderdeel b, al naar
+      # gelang de leeftijd van de belanghebbende en die van zijn echtgenoot.
       #
-      # De norm zelf volgt niet. De opgenomen wettekst breekt af op "is de norm
-      # per kalendermaand: Hierbij staat:" — de formule waarin A en B worden
-      # gebruikt staat er niet, en B verwijst naar "de norm, bedoeld in artikel:"
-      # zonder artikelnummer. Die twee uit een andere bron aanvullen zou
-      # betekenen dat het model iets beweert wat in dit corpus niet staat; de
-      # tekst hoort eerst opnieuw te worden ingewonnen.
+      # De formule waarin A en B worden verrekend staat in de bron als
+      # afbeelding en niet als tekst, en is daarmee niet uit deze wet af te
+      # leiden. Hem uit een andere bron overnemen zou het model iets laten
+      # beweren wat hier niet staat.
       untranslatables:
-        - construct: de norm per kalendermaand op basis van A en B
+        - construct: de norm per kalendermaand als functie van A en B
           reason: >-
-            De opgenomen wettekst breekt af voor de formule en noemt geen
-            artikelnummer voor B, zodat de norm niet uit deze tekst volgt.
+            De formule staat in de BWB-bron als afbeelding en niet als tekst,
+            dus de verhouding tussen A en B volgt niet uit de wettekst.
           suggestion: >-
-            Wettekst van artikel 22a opnieuw innemen, inclusief de formule en de
-            verwijzing in lid 1.
-          legal_text_excerpt: 'is de norm per kalendermaand voor de belanghebbende: Hierbij staat:'
-          # Aanvaard: A is wel te bepalen en is op zichzelf bruikbaar, dus de
-          # rest van het artikel blijft rekenen. Dit is geen open norm maar een
-          # onvolledige brontekst, en dat blijft hier staan tot artikel 22a
-          # opnieuw is ingewonnen.
+            De formule uit Stb. overnemen zodra een machine-leesbare vorm van
+            artikel 22a lid 1 beschikbaar is.
+          legal_text_excerpt: 'is de norm per kalendermaand voor de belanghebbende: [formule niet in tekst beschikbaar]'
+          # Aanvaard: A is wel te bepalen en op zichzelf bruikbaar, dus de rest
+          # van het artikel blijft rekenen. Dit is geen open norm maar een
+          # brontekst die de norm als plaatje geeft.
           accepted: true
       execution:
         produces:
