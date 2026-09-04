@@ -72,6 +72,19 @@ steps:
     args: [{name: source, type: string}, {name: key, type: string}]
     datatable: true
 
+  # A collection-valued parameter, for the operations that iterate one
+  # (RFC-016). The table has a header row and one row per element, so each
+  # element becomes an object keyed by the column names — the same shape as a
+  # data-source table, bound to a parameter instead of a source. The plain
+  # parameter steps take a single cell and cannot express this.
+  - id: set_parameter_collection
+    action: set_parameter_collection
+    keyword: given
+    tier: core
+    text: 'parameter "{name}" is the collection:'
+    args: [{name: name, type: string}]
+    datatable: true
+
   # ---------- core: execute ----------
   - id: evaluate
     action: evaluate

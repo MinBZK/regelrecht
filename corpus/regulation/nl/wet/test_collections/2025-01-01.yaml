@@ -1,0 +1,196 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: test_collections
+name: Testwet collectiebewerkingen
+regulatory_layer: WET
+bwb_id: BWBR9999905
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_collections
+
+articles:
+  - number: '1'
+    url: https://example.com/test_collections/1
+    text: >-
+      Het aantal medebewoners van 21 jaar of ouder wordt vastgesteld, alsmede
+      het totaal van hun bijdragen. Een medebewoner die de leeftijd van 21 jaar
+      niet heeft bereikt, telt niet mee. Het hoogste en het laagste bedrag
+      worden afzonderlijk vastgesteld.
+    machine_readable:
+      # RFC-016. Elke uitkomst is teruggebracht tot een scalar, zodat de
+      # bestaande BDD-woordenschat volstaat: er is nog geen stap die een array
+      # als uitkomst kan toetsen, en die zou ook door elke andere engine
+      # geïmplementeerd moeten worden (tier core).
+      execution:
+        parameters:
+          - name: medebewoners
+            type: array
+            required: true
+            description: >-
+              Medebewoners, elk met een leeftijd en een bijdrage. De
+              leeftijdsgrens staat in deze wet, niet in de bronregistratie.
+        output:
+          - name: aantal_medebewoners_21_plus
+            type: number
+          - name: totaal_bijdragen
+            type: number
+          - name: totaal_alle_bijdragen
+            type: number
+          - name: hoogste_bijdrage
+            type: number
+          - name: laagste_bijdrage
+            type: number
+          - name: iedereen_draagt_bij
+            type: boolean
+          - name: iemand_draagt_bij
+            type: boolean
+        actions:
+          # Tellen met een drempel: `body: 1` en combine ADD. Dit is de vorm
+          # die artikel 22a Participatiewet nodig heeft.
+          - output: aantal_medebewoners_21_plus
+            value:
+              operation: FOREACH
+              collection: $medebewoners
+              as: medebewoner
+              filter:
+                operation: GREATER_THAN_OR_EQUAL
+                subject: $medebewoner.leeftijd
+                value: 21
+              body: 1
+              combine: ADD
+
+          # Filteren en optellen in één clausule, zoals de wettekst het zegt.
+          - output: totaal_bijdragen
+            value:
+              operation: FOREACH
+              collection: $medebewoners
+              as: medebewoner
+              filter:
+                operation: GREATER_THAN_OR_EQUAL
+                subject: $medebewoner.leeftijd
+                value: 21
+              body: $medebewoner.bijdrage
+              combine: ADD
+
+          # Zonder filter telt iedereen mee. Het verschil met de vorige uitkomst
+          # laat zien dat het filter daadwerkelijk elementen overslaat.
+          - output: totaal_alle_bijdragen
+            value:
+              operation: FOREACH
+              collection: $medebewoners
+              as: medebewoner
+              body: $medebewoner.bijdrage
+              combine: ADD
+
+          - output: hoogste_bijdrage
+            value:
+              operation: FOREACH
+              collection: $medebewoners
+              as: medebewoner
+              body: $medebewoner.bijdrage
+              combine: MAX
+
+          - output: laagste_bijdrage
+            value:
+              operation: FOREACH
+              collection: $medebewoners
+              as: medebewoner
+              body: $medebewoner.bijdrage
+              combine: MIN
+
+          # AND over een lege collectie is waar, OR onwaar. Beide uitkomsten
+          # verraden welke identiteit de engine hanteert.
+          - output: iedereen_draagt_bij
+            value:
+              operation: FOREACH
+              collection: $medebewoners
+              as: medebewoner
+              body:
+                operation: GREATER_THAN
+                subject: $medebewoner.bijdrage
+                value: 0
+              combine: AND
+
+          - output: iemand_draagt_bij
+            value:
+              operation: FOREACH
+              collection: $medebewoners
+              as: medebewoner
+              body:
+                operation: GREATER_THAN
+                subject: $medebewoner.bijdrage
+                value: 0
+              combine: OR
+
+  - number: '2'
+    url: https://example.com/test_collections/2
+    text: >-
+      Het totaal van de bijdragen van alle leden van alle huishoudens wordt
+      vastgesteld. Van elk huishouden telt uitsluitend de hoogste bijdrage mee
+      voor het aantal draagkrachtige huishoudens.
+    machine_readable:
+      # De huishoudens staan als definitie in de wet zelf. Een geneste collectie
+      # is niet als parameter aan te leveren: een Gherkin-tabel is plat, en een
+      # stap die geneste structuren kan opbouwen zou elke engine met de core-tier
+      # binden voor een vorm die alleen deze test nodig heeft.
+      definitions:
+        huishoudens:
+          value:
+            - leden:
+                - bijdrage: 100
+                - bijdrage: 200
+            - leden:
+                - bijdrage: 50
+            - leden: []
+      execution:
+        output:
+          - name: totaal_over_huishoudens
+            type: number
+          - name: aantal_huishoudens
+            type: number
+          - name: hoogste_per_huishouden_totaal
+            type: number
+        actions:
+          # Geneste FOREACH. De binnenste `collection` leest $huishouden, want
+          # die wordt geëvalueerd in de scope waar de binnenste FOREACH staat.
+          # De binnenste `body` ziet $huishouden niet: een child-context begint
+          # met een lege local scope.
+          - output: totaal_over_huishoudens
+            value:
+              operation: FOREACH
+              collection: $huishoudens
+              as: huishouden
+              body:
+                operation: FOREACH
+                collection: $huishouden.leden
+                as: lid
+                body: $lid.bijdrage
+                combine: ADD
+              combine: ADD
+
+          # Zonder binnenste FOREACH: telt de huishoudens zelf. Het verschil met
+          # de vorige uitkomst laat zien dat de nesting daadwerkelijk over twee
+          # niveaus loopt en niet toevallig over één.
+          - output: aantal_huishoudens
+            value:
+              operation: FOREACH
+              collection: $huishoudens
+              as: huishouden
+              body: 1
+              combine: ADD
+
+          # Een binnenste MAX onder een buitenste ADD: 200 + 50 + niets. Het
+          # lege huishouden levert null, dat door combine ADD wordt overgeslagen.
+          - output: hoogste_per_huishouden_totaal
+            value:
+              operation: FOREACH
+              collection: $huishoudens
+              as: huishouden
+              body:
+                operation: FOREACH
+                collection: $huishouden.leden
+                as: lid
+                body: $lid.bijdrage
+                combine: MAX
+              combine: ADD

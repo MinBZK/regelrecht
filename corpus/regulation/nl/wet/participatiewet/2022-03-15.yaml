@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
 $id: participatiewet
 regulatory_layer: WET
 publication_date: '2014-07-15'
@@ -322,6 +322,100 @@ articles:
       echtgenoot van 21 jaar of ouder,    b. indien ze geen ten laste komende kinderen hebben: € 269,51 plus de op basis
       van dit artikel van toepassing zijnde norm voor de echtgenoot van 21 jaar of ouder.
     url: https://wetten.overheid.nl/BWBR0015703/2022-03-15#Artikel22a
+    machine_readable:
+      # Alleen A uit lid 1 is hier gemodelleerd: "het aantal kostendelende
+      # medebewoners plus de belanghebbende en zijn echtgenoot van 21 jaar of
+      # ouder indien hij gehuwd is".
+      #
+      # De norm zelf volgt niet. De opgenomen wettekst breekt af op "is de norm
+      # per kalendermaand: Hierbij staat:" — de formule waarin A en B worden
+      # gebruikt staat er niet, en B verwijst naar "de norm, bedoeld in artikel:"
+      # zonder artikelnummer. Die twee uit een andere bron aanvullen zou
+      # betekenen dat het model iets beweert wat in dit corpus niet staat; de
+      # tekst hoort eerst opnieuw te worden ingewonnen.
+      untranslatables:
+        - construct: de norm per kalendermaand op basis van A en B
+          reason: >-
+            De opgenomen wettekst breekt af voor de formule en noemt geen
+            artikelnummer voor B, zodat de norm niet uit deze tekst volgt.
+          suggestion: >-
+            Wettekst van artikel 22a opnieuw innemen, inclusief de formule en de
+            verwijzing in lid 1.
+          legal_text_excerpt: 'is de norm per kalendermaand voor de belanghebbende: Hierbij staat:'
+          # Aanvaard: A is wel te bepalen en is op zichzelf bruikbaar, dus de
+          # rest van het artikel blijft rekenen. Dit is geen open norm maar een
+          # onvolledige brontekst, en dat blijft hier staan tot artikel 22a
+          # opnieuw is ingewonnen.
+          accepted: true
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: is_gehuwd
+            type: boolean
+            required: true
+            description: 'Is gehuwd (bron: BRP)'
+          - name: medebewoners
+            type: array
+            required: true
+            description: >-
+              Kostendelende medebewoners, elk met een leeftijd. De grens van 21
+              jaar staat in dit artikel en niet in de bronregistratie: de BRP
+              levert de leeftijden, deze wet bepaalt wie meetelt.
+        output:
+          - name: aantal_kostendelende_medebewoners
+            type: number
+          - name: is_kostendelersnorm_van_toepassing
+            type: boolean
+          - name: rekengetal_a
+            type: number
+        actions:
+          # "een of meer kostendelende medebewoners" — ongeacht leeftijd, want
+          # lid 1 stelt die voorwaarde zonder leeftijdsgrens. De grens van 21
+          # geldt pas bij het tellen van A.
+          - output: aantal_kostendelende_medebewoners
+            value:
+              operation: FOREACH
+              collection: $medebewoners
+              as: medebewoner
+              body: 1
+              combine: ADD
+
+          - output: is_kostendelersnorm_van_toepassing
+            value:
+              operation: GREATER_THAN
+              subject: $aantal_kostendelende_medebewoners
+              value: 0
+
+          # A = de medebewoners van 21 jaar of ouder, plus de belanghebbende,
+          # plus de echtgenoot indien gehuwd.
+          - output: rekengetal_a
+            value:
+              operation: ADD
+              values:
+                - operation: FOREACH
+                  collection: $medebewoners
+                  as: medebewoner
+                  filter:
+                    operation: GREATER_THAN_OR_EQUAL
+                    subject: $medebewoner.leeftijd
+                    value: 21
+                  body: 1
+                  combine: ADD
+                # De belanghebbende zelf telt mee.
+                - 1
+                # En de echtgenoot, alleen indien gehuwd.
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $is_gehuwd
+                        value: true
+                      then: 1
+                  default: 0
   - number: '23'
     text: >-
       **Normen in inrichting**

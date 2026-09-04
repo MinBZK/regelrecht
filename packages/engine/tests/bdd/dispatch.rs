@@ -86,6 +86,12 @@ impl RegelrechtWorld {
                 let rows = rows_to_records(&table.expect("data source table"), table_cell_value);
                 self.data_sources.insert(source, (key, rows));
             }
+            "set_parameter_collection" => {
+                let name = args[0].as_str().to_string();
+                let records = rows_to_records(&table.expect("collection table"), table_cell_value);
+                let items = records.into_iter().map(Value::Object).collect();
+                self.parameters.insert(name, Value::Array(items));
+            }
 
             // ----- core/provenance: execute -----
             "evaluate" => {

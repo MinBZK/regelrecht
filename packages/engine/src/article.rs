@@ -20,11 +20,11 @@ use std::path::Path;
 
 /// Re-export the canonical document model at the historical `article` path.
 pub use regelrecht_law_model::{
-    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, CompetentAuthority,
-    Definition, Execution, HookDeclaration, HookFilter, HookPoint, ImplementsDeclaration, Input,
-    LegalBasis, MachineReadable, OpenTerm, OpenTermDefault, Output, OverrideDeclaration, Parameter,
-    ProcedureAppliesTo, ProcedureDefinition, Produces, Source, Stage, StageRequirement, TypeSpec,
-    UntranslatableEntry,
+    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, CombineOp,
+    CompetentAuthority, Definition, Execution, HookDeclaration, HookFilter, HookPoint,
+    ImplementsDeclaration, Input, LegalBasis, MachineReadable, OpenTerm, OpenTermDefault, Output,
+    OverrideDeclaration, Parameter, ProcedureAppliesTo, ProcedureDefinition, Produces, Source,
+    Stage, StageRequirement, TypeSpec, UntranslatableEntry,
 };
 
 /// Engine-side loading of an [`ArticleBasedLaw`] from YAML, with the security

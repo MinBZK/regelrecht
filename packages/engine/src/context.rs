@@ -30,7 +30,7 @@
 //! If you need to pass values between iterations, use parameters or store them
 //! in outputs rather than relying on local scope inheritance.
 
-use crate::article::Definition;
+use crate::article::{ActionValue, CombineOp, Definition};
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
@@ -411,6 +411,22 @@ impl ValueResolver for RuleContext {
 
     fn has_trace(&self) -> bool {
         RuleContext::has_trace(self)
+    }
+
+    /// `RuleContext` can create child scopes, so it is the resolver that can
+    /// run a FOREACH (RFC-016).
+    fn execute_foreach_op(
+        &self,
+        collection: &ActionValue,
+        as_name: &str,
+        body: &ActionValue,
+        filter: Option<&ActionValue>,
+        combine: Option<&CombineOp>,
+        depth: usize,
+    ) -> Option<Result<Value>> {
+        Some(crate::operations::execute_foreach(
+            collection, as_name, body, filter, combine, self, depth,
+        ))
     }
 }
 

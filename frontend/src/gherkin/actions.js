@@ -168,6 +168,12 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
       }
       break;
 
+    case 'set_parameter_collection':
+      // Header row plus one row per element, each element an object keyed by
+      // the column names — the shape the iterating operations expect (RFC-016).
+      ctx.parameters[args[0]] = tableToRecords(table);
+      break;
+
     case 'set_data_source': {
       const sourceName = args[0];
       const keyField = args[1];

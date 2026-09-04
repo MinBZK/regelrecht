@@ -11,7 +11,7 @@
 //! days). Whether a `percentage` is divided by 100 is a value concern expressed
 //! by an explicit `DIVIDE … 100`, never implied by the label.
 
-use crate::article::{ActionOperation, ActionValue, Article};
+use crate::article::{ActionOperation, ActionValue, Article, CombineOp};
 use crate::error::EngineError;
 use crate::types::Value;
 use std::collections::BTreeMap;
@@ -375,6 +375,31 @@ pub fn infer_operation_unit(
             check_children(&refs, symbols)?;
             Ok(Unit::Unknown)
         }
+        // A FOREACH carries the unit of its body: summing eurocents over a
+        // collection yields eurocents. ADD/MIN/MAX preserve it the way IF
+        // preserves the shared unit of its branches; AND/OR reduce to a boolean,
+        // and without `combine` the result is an array. Neither carries a unit.
+        //
+        // `collection` and `filter` are checked so a unit error inside them is
+        // still caught, but they describe which elements take part, not what
+        // the result is measured in.
+        Foreach {
+            collection,
+            body,
+            filter,
+            combine,
+            ..
+        } => {
+            infer_unit(collection, symbols)?;
+            if let Some(f) = filter {
+                infer_unit(f, symbols)?;
+            }
+            let body_unit = infer_unit(body, symbols)?;
+            Ok(match combine {
+                Some(CombineOp::Add) | Some(CombineOp::Min) | Some(CombineOp::Max) => body_unit,
+                Some(CombineOp::And) | Some(CombineOp::Or) | None => Unit::Unknown,
+            })
+        }
         Age {
             date_of_birth,
             reference_date,
@@ -651,6 +676,84 @@ mod tests {
         };
         assert!(matches!(
             infer_operation_unit(&op, &symbols()),
+            Err(EngineError::UnitMismatch { .. })
+        ));
+    }
+
+    /// `FOREACH items as x: <body>` with the given combine.
+    fn foreach_over(body: ActionValue, combine: Option<CombineOp>) -> ActionOperation {
+        ActionOperation::Foreach {
+            collection: var("items"),
+            as_name: "x".to_string(),
+            body,
+            filter: None,
+            combine,
+        }
+    }
+
+    #[test]
+    fn infer_foreach_add_keeps_the_body_unit() {
+        // Summing eurocents over a collection yields eurocents. Losing that
+        // would disable euro/eurocent checking for every aggregated total,
+        // which is the confusion RFC-023 exists to catch.
+        for combine in [CombineOp::Add, CombineOp::Min, CombineOp::Max] {
+            let op = foreach_over(var("premie"), Some(combine));
+            assert_eq!(
+                infer_operation_unit(&op, &symbols()).unwrap(),
+                Unit::Eurocent,
+                "combine {combine:?} should preserve the body unit"
+            );
+        }
+    }
+
+    #[test]
+    fn infer_foreach_boolean_and_array_results_have_no_unit() {
+        // AND/OR reduce to a boolean, and without `combine` the result is an
+        // array. Neither is measured in anything.
+        for combine in [Some(CombineOp::And), Some(CombineOp::Or), None] {
+            let op = foreach_over(var("premie"), combine);
+            assert_eq!(
+                infer_operation_unit(&op, &symbols()).unwrap(),
+                Unit::Unknown,
+                "combine {combine:?} should not carry a unit"
+            );
+        }
+    }
+
+    #[test]
+    fn infer_foreach_checks_inside_body_collection_and_filter() {
+        // A unit error nested in any of the three operands must still surface.
+        let bad = ActionValue::Operation(Box::new(ActionOperation::Add {
+            values: vec![var("inkomen"), var("dagen")],
+        }));
+
+        let in_body = foreach_over(bad.clone(), Some(CombineOp::Add));
+        assert!(matches!(
+            infer_operation_unit(&in_body, &symbols()),
+            Err(EngineError::UnitMismatch { .. })
+        ));
+
+        let in_collection = ActionOperation::Foreach {
+            collection: bad.clone(),
+            as_name: "x".to_string(),
+            body: lit(1i64),
+            filter: None,
+            combine: Some(CombineOp::Add),
+        };
+        assert!(matches!(
+            infer_operation_unit(&in_collection, &symbols()),
+            Err(EngineError::UnitMismatch { .. })
+        ));
+
+        let in_filter = ActionOperation::Foreach {
+            collection: var("items"),
+            as_name: "x".to_string(),
+            body: lit(1i64),
+            filter: Some(bad),
+            combine: Some(CombineOp::Add),
+        };
+        assert!(matches!(
+            infer_operation_unit(&in_filter, &symbols()),
             Err(EngineError::UnitMismatch { .. })
         ));
     }

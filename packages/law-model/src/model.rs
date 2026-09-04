@@ -251,6 +251,28 @@ pub enum ActionOperation {
     },
     #[serde(rename = "LIST")]
     List { items: Vec<ActionValue> },
+    /// Iterate over a collection, evaluating `body` per element (RFC-016).
+    ///
+    /// The only operation that *defines* a variable rather than reading one:
+    /// `as_name` is bound in a child scope that covers `filter` and `body`.
+    /// `collection` is evaluated in the scope where the FOREACH itself appears,
+    /// which is what lets a nested FOREACH reach an outer binding.
+    ///
+    /// The aliases keep YAML written against earlier drafts loading; new laws
+    /// use the canonical `collection` / `body` / `filter`.
+    #[serde(rename = "FOREACH")]
+    Foreach {
+        #[serde(alias = "subject")]
+        collection: ActionValue,
+        #[serde(default = "default_foreach_as", rename = "as")]
+        as_name: String,
+        #[serde(alias = "value")]
+        body: ActionValue,
+        #[serde(default, alias = "where")]
+        filter: Option<ActionValue>,
+        #[serde(default)]
+        combine: Option<CombineOp>,
+    },
 
     // Date
     #[serde(rename = "AGE")]
@@ -290,6 +312,28 @@ pub enum ActionOperation {
     },
 }
 
+/// Aggregation applied to the per-element results of a FOREACH (RFC-016).
+///
+/// A typed enum rather than a string, so an unknown `combine` is rejected when
+/// the law is loaded instead of surfacing as a runtime error mid-evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CombineOp {
+    Add,
+    Or,
+    And,
+    Min,
+    Max,
+}
+
+/// Default name for the FOREACH element binding when `as` is omitted.
+///
+/// Neutral and language-independent, so it does not collide with the Dutch
+/// domain names laws use for their own variables.
+fn default_foreach_as() -> String {
+    "item".to_string()
+}
+
 impl ActionOperation {
     /// Get the operation name as a static uppercase string (for tracing).
     pub fn operation_name(&self) -> &'static str {
@@ -318,6 +362,7 @@ impl ActionOperation {
             ActionOperation::In { .. } => "IN",
             ActionOperation::NotIn { .. } => "NOT_IN",
             ActionOperation::List { .. } => "LIST",
+            ActionOperation::Foreach { .. } => "FOREACH",
             ActionOperation::Age { .. } => "AGE",
             ActionOperation::DateAdd { .. } => "DATE_ADD",
             ActionOperation::Date { .. } => "DATE",
