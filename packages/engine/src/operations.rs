@@ -1176,23 +1176,20 @@ pub fn execute_foreach(
         // where `$item.status` does. Existing laws are written that way. Dot
         // notation is clearer and does not risk shadowing an outer variable,
         // which is why RFC-016 recommends it for new laws.
-        //
-        // Two names are never taken from the element. `as_name` is bound last
-        // so a field of the same name cannot overwrite it — otherwise `as: kind`
-        // over `{kind: 7, ...}` would make `$kind.bedrag` a type error instead
-        // of a lookup. And `referencedate` is skipped because it resolves ahead
-        // of local scope (see `RuleContext::resolve_variable_internal`): writing
-        // it here would put a value somewhere nothing can read, so the law would
-        // silently get the calculation date instead of the element's field.
         if let Value::Object(fields) = item {
             for (key, value) in fields {
-                if key == as_name || key == "referencedate" {
-                    continue;
-                }
                 child.set_local(key.clone(), value.clone());
             }
         }
 
+        // Bound last, so a field named like the binding cannot displace it:
+        // `as: kind` over `{kind: 7, bedrag: 5}` must leave `$kind` the element,
+        // or `$kind.bedrag` becomes a type error on an integer.
+        //
+        // A field named `referencedate` is a different matter and stays
+        // unreachable by design: that name resolves ahead of local scope (see
+        // `RuleContext::resolve_variable_internal`), so the flattened form reads
+        // the calculation date. Dot notation gets at the field.
         child.set_local(as_name.to_string(), item.clone());
 
         if tracing {
@@ -3726,12 +3723,12 @@ mod tests {
         }
 
         #[test]
-        fn test_foreach_element_field_named_referencedate_is_not_bound() {
-            // `referencedate` resolves ahead of local scope, so flattening a
-            // field of that name would write somewhere nothing reads and the
-            // law would silently get the calculation date. Skipping it keeps
-            // the resolution honest, and the field stays reachable by dot
-            // notation.
+        fn test_foreach_element_field_named_referencedate_stays_unreachable_bare() {
+            // `referencedate` resolves ahead of local scope, so the flattened
+            // form reads the calculation date however the element is shaped.
+            // Worth pinning: a law author reading `$referencedate` inside a
+            // FOREACH gets the peildatum, never the element's own field, and
+            // dot notation is the only way at the latter.
             let context = ctx(vec![(
                 "items",
                 Value::Array(vec![obj(vec![(
