@@ -47,7 +47,11 @@ pub fn create_content_registry() -> ElementRegistry {
     // article whose norm is stated as a picture does not read as complete.
     // See UnrenderableHandler.
     registry.register("plaatje", UnrenderableHandler);
-    registry.register("illustratie", SkipHandler); // the marker comes from its <plaatje> parent
+    // Also handled, not skipped: an <illustratie> is normally wrapped in a
+    // <plaatje>, but nothing in the format guarantees it, and a bare one would
+    // vanish silently again. Now the parent renders its child's marker as text
+    // and passes it through, so a nested pair still yields exactly one marker.
+    registry.register("illustratie", UnrenderableHandler);
     registry.register("formule", UnrenderableHandler);
     registry.register("formule-klein", UnrenderableHandler);
 

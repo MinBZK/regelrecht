@@ -178,24 +178,29 @@ impl ElementHandler for SkipHandler {
     }
 }
 
-/// Marker left where a non-text element carried part of the norm.
+/// Marker left where an element carried part of the norm as an image.
 ///
 /// Deliberately unmistakable: a reader can see it, a grep can find it, and it
 /// cannot be confused for wettekst.
 pub const UNRENDERABLE_MARKER: &str = "[formule niet in tekst beschikbaar]";
 
-/// Handler for elements whose content is an image rather than text.
+/// Handler for elements that may hold a norm as an image rather than as text.
 ///
 /// The BWB XML states some norms as a picture: artikel 22a Participatiewet puts
-/// the whole kostendelersnorm formula in an `<illustratie>`, and there are
-/// `<formule>` elements elsewhere. The harvester cannot render those, and that
-/// is not the problem — dropping them *silently* is. The sentence that
-/// introduces the formula then ends on its colon, and nothing downstream can
-/// tell an incomplete article from one that genuinely says nothing there.
+/// the whole kostendelersnorm formula in an `<illustratie>`, and `<formule>`
+/// elements appear elsewhere. The harvester cannot render an image, and that is
+/// not the problem — dropping it *silently* is. The sentence introducing the
+/// formula then ends on its colon, and nothing downstream can tell an
+/// incomplete article from one that genuinely says nothing there.
 ///
-/// So the element is still not rendered, but it leaves a marker. What the text
-/// misses is then visible in the text itself, which is the only place a reader
-/// of the corpus will look.
+/// So the element leaves a marker, and what the text misses becomes visible in
+/// the text itself, which is the only place a reader of the corpus will look.
+///
+/// The marker is a last resort, never a replacement. These elements do not
+/// always wrap an image: a `<formule>` can carry a readable fallback in its
+/// children. Emitting the marker over that text would be worse than the bug
+/// this fixes — it would state that the formula is unavailable at the moment it
+/// was available and was discarded. Text wins whenever there is any.
 pub struct UnrenderableHandler;
 
 impl ElementHandler for UnrenderableHandler {
@@ -206,12 +211,17 @@ impl ElementHandler for UnrenderableHandler {
     fn handle<'a, 'input>(
         &self,
         node: Node<'a, 'input>,
-        _context: &mut ParseContext<'_>,
-        _recurse: &RecurseFn<'a, 'input>,
+        context: &mut ParseContext<'_>,
+        recurse: &RecurseFn<'a, 'input>,
     ) -> ParseResult {
+        let rendered = extract_text_with_tail(node, context, recurse);
+        if !rendered.trim().is_empty() {
+            return ParseResult::new(rendered);
+        }
+
         tracing::warn!(
             tag = %get_tag_name(node),
-            "Non-text element in law content; leaving a marker in the text"
+            "Element carries no text (image-only); leaving a marker in the law text"
         );
         ParseResult::new(UNRENDERABLE_MARKER)
     }

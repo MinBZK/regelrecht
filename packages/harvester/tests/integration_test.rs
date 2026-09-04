@@ -442,3 +442,76 @@ fn test_illustratie_leaves_a_marker_in_the_text() {
         "a skipped illustratie should leave a marker so the gap is visible; got:\n{text}"
     );
 }
+
+/// Load a formula fixture and return the harvested article text.
+fn harvest_formule_fixture(name: &str) -> String {
+    use regelrecht_harvester::splitting::{
+        create_dutch_law_hierarchy, LeafSplitStrategy, SplitContext, SplitEngine,
+    };
+    let xml = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/formule")
+            .join(name),
+    )
+    .expect("fixture readable");
+    let doc = roxmltree::Document::parse(&xml).expect("fixture parses");
+    let engine =
+        SplitEngine::new(create_dutch_law_hierarchy(), LeafSplitStrategy).with_article_level(true);
+    let context = SplitContext::new(
+        "BWBR0015703",
+        "2022-03-15",
+        "https://example.invalid/artikel".to_string(),
+    );
+    engine
+        .split(doc.root_element(), context)
+        .iter()
+        .map(|c| c.text.clone())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The marker never replaces text that was actually there.
+///
+/// A `<formule>` does not always wrap an image; it can carry a readable
+/// fallback in its children. Emitting the marker over that would be worse than
+/// the silent drop it replaces: it would state the formula is unavailable at
+/// the moment it was available and was discarded.
+#[test]
+fn test_formule_with_readable_text_keeps_the_text() {
+    let text = harvest_formule_fixture("formule_met_tekst.xml");
+    assert!(
+        text.contains("A = B x C"),
+        "readable formula text must survive; got:\n{text}"
+    );
+    assert!(
+        !text.contains("[formule niet in tekst beschikbaar]"),
+        "no marker when the text is there; got:\n{text}"
+    );
+}
+
+/// An `<illustratie>` outside a `<plaatje>` still leaves a marker.
+///
+/// The usual shape wraps it, but nothing in the format guarantees that, and a
+/// bare one used to vanish silently — the exact failure this all fixes.
+#[test]
+fn test_bare_illustratie_still_leaves_a_marker() {
+    let text = harvest_formule_fixture("losse_illustratie.xml");
+    assert!(
+        text.contains("[formule niet in tekst beschikbaar]"),
+        "a bare illustratie must not vanish; got:\n{text}"
+    );
+}
+
+/// A nested `<plaatje><illustratie/></plaatje>` yields exactly one marker.
+///
+/// Both elements carry the handler now, so the parent renders the child's
+/// marker as its text rather than adding a second one.
+#[test]
+fn test_nested_plaatje_illustratie_marks_once() {
+    let text = harvest_formule_fixture("artikel22a_lid1.xml");
+    assert_eq!(
+        text.matches("[formule niet in tekst beschikbaar]").count(),
+        1,
+        "expected exactly one marker; got:\n{text}"
+    );
+}
