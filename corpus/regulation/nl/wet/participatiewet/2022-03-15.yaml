@@ -356,17 +356,26 @@ articles:
           - name: bsn
             type: string
             required: true
+          - name: leeftijd
+            type: number
+            required: true
+            description: 'Leeftijd van de belanghebbende in jaren (bron: BRP)'
           - name: is_gehuwd
             type: boolean
             required: true
             description: 'Is gehuwd (bron: BRP)'
+          - name: leeftijd_echtgenoot
+            type: number
+            required: false
+            description: >-
+              Leeftijd van de echtgenoot in jaren (bron: BRP). Alleen van belang
+              indien gehuwd.
           - name: medebewoners
             type: array
             required: true
             description: >-
-              Kostendelende medebewoners, elk met een leeftijd. De grens van 21
-              jaar staat in dit artikel en niet in de bronregistratie: de BRP
-              levert de leeftijden, deze wet bepaalt wie meetelt.
+              Kostendelende medebewoners, elk met een leeftijd. De leeftijden
+              komen uit de BRP; deze wet bepaalt wat ermee gebeurt.
         output:
           - name: aantal_kostendelende_medebewoners
             type: number
@@ -375,9 +384,9 @@ articles:
           - name: rekengetal_a
             type: number
         actions:
-          # "een of meer kostendelende medebewoners" — ongeacht leeftijd, want
-          # lid 1 stelt die voorwaarde zonder leeftijdsgrens. De grens van 21
-          # geldt pas bij het tellen van A.
+          # "een of meer kostendelende medebewoners" — zonder leeftijdsgrens.
+          # De grens van 21 in de aanhef geldt de belanghebbende, niet de
+          # medebewoners.
           - output: aantal_kostendelende_medebewoners
             value:
               operation: FOREACH
@@ -386,36 +395,47 @@ articles:
               body: 1
               combine: ADD
 
+          # De aanhef stelt twee voorwaarden: "Indien de belanghebbende van 21
+          # jaar of ouder een of meer kostendelende medebewoners heeft". Beide
+          # moeten gelden, anders is dit artikel niet van toepassing.
           - output: is_kostendelersnorm_van_toepassing
             value:
-              operation: GREATER_THAN
-              subject: $aantal_kostendelende_medebewoners
-              value: 0
+              operation: AND
+              conditions:
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $leeftijd
+                  value: 21
+                - operation: GREATER_THAN
+                  subject: $aantal_kostendelende_medebewoners
+                  value: 0
 
-          # A = de medebewoners van 21 jaar of ouder, plus de belanghebbende,
-          # plus de echtgenoot indien gehuwd.
+          # "A voor het aantal kostendelende medebewoners plus de belanghebbende
+          # en zijn echtgenoot van 21 jaar of ouder indien hij gehuwd is".
+          #
+          # "van 21 jaar of ouder" hangt aan "zijn echtgenoot", het direct
+          # voorafgaande zinsdeel, en niet aan de medebewoners eerder in de zin.
+          # Alle kostendelende medebewoners tellen dus mee, ongeacht leeftijd;
+          # de echtgenoot alleen als hij 21 of ouder is. De belanghebbende zelf
+          # is via de aanhef al 21 of ouder.
           - output: rekengetal_a
             value:
               operation: ADD
               values:
-                - operation: FOREACH
-                  collection: $medebewoners
-                  as: medebewoner
-                  filter:
-                    operation: GREATER_THAN_OR_EQUAL
-                    subject: $medebewoner.leeftijd
-                    value: 21
-                  body: 1
-                  combine: ADD
+                - $aantal_kostendelende_medebewoners
                 # De belanghebbende zelf telt mee.
                 - 1
-                # En de echtgenoot, alleen indien gehuwd.
+                # En de echtgenoot, indien gehuwd en 21 of ouder.
                 - operation: IF
                   cases:
                     - when:
-                        operation: EQUALS
-                        subject: $is_gehuwd
-                        value: true
+                        operation: AND
+                        conditions:
+                          - operation: EQUALS
+                            subject: $is_gehuwd
+                            value: true
+                          - operation: GREATER_THAN_OR_EQUAL
+                            subject: $leeftijd_echtgenoot
+                            value: 21
                       then: 1
                   default: 0
   - number: '23'

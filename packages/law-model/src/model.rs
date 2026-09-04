@@ -258,17 +258,20 @@ pub enum ActionOperation {
     /// `collection` is evaluated in the scope where the FOREACH itself appears,
     /// which is what lets a nested FOREACH reach an outer binding.
     ///
-    /// The aliases keep YAML written against earlier drafts loading; new laws
-    /// use the canonical `collection` / `body` / `filter`.
+    /// The field names match the schema exactly. Earlier drafts of RFC-016 used
+    /// `subject`/`value`/`where`, and accepting those as aliases was considered,
+    /// but no law was ever written with them: FOREACH was a schema-less
+    /// `otherOperation` fallback in v0.2.0-v0.4.0 with no fixed field names. An
+    /// alias the schema rejects would only make the model accept documents
+    /// `just validate` refuses, which is the soundness gap the conformance suite
+    /// exists to prevent.
     #[serde(rename = "FOREACH")]
     Foreach {
-        #[serde(alias = "subject")]
         collection: ActionValue,
         #[serde(default = "default_foreach_as", rename = "as")]
         as_name: String,
-        #[serde(alias = "value")]
         body: ActionValue,
-        #[serde(default, alias = "where")]
+        #[serde(default)]
         filter: Option<ActionValue>,
         #[serde(default)]
         combine: Option<CombineOp>,

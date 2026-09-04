@@ -35,6 +35,16 @@ const KNOWN_GAPS: &[&str] = &[
     "missing_required_url.yaml", // schema requires top-level `url`; model treats it as optional
     "unknown_field_in_article.yaml", // article is additionalProperties:false; serde silently drops the field
     "wrong_type_publication_date.yaml", // schema wants a date string; model coerces the YAML integer
+    // Measured 2026-09-04, alongside RFC-016. A FOREACH written with the field
+    // names of an earlier RFC draft (`subject`/`value`/`where`) is rejected by
+    // the schema, and the `Foreach` variant rejects it too — but `ActionValue`
+    // is `#[serde(untagged)]`, so the failed operation falls through to
+    // `Literal` and the action ends up holding a plain object instead of an
+    // error. Same root cause as `unknown_field_in_article.yaml`: the model has
+    // no `deny_unknown_fields` and untagged enums swallow the mismatch. Fixing
+    // it means tightening `ActionValue`, which is a change for every operation,
+    // not for this one.
+    "foreach_draft_field_names.yaml",
 ];
 
 /// Corpus laws whose re-serialized model is not value-stable, with the measured
