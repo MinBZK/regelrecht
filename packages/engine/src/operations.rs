@@ -3786,8 +3786,8 @@ mod tests {
             assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
         }
 
-        /// Run a FOREACH with tracing on, returning the FOREACH trace node.
-        fn traced_foreach(op: &ActionOperation, context: &RuleContext) -> crate::trace::PathNode {
+        /// Run an operation with tracing on, returning its trace node.
+        fn traced_operation(op: &ActionOperation, context: &RuleContext) -> crate::trace::PathNode {
             let trace = std::rc::Rc::new(std::cell::RefCell::new(
                 crate::trace::TraceBuilder::new_untimed(),
             ));
@@ -3824,7 +3824,7 @@ mod tests {
                 combine: Some(CombineOp::Add),
             };
 
-            let node = traced_foreach(&op, &context);
+            let node = traced_operation(&op, &context);
             assert_eq!(node.name, "FOREACH");
             assert_eq!(
                 node.message.as_deref(),
@@ -3860,10 +3860,50 @@ mod tests {
                 filter: None,
                 combine: Some(CombineOp::Add),
             };
-            let node = traced_foreach(&op, &context);
+            let node = traced_operation(&op, &context);
             assert_eq!(
                 node.message.as_deref(),
                 Some("FOREACH over 1 element(s) = 1")
+            );
+        }
+
+        #[test]
+        fn test_if_keeps_its_own_trace_message() {
+            // The dispatcher normally overwrites a handler's trace message with
+            // "Compute OP(...) = value". IF and FOREACH are the exceptions: what
+            // they write from inside says which case matched, or how many
+            // elements were seen, and the value alone does not.
+            //
+            // This lives in the FOREACH module because adding the FOREACH arm is
+            // what turned that special case from an `if` into a `match`, and a
+            // match arm is the kind of thing a refactor drops silently.
+            let context = ctx(vec![("bedrag", Value::Int(50))]);
+
+            let matched = ActionOperation::If {
+                cases: vec![Case {
+                    when: ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                        subject: var("bedrag"),
+                        value: lit(10i64),
+                    })),
+                    then: lit(1i64),
+                }],
+                default: Some(lit(0i64)),
+            };
+            assert_eq!(
+                traced_operation(&matched, &context).message.as_deref(),
+                Some("IF(case 0 matched) = 1")
+            );
+
+            let defaulted = ActionOperation::If {
+                cases: vec![Case {
+                    when: lit(false),
+                    then: lit(1i64),
+                }],
+                default: Some(lit(0i64)),
+            };
+            assert_eq!(
+                traced_operation(&defaulted, &context).message.as_deref(),
+                Some("IF(took default) = 0")
             );
         }
 
