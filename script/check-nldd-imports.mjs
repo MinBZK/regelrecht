@@ -10,7 +10,7 @@
 // --write regenerates the imports file instead of failing.
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { packageEntries, usedTags, resolveEntries } from './nldd-imports.mjs';
+import { EXTENSIONS, packageEntries, usedTags, resolveUsage } from './nldd-imports.mjs';
 
 const [sourceDir, importsFile, ...flags] = process.argv.slice(2);
 if (!sourceDir || !importsFile) {
@@ -18,22 +18,28 @@ if (!sourceDir || !importsFile) {
   process.exit(2);
 }
 
-const EXTENSIONS = new Set(['vue', 'js', 'ts', 'astro', 'mdx', 'md', 'html']);
+// The generated file lives inside the tree it is generated from, so the scan
+// re-reads it. It contributes nothing because every line quotes
+// '@nldd/design-system/x' — the quote is followed by @, never by nldd-.
 const HEADER = `// Design-system components this app renders, one entry point each.
 // The package root would pull in all ~110 components; this list is generated
 // from the nldd-* tags in the source and checked on every build by
 // script/check-nldd-imports.mjs, so a newly used component fails the build
 // instead of silently never upgrading.
 //
+// A component this app only names in prose (markdown inline code) is absent
+// here on purpose: such a name has to exist, not to be imported.
+//
 // Regenerate: npm run nldd:imports
 `;
 
-const { needed, unresolved } = resolveEntries(usedTags(sourceDir, EXTENSIONS), packageEntries());
+const { needed, unknown } = resolveUsage(usedTags(sourceDir, EXTENSIONS), packageEntries());
 
-if (unresolved.length > 0) {
+if (unknown.length > 0) {
   console.error(`✗ ${sourceDir}: no design-system entry point defines these tags:`);
-  for (const tag of unresolved) console.error(`    nldd-${tag}`);
-  console.error('  Either the tag is a typo, or the package needs a new entry point.');
+  for (const tag of unknown) console.error(`    nldd-${tag}`);
+  console.error('  The tag is a typo, the prose naming it is stale, or the package');
+  console.error('  needs a new entry point.');
   process.exit(1);
 }
 
