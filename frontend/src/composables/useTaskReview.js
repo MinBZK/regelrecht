@@ -106,6 +106,11 @@ export function useTaskReview() {
   const partCount = computed(() => openParts.value.length);
 
   async function loadReview(taskId) {
+    // Elke load begint schoon. Niet elke wissel van taak gaat langs `reset()`:
+    // via de takenlijst springt `?task=` rechtstreeks van de ene taak naar de
+    // andere, en dan zou de foutmelding van de vorige taak boven de nieuwe
+    // blijven hangen.
+    loadError.value = null;
     try {
       const detail = await fetchTask(taskId);
       if (detail.task_type !== 'job_review' || detail.status !== 'open') {

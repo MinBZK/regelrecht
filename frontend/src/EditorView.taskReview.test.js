@@ -63,7 +63,22 @@ const SAVED_ARTICLES = [
   { number: 'B 1', text: 'B1 opgeslagen', machine_readable: null },
   { number: 'B 5', text: 'B5 opgeslagen', machine_readable: null },
 ];
+// Een tweede wet in hetzelfde traject die tóevallig dezelfde artikelnummers
+// gebruikt - doodgewoon ("B 1", "1", "2" bestaan in half de corpus). Precies
+// dat maakt hem interessant: bij een wetwissel verandert `selectedArticleNumber`
+// dan niet, alleen de wet eronder.
+const OTHER_LAW_ARTICLES = [
+  { number: 'B 1', text: 'B1 andere wet', machine_readable: null },
+  { number: 'B 5', text: 'B5 andere wet', machine_readable: null },
+];
 const articles = ref(SAVED_ARTICLES);
+const lawId = ref('kieswet');
+// Wissel van wet zoals `switchLaw` dat doet: de wet eronder verandert, het
+// artikelnummer in de URL kan hetzelfde blijven.
+function switchToLaw(id, lawArticles) {
+  lawId.value = id;
+  articles.value = lawArticles;
+}
 const selectedArticleNumber = ref('B 5');
 const selectedArticle = computed(
   () => articles.value.find((a) => String(a.number) === String(selectedArticleNumber.value)) ?? null,
@@ -73,10 +88,11 @@ const lawError = ref(null);
 const currentEtag = ref('etag-1');
 const seedFromYaml = vi.fn();
 const saveLaw = vi.fn().mockResolvedValue(undefined);
+const reloadLaw = vi.fn().mockResolvedValue(undefined);
 vi.mock('./composables/useLaw.js', () => ({
   useLaw: () => ({
     law: ref({ $id: 'kieswet', valid_from: '2025-01-01' }),
-    lawId: ref('kieswet'),
+    lawId,
     rawYaml: ref(SAVED_LAW_YAML),
     articles,
     lawName: ref('Kieswet'),
@@ -90,6 +106,7 @@ vi.mock('./composables/useLaw.js', () => ({
     saving: ref(false),
     saveError: ref(null),
     saveLaw: (...a) => saveLaw(...a),
+    reloadLaw: (...a) => reloadLaw(...a),
     seedFromYaml,
     createLaw: vi.fn().mockResolvedValue(undefined),
     currentEtag,
@@ -196,10 +213,14 @@ vi.mock('./composables/useAppChrome.js', () => ({
 // composable met de watches in de view. Alleen de HTTP-laag eronder is een stub.
 const fetchTask = vi.fn();
 const resolveTask = vi.fn();
+const fetchJobTasks = vi.fn();
+const applyEnrichment = vi.fn();
 vi.mock('./composables/useTasks.js', () => ({
   useTaskActions: () => ({
     fetchTask: (...a) => fetchTask(...a),
     resolveTask: (...a) => resolveTask(...a),
+    fetchJobTasks: (...a) => fetchJobTasks(...a),
+    applyEnrichment: (...a) => applyEnrichment(...a),
     refresh: vi.fn(),
     requestEnrich: vi.fn(),
     running: ref([]),
@@ -267,12 +288,15 @@ afterEach(() => {
 beforeEach(() => {
   fetchTask.mockReset().mockResolvedValue(reviewTaskDetail());
   resolveTask.mockReset().mockResolvedValue(undefined);
+  fetchJobTasks.mockReset();
+  applyEnrichment.mockReset().mockResolvedValue({ accepted: 1, total: 1 });
   replaceMock.mockReset();
   pushMock.mockReset();
   seedFromYaml.mockReset();
   saveLaw.mockReset().mockResolvedValue(undefined);
+  reloadLaw.mockReset().mockResolvedValue(undefined);
   editorChanges = null;
-  articles.value = SAVED_ARTICLES;
+  switchToLaw('kieswet', SAVED_ARTICLES);
   selectedArticleNumber.value = 'B 5';
   loading.value = false;
   lawError.value = null;
@@ -409,7 +433,16 @@ describe('EditorView review-modus', () => {
     await wrapper.vm.rejectReview();
     await settle();
 
-    expect(resolveTask).toHaveBeenCalledWith('taak-1', 'rejected');
+    // Een taak zonder job_id is in haar eentje de verrijking: "Verwerpen"
+    // legt het oordeel vast en verwerkt meteen - dat schrijft niet meer via
+    // een losse `resolveTask` per taak, maar via `applyEnrichment` op de
+    // verrijking (hier: alleen deze taak).
+    expect(resolveTask).not.toHaveBeenCalled();
+    expect(applyEnrichment).toHaveBeenCalledWith(
+      'taak-1',
+      [{ task_id: 'taak-1', action: 'rejected' }],
+      'etag-1',
+    );
     // De enige route die de taak bewust NIET meeneemt.
     const target = replaceMock.mock.calls.at(-1)[0];
     expect(target.query).toBeUndefined();
@@ -440,6 +473,45 @@ describe('EditorView review-modus', () => {
     await settle();
 
     expect(fetchTask).toHaveBeenCalledTimes(2);
+    expect(editorChanges.review).toBe(true);
+    expect(editorChanges.dirty).toBe(true);
+  });
+
+  // De taak reist mee met de navigatie, dus `?task=` staat ook in de URL van een
+  // ANDERE wet. Een refresh daar laadt de taak opnieuw - en dan mag het voorstel
+  // niet in die vreemde wet landen. Het artikelnummer alleen is geen bewijs dat
+  // je goed zit: nummers als "B 5" bestaan in meerdere wetten.
+  it('seedt het voorstel niet in een andere wet bij binnenkomen met ?task=', async () => {
+    switchToLaw('andere-wet', OTHER_LAW_ARTICLES);
+    routeState.query = { task: 'taak-1' };
+    mountEditor();
+    await settle();
+
+    expect(editorChanges.review).toBe(false);
+    // Niets geseed: de panes staan nog op de opgeslagen tekst van de andere wet.
+    expect(editorChanges.dirty).toBe(false);
+  });
+
+  // Dezelfde valkuil bij terugkeren. Wissel je naar een wet die hetzelfde
+  // artikelnummer heeft, dan verandert `selectedArticleNumber` niet - alleen de
+  // wet eronder. De panes zijn dan wél teruggezet naar de opgeslagen wet, dus
+  // terug op de taak moet het voorstel er opnieuw in.
+  it('seedt opnieuw na een uitstapje naar een wet met hetzelfde artikelnummer', async () => {
+    routeState.query = { task: 'taak-1' };
+    mountEditor();
+    await settle();
+    expect(editorChanges.review).toBe(true);
+    expect(editorChanges.dirty).toBe(true);
+
+    // Wetwissel, zelfde artikelnummer: de beoordeling hoort uit beeld.
+    switchToLaw('andere-wet', OTHER_LAW_ARTICLES);
+    await settle();
+    expect(editorChanges.review).toBe(false);
+    expect(editorChanges.dirty).toBe(false);
+
+    // Terug op de wet van de taak: balk én voorstel horen er weer te staan.
+    switchToLaw('kieswet', SAVED_ARTICLES);
+    await settle();
     expect(editorChanges.review).toBe(true);
     expect(editorChanges.dirty).toBe(true);
   });
