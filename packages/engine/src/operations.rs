@@ -180,25 +180,24 @@ pub fn execute_operation<R: ValueResolver>(
         match &result {
             Ok(value) => {
                 resolver.trace_set_result(value.clone());
-                // For IF (cases/default), execute_if already set a message
-                // with case match info; incorporate it instead of overwriting.
+                // IF and FOREACH write their own message from inside the
+                // handler: which case matched, how many elements were seen.
+                // That says more than the value alone, so keep it instead of
+                // overwriting. FOREACH reports its own result through the
+                // combine, so its message stands on its own.
                 let existing_msg = resolver.trace_get_message();
-                let msg = if matches!(op, ActionOperation::If { .. }) {
-                    if let Some(case_info) = existing_msg {
+                let msg = match (op, existing_msg) {
+                    (ActionOperation::If { .. }, Some(case_info)) => {
                         format!("IF({}) = {}", case_info, format_value_for_trace(value))
-                    } else {
-                        format!(
-                            "Compute {}(...) = {}",
-                            op_name,
-                            format_value_for_trace(value)
-                        )
                     }
-                } else {
-                    format!(
+                    (ActionOperation::Foreach { .. }, Some(summary)) => {
+                        format!("{} = {}", summary, format_value_for_trace(value))
+                    }
+                    _ => format!(
                         "Compute {}(...) = {}",
                         op_name,
                         format_value_for_trace(value)
-                    )
+                    ),
                 };
                 resolver.trace_set_message(msg);
             }
@@ -3662,6 +3661,120 @@ mod tests {
                 combine: None,
             };
             assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        /// Run a FOREACH with tracing on, returning the FOREACH trace node.
+        fn traced_foreach(op: &ActionOperation, context: &RuleContext) -> crate::trace::PathNode {
+            let trace = std::rc::Rc::new(std::cell::RefCell::new(
+                crate::trace::TraceBuilder::new_untimed(),
+            ));
+            let mut traced = context.clone();
+            traced.set_trace(std::rc::Rc::clone(&trace));
+            trace.borrow_mut().push("root", PathNodeType::Action);
+            execute_operation(op, &traced, 0).expect("foreach should succeed");
+            let root = trace.borrow_mut().pop().expect("root node should pop");
+            root.children
+                .into_iter()
+                .next()
+                .expect("FOREACH should record a node")
+        }
+
+        #[test]
+        fn test_foreach_traces_every_iteration_and_counts_the_skipped() {
+            // RFC-013: a reduction that shows only its total does not explain
+            // how it was reached. The skip count in particular is the only
+            // place the filter's effect is visible in the trace.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(5), Value::Int(9)]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(ActionValue::Operation(Box::new(
+                    ActionOperation::GreaterThan {
+                        subject: var("x"),
+                        value: lit(4i64),
+                    },
+                ))),
+                combine: Some(CombineOp::Add),
+            };
+
+            let node = traced_foreach(&op, &context);
+            assert_eq!(node.name, "FOREACH");
+            assert_eq!(
+                node.message.as_deref(),
+                Some("FOREACH over 2 element(s), 1 skipped by filter = 14")
+            );
+
+            // One node per element, skipped ones included, each naming its index.
+            let items: Vec<&crate::trace::PathNode> = node
+                .children
+                .iter()
+                .filter(|c| c.name.starts_with("ITEM_"))
+                .collect();
+            assert_eq!(items.len(), 3);
+            assert_eq!(items[0].name, "ITEM_0");
+            assert_eq!(
+                items[0].message.as_deref(),
+                Some("ITEM 0: skipped by filter")
+            );
+            assert_eq!(items[2].name, "ITEM_2");
+            assert!(items[2]
+                .message
+                .as_deref()
+                .is_some_and(|m| m.starts_with("ITEM 2: ")));
+        }
+
+        #[test]
+        fn test_foreach_trace_message_without_a_filter_omits_the_skip_count() {
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let node = traced_foreach(&op, &context);
+            assert_eq!(
+                node.message.as_deref(),
+                Some("FOREACH over 1 element(s) = 1")
+            );
+        }
+
+        #[test]
+        fn test_foreach_body_and_filter_count_against_the_depth_limit() {
+            // The body and filter are evaluated one level deeper than the
+            // FOREACH itself. Without that increment a deeply nested law would
+            // recurse past MAX_OPERATION_DEPTH instead of being rejected.
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // At the ceiling the body's own evaluation is over it.
+            assert!(matches!(
+                execute_operation(&op, &context, MAX_OPERATION_DEPTH),
+                Err(EngineError::MaxDepthExceeded(_))
+            ));
+
+            let with_filter = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(lit(true)),
+                combine: Some(CombineOp::Add),
+            };
+            assert!(matches!(
+                execute_operation(&with_filter, &context, MAX_OPERATION_DEPTH),
+                Err(EngineError::MaxDepthExceeded(_))
+            ));
         }
 
         #[test]
