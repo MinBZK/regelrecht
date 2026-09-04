@@ -24,6 +24,7 @@ The table below is **enforced**: `docs/scripts/check-rfc-coverage.mjs` reads the
 | RFC-012 | Untranslatables | [Untranslatables](../concepts/untranslatables) |
 | RFC-013 | Execution provenance | [Execution Provenance](../concepts/execution-provenance) |
 | RFC-014 | Conformance suite | [Conformance](./conformance) |
+| RFC-016 | Collection operations | [Law Format](../concepts/law-format) |
 | RFC-018 | Note infrastructure | [Notes and Annotations](../concepts/notes-and-annotations) |
 | RFC-019 | Law end dates | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
 | RFC-021 | Date comparison | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
