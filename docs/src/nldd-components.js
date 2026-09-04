@@ -4,6 +4,9 @@
 // script/check-nldd-imports.mjs, so a newly used component fails the build
 // instead of silently never upgrading.
 //
+// A component this app only names in prose (markdown inline code) is absent
+// here on purpose: such a name has to exist, not to be imported.
+//
 // Regenerate: npm run nldd:imports
 import '@nldd/design-system/box';
 import '@nldd/design-system/breadcrumbs';

@@ -104,7 +104,7 @@ repos:
         entry: just nldd-imports-test
         language: system
         pass_filenames: false
-        files: ^script/(nldd-imports\.test\.mjs|nldd-imports\.mjs|check-nldd-imports\.mjs)$
+        files: ^script/(check-)?nldd-imports(\.test)?\.mjs$
 
       - id: dockerfile-consistency
         name: Rust-Dockerfiles blijven bij de cargo-workspace

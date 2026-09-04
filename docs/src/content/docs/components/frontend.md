@@ -54,7 +54,7 @@ Edit law articles with a split-pane interface:
 
 ## Design System
 
-The frontend is built almost entirely from `@nldd/design-system` web components (custom-element prefix `nldd-`), imported in the JS entry point (`src/main.js` imports `@nldd/design-system` and its styles). A representative slice of the components in use:
+The frontend is built almost entirely from `@nldd/design-system` web components (custom-element prefix `nldd-`), imported one entry point at a time: `src/main.js` pulls in `src/nldd-components.js` — a generated list of exactly the components this app renders — plus the design system's styles. Importing the package root instead would ship all ~110 components, which is what `script/check-nldd-imports.mjs` guards against. A representative slice of the components in use:
 
 | Category | Components used |
 |----------|----------------|

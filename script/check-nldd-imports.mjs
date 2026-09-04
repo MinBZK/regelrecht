@@ -10,7 +10,7 @@
 // --write regenerates the imports file instead of failing.
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { packageEntries, usedTags, resolveEntries } from './nldd-imports.mjs';
+import { EXTENSIONS, packageEntries, usedTags, resolveUsage } from './nldd-imports.mjs';
 
 const [sourceDir, importsFile, ...flags] = process.argv.slice(2);
 if (!sourceDir || !importsFile) {
@@ -18,30 +18,25 @@ if (!sourceDir || !importsFile) {
   process.exit(2);
 }
 
-const EXTENSIONS = new Set(['vue', 'js', 'ts', 'astro', 'mdx', 'md', 'html']);
 const HEADER = `// Design-system components this app renders, one entry point each.
 // The package root would pull in all ~110 components; this list is generated
 // from the nldd-* tags in the source and checked on every build by
 // script/check-nldd-imports.mjs, so a newly used component fails the build
 // instead of silently never upgrading.
 //
+// A component this app only names in prose (markdown inline code) is absent
+// here on purpose: such a name has to exist, not to be imported.
+//
 // Regenerate: npm run nldd:imports
 `;
 
-const entries = packageEntries();
-const { rendered, mentioned } = usedTags(sourceDir, EXTENSIONS);
-const { needed, unresolved } = resolveEntries(rendered, entries);
-
-// A tag this source only names in prose needs no import, but it does have to
-// name a component that exists — that is what makes the mention true.
-const unknown = [
-  ...new Set([...unresolved, ...resolveEntries(mentioned, entries).unresolved]),
-].sort();
+const { needed, unknown } = resolveUsage(usedTags(sourceDir, EXTENSIONS), packageEntries());
 
 if (unknown.length > 0) {
   console.error(`✗ ${sourceDir}: no design-system entry point defines these tags:`);
   for (const tag of unknown) console.error(`    nldd-${tag}`);
-  console.error('  Either the tag is a typo, or the package needs a new entry point.');
+  console.error('  The tag is a typo, the prose naming it is stale, or the package');
+  console.error('  needs a new entry point.');
   process.exit(1);
 }
 
