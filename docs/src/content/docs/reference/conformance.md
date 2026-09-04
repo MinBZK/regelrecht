@@ -14,7 +14,7 @@ If you came here expecting test cases you can run against your own engine, there
 
 ## What is enforced today
 
-Five manifests are checked in: `conformance/v0.5.0/`, `v0.5.4/`, `v0.5.5/`, `v0.5.6/` and `v0.5.7/`, each with a `manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with.
+Five manifests are checked in: `conformance/v0.5.0/`, `v0.5.4/`, `v0.5.5/`, `v0.5.6/` and `v0.5.7/`, each with a `manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with, and v0.5.7 added `FOREACH` to the core level alongside the other [collection operations](../concepts/collections).
 
 What runs in CI is **operation coverage of the manifests themselves**, nothing more. `packages/engine/tests/conformance_coverage.rs` checks their `operations` lists against the engine's own operation list in three integration tests:
 

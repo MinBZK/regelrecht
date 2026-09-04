@@ -84,6 +84,26 @@ Feature: Kostendelersnorm via artikel 22a Participatiewet
     When I evaluate "rekengetal_a" of "participatiewet"
     Then output "rekengetal_a" equals 2
 
+  Scenario: Bij een echtgenoot van 18, 19 of 20 jaar geldt lid 3, niet lid 1
+    Given the calculation date is "2025-01-01"
+    Given parameter "bsn" is "999993653"
+    Given parameter "leeftijd" is 35
+    Given parameter "is_gehuwd" is "true"
+    Given parameter "leeftijd_echtgenoot" is 19
+    Given parameter "medebewoners" is the collection:
+      | leeftijd |
+      | 25       |
+    # Dit huishouden valt onder lid 3: een echtgenoot van 18, 19 of 20 jaar, de
+    # andere 21 of ouder, met kostendelende medebewoners. Lid 3 geeft daarvoor
+    # een eigen norm (€ 581,43 of € 269,51 plus de norm voor de echtgenoot van
+    # 21 jaar of ouder) en niet de formule uit lid 1.
+    #
+    # A wordt hier nog steeds berekend en komt op 2 uit, maar leidt in dit geval
+    # niet tot de norm. Lid 3 staat als untranslatable op het artikel, dus de
+    # afnemer die hier een bedrag uit zou willen afleiden, wordt gewaarschuwd.
+    When I evaluate "rekengetal_a" of "participatiewet"
+    Then output "rekengetal_a" equals 2
+
   Scenario: Zonder medebewoners is de kostendelersnorm niet van toepassing
     Given the calculation date is "2025-01-01"
     Given parameter "bsn" is "999993653"
@@ -95,9 +115,11 @@ Feature: Kostendelersnorm via artikel 22a Participatiewet
     Then output "aantal_kostendelende_medebewoners" equals 0
     When I evaluate "is_kostendelersnorm_van_toepassing" of "participatiewet"
     Then output "is_kostendelersnorm_van_toepassing" is false
-    # A blijft de belanghebbende zelf, ook zonder medebewoners.
-    When I evaluate "rekengetal_a" of "participatiewet"
-    Then output "rekengetal_a" equals 1
+    # `rekengetal_a` wordt onvoorwaardelijk berekend en komt hier op 1 uit, maar
+    # dat is een rekenkundige uitkomst en geen juridische. Zonder medebewoners
+    # is lid 1 niet van toepassing en bestaat A niet; een afnemer hoort eerst
+    # `is_kostendelersnorm_van_toepassing` te lezen. Vandaar dat dit artikel
+    # INFORMATIEF produceert en geen WAARDEBEPALING.
 
   Scenario: Medebewoners onder de 21 tellen gewoon mee
     Given the calculation date is "2025-01-01"
