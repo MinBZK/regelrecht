@@ -1,0 +1,15 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_article_without_url
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      Het artikel heeft geen `url` en is daarmee niet herleidbaar naar zijn
+      plaats in de gepubliceerde tekst. Het schema eist het veld per artikel,
+      net als op documentniveau; het model heeft het als `Option` — de
+      per-artikel-evenknie van het gedocumenteerde top-level-gat.

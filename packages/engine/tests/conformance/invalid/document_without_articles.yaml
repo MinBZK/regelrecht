@@ -1,0 +1,8 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_document_without_articles
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law

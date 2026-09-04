@@ -85,6 +85,32 @@ impl RegulatoryLayer {
         }
     }
 
+    /// Every layer, in the order the schema enumerates them.
+    pub const ALL: &'static [Self] = &[
+        Self::Grondwet,
+        Self::Wet,
+        Self::Amvb,
+        Self::KoninklijkBesluit,
+        Self::MinisterieleRegeling,
+        Self::Beleidsregel,
+        Self::EuVerordening,
+        Self::EuRichtlijn,
+        Self::Verdrag,
+        Self::Uitvoeringsbeleid,
+        Self::GemeentelijkeVerordening,
+        Self::ProvincialeVerordening,
+        Self::WaterschapsVerordening,
+    ];
+
+    /// Parse a layer from the string form used in YAML/JSON (e.g. "AMVB").
+    ///
+    /// Returns `None` for anything the enum does not name, so a caller can tell
+    /// an unknown layer from a mismatching one.
+    #[must_use]
+    pub fn from_yaml_str(s: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|l| l.as_str() == s)
+    }
+
     /// Get the directory name for file output.
     #[must_use]
     pub fn as_dir_name(&self) -> &'static str {

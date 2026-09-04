@@ -1,0 +1,30 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_date_part_plural_unit
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      DATE_PART leest een kalenderonderdeel en schrijft dat onderdeel enkelvoud,
+      waar DATE_DIFF eenheden telt en ze meervoud schrijft. Wie de meervoudsvorm
+      overneemt vraagt om iets dat niet bestaat, en het schema noemt dat hier
+      ongeldig zodat de fout valt voordat een uitvoering hem tegenkomt.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        parameters:
+          - name: peildatum
+            type: date
+        output:
+          - name: berekeningsjaar
+            type: number
+        actions:
+          - output: berekeningsjaar
+            value:
+              operation: DATE_PART
+              date: $peildatum
+              in: years

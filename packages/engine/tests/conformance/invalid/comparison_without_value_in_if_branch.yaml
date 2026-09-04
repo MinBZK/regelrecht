@@ -1,0 +1,33 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_comparison_without_value_in_if_branch
+regulatory_layer: WET
+bwb_id: BWBR9999912
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      De IF is welgevormd en de voorwaarde van zijn eerste tak noemt geen
+      waarde. De kapotte vergelijking valt als letterlijk object in de when,
+      waar zij als waar telt en de tak onvoorwaardelijk maakt.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        parameters:
+          - name: inkomen
+            type: number
+        output:
+          - name: bedrag
+            type: number
+        actions:
+          - output: bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN
+                    subject: $inkomen
+                  then: 100
+              default: 0

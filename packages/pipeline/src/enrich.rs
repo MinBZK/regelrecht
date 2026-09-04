@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -10,6 +11,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
+use crate::enrich_v2::{capabilities, context};
 use crate::error::{PipelineError, Result};
 
 /// Per-process cache of branch names already confirmed to exist on the
@@ -121,12 +123,35 @@ pub(crate) enum ChunkPlan {
 /// `machine_readable`, so an un-enriched-first window would revisit the same
 /// skipped articles forever and never terminate. A cursor guarantees
 /// termination in `ceil(total / N)` successful runs regardless of LLM behavior.
+///
+/// # Samenhang van één hoofdartikel
+///
+/// `entries` geeft de nummers in documentvolgorde. Staat het mee, dan wordt de
+/// rechterrand van het venster vooruit geschoven zolang de volgende entry tot
+/// hetzelfde hoofdartikel behoort als de laatste in het venster. Een aanhef
+/// komt daarmee altijd in één venster met zijn eigen leden en onderdelen.
+///
+/// Dat is geen esthetiek maar de grootste enkele maatregel tegen bindingen die
+/// een venster niet kan leggen. Op het corpus van ronde 4 zit **48 van de 57**
+/// vooruitwijzende intra-wet bindingen binnen één hoofdartikel; bij de
+/// venstermaat die vandaag draait daalt het aantal bindingen dat buiten zijn
+/// venster valt van 46 naar 8. Een herordening van de artikelen doet dat niet:
+/// gemeten bracht een topologische orde uit de verwijzingsgraaf die 57 juist op
+/// 69 (zie [`crate::enrich_v2::refgraph`]).
+///
+/// De terminatiegarantie blijft ongemoeid. Het opschuiven maakt een venster
+/// alleen groter, nooit kleiner, dus elke geslaagde run verzet de cursor met
+/// ten minste `max_articles_per_run` entries of bereikt het einde: nog steeds
+/// ten hoogste `ceil(total / N)` runs. Een lege `entries` betekent dat de
+/// aanroeper de nummers niet meegaf en levert precies het gedrag van vóór deze
+/// regel.
 pub(crate) fn plan_chunk(
     max_articles_per_run: usize,
     articles_total: usize,
     stored_cursor: usize,
     stored_cursor_path: &str,
     yaml_path: &str,
+    entries: &[String],
 ) -> ChunkPlan {
     if max_articles_per_run == 0 {
         return ChunkPlan::WholeLaw;
@@ -136,14 +161,245 @@ pub(crate) fn plan_chunk(
     } else {
         0
     };
-    let end = start
+    let mut end = start
         .saturating_add(max_articles_per_run)
         .min(articles_total);
+    if entries.len() == articles_total {
+        while end > start && end < articles_total {
+            let last = crate::enrich_v2::refgraph::top_article(&entries[end - 1]);
+            let next = crate::enrich_v2::refgraph::top_article(&entries[end]);
+            if last != next {
+                break;
+            }
+            end += 1;
+        }
+    }
     ChunkPlan::Chunk {
         start,
         end,
         law_complete: end >= articles_total,
     }
+}
+
+/// What a window is.
+///
+/// Today a window is "the next N entries in document order", and that is the
+/// reason an entry is visited before the value it has to bind to exists: the
+/// cut runs straight through the dependencies. The alternative is to derive
+/// the window instead of guessing it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowMode {
+    /// The next `ENRICH_MAX_ARTICLES_PER_RUN` entries from the cursor, with the
+    /// boundary snapped so a top-level article is never cut in half.
+    #[default]
+    Document,
+    /// One layer of the reference graph: a set of top-level articles none of
+    /// which depends on another in the same set, with the layers walked in
+    /// dependency order. Its size follows from the law rather than from a
+    /// constant, and a cycle is one honestly derived layer instead of an
+    /// arbitrary cut.
+    ///
+    /// Off by default, and the measurement is the reason. On the round-4
+    /// corpus a layer order raised the number of intra-law bindings pointing
+    /// forward from 57 to 69: document order is already a good build order,
+    /// because the legislator puts definitions first while a large share of
+    /// the reference edges ("in afwijking van artikel 8") run the other way
+    /// and carry no value at all. The mode is here so that claim can be
+    /// re-measured on other laws, not because it is the better default.
+    Layer,
+}
+
+impl WindowMode {
+    /// Parse the `ENRICH_WINDOW_MODE` spec.
+    pub fn parse(spec: &str) -> std::result::Result<Self, String> {
+        match spec.trim().to_lowercase().as_str() {
+            "document" | "" => Ok(Self::Document),
+            "layer" => Ok(Self::Layer),
+            other => Err(format!("unknown window mode: {other}")),
+        }
+    }
+
+    /// Stable name, used in logs and recorded beside the cursor.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Document => "document",
+            Self::Layer => "layer",
+        }
+    }
+}
+
+/// The entries of layer `index`, and whether it is the last one.
+///
+/// The cursor counts layers in this mode instead of entries, which keeps the
+/// termination property in the same shape: every successful run raises it by
+/// one and there is a fixed number of layers, so the walk ends in at most
+/// `layers()` runs. A layer is not contiguous in document order, which is why
+/// the window travels as a list of entry numbers and not as a range — the
+/// payload already carried it that way.
+pub(crate) fn plan_layer_window(
+    graph: &crate::enrich_v2::refgraph::Graph,
+    entries: &[String],
+    index: usize,
+) -> (Vec<String>, bool) {
+    use crate::enrich_v2::refgraph::top_article;
+
+    let layers = graph.layers();
+    let Some(layer) = layers.get(index) else {
+        return (Vec::new(), true);
+    };
+    let numbers = entries
+        .iter()
+        .filter(|entry| layer.iter().any(|a| a == top_article(entry)))
+        .cloned()
+        .collect();
+    (numbers, index + 1 >= layers.len())
+}
+
+/// Split one window over at most `concurrency` agents.
+///
+/// The split is by top-level article, never inside one: an aanhef and its
+/// leden belong to the same agent for the same reason they belong to the same
+/// window. And it only happens when no two articles in the window reference
+/// each other — two agents that both have to name the same concept will name
+/// it differently, and two independently invented names for one concept never
+/// find each other again. That is a silent hole no later pass detects, which
+/// makes it worse than the ordering problem it would be trading against.
+///
+/// `concurrency` of 1, the default, always returns the window whole: one agent
+/// pays the fixed per-session cost once.
+pub(crate) fn split_window(
+    graph: &crate::enrich_v2::refgraph::Graph,
+    numbers: &[String],
+    concurrency: usize,
+) -> Vec<Vec<String>> {
+    use crate::enrich_v2::refgraph::top_article;
+
+    if concurrency <= 1 || numbers.len() < 2 {
+        return vec![numbers.to_vec()];
+    }
+    let mut articles: Vec<&str> = Vec::new();
+    for number in numbers {
+        let top = top_article(number);
+        if !articles.contains(&top) {
+            articles.push(top);
+        }
+    }
+    if articles.len() < 2 {
+        return vec![numbers.to_vec()];
+    }
+    // One related pair is enough to keep the whole window together: splitting
+    // around it would be a judgement about which side owns the name.
+    for (i, a) in articles.iter().enumerate() {
+        for b in articles.iter().skip(i + 1) {
+            if graph.related(a, b) {
+                return vec![numbers.to_vec()];
+            }
+        }
+    }
+    let buckets = concurrency.min(articles.len());
+    let mut out: Vec<Vec<String>> = vec![Vec::new(); buckets];
+    for (index, article) in articles.iter().enumerate() {
+        let bucket = index % buckets;
+        out[bucket].extend(
+            numbers
+                .iter()
+                .filter(|n| top_article(n) == *article)
+                .cloned(),
+        );
+    }
+    out.retain(|w| !w.is_empty());
+    out
+}
+
+/// Fold the per-window copies of a law back into one file.
+///
+/// Each window worked on its own copy, so the merge is entry-wise: for every
+/// window, the entries it was assigned are taken from its copy and everything
+/// else from the base. Disjoint by construction, so there is nothing to
+/// resolve — and that is exactly what has to be proved rather than assumed.
+///
+/// The merge **refuses** rather than guesses. A window that changed an entry
+/// outside its own assignment is an error with that entry's number in it, and
+/// so is a copy that added or dropped entries. Round 3 lost four runs to two
+/// agents writing the same file; a merge that silently picked a winner would
+/// reproduce that with better manners.
+pub(crate) fn merge_windows(
+    base: &str,
+    windows: &[(Vec<String>, String)],
+) -> std::result::Result<String, String> {
+    use serde_yaml_ng::Value;
+
+    let mut merged: Value =
+        serde_yaml_ng::from_str(base).map_err(|e| format!("base law is not YAML: {e}"))?;
+    let base_articles = articles_by_number(&merged)?;
+
+    let mut taken: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut replacements: std::collections::BTreeMap<String, Value> =
+        std::collections::BTreeMap::new();
+    for (index, (assigned, text)) in windows.iter().enumerate() {
+        let doc: Value = serde_yaml_ng::from_str(text)
+            .map_err(|e| format!("window {index} left a file that is not YAML: {e}"))?;
+        let theirs = articles_by_number(&doc)?;
+        if theirs.len() != base_articles.len() {
+            return Err(format!(
+                "window {index} changed the number of entries (was {}, is {})",
+                base_articles.len(),
+                theirs.len()
+            ));
+        }
+        for (number, article) in &theirs {
+            let Some(before) = base_articles.get(number) else {
+                return Err(format!("window {index} introduced entry {number}"));
+            };
+            if article == before {
+                continue;
+            }
+            if !assigned.iter().any(|a| a == number) {
+                return Err(format!(
+                    "window {index} changed entry {number}, which was not assigned to it"
+                ));
+            }
+            if let Some(other) = taken.insert(number.clone(), index) {
+                return Err(format!(
+                    "windows {other} and {index} both changed entry {number}"
+                ));
+            }
+            replacements.insert(number.clone(), article.clone());
+        }
+    }
+
+    if let Some(Value::Sequence(articles)) = merged.get_mut("articles") {
+        for article in articles.iter_mut() {
+            let Some(number) = article.get("number").and_then(Value::as_str) else {
+                continue;
+            };
+            if let Some(new) = replacements.get(number) {
+                *article = new.clone();
+            }
+        }
+    }
+    serde_yaml_ng::to_string(&merged).map_err(|e| format!("cannot serialise the merge: {e}"))
+}
+
+/// Entries keyed by number, for the merge.
+fn articles_by_number(
+    doc: &serde_yaml_ng::Value,
+) -> std::result::Result<std::collections::BTreeMap<String, serde_yaml_ng::Value>, String> {
+    let mut out = std::collections::BTreeMap::new();
+    for article in doc
+        .get("articles")
+        .and_then(serde_yaml_ng::Value::as_sequence)
+        .into_iter()
+        .flatten()
+    {
+        let number = article
+            .get("number")
+            .and_then(serde_yaml_ng::Value::as_str)
+            .ok_or_else(|| "an entry has no number".to_string())?;
+        out.insert(number.to_string(), article.clone());
+    }
+    Ok(out)
 }
 
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
@@ -162,10 +418,320 @@ pub trait LlmRunner: Send + Sync {
     ) -> Result<()>;
 }
 
+/// What one agent run cost, as the provider reports it.
+///
+/// Round 3 could compare variants on outcome and wall clock and on nothing
+/// else, so the question whether the context brief is expensive because the
+/// input grew or because the agent did more work stayed open. The provider
+/// already answers that on its own stdout, which this worker drained and threw
+/// away. RFC-028 asks for it under "every agent run must be countable".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    /// Tokens served from the provider's prompt cache. Large here, because
+    /// every window resends the same skill files.
+    pub cache_read_tokens: u64,
+    /// Tokens written into the prompt cache. Counted separately because it is
+    /// billed above the plain input rate where a cache read is billed well
+    /// below it, so the two must never be added together.
+    pub cache_write_tokens: u64,
+    /// Cost in tenths of a cent, so the figure stays an integer. The provider
+    /// reports dollars as a float and money in a float is a bug waiting.
+    pub cost_millicents: u64,
+}
+
+impl AgentUsage {
+    /// Read the usage out of the provider's final JSON object.
+    ///
+    /// Takes the tail of stdout rather than the whole stream: the object we
+    /// want is the last one, and opencode inlines multi-megabyte bodies
+    /// earlier in the stream that nobody should hold in memory to reach it.
+    /// Returns `None` when the tail carries no recognisable object, which is
+    /// the normal case for a provider that reports nothing.
+    #[must_use]
+    pub fn from_stdout_tail(tail: &str) -> Option<Self> {
+        // The whole tail first. `--output-format json` writes one object, and
+        // looking for the last `{` lands inside it: this payload nests
+        // `iterations` and `cache_creation`, so the scan found a fragment with
+        // no `usage` and every figure came out zero.
+        //
+        // The scan stays for the streaming shape, where the closing object
+        // really is the last one on the stream.
+        let value: serde_json::Value = serde_json::from_str(tail.trim()).ok().or_else(|| {
+            let start = tail.rfind("{\"type\"").or_else(|| tail.rfind('{'))?;
+            serde_json::from_str(tail[start..].trim()).ok()
+        })?;
+        let usage = value.get("usage")?;
+        let n = |key: &str| {
+            usage
+                .get(key)
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0)
+        };
+        Some(Self {
+            input_tokens: n("input_tokens"),
+            output_tokens: n("output_tokens"),
+            cache_read_tokens: n("cache_read_input_tokens"),
+            cache_write_tokens: n("cache_creation_input_tokens"),
+            cost_millicents: value
+                .get("total_cost_usd")
+                .and_then(serde_json::Value::as_f64)
+                .map_or(0, |usd| (usd * 100_000.0).round() as u64),
+        })
+    }
+
+    /// Add a second run's usage, for reporting a whole chain as one figure.
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            input_tokens: self.input_tokens + other.input_tokens,
+            output_tokens: self.output_tokens + other.output_tokens,
+            cache_read_tokens: self.cache_read_tokens + other.cache_read_tokens,
+            cache_write_tokens: self.cache_write_tokens + other.cache_write_tokens,
+            cost_millicents: self.cost_millicents + other.cost_millicents,
+        }
+    }
+}
+
+/// Whether the calls in one window share one agent session.
+///
+/// A window is one law and one article range. The translation pass and the
+/// feedback rounds that follow it argue about the same articles, with the same
+/// skills and the same context brief, and every one of them is a cold process
+/// that reads all of it again: up to seven starts per window, five windows for
+/// the zorgtoeslag. Continuing the session instead is what this setting buys.
+///
+/// Never across windows. An agent that keeps everything it wrote carries half
+/// the Awir into the last window, and that is dearer than starting over.
+///
+/// Whether reuse is cheaper is a question with a number behind it, not a
+/// given. In the round-3/4 transcripts a cold feedback round took a median 43
+/// turns over a context that started near nothing, and a translation pass
+/// ended at ~134k tokens. A resumed round pays every one of its turns over
+/// that ending context, so it only comes out ahead if knowing the law already
+/// cuts it to about 17 turns or fewer. That is what the per-call accounting on
+/// [`EnrichResult`] exists to settle, and why `off` stays one env var away.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SessionReuse {
+    /// Every call is its own cold process — the behaviour before this existed,
+    /// and the way back if reuse turns out to cost more than it saves.
+    Off,
+    /// The translation pass and the schema gate share a session; the checks
+    /// and marking gates stay cold. A schema error is a fact about the file
+    /// and repairing it asks for no fresh judgement, while those two gates ask
+    /// the agent to look again at a choice it made — which is the one thing an
+    /// agent that remembers making it is worst at.
+    Repair,
+    /// Every call in the window continues the same session. The default: the
+    /// budget is going on the rounds, and withholding reuse from the rounds
+    /// keeps almost none of it. What guards the fresh look here is the
+    /// `REREAD_INSTRUCTION` each resumed feedback prompt opens with.
+    #[default]
+    Window,
+}
+
+impl SessionReuse {
+    /// Parse `ENRICH_SESSION_REUSE`.
+    pub fn parse(spec: &str) -> std::result::Result<Self, String> {
+        match spec.trim() {
+            "off" | "0" => Ok(Self::Off),
+            "repair" => Ok(Self::Repair),
+            "window" | "1" => Ok(Self::Window),
+            other => Err(format!("unknown session reuse mode: {other}")),
+        }
+    }
+
+    /// Stable lowercase name for logs and the measurement record.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Repair => "repair",
+            Self::Window => "window",
+        }
+    }
+}
+
+/// What a resumed feedback prompt opens with.
+///
+/// The point of a gate is a fresh look at what stands in the file. An agent
+/// that still remembers why it wrote something can answer from that memory and
+/// defend the choice instead of reading the finding — the exact failure the
+/// gates exist to catch. It cannot be ruled out from here, so it is met head
+/// on: the first thing the resumed prompt says is that memory is not evidence
+/// and the file is.
+const REREAD_INSTRUCTION: &str = "Read the article you are about to change from the file before \
+     you answer, even though you wrote it yourself earlier in this conversation. What you remember \
+     writing is not evidence of what is in the file: the finding below comes from a check that ran \
+     over the file as it now stands, and other rounds may have touched it since. Judge the finding \
+     against what you read there, not against what you meant to write. If the finding is right, \
+     change the file; do not explain why the earlier choice was defensible.";
+
+/// What one call must do with the window's session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SessionAction {
+    /// No session id at all: the provider opens and forgets its own.
+    Cold,
+    /// Open the window's session under an id the worker chose.
+    Start(Uuid),
+    /// Continue the window's session.
+    Resume(Uuid),
+}
+
+impl SessionAction {
+    /// Whether this call continues an existing conversation.
+    fn resumed(self) -> bool {
+        matches!(self, Self::Resume(_))
+    }
+}
+
+/// What one call to the agent was and what it cost.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentCallRecord {
+    /// `translate`, or the label of the gate this feedback round answered.
+    pub step: String,
+    /// Whether the call continued the window's session rather than starting
+    /// cold. Reading a run means comparing these two against each other.
+    pub resumed: bool,
+    /// What the provider reported, or `None` when it reported nothing.
+    pub usage: Option<AgentUsage>,
+}
+
+/// The agent session of one window: the id every call in it shares, whether it
+/// has been opened yet, and what each call cost.
+///
+/// Owned by `execute_enrich_with_runner` and handed to the runner on the
+/// payload, so it lives exactly as long as the window does.
+#[derive(Debug)]
+pub struct AgentSession {
+    id: Uuid,
+    reuse: SessionReuse,
+    state: Mutex<SessionState>,
+}
+
+#[derive(Debug, Default)]
+struct SessionState {
+    /// True once a call has successfully opened the session, so the next
+    /// shareable call resumes it instead of starting a second one.
+    open: bool,
+    calls: Vec<AgentCallRecord>,
+}
+
+impl AgentSession {
+    #[must_use]
+    pub fn new(reuse: SessionReuse) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            reuse,
+            state: Mutex::new(SessionState::default()),
+        }
+    }
+
+    /// The id every call in this window shares.
+    #[must_use]
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
+    #[must_use]
+    pub fn reuse(&self) -> SessionReuse {
+        self.reuse
+    }
+
+    /// Decide what this call does with the session. Pure with respect to the
+    /// session's own state, which only changes when the call is recorded.
+    pub(crate) fn plan(&self, pass: &Pass) -> SessionAction {
+        let shareable = match (self.reuse, pass) {
+            (SessionReuse::Off, _) => false,
+            (_, Pass::Translate) => true,
+            (SessionReuse::Window, Pass::Feedback(_)) => true,
+            (SessionReuse::Repair, Pass::Feedback(f)) => f.gate == Gate::Schema,
+        };
+        if !shareable {
+            return SessionAction::Cold;
+        }
+        let open = self.state.lock().map(|s| s.open).unwrap_or(false);
+        if open {
+            SessionAction::Resume(self.id)
+        } else {
+            SessionAction::Start(self.id)
+        }
+    }
+
+    /// Record a finished call. Called only after the subprocess succeeded, so
+    /// a failed start does not leave the session marked open — the next call
+    /// would then resume an id the provider never wrote.
+    pub(crate) fn record(&self, step: &str, action: SessionAction, usage: Option<AgentUsage>) {
+        if let Ok(mut state) = self.state.lock() {
+            if matches!(action, SessionAction::Start(_)) {
+                state.open = true;
+            }
+            state.calls.push(AgentCallRecord {
+                step: step.to_string(),
+                resumed: action.resumed(),
+                usage,
+            });
+        }
+    }
+
+    /// What every call in this window was and cost, in order.
+    #[must_use]
+    pub fn calls(&self) -> Vec<AgentCallRecord> {
+        self.state
+            .lock()
+            .map(|s| s.calls.clone())
+            .unwrap_or_default()
+    }
+
+    /// The window's total, or `None` when no call reported anything.
+    #[must_use]
+    pub fn total(&self) -> Option<AgentUsage> {
+        let calls = self.calls();
+        let reported: Vec<AgentUsage> = calls.iter().filter_map(|c| c.usage).collect();
+        if reported.is_empty() {
+            return None;
+        }
+        Some(
+            reported
+                .into_iter()
+                .fold(AgentUsage::default(), |a, b| a.plus(b)),
+        )
+    }
+}
+
+/// The label a call is accounted under.
+fn pass_label(pass: &Pass) -> &'static str {
+    match pass {
+        Pass::Translate => "translate",
+        Pass::Feedback(f) => f.gate.label(),
+    }
+}
+
+/// Decide what this call does with the window's session. A payload without a
+/// session (document-convert, a test that does not care) is always cold.
+fn begin_call(payload: &EnrichPayload) -> SessionAction {
+    payload
+        .session
+        .as_ref()
+        .map_or(SessionAction::Cold, |s| s.plan(&payload.pass))
+}
+
+/// Record a finished call against the window's session.
+fn end_call(payload: &EnrichPayload, action: SessionAction, usage: Option<AgentUsage>) {
+    if let Some(session) = payload.session.as_ref() {
+        session.record(pass_label(&payload.pass), action, usage);
+    }
+}
+
 /// Max bytes of the LLM subprocess's stderr to retain for diagnostics. The tail
 /// (most recent output) is kept and appended to the error on a non-zero exit, so
 /// a failure reports the real cause (e.g. an auth `401`) instead of a bare code.
 const MAX_STDERR_CAPTURE: usize = 4096;
+
+/// Max bytes of the agent's stdout to retain, enough to hold the provider's
+/// closing JSON object with the usage figures and nothing before it.
+const MAX_STDOUT_TAIL: usize = 32 * 1024;
 
 /// Default runner that spawns a real CLI process.
 pub struct ProcessLlmRunner;
@@ -182,25 +748,141 @@ impl LlmRunner for ProcessLlmRunner {
         let progress_path = progress_file_path(yaml_abs);
         // Chunked runs get the explicit-article-subset prompt; whole-law runs
         // keep the original prompt byte-identical.
-        let prompt = match &payload.chunk_articles {
-            Some(articles) => build_chunk_prompt(
-                &payload.yaml_path,
-                &progress_path.to_string_lossy(),
-                articles,
-                payload.skip_mvt.unwrap_or(false),
-            ),
-            None => build_prompt(&payload.yaml_path, &progress_path.to_string_lossy()),
+        // A feedback pass asks for one thing and gives the agent nothing
+        // else to do, so it cannot wander back into translating.
+        let action = begin_call(payload);
+        // Computed for both passes, because a feedback round runs in the same
+        // runtime as the translation it answers and the prompt tells it so
+        // ("You have no network and no search"). A deny list that only applied
+        // to the first pass would make that sentence false from round two on.
+        let (plan, deny) = chain_plan(repo_path);
+        if let Pass::Feedback(feedback) = &payload.pass {
+            let prompt =
+                build_feedback_prompt(&payload.yaml_path, feedback, vocabulary_of(yaml_abs).await);
+            // A resumed round starts from a conversation in which the agent
+            // wrote the very thing the gate is complaining about, so it is
+            // told first of all to go and look.
+            let prompt = if action.resumed() {
+                format!("{REREAD_INSTRUCTION}\n\n{prompt}")
+            } else {
+                prompt
+            };
+            let usage = run_llm_subprocess(
+                &config.provider,
+                &prompt,
+                Some(yaml_abs),
+                repo_path,
+                config,
+                ToolPolicy {
+                    allow_bash: false,
+                    deny: &deny,
+                },
+                action,
+            )
+            .await?;
+            end_call(payload, action, usage);
+            return Ok(());
+        }
+
+        // What the chain may instruct depends on what this runtime grants.
+        // A step whose tools are absent is left out and recorded, rather than
+        // asked for and answered with an invention (issue #1036).
+        let report = capabilities::plan_report(&plan);
+        if !report.is_empty() {
+            tracing::info!(plan = %report.trim_end(), "enrichment chain planned");
+        }
+        if let Some((spec, _)) = plan
+            .iter()
+            .find(|(_, p)| matches!(p, capabilities::StepPlan::Blocked { .. }))
+        {
+            return Err(PipelineError::Config(format!(
+                "required step {:?} cannot run in this runtime: {}",
+                spec.name,
+                report.trim_end()
+            )));
+        }
+        // Requirement 6 of RFC-026: an article never reaches an agent without
+        // its place in the structure and without what bears on it inside its
+        // own law. The worker assembles that and writes it down; the agent
+        // reads a file rather than hunting through the YAML.
+        // `ENRICH_CONTEXT_BRIEF=0` withholds the brief. It exists so a round
+        // can be run twice over the same laws with only this changed, which is
+        // the only way to say what the brief is worth rather than that the
+        // numbers moved.
+        let brief = if std::env::var("ENRICH_CONTEXT_BRIEF").as_deref() == Ok("0") {
+            tracing::info!("context brief withheld by ENRICH_CONTEXT_BRIEF=0");
+            None
+        } else {
+            context::write_brief(yaml_abs, payload.chunk_articles.as_deref(), repo_path)
         };
-        run_llm_subprocess(
+        if brief.is_none() {
+            tracing::warn!(law = %payload.yaml_path, "no context brief written");
+        }
+        let prompt = build_prompt(
+            &payload.yaml_path,
+            &progress_path.to_string_lossy(),
+            &plan,
+            payload.chunk_articles.as_deref(),
+            payload.skip_mvt.unwrap_or(false),
+            brief.is_some(),
+        );
+        let usage = run_llm_subprocess(
             &config.provider,
             &prompt,
             Some(yaml_abs),
             repo_path,
             config,
-            // Enrich edits YAML in place; it does not need shell access.
-            false,
+            ToolPolicy {
+                // Enrich edits YAML in place; it does not need shell access.
+                allow_bash: false,
+                deny: &deny,
+            },
+            action,
         )
-        .await
+        .await?;
+        end_call(payload, action, usage);
+        Ok(())
+    }
+}
+
+/// What tools one agent call may use.
+///
+/// Two fields because the provider takes two answers and they are not the same
+/// question. The allowlist decides what is approved without asking; the deny
+/// list decides what is not there at all. Conflating them is how the enrichment
+/// lane came to report a shell-less runtime to an agent that had a shell.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ToolPolicy<'a> {
+    /// Whether the `claude` provider's allowlist includes `Bash` (enrich keeps
+    /// it off; document-convert needs it so the agent can run/install a
+    /// converter). No effect on `opencode`, which has its own tool model.
+    pub allow_bash: bool,
+    /// Tools withheld outright. Unlike leaving a tool off the allowlist, which
+    /// only means it has to be asked for, this takes it away.
+    pub deny: &'a [String],
+}
+
+impl ToolPolicy<'_> {
+    /// The claude provider's `--allowedTools` value.
+    fn allowed(self) -> &'static str {
+        if self.allow_bash {
+            "Bash,Read,Edit,Write,Grep,Glob"
+        } else {
+            "Read,Edit,Write,Grep,Glob"
+        }
+    }
+
+    /// The claude provider's `--disallowedTools` value, empty when nothing is
+    /// withheld. A caller that did not ask for the shell does not merely fail
+    /// to get it approved: it does not get it.
+    fn denied(self) -> Vec<String> {
+        let mut out: Vec<String> = self.deny.to_vec();
+        if !self.allow_bash {
+            out.push("Bash".to_owned());
+        }
+        out.sort();
+        out.dedup();
+        out
     }
 }
 
@@ -213,20 +895,29 @@ impl LlmRunner for ProcessLlmRunner {
 /// working directory the agent runs in (and writes its output into); `file_arg`
 /// is the optional single input file (OpenCode's `-f`). Callers supply their own
 /// `prompt` — enrich and document-convert differ only in that prompt.
-/// `allow_bash` widens the `claude` provider's tool allowlist to include `Bash`
-/// (enrich keeps it off; document-convert needs it so the agent can run/install
-/// a converter). It has no effect on `opencode`, which has its own tool model.
+/// `tools` says what this call may use (see [`ToolPolicy`]).
+/// `session` says whether this call opens, continues or ignores a session; a
+/// caller with no window to speak of passes [`SessionAction::Cold`].
 pub(crate) async fn run_llm_subprocess(
     provider: &LlmProvider,
     prompt: &str,
     file_arg: Option<&Path>,
     cwd: &Path,
     config: &EnrichConfig,
-    allow_bash: bool,
-) -> Result<()> {
+    tools: ToolPolicy<'_>,
+    session: SessionAction,
+) -> Result<Option<AgentUsage>> {
     let provider_name = provider.name().to_string();
 
-    let mut cmd = build_command(provider, prompt, file_arg, cwd, allow_bash);
+    let mut cmd = build_command(
+        provider,
+        prompt,
+        file_arg,
+        cwd,
+        tools,
+        config.effort.as_deref(),
+        session,
+    );
 
     // Both streams are piped and drained. stdout is drained-and-discarded: a
     // verbose agent (e.g. opencode `--format json`) inlines the full body of
@@ -292,6 +983,11 @@ pub(crate) async fn run_llm_subprocess(
     // keep reading it: if the OS pipe buffer (64 KB) fills, the child blocks
     // indefinitely — the same deadlock the stderr comment above warns about.
     // The task ends on EOF when the process exits or is killed.
+    // Tail of stdout, kept so the provider's closing JSON object can be read
+    // after the process exits. Bounded: everything before the last object is
+    // of no interest, and the stream can carry megabytes.
+    let stdout_tail = std::sync::Arc::new(Mutex::new(String::new()));
+    let tail_writer = std::sync::Arc::clone(&stdout_tail);
     if let Some(mut stdout) = child.stdout.take() {
         let drain_provider = provider_name.clone();
         tokio::spawn(async move {
@@ -314,6 +1010,19 @@ pub(crate) async fn run_llm_subprocess(
                         let preview = preview.trim_end();
                         if !preview.is_empty() {
                             tracing::debug!(provider = %drain_provider, %preview, "agent stdout");
+                        }
+                        #[allow(clippy::unwrap_used)]
+                        if let Ok(mut tail) = tail_writer.lock() {
+                            tail.push_str(&String::from_utf8_lossy(&buf[..n]));
+                            if tail.len() > MAX_STDOUT_TAIL {
+                                let cut = tail.len() - MAX_STDOUT_TAIL;
+                                let cut = tail
+                                    .char_indices()
+                                    .map(|(i, _)| i)
+                                    .find(|i| *i >= cut)
+                                    .unwrap_or(tail.len());
+                                *tail = tail.split_off(cut);
+                            }
                         }
                     }
                 }
@@ -383,7 +1092,23 @@ pub(crate) async fn run_llm_subprocess(
     if let Some(t) = &stderr_task {
         t.abort();
     }
-    Ok(())
+
+    let usage = stdout_tail
+        .lock()
+        .ok()
+        .and_then(|tail| AgentUsage::from_stdout_tail(&tail));
+    if let Some(u) = usage {
+        tracing::info!(
+            provider = %provider_name,
+            resumed = session.resumed(),
+            input_tokens = u.input_tokens,
+            output_tokens = u.output_tokens,
+            cache_read_tokens = u.cache_read_tokens,
+            cost_millicents = u.cost_millicents,
+            "agent run accounted"
+        );
+    }
+    Ok(usage)
 }
 
 /// Kill the LLM subprocess and reap it.
@@ -506,8 +1231,225 @@ fn parse_vmrss_kb(status: &str) -> Option<u64> {
         .and_then(|kb| kb.parse::<u64>().ok())
 }
 
+/// What kind of run this is. A chain is a sequence of passes over the same
+/// law, and a gate between two of them decides whether the next pass is a
+/// translation or a response to what the gate found.
+///
+/// Modelled as data rather than as a set of optional fields on the payload,
+/// because the number of gates grows and each one would otherwise add
+/// another flag nobody can see the shape of. RFC-028 generalises this into a
+/// step with its own runtime and model; this is the domain half of that,
+/// without the machinery.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Pass {
+    /// Translate: read the law and write `machine_readable`.
+    #[default]
+    Translate,
+    /// Respond to what a gate found. The artefact exists; this pass is about
+    /// what is wrong with it.
+    Feedback(Feedback),
+}
+
+/// What a gate found and what the agent may do about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Feedback {
+    pub gate: Gate,
+    /// The findings, verbatim. Never paraphrased: an instance path is what
+    /// says where the problem sits, and the agent cannot run the check
+    /// itself to look again.
+    pub findings: Vec<String>,
+}
+
+/// The gate that produced the findings. Its kind decides what an acceptable
+/// answer is, which is the difference that matters most in this design.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gate {
+    /// A fact about the artefact that must hold: the YAML validates. Not
+    /// open to interpretation, so the only answers are repair or stop.
+    Schema,
+    /// A question the statutory text raises: this lid says "in afwijking
+    /// van" and the model has no branch; this article computes over a
+    /// berekeningsjaar and no binding carries a period. The answer may be a
+    /// change to the model, and it may equally be a marking that says why
+    /// not. A gate that only accepts changes turns every open norm into a
+    /// defect and pushes the translator into inventing something.
+    Checks,
+    /// The record rather than the translation: a marking filed in the wrong
+    /// drawer, or a source named that the agent had no way of reading. Soft,
+    /// because a misfiled marking is still better than silence, and because
+    /// failing here would punish the very behaviour this design wants.
+    Marking,
+    /// The closing pass over the whole law, once the last window has been
+    /// walked. Not a window gate: it exists because a window cannot bind to an
+    /// output that did not exist while it ran, so part of what stands is a
+    /// measurement taken too early rather than a defect. Its findings are the
+    /// leads [`crate::enrich_v2::reconcile`] refuses to resolve on its own,
+    /// and the pass that answers them may connect and nothing else.
+    Reconcile,
+}
+
+impl Gate {
+    /// Whether a marking is an acceptable answer instead of a change.
+    fn accepts_marking(self) -> bool {
+        matches!(self, Gate::Checks | Gate::Marking | Gate::Reconcile)
+    }
+
+    /// Stable lowercase name, used in logs, in the measurement record and as
+    /// the key of a per-gate round budget.
+    pub fn label(self) -> &'static str {
+        match self {
+            Gate::Schema => "schema",
+            Gate::Checks => "checks",
+            Gate::Marking => "marking",
+            Gate::Reconcile => "reconcile",
+        }
+    }
+
+    /// The gates in the order the worker runs them for one window. The
+    /// closing gate is not among them: it runs once, over the whole law,
+    /// after the last window.
+    pub const ALL: [Gate; 3] = [Gate::Schema, Gate::Checks, Gate::Marking];
+}
+
+/// How many feedback rounds each gate may run.
+///
+/// One per gate rather than one number for the whole chain: the open question
+/// is not whether a second round helps, it is which gate it helps at. A schema
+/// error either gets repaired or does not; a coverage question may genuinely
+/// take a second look. Defaults to one round everywhere, which is the
+/// behaviour that existed before this was settable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FeedbackRounds {
+    pub schema: usize,
+    pub checks: usize,
+    pub marking: usize,
+    pub reconcile: usize,
+}
+
+impl Default for FeedbackRounds {
+    fn default() -> Self {
+        Self::uniform(1)
+    }
+}
+
+impl FeedbackRounds {
+    /// The same budget for every gate.
+    #[must_use]
+    pub fn uniform(rounds: usize) -> Self {
+        Self {
+            schema: rounds,
+            checks: rounds,
+            marking: rounds,
+            reconcile: rounds,
+        }
+    }
+
+    /// Budget for one gate.
+    #[must_use]
+    pub fn for_gate(self, gate: Gate) -> usize {
+        match gate {
+            Gate::Schema => self.schema,
+            Gate::Checks => self.checks,
+            Gate::Marking => self.marking,
+            Gate::Reconcile => self.reconcile,
+        }
+    }
+
+    /// Parse a budget spec: either a bare number for every gate (`2`) or a
+    /// comma-separated list of per-gate overrides on top of the default
+    /// (`checks=2,marking=3`). The two forms combine — `2,schema=1` gives
+    /// every gate two rounds except schema.
+    pub fn parse(spec: &str) -> std::result::Result<Self, String> {
+        let mut rounds = Self::default();
+        for part in spec.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+            match part.split_once('=') {
+                None => {
+                    let n = part
+                        .parse::<usize>()
+                        .map_err(|_| format!("not a number of rounds: {part}"))?;
+                    rounds = Self::uniform(n);
+                }
+                Some((gate, value)) => {
+                    let n = value
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|_| format!("not a number of rounds: {value}"))?;
+                    match gate.trim() {
+                        "schema" => rounds.schema = n,
+                        "checks" => rounds.checks = n,
+                        "marking" => rounds.marking = n,
+                        "reconcile" => rounds.reconcile = n,
+                        other => return Err(format!("unknown gate: {other}")),
+                    }
+                }
+            }
+        }
+        Ok(rounds)
+    }
+}
+
+/// Why a gate stopped running rounds. Recorded per round so the measurement
+/// says what ended the chain, not only how long it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RoundStop {
+    /// Nothing left to say: the gate reports no findings.
+    Cleared,
+    /// The agent left the file byte-identical, so nothing it did can have
+    /// removed a finding and nothing suggests the next round differs.
+    Unchanged,
+    /// The file changed but the finding count did not fall. Either churn or a
+    /// trade, and in both cases another round has no evidence behind it.
+    NoDecrease,
+    /// The configured number of rounds is used up.
+    Budget,
+}
+
+/// What one feedback round did to one gate.
+///
+/// Findings and markings sit side by side on purpose. A round can lower the
+/// finding count by translating better and it can lower it by declaring more
+/// of the article unmodellable, and those are opposite outcomes. Reporting
+/// only the findings would make the second look like the first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FeedbackRoundRecord {
+    /// 1-based round number within this gate.
+    pub round: usize,
+    pub findings_before: usize,
+    pub findings_after: usize,
+    /// Markings in the file before/after this round, or `None` when the law
+    /// could not be parsed at that moment (a schema round may start on a file
+    /// that does not load).
+    pub markings_before: Option<usize>,
+    pub markings_after: Option<usize>,
+    /// Whether the agent changed the file at all during this round.
+    pub file_changed: bool,
+    /// Set on the last round of the gate; `None` while more rounds follow.
+    pub stopped: Option<RoundStop>,
+}
+
+/// The feedback rounds one gate ran, in order. An empty `rounds` means the
+/// gate had nothing to say and no agent was asked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GateFeedback {
+    /// `schema`, `checks` or `marking` — see [`Gate::label`].
+    pub gate: String,
+    /// Findings when the gate was first evaluated, before any round.
+    pub findings_initial: usize,
+    /// Findings left after the last round (equal to `findings_initial` when
+    /// no round ran).
+    pub findings_final: usize,
+    pub rounds: Vec<FeedbackRoundRecord>,
+    /// Findings this gate saw that no edit to this file could answer: a
+    /// binding onto a law the corpus does not have, or has and has not yet
+    /// interpreted. Never put to the agent, because the answer is a harvest or
+    /// an interpretation elsewhere, and recorded here because it is still work.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outside_corpus: Vec<String>,
+}
+
 /// Payload for an enrich job, stored as JSON in the job queue.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EnrichPayload {
     pub law_id: String,
     /// Relative path to the harvested YAML file within the repo.
@@ -539,6 +1481,11 @@ pub struct EnrichPayload {
     /// `document_etag()` van de wet-YAML op aanvraagmoment (staleness-check).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_etag: Option<String>,
+    /// Welke soort run dit is. Rijdt niet mee in de jobpayload: hij bestaat
+    /// alleen binnen één uitvoering en zegt wat de agent nu geacht wordt te
+    /// doen. Zie [`Pass`].
+    #[serde(skip)]
+    pub pass: Pass,
     /// `true` wanneer deze enrichment een NIEUWE wet betreft die nog niet in
     /// het traject bestaat (geketend vanuit een `law_convert`-job). Stuurt de
     /// review-taak: `kind: "law_create"` + eigen titel, zodat de editor het
@@ -552,6 +1499,14 @@ pub struct EnrichPayload {
     /// runner trait untouched). `None` means whole-law mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chunk_articles: Option<Vec<String>>,
+    /// De agent-sessie van dít venster: gedeeld door de vertaalslag en de
+    /// terugkoppelrondes erna, en samen met het venster afgelopen. Rijdt net
+    /// als [`Pass`] niet mee in de jobpayload — hij bestaat alleen binnen één
+    /// uitvoering, en een sessie-id dat een wachtrij overleeft zou een gesprek
+    /// heropenen dat nergens meer bij hoort. `None` betekent koud: elke
+    /// aanroep een eigen proces.
+    #[serde(skip)]
+    pub session: Option<std::sync::Arc<AgentSession>>,
     /// `true` on continuation chunks (cursor > 0): the MvT-research step ran
     /// during the first chunk and its feature file is already on the branch,
     /// so the prompt tells the agent to skip step 1. Transport-only, like
@@ -775,6 +1730,16 @@ pub struct EnrichResult {
     /// stored results deserializable.
     #[serde(default)]
     pub untranslatables: Vec<CapturedUntranslatable>,
+    /// Markings captured from the enriched YAML (schema v0.6.0), the channel
+    /// that replaced `untranslatables`. These ride in `jobs.result` and are
+    /// deliberately NOT mirrored into the `untranslatables` table: that table
+    /// belongs to the v1 pipeline, its `reason` column is `NOT NULL` and a
+    /// marking has no such field, so mirroring one would mean inventing the
+    /// text a reader is supposed to trust. Where markings land is decided with
+    /// the rest of the v2 persistence; until then they are visible in the job
+    /// result and counted as progress by the chunk guard.
+    #[serde(default)]
+    pub markings: Vec<CapturedMarking>,
     /// `false` when this run was a chunk that did NOT reach the end of the
     /// document: the law must stay `enriching` and the worker enqueues a
     /// continuation job. Defaults to `true` so pre-chunking `jobs.result` JSON
@@ -786,6 +1751,29 @@ pub struct EnrichResult {
     /// document order). 0 in whole-law mode.
     #[serde(default)]
     pub enrich_cursor: usize,
+    /// What the feedback rounds did, per gate and per round. Empty when this
+    /// run changed nothing and the gates were therefore not run. This is the
+    /// measurement: how much each gate's first round takes away and how much
+    /// a second still does, with the marking counts beside the findings so a
+    /// drop bought by marking more is not read as a drop bought by
+    /// translating better.
+    #[serde(default)]
+    pub feedback: Vec<GateFeedback>,
+    /// What this window cost in total, as the provider reported it. `None`
+    /// when nothing was reported (opencode, a fake runner, a run with no LLM
+    /// call at all).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<AgentUsage>,
+    /// The same figure per call, with the step it belongs to and whether it
+    /// continued the window's session. This is what answers whether sharing
+    /// the session paid: a resumed round beside a cold one, in the same
+    /// window, on the same law.
+    #[serde(default)]
+    pub agent_calls: Vec<AgentCallRecord>,
+    /// Which session mode the window ran under (`off`, `repair`, `window`),
+    /// so a stored result says what produced its figures.
+    #[serde(default)]
+    pub session_reuse: String,
 }
 
 /// Serde default for [`EnrichResult::law_complete`]: results stored before
@@ -805,6 +1793,27 @@ pub struct CapturedUntranslatable {
     pub reason: String,
     pub suggestion: Option<String>,
     pub legal_text_excerpt: Option<String>,
+    pub accepted: bool,
+}
+
+/// A single marking captured from an enriched article, flattened for
+/// reporting. The counterpart of [`CapturedUntranslatable`] for schema v0.6.0
+/// and later; see [`EnrichResult::markings`] for why it is not written to the
+/// `untranslatables` table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapturedMarking {
+    /// The owning article's number (`Article.number`).
+    pub article: String,
+    /// The construct the format cannot express, in the article's own words.
+    pub about: String,
+    /// `operation` (the operation must be built) or `model` (the format has no
+    /// shape for this construct).
+    pub resolution: String,
+    pub resolved_by: Option<String>,
+    /// The values in this article that cannot be produced. Empty says the
+    /// article stays executable.
+    pub target: Vec<String>,
+    pub legal_text_excerpt: String,
     pub accepted: bool,
 }
 
@@ -835,6 +1844,12 @@ pub struct EnrichmentMetadata {
     /// version lives at a different path, which resets the cursor to 0.
     #[serde(default)]
     pub enrich_cursor_path: String,
+    /// The window mode the cursor was recorded under. In `document` mode it
+    /// counts entries, in `layer` mode it counts layers, and reading one as
+    /// the other would silently skip or repeat work — so a change of mode
+    /// resets the walk, the same way a change of path does.
+    #[serde(default)]
+    pub enrich_cursor_mode: String,
 }
 
 /// Supported LLM providers for enrichment.
@@ -884,6 +1899,54 @@ impl LlmProvider {
 /// Configuration for enrichment execution.
 ///
 /// All env vars are read once at startup and stored. `with_provider_override()`
+/// Which steps of one run to perform.
+///
+/// Named rather than boolean-per-call because a step is separately useful: the
+/// closing reconcile over a law that other windows already finished needs no
+/// window of its own, and asking for it should not mean re-running work that
+/// is done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunSteps {
+    /// Translate the window and run the gates over it.
+    pub window: bool,
+    /// The closing pass that connects what now exists.
+    pub reconcile: bool,
+}
+
+impl RunSteps {
+    #[must_use]
+    pub const fn all() -> Self {
+        Self {
+            window: true,
+            reconcile: true,
+        }
+    }
+
+    /// Parse a comma-separated list of step names.
+    ///
+    /// An unknown name is an error rather than a silent skip: a run that
+    /// performs fewer steps than asked, without saying so, is the failure this
+    /// codebase spends most of its checks on.
+    pub fn parse(spec: &str) -> std::result::Result<Self, String> {
+        let mut steps = Self {
+            window: false,
+            reconcile: false,
+        };
+        for name in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            match name {
+                "window" => steps.window = true,
+                "reconcile" => steps.reconcile = true,
+                "all" => steps = Self::all(),
+                other => return Err(format!("unknown step: {other} (window, reconcile, all)")),
+            }
+        }
+        if !steps.window && !steps.reconcile {
+            return Err("no steps selected".to_string());
+        }
+        Ok(steps)
+    }
+}
+
 /// selects from pre-built provider configs without re-reading the environment.
 #[derive(Debug, Clone)]
 pub struct EnrichConfig {
@@ -900,6 +1963,47 @@ pub struct EnrichConfig {
     /// law-generate skill batches internally per ~15, so one chunk ≈ one
     /// skill batch.
     pub max_articles_per_run: usize,
+    /// Enrich exactly this entry, by number, instead of the window the cursor
+    /// points at. Sits beside `max_articles_per_run` because it answers the
+    /// same question — which entries this run may touch — and it wins when
+    /// set. The run fails when the law has no such entry; it leaves the
+    /// cursor where it was, because a repair is not progress through the
+    /// document.
+    pub target_articles: Vec<String>,
+    /// Feedback rounds per gate. Default one everywhere.
+    pub feedback_rounds: FeedbackRounds,
+    /// What a window is (`ENRICH_WINDOW_MODE`). See [`WindowMode`]; default
+    /// `document`, which is the behaviour every run so far has had.
+    pub window_mode: WindowMode,
+    /// How many windows one run may walk at the same time
+    /// (`ENRICH_WINDOW_CONCURRENCY`). Default 1, so nothing shifts under a
+    /// measurement that is still running.
+    ///
+    /// The knob sits between tokens and wall clock. One agent for a whole
+    /// layer pays the fixed per-session cost once — window 3 of the running
+    /// round cost $5.92 over four calls, of which 5.3 million tokens were
+    /// cache reads of the skills, the schema and the context brief. Cutting
+    /// that layer into one agent per article multiplies exactly that fixed
+    /// cost. Tokens are the scarce thing today; wall clock is the scarce
+    /// thing at four thousand laws, which is why this is a setting and not a
+    /// design choice.
+    pub window_concurrency: usize,
+    /// Which steps of the run to perform (`ENRICH_STEPS`), default all.
+    ///
+    /// The steps are named because they are separately useful. The closing
+    /// reconcile used to hang off `law_complete` as the tail of a window, which
+    /// made it unreachable for a law that was already finished: the only way to
+    /// reach it was to re-enrich a window with nothing left to do, and the
+    /// first attempt cost $4.62 to remove one finding. What that pass looks for
+    /// was left behind by earlier windows, so it needs no window of its own.
+    pub steps: RunSteps,
+    /// Whether the calls in one window share a session
+    /// (`ENRICH_SESSION_REUSE`). See [`SessionReuse`].
+    pub session_reuse: SessionReuse,
+    /// Reasoning effort handed to the provider (`claude --effort`: low,
+    /// medium, high, xhigh, max). `None` leaves the provider's own default,
+    /// which is what every run did before this existed.
+    pub effort: Option<String>,
     /// Pre-built provider configs keyed by name, populated at startup.
     provider_configs: std::collections::HashMap<String, LlmProvider>,
 }
@@ -931,12 +2035,53 @@ impl EnrichConfig {
             max_rss_mb: 3500,
             // Chunking off by default in tests; chunk tests opt in explicitly.
             max_articles_per_run: 0,
+            target_articles: Vec::new(),
+            feedback_rounds: FeedbackRounds::default(),
+            window_mode: WindowMode::default(),
+            window_concurrency: 1,
+            steps: RunSteps::all(),
+            // Tests that do not opt in run cold, so a fake runner's calls read
+            // as they always did; the session tests set this themselves.
+            session_reuse: SessionReuse::Off,
+            effort: None,
             provider_configs,
         }
     }
 }
 
 impl EnrichConfig {
+    /// Build a config for a run outside the worker: the `enrich-once`
+    /// binary, which exercises the real loop against a directory on disk.
+    /// Deliberately not `from_env`: a local run should say what it does
+    /// rather than inherit whatever the shell happens to carry.
+    pub fn for_local_run(
+        provider: LlmProvider,
+        timeout: Duration,
+        max_articles: usize,
+        target_articles: Vec<String>,
+        feedback_rounds: FeedbackRounds,
+        effort: Option<String>,
+        session_reuse: SessionReuse,
+    ) -> Self {
+        let mut provider_configs = std::collections::HashMap::new();
+        provider_configs.insert("claude".to_string(), provider.clone());
+        Self {
+            provider,
+            timeout,
+            code_commit: String::new(),
+            max_rss_mb: 0,
+            max_articles_per_run: max_articles,
+            target_articles,
+            feedback_rounds,
+            window_mode: WindowMode::default(),
+            window_concurrency: 1,
+            steps: RunSteps::all(),
+            session_reuse,
+            effort,
+            provider_configs,
+        }
+    }
+
     pub fn from_env() -> Self {
         let provider_name = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| "opencode".into());
 
@@ -982,6 +2127,47 @@ impl EnrichConfig {
                 .ok(),
         };
 
+        // Feedback rounds per gate. A bad spec is not worth failing a worker
+        // over, but it must not silently read as something else either.
+        let feedback_rounds = match std::env::var("ENRICH_FEEDBACK_ROUNDS") {
+            Ok(spec) => FeedbackRounds::parse(&spec).unwrap_or_else(|e| {
+                tracing::warn!(spec = %spec, error = %e, "ignoring ENRICH_FEEDBACK_ROUNDS");
+                FeedbackRounds::default()
+            }),
+            Err(_) => FeedbackRounds::default(),
+        };
+
+        // Session reuse. A bad spec must not silently read as the default —
+        // this is the setting whose whole point is being able to say which of
+        // the two a run used.
+        let session_reuse = match std::env::var("ENRICH_SESSION_REUSE") {
+            Ok(spec) => SessionReuse::parse(&spec).unwrap_or_else(|e| {
+                tracing::warn!(spec = %spec, error = %e, "ignoring ENRICH_SESSION_REUSE");
+                SessionReuse::default()
+            }),
+            Err(_) => SessionReuse::default(),
+        };
+
+        // What a window is. A bad spec must not read as the default silently:
+        // this is the setting whose whole point is being able to say which
+        // shape a run used.
+        let window_mode = match std::env::var("ENRICH_WINDOW_MODE") {
+            Ok(spec) => WindowMode::parse(&spec).unwrap_or_else(|e| {
+                tracing::warn!(spec = %spec, error = %e, "ignoring ENRICH_WINDOW_MODE");
+                WindowMode::default()
+            }),
+            Err(_) => WindowMode::default(),
+        };
+
+        // Windows in flight at once. 1 keeps today's behaviour exactly.
+        let window_concurrency = std::env::var("ENRICH_WINDOW_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(1);
+
+        let effort = std::env::var("LLM_EFFORT").ok().filter(|e| !e.is_empty());
+
         let provider = match provider_name.as_str() {
             "claude" => claude_provider.clone(),
             _ => opencode_provider.clone(),
@@ -997,6 +2183,24 @@ impl EnrichConfig {
             code_commit,
             max_rss_mb,
             max_articles_per_run,
+            // A worker walks whole laws; a named entry is a local, targeted
+            // instruction and has no env var to arrive through.
+            target_articles: Vec::new(),
+            feedback_rounds,
+            window_mode,
+            window_concurrency,
+            steps: std::env::var("ENRICH_STEPS")
+                .ok()
+                .and_then(|spec| match RunSteps::parse(&spec) {
+                    Ok(steps) => Some(steps),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "ENRICH_STEPS unreadable, running every step");
+                        None
+                    }
+                })
+                .unwrap_or_else(RunSteps::all),
+            session_reuse,
+            effort,
             provider_configs,
         }
     }
@@ -1022,6 +2226,13 @@ impl EnrichConfig {
             code_commit: self.code_commit.clone(),
             max_rss_mb: self.max_rss_mb,
             max_articles_per_run: self.max_articles_per_run,
+            target_articles: self.target_articles.clone(),
+            feedback_rounds: self.feedback_rounds,
+            window_mode: self.window_mode,
+            window_concurrency: self.window_concurrency,
+            steps: RunSteps::all(),
+            session_reuse: self.session_reuse,
+            effort: self.effort.clone(),
             provider_configs: self.provider_configs.clone(),
         }
     }
@@ -1037,130 +2248,480 @@ pub fn enrich_branch_name(provider_name: &str) -> String {
 }
 
 /// Build the prompt that tells the LLM to follow the skill pipeline.
-fn build_prompt(yaml_path: &str, progress_file_path: &str) -> String {
+/// Plan the chain against what this runtime grants, reading each skill's own
+/// declaration from disk.
+///
+/// A skill that cannot be read counts as declaring nothing. The step then runs
+/// undegraded and fails later on its artefact if the file really is missing,
+/// which is a clearer failure than a capability error about a file that does
+/// not exist.
+fn chain_plan(
+    repo_path: &Path,
+) -> (
+    Vec<(&'static capabilities::StepSpec, capabilities::StepPlan)>,
+    Vec<String>,
+) {
+    let grant: std::collections::BTreeSet<String> = capabilities::ENRICH_GRANT
+        .iter()
+        .map(|t| (*t).to_owned())
+        .collect();
+    let read: Vec<(&'static capabilities::StepSpec, Option<String>)> = capabilities::CHAIN
+        .iter()
+        .map(|spec| {
+            (
+                spec,
+                std::fs::read_to_string(repo_path.join(spec.skill)).ok(),
+            )
+        })
+        .collect();
+    let plan = read
+        .iter()
+        .map(|(spec, markdown)| {
+            (
+                *spec,
+                capabilities::plan_step(spec, &grant, markdown.as_deref()),
+            )
+        })
+        .collect();
+    (plan, capabilities::ungranted(&grant, &read))
+}
+
+/// The instruction body of one step, without its heading.
+///
+/// Kept here rather than in [`capabilities`] because this is prompt wording,
+/// and the capability module decides which steps exist rather than what they
+/// say. `chunked` switches the generate and reverse-validation steps to the
+/// article subset; everything else is identical between the two shapes, which
+/// is why they are no longer two prompts.
+fn step_body(spec: &capabilities::StepSpec, chunked: bool) -> String {
+    let scope_generate = if chunked {
+        " — restricted to the article subset listed above"
+    } else {
+        ""
+    };
+    let scope_reverse = if chunked {
+        " — only for the articles you edited in this session"
+    } else {
+        ""
+    };
+    match spec.name {
+        "MvT research" => format!(
+            "Read {} and follow its instructions to search for Memorie van Toelichting\n\
+             documents and generate Gherkin test scenarios.",
+            spec.skill
+        ),
+        "Generate machine_readable" => format!(
+            "Read {} and its reference.md and examples.md.\n\
+             Create machine_readable sections for each executable article{scope_generate}.",
+            spec.skill
+        ),
+        "Reverse validation" => format!(
+            "Read {} and follow its instructions to verify every element in\n\
+             machine_readable traces back to the original legal text{scope_reverse}.",
+            spec.skill
+        ),
+        other => format!("Read {} and follow its instructions. ({other})", spec.skill),
+    }
+}
+
+/// Build the translation prompt from the planned chain.
+///
+/// Steps that the runtime cannot support are absent rather than present and
+/// impossible. A degraded step carries the note that names what it cannot do
+/// and what runs in its place, because an agent that is only told a tool is
+/// missing still has to decide what to do about the instruction that needed
+/// it, and in round 2 it decided to report success.
+///
+/// `skip_mvt` is honoured on top of the plan: an earlier session in the same
+/// law may already have produced the feature file.
+fn build_prompt(
+    yaml_path: &str,
+    progress_file_path: &str,
+    plan: &[(&'static capabilities::StepSpec, capabilities::StepPlan)],
+    chunk_articles: Option<&[String]>,
+    _skip_mvt: bool,
+    has_brief: bool,
+) -> String {
+    let mut out =
+        String::from("You are interpreting a Dutch law to make it machine-executable.\n\n");
+    let _ = writeln!(out, "The law YAML file is: {yaml_path}\n");
+
+    if let Some(articles) = chunk_articles {
+        let _ = writeln!(
+            out,
+            "This is one chunk of a larger law. Process ONLY these articles (by their\n\
+             `number` field) and leave every other article completely untouched:\n\n{}\n",
+            articles.join(", ")
+        );
+    }
+
+    if has_brief {
+        let _ = writeln!(
+            out,
+            "Read `{}` in the same directory first. It states, per article in scope,\n\
+             where the article sits in the document structure, which definition\n\
+             provisions govern it, and which other articles of this law modify it.\n\
+             An article that another article bends must be translated as they leave\n\
+             it, not as it reads alone.\n",
+            context::CONTEXT_BRIEF
+        );
+    }
+
+    out.push_str(
+        "Follow this pipeline in order. Every step it does not list is a step this\n\
+         runtime cannot support; do not perform it from memory and do not report it.\n\n",
+    );
+
+    let mut number = 0usize;
+    let mut omitted: Vec<String> = Vec::new();
+    for (spec, step_plan) in plan {
+        if !step_plan.is_in_prompt() {
+            omitted.push((*spec.name).to_string());
+            continue;
+        }
+        number += 1;
+        let _ = writeln!(out, "## Step {number}: {}", spec.name);
+        out.push_str(&step_body(spec, chunk_articles.is_some()));
+        out.push('\n');
+        if let capabilities::StepPlan::Degraded { missing } = step_plan {
+            let _ = writeln!(out, "\n{}", capabilities::degraded_note(missing));
+        }
+        out.push('\n');
+    }
+
+    if !omitted.is_empty() {
+        let _ = writeln!(
+            out,
+            "Not part of this run: {}. Produce nothing that would have come from them.\n",
+            omitted.join(", ")
+        );
+    }
+
+    // Unconditional, and it used to hang off the sentence above. When the
+    // retrieval step left the chain nothing was omitted any more, so the rule
+    // left with it. The pull towards a remembered citation does not need a
+    // missing step to invite it: round 2 answered with a kst- number for a
+    // document it never opened, and to whoever reads the law afterwards that
+    // reads exactly like a citation someone checked.
+    out.push_str(
+        "Cite no source you have not read in this session. If you believe a source exists, \
+         name it as a lead in prose without a number and without a link: a lead invites \
+         someone to look, a citation claims someone already did.\n\n",
+    );
+
+    number += 1;
+    let _ = writeln!(
+        out,
+        "## Step {number}: Session report\n\
+         Write (or update) the file `.enrichment-result.yaml` next to the law YAML with\n\
+         a `chunk_report` mapping recording what you did in this session:\n\
+         \n\
+         ```yaml\n\
+         chunk_report:\n\
+         \x20 articles_reviewed: [\"<number>\", ...]\n\
+         \x20 articles_skipped:\n\
+         \x20   - number: \"<number>\"\n\
+         \x20     reason: \"<why no machine_readable, e.g. definition/transitional article>\"\n\
+         ```\n\
+         \n\
+         This report is REQUIRED even when no article needed a machine_readable\n\
+         section. Keep any existing `related_legislation` entries in that file intact.\n"
+    );
+
+    let _ = writeln!(
+        out,
+        "Write all changes to disk. Do not ask questions — proceed autonomously.\n\
+         \n\
+         ## Progress tracking\n\
+         Before starting each step, write a JSON progress file to: {progress_file_path}\n\
+         Use the Write tool, one brief write per phase transition, with the fields\n\
+         `phase`, `step` and `total_steps`."
+    );
+
+    out
+}
+
+/// The names a law file may use to record what its model does not do.
+///
+/// Schema v0.6.0 folded four fields into two and set
+/// `additionalProperties: false`, so the old names are now rejected by the
+/// schema gate and the new names are rejected by every schema before it. The
+/// feedback prompt therefore cannot name one set of fields for every file: a
+/// prompt that prescribes what the file's own schema forbids turns the repair
+/// round into a loop that hands the agent the same impossible instruction
+/// every time. Which set applies is a property of the file, so it is read off
+/// the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Vocabulary {
+    /// Schema v0.6.0 and later: `markings` and `open_terms`.
+    Markings,
+    /// Schema v0.5.6 and earlier: `untranslatables` and `norm_gaps`. Laws on
+    /// these versions stay in the corpus and are re-enriched, so the wording
+    /// they get is kept exactly as it was.
+    Legacy,
+}
+
+/// The vocabulary a law file's declared schema version allows.
+///
+/// Unreadable, unparseable or an unregistered `$schema` all fall back to
+/// [`Vocabulary::Markings`]: that is what new work targets, and a file the
+/// schema gate cannot place is a file the gate is about to fail on anyway.
+async fn vocabulary_of(yaml_abs: &Path) -> Vocabulary {
+    match tokio::fs::read_to_string(yaml_abs).await {
+        Ok(raw) => vocabulary_of_yaml(&raw),
+        Err(e) => {
+            tracing::warn!(
+                path = %yaml_abs.display(),
+                error = %e,
+                "cannot read law for its schema version; assuming the current vocabulary"
+            );
+            Vocabulary::Markings
+        }
+    }
+}
+
+/// [`vocabulary_of`] on already-read YAML text.
+fn vocabulary_of_yaml(raw: &str) -> Vocabulary {
+    let Ok(value) = serde_yaml_ng::from_str::<serde_json::Value>(raw) else {
+        return Vocabulary::Markings;
+    };
+    match regelrecht_engine::schema::detect_version(&value) {
+        Some(version) if !schema_has_markings(version) => Vocabulary::Legacy,
+        _ => Vocabulary::Markings,
+    }
+}
+
+/// Whether a `vMAJOR.MINOR.PATCH` schema version is v0.6.0 or later, the point
+/// at which `markings` replaced `untranslatables` and `norm_gaps`.
+fn schema_has_markings(version: &str) -> bool {
+    let mut parts = version.trim_start_matches('v').split('.');
+    let mut next = || parts.next().and_then(|p| p.parse::<u32>().ok());
+    match (next(), next(), next()) {
+        (Some(major), Some(minor), Some(patch)) => (major, minor, patch) >= (0, 6, 0),
+        // An unparseable version is not an old one: treat it as current
+        // rather than sending an agent back to fields the schema dropped.
+        _ => true,
+    }
+}
+
+/// Prompt for a feedback pass: the artefact exists and a gate found
+/// something.
+///
+/// Two things make the difference between a useful round and a harmful one.
+/// The findings go over verbatim, because the agent cannot run the check
+/// itself and a paraphrase loses the instance path that says where the
+/// problem sits. And what counts as an answer depends on the gate: a schema
+/// error must be fixed, while a question the text raises may equally be
+/// answered by recording why the model does not do what the check expected.
+///
+/// `vocabulary` decides which field names the prompt may prescribe; see
+/// [`Vocabulary`].
+fn build_feedback_prompt(yaml_path: &str, feedback: &Feedback, vocabulary: Vocabulary) -> String {
+    let list = feedback
+        .findings
+        .iter()
+        .map(|f| format!("- {f}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // The citation half of the marking gate is about evidence, not about
+    // fields, so it reads the same under either vocabulary.
+    const CITATION_RULE: &str = "**Do not cite what you were not given.** You have no network and \
+         no search. A kamerstuk, a Staatsblad number or a URL that appears in none of the text in \
+         front of you is something you recall, and a recalled citation is indistinguishable from \
+         a read one to whoever comes after. If you believe a source exists, name it as a lead in \
+         prose (\"the explanatory memorandum probably covers this\") without a number and without \
+         a link. A lead invites someone to look; a citation claims someone already did.";
+
+    let (what_happened, what_to_do) = match (feedback.gate, vocabulary) {
+        // Deliberately the narrowest prompt in the chain, and mostly a list of
+        // what not to do. The law has been through every gate already; this
+        // pass exists only because the windows walked it in pieces and an
+        // early window could not bind to a name a later one had yet to invent.
+        (Gate::Reconcile, _) => (
+            "is finished, and one last question is left: a value it reads by hand may be a value \
+             it now produces somewhere else",
+            "Every entry of this law has been translated and every gate has run. You are not \
+             here to translate anything.\n\n\
+             The findings below name places where this law reads a value as a bare input, or \
+             leaves it as an open term, while another entry of this same law now declares an \
+             output for the same thing. That happens because the law was walked in windows: the \
+             entry that reads the value was written while the entry that produces it had no \
+             model yet, so the binding could not be made there.\n\n\
+             **Connect what already exists, and nothing else.** Where the finding is right, turn \
+             the input into one with a `source` that names the output and passes the parameters \
+             that entry asks for. Where it is wrong — the two names look alike but mean different \
+             things, or the law really does leave the value to somebody else — say so in one \
+             sentence and leave the file as it is.\n\n\
+             **What you may not do**, and each of these makes this pass a deterioration:\n\
+             - remodel an entry, change an `operation`, an `action` or a `condition`;\n\
+             - add a `marking`, an `open_term` or a `norm_gap`, or remove one on grounds of \
+             content;\n\
+             - rename an existing output or input so that two names match;\n\
+             - touch an entry no finding names."
+                .to_string(),
+        ),
+        (Gate::Schema, _) => (
+            "does not validate against the regelrecht JSON schema",
+            "Fix it in place so it validates. Change as little as possible.".to_string(),
+        ),
+        (Gate::Marking, Vocabulary::Markings) => (
+            "records things in the wrong drawer, or names a source it cannot have read",
+            format!(
+                "Two things, and they are about the record rather than about the translation.\n\n\
+                 **Put each marking in the drawer it belongs to.** Which drawer follows from who \
+                 resolves it, and there are three.\n\n\
+                 A value that another law produces is not a gap at all: it is an input with a \
+                 `source` naming that regulation and the output it asks for.\n\n\
+                 A norm whose content is filled in elsewhere — by a lower regulation, or, when \
+                 the law appoints nobody (\"redelijkerwijs\", \"in bijzondere gevallen\"), by the \
+                 executive policy of whichever authority applies it — is an `open_term`. The \
+                 format expresses it fine; the content lives somewhere else. Whether that \
+                 somewhere else is already in the corpus is a state of the corpus and does not \
+                 belong in the law file.\n\n\
+                 Only what the format itself cannot express is a `marking`: `resolution: operation` \
+                 when the operation does not exist and has to be built, `resolution: model` when \
+                 the operation set is not the problem and the format has no shape for the \
+                 construct. Recording an open term as a marking sends it to a queue where nobody \
+                 will ever work it.\n\n\
+                 **A marking has three prose fields and they do different work.** `about` names \
+                 the construct in the words the article uses. `reason` says why it does not fit, \
+                 in terms of what the format does have: name the shape or the operation that \
+                 comes closest and say where it falls short. `resolved_by` names the change that \
+                 would close the gap, concretely enough to become work. The order is not free: \
+                 the change follows from the reading, and the reading cannot be recovered from \
+                 the change. \"Voor zover\" beperkt de toepassing per bepaling van deze wet en \
+                 niet de wet als geheel, en het model kent alleen toepasselijkheid van een hele \
+                 wet — that is a reason, and the form the format would need follows from it. \
+                 \"Dit past niet in het model\" is not a reason, it is the marking repeating \
+                 itself. A reason that restates `about`, or that is the wanted change said \
+                 twice, leaves a reader unable to tell a gap somebody examined from a gap \
+                 nobody opened.\n\n\
+                 **A flag is a flag on an article that is otherwise worked out.** It names the \
+                 one thing that does not fit and leaves everything that does fit standing; an \
+                 article whose whole model is a marking, or a single open term, is a defect. \
+                 That holds for both drawers: moving a gap from one to the other does not make \
+                 the article any less empty. `target` names the values in this article that \
+                 cannot be produced because of it, and it may only name values this model \
+                 declares itself, so an invented name is not an escape. An empty `target` is a \
+                 statement rather than an omission: it says the article stays executable. \
+                 `legal_text_excerpt` quotes this article's own words, because a marking that \
+                 cannot quote what it is about is about something else.\n\n\
+                 **An open term names who fills it.** `delegated_to` when the article appoints \
+                 an authority, `expected_source` when it names the regulation, \
+                 `decided_per_case_by` when it appoints nobody and the competent authority \
+                 decides case by case with a motivation. An open term that names none of the \
+                 three is not an open norm but an omission, and it reads as though the law left \
+                 something open that it did not.\n\n\
+                 {CITATION_RULE}"
+            ),
+        ),
+        (Gate::Marking, Vocabulary::Legacy) => (
+            "records things in the wrong drawer, or names a source it cannot have read",
+            format!(
+                "Two things, and they are about the record rather than about the translation.\n\n\
+                 **Put each marking in the drawer it belongs to.** An `untranslatable` says the \
+                 engine's operations cannot express a construct, and it is resolved by building \
+                 the operation. A `norm_gap` says the norm is open and gets its content from a \
+                 regulation or beleidsregel that is not in the corpus, and it is resolved by \
+                 harvesting that source or, absent one, by the competent authority deciding per \
+                 case. Recording the second as the first sends it to a queue where nobody will \
+                 ever work it.\n\n\
+                 {CITATION_RULE}"
+            ),
+        ),
+        (Gate::Checks, Vocabulary::Markings) => (
+            "raised questions that the statutory text puts to the model",
+            "Answer every one of them. There are two acceptable answers and you \
+             choose per finding.\n\n\
+             **Change the model**, when the text does say what the check \
+             expected and the model missed it. A lid that derogates from \
+             another needs a branch; an article that computes over a \
+             berekeningsjaar needs a binding that carries that period.\n\n\
+             **Record why not**, when the text does not support what the check \
+             expected. Use an `open_term` when the norm is open and its content \
+             is filled in by a lower regulation or by the executive policy of \
+             the authority that applies it, and a `marking` when the format \
+             itself cannot express the construct — `resolution: operation` for an \
+             operation that has to be built, `resolution: model` for a shape \
+             the format does not have. A value that another law produces is \
+             neither: that is an input with a `source`. Both are first-class \
+             answers and neither is an admission of failure.\n\n\
+             **Both answers go in the law file, in the article the finding \
+             names.** The check runs over the law YAML and reads nothing else, \
+             so a note in `.enrichment-result.yaml` or any other sidecar is not \
+             an answer to it: the finding comes back next round word for word, \
+             and the reasoning you wrote is read by nobody. If your answer is \
+             that the check expected the wrong thing, that reasoning belongs in \
+             the `reason` of a marking or in the description of an open term, \
+             where it sits beside the thing it is about.\n\n\
+             A marking flags the one thing that does not fit and leaves the \
+             rest of the article standing. What you may not do is leave a \
+             finding unanswered, or make it go away by removing the logic it \
+             was about."
+                .to_string(),
+        ),
+        (Gate::Checks, Vocabulary::Legacy) => (
+            "raised questions that the statutory text puts to the model",
+            "Answer every one of them. There are two acceptable answers and you \
+             choose per finding.\n\n\
+             **Change the model**, when the text does say what the check \
+             expected and the model missed it. A lid that derogates from \
+             another needs a branch; an article that computes over a \
+             berekeningsjaar needs a binding that carries that period.\n\n\
+             **Record why not**, when the text does not support what the check \
+             expected. Use `untranslatables` when the engine's operations \
+             cannot express the construct, and `norm_gaps` when the norm is \
+             open and gets its content from a regulation or beleidsregel that \
+             is not in the corpus. Both are first-class answers and neither is \
+             an admission of failure.\n\n\
+             What you may not do is leave a finding unanswered, or make it go \
+             away by removing the logic it was about."
+                .to_string(),
+        ),
+    };
+
+    let marking_note = match (feedback.gate.accepts_marking(), vocabulary) {
+        (true, _) => "",
+        (false, Vocabulary::Markings) => {
+            "\n\nDo not delete a `machine_readable` section to make an error go \
+             away. A construct the format cannot express belongs in `markings`, \
+             with the words it hangs on and the change that would resolve it; a \
+             norm whose content is filled in elsewhere belongs in `open_terms`."
+        }
+        (false, Vocabulary::Legacy) => {
+            "\n\nDo not delete a `machine_readable` section to make an error go \
+             away. A construct that cannot be expressed belongs in \
+             `untranslatables` with a reason."
+        }
+    };
+
     format!(
-        r#"You are interpreting a Dutch law to make it machine-executable.
+        r#"The law YAML you just wrote {what_happened}.
 
-The law YAML file is: {yaml_path}
+The file is: {yaml_path}
 
-Follow this pipeline in order. For each step, read the referenced skill file
-and follow its instructions completely.
+{what_to_do}
 
-## Step 1: MvT Research
-Read .claude/skills/law-mvt-research/SKILL.md and follow its instructions to
-search for Memorie van Toelichting documents and generate Gherkin test scenarios.
-If no MvT documents are found, proceed to step 2 anyway.
+**Do not touch any `text` field.** Those hold the statutory text and are not
+yours to edit.{marking_note}
 
-## Step 2: Generate machine_readable
-Read .claude/skills/law-generate/SKILL.md and its reference.md and examples.md.
-Follow the generate→validate→test loop to create machine_readable sections for
-each executable article.
+The findings, verbatim:
+{list}
 
-## Step 3: Reverse Validation
-Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
-to verify every element in machine_readable traces back to the original legal text.
-
-Write all changes to disk. Do not ask questions — proceed autonomously.
-
-## Progress tracking
-Before starting each step, write a JSON progress file to report your current phase.
-Write to: {progress_file_path}
-
-Write this file at these moments:
-- Before Step 1: {{"phase": "mvt_research", "step": 1, "total_steps": 3}}
-- Before Step 2: {{"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}}
-- After validation in Step 2: {{"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}}
-- Before Step 3: {{"phase": "reverse_validating", "step": 3, "total_steps": 3}}
-
-Use the Write tool. Keep it brief — just one write per phase transition."#
+Write the result back to the same file. Do not ask questions."#
     )
 }
 
 /// Build the prompt for one enrichment chunk: an explicit article subset.
 ///
-/// Differences from [`build_prompt`] (which stays byte-identical for whole-law
+/// Differences from `build_prompt` (which stays byte-identical for whole-law
 /// runs): the agent must process ONLY the listed articles; the MvT-research
 /// step is skipped on continuation chunks (`skip_mvt`, cursor > 0 — the
 /// feature file already exists on the branch); reverse validation is limited
 /// to the articles edited this session; and the agent must record a
 /// `chunk_report` in `.enrichment-result.yaml` so a legitimately-empty chunk
 /// (e.g. transitional law) still proves it was reviewed.
-fn build_chunk_prompt(
-    yaml_path: &str,
-    progress_file_path: &str,
-    article_numbers: &[String],
-    skip_mvt: bool,
-) -> String {
-    let article_list = article_numbers.join(", ");
-    let mvt_step = if skip_mvt {
-        "## Step 1: MvT Research — SKIP\n\
-         MvT research already ran during an earlier session for this law; its\n\
-         feature file is already present. Do NOT redo it. Proceed to step 2."
-            .to_string()
-    } else {
-        "## Step 1: MvT Research\n\
-         Read .claude/skills/law-mvt-research/SKILL.md and follow its instructions to\n\
-         search for Memorie van Toelichting documents and generate Gherkin test scenarios.\n\
-         If no MvT documents are found, proceed to step 2 anyway."
-            .to_string()
-    };
-    format!(
-        r#"You are interpreting a Dutch law to make it machine-executable.
-
-The law YAML file is: {yaml_path}
-
-This is one chunk of a larger law. Process ONLY these articles (by their
-`number` field) and leave every other article completely untouched:
-
-{article_list}
-
-Follow this pipeline in order. For each step, read the referenced skill file
-and follow its instructions completely.
-
-{mvt_step}
-
-## Step 2: Generate machine_readable
-Read .claude/skills/law-generate/SKILL.md and its reference.md and examples.md.
-Follow the generate→validate→test loop to create machine_readable sections for
-each executable article — restricted to the article subset listed above.
-
-## Step 3: Reverse Validation
-Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
-to verify every element in machine_readable traces back to the original legal
-text — only for the articles you edited in this session.
-
-## Step 4: Chunk report
-Write (or update) the file `.enrichment-result.yaml` next to the law YAML with
-a `chunk_report` mapping recording what you did in this session:
-
-```yaml
-chunk_report:
-  articles_reviewed: ["<number>", ...]
-  articles_skipped:
-    - number: "<number>"
-      reason: "<why no machine_readable, e.g. definition/transitional article>"
-```
-
-This report is REQUIRED even when no article in this chunk needed a
-machine_readable section. Keep any existing `related_legislation` entries in
-that file intact.
-
-Write all changes to disk. Do not ask questions — proceed autonomously.
-
-## Progress tracking
-Before starting each step, write a JSON progress file to report your current phase.
-Write to: {progress_file_path}
-
-Write this file at these moments:
-- Before Step 1: {{"phase": "mvt_research", "step": 1, "total_steps": 3}}
-- Before Step 2: {{"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}}
-- After validation in Step 2: {{"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}}
-- Before Step 3: {{"phase": "reverse_validating", "step": 3, "total_steps": 3}}
-
-Use the Write tool. Keep it brief — just one write per phase transition."#
-    )
-}
-
 /// Compute the path of the progress file for a given law YAML file.
 ///
 /// The progress file sits next to the YAML (e.g.
@@ -1238,7 +2799,9 @@ fn build_command(
     prompt: &str,
     file_arg: Option<&Path>,
     cwd: &Path,
-    allow_bash: bool,
+    tools: ToolPolicy<'_>,
+    effort: Option<&str>,
+    session: SessionAction,
 ) -> tokio::process::Command {
     // Collect allowed env vars before creating the command.
     let safe_env: Vec<(String, String)> =
@@ -1267,6 +2830,7 @@ fn build_command(
     tracing::info!(
         provider = provider.name(),
         model = ?model,
+        effort = ?effort,
         prompt_chars = prompt.len(),
         claude_oauth_token_kind = ?oauth_token_kind,
         anthropic_api_key_present_in_worker_env = std::env::var_os("ANTHROPIC_API_KEY").is_some(),
@@ -1289,6 +2853,17 @@ fn build_command(
             cmd.arg("--format").arg("json").arg("--dir").arg(cwd);
             if let Some(ref m) = model {
                 cmd.arg("-m").arg(m);
+            }
+            // OpenCode has no effort flag; saying so beats passing an option
+            // it would reject and letting the run fail on a typo in config.
+            if effort.is_some() {
+                tracing::warn!("effort is not supported by opencode; ignored");
+            }
+            // Session reuse is a claude-provider affair. Under opencode every
+            // call stays cold, and it says so rather than letting a run be
+            // read as though the windows had been shared.
+            if !matches!(session, SessionAction::Cold) {
+                tracing::warn!("session reuse is not wired for opencode; this call runs cold");
             }
             cmd
         }
@@ -1320,20 +2895,47 @@ fn build_command(
                     }
                 }
             }
-            // `Bash` is only granted when the caller asks for it (document-convert
-            // may need to run/install a converter); enrich keeps the shell off.
-            let allowed_tools = if allow_bash {
-                "Bash,Read,Edit,Write,Grep,Glob"
-            } else {
-                "Read,Edit,Write,Grep,Glob"
-            };
+            // Leaving a tool off `--allowedTools` does not take it away: that
+            // flag auto-approves, and what it omits merely has to be asked for,
+            // which the checkout's own settings then grant. Withholding needs
+            // `--disallowedTools`. Without this the enrichment agent made
+            // twenty `Bash` calls in a session whose plan reported the step as
+            // running degraded for want of a shell.
+            let denied = tools.denied();
             cmd.arg("-p")
                 .arg(prompt)
                 .arg("--allowedTools")
-                .arg(allowed_tools)
+                .arg(tools.allowed())
+                // Makes the run report its own token use on stdout, which the
+                // drain now keeps the tail of. Without it a round can only be
+                // compared on wall clock.
+                .arg("--output-format")
+                .arg("json")
                 .current_dir(cwd);
+            if !denied.is_empty() {
+                cmd.arg("--disallowedTools").arg(denied.join(","));
+            }
             if let Some(ref m) = model {
                 cmd.arg("--model").arg(m);
+            }
+            // Effort rides beside the model because that is how the CLI takes
+            // it: one flag for which model, one for how hard it thinks.
+            if let Some(e) = effort {
+                cmd.arg("--effort").arg(e);
+            }
+            // The window's session. The worker chooses the id rather than
+            // reading it back out of the provider's closing JSON: an id we
+            // hand in is known before the process starts, so a run that dies
+            // before it prints anything still leaves a resumable session, and
+            // nothing has to be parsed to continue.
+            match session {
+                SessionAction::Cold => {}
+                SessionAction::Start(id) => {
+                    cmd.arg("--session-id").arg(id.to_string());
+                }
+                SessionAction::Resume(id) => {
+                    cmd.arg("--resume").arg(id.to_string());
+                }
             }
             cmd
         }
@@ -1381,23 +2983,32 @@ async fn read_stored_source_hash(repo_path: &Path, normalized_law_path: &str) ->
 /// Absent file, unparseable YAML, or missing fields all degrade to `(0, "")` —
 /// [`plan_chunk`] then resets to the start, which is the safe default for
 /// legacy metadata written before the cursor existed.
-async fn read_stored_cursor(repo_path: &Path, normalized_law_path: &str) -> (usize, String) {
+async fn read_stored_cursor(
+    repo_path: &Path,
+    normalized_law_path: &str,
+) -> (usize, String, String) {
     #[derive(serde::Deserialize, Default)]
     struct CursorFields {
         #[serde(default)]
         enrich_cursor: usize,
         #[serde(default)]
         enrich_cursor_path: String,
+        #[serde(default)]
+        enrich_cursor_mode: String,
     }
     let Some(parent) = Path::new(normalized_law_path).parent() else {
-        return (0, String::new());
+        return (0, String::new(), String::new());
     };
     let meta_rel = parent.join(".enrichment.yaml");
     let Ok(content) = tokio::fs::read_to_string(repo_path.join(meta_rel)).await else {
-        return (0, String::new());
+        return (0, String::new(), String::new());
     };
     let fields: CursorFields = serde_yaml_ng::from_str(&content).unwrap_or_default();
-    (fields.enrich_cursor, fields.enrich_cursor_path)
+    (
+        fields.enrich_cursor,
+        fields.enrich_cursor_path,
+        fields.enrich_cursor_mode,
+    )
 }
 
 /// Create a `CorpusClient` for the enrichment branch.
@@ -1614,7 +3225,41 @@ pub async fn ensure_skills(repo_path: &Path) -> Result<()> {
         }
     }
 
+    link_schema(&skills_source, repo_path).await;
+
     Ok(())
+}
+
+/// Put the schema where the agent looks for it.
+///
+/// It writes YAML against a contract with required fields, closed enums and
+/// `additionalProperties: false`, so it needs to read that contract. A run in a
+/// bare corpus checkout went looking (`ls schema/`, `find . -name schema.json`)
+/// and found nothing, then wrote fields the schema forbids.
+///
+/// Letting the gate catch that afterwards is the wrong division of labour: it
+/// makes a check do the work an instruction should have done, and it spends a
+/// repair round on something the agent could have known before it started.
+///
+/// Best effort on purpose. A missing schema is worth a warning and not a failed
+/// run, because the skills carry a readable digest of the same contract.
+async fn link_schema(source_root: &Path, repo_path: &Path) {
+    let source = source_root.join("schema");
+    if !source.exists() {
+        tracing::warn!(path = %source.display(), "no schema dir to link; the agent will work without the contract");
+        return;
+    }
+    let link = repo_path.join("schema");
+    if let Ok(meta) = tokio::fs::symlink_metadata(&link).await {
+        if meta.is_dir() && !meta.file_type().is_symlink() {
+            return; // A real schema directory is already there.
+        }
+        let _ = tokio::fs::remove_file(&link).await;
+    }
+    match tokio::fs::symlink(&source, &link).await {
+        Ok(()) => tracing::debug!("symlinked schema into corpus root"),
+        Err(e) => tracing::warn!(error = %e, "could not link schema into corpus root"),
+    }
 }
 
 /// Known absolute prefixes that may appear in yaml_path values from
@@ -1667,15 +3312,653 @@ pub(crate) fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
 
 /// Error-message marker for a chunk that produced no reviewable output at all:
 /// no new `machine_readable` sections, no `chunk_report` in the result
-/// envelope, and no new untranslatables. This wording deliberately does NOT
-/// contain any `is_deterministic_content_failure` marker ("no machine_readable
+/// envelope, and no new marking or untranslatable. This wording deliberately
+/// does NOT contain any `is_deterministic_content_failure` marker ("no machine_readable
 /// sections" / "yaml error"): the failure must stay retryable — a healthy law
 /// whose chunk merely hiccupped must never be terminally exhausted in one
 /// step. The worker's `chunk_no_output_is_not_deterministic` test pins this.
 pub(crate) const CHUNK_NO_OUTPUT_MARKER: &str = "enrichment chunk produced no reviewable output";
 
+/// Run the feedback rounds one gate is allowed: evaluate it, and for as long
+/// as it has something to say and a round is still worth spending, give the
+/// agent a pass to answer.
+///
+/// The budget comes from `config.feedback_rounds` and is one per gate by
+/// default, which is what this did before it was settable. A round beyond the
+/// first only earns its place if the previous one moved something, so the
+/// chain stops on its own in three ways: the gate is clear, the agent left the
+/// file byte-identical, or the finding count did not fall. The last two are
+/// the doorbreekvoorwaarde — an unchanged file cannot have removed a finding,
+/// and a changed file that removed none is churn or a trade, neither of which
+/// gives any reason to expect the next round to do better.
+///
+/// Returns what every round did, so a run can be read per gate rather than as
+/// one number. Findings and markings are recorded side by side, because a
+/// falling finding count bought by declaring more of the law unmodellable is
+/// the opposite outcome from one bought by translating it.
+async fn run_feedback_rounds(
+    gate: Gate,
+    yaml_abs: &Path,
+    corpus_root: &Path,
+    payload: &EnrichPayload,
+    repo_path: &Path,
+    config: &EnrichConfig,
+    runner: &dyn LlmRunner,
+) -> Result<GateFeedback> {
+    let window = payload.chunk_articles.as_deref();
+    let reading = evaluate_gate(gate, yaml_abs, corpus_root, window).await?;
+    let mut findings = reading.answerable;
+    if !reading.outside_corpus.is_empty() {
+        tracing::info!(
+            gate = gate.label(),
+            outside_corpus = reading.outside_corpus.len(),
+            first = %reading.outside_corpus.first().cloned().unwrap_or_default(),
+            "findings recorded but not put to the agent: nothing in this file answers them"
+        );
+    }
+    let mut progress = GateFeedback {
+        gate: gate.label().to_string(),
+        findings_initial: findings.len(),
+        findings_final: findings.len(),
+        rounds: Vec::new(),
+        outside_corpus: reading.outside_corpus,
+    };
+    let budget = config.feedback_rounds.for_gate(gate);
+    if findings.is_empty() || budget == 0 {
+        return Ok(progress);
+    }
+
+    for round in 1..=budget {
+        let findings_before = findings.len();
+        let markings_before = marking_count(yaml_abs).await;
+        let digest_before = file_digest(yaml_abs).await;
+
+        tracing::info!(
+            gate = gate.label(),
+            round,
+            of_rounds = budget,
+            findings = findings_before,
+            markings = ?markings_before,
+            first = %findings.first().cloned().unwrap_or_default(),
+            "gate has findings; running a feedback round"
+        );
+
+        let feedback_payload = EnrichPayload {
+            pass: Pass::Feedback(Feedback {
+                gate,
+                findings: std::mem::take(&mut findings),
+            }),
+            ..payload.clone()
+        };
+        runner
+            .run(&feedback_payload, yaml_abs, repo_path, config)
+            .await?;
+
+        let reading = evaluate_gate(gate, yaml_abs, corpus_root, window).await?;
+        findings = reading.answerable;
+        progress.outside_corpus = reading.outside_corpus;
+        let findings_after = findings.len();
+        let markings_after = marking_count(yaml_abs).await;
+        let file_changed = file_digest(yaml_abs).await != digest_before;
+
+        let stopped = if findings_after == 0 {
+            Some(RoundStop::Cleared)
+        } else if !file_changed {
+            Some(RoundStop::Unchanged)
+        } else if findings_after >= findings_before {
+            Some(RoundStop::NoDecrease)
+        } else if round == budget {
+            Some(RoundStop::Budget)
+        } else {
+            None
+        };
+
+        // Findings and markings on one line: whoever reads the log sees both
+        // sides of the trade, not only the number that went down.
+        tracing::info!(
+            gate = gate.label(),
+            round,
+            findings_before,
+            findings_after,
+            markings_before = ?markings_before,
+            markings_after = ?markings_after,
+            file_changed,
+            stopped = ?stopped,
+            "feedback round finished"
+        );
+
+        progress.rounds.push(FeedbackRoundRecord {
+            round,
+            findings_before,
+            findings_after,
+            markings_before,
+            markings_after,
+            file_changed,
+            stopped,
+        });
+        progress.findings_final = findings_after;
+
+        if stopped.is_some() {
+            break;
+        }
+    }
+
+    if findings.is_empty() {
+        tracing::info!(gate = gate.label(), "feedback cleared the gate");
+        return Ok(progress);
+    }
+
+    // A soft gate does not fail the job on what survives. The agent had its
+    // chance to answer and what is left is recorded rather than fatal:
+    // failing here would turn every open norm into a defect, which is the
+    // outcome this design exists to avoid.
+    if gate.accepts_marking() {
+        tracing::warn!(
+            gate = gate.label(),
+            remaining = findings.len(),
+            rounds = progress.rounds.len(),
+            "findings survived the feedback rounds; recorded, not fatal"
+        );
+        return Ok(progress);
+    }
+
+    Err(PipelineError::Enrich(format!(
+        "enriched law still has {} schema error(s) after {} feedback round(s): {}",
+        findings.len(),
+        progress.rounds.len(),
+        findings.join("; ")
+    )))
+}
+
+/// Run the sub-windows of one window side by side, each on its own copy of
+/// the checkout, and fold the results back into the real file.
+///
+/// A copy per agent rather than one shared file. Two agents writing the same
+/// YAML is a measurement of which nobody can say afterwards who wrote what,
+/// and round 3 lost four runs to exactly that. The copies are disjoint per
+/// entry, so the merge has nothing to resolve — and [`merge_windows`] proves
+/// that rather than assuming it: a window that touched an entry outside its
+/// own assignment fails the run with that entry's number in the message.
+async fn run_windows_concurrently(
+    sub_windows: &[Vec<String>],
+    payload: &EnrichPayload,
+    yaml_abs: &Path,
+    normalized_path: &str,
+    repo_path: &Path,
+    config: &EnrichConfig,
+    runner: &dyn LlmRunner,
+) -> Result<()> {
+    let base = tokio::fs::read_to_string(yaml_abs).await?;
+    let scratch = tempfile::tempdir()?;
+
+    tracing::info!(
+        windows = sub_windows.len(),
+        concurrency = config.window_concurrency,
+        "one window split over several agents"
+    );
+
+    let mut runs = Vec::new();
+    for (index, numbers) in sub_windows.iter().enumerate() {
+        let checkout = scratch.path().join(format!("window-{index}"));
+        copy_tree(repo_path, &checkout).await?;
+        let their_yaml = checkout.join(normalized_path);
+        let their_payload = EnrichPayload {
+            chunk_articles: Some(numbers.clone()),
+            // The research belongs to the window as a whole, not to each
+            // slice of it: only the first slice is allowed to do it.
+            skip_mvt: Some(payload.skip_mvt.unwrap_or(false) || index > 0),
+            ..payload.clone()
+        };
+        runs.push(async move {
+            runner
+                .run(&their_payload, &their_yaml, &checkout, config)
+                .await?;
+            let text = tokio::fs::read_to_string(&their_yaml).await?;
+            Ok::<_, PipelineError>(text)
+        });
+    }
+
+    let texts = futures::future::try_join_all(runs).await?;
+    let merged = merge_windows(
+        &base,
+        &sub_windows.iter().cloned().zip(texts).collect::<Vec<_>>(),
+    )
+    .map_err(PipelineError::Enrich)?;
+    tokio::fs::write(yaml_abs, merged).await?;
+    Ok(())
+}
+
+/// Recursive copy of a directory tree, for the per-window checkouts.
+fn copy_tree<'a>(
+    from: &'a Path,
+    to: &'a Path,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        tokio::fs::create_dir_all(to).await?;
+        let mut entries = tokio::fs::read_dir(from).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name();
+            // A checkout carries its whole history; the agent never reads it
+            // and copying it per window is the most expensive thing here.
+            if name == ".git" {
+                continue;
+            }
+            let source = entry.path();
+            let target = to.join(&name);
+            if entry.file_type().await?.is_dir() {
+                copy_tree(&source, &target).await?;
+            } else {
+                tokio::fs::copy(&source, &target).await?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The closing pass over a law whose last window has been walked.
+///
+/// Two steps, deterministic first. The mechanical bindings —
+/// [`crate::enrich_v2::reconcile::plan`] — are written by the worker without
+/// asking anybody, because an input with no source whose name is exactly an
+/// output another entry declares is not a judgement. Whatever is left is put
+/// to one agent through [`Gate::Reconcile`], with a prompt that is mostly a
+/// list of what it may not do.
+///
+/// # Waarom dit niets kan verslechteren
+///
+/// De wet is hier al door elke poort gegaan, dus alles wat deze pass toevoegt
+/// is achteruitgang. Daarom meet de pass zichzelf na, en beide helften doen
+/// dat: twee tellingen vóór en ná de schrijfactie, de schemafouten en de
+/// deterministische bevindingen. Het is een meting en geen bedoeling: een pass
+/// die niets goedmaakt, verdwijnt. Zie [`Rewrite`] voor de twee drempels.
+///
+/// De drempels verschillen omdat de opdrachten verschillen. De
+/// deterministische helft schrijft alleen bindingen waarvan de naam woordelijk
+/// klopt, dus die moet iets verbeteren en niets verslechteren; gelijk op beide
+/// tellingen gaat terug. De agent-helft krijgt de aanwijzingen die de eerste
+/// heeft laten liggen, en of die goed beantwoord zijn valt uit geen van beide
+/// tellingen af te lezen: een correct beantwoorde aanwijzing hoeft geen
+/// bevinding weg te nemen. Daar is de regel daarom "niets slechter". Loopt een
+/// telling op of wordt het bestand onleesbaar, dan gaat de tekst terug naar wat
+/// er vóór de agent stond. Zonder die terugdraaiing was dit de enige schrijver
+/// in de hele keten zonder net, en de laatste bovendien.
+async fn run_closing_reconcile(
+    yaml_abs: &Path,
+    corpus_root: &Path,
+    payload: &EnrichPayload,
+    config: &EnrichConfig,
+    runner: &dyn LlmRunner,
+) -> Result<Vec<GateFeedback>> {
+    let before_text = tokio::fs::read_to_string(yaml_abs).await?;
+    let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&before_text) else {
+        tracing::warn!(law = %yaml_abs.display(), "closing pass skipped: the file is not YAML");
+        return Ok(Vec::new());
+    };
+    let plan = crate::enrich_v2::reconcile::plan(&doc);
+
+    if !plan.links.is_empty() {
+        let (after_text, written) = crate::enrich_v2::reconcile::apply(&before_text, &plan.links);
+        let rewrite = Rewrite::measure(&before_text, &after_text, corpus_root);
+        if rewrite.is_progress() {
+            tokio::fs::write(yaml_abs, &after_text).await?;
+            tracing::info!(
+                law = %yaml_abs.display(),
+                bound = written.len(),
+                findings_before = rewrite.findings_before,
+                findings_after = rewrite.findings_after,
+                links = %written
+                    .iter()
+                    .map(crate::enrich_v2::reconcile::Link::describe)
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                "closing pass connected what already existed"
+            );
+        } else {
+            tracing::warn!(
+                law = %yaml_abs.display(),
+                planned = plan.links.len(),
+                findings_before = rewrite.findings_before,
+                findings_after = rewrite.findings_after,
+                readable = rewrite.readable,
+                schema_before = rewrite.schema_before,
+                schema_after = rewrite.schema_after,
+                "closing pass reverted: it did not improve the count"
+            );
+        }
+    }
+
+    // The leads go to an agent only when there are any; the gate evaluates
+    // them again itself, so a lead the deterministic write just resolved
+    // never reaches a prompt.
+    let before_agent = tokio::fs::read_to_string(yaml_abs).await?;
+    let progress = run_feedback_rounds(
+        Gate::Reconcile,
+        yaml_abs,
+        corpus_root,
+        payload,
+        corpus_root,
+        config,
+        runner,
+    )
+    .await?;
+    revert_agent_half_if_worse(yaml_abs, corpus_root, &before_agent).await?;
+    Ok(vec![progress])
+}
+
+/// What one rewrite of a whole law did to the deterministic measurements.
+///
+/// Both halves of the closing pass decide on the same three numbers, and both
+/// used to compute them in place. Naming them makes the decision itself a
+/// thing that can be handed a before and an after and asked what it would do,
+/// which is the only way the refusing branch gets covered: the accepting
+/// branch is easy to reach through the real planner and the refusing one is
+/// not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Rewrite {
+    findings_before: usize,
+    findings_after: usize,
+    schema_before: usize,
+    schema_after: usize,
+    readable: bool,
+}
+
+impl Rewrite {
+    fn measure(before: &str, after: &str, corpus_root: &Path) -> Self {
+        let report_before = crate::enrich_v2::checks::run(before, Some(corpus_root));
+        let report_after = crate::enrich_v2::checks::run(after, Some(corpus_root));
+        Self {
+            findings_before: report_before.findings.len(),
+            findings_after: report_after.findings.len(),
+            schema_before: report_before.schema.len(),
+            schema_after: report_after.schema.len(),
+            readable: serde_yaml_ng::from_str::<serde_yaml_ng::Value>(after).is_ok(),
+        }
+    }
+
+    /// Nothing the pass measures got worse.
+    ///
+    /// `readable` is asked separately and not read off `schema_after`, because
+    /// an unreadable file is reported as exactly one schema error — the parse
+    /// diagnosis — and on a law that already carried three that would count as
+    /// an improvement.
+    fn is_not_worse(self) -> bool {
+        self.readable
+            && self.schema_after <= self.schema_before
+            && self.findings_after <= self.findings_before
+    }
+
+    /// The threshold of the deterministic half: nothing worse, and at least
+    /// one of the two measurements better.
+    ///
+    /// Equal on both is a refusal, and not out of strictness. An equal count
+    /// is not an equal set — one finding that disappears beside one that
+    /// appears counts the same — so a write that traded one defect for another
+    /// would go through under the log line saying it connected what already
+    /// existed.
+    ///
+    /// The schema count is in the rule because that is where this half's work
+    /// actually lands. An input without `source` is a schema error and not a
+    /// checks finding, so binding it repairs the schema while the finding
+    /// count stands still. Measured on the finding count alone the pass never
+    /// improves anything and would refuse its own only effect — which is what
+    /// a rule of "the count has to fall" does here, and what the fixture in
+    /// [`tests::the_closing_pass_binds_what_the_window_could_not_see`] shows:
+    /// zero findings before and after, one schema error repaired.
+    fn is_progress(self) -> bool {
+        self.is_not_worse()
+            && (self.findings_after < self.findings_before
+                || self.schema_after < self.schema_before)
+    }
+}
+
+/// Put the law back the way the agent found it when its edit made things
+/// worse.
+///
+/// [`run_feedback_rounds`] is a stopping rule and not a rollback:
+/// [`RoundStop::NoDecrease`] ends the loop and leaves standing whatever the
+/// agent wrote. For every other gate that is survivable, because a hard schema
+/// gate runs after them over the same file. This gate is the last writer of
+/// the run, so what it leaves is what gets committed, and the guarantee
+/// RFC-033 states over "de pass" has to hold over this half too.
+///
+/// Worse means one of three things, in the order they cost: the file no longer
+/// parses, the schema refuses it, or the deterministic checks have more to say
+/// than before. Equal is not worse here — see the doc of
+/// [`run_closing_reconcile`] for why the two halves differ on that.
+async fn revert_agent_half_if_worse(
+    yaml_abs: &Path,
+    corpus_root: &Path,
+    before_agent: &str,
+) -> Result<()> {
+    let after_text = tokio::fs::read_to_string(yaml_abs).await?;
+    if after_text == before_agent {
+        return Ok(());
+    }
+    let rewrite = Rewrite::measure(before_agent, &after_text, corpus_root);
+    if rewrite.is_not_worse() {
+        return Ok(());
+    }
+    tokio::fs::write(yaml_abs, before_agent).await?;
+    tracing::warn!(
+        law = %yaml_abs.display(),
+        findings_before = rewrite.findings_before,
+        findings_after = rewrite.findings_after,
+        readable = rewrite.readable,
+        schema_before = rewrite.schema_before,
+        schema_after = rewrite.schema_after,
+        "closing pass reverted the agent's edit: it left the law worse than it found it"
+    );
+    Ok(())
+}
+
+/// Markings recorded in the law as it stands, or `None` when the file is not
+/// even YAML.
+///
+/// Counted off the untyped tree rather than the law model, and that is the
+/// whole point of the function. It used to go through [`load_law`], which
+/// deserialises the file into `ArticleBasedLaw` and fails on anything the
+/// model does not yet have a shape for. In the measured run the agent's very
+/// first edit wrote `requires:` as a list of mappings while the model had it
+/// as a list of strings, so every call returned `None` from the first round
+/// on, and the log recorded `markings_before=None markings_after=None` for
+/// every feedback round of the run. That is exactly the counter meant to catch
+/// a falling finding count bought by declaring more of the law unmodellable,
+/// which is the trade round 3 made, and it was blind for the whole run.
+///
+/// A counter is not a validator. Whether the file conforms to the model is the
+/// schema gate's question and it answers it out loud; this one only has to say
+/// how many markings are written down, and a shape it does not recognise
+/// elsewhere in the file is no reason to stop knowing that. `None` therefore
+/// now means what it says: the file could not be read at all.
+async fn marking_count(yaml_abs: &Path) -> Option<usize> {
+    let raw = tokio::fs::read_to_string(yaml_abs).await.ok()?;
+    let doc: serde_yaml_ng::Value = match serde_yaml_ng::from_str(&raw) {
+        Ok(doc) => doc,
+        Err(error) => {
+            // Loud, because "unknown" is a real answer here and a silent one
+            // is how this went unnoticed for a whole run.
+            tracing::warn!(law = %yaml_abs.display(), %error, "cannot count markings: file is not YAML");
+            return None;
+        }
+    };
+    Some(count_markings_in(&doc))
+}
+
+/// Markings in an untyped law document.
+fn count_markings_in(doc: &serde_yaml_ng::Value) -> usize {
+    doc.get("articles")
+        .and_then(serde_yaml_ng::Value::as_sequence)
+        .map(|articles| {
+            articles
+                .iter()
+                .filter_map(|article| {
+                    article
+                        .get("machine_readable")?
+                        .get("markings")?
+                        .as_sequence()
+                        .map(Vec::len)
+                })
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+/// What a gate says about the law as it stands, split by who can answer it.
+#[derive(Debug, Default, Clone)]
+struct GateReading {
+    /// Findings the agent can answer by editing this file.
+    answerable: Vec<String>,
+    /// Findings whose resolution lies outside this file entirely: the law it
+    /// binds to is not in the corpus, or is there and carries no model yet.
+    outside_corpus: Vec<String>,
+}
+
+/// What a gate says about the law as it stands.
+///
+/// The split is the point. Round 5 put nineteen checks findings to the agent
+/// and sixteen survived two rounds; twelve of those sixteen were of the form
+/// `"zorgverzekeringswet" does not produce output "is_verzekerde"`, against a
+/// corpus whose laws carry no model at all. No edit to the reading file can
+/// make another law produce an output, so those rounds could only ever end in
+/// the same list coming back unchanged. Asking anyway is not merely wasted: it
+/// teaches the agent that answering is not what the gate wants, and the way out
+/// it finds is to invent one.
+///
+/// They still have to be recorded — a binding onto a law nobody has harvested
+/// is work, just not this agent's — so they leave the loop and land in the run
+/// result instead.
+/// Whether a finding about `article` falls inside the window this run owns.
+///
+/// The prompt tells the agent to leave every article outside its list
+/// completely untouched, and the gate ran over the whole file, so a finding
+/// about article 3 in a window of 1 and 2 is an instruction to break the one
+/// rule the chunking rests on. Round 5 measured both halves of that: under the
+/// checks gate the agent declared four such findings out of scope and they came
+/// back unchanged twice, and under the marking gate's wording it modelled six
+/// out-of-window articles instead — correct work, done by the run that did not
+/// own it, on a file another run may be editing.
+///
+/// So the window filters the findings rather than the prompt explaining the
+/// contradiction away. Every article reaches a window eventually; the finding
+/// belongs to that run.
+///
+/// Matched in both directions because window and finding may be at different
+/// granularities: a window entry `3.2` is inside article `3`, and a finding
+/// about entry `3.2` is inside a window of `3`.
+fn in_window(window: Option<&[String]>, article: Option<&str>) -> bool {
+    let (Some(window), Some(article)) = (window, article) else {
+        return true;
+    };
+    window.iter().any(|entry| {
+        entry == article
+            || article.starts_with(&format!("{entry}."))
+            || entry.starts_with(&format!("{article}."))
+    })
+}
+
+async fn evaluate_gate(
+    gate: Gate,
+    yaml_abs: &Path,
+    corpus_root: &Path,
+    window: Option<&[String]>,
+) -> Result<GateReading> {
+    let raw = tokio::fs::read_to_string(yaml_abs).await?;
+    let mut reading = GateReading::default();
+    match gate {
+        Gate::Schema => reading.answerable = crate::enrich_v2::checks::schema_errors(&raw),
+        // The closing gate reads the whole law and never the window: the
+        // whole point is that it looks at what every earlier window left.
+        //
+        // Parsing comes first here too, and when it fails it comes alone. An
+        // empty finding list is what this loop reads as a clean gate, so a
+        // file the agent made unreadable used to report itself as "nothing
+        // left to do" — the same silence [`crate::enrich_v2::checks::run`] was
+        // given a `parses` finding for. The other three arms of this match
+        // already say it out loud; this one was the exception.
+        Gate::Reconcile => match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw) {
+            Ok(doc) => {
+                reading.answerable = crate::enrich_v2::reconcile::plan(&doc)
+                    .leads
+                    .iter()
+                    .map(crate::enrich_v2::reconcile::Lead::describe)
+                    .collect();
+            }
+            Err(e) => {
+                reading.answerable = vec![crate::enrich_v2::checks::parse_diagnosis(&raw, &e)];
+            }
+        },
+        Gate::Marking | Gate::Checks => {
+            for finding in crate::enrich_v2::checks::run_with_companions(
+                &raw,
+                Some(corpus_root),
+                yaml_abs.parent(),
+            )
+            .findings
+            {
+                // `accounted` asks whether the article carries any outcome at
+                // all, and the answer may be a marking. That makes it a question
+                // for the soft gate, beside the other two, rather than a defect.
+                let is_record = matches!(
+                    finding.check,
+                    "marking" | "citation" | "accounted" | "reference"
+                );
+                if matches!(gate, Gate::Marking) != is_record {
+                    continue;
+                }
+                if !in_window(window, finding.article.as_deref()) {
+                    continue;
+                }
+                let line = match &finding.article {
+                    Some(number) => {
+                        format!("[{}] art. {number}: {}", finding.check, finding.detail)
+                    }
+                    None => format!("[{}] {}", finding.check, finding.detail),
+                };
+                // `corpus-defect` joins `outside-corpus` here for the same
+                // reason and not for the same fact: both are about another
+                // file, so nothing in this one answers them. They stay apart
+                // in the record because the work differs — the one is
+                // harvested or interpreted, the other repaired.
+                if matches!(finding.check, "outside-corpus" | "corpus-defect") {
+                    reading.outside_corpus.push(line);
+                } else {
+                    reading.answerable.push(line);
+                }
+            }
+        }
+    }
+    Ok(reading)
+}
+
+/// Content fingerprint of a file, or `None` when it cannot be read. Only
+/// used to decide whether a run changed anything.
+async fn file_digest(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = tokio::fs::read(path).await.ok()?;
+    Some(format!("{:x}", Sha256::digest(&bytes)))
+}
+
 /// Execute the enrichment using the default process-based LLM runner.
 ///
+/// The entries of one article, in document order.
+///
+/// The harvest splits below article level, so article `69` of the
+/// Zorgverzekeringswet is `69.1` through `69.17` with sub-items under those,
+/// and `2.1.b` of the Awir is an item of article 2. An article is the unit a
+/// reader and a lawyer both recognise; an entry is a rendering choice of the
+/// harvester.
+///
+/// Matches the entry itself and anything the harvest hung under it, on the
+/// separator rather than on the prefix, so `69` does not take `690`.
+fn entries_of(entry_numbers: &[String], article: &str) -> Vec<String> {
+    let with_dot = format!("{article}.");
+    entry_numbers
+        .iter()
+        .filter(|n| n.as_str() == article || n.starts_with(&with_dot))
+        .cloned()
+        .collect()
+}
+
 /// Convenience wrapper around `execute_enrich_with_runner` using `ProcessLlmRunner`.
 pub async fn execute_enrich(
     payload: &EnrichPayload,
@@ -1699,6 +3982,17 @@ pub async fn execute_enrich_with_runner(
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
     let normalized_path = normalize_yaml_path(&payload.yaml_path)?;
 
+    // One session for this window, opened by the translation pass and
+    // continued by whichever feedback rounds the mode allows. It is created
+    // here and dropped when this call returns, which is exactly what "the
+    // session ends with the window" means: nothing carries it to the next
+    // chunk of the same law.
+    let session = std::sync::Arc::new(AgentSession::new(config.session_reuse));
+    let payload = &EnrichPayload {
+        session: Some(std::sync::Arc::clone(&session)),
+        ..payload.clone()
+    };
+
     let yaml_abs = repo_path.join(&normalized_path);
     if !yaml_abs.exists() {
         return Err(PipelineError::Enrich(format!(
@@ -1707,40 +4001,144 @@ pub async fn execute_enrich_with_runner(
         )));
     }
 
+    // Fingerprint before the run, so the schema gate below can tell an
+    // enrichment that produced something from one that did not.
+    let digest_before = file_digest(&yaml_abs).await;
+
     // Parse the law once for the pre-run stats, the chunk window's article
-    // numbers, and the untranslatables baseline of the chunk no-op guard.
+    // numbers, and the recorded-gap baseline of the chunk no-op guard.
     let law = load_law(&yaml_abs).await?;
     let (articles_before, machine_readable_before) = article_stats(&law);
 
     // Chunk planning: the worker (not the LLM) owns the cursor, read from the
     // `.enrichment.yaml` already present on the enrich branch checkout.
-    let (stored_cursor, stored_cursor_path) = read_stored_cursor(repo_path, &normalized_path).await;
-    let plan = plan_chunk(
-        config.max_articles_per_run,
-        articles_before,
-        stored_cursor,
-        &stored_cursor_path,
-        &normalized_path,
-    );
-    let (chunk_window, law_complete, next_cursor) = match plan {
-        ChunkPlan::WholeLaw => (None, true, 0),
-        ChunkPlan::Chunk {
-            start,
-            end,
-            law_complete,
-        } => {
-            let numbers: Vec<String> = law.articles[start..end]
-                .iter()
-                .map(|a| a.number.clone())
-                .collect();
-            (Some((start, numbers)), law_complete, end)
+    let (stored_cursor, stored_cursor_path, stored_cursor_mode) =
+        read_stored_cursor(repo_path, &normalized_path).await;
+    // A cursor recorded under another window mode counts entries where this
+    // run counts layers, or the other way round. Reading it as if it meant the
+    // same thing would silently skip or repeat work, so a mode change resets
+    // the walk — the same rule a path change already follows.
+    let stored_cursor_path =
+        if stored_cursor_mode.is_empty() || stored_cursor_mode == config.window_mode.label() {
+            stored_cursor_path
+        } else {
+            tracing::info!(
+                was = %stored_cursor_mode,
+                now = %config.window_mode.label(),
+                "window mode changed; the walk restarts at the beginning of the law"
+            );
+            String::new()
+        };
+    // A named entry overrides the cursor: this run enriches that one entry and
+    // nothing else. Targeted work is not progress through the document, so the
+    // cursor stands still — a run that repairs one article must not push the
+    // ordinary walk past articles no agent has seen. The termination property
+    // of the cursor mode is therefore untouched: it still advances only when a
+    // window is walked, in `ceil(total / N)` successful runs.
+    let targeted = !config.target_articles.is_empty();
+    // Entry numbers in document order, so the window boundary can keep a
+    // top-level article together (see `plan_chunk`).
+    let entry_numbers: Vec<String> = law.articles.iter().map(|a| a.number.clone()).collect();
+    let (chunk_window, law_complete, next_cursor) = match targeted {
+        true => {
+            // Articles, not entries. The harvest splits below article level
+            // (the Zorgverzekeringswet has 742 entries over far fewer
+            // articles), so `--article 69` names 22 of them, and asking for one
+            // at a time would pay the fixed per-session cost 22 times for one
+            // article. `entries_of` takes the article and everything the
+            // harvest hung under it.
+            //
+            // More than one article arrives here from `--depth`: the closure
+            // plans a set of articles per law, and enriching them in one window
+            // pays the session cost once instead of once per article.
+            let mut numbers: Vec<String> = Vec::new();
+            for article in &config.target_articles {
+                let found = entries_of(&entry_numbers, article);
+                if found.is_empty() {
+                    // Loud on purpose: naming an entry that is not there is a
+                    // mistake in the caller's query, and a run that quietly
+                    // enriched nothing would look like a run that found
+                    // nothing to do.
+                    return Err(PipelineError::Enrich(format!(
+                        "law {normalized_path} has no article {article}; it has \
+                         {articles_before} entries and this run enriches nothing else"
+                    )));
+                }
+                numbers.extend(found);
+            }
+            // Document order, so the window reads as the law reads.
+            numbers.sort_by_key(|n| entry_numbers.iter().position(|e| e == n));
+            let index = numbers
+                .first()
+                .and_then(|first| entry_numbers.iter().position(|n| n == first))
+                .unwrap_or(0);
+            // What the ordinary walk had reached, under the same reset rule
+            // `plan_chunk` applies: a cursor recorded for another path or
+            // beyond the document does not survive into this run's metadata.
+            let cursor_now =
+                if stored_cursor_path == normalized_path && stored_cursor <= articles_before {
+                    stored_cursor
+                } else {
+                    0
+                };
+            // A targeted run claims no completion it did not achieve. It only
+            // carries forward a walk that had already finished.
+            let walk_finished = config.max_articles_per_run > 0 && cursor_now >= articles_before;
+            (Some((index, numbers)), walk_finished, cursor_now)
+        }
+        // A window derived from the law instead of counted off the document:
+        // one layer of the reference graph, whose members do not depend on one
+        // another and can therefore be translated in any order among
+        // themselves. The cursor counts layers here, so the walk still ends in
+        // a fixed number of runs.
+        false if config.window_mode == WindowMode::Layer && config.max_articles_per_run > 0 => {
+            let raw = tokio::fs::read_to_string(&yaml_abs).await?;
+            let graph = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw)
+                .map(|doc| crate::enrich_v2::refgraph::Graph::scan(&doc))
+                .unwrap_or_default();
+            let layer_index =
+                if stored_cursor_path == normalized_path && stored_cursor <= graph.layers().len() {
+                    stored_cursor
+                } else {
+                    0
+                };
+            let (numbers, complete) = plan_layer_window(&graph, &entry_numbers, layer_index);
+            let start = numbers
+                .first()
+                .and_then(|n| entry_numbers.iter().position(|e| e == n))
+                .unwrap_or(0);
+            (Some((start, numbers)), complete, layer_index + 1)
+        }
+        false => {
+            let plan = plan_chunk(
+                config.max_articles_per_run,
+                articles_before,
+                stored_cursor,
+                &stored_cursor_path,
+                &normalized_path,
+                &entry_numbers,
+            );
+            match plan {
+                ChunkPlan::WholeLaw => (None, true, 0),
+                ChunkPlan::Chunk {
+                    start,
+                    end,
+                    law_complete,
+                } => {
+                    let numbers: Vec<String> = law.articles[start..end]
+                        .iter()
+                        .map(|a| a.number.clone())
+                        .collect();
+                    (Some((start, numbers)), law_complete, end)
+                }
+            }
         }
     };
     // Window-scoped baseline for the chunk no-op guard: progress is measured
     // inside the assigned window only.
     let window_stats_before = chunk_window
         .as_ref()
-        .map(|(start, numbers)| window_progress_stats(&law, *start, start + numbers.len()));
+        .map(|(_, numbers)| window_progress_stats(&law, numbers));
 
     let provider_name = config.provider.name().to_string();
 
@@ -1757,7 +4155,8 @@ pub async fn execute_enrich_with_runner(
     // An empty window (valid cursor already at the end of the document) means
     // the chunk loop finished this law earlier: nothing to process, no LLM run
     // — complete trivially instead of prompting an agent with zero articles.
-    let empty_window = matches!(&chunk_window, Some((_, numbers)) if numbers.is_empty());
+    let empty_window =
+        matches!(&chunk_window, Some((_, numbers)) if numbers.is_empty()) || !config.steps.window;
     if empty_window {
         tracing::info!(
             law_id = %payload.law_id,
@@ -1771,17 +4170,122 @@ pub async fn execute_enrich_with_runner(
             clear_stale_chunk_report(&yaml_abs).await;
         }
         let normalized_payload = EnrichPayload {
+            pass: Pass::Translate,
             yaml_path: normalized_path.clone(),
             chunk_articles: chunk_window.as_ref().map(|(_, numbers)| numbers.clone()),
-            // MvT research runs once, during the first chunk (cursor 0).
-            skip_mvt: chunk_window.as_ref().map(|(start, _)| *start > 0),
+            // MvT research runs once, during the first chunk (cursor 0). A
+            // targeted run never does it: it repairs one entry in a law the
+            // research has already been done for, and redoing it would be the
+            // most expensive part of a run meant to be cheap.
+            skip_mvt: chunk_window
+                .as_ref()
+                .map(|(start, _)| targeted || *start > 0),
             ..payload.clone()
         };
-        runner
-            .run(&normalized_payload, &yaml_abs, repo_path, config)
+        let sub_windows = match (&chunk_window, config.window_concurrency) {
+            (Some((_, numbers)), n) if n > 1 => {
+                let raw = tokio::fs::read_to_string(&yaml_abs).await?;
+                let graph = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&raw)
+                    .map(|doc| crate::enrich_v2::refgraph::Graph::scan(&doc))
+                    .unwrap_or_default();
+                split_window(&graph, numbers, n)
+            }
+            _ => Vec::new(),
+        };
+        if sub_windows.len() > 1 {
+            run_windows_concurrently(
+                &sub_windows,
+                &normalized_payload,
+                &yaml_abs,
+                &normalized_path,
+                repo_path,
+                config,
+                runner,
+            )
             .await?;
+        } else {
+            runner
+                .run(&normalized_payload, &yaml_abs, repo_path, config)
+                .await?;
+        }
 
         tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
+    }
+    let file_changed_this_run = file_digest(&yaml_abs).await != digest_before;
+
+    // Schema validation with one repair round, but only over what this run
+    // added. The `law-generate` skill instructs a `just validate` loop and
+    // the agent has no shell, no `Justfile` and no `schema/` in its
+    // checkout, so that loop cannot run and nothing establishes whether the
+    // output is schema-valid. Doing it here needs none of those, because
+    // the engine's validator is a library call.
+    //
+    // A run that changed nothing is not this run's business: the file was
+    // already in whatever state it was in, and validating it here would
+    // fail a job for someone else's defect.
+    // Per gate, in order: the hard gate first, because a law that does not
+    // validate cannot be meaningfully asked about coverage and the checks
+    // would report noise over a broken tree; the marking gate last, because
+    // the round before it produces markings and this one is about where they
+    // landed.
+    let mut feedback = Vec::new();
+    if file_changed_this_run {
+        for gate in Gate::ALL {
+            feedback.push(
+                run_feedback_rounds(
+                    gate, &yaml_abs, repo_path, payload, repo_path, config, runner,
+                )
+                .await?,
+            );
+        }
+    }
+
+    // The closing pass, once the walk has reached the end of the document.
+    //
+    // Not conditional on this run having changed anything: what it looks for
+    // was left by the windows before it, and a last window that added nothing
+    // does not make those earlier bindings any less connectable.
+    let digest_before_closing = file_digest(&yaml_abs).await;
+    if (law_complete || !config.steps.window) && config.steps.reconcile {
+        feedback
+            .extend(run_closing_reconcile(&yaml_abs, repo_path, payload, config, runner).await?);
+    }
+    let closing_pass_wrote = file_digest(&yaml_abs).await != digest_before_closing;
+
+    // The hard gate again, after every writer of the run and not just after
+    // the two soft gates.
+    //
+    // Round 5 measured the cost of not doing this. The schema gate passed,
+    // the marking round then added an `overrides` entry without its `law`
+    // key, and nothing looked at the file again until `load_law` below,
+    // by which time the session was gone. The one agent that could have
+    // fixed it in a sentence — the one that had just written it, with the
+    // article still in front of it — was never asked. On a clean file this
+    // costs one evaluation and no agent call at all.
+    //
+    // That repair used to sit one writer too early: it ran before the closing
+    // pass, so the reconcile agent — the last hand on the file — wrote behind
+    // the last schema gate. What stood after it was `load_law`, and the model
+    // is on documented points wider than the schema (see `KNOWN_GAPS`): a
+    // marking without `resolved_by` is refused by the schema and accepted by
+    // the model, so a schema-invalid law could be committed off a run that
+    // reported success. The gate belongs after the last writer, which is what
+    // it now is.
+    if file_changed_this_run || closing_pass_wrote {
+        let mut closing = run_feedback_rounds(
+            Gate::Schema,
+            &yaml_abs,
+            repo_path,
+            payload,
+            repo_path,
+            config,
+            runner,
+        )
+        .await?;
+        // Named apart from the opening pass so a reader of the record can tell
+        // which of the two found what.
+        closing.gate = "schema-final".to_string();
+        feedback.push(closing);
     }
 
     // Count articles with machine_readable after enrichment.
@@ -1809,8 +4313,10 @@ pub async fn execute_enrich_with_runner(
     // fails: absent/malformed → default (see read_enrichment_result_envelope).
     let envelope = read_enrichment_result_envelope(&yaml_abs).await;
 
-    // Capture the untranslatables the agent flagged in the enriched YAML (RFC-012).
+    // Capture what the agent flagged in the enriched YAML: untranslatables
+    // (RFC-012, schema v0.5.x) and the markings that replaced them in v0.6.0.
     let untranslatables = collect_untranslatables_from(&law_after);
+    let markings = collect_markings_from(&law_after);
 
     match &chunk_window {
         // Whole-law mode: if the LLM ran successfully but didn't enrich any
@@ -1828,23 +4334,24 @@ pub async fn execute_enrich_with_runner(
         // Chunked mode: a window may legitimately yield zero new
         // machine_readable sections (definition/transitional chapters) — but
         // only when the agent proves it reviewed the window (chunk_report) or
-        // produced new untranslatables. No output at all fails with a message
-        // that deliberately does NOT match `is_deterministic_content_failure`:
-        // the failure stays retryable and can never terminally exhaust a
-        // healthy law. The empty window skipped the LLM, so it is exempt.
+        // recorded a new gap in it (a marking or an untranslatable). No output
+        // at all fails with a message that deliberately does NOT match
+        // `is_deterministic_content_failure`: the failure stays retryable and
+        // can never terminally exhaust a healthy law. The empty window skipped
+        // the LLM, so it is exempt.
         Some((start, numbers)) if !empty_window => {
             // Progress is measured INSIDE the assigned window: an edit outside
             // `[start, end)` (a prompt violation, though it rides along in the
             // commit exactly as it would in whole-law mode) must not count as
             // proof that this window was reviewed — otherwise the cursor
             // advances past a window nobody looked at.
-            let end = start + numbers.len();
-            let (win_enriched_before, win_untranslatables_before) =
-                window_stats_before.unwrap_or((0, 0));
-            let (win_enriched_after, win_untranslatables_after) =
-                window_progress_stats(&law_after, *start, end);
+            let (win_enriched_before, win_gaps_before) = window_stats_before.unwrap_or((0, 0));
+            let (win_enriched_after, win_gaps_after) = window_progress_stats(&law_after, numbers);
             let window_newly_enriched = win_enriched_after.saturating_sub(win_enriched_before);
-            let window_new_untranslatables = win_untranslatables_after > win_untranslatables_before;
+            // A window of already-modelled articles that this run only flagged
+            // is reviewed work, not a no-op: a new marking counts the same as a
+            // new untranslatable.
+            let window_new_gaps = win_gaps_after > win_gaps_before;
             // The chunk_report only counts as proof-of-review when it names at
             // least one article of THIS window: a bare `chunk_report: {}` or
             // one listing unrelated numbers must not advance the cursor past
@@ -1858,15 +4365,13 @@ pub async fn execute_enrich_with_runner(
                     .chain(report.articles_skipped.iter().map(|s| &s.number))
                     .any(|n| numbers.contains(n))
             });
-            if window_newly_enriched == 0
-                && !report_references_window
-                && !window_new_untranslatables
-            {
+            if window_newly_enriched == 0 && !report_references_window && !window_new_gaps {
                 return Err(PipelineError::Enrich(format!(
                     "{CHUNK_NO_OUTPUT_MARKER}: no new machine_readable additions in the window, \
-                     no chunk_report referencing this window, no new untranslatables in the \
-                     window (articles {}..{} of {})",
-                    start, end, articles_before
+                     no chunk_report referencing this window, no new markings or untranslatables \
+                     in the window (entries {} of {})",
+                    numbers.join(", "),
+                    articles_before
                 )));
             }
         }
@@ -1887,6 +4392,7 @@ pub async fn execute_enrich_with_runner(
         source_hash: source_hash.to_string(),
         enrich_cursor: next_cursor,
         enrich_cursor_path: normalized_path.clone(),
+        enrich_cursor_mode: config.window_mode.label().to_string(),
     };
 
     let metadata_path = yaml_abs
@@ -1936,6 +4442,39 @@ pub async fn execute_enrich_with_runner(
 
     let branch = enrich_branch_name(&provider_name);
 
+    // What the window cost, and what each call in it cost. One line per call
+    // and one for the total: a run is only worth comparing with another if
+    // both say which calls were resumed and what each of them took.
+    let agent_calls = session.calls();
+    let usage = session.total();
+    for call in &agent_calls {
+        if let Some(u) = call.usage {
+            tracing::info!(
+                law_id = %payload.law_id,
+                step = %call.step,
+                resumed = call.resumed,
+                input_tokens = u.input_tokens,
+                output_tokens = u.output_tokens,
+                cache_read_tokens = u.cache_read_tokens,
+                cost_millicents = u.cost_millicents,
+                "agent call accounted"
+            );
+        }
+    }
+    if let Some(u) = usage {
+        tracing::info!(
+            law_id = %payload.law_id,
+            session_reuse = config.session_reuse.label(),
+            calls = agent_calls.len(),
+            resumed_calls = agent_calls.iter().filter(|c| c.resumed).count(),
+            input_tokens = u.input_tokens,
+            output_tokens = u.output_tokens,
+            cache_read_tokens = u.cache_read_tokens,
+            cost_millicents = u.cost_millicents,
+            "window accounted"
+        );
+    }
+
     let result = EnrichResult {
         law_id: payload.law_id.clone(),
         yaml_path: normalized_path,
@@ -1946,8 +4485,13 @@ pub async fn execute_enrich_with_runner(
         branch,
         related_legislation,
         untranslatables,
+        markings,
         law_complete,
         enrich_cursor: next_cursor,
+        feedback,
+        usage,
+        agent_calls,
+        session_reuse: config.session_reuse.label().to_string(),
     };
 
     Ok((result, written_files))
@@ -1958,7 +4502,6 @@ pub async fn execute_enrich_with_runner(
 /// This lets you detect when skill instructions changed between enrichments.
 async fn compute_prompt_hash(repo_path: &Path) -> String {
     let skill_files = [
-        ".claude/skills/law-mvt-research/SKILL.md",
         ".claude/skills/law-generate/SKILL.md",
         ".claude/skills/law-generate/reference.md",
         ".claude/skills/law-generate/examples.md",
@@ -2032,28 +4575,42 @@ async fn collect_untranslatables(path: &Path) -> Result<Vec<CapturedUntranslatab
     Ok(collect_untranslatables_from(&law))
 }
 
-/// Flatten the untranslatables of an already-parsed law. See
-/// [`collect_untranslatables`].
 /// Window-scoped progress stats for the chunk no-op guard:
-/// `(articles_with_machine_readable, untranslatable_count)` within
+/// `(articles_with_machine_readable, recorded_gap_count)` within
 /// `[start, end)` of a parsed law. The guard measures progress inside the
 /// assigned window only — a whole-document delta would let an edit *outside*
 /// the window masquerade as progress for a window that was never reviewed.
-fn window_progress_stats(law: &ArticleBasedLaw, start: usize, end: usize) -> (usize, usize) {
-    let window = &law.articles[start..end];
+///
+/// The second figure counts both channels a law may use to record what its
+/// model does not do: `markings` from schema v0.6.0 and the `untranslatables`
+/// they replaced. Counting only the old one made the guard blind to the
+/// commonest legitimate outcome of a window of definition provisions —
+/// already-modelled articles that this run only flagged — and failed a window
+/// that was reviewed exactly as intended.
+fn window_progress_stats(law: &ArticleBasedLaw, numbers: &[String]) -> (usize, usize) {
+    let window: Vec<_> = law
+        .articles
+        .iter()
+        .filter(|a| numbers.contains(&a.number))
+        .collect();
     let enriched = window
         .iter()
         .filter(|a| a.machine_readable.is_some())
         .count();
-    let untranslatables = window
+    let recorded_gaps = window
         .iter()
         .filter_map(|a| a.machine_readable.as_ref())
-        .filter_map(|m| m.untranslatables.as_ref())
-        .map(|entries| entries.len())
+        .map(|m| {
+            m.untranslatables.as_ref().map_or(0, Vec::len) + m.markings.as_ref().map_or(0, Vec::len)
+        })
         .sum();
-    (enriched, untranslatables)
+    (enriched, recorded_gaps)
 }
 
+/// Flatten the untranslatables of an already-parsed law. See
+/// [`collect_untranslatables`]. The v0.6.0 channel has its own collector,
+/// [`collect_markings_from`]: the two are deliberately not merged, because
+/// only this one is mirrored into the `untranslatables` table.
 fn collect_untranslatables_from(law: &ArticleBasedLaw) -> Vec<CapturedUntranslatable> {
     let mut out = Vec::new();
     for article in &law.articles {
@@ -2069,6 +4626,32 @@ fn collect_untranslatables_from(law: &ArticleBasedLaw) -> Vec<CapturedUntranslat
                 construct: entry.construct.clone(),
                 reason: entry.reason.clone(),
                 suggestion: entry.suggestion.clone(),
+                legal_text_excerpt: entry.legal_text_excerpt.clone(),
+                accepted: entry.accepted,
+            });
+        }
+    }
+    out
+}
+
+/// Flatten the markings of an already-parsed law, with the owning article
+/// number attached. The v0.6.0 counterpart of [`collect_untranslatables_from`].
+fn collect_markings_from(law: &ArticleBasedLaw) -> Vec<CapturedMarking> {
+    let mut out = Vec::new();
+    for article in &law.articles {
+        let Some(machine_readable) = &article.machine_readable else {
+            continue;
+        };
+        let Some(entries) = &machine_readable.markings else {
+            continue;
+        };
+        for entry in entries {
+            out.push(CapturedMarking {
+                article: article.number.clone(),
+                about: entry.about.clone(),
+                resolution: entry.resolution.as_str().to_string(),
+                resolved_by: entry.resolved_by.clone(),
+                target: entry.target.clone(),
                 legal_text_excerpt: entry.legal_text_excerpt.clone(),
                 accepted: entry.accepted,
             });
@@ -2149,6 +4732,7 @@ mod tests {
     #[test]
     fn test_enrich_payload_serde_roundtrip() {
         let payload = EnrichPayload {
+            pass: Pass::Translate,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: Some("claude".to_string()),
@@ -2161,6 +4745,7 @@ mod tests {
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -2171,6 +4756,7 @@ mod tests {
         // Verify backward compatibility: provider and depth are optional and
         // skipped when None (old queued payloads omit them entirely).
         let payload_no_provider = EnrichPayload {
+            pass: Pass::Translate,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
@@ -2183,6 +4769,7 @@ mod tests {
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
         let json_no_provider = serde_json::to_string(&payload_no_provider).unwrap();
         assert!(!json_no_provider.contains("provider"));
@@ -2199,6 +4786,7 @@ mod tests {
     /// Minimale corpus-brede payload; de guard-tests zetten er traject-velden op.
     fn corpus_wide_payload() -> EnrichPayload {
         EnrichPayload {
+            pass: Pass::Translate,
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             provider: None,
@@ -2211,6 +4799,7 @@ mod tests {
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         }
     }
 
@@ -2255,8 +4844,13 @@ mod tests {
             branch: "enrich/opencode".to_string(),
             related_legislation: Vec::new(),
             untranslatables: Vec::new(),
+            markings: Vec::new(),
             law_complete: true,
             enrich_cursor: 0,
+            feedback: Vec::new(),
+            usage: None,
+            agent_calls: Vec::new(),
+            session_reuse: SessionReuse::Off.label().to_string(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
@@ -2473,8 +5067,11 @@ related_legislation:
         let prompt = build_prompt(
             "regulation/nl/wet/test/2025-01-01.yaml",
             "/tmp/repo/regulation/nl/wet/test/.enrichment-progress.json",
+            &full_plan(),
+            None,
+            false,
+            false,
         );
-        assert!(prompt.contains("law-mvt-research/SKILL.md"));
         assert!(prompt.contains("law-generate/SKILL.md"));
         assert!(prompt.contains("law-reverse-validate/SKILL.md"));
         assert!(prompt.contains("regulation/nl/wet/test/2025-01-01.yaml"));
@@ -2498,6 +5095,7 @@ related_legislation:
         // Nieuwe payloads dragen de taak-velden mee.
         let account = uuid::Uuid::new_v4();
         let new = EnrichPayload {
+            pass: Pass::Translate,
             law_id: "x".into(),
             yaml_path: "laws/x/law.yaml".into(),
             provider: Some("claude".into()),
@@ -2510,6 +5108,7 @@ related_legislation:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
         let roundtrip: EnrichPayload =
             serde_json::from_value(serde_json::to_value(&new).unwrap()).unwrap();
@@ -2532,6 +5131,7 @@ related_legislation:
             source_hash: String::new(),
             enrich_cursor: 0,
             enrich_cursor_path: String::new(),
+            enrich_cursor_mode: String::new(),
         };
 
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
@@ -2568,6 +5168,7 @@ related_legislation:
             source_hash: "abc123".into(),
             enrich_cursor: 30,
             enrich_cursor_path: "regulation/nl/wet/x/2026-01-01.yaml".into(),
+            enrich_cursor_mode: "document".into(),
         };
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
         let back: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
@@ -2629,17 +5230,23 @@ related_legislation:
         // canonical top-level fields ($id/regulatory_layer/publication_date) and
         // articles with number+text, so the fixture mirrors a real harvested law.
         let yaml = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 valid_from: '2025-01-01'
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
   - number: '2'
     text: Article two.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
   - number: '3'
     text: Article three.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
     machine_readable:
       execution:
         actions: []
@@ -2660,13 +5267,17 @@ articles:
         // flatten every entry, attach the owning article number, and preserve the
         // optional fields + accepted flag.
         let yaml = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 valid_from: '2025-01-01'
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
     machine_readable:
       untranslatables:
         - construct: rounding
@@ -2676,11 +5287,13 @@ articles:
           accepted: false
   - number: '2'
     text: Article two.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
     machine_readable:
       execution:
         actions: []
   - number: '3'
     text: Article three.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
     machine_readable:
       untranslatables:
         - construct: table_lookup
@@ -2722,19 +5335,1297 @@ articles:
 
     #[tokio::test]
     async fn test_collect_untranslatables_none() {
+        // A law that records its gap the v0.6.0 way: the untranslatables
+        // collector must find nothing and the marking collector everything.
+        // The two channels are separate on purpose — the one the worker
+        // mirrors into the v1 table may not silently absorb the other.
         let yaml = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
+    machine_readable:
+      markings:
+        - about: fixture
+          reason: het formaat kent hier geen vorm voor deze constructie
+          resolution: model
+          target: []
+          legal_text_excerpt: Article one.
 "#;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("law.yaml");
         tokio::fs::write(&path, yaml).await.unwrap();
 
         assert!(collect_untranslatables(&path).await.unwrap().is_empty());
+
+        let law = load_law(&path).await.unwrap();
+        let markings = collect_markings_from(&law);
+        assert_eq!(markings.len(), 1);
+        assert_eq!(markings[0].article, "1");
+        assert_eq!(markings[0].about, "fixture");
+        assert_eq!(markings[0].resolution, "model");
+        assert_eq!(markings[0].legal_text_excerpt, "Article one.");
+        assert!(!markings[0].accepted);
+        assert!(markings[0].resolved_by.is_none());
+    }
+
+    // ---- the closing pass -----------------------------------------------
+
+    /// A law in the state a chunked walk leaves behind: entry 1 reads
+    /// `standaardpremie` as a bare input because entry 2, which produces it,
+    /// had no model yet when entry 1 was written.
+    pub(super) const TOO_EARLY_LAW: &str = r"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De hoogte is gelijk aan de standaardpremie, bedoeld in artikel 2.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
+    machine_readable:
+      endpoint: hoogte
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Het burgerservicenummer van de verzekerde.
+        input:
+          - name: standaardpremie
+            type: amount
+            description: De standaardpremie voor het berekeningsjaar.
+        output:
+          - name: hoogte
+            type: amount
+            description: De hoogte van de tegemoetkoming.
+        actions:
+          - output: hoogte
+            value: $standaardpremie
+            legal_basis:
+              law: Testwet
+              bwb_id: BWBR0000001
+              article: '1'
+              explanation: Het artikel stelt de hoogte gelijk aan de standaardpremie.
+  - number: '2'
+    text: De standaardpremie wordt jaarlijks vastgesteld.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
+    machine_readable:
+      endpoint: standaardpremie
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Het burgerservicenummer van de verzekerde.
+        output:
+          - name: standaardpremie
+            type: amount
+            description: De jaarlijks vastgestelde standaardpremie.
+        actions:
+          - output: standaardpremie
+            value: 1000
+            legal_basis:
+              law: Testwet
+              bwb_id: BWBR0000001
+              article: '2'
+              explanation: Het artikel stelt de standaardpremie jaarlijks vast.
+";
+
+    /// The whole point: the binding entry 1 could not lay is laid by the
+    /// worker, without an agent and without anything else moving.
+    #[tokio::test]
+    async fn the_closing_pass_binds_what_the_window_could_not_see() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        tokio::fs::write(&path, TOO_EARLY_LAW).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        let runner = NoopLlmRunner;
+        let progress = run_closing_reconcile(&path, dir.path(), &payload, &config, &runner)
+            .await
+            .unwrap();
+
+        let after = tokio::fs::read_to_string(&path).await.unwrap();
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&after).unwrap();
+        let source = &doc["articles"][0]["machine_readable"]["execution"]["input"][0]["source"];
+        assert_eq!(source["output"].as_str(), Some("standaardpremie"));
+        assert_eq!(source["parameters"]["bsn"].as_str(), Some("$bsn"));
+        // Nothing else moved: the diff is the four inserted lines.
+        assert_eq!(
+            after.lines().count(),
+            TOO_EARLY_LAW.lines().count() + 4,
+            "de afrondende pass schrijft alleen het source-blok"
+        );
+        // No lead left, so no agent was asked.
+        assert_eq!(progress.len(), 1);
+        assert_eq!(progress[0].gate, "reconcile");
+        assert_eq!(progress[0].findings_initial, 0);
+        assert!(progress[0].rounds.is_empty());
+    }
+
+    /// A law with nothing to connect is left byte-identical. The pass runs on
+    /// every completed law, so "does nothing" has to mean nothing at all.
+    #[tokio::test]
+    async fn the_closing_pass_leaves_a_connected_law_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // Run it once to connect, then again over the result.
+        tokio::fs::write(&path, TOO_EARLY_LAW).await.unwrap();
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        let runner = NoopLlmRunner;
+        run_closing_reconcile(&path, dir.path(), &payload, &config, &runner)
+            .await
+            .unwrap();
+        let once = tokio::fs::read_to_string(&path).await.unwrap();
+        run_closing_reconcile(&path, dir.path(), &payload, &config, &runner)
+            .await
+            .unwrap();
+        let twice = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(once, twice, "de pass is idempotent");
+    }
+
+    /// The guard, not the intent: a pass that does not lower the finding count
+    /// puts the file back. Modelled by handing it a producer whose output is
+    /// declared twice — the plan then holds a lead and no link, so nothing is
+    /// written and the file stands.
+    #[tokio::test]
+    async fn the_closing_pass_refuses_to_guess_between_two_producers() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // Two entries producing `standaardpremie`: entry 2 and a copy as 3.
+        let second = TOO_EARLY_LAW
+            .split("  - number: '2'\n")
+            .nth(1)
+            .unwrap()
+            .to_string();
+        let law = format!(
+            "{TOO_EARLY_LAW}  - number: '3'\n{}",
+            second
+                .replace("article: '2'", "article: '3'")
+                .replace("#Artikel2", "#Artikel3")
+        );
+        tokio::fs::write(&path, &law).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        let runner = NoopLlmRunner;
+        let progress = run_closing_reconcile(&path, dir.path(), &payload, &config, &runner)
+            .await
+            .unwrap();
+        let after = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(after, law, "bij twijfel blijft het bestand zoals het stond");
+        assert_eq!(progress[0].findings_initial, 1, "de agent krijgt de vraag");
+    }
+
+    /// The threshold of the deterministic half, on the branch the planner
+    /// cannot be talked into producing.
+    ///
+    /// The refusing branch had no coverage at all: the test named after it
+    /// hands the pass a plan without links, so `if !plan.links.is_empty()`
+    /// is false and the whole counting block is skipped. This measures the
+    /// decision itself, over two real laws.
+    #[test]
+    fn de_deterministische_helft_schrijft_niet_als_er_niets_verbetert() {
+        let root = tempfile::tempdir().unwrap();
+        // The same law twice: nothing got worse and nothing got better, which
+        // is the case the pass used to write on.
+        let equal = Rewrite::measure(TOO_EARLY_LAW, TOO_EARLY_LAW, root.path());
+        assert_eq!(equal.findings_before, equal.findings_after);
+        assert_eq!(equal.schema_before, equal.schema_after);
+        assert!(
+            !equal.is_progress(),
+            "gelijk is geen vooruitgang: een verdwenen plus een nieuwe \
+             bevinding telt ook gelijk"
+        );
+        assert!(
+            equal.is_not_worse(),
+            "voor de agent-helft is gelijk wél goed genoeg"
+        );
+
+        // One finding traded for another: equal on both counts, so refused,
+        // and this is the case a count alone cannot tell from a clean run.
+        let swap = Rewrite {
+            findings_before: 3,
+            findings_after: 3,
+            schema_before: 0,
+            schema_after: 0,
+            readable: true,
+        };
+        assert!(!swap.is_progress());
+
+        // Both accepting sides, so the guard is not simply closed: a finding
+        // fewer, or a schema error repaired while the findings stand still —
+        // which is what binding an input without `source` actually does.
+        assert!(Rewrite {
+            findings_after: 2,
+            ..swap
+        }
+        .is_progress());
+        assert!(Rewrite {
+            schema_before: 1,
+            ..swap
+        }
+        .is_progress());
+    }
+
+    /// Whatever the counts say, a law the parser cannot read never replaces
+    /// the one that stood — and it may not pass as an improvement either,
+    /// which it would if unreadability were read off the schema count.
+    #[test]
+    fn geen_van_beide_helften_schrijft_een_onleesbare_wet_weg() {
+        let base = Rewrite {
+            findings_before: 5,
+            findings_after: 0,
+            schema_before: 3,
+            schema_after: 0,
+            readable: true,
+        };
+        assert!(base.is_progress() && base.is_not_worse());
+        let broken_schema = Rewrite {
+            schema_before: 0,
+            schema_after: 1,
+            ..base
+        };
+        assert!(!broken_schema.is_progress() && !broken_schema.is_not_worse());
+        let unreadable = Rewrite {
+            readable: false,
+            schema_after: 1,
+            ..base
+        };
+        assert!(!unreadable.is_progress() && !unreadable.is_not_worse());
+    }
+
+    /// Answers every feedback round by writing a marking without
+    /// `resolved_by`: schema v0.6.0 requires the field and the law model does
+    /// not, so this is exactly the edit that used to reach the commit.
+    struct SchemaBreakingRunner;
+
+    #[async_trait::async_trait]
+    impl LlmRunner for SchemaBreakingRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let text = tokio::fs::read_to_string(yaml_abs).await?;
+            let broken = text.replace(
+                "    machine_readable:\n      endpoint: hoogte\n",
+                "    machine_readable:\n      endpoint: hoogte\n      markings:\n        \
+                 - about: de standaardpremie\n          reason: het model kent hier geen vorm voor\n          \
+                 resolution: model\n          target: []\n          legal_text_excerpt: de standaardpremie\n",
+            );
+            assert_ne!(broken, text, "de testrunner moet iets veranderen");
+            tokio::fs::write(yaml_abs, broken).await?;
+            Ok(())
+        }
+    }
+
+    /// The agent half had no rollback at all: `run_feedback_rounds` stops and
+    /// leaves standing whatever was written. This is the last writer of the
+    /// run, so what it leaves is what gets committed.
+    #[tokio::test]
+    async fn de_afrondende_pass_draait_een_agent_terug_die_het_schema_breekt() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // Two producers of `standaardpremie`, so the plan holds a lead, no
+        // link, and the agent is asked.
+        let second = TOO_EARLY_LAW
+            .split("  - number: '2'\n")
+            .nth(1)
+            .unwrap()
+            .to_string();
+        let law = format!(
+            "{TOO_EARLY_LAW}  - number: '3'\n{}",
+            second
+                .replace("article: '2'", "article: '3'")
+                .replace("#Artikel2", "#Artikel3")
+        );
+        tokio::fs::write(&path, &law).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        run_closing_reconcile(&path, dir.path(), &payload, &config, &SchemaBreakingRunner)
+            .await
+            .unwrap();
+
+        let after = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(
+            after, law,
+            "de agent-helft van de afrondende pass moet terugdraaien wat zij verslechtert"
+        );
+        assert!(
+            !after.contains("markings:"),
+            "de markering zonder resolved_by — die het schema afwijst en het \
+             model accepteert — staat niet in het bestand dat gecommit wordt"
+        );
+    }
+
+    /// Answers a round with an edit that costs nothing: a comment line.
+    struct HarmlessRunner;
+
+    #[async_trait::async_trait]
+    impl LlmRunner for HarmlessRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let text = tokio::fs::read_to_string(yaml_abs).await?;
+            tokio::fs::write(yaml_abs, format!("{text}# nagelezen\n")).await?;
+            Ok(())
+        }
+    }
+
+    /// The other direction of the same guard: an edit that leaves the counts
+    /// where they were stands. A rollback that fires on everything would
+    /// silently turn the agent half off.
+    #[tokio::test]
+    async fn de_afrondende_pass_laat_een_agent_staan_die_niets_verslechtert() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        let second = TOO_EARLY_LAW
+            .split("  - number: '2'\n")
+            .nth(1)
+            .unwrap()
+            .to_string();
+        let law = format!(
+            "{TOO_EARLY_LAW}  - number: '3'\n{}",
+            second
+                .replace("article: '2'", "article: '3'")
+                .replace("#Artikel2", "#Artikel3")
+        );
+        tokio::fs::write(&path, &law).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        run_closing_reconcile(&path, dir.path(), &payload, &config, &HarmlessRunner)
+            .await
+            .unwrap();
+
+        let after = tokio::fs::read_to_string(&path).await.unwrap();
+        assert!(
+            after.contains("# nagelezen"),
+            "wat niets verslechtert blijft staan"
+        );
+    }
+
+    /// A file the agent made unreadable used to report itself as a clean gate:
+    /// `Gate::Reconcile` was the one arm of the match that swallowed the parse
+    /// error, and an empty finding list is what the round loop reads as
+    /// "nothing left to do".
+    #[tokio::test]
+    async fn de_reconcile_poort_meldt_een_onleesbaar_bestand_in_plaats_van_te_zwijgen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("2025-01-01.yaml");
+        tokio::fs::write(
+            &path,
+            "articles:\n  - number: '1'\n    explanation: Eerste lid: de wet.\n",
+        )
+        .await
+        .unwrap();
+
+        let reading = evaluate_gate(Gate::Reconcile, &path, dir.path(), None)
+            .await
+            .unwrap();
+        assert_eq!(reading.answerable.len(), 1, "{:?}", reading.answerable);
+        assert!(
+            reading.answerable[0].contains("YAML parse error"),
+            "de poort noemt de parsefout: {}",
+            reading.answerable[0]
+        );
+    }
+
+    // ---- feedback rounds ------------------------------------------------
+
+    /// A law whose articles carry text and nothing else. Every article is one
+    /// `accounted` finding at the marking gate, so the gate's finding count
+    /// is the number of articles still passed over in silence.
+    fn silent_law(articles: usize) -> String {
+        let mut yaml = String::from(
+            "---\n\
+             $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n\
+             $id: test_law\n\
+             regulatory_layer: WET\n\
+             publication_date: '2025-01-01'\n\
+             bwb_id: BWBR0000001\n\
+             url: https://wetten.overheid.nl/BWBR0000001/2025-01-01\n\
+             valid_from: '2025-01-01'\n\
+             articles:\n",
+        );
+        for n in 1..=articles {
+            yaml.push_str(&format!(
+                "  - number: '{n}'\n    text: De raad stelt de vergoeding vast naar redelijkheid en billijkheid.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel{n}\n"
+            ));
+        }
+        yaml
+    }
+
+    /// Answers a feedback round by filing one marking on the first article
+    /// that has none: the finding count falls by one and the marking count
+    /// rises by one, which is exactly the trade the measurement has to make
+    /// visible.
+    struct MarkingRunner {
+        calls: std::sync::Mutex<usize>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for MarkingRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            #[allow(clippy::unwrap_used)]
+            {
+                *self.calls.lock().unwrap() += 1;
+            }
+            let content = tokio::fs::read_to_string(yaml_abs).await?;
+            let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+            if let serde_yaml_ng::Value::Mapping(ref mut map) = value {
+                if let Some(serde_yaml_ng::Value::Sequence(ref mut articles)) =
+                    map.get_mut("articles")
+                {
+                    for article in articles.iter_mut() {
+                        if let serde_yaml_ng::Value::Mapping(ref mut article_map) = article {
+                            if article_map.contains_key("machine_readable") {
+                                continue;
+                            }
+                            let marking: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+                                "markings:\n  - about: naar redelijkheid en billijkheid is een open norm\n    reason: het model kent alleen formules en geen oordeelsruimte\n    resolution: model\n    resolved_by: het formaat zou een oordeelsruimte moeten kunnen dragen die geen formule is\n    target: []\n    legal_text_excerpt: naar redelijkheid en billijkheid\n",
+                            )?;
+                            article_map.insert(
+                                serde_yaml_ng::Value::String("machine_readable".into()),
+                                marking,
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+            tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&value)?).await?;
+            Ok(())
+        }
+    }
+
+    /// Sets the law up on disk and returns `(dir, absolute yaml path)`.
+    async fn silent_law_on_disk(articles: usize) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        tokio::fs::write(&path, silent_law(articles)).await.unwrap();
+        (dir, path)
+    }
+
+    fn rounds_config(rounds: FeedbackRounds) -> EnrichConfig {
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.feedback_rounds = rounds;
+        config
+    }
+
+    #[test]
+    fn a_finding_outside_the_window_is_not_this_runs_question() {
+        // The contradiction round 5 ran into: the prompt says leave every
+        // article outside your list completely untouched, and the gate handed
+        // the same agent findings about articles 3 through 8.
+        let window = vec!["1".to_owned(), "2".to_owned()];
+        assert!(in_window(Some(&window), Some("1")));
+        assert!(!in_window(Some(&window), Some("3")));
+
+        // Granularity does not decide ownership, in either direction.
+        assert!(in_window(Some(&window), Some("2.1.a")));
+        assert!(in_window(Some(&["3.2".to_owned()]), Some("3")));
+
+        // A whole-law run owns everything, and a finding about the file rather
+        // than about an article is nobody's to duck.
+        assert!(in_window(None, Some("9")));
+        assert!(in_window(Some(&window), None));
+    }
+
+    #[tokio::test]
+    async fn a_finding_no_edit_here_can_answer_is_recorded_and_never_asked() {
+        // Twelve of the sixteen findings that survived round 5's checks gate
+        // were of the form `"zorgverzekeringswet" does not produce output
+        // "is_verzekerde"` against a corpus of laws that carry no model at
+        // all. No edit to this file makes another law produce an output, so
+        // every round could only return the same list. They are still work,
+        // so they land in the record instead of in a round.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        tokio::fs::write(
+            &path,
+            r#"$id: test_law
+name: Testwet
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De aanspraak bestaat voor de verzekerde.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        input:
+          - name: is_verzekerde
+            type: boolean
+            source:
+              regulation: wet_die_niet_bestaat
+              output: is_verzekerde
+        actions:
+          - output: aanspraak
+            value: $is_verzekerde
+"#,
+        )
+        .await
+        .unwrap();
+
+        let reading = evaluate_gate(Gate::Checks, &path, dir.path(), None)
+            .await
+            .unwrap();
+        assert_eq!(reading.outside_corpus.len(), 1, "{reading:?}");
+        assert!(
+            reading.outside_corpus[0].contains("wet_die_niet_bestaat"),
+            "{reading:?}"
+        );
+        assert!(
+            !reading
+                .answerable
+                .iter()
+                .any(|f| f.contains("wet_die_niet_bestaat")),
+            "an unanswerable finding reached the loop: {reading:?}"
+        );
+
+        // And a run over it puts none of them to the agent while keeping them
+        // in the record.
+        let config = rounds_config(FeedbackRounds {
+            checks: 2,
+            ..FeedbackRounds::default()
+        });
+        let runner = MarkingRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+        let progress = run_feedback_rounds(
+            Gate::Checks,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+        assert_eq!(progress.outside_corpus.len(), 1);
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            0,
+            "an agent was called for a finding it cannot answer"
+        );
+    }
+
+    #[tokio::test]
+    async fn markings_are_counted_even_when_the_law_model_cannot_read_the_file() {
+        // The regression, from the run that lost the count. Two shapes broke
+        // it there: `requires` written as a list of mappings against a model
+        // that had a list of strings, and an intra-law `overrides` entry with
+        // no `law` key. Every marking count in that run came back `None`, so
+        // the one number that would have shown round 3 buying a lower finding
+        // count with more markings showed nothing. The second shape is the one
+        // pinned here because the model still rejects it, and the assertion
+        // below fails loudly if that ever stops being true.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("2026-01-01.yaml");
+        tokio::fs::write(
+            &path,
+            r#"$id: test_law
+articles:
+  - number: '1'
+    text: tekst
+    machine_readable:
+      overrides:
+        - article: '4'
+          output: hoogte
+          voids: true
+      markings:
+        - about: iets
+          reason: waarom
+          resolution: operation
+          target: []
+          legal_text_excerpt: woorden
+  - number: '2'
+    text: tekst
+    machine_readable:
+      markings:
+        - about: iets anders
+          reason: waarom
+          resolution: model
+          target: []
+          legal_text_excerpt: woorden
+"#,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            load_law(&path).await.is_err(),
+            "fixture must be a file the law model rejects, or it proves nothing"
+        );
+        assert_eq!(marking_count(&path).await, Some(2));
+
+        // And `None` still means what it says: unreadable, not "zero".
+        tokio::fs::write(&path, "articles: [ this is not yaml\n")
+            .await
+            .unwrap();
+        assert_eq!(marking_count(&path).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_second_round_runs_and_is_measured_per_round() {
+        // Three articles, three findings, two rounds allowed. Each round
+        // answers one article, so round 1 takes one finding away and round 2
+        // takes the next — the thing the whole exercise is meant to measure.
+        let (dir, path) = silent_law_on_disk(3).await;
+        let config = rounds_config(FeedbackRounds {
+            marking: 2,
+            ..FeedbackRounds::default()
+        });
+        let runner = MarkingRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+
+        let progress = run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(progress.gate, "marking");
+        assert_eq!(progress.findings_initial, 3);
+        assert_eq!(progress.findings_final, 1);
+        assert_eq!(*runner.calls.lock().unwrap(), 2, "both rounds ran");
+        assert_eq!(progress.rounds.len(), 2);
+
+        assert_eq!(progress.rounds[0].round, 1);
+        assert_eq!(progress.rounds[0].findings_before, 3);
+        assert_eq!(progress.rounds[0].findings_after, 2);
+        assert!(progress.rounds[0].file_changed);
+        assert_eq!(progress.rounds[0].stopped, None, "round 1 does not end it");
+
+        assert_eq!(progress.rounds[1].round, 2);
+        assert_eq!(progress.rounds[1].findings_before, 2);
+        assert_eq!(progress.rounds[1].findings_after, 1);
+        assert_eq!(progress.rounds[1].stopped, Some(RoundStop::Budget));
+
+        // And the counters say how the findings fell: by marking, not by
+        // modelling. Without this the two are indistinguishable.
+        assert_eq!(progress.rounds[0].markings_before, Some(0));
+        assert_eq!(progress.rounds[0].markings_after, Some(1));
+        assert_eq!(progress.rounds[1].markings_before, Some(1));
+        assert_eq!(progress.rounds[1].markings_after, Some(2));
+    }
+
+    #[tokio::test]
+    async fn a_round_that_changes_nothing_ends_the_chain() {
+        /// Answers nothing and writes nothing: the file is byte-identical
+        /// afterwards.
+        struct SilentRunner {
+            calls: std::sync::Mutex<usize>,
+        }
+
+        #[async_trait::async_trait]
+        impl LlmRunner for SilentRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                _yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                #[allow(clippy::unwrap_used)]
+                {
+                    *self.calls.lock().unwrap() += 1;
+                }
+                Ok(())
+            }
+        }
+
+        let (dir, path) = silent_law_on_disk(3).await;
+        let config = rounds_config(FeedbackRounds::uniform(3));
+        let runner = SilentRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+
+        let progress = run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            1,
+            "three rounds were allowed; the first bought nothing, so no second"
+        );
+        assert_eq!(progress.rounds.len(), 1);
+        assert!(!progress.rounds[0].file_changed);
+        assert_eq!(progress.rounds[0].stopped, Some(RoundStop::Unchanged));
+        assert_eq!(progress.findings_final, 3);
+    }
+
+    #[tokio::test]
+    async fn a_round_that_removes_no_finding_ends_the_chain() {
+        /// Edits the file without answering anything: the bytes move, the
+        /// findings do not.
+        struct ChurningRunner {
+            calls: std::sync::Mutex<usize>,
+        }
+
+        #[async_trait::async_trait]
+        impl LlmRunner for ChurningRunner {
+            async fn run(
+                &self,
+                _payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                #[allow(clippy::unwrap_used)]
+                let call = {
+                    let mut calls = self.calls.lock().unwrap();
+                    *calls += 1;
+                    *calls
+                };
+                let content = tokio::fs::read_to_string(yaml_abs).await?;
+                tokio::fs::write(yaml_abs, format!("{content}# round {call}\n")).await?;
+                Ok(())
+            }
+        }
+
+        let (dir, path) = silent_law_on_disk(3).await;
+        let config = rounds_config(FeedbackRounds::uniform(3));
+        let runner = ChurningRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+
+        let progress = run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            1,
+            "a round that took no finding away buys no next round"
+        );
+        assert_eq!(progress.rounds.len(), 1);
+        assert!(progress.rounds[0].file_changed, "the bytes did move");
+        assert_eq!(progress.rounds[0].findings_after, 3);
+        assert_eq!(progress.rounds[0].stopped, Some(RoundStop::NoDecrease));
+    }
+
+    #[tokio::test]
+    async fn a_gate_with_nothing_to_say_runs_no_round() {
+        // The budget is not a quota: a clear gate spends none of it.
+        let (dir, path) = silent_law_on_disk(1).await;
+        let config = rounds_config(FeedbackRounds::uniform(3));
+        let runner = MarkingRunner {
+            calls: std::sync::Mutex::new(0),
+        };
+        let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+
+        // Schema, not marking: this law validates, so that gate is clear.
+        let progress = run_feedback_rounds(
+            Gate::Schema,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(progress.findings_initial, 0);
+        assert!(progress.rounds.is_empty());
+        assert_eq!(*runner.calls.lock().unwrap(), 0);
+    }
+
+    // ---- one session per window -----------------------------------------
+
+    fn feedback_pass(gate: Gate) -> Pass {
+        Pass::Feedback(Feedback {
+            gate,
+            findings: vec!["[schema] art. 1: iets".to_string()],
+        })
+    }
+
+    #[test]
+    fn a_window_opens_its_session_once_and_continues_it() {
+        // The first call of the window opens the session under an id the
+        // worker chose; every call after it continues that same id. This is
+        // the whole point: one window, one reading of the law.
+        let session = AgentSession::new(SessionReuse::Window);
+        let first = session.plan(&Pass::Translate);
+        assert_eq!(first, SessionAction::Start(session.id()));
+
+        session.record("translate", first, None);
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Schema)),
+            SessionAction::Resume(session.id())
+        );
+        session.record("schema", SessionAction::Resume(session.id()), None);
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Marking)),
+            SessionAction::Resume(session.id()),
+            "in window mode the soft gates continue the session too"
+        );
+    }
+
+    #[test]
+    fn a_new_window_is_a_new_session() {
+        // Nothing carries a session across windows: the agent that enriched
+        // the first chunk of the Awir must not walk into the last one still
+        // holding everything it wrote.
+        let first = AgentSession::new(SessionReuse::Window);
+        first.record("translate", first.plan(&Pass::Translate), None);
+        assert!(first.plan(&feedback_pass(Gate::Checks)).resumed());
+
+        let second = AgentSession::new(SessionReuse::Window);
+        assert_ne!(second.id(), first.id(), "each window has its own id");
+        assert_eq!(
+            second.plan(&Pass::Translate),
+            SessionAction::Start(second.id()),
+            "a fresh window starts cold, whatever the previous one did"
+        );
+    }
+
+    #[test]
+    fn repair_mode_keeps_the_judgement_gates_cold() {
+        // The schema gate repairs a fact and may remember; the checks and
+        // marking gates ask the agent to look again at a choice it made, and
+        // an agent that remembers making it is the failure those gates exist
+        // to catch.
+        let session = AgentSession::new(SessionReuse::Repair);
+        session.record("translate", session.plan(&Pass::Translate), None);
+
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Schema)),
+            SessionAction::Resume(session.id())
+        );
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Checks)),
+            SessionAction::Cold
+        );
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Marking)),
+            SessionAction::Cold
+        );
+    }
+
+    #[test]
+    fn reuse_off_never_shares_a_session() {
+        let session = AgentSession::new(SessionReuse::Off);
+        assert_eq!(session.plan(&Pass::Translate), SessionAction::Cold);
+        session.record("translate", SessionAction::Cold, None);
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Schema)),
+            SessionAction::Cold
+        );
+    }
+
+    #[test]
+    fn a_failed_first_call_leaves_the_session_unopened() {
+        // `record` only runs after the subprocess succeeded. Without a
+        // successful start there is no conversation on disk, so the next call
+        // must start rather than resume an id the provider never wrote.
+        let session = AgentSession::new(SessionReuse::Window);
+        let planned = session.plan(&Pass::Translate);
+        assert_eq!(planned, SessionAction::Start(session.id()));
+        // …call fails, nothing recorded…
+        assert_eq!(
+            session.plan(&feedback_pass(Gate::Schema)),
+            SessionAction::Start(session.id())
+        );
+    }
+
+    #[test]
+    fn session_reuse_parses_its_three_modes() {
+        assert_eq!(SessionReuse::parse("off").unwrap(), SessionReuse::Off);
+        assert_eq!(SessionReuse::parse("repair").unwrap(), SessionReuse::Repair);
+        assert_eq!(
+            SessionReuse::parse(" window ").unwrap(),
+            SessionReuse::Window
+        );
+        assert_eq!(SessionReuse::default(), SessionReuse::Window);
+        assert!(SessionReuse::parse("sometimes").is_err());
+    }
+
+    #[test]
+    fn a_tool_the_lane_does_not_grant_is_denied_and_not_merely_left_off() {
+        // `--allowedTools` auto-approves; it does not withhold. Leaving Bash
+        // off it is what let the enrichment agent make twenty shell calls in a
+        // session whose plan reported the shell as absent. Whatever the
+        // capability planner calls ungranted has to arrive as `--disallowedTools`
+        // or the plan is a description of a runtime that does not exist.
+        let provider = LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        };
+        let args = |allow_bash: bool, deny: &[String]| -> Vec<String> {
+            build_command(
+                &provider,
+                "prompt",
+                None,
+                Path::new("/tmp"),
+                ToolPolicy { allow_bash, deny },
+                None,
+                SessionAction::Cold,
+            )
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+        };
+
+        let lane = args(false, &["WebFetch".to_owned(), "WebSearch".to_owned()]);
+        let at = lane
+            .iter()
+            .position(|a| a == "--disallowedTools")
+            .expect("lane denies something");
+        assert_eq!(lane[at + 1], "Bash,WebFetch,WebSearch");
+
+        // A caller that asked for the shell keeps it.
+        let converter = args(true, &[]);
+        assert!(
+            !converter.iter().any(|a| a == "--disallowedTools"),
+            "document-convert must keep its shell: {converter:?}"
+        );
+    }
+
+    #[test]
+    fn the_claude_command_starts_and_resumes_a_session() {
+        let provider = LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        };
+        let id = Uuid::new_v4();
+        let args = |action: SessionAction| -> Vec<String> {
+            build_command(
+                &provider,
+                "prompt",
+                None,
+                Path::new("/tmp"),
+                ToolPolicy {
+                    allow_bash: false,
+                    deny: &[],
+                },
+                None,
+                action,
+            )
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+        };
+
+        let cold = args(SessionAction::Cold);
+        assert!(!cold.iter().any(|a| a == "--session-id" || a == "--resume"));
+
+        let start = args(SessionAction::Start(id));
+        let at = start
+            .iter()
+            .position(|a| a == "--session-id")
+            .expect("start");
+        assert_eq!(start[at + 1], id.to_string());
+
+        let resume = args(SessionAction::Resume(id));
+        let at = resume.iter().position(|a| a == "--resume").expect("resume");
+        assert_eq!(resume[at + 1], id.to_string());
+    }
+
+    /// Answers a round like [`MarkingRunner`], but takes the session decision
+    /// the same way the process runner does — through `begin_call`/`end_call`
+    /// — and writes down what it decided. Anything less would test a copy of
+    /// the rule rather than the rule.
+    struct SessionRunner {
+        inner: MarkingRunner,
+        actions: std::sync::Mutex<Vec<(String, SessionAction)>>,
+    }
+
+    impl SessionRunner {
+        fn new() -> Self {
+            Self {
+                inner: MarkingRunner {
+                    calls: std::sync::Mutex::new(0),
+                },
+                actions: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        #[allow(clippy::unwrap_used)]
+        fn actions(&self) -> Vec<(String, SessionAction)> {
+            self.actions.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for SessionRunner {
+        async fn run(
+            &self,
+            payload: &EnrichPayload,
+            yaml_abs: &Path,
+            repo_path: &Path,
+            config: &EnrichConfig,
+        ) -> Result<()> {
+            let action = begin_call(payload);
+            #[allow(clippy::unwrap_used)]
+            {
+                self.actions
+                    .lock()
+                    .unwrap()
+                    .push((pass_label(&payload.pass).to_string(), action));
+            }
+            self.inner.run(payload, yaml_abs, repo_path, config).await?;
+            end_call(payload, action, None);
+            Ok(())
+        }
+    }
+
+    async fn rounds_with_session(
+        reuse: SessionReuse,
+        session: &std::sync::Arc<AgentSession>,
+    ) -> Vec<(String, SessionAction)> {
+        let (dir, path) = silent_law_on_disk(3).await;
+        let mut config = rounds_config(FeedbackRounds {
+            marking: 2,
+            ..FeedbackRounds::default()
+        });
+        config.session_reuse = reuse;
+        let payload = EnrichPayload {
+            session: Some(std::sync::Arc::clone(session)),
+            ..chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml")
+        };
+        let runner = SessionRunner::new();
+
+        run_feedback_rounds(
+            Gate::Marking,
+            &path,
+            dir.path(),
+            &payload,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .expect("rounds run");
+
+        runner.actions()
+    }
+
+    #[tokio::test]
+    async fn a_second_round_in_the_same_window_continues_the_session() {
+        // Two rounds at the same gate, over the same articles: the second
+        // must continue the first rather than start a seventh cold process.
+        let session = std::sync::Arc::new(AgentSession::new(SessionReuse::Window));
+        let actions = rounds_with_session(SessionReuse::Window, &session).await;
+
+        assert_eq!(actions.len(), 2, "both rounds ran");
+        assert_eq!(
+            actions[0],
+            ("marking".to_string(), SessionAction::Start(session.id()))
+        );
+        assert_eq!(
+            actions[1],
+            ("marking".to_string(), SessionAction::Resume(session.id()))
+        );
+
+        // And both calls are accounted, so a run can be read per call.
+        let calls = session.calls();
+        assert_eq!(calls.len(), 2);
+        assert!(!calls[0].resumed);
+        assert!(calls[1].resumed);
+        assert_eq!(calls[1].step, "marking");
+    }
+
+    #[tokio::test]
+    async fn the_next_window_does_not_continue_the_previous_one() {
+        // Same law, same gate, a new window: nothing is resumed. The saving
+        // stops at the window boundary on purpose.
+        let first = std::sync::Arc::new(AgentSession::new(SessionReuse::Window));
+        let first_actions = rounds_with_session(SessionReuse::Window, &first).await;
+        assert!(first_actions.iter().any(|(_, a)| a.resumed()));
+
+        let second = std::sync::Arc::new(AgentSession::new(SessionReuse::Window));
+        let second_actions = rounds_with_session(SessionReuse::Window, &second).await;
+        assert_eq!(
+            second_actions[0].1,
+            SessionAction::Start(second.id()),
+            "a new window opens its own session"
+        );
+        assert_ne!(second.id(), first.id());
+    }
+
+    #[tokio::test]
+    async fn the_marking_gate_stays_cold_under_repair_mode() {
+        let session = std::sync::Arc::new(AgentSession::new(SessionReuse::Repair));
+        let actions = rounds_with_session(SessionReuse::Repair, &session).await;
+
+        assert_eq!(actions.len(), 2);
+        assert!(
+            actions.iter().all(|(_, a)| *a == SessionAction::Cold),
+            "repair mode gives the marking gate a fresh process, got {actions:?}"
+        );
+    }
+
+    #[test]
+    fn the_window_total_is_the_sum_of_its_calls() {
+        // Cost per window and per call come from the same record, so the
+        // total can never disagree with the lines above it.
+        let session = AgentSession::new(SessionReuse::Window);
+        assert_eq!(session.total(), None, "no call, no figure");
+
+        let translate = AgentUsage {
+            input_tokens: 100,
+            output_tokens: 20,
+            cache_read_tokens: 900,
+            cache_write_tokens: 0,
+            cost_millicents: 1500,
+        };
+        let repair = AgentUsage {
+            input_tokens: 10,
+            output_tokens: 5,
+            cache_read_tokens: 400,
+            cache_write_tokens: 0,
+            cost_millicents: 300,
+        };
+        session.record(
+            "translate",
+            SessionAction::Start(session.id()),
+            Some(translate),
+        );
+        session.record("schema", SessionAction::Resume(session.id()), Some(repair));
+
+        let total = session.total().expect("two calls reported");
+        assert_eq!(total.input_tokens, 110);
+        assert_eq!(total.output_tokens, 25);
+        assert_eq!(total.cache_read_tokens, 1300);
+        assert_eq!(total.cost_millicents, 1800);
+    }
+
+    #[test]
+    fn feedback_rounds_default_to_one_per_gate() {
+        let rounds = FeedbackRounds::default();
+        for gate in Gate::ALL {
+            assert_eq!(rounds.for_gate(gate), 1, "{}", gate.label());
+        }
+    }
+
+    #[test]
+    fn feedback_rounds_parse_bare_number_and_per_gate() {
+        assert_eq!(
+            FeedbackRounds::parse("2").unwrap(),
+            FeedbackRounds::uniform(2)
+        );
+        assert_eq!(
+            FeedbackRounds::parse("checks=2,marking=3").unwrap(),
+            FeedbackRounds {
+                schema: 1,
+                checks: 2,
+                marking: 3,
+                reconcile: 1
+            }
+        );
+        // A bare number sets the floor, a named gate overrides it — order
+        // matters and the number goes first.
+        assert_eq!(
+            FeedbackRounds::parse("2, schema=1").unwrap(),
+            FeedbackRounds {
+                schema: 1,
+                checks: 2,
+                marking: 2,
+                reconcile: 2
+            }
+        );
+        assert!(FeedbackRounds::parse("poort=2").is_err());
+        assert!(FeedbackRounds::parse("checks=veel").is_err());
     }
 
     #[tokio::test]
@@ -2746,18 +6637,24 @@ articles:
         // as un-enriched; no corpus file uses the bare/null form, so the typed
         // count matches the previous `contains_key` behavior in practice.
         let yaml = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 articles:
   - number: '1'
     text: Empty section, enriched.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
     machine_readable: {}
   - number: '2'
     text: Null section, not enriched.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
     machine_readable: null
   - number: '3'
     text: No section at all.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
 "#;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("law.yaml");
@@ -2766,6 +6663,255 @@ articles:
         let (total, with_mr) = count_article_stats(&path).await.unwrap();
         assert_eq!(total, 3);
         assert_eq!(with_mr, 1);
+    }
+
+    const MINIMAL_LAW: &str = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
+articles:
+  - number: '1'
+    text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
+    machine_readable:
+      markings:
+        - about: fixture
+          reason: het formaat kent hier geen vorm voor deze constructie
+          resolution: model
+          target: []
+          legal_text_excerpt: Article one.
+"#;
+
+    /// Writes something the schema rejects on the first run and repairs it
+    /// when handed the errors, which is the shape of the repair round.
+    struct InvalidThenRepairingRunner {
+        calls: std::sync::Arc<std::sync::Mutex<Vec<bool>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for InvalidThenRepairingRunner {
+        async fn run(
+            &self,
+            payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let is_repair = matches!(payload.pass, Pass::Feedback(_));
+            #[allow(clippy::unwrap_used)]
+            self.calls.lock().unwrap().push(is_repair);
+
+            let content = tokio::fs::read_to_string(yaml_abs).await?;
+            let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+            if let serde_yaml_ng::Value::Mapping(ref mut map) = value {
+                if let Some(serde_yaml_ng::Value::Sequence(ref mut articles)) =
+                    map.get_mut("articles")
+                {
+                    for article in articles.iter_mut() {
+                        if let serde_yaml_ng::Value::Mapping(ref mut m) = article {
+                            let mut mr = serde_yaml_ng::Mapping::new();
+                            if is_repair {
+                                // The repair round drops the invented key.
+                                mr.insert(
+                                    "markings".into(),
+                                    serde_yaml_ng::Value::Sequence(vec![]),
+                                );
+                            } else {
+                                // An invented key: `machine_readable` is
+                                // `additionalProperties: false`.
+                                mr.insert("verzonnen_sleutel".into(), "iets".into());
+                            }
+                            m.insert("machine_readable".into(), serde_yaml_ng::Value::Mapping(mr));
+                        }
+                    }
+                }
+            }
+            tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&value)?).await?;
+            Ok(())
+        }
+    }
+
+    /// The gate that the `law-generate` skill asks for and the runtime cannot
+    /// give it: schema validation, with one round to put it right.
+    #[tokio::test]
+    async fn invalid_output_gets_one_repair_round() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        tokio::fs::write(&path, MINIMAL_LAW).await.unwrap();
+
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let runner = InvalidThenRepairingRunner {
+            calls: calls.clone(),
+        };
+        let payload = EnrichPayload {
+            pass: Pass::Translate,
+            law_id: "BWBR0000001".into(),
+            yaml_path: "nl/wet/test_law/2025-01-01.yaml".into(),
+            ..Default::default()
+        };
+        let config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+
+        let result = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner).await;
+        assert!(
+            result.is_ok(),
+            "repair round should have fixed it: {result:?}"
+        );
+
+        let calls = calls.lock().unwrap().clone();
+        // The translation, then the schema repair. A third call follows from
+        // the soft marking gate, which asks about the article that the fake
+        // runner leaves without an outcome; this test is about the repair.
+        assert_eq!(calls.first(), Some(&false), "the first call translates");
+        assert_eq!(
+            calls.get(1),
+            Some(&true),
+            "expected one enrichment run and one repair run"
+        );
+
+        // And the file on disk is valid, which is the whole point.
+        let yaml = tokio::fs::read_to_string(&path).await.unwrap();
+        assert!(crate::enrich_v2::checks::schema_errors(&yaml).is_empty());
+    }
+
+    /// A soft gate hands its findings over and accepts a marking as an
+    /// answer. What survives the round is recorded rather than fatal:
+    /// failing here would turn every open norm into a defect.
+    #[tokio::test]
+    async fn a_soft_gate_does_not_fail_the_job() {
+        /// Writes a model that leaves a coverage question standing: the text
+        /// derogates and the model has no branch, which is exactly what the
+        /// checks report and what the agent may answer with a marking.
+        struct UnansweringRunner {
+            passes: std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl LlmRunner for UnansweringRunner {
+            async fn run(
+                &self,
+                payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                #[allow(clippy::unwrap_used)]
+                self.passes.lock().unwrap().push(match &payload.pass {
+                    Pass::Translate => "translate",
+                    Pass::Feedback(f) => match f.gate {
+                        Gate::Schema => "schema",
+                        Gate::Checks => "checks",
+                        Gate::Marking => "marking",
+                        Gate::Reconcile => "reconcile",
+                    },
+                });
+                if !matches!(payload.pass, Pass::Translate) {
+                    return Ok(()); // answers nothing, on purpose
+                }
+                let content = tokio::fs::read_to_string(yaml_abs).await?;
+                let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+                if let serde_yaml_ng::Value::Mapping(ref mut map) = value {
+                    if let Some(serde_yaml_ng::Value::Sequence(ref mut arts)) =
+                        map.get_mut("articles")
+                    {
+                        for a in arts.iter_mut() {
+                            if let serde_yaml_ng::Value::Mapping(ref mut m) = a {
+                                m.insert(
+                                    "machine_readable".into(),
+                                    serde_yaml_ng::Value::Mapping(Default::default()),
+                                );
+                            }
+                        }
+                    }
+                }
+                tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&value)?).await?;
+                Ok(())
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // A lid that derogates: the checks will say the model has no branch.
+        let law = MINIMAL_LAW.replace(
+            "    text: Article one.",
+            "    text: |-\n      1. De hoofdregel geldt.\n\n      2. In afwijking van het eerste lid geldt de helft.",
+        );
+        tokio::fs::write(&path, law).await.unwrap();
+
+        let passes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let runner = UnansweringRunner {
+            passes: passes.clone(),
+        };
+        let payload = EnrichPayload {
+            pass: Pass::Translate,
+            law_id: "BWBR0000001".into(),
+            yaml_path: "nl/wet/test_law/2025-01-01.yaml".into(),
+            ..Default::default()
+        };
+        let config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+
+        let result = execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner).await;
+        assert!(
+            result.is_ok(),
+            "a surviving coverage finding must not fail the job: {result:?}"
+        );
+
+        let passes = passes.lock().unwrap().clone();
+        assert!(
+            passes.contains(&"checks"),
+            "the checks gate must have handed its findings over: {passes:?}"
+        );
+        assert!(
+            !passes.contains(&"schema"),
+            "the schema gate had nothing to say: {passes:?}"
+        );
+    }
+
+    /// A run that changed nothing must not be validated: the file was already
+    /// in whatever state it was in, and failing here would fail a job for
+    /// someone else's defect.
+    #[tokio::test]
+    async fn an_unchanged_file_is_not_validated() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let path = law_dir.join("2025-01-01.yaml");
+        // Deliberately invalid: no `$schema` at all.
+        tokio::fs::write(
+            &path,
+            "---\n$id: test_law\narticles:\n  - number: '1'\n    text: Iets.\n",
+        )
+        .await
+        .unwrap();
+
+        let payload = EnrichPayload {
+            pass: Pass::Translate,
+            law_id: "BWBR0000001".into(),
+            yaml_path: "nl/wet/test_law/2025-01-01.yaml".into(),
+            ..Default::default()
+        };
+        let config = EnrichConfig::for_test(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+
+        let result =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "", &NoopLlmRunner).await;
+        // It fails on producing nothing, not on the pre-existing schema state.
+        let err = format!("{result:?}");
+        assert!(!err.contains("schema error"), "{err}");
     }
 
     /// Fake LLM runner that simulates enrichment by adding `machine_readable`
@@ -2814,20 +6960,26 @@ articles:
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
         let yaml_content = r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 valid_from: '2025-01-01'
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
   - number: '2'
     text: Article two.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
     machine_readable:
       execution:
         actions: []
   - number: '3'
     text: Article three.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
 "#;
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
@@ -2835,6 +6987,7 @@ articles:
             .unwrap();
 
         let payload = EnrichPayload {
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),
@@ -2847,6 +7000,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2879,6 +7033,67 @@ articles:
         assert_eq!(meta.articles_with_machine_readable, 3);
     }
 
+    #[tokio::test]
+    async fn one_run_shares_one_session_and_accounts_every_call() {
+        // The window boundary is the run: `execute_enrich_with_runner` opens
+        // one session, the translation pass and the gates after it share it,
+        // and a second run over the same law opens another. Everything the
+        // measurement needs rides back in the result.
+        let mut config = rounds_config(FeedbackRounds::default());
+        config.session_reuse = SessionReuse::Window;
+
+        let ids_of = |actions: Vec<(String, SessionAction)>| -> Vec<Uuid> {
+            actions
+                .into_iter()
+                .filter_map(|(_, a)| match a {
+                    SessionAction::Start(id) | SessionAction::Resume(id) => Some(id),
+                    SessionAction::Cold => None,
+                })
+                .collect()
+        };
+
+        let run = |config: EnrichConfig| async move {
+            let (dir, _) = silent_law_on_disk(3).await;
+            let payload = chunk_test_payload("regulation/nl/wet/test_law/2025-01-01.yaml");
+            let runner = SessionRunner::new();
+            let (result, _) =
+                execute_enrich_with_runner(&payload, dir.path(), &config, "", &runner)
+                    .await
+                    .expect("run");
+            (result, runner.actions())
+        };
+
+        let (first_result, first_actions) = run(config.clone()).await;
+        let first_ids = ids_of(first_actions);
+        assert!(
+            first_ids.len() > 1,
+            "the run made several calls; got {first_ids:?}"
+        );
+        assert!(
+            first_ids.windows(2).all(|w| w[0] == w[1]),
+            "every call in one window carries the same session: {first_ids:?}"
+        );
+        assert_eq!(first_result.session_reuse, "window");
+        assert_eq!(
+            first_result.agent_calls.len(),
+            first_ids.len(),
+            "every call is accounted, resumed or not"
+        );
+        assert!(first_result.agent_calls[0].step == "translate");
+        assert!(
+            first_result.agent_calls.iter().skip(1).any(|c| c.resumed),
+            "the gates after the translation continue the session"
+        );
+
+        let (_, second_actions) = run(config).await;
+        let second_ids = ids_of(second_actions);
+        assert_ne!(
+            second_ids.first(),
+            first_ids.first(),
+            "a second run is a second window and opens its own session"
+        );
+    }
+
     /// Fake runner that fails, to test error path.
     struct FailingLlmRunner;
 
@@ -2901,13 +7116,14 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "---\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
+        let yaml_content = "---\n$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
             .unwrap();
 
         let payload = EnrichPayload {
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
@@ -2920,6 +7136,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2957,13 +7174,14 @@ articles:
         let law_dir = dir.path().join("regulation/nl/wet/test_law");
         tokio::fs::create_dir_all(&law_dir).await.unwrap();
 
-        let yaml_content = "---\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
+        let yaml_content = "---\n$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json\n$id: test_law\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Article one.\n";
         let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
         tokio::fs::write(dir.path().join(yaml_path), yaml_content)
             .await
             .unwrap();
 
         let payload = EnrichPayload {
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: None,
@@ -2976,6 +7194,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
 
         let config = test_config(LlmProvider::OpenCode {
@@ -2995,12 +7214,12 @@ articles:
     #[test]
     fn plan_chunk_zero_disables_chunking() {
         assert_eq!(
-            plan_chunk(0, 324, 0, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(0, 324, 0, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::WholeLaw
         );
         // Even a stored cursor is ignored in whole-law mode.
         assert_eq!(
-            plan_chunk(0, 324, 100, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(0, 324, 100, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::WholeLaw
         );
     }
@@ -3010,7 +7229,7 @@ articles:
         // Legacy metadata (no cursor fields) reads as (0, "") — path mismatch
         // resets to 0, which is also the correct start.
         assert_eq!(
-            plan_chunk(15, 324, 0, "", "regulation/a.yaml"),
+            plan_chunk(15, 324, 0, "", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 0,
                 end: 15,
@@ -3022,7 +7241,7 @@ articles:
     #[test]
     fn plan_chunk_resumes_from_valid_cursor() {
         assert_eq!(
-            plan_chunk(15, 324, 30, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(15, 324, 30, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 30,
                 end: 45,
@@ -3041,7 +7260,8 @@ articles:
                 324,
                 30,
                 "regulation/2025-01-01.yaml",
-                "regulation/2026-01-01.yaml"
+                "regulation/2026-01-01.yaml",
+                &[]
             ),
             ChunkPlan::Chunk {
                 start: 0,
@@ -3055,7 +7275,7 @@ articles:
     fn plan_chunk_resets_on_cursor_beyond_total() {
         // Corrupt metadata or a shrunk document: a cursor past the end resets.
         assert_eq!(
-            plan_chunk(15, 20, 25, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(15, 20, 25, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 0,
                 end: 15,
@@ -3068,7 +7288,7 @@ articles:
     fn plan_chunk_final_window_is_complete() {
         // Partial last window.
         assert_eq!(
-            plan_chunk(15, 20, 15, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(15, 20, 15, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 15,
                 end: 20,
@@ -3077,7 +7297,7 @@ articles:
         );
         // Window exactly reaching the end.
         assert_eq!(
-            plan_chunk(10, 20, 10, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(10, 20, 10, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 10,
                 end: 20,
@@ -3086,7 +7306,7 @@ articles:
         );
         // Law smaller than one window: complete in a single run.
         assert_eq!(
-            plan_chunk(15, 3, 0, "", "regulation/a.yaml"),
+            plan_chunk(15, 3, 0, "", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 0,
                 end: 3,
@@ -3100,7 +7320,7 @@ articles:
         // cursor == total is valid (the loop finished earlier): empty window,
         // trivially complete — execute skips the LLM run entirely.
         assert_eq!(
-            plan_chunk(15, 20, 20, "regulation/a.yaml", "regulation/a.yaml"),
+            plan_chunk(15, 20, 20, "regulation/a.yaml", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 20,
                 end: 20,
@@ -3112,7 +7332,7 @@ articles:
     #[test]
     fn plan_chunk_empty_law_is_complete() {
         assert_eq!(
-            plan_chunk(15, 0, 0, "", "regulation/a.yaml"),
+            plan_chunk(15, 0, 0, "", "regulation/a.yaml", &[]),
             ChunkPlan::Chunk {
                 start: 0,
                 end: 0,
@@ -3121,92 +7341,598 @@ articles:
         );
     }
 
+    fn numbers(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    /// The chapeau of an article and its leden belong in one window. Without
+    /// this rule a window of two cuts article 1 after its first onderdeel, and
+    /// the entry that binds the leden together is written before they exist.
     #[test]
-    fn test_build_prompt_is_byte_stable() {
-        // The whole-law prompt must stay byte-identical to the pre-chunking
-        // prompt: chunking must not change what an N=0 (or legacy) run sends
-        // to the LLM. Pin the exact text — an intentional prompt change must
-        // update this fixture consciously.
-        let expected = r#"You are interpreting a Dutch law to make it machine-executable.
-
-The law YAML file is: regulation/nl/wet/test/2025-01-01.yaml
-
-Follow this pipeline in order. For each step, read the referenced skill file
-and follow its instructions completely.
-
-## Step 1: MvT Research
-Read .claude/skills/law-mvt-research/SKILL.md and follow its instructions to
-search for Memorie van Toelichting documents and generate Gherkin test scenarios.
-If no MvT documents are found, proceed to step 2 anyway.
-
-## Step 2: Generate machine_readable
-Read .claude/skills/law-generate/SKILL.md and its reference.md and examples.md.
-Follow the generate→validate→test loop to create machine_readable sections for
-each executable article.
-
-## Step 3: Reverse Validation
-Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
-to verify every element in machine_readable traces back to the original legal text.
-
-Write all changes to disk. Do not ask questions — proceed autonomously.
-
-## Progress tracking
-Before starting each step, write a JSON progress file to report your current phase.
-Write to: /tmp/repo/.enrichment-progress.json
-
-Write this file at these moments:
-- Before Step 1: {"phase": "mvt_research", "step": 1, "total_steps": 3}
-- Before Step 2: {"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}
-- After validation in Step 2: {"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}
-- Before Step 3: {"phase": "reverse_validating", "step": 3, "total_steps": 3}
-
-Use the Write tool. Keep it brief — just one write per phase transition."#;
+    fn plan_chunk_never_cuts_a_top_level_article_in_half() {
+        let entries = numbers(&["1", "1.1", "1.2", "1.3", "2", "2.1"]);
         assert_eq!(
-            build_prompt(
-                "regulation/nl/wet/test/2025-01-01.yaml",
-                "/tmp/repo/.enrichment-progress.json"
+            plan_chunk(2, entries.len(), 0, "", "regulation/a.yaml", &entries),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 4,
+                law_complete: false
+            },
+            "het venster schuift door tot artikel 1 op is"
+        );
+        // And the next window starts on the boundary the previous one left.
+        assert_eq!(
+            plan_chunk(
+                2,
+                entries.len(),
+                4,
+                "regulation/a.yaml",
+                "regulation/a.yaml",
+                &entries
             ),
-            expected
+            ChunkPlan::Chunk {
+                start: 4,
+                end: 6,
+                law_complete: true
+            }
+        );
+    }
+
+    /// The snap only ever grows a window, so a run still consumes at least
+    /// `max_articles_per_run` entries and the walk still terminates in
+    /// `ceil(total / N)` runs.
+    #[test]
+    fn plan_chunk_snapping_never_shrinks_a_window() {
+        let entries = numbers(&["1", "1.1", "1.2", "2", "2.1", "2.2", "2.3", "3", "4", "4.1"]);
+        let mut cursor = 0usize;
+        let mut runs = 0usize;
+        while cursor < entries.len() {
+            let ChunkPlan::Chunk { start, end, .. } = plan_chunk(
+                3,
+                entries.len(),
+                cursor,
+                "regulation/a.yaml",
+                "regulation/a.yaml",
+                &entries,
+            ) else {
+                unreachable!("chunking is on")
+            };
+            assert_eq!(start, cursor);
+            assert!(end - start >= 3, "een venster wordt nooit kleiner dan N");
+            cursor = end;
+            runs += 1;
+        }
+        assert!(runs <= entries.len().div_ceil(3));
+    }
+
+    /// A caller that hands no numbers gets exactly the behaviour from before
+    /// the rule existed.
+    #[test]
+    fn plan_chunk_without_numbers_is_the_old_behaviour() {
+        let entries = numbers(&["1", "1.1", "1.2", "1.3"]);
+        assert_eq!(
+            plan_chunk(2, entries.len(), 0, "", "regulation/a.yaml", &[]),
+            ChunkPlan::Chunk {
+                start: 0,
+                end: 2,
+                law_complete: false
+            }
+        );
+    }
+
+    // ---- the layer as a window, and the knob inside it -------------------
+
+    fn graph_of(yaml: &str) -> crate::enrich_v2::refgraph::Graph {
+        crate::enrich_v2::refgraph::Graph::scan(&serde_yaml_ng::from_str(yaml).unwrap())
+    }
+
+    /// A law whose article 3 is read by article 1, and whose article 2 is
+    /// unrelated to both. Three layers is the wrong answer here; two is right,
+    /// with 2 and 3 together in the first.
+    const LAYERED_LAW: &str = r"bwb_id: BWBR0000001
+articles:
+  - number: '1'
+    text: De hoogte volgt uit artikel 3.
+  - number: '1.1'
+    text: Het eerste lid geldt onverkort.
+  - number: '2'
+    text: Deze wet treedt in werking met ingang van 1 januari.
+  - number: '3'
+    text: Het bedrag is duizend euro.
+";
+
+    #[test]
+    fn a_layer_is_a_window_whose_size_follows_from_the_law() {
+        let graph = graph_of(LAYERED_LAW);
+        let entries = numbers(&["1", "1.1", "2", "3"]);
+        let (first, complete) = plan_layer_window(&graph, &entries, 0);
+        assert!(!complete);
+        assert_eq!(first, numbers(&["2", "3"]), "de producenten gaan voor");
+        let (second, complete) = plan_layer_window(&graph, &entries, 1);
+        assert!(complete, "de laatste laag sluit de wet af");
+        assert_eq!(
+            second,
+            numbers(&["1", "1.1"]),
+            "een aanhef reist met zijn eigen leden mee"
+        );
+    }
+
+    /// Every layer is walked once and the cursor counts them, so the walk ends
+    /// in a fixed number of runs — the property the entry cursor had.
+    #[test]
+    fn the_layer_walk_covers_every_entry_exactly_once_and_terminates() {
+        let graph = graph_of(LAYERED_LAW);
+        let entries = numbers(&["1", "1.1", "2", "3"]);
+        let mut seen: Vec<String> = Vec::new();
+        let mut index = 0usize;
+        loop {
+            let (window, complete) = plan_layer_window(&graph, &entries, index);
+            seen.extend(window);
+            index += 1;
+            assert!(index <= entries.len(), "de wandeling loopt niet door");
+            if complete {
+                break;
+            }
+        }
+        seen.sort();
+        let mut expected = entries.clone();
+        expected.sort();
+        assert_eq!(seen, expected);
+    }
+
+    /// Default 1: the window stays whole, whatever the graph says.
+    #[test]
+    fn one_agent_per_window_is_the_default() {
+        let graph = graph_of(LAYERED_LAW);
+        let window = numbers(&["2", "3"]);
+        assert_eq!(split_window(&graph, &window, 1), vec![window.clone()]);
+    }
+
+    /// Independent articles may be split; a related pair never is, because
+    /// two agents would each have to invent a name for the same concept.
+    #[test]
+    fn a_window_splits_only_where_nothing_references_anything() {
+        let graph = graph_of(LAYERED_LAW);
+        assert_eq!(
+            split_window(&graph, &numbers(&["2", "3"]), 2),
+            vec![numbers(&["2"]), numbers(&["3"])]
+        );
+        // Article 1 reads article 3: one agent, or the name is a guess.
+        assert_eq!(
+            split_window(&graph, &numbers(&["1", "1.1", "3"]), 2),
+            vec![numbers(&["1", "1.1", "3"])]
+        );
+        // A split never cuts inside a top-level article.
+        assert_eq!(
+            split_window(&graph, &numbers(&["1", "1.1"]), 2),
+            vec![numbers(&["1", "1.1"])]
         );
     }
 
     #[test]
-    fn test_build_chunk_prompt_first_chunk_includes_mvt() {
+    fn the_merge_takes_each_window_its_own_entries() {
+        let base = LAYERED_LAW;
+        let two = base.replace(
+            "  - number: '2'\n    text: Deze wet treedt in werking met ingang van 1 januari.\n",
+            "  - number: '2'\n    text: Deze wet treedt in werking met ingang van 1 januari.\n    machine_readable: {}\n",
+        );
+        let three = base.replace(
+            "  - number: '3'\n    text: Het bedrag is duizend euro.\n",
+            "  - number: '3'\n    text: Het bedrag is duizend euro.\n    machine_readable: {}\n",
+        );
+        let merged =
+            merge_windows(base, &[(numbers(&["2"]), two), (numbers(&["3"]), three)]).unwrap();
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&merged).unwrap();
+        assert!(doc["articles"][2].get("machine_readable").is_some());
+        assert!(doc["articles"][3].get("machine_readable").is_some());
+        assert!(doc["articles"][0].get("machine_readable").is_none());
+    }
+
+    /// The guard: a window that wrote outside its assignment fails the run
+    /// with the entry number in the message, instead of one agent silently
+    /// winning. Round 3 lost four runs to two agents in one file.
+    #[test]
+    fn the_merge_refuses_when_a_window_wrote_outside_its_assignment() {
+        let base = LAYERED_LAW;
+        let stray = base.replace(
+            "  - number: '1'\n    text: De hoogte volgt uit artikel 3.\n",
+            "  - number: '1'\n    text: De hoogte volgt uit artikel 3.\n    machine_readable: {}\n",
+        );
+        let error = merge_windows(base, &[(numbers(&["2"]), stray)]).unwrap_err();
+        assert!(error.contains("entry 1"), "{error}");
+    }
+
+    #[test]
+    fn the_merge_refuses_when_a_window_changed_the_entry_count() {
+        let base = LAYERED_LAW;
+        let extra = format!("{base}  - number: '4'\n    text: Een artikel dat er niet was.\n");
+        let error = merge_windows(base, &[(numbers(&["2"]), extra)]).unwrap_err();
+        assert!(error.contains("number of entries"), "{error}");
+    }
+
+    /// Writes an empty `machine_readable` into exactly the entries it was
+    /// assigned, and records which checkout it was handed.
+    struct WindowRunner {
+        checkouts: std::sync::Mutex<Vec<PathBuf>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmRunner for WindowRunner {
+        async fn run(
+            &self,
+            payload: &EnrichPayload,
+            yaml_abs: &Path,
+            repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            #[allow(clippy::unwrap_used)]
+            {
+                self.checkouts.lock().unwrap().push(repo_path.to_path_buf());
+            }
+            let mine = payload.chunk_articles.clone().unwrap_or_default();
+            let content = tokio::fs::read_to_string(yaml_abs).await?;
+            let mut doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+            if let Some(serde_yaml_ng::Value::Sequence(articles)) = doc.get_mut("articles") {
+                for article in articles.iter_mut() {
+                    let is_mine = article
+                        .get("number")
+                        .and_then(serde_yaml_ng::Value::as_str)
+                        .is_some_and(|n| mine.iter().any(|m| m == n));
+                    if !is_mine {
+                        continue;
+                    }
+                    if let serde_yaml_ng::Value::Mapping(map) = article {
+                        map.insert(
+                            "machine_readable".into(),
+                            serde_yaml_ng::Value::Mapping(Default::default()),
+                        );
+                    }
+                }
+            }
+            tokio::fs::write(yaml_abs, serde_yaml_ng::to_string(&doc)?).await?;
+            Ok(())
+        }
+    }
+
+    /// Each agent works in its own checkout and the merge folds the two back
+    /// into one file. Nobody writes the file another agent is holding.
+    #[tokio::test]
+    async fn windows_run_on_their_own_copy_and_are_merged_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_rel = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        let law_abs = dir.path().join(law_rel);
+        tokio::fs::create_dir_all(law_abs.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&law_abs, LAYERED_LAW).await.unwrap();
+
+        let config = test_config(LlmProvider::Claude {
+            path: "claude".into(),
+            model: None,
+        });
+        let payload = corpus_wide_payload();
+        let runner = WindowRunner {
+            checkouts: std::sync::Mutex::new(Vec::new()),
+        };
+        let sub_windows = vec![numbers(&["2"]), numbers(&["3"])];
+        run_windows_concurrently(
+            &sub_windows,
+            &payload,
+            &law_abs,
+            law_rel,
+            dir.path(),
+            &config,
+            &runner,
+        )
+        .await
+        .unwrap();
+
+        let after = tokio::fs::read_to_string(&law_abs).await.unwrap();
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&after).unwrap();
+        assert!(doc["articles"][2].get("machine_readable").is_some());
+        assert!(doc["articles"][3].get("machine_readable").is_some());
+        assert!(doc["articles"][0].get("machine_readable").is_none());
+
+        let checkouts = runner.checkouts.lock().unwrap().clone();
+        assert_eq!(checkouts.len(), 2);
+        assert_ne!(
+            checkouts[0], checkouts[1],
+            "elke agent kreeg een eigen kopie"
+        );
+        assert!(checkouts.iter().all(|c| c != dir.path()));
+    }
+
+    #[test]
+    fn window_mode_parses_and_rejects_what_it_does_not_know() {
+        assert_eq!(WindowMode::parse("document").unwrap(), WindowMode::Document);
+        assert_eq!(WindowMode::parse("layer").unwrap(), WindowMode::Layer);
+        assert_eq!(WindowMode::parse("").unwrap(), WindowMode::Document);
+        assert!(WindowMode::parse("laag").is_err());
+    }
+
+    /// Plan with every step available, for prompt tests that are not about
+    /// capabilities.
+    fn full_plan() -> Vec<(&'static capabilities::StepSpec, capabilities::StepPlan)> {
+        capabilities::CHAIN
+            .iter()
+            .map(|s| (s, capabilities::StepPlan::Run))
+            .collect()
+    }
+
+    /// Plan as the enrichment lane actually runs today: no retrieval, no
+    /// shell.
+    fn lane_plan() -> Vec<(&'static capabilities::StepSpec, capabilities::StepPlan)> {
+        let grant: std::collections::BTreeSet<String> = capabilities::ENRICH_GRANT
+            .iter()
+            .map(|t| (*t).to_owned())
+            .collect();
+        capabilities::CHAIN
+            .iter()
+            .map(|spec| {
+                let declared = match spec.name {
+                    "MvT research" => "---\nallowed-tools: Read, Write, WebFetch, WebSearch, Bash, Grep, Glob\n---\n",
+                    "Generate machine_readable" => {
+                        "---\nallowed-tools: Read, Edit, Write, Bash, Grep, Glob\n---\n"
+                    }
+                    _ => "---\nallowed-tools: Read, Edit, Write, Grep, Glob\n---\n",
+                };
+                (spec, capabilities::plan_step(spec, &grant, Some(declared)))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn usage_is_read_from_the_providers_closing_object() {
+        // The shape the claude CLI emits under `--output-format json`.
+        let tail = r#"{"type":"result","subtype":"success","is_error":false,
+            "duration_ms":812345,"num_turns":42,"result":"done",
+            "total_cost_usd":1.2345,
+            "usage":{"input_tokens":1200,"output_tokens":34567,
+                     "cache_read_input_tokens":980000,"cache_creation_input_tokens":45}}"#;
+        let u = AgentUsage::from_stdout_tail(tail).expect("usage");
+        assert_eq!(u.input_tokens, 1200);
+        assert_eq!(u.output_tokens, 34567);
+        assert_eq!(u.cache_read_tokens, 980_000);
+        // Money as an integer: 1.2345 dollar is 123450 tenths of a cent.
+        assert_eq!(u.cost_millicents, 123_450);
+    }
+
+    #[test]
+    fn only_the_last_object_in_the_stream_counts() {
+        // The stream carries earlier objects; the accounting is the final one.
+        let tail = concat!(
+            r#"{"type":"assistant","usage":{"input_tokens":1,"output_tokens":1}}"#,
+            "\n",
+            r#"{"type":"result","usage":{"input_tokens":99,"output_tokens":7}}"#,
+        );
+        let u = AgentUsage::from_stdout_tail(tail).expect("usage");
+        assert_eq!(u.input_tokens, 99);
+        assert_eq!(u.output_tokens, 7);
+    }
+
+    #[test]
+    fn a_truncated_tail_reports_nothing_rather_than_guessing() {
+        // The tail is bounded, so a large stream can cut an object in half.
+        // Half a figure is worse than no figure.
+        assert!(AgentUsage::from_stdout_tail(r#"put_tokens":1200,"output_"#).is_none());
+        assert!(AgentUsage::from_stdout_tail("").is_none());
+        assert!(AgentUsage::from_stdout_tail("no json here at all").is_none());
+    }
+
+    #[test]
+    fn an_object_without_usage_reports_nothing() {
+        // A provider that reports no accounting must not read as zero cost.
+        assert!(AgentUsage::from_stdout_tail(r#"{"type":"result","result":"ok"}"#).is_none());
+    }
+
+    #[test]
+    fn usage_adds_up_over_a_chain() {
+        let a = AgentUsage {
+            input_tokens: 10,
+            output_tokens: 20,
+            cache_read_tokens: 30,
+            cache_write_tokens: 0,
+            cost_millicents: 40,
+        };
+        let b = AgentUsage {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_read_tokens: 3,
+            cache_write_tokens: 0,
+            cost_millicents: 4,
+        };
+        let sum = a.plus(b);
+        assert_eq!(sum.input_tokens, 11);
+        assert_eq!(sum.output_tokens, 22);
+        assert_eq!(sum.cache_read_tokens, 33);
+        assert_eq!(sum.cost_millicents, 44);
+    }
+
+    #[test]
+    fn the_prompt_asks_for_no_source_it_cannot_hand_over() {
+        // The measured failure of round 2: the agent was told to search for
+        // parliamentary documents without any way to retrieve them, and
+        // answered with a kst- citation for a document it never read. The step
+        // that asked for it is gone from the chain; what has to stay is the
+        // rule, because the pull towards a remembered citation does not need an
+        // instruction to invite it.
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
+        assert!(!prompt.contains("Memorie van Toelichting"));
+        assert!(prompt.contains("Cite no source you have not read"));
+    }
+
+    #[test]
+    fn prompt_names_what_a_degraded_step_may_not_simulate() {
+        // law-generate declares Bash for its validate loop; the step still
+        // runs, and the prompt must say the loop is not available here and
+        // what replaces it.
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
+        assert!(prompt.contains("law-generate/SKILL.md"));
+        assert!(prompt.contains("Bash"));
+        assert!(prompt.contains("do not simulate"));
+        assert!(prompt.contains("worker validates"));
+    }
+
+    #[test]
+    fn prompt_points_at_the_context_brief_when_there_is_one() {
+        // Requirement 6 of RFC-026: the agent must be told what bears on the
+        // article, not left to find it.
+        let with = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, true);
+        assert!(with.contains(context::CONTEXT_BRIEF));
+        assert!(with.contains("modify it"));
+        assert!(with.contains("not as it reads alone"));
+
+        // And never point at a file that was not written.
+        let without = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
+        assert!(!without.contains(context::CONTEXT_BRIEF));
+    }
+
+    #[test]
+    fn steps_are_numbered_consecutively_after_an_omission() {
+        // A gap in the numbering tells the agent something was withheld and
+        // invites it to fill in the blank.
+        let prompt = build_prompt("law.yaml", "/tmp/p.json", &lane_plan(), None, false, false);
+        assert!(prompt.contains("## Step 1: Generate machine_readable"));
+        assert!(prompt.contains("## Step 2: Reverse validation"));
+        assert!(prompt.contains("## Step 3: Session report"));
+        assert!(!prompt.contains("## Step 4"));
+    }
+
+    #[test]
+    fn chunk_prompt_restricts_to_the_window() {
         let numbers = vec!["1".to_string(), "2".to_string(), "3a".to_string()];
-        let prompt = build_chunk_prompt(
+        let prompt = build_prompt(
             "regulation/nl/wet/test/2025-01-01.yaml",
             "/tmp/repo/.enrichment-progress.json",
-            &numbers,
+            &full_plan(),
+            Some(&numbers),
+            false,
             false,
         );
         assert!(prompt.contains("Process ONLY these articles"));
         assert!(prompt.contains("1, 2, 3a"));
-        assert!(prompt.contains("law-mvt-research/SKILL.md"));
-        assert!(!prompt.contains("SKIP"));
+        assert!(prompt.contains("restricted to the article subset"));
+        assert!(prompt.contains("only for the articles you edited"));
         assert!(prompt.contains("chunk_report"));
         assert!(prompt.contains("articles_skipped"));
-        assert!(prompt.contains("law-generate/SKILL.md"));
-        assert!(prompt.contains("law-reverse-validate/SKILL.md"));
+    }
+
+    fn feedback(gate: Gate) -> Feedback {
+        Feedback {
+            gate,
+            findings: vec!["[accounted] art. 1: the article carries no outcome".to_string()],
+        }
     }
 
     #[test]
-    fn test_build_chunk_prompt_continuation_skips_mvt() {
-        let numbers = vec!["16".to_string(), "17".to_string()];
-        let prompt = build_chunk_prompt(
-            "regulation/nl/wet/test/2025-01-01.yaml",
-            "/tmp/repo/.enrichment-progress.json",
-            &numbers,
-            true,
+    fn schema_version_decides_which_names_exist() {
+        assert!(!schema_has_markings("v0.5.6"));
+        assert!(!schema_has_markings("v0.4.0"));
+        assert!(schema_has_markings("v0.6.0"));
+        assert!(schema_has_markings("v0.6.1"));
+        assert!(schema_has_markings("v1.0.0"));
+        // Unparseable is read as current: sending an agent back to fields the
+        // schema dropped is the failure this distinction exists to avoid.
+        assert!(schema_has_markings("nonsense"));
+    }
+
+    #[test]
+    fn vocabulary_is_read_off_the_file() {
+        assert_eq!(
+            vocabulary_of_yaml(four_article_law()),
+            Vocabulary::Markings,
+            "the fixture declares v0.6.0"
         );
-        assert!(prompt.contains("MvT Research — SKIP"));
-        assert!(!prompt.contains("law-mvt-research/SKILL.md"));
-        assert!(prompt.contains("16, 17"));
+        assert_eq!(
+            vocabulary_of_yaml(&four_article_law().replace(
+                "schema-v0.6.0/schema/v0.6.0/schema.json",
+                "schema-v0.5.6/schema/v0.5.6/schema.json"
+            )),
+            Vocabulary::Legacy
+        );
+        // No `$schema` at all, and not even YAML: both fall to the current
+        // vocabulary rather than to the dropped one.
+        assert_eq!(vocabulary_of_yaml("articles: []\n"), Vocabulary::Markings);
+        assert_eq!(vocabulary_of_yaml("\tnot: [yaml"), Vocabulary::Markings);
+    }
+
+    #[test]
+    fn feedback_prompt_never_prescribes_a_field_the_schema_forbids() {
+        // The deadlock this guards against: a v0.6.0 law fails a gate, the
+        // prompt tells the agent to write `norm_gaps`, and the schema gate
+        // rejects exactly what the prompt asked for — every round, forever.
+        for gate in [Gate::Schema, Gate::Checks, Gate::Marking] {
+            let prompt = build_feedback_prompt("law.yaml", &feedback(gate), Vocabulary::Markings);
+            assert!(
+                !prompt.contains("norm_gap") && !prompt.contains("untranslatable"),
+                "{gate:?} prompt names a field v0.6.0 dropped: {prompt}"
+            );
+        }
+    }
+
+    #[test]
+    fn feedback_prompt_teaches_the_v0_6_decision_rule() {
+        let marking =
+            build_feedback_prompt("law.yaml", &feedback(Gate::Marking), Vocabulary::Markings);
+        // A value another law produces is an input, not a gap.
+        assert!(marking.contains("input with a `source`"));
+        // A norm filled in elsewhere is an open term, whoever fills it.
+        assert!(marking.contains("`open_term`"));
+        assert!(marking.contains("redelijkerwijs"));
+        // Only what the format cannot express is a marking, and it says how.
+        assert!(marking.contains("`resolution: operation`"));
+        assert!(marking.contains("`resolution: model`"));
+        // And a marking leaves the rest of the article standing.
+        assert!(marking.contains("otherwise worked out"));
+        assert!(marking.contains("`target`"));
+        // The evidence rule survives the migration.
+        assert!(marking.contains("Do not cite what you were not given"));
+
+        let checks =
+            build_feedback_prompt("law.yaml", &feedback(Gate::Checks), Vocabulary::Markings);
+        assert!(checks.contains("`open_term`"));
+        assert!(checks.contains("`marking`"));
+        assert!(checks.contains("input with a `source`"));
+        // And it says where the answer goes. Round 5's agent wrote a correct,
+        // reasoned answer into `.enrichment-result.yaml`; the check reads only
+        // the law YAML, so every finding came back word for word and the
+        // reasoning was read by nobody.
+        assert!(checks.contains(".enrichment-result.yaml"), "{checks}");
+        assert!(checks.contains("is not \nan answer") || checks.contains("is not an answer"));
+
+        // The schema gate is the one that may not be answered with a marking;
+        // it still has to name the drawer a construct belongs in.
+        let schema =
+            build_feedback_prompt("law.yaml", &feedback(Gate::Schema), Vocabulary::Markings);
+        assert!(schema.contains("`markings`"));
+        assert!(schema.contains("`open_terms`"));
+    }
+
+    #[test]
+    fn feedback_prompt_keeps_the_old_names_for_laws_on_the_old_schema() {
+        // v0.5.x laws stay in the corpus and are re-enriched. Naming v0.6.0
+        // fields to them is the same deadlock in the other direction.
+        let marking =
+            build_feedback_prompt("law.yaml", &feedback(Gate::Marking), Vocabulary::Legacy);
+        assert!(marking.contains("`untranslatable`"));
+        assert!(marking.contains("`norm_gap`"));
+        assert!(!marking.contains("`marking`"));
+        assert!(marking.contains("Do not cite what you were not given"));
+
+        let checks = build_feedback_prompt("law.yaml", &feedback(Gate::Checks), Vocabulary::Legacy);
+        assert!(checks.contains("`untranslatables`"));
+        assert!(checks.contains("`norm_gaps`"));
+
+        let schema = build_feedback_prompt("law.yaml", &feedback(Gate::Schema), Vocabulary::Legacy);
+        assert!(schema.contains("`untranslatables` with a reason"));
+        assert!(!schema.contains("`markings`"));
     }
 
     #[test]
     fn enrich_payload_chunk_fields_are_transport_only() {
         // Queue payloads never carry the chunk fields: absent when None…
         let bare = EnrichPayload {
+            pass: Pass::Translate,
             law_id: "x".into(),
             yaml_path: "regulation/a.yaml".into(),
             provider: None,
@@ -3219,6 +7945,7 @@ Use the Write tool. Keep it brief — just one write per phase transition."#;
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         };
         let json = serde_json::to_string(&bare).unwrap();
         assert!(!json.contains("chunk_articles"));
@@ -3281,10 +8008,12 @@ chunk_report:
             _repo_path: &Path,
             _config: &EnrichConfig,
         ) -> Result<()> {
-            let chunk = payload
-                .chunk_articles
-                .clone()
-                .expect("chunked run must pass chunk_articles");
+            // A feedback pass carries no window: it asks about the file as
+            // it now stands. Only the translating passes are the subject of
+            // this test, so record those and let the rest through.
+            let Some(chunk) = payload.chunk_articles.clone() else {
+                return Ok(());
+            };
             self.calls
                 .lock()
                 .unwrap()
@@ -3334,24 +8063,41 @@ chunk_report:
 
     fn four_article_law() -> &'static str {
         r#"---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
 $id: test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2025-01-01
 valid_from: '2025-01-01'
 articles:
   - number: '1'
     text: Article one.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1
   - number: '2'
     text: Article two.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel2
   - number: '3'
     text: Article three.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel3
   - number: '4'
     text: Article four.
+    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel4
 "#
+    }
+
+    /// [`four_article_law`] with the first window (articles 1-2) already
+    /// modelled: the shape a window of definition provisions has when the only
+    /// thing left to add is a flag.
+    fn four_article_law_with_models() -> String {
+        four_article_law()
+            .replace("#Artikel1\n", "#Artikel1\n    machine_readable: {}\n")
+            .replace("#Artikel2\n", "#Artikel2\n    machine_readable: {}\n")
     }
 
     fn chunk_test_payload(yaml_path: &str) -> EnrichPayload {
         EnrichPayload {
+            pass: Pass::Translate,
             law_id: "BWBR0000001".into(),
             yaml_path: yaml_path.into(),
             provider: Some("opencode".into()),
@@ -3364,6 +8110,7 @@ articles:
             new_law: None,
             chunk_articles: None,
             skip_mvt: None,
+            session: None,
         }
     }
 
@@ -3397,6 +8144,17 @@ articles:
         assert_eq!(result.articles_with_machine_readable, 2);
         assert!((result.coverage_score - 0.5).abs() < f64::EPSILON);
 
+        // The hard gate runs again after the two soft ones, because those two
+        // write and round 5's marking round left the file unloadable. Without
+        // the closing pass nothing looks at the file until the session is
+        // already gone.
+        let gates: Vec<&str> = result.feedback.iter().map(|g| g.gate.as_str()).collect();
+        assert_eq!(
+            gates,
+            vec!["schema", "checks", "marking", "schema-final"],
+            "gate order changed"
+        );
+
         // Cursor persisted on disk for the continuation run.
         let meta: EnrichmentMetadata = serde_yaml_ng::from_str(
             &tokio::fs::read_to_string(law_dir.join(".enrichment.yaml"))
@@ -3416,6 +8174,17 @@ articles:
         assert_eq!(result.enrich_cursor, 4);
         assert_eq!(result.articles_with_machine_readable, 4);
 
+        // The last window brings the closing pass with it, and the hard gate
+        // has to come after it. It used to come before: the reconcile agent
+        // then wrote behind the last schema gate, with only `load_law` left,
+        // and the model is on documented points wider than the schema.
+        let gates: Vec<&str> = result.feedback.iter().map(|g| g.gate.as_str()).collect();
+        assert_eq!(
+            gates,
+            vec!["schema", "checks", "marking", "reconcile", "schema-final"],
+            "de harde poort staat achter elke schrijver, ook achter de afrondende pass"
+        );
+
         let calls = runner.calls.lock().unwrap();
         assert_eq!(
             *calls,
@@ -3423,6 +8192,102 @@ articles:
                 (vec!["1".to_string(), "2".to_string()], Some(false)),
                 (vec!["3".to_string(), "4".to_string()], Some(true)),
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_named_entry_is_the_only_one_enriched_and_the_cursor_stands_still() {
+        // Targeted work: article 4 is repaired, the walk through the document
+        // has not begun, and it must not look as if it had.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+        config.target_articles = vec!["4".into()];
+        let payload = chunk_test_payload(yaml_path);
+        let runner = FakeChunkRunner::new(false);
+
+        let (result, _) =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "sha1", &runner)
+                .await
+                .unwrap();
+
+        // Exactly the named entry, and the MvT research is not redone.
+        assert_eq!(
+            *runner.calls.lock().unwrap(),
+            vec![(vec!["4".to_string()], Some(true))]
+        );
+        assert_eq!(result.articles_with_machine_readable, 1);
+        // The cursor did not move: this was a repair, not progress.
+        assert_eq!(result.enrich_cursor, 0);
+        assert!(!result.law_complete);
+        let meta: EnrichmentMetadata = serde_yaml_ng::from_str(
+            &tokio::fs::read_to_string(law_dir.join(".enrichment.yaml"))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(meta.enrich_cursor, 0);
+
+        // And the ordinary walk still starts at the beginning, which is the
+        // termination property the cursor mode may not lose.
+        config.target_articles = Vec::new();
+        let (result, _) =
+            execute_enrich_with_runner(&payload, dir.path(), &config, "sha1", &runner)
+                .await
+                .unwrap();
+        assert_eq!(result.enrich_cursor, 2);
+        assert_eq!(
+            runner.calls.lock().unwrap()[1],
+            (vec!["1".to_string(), "2".to_string()], Some(false))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_named_entry_the_law_does_not_have_fails_the_run() {
+        // Silence is the wrong answer: whoever names an entry that is not
+        // there has a mistake in their query, and a run that enriched nothing
+        // looks exactly like a run that found nothing to do.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law())
+            .await
+            .unwrap();
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.target_articles = vec!["2.1.i".into()];
+        let runner = FakeChunkRunner::new(false);
+
+        let err = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "sha1",
+            &runner,
+        )
+        .await
+        .expect_err("an entry that does not exist must fail the run");
+        assert!(
+            err.to_string().contains("2.1.i"),
+            "the message must name the entry: {err}"
+        );
+        assert!(
+            runner.calls.lock().unwrap().is_empty(),
+            "no agent runs on a target that is not there"
         );
     }
 
@@ -3512,6 +8377,139 @@ articles:
     }
 
     #[tokio::test]
+    async fn test_execute_enrich_chunk_marking_only_is_progress() {
+        // The window is two articles that already carry a model — definition
+        // provisions, typically — and the right answer is a marking on one of
+        // them: nothing new gets a machine_readable section and no
+        // untranslatable is written. The guard must read that as reviewed
+        // work. Counting only untranslatables failed this window and sent a
+        // correctly-handled chunk back around the retry loop.
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), four_article_law_with_models())
+            .await
+            .unwrap();
+
+        /// Adds one marking to the first already-modelled article and nothing
+        /// else: no new sections, no chunk_report, no untranslatables.
+        struct MarkingOnlyRunner;
+        #[async_trait::async_trait]
+        impl LlmRunner for MarkingOnlyRunner {
+            async fn run(
+                &self,
+                payload: &EnrichPayload,
+                yaml_abs: &Path,
+                _repo_path: &Path,
+                _config: &EnrichConfig,
+            ) -> Result<()> {
+                if !matches!(payload.pass, Pass::Translate) {
+                    return Ok(());
+                }
+                // The prompt names this path to the agent, so a run that
+                // handed over an empty one would send it looking for nothing.
+                assert_eq!(
+                    payload.yaml_path, "regulation/nl/wet/test_law/2025-01-01.yaml",
+                    "the runner must be given the normalized law path"
+                );
+                let content = tokio::fs::read_to_string(yaml_abs).await?;
+                let updated = content.replacen(
+                    "    machine_readable: {}\n",
+                    "    machine_readable:\n      \
+                     markings:\n        \
+                     - about: elke persoon die met de aanvrager samenwoont\n          \
+                     reason: het model kent alleen regels over een waarde, niet over een \
+                     verzameling personen\n          \
+                     resolution: model\n          \
+                     resolved_by: kwantificatie over personen\n          \
+                     target: []\n          \
+                     legal_text_excerpt: Article one.\n",
+                    1,
+                );
+                assert_ne!(updated, content, "fixture must contain a bare model");
+                tokio::fs::write(yaml_abs, updated).await?;
+                Ok(())
+            }
+        }
+
+        let mut config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+        config.max_articles_per_run = 2;
+
+        let (result, _) = execute_enrich_with_runner(
+            &chunk_test_payload(yaml_path),
+            dir.path(),
+            &config,
+            "",
+            &MarkingOnlyRunner,
+        )
+        .await
+        .expect("a window whose only output is a marking is reviewed work");
+
+        // The cursor advanced past the reviewed window…
+        assert!(!result.law_complete);
+        assert_eq!(result.enrich_cursor, 2);
+        // …without a single new machine_readable section or untranslatable,
+        // so the marking is the only thing that can have counted.
+        assert_eq!(result.articles_with_machine_readable, 2);
+        assert!((result.coverage_score - 0.0).abs() < f64::EPSILON);
+        assert!(result.untranslatables.is_empty());
+        assert_eq!(result.markings.len(), 1);
+        assert_eq!(result.markings[0].article, "1");
+        assert_eq!(result.markings[0].resolution, "model");
+        assert!(result.markings[0].target.is_empty());
+    }
+
+    #[test]
+    fn an_article_takes_every_entry_the_harvest_hung_under_it() {
+        // The Zorgverzekeringswet splits article 69 into 69.1 .. 69.17 with
+        // sub-items. Asking for the article has to take all of them, or one
+        // article costs 22 sessions.
+        let entries: Vec<String> = ["68b", "68b.5", "69", "69.1", "69.4.a", "69.17", "690", "7"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        assert_eq!(
+            super::entries_of(&entries, "69"),
+            vec!["69", "69.1", "69.4.a", "69.17"]
+        );
+        // On the separator, not the prefix: 690 is a different article.
+        assert!(!super::entries_of(&entries, "69").contains(&"690".to_string()));
+        // An entry number still works, and takes only what hangs under it.
+        assert_eq!(super::entries_of(&entries, "68b.5"), vec!["68b.5"]);
+    }
+
+    #[test]
+    fn window_progress_counts_both_gap_channels() {
+        // Same window, one marking versus one untranslatable: the guard reads
+        // one figure and both channels feed it.
+        let with_marking: ArticleBasedLaw =
+            serde_yaml_ng::from_str(&four_article_law_with_models().replace(
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable: {}\n",
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      markings:\n        - about: iets\n          reason: de motor kent geen wettelijke afronding op eurocenten\n          resolution: operation\n          target: []\n          legal_text_excerpt: Article one.\n",
+            ))
+            .unwrap();
+        let window = vec!["1".to_string(), "2".to_string()];
+        assert_eq!(window_progress_stats(&with_marking, &window), (2, 1));
+
+        let with_untranslatable: ArticleBasedLaw =
+            serde_yaml_ng::from_str(&four_article_law_with_models().replace(
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable: {}\n",
+                "  - number: '1'\n    text: Article one.\n    url: https://wetten.overheid.nl/BWBR0000001/2025-01-01#Artikel1\n    machine_readable:\n      untranslatables:\n        - construct: iets\n          reason: omdat\n",
+            ))
+            .unwrap();
+        assert_eq!(window_progress_stats(&with_untranslatable, &window), (2, 1));
+
+        // And a window nobody touched still counts as nothing.
+        let untouched: ArticleBasedLaw =
+            serde_yaml_ng::from_str(&four_article_law_with_models()).unwrap();
+        assert_eq!(window_progress_stats(&untouched, &window), (2, 0));
+    }
+
+    #[tokio::test]
     async fn test_execute_enrich_chunk_out_of_window_edit_is_no_progress() {
         // A run that adds machine_readable ONLY to an article outside its
         // assigned window (and writes no report) has not reviewed the window:
@@ -3531,11 +8529,16 @@ articles:
         impl LlmRunner for OutOfWindowRunner {
             async fn run(
                 &self,
-                _payload: &EnrichPayload,
+                payload: &EnrichPayload,
                 yaml_abs: &Path,
                 _repo_path: &Path,
                 _config: &EnrichConfig,
             ) -> Result<()> {
+                // Only the translating pass edits. A feedback pass that
+                // repeated this edit would write the key twice.
+                if !matches!(payload.pass, Pass::Translate) {
+                    return Ok(());
+                }
                 let content = tokio::fs::read_to_string(yaml_abs).await?;
                 let updated = content.replace(
                     "  - number: '3'\n    text: Article three.",

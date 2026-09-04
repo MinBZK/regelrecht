@@ -10,7 +10,7 @@
 //! - **Logical:** AND, OR, NOT
 //! - **Conditional:** IF (multi-case with cases/default)
 //! - **Collection:** IN, LIST
-//! - **Date:** AGE, DATE_ADD, DATE, DAY_OF_WEEK, DATE_DIFF
+//! - **Date:** AGE, DATE_ADD, DATE, DAY_OF_WEEK, DATE_DIFF, DATE_PART, START_OF
 //!
 //! **Engine-only (not in schema, accepted for backward compatibility):**
 //! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
@@ -329,6 +329,8 @@ fn execute_operation_internal<R: ValueResolver>(
         ActionOperation::DateDiff { from, to, unit } => {
             execute_date_diff(from, to, unit, resolver, depth)
         }
+        ActionOperation::DatePart { date, part } => execute_date_part(date, part, resolver, depth),
+        ActionOperation::StartOf { date, unit } => execute_start_of(date, unit, resolver, depth),
     }
 }
 
@@ -1329,6 +1331,116 @@ fn execute_date_diff<R: ValueResolver>(
     };
 
     Ok(Value::Int(diff))
+}
+
+/// Execute DATE_PART: read one calendar component out of a date.
+///
+/// ```yaml
+/// operation: DATE_PART
+/// date: $referencedate.iso
+/// in: year        # one of: year | month | day
+/// ```
+///
+/// Returns an `Int`: the year number, the month number (1-12) or the day of the
+/// month (1-31). It is the inverse of `DATE`, and `in` ranges over exactly the
+/// components `DATE` takes — which is why `month` exists even though no legal
+/// text has asked for it yet, and why the weekday does not (that is
+/// `DAY_OF_WEEK`, a projection outside the year-month-day decomposition).
+///
+/// The unit is singular where `DATE_DIFF` is plural, because this selects a
+/// component instead of counting units. An author who copies `in: months` from
+/// `DATE_DIFF` gets a named error rather than a silent answer.
+fn execute_date_part<R: ValueResolver>(
+    date_value: &ActionValue,
+    part: &str,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let val = evaluate_value(date_value, resolver, depth)?;
+    if val.is_untranslatable() {
+        return Ok(val);
+    }
+    let parsed = parse_date(&val)?;
+
+    let component = match part {
+        "year" => i64::from(parsed.year()),
+        "month" => i64::from(parsed.month()),
+        "day" => i64::from(parsed.day()),
+        other => {
+            return Err(EngineError::InvalidOperation(format!(
+                "DATE_PART 'in' must be one of 'year', 'month', 'day', got '{}'",
+                other
+            )));
+        }
+    };
+
+    Ok(Value::Int(component))
+}
+
+/// Execute START_OF: truncate a date down to the start of the calendar unit it
+/// falls in.
+///
+/// ```yaml
+/// operation: START_OF
+/// date: $peildatum
+/// in: month       # one of: year | month
+/// ```
+///
+/// Returns a date string in canonical `%Y-%m-%d` form: 1 January of the year, or
+/// the first day of the month. `day` is the identity and `week` would need a
+/// convention (ISO Monday) that no legal text imposes, so neither is offered.
+///
+/// **Order matters for "the first day of the month following".** Truncate first,
+/// add afterwards:
+///
+/// ```yaml
+/// operation: DATE_ADD
+/// date:
+///   operation: START_OF
+///   date: $peildatum
+///   in: month
+/// months: 1
+/// ```
+///
+/// That is exact for every input date, including the first of the month and
+/// including 31 January, because the day-clamping of `DATE_ADD` never comes into
+/// play: the truncated date is always day 1, which exists in every month. The
+/// reverse order happens to give the same answer, but reaches it through the
+/// clamp — a step a reviewer has to re-check each time.
+///
+/// Truncation is an explicit operation and never an implicit property of a date
+/// (RFC-024): the cut stands in the law-YAML where the legal text prescribes it,
+/// and nowhere else.
+fn execute_start_of<R: ValueResolver>(
+    date_value: &ActionValue,
+    unit: &str,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let val = evaluate_value(date_value, resolver, depth)?;
+    if val.is_untranslatable() {
+        return Ok(val);
+    }
+    let parsed = parse_date(&val)?;
+
+    let truncated = match unit {
+        "year" => NaiveDate::from_ymd_opt(parsed.year(), 1, 1),
+        "month" => NaiveDate::from_ymd_opt(parsed.year(), parsed.month(), 1),
+        other => {
+            return Err(EngineError::InvalidOperation(format!(
+                "START_OF 'in' must be one of 'year', 'month', got '{}'",
+                other
+            )));
+        }
+    }
+    .ok_or_else(|| {
+        EngineError::InvalidOperation(format!(
+            "START_OF: invalid date after truncating '{}' to {}",
+            parsed, unit
+        ))
+    })?;
+
+    Ok(Value::String(truncated.format("%Y-%m-%d").to_string()))
 }
 
 /// Parse a date from a Value.
@@ -3849,6 +3961,367 @@ mod tests {
                 unit: var("tainted_unit"),
             };
             assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // DATE_PART Tests (the inverse of DATE; the unit is a component, not a count)
+    // -------------------------------------------------------------------------
+
+    mod date_part {
+        use super::*;
+
+        fn date_part(date: ActionValue, part: &str) -> ActionOperation {
+            ActionOperation::DatePart {
+                date,
+                part: part.to_string(),
+            }
+        }
+
+        #[test]
+        fn test_part_year() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "year");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(2025)
+            );
+        }
+
+        #[test]
+        fn test_part_month() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "month");
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(3));
+        }
+
+        #[test]
+        fn test_part_day() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "day");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(14)
+            );
+        }
+
+        #[test]
+        fn test_part_day_on_first_of_month() {
+            // Awir art. 49 asks whether a change fell *after* the first of the
+            // month, so day 1 has to come back as 1 and not as 0.
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-01"), "day");
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
+        }
+
+        #[test]
+        fn test_part_of_leap_day() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2024-02-29"), "day");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(29)
+            );
+        }
+
+        #[test]
+        fn test_part_reads_referencedate_object() {
+            // `$referencedate` resolves to an object with an `iso` field; the
+            // shared date parser has to accept it here too.
+            let resolver = TestResolver::new().with_var("referencedate", date_obj("2025-07-04"));
+            let op = date_part(var("referencedate"), "year");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(2025)
+            );
+        }
+
+        #[test]
+        fn test_part_of_nested_operation() {
+            // The canonical form nests inside `date:`, so a computed date has to
+            // work as the operand.
+            let resolver = TestResolver::new();
+            let op = date_part(
+                ActionValue::Operation(Box::new(ActionOperation::DateAdd {
+                    date: lit("2007-11-30"),
+                    years: Some(lit(18)),
+                    months: None,
+                    weeks: None,
+                    days: None,
+                })),
+                "year",
+            );
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Int(2025)
+            );
+        }
+
+        #[test]
+        fn test_plural_unit_from_date_diff_is_rejected_by_name() {
+            // The weak spot of the design: singular here, plural in DATE_DIFF.
+            // An author who copies the wrong one gets told which words are valid.
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "months");
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("DATE_PART"),
+                "message names the operation: {msg}"
+            );
+            assert!(msg.contains("'months'"), "message quotes the input: {msg}");
+            assert!(
+                msg.contains("'month'"),
+                "message lists the valid words: {msg}"
+            );
+        }
+
+        #[test]
+        fn test_weekday_is_not_a_date_part() {
+            // A weekday is no part of the year-month-day decomposition, so it is
+            // out of scope here and stays DAY_OF_WEEK.
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-03-14"), "weekday");
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_non_canonical_date_rejected() {
+            let resolver = TestResolver::new();
+            let op = date_part(lit("2025-3-14"), "day");
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_tainted_date_propagates() {
+            // RFC-012: an Untranslatable date flows through as a value.
+            let tainted = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "test".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("tainted", tainted.clone());
+            let op = date_part(var("tainted"), "year");
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // START_OF Tests (RFC-024: truncation is a named operation, never implicit)
+    // -------------------------------------------------------------------------
+
+    mod start_of {
+        use super::*;
+
+        fn start_of(date: ActionValue, unit: &str) -> ActionOperation {
+            ActionOperation::StartOf {
+                date,
+                unit: unit.to_string(),
+            }
+        }
+
+        fn nested(op: ActionOperation) -> ActionValue {
+            ActionValue::Operation(Box::new(op))
+        }
+
+        /// The canonical "first day of the month following" form: truncate first,
+        /// add afterwards.
+        fn first_of_next_month(date: ActionValue) -> ActionOperation {
+            ActionOperation::DateAdd {
+                date: nested(start_of(date, "month")),
+                years: None,
+                months: Some(lit(1)),
+                weeks: None,
+                days: None,
+            }
+        }
+
+        #[test]
+        fn test_start_of_month() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-03-14"), "month");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-03-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_month_is_idempotent_on_the_first() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-03-01"), "month");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-03-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_month_on_leap_day() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2024-02-29"), "month");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2024-02-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_year() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-12-31"), "year");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-01-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_year_is_idempotent_on_new_year() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-01-01"), "year");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-01-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_returns_canonical_form() {
+            // Single-digit months and days come back zero-padded, so the result
+            // compares equal under EQUALS as well as under ordering (RFC-021).
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-01-09"), "month");
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-01-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_day_is_not_a_truncation_unit() {
+            // Truncating to a day is the identity; offering it would invite the
+            // reading that START_OF normalizes dates.
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-03-14"), "day");
+            assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_plural_unit_from_date_diff_is_rejected_by_name() {
+            let resolver = TestResolver::new();
+            let op = start_of(lit("2025-03-14"), "months");
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("START_OF"),
+                "message names the operation: {msg}"
+            );
+            assert!(msg.contains("'months'"), "message quotes the input: {msg}");
+            assert!(
+                msg.contains("'month'"),
+                "message lists the valid words: {msg}"
+            );
+        }
+
+        #[test]
+        fn test_tainted_date_propagates() {
+            let tainted = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "test".to_string(),
+            };
+            let resolver = TestResolver::new().with_var("tainted", tainted.clone());
+            let op = start_of(var("tainted"), "month");
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), tainted);
+        }
+
+        // --- the canonical "first day of the month following" pattern ---
+
+        #[test]
+        fn test_first_of_next_month_midmonth() {
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-03-15"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-04-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_first_of_next_month_on_the_first() {
+            // Awir art. 49 default branch: a change on the first counts in that
+            // month itself, so this form is only reached from the other branch —
+            // and it still has to move exactly one month.
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-03-01"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-04-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_first_of_next_month_on_the_last_day() {
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-03-31"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-04-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_first_of_next_month_on_31_january_never_touches_the_clamp() {
+            // Truncate-then-add gives 1 February. Add-then-truncate would route
+            // through the DATE_ADD clamp (31 Jan + 1 month = 28 Feb) and land on
+            // the same day by coincidence; this test pins the order that does not
+            // depend on that coincidence.
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-01-31"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2025-02-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_first_of_next_month_crosses_the_year() {
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(lit("2025-12-17"));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2026-01-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_premieplicht_from_the_month_after_turning_eighteen() {
+            // Zvw art. 16 lid 2 on a leap-day birth: 18 years later is 28 February
+            // 2026 (the DATE_ADD clamp, BW art. 1:2), truncated 1 February 2026,
+            // plus one month 1 March 2026.
+            let resolver = TestResolver::new();
+            let op = first_of_next_month(nested(ActionOperation::DateAdd {
+                date: lit("2008-02-29"),
+                years: Some(lit(18)),
+                months: None,
+                weeks: None,
+                days: None,
+            }));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::String("2026-03-01".to_string())
+            );
+        }
+
+        #[test]
+        fn test_start_of_year_feeds_date_part() {
+            // START_OF is derivable from DATE_PART + DATE (RFC-024 rejects that
+            // as the way to write it); the two still have to agree.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DatePart {
+                date: nested(start_of(lit("2025-12-31"), "year")),
+                part: "month".to_string(),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
         }
     }
 

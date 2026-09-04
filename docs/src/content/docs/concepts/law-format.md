@@ -125,7 +125,7 @@ The logic of a law is written with operations:
 | **Logical** | `AND`, `OR`, `NOT` | `AND`/`OR`: `conditions: [...]`; `NOT`: `value:` (wraps a single operation) |
 | **Collection** | `IN`, `LIST` | `IN`: `subject:` + `value:` or `values: [...]`; `LIST`: `items: [...]` |
 | **Conditional** | `IF` (alias `SWITCH`) | `cases: [{when:, then:}]`, `default:` |
-| **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years) |
+| **Date** | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `DATE_DIFF`, `DATE_PART`, `START_OF` | `AGE`: `date_of_birth:`, `reference_date:`; `DATE_ADD`: `date:` + `years:`/`months:`/`days:`; `DATE`: `year:`, `month:`, `day:`; `DAY_OF_WEEK`: `date:`; `DATE_DIFF`: `from:`, `to:`, `in:` (days/months/years); `DATE_PART`: `date:`, `in:` (year/month/day); `START_OF`: `date:`, `in:` (year/month) |
 
 These 25 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
 

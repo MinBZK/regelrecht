@@ -1,0 +1,22 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.6.0/schema/v0.6.0/schema.json
+$id: test_conformance_untranslatables_on_v0_6_0
+regulatory_layer: WET
+bwb_id: BWBR9999904
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: >-
+      Het document declareert v0.6.0 en draagt nog het oude
+      `untranslatables`-kanaal, dat in die versie is opgevolgd door
+      `markings`. Het schema weigert het veld; het model parseert het bewust
+      nog (het moet ook v0.5.x-bestanden lezen) en de engine honoreert de
+      vlag naast het nieuwe kanaal. Dat is de veilige kant van fout:
+      vlagbehoud in plaats van vlagverlies.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      untranslatables:
+        - construct: redelijkerwijs
+          reason: Open norm die menselijke weging vergt.

@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::enrich::{run_llm_subprocess, EnrichConfig};
+use crate::enrich::{run_llm_subprocess, EnrichConfig, SessionAction};
 use crate::error::{PipelineError, Result};
 use crate::models::JobStatus;
 
@@ -345,9 +345,17 @@ impl DocumentConverter for LlmDocumentConverter {
             config,
             // The agent may run/install a converter (e.g. pdftotext, pandoc),
             // so the claude provider needs shell access here.
-            true,
+            // Nothing withheld beyond the provider's own defaults: the whole
+            // point of this lane is that the agent picks its own converter.
+            crate::enrich::ToolPolicy {
+                allow_bash: true,
+                deny: &[],
+            },
+            // A conversion is one call and has no window to belong to.
+            SessionAction::Cold,
         )
         .await
+        .map(|_| ())
     }
 }
 

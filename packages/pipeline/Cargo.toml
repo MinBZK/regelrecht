@@ -22,6 +22,29 @@ path = "src/bin/enrich_worker.rs"
 name = "regelrecht-pipeline-api"
 path = "src/bin/pipeline_api.rs"
 
+# Deterministic law checks: no database, no model, no shell.
+[[bin]]
+name = "law-check"
+path = "src/bin/law_check.rs"
+
+# Tilt een wetsbestand naar schema v0.6.0 en valideert het resultaat. Een
+# verplicht veld dat de oude vorm niet draagt wordt gemeld, niet ingevuld.
+[[bin]]
+name = "law-migrate"
+path = "src/bin/law_migrate.rs"
+
+# Verifieert de brontekst tegen de officiele BWB-toestand. Tijdelijk: dit
+# hoort bij het harvesten en gaat daar terug naartoe.
+[[bin]]
+name = "law-source"
+path = "src/bin/law_source.rs"
+
+# Draait de echte enrichment-lus tegen een map op schijf, zonder database
+# en zonder git, zodat elke wijziging aan de worker lokaal te beproeven is.
+[[bin]]
+name = "enrich-once"
+path = "src/bin/enrich_once.rs"
+
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
 # `validate` voor de JSON-schema-validatie van gegenereerde basis-wet-YAML
@@ -42,12 +65,16 @@ strum.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 sha2.workspace = true
 tokio-util = "0.7"
+# `try_join_all` voor de vensters die één run naast elkaar loopt (enrich).
+futures = "0.3"
 libc = "0.2"
 async-trait.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 axum.workspace = true
 tower-http = { workspace = true, features = ["trace"] }
 roxmltree.workspace = true
+regex.workspace = true
 url.workspace = true
 testcontainers = { workspace = true, optional = true }
 testcontainers-modules = { workspace = true, optional = true }

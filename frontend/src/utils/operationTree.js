@@ -26,12 +26,18 @@ export const OPERATION_LABELS = {
   DATE: 'datum',
   DAY_OF_WEEK: 'dag van de week',
   DATE_DIFF: 'datumverschil',
+  DATE_PART: 'datumonderdeel',
+  START_OF: 'begin van',
   // Verzameling
   LIST: 'lijst',
 };
 
 // DATE_DIFF units are English in the YAML (schema enum); subtitles read in Dutch.
 const DATE_DIFF_UNIT_LABELS = { days: 'dagen', months: 'maanden', years: 'jaren' };
+// DATE_PART and START_OF select a component instead of counting units, so their
+// `in` is singular where DATE_DIFF's is plural.
+const DATE_PART_LABELS = { year: 'jaar', month: 'maand', day: 'dagnummer' };
+const START_OF_LABELS = { year: 'het jaar', month: 'de maand' };
 
 export function collectAvailableVariables(article) {
   // Engine built-in context variables - always available regardless of
@@ -160,6 +166,12 @@ function getChildOperations(node) {
   if (isOperationNode(node.from)) children.push(node.from);
   if (isOperationNode(node.to)) children.push(node.to);
 
+  // The date operations (DATE_ADD, DAY_OF_WEEK, DATE_PART, START_OF) hold their
+  // operand in `date`, and the canonical "eerste dag van de volgende maand"
+  // nests a START_OF right there. Without this the nested operation is invisible
+  // in the tree.
+  if (isOperationNode(node.date)) children.push(node.date);
+
   if (Array.isArray(node.cases)) {
     for (const c of node.cases) {
       if (isOperationNode(c.when)) children.push(c.when);
@@ -269,9 +281,21 @@ export function describeSubtitle(node) {
     return `leeftijd ${formatArgName(node.date_of_birth)} op ${formatArgName(node.reference_date)}`;
   }
 
-  if (op === 'DATE_ADD') return `${formatArgName(node.subject ?? node.value)} + offset`;
+  // The operand of DATE_ADD and DAY_OF_WEEK is `date`; `subject`/`value` are
+  // kept as a fallback for hand-written nodes that predate that field name.
+  if (op === 'DATE_ADD') return `${formatArgName(node.date ?? node.subject ?? node.value)} + offset`;
   if (op === 'DATE') return formatArgName(node.value ?? node.subject);
-  if (op === 'DAY_OF_WEEK') return `dag van ${formatArgName(node.subject ?? node.value)}`;
+  if (op === 'DAY_OF_WEEK') return `dag van ${formatArgName(node.date ?? node.subject ?? node.value)}`;
+
+  if (op === 'DATE_PART') {
+    const part = DATE_PART_LABELS[node.in] || formatArgName(node.in);
+    return `${part} uit ${formatArgName(node.date)}`;
+  }
+
+  if (op === 'START_OF') {
+    const unit = START_OF_LABELS[node.in] || formatArgName(node.in);
+    return `begin van ${unit} van ${formatArgName(node.date)}`;
+  }
 
   if (op === 'DATE_DIFF') {
     const unit = DATE_DIFF_UNIT_LABELS[node.in] || formatArgName(node.in);

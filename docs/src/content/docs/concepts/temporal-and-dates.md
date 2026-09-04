@@ -54,7 +54,44 @@ When the law "test_date_operations" is executed for outputs "doorlooptijd_maande
 Then the output "doorlooptijd_maanden" is "1"
 ```
 
-Dates must be in canonical `YYYY-MM-DD` form, zero-padded. `2025-1-1` is rejected; the engine does not guess. These scenarios come from `features/date_operations.feature`, and the related operations `AGE`, `DATE_ADD`, `DATE`, and `DAY_OF_WEEK` are listed in the [Law Format](./law-format) operation table.
+Dates must be in canonical `YYYY-MM-DD` form, zero-padded. `2025-1-1` is rejected; the engine does not guess. These scenarios come from `features/date_operations.feature`, and the related operations `AGE`, `DATE_ADD`, and `DATE` are listed in the [Law Format](./law-format) operation table.
+
+## Reading a component, and cutting back to a month
+
+Two more operations, added by [RFC-032](/rfcs/rfc-032), work on a single date.
+
+**`DATE_PART` reads one calendar component out of a date** and returns it as a number:
+
+```yaml
+operation: DATE_PART
+date: $peildatum
+in: year        # or: month, day
+```
+
+It is the inverse of `DATE`, so `in` ranges over exactly the components `DATE` takes. The weekday is not one of them and stays `DAY_OF_WEEK`. The unit is singular here where `DATE_DIFF`'s is plural, because this reads a component instead of counting units; `in: months` is an error that names the words it accepts. A month number is only meaningful within one year, so comparing two of them across a year boundary is almost always wrong.
+
+**`START_OF` cuts a date back** to 1 January of its year, or to the first day of its month:
+
+```yaml
+operation: START_OF
+date: $peildatum
+in: month       # or: year
+```
+
+Truncation is a named operation and never an implicit property of a date, for the same reason [RFC-024](/rfcs/rfc-024) made rounding explicit: the cut belongs in the law where the law prescribes it.
+
+Together they write "de eerste dag van de kalendermaand volgende op", the figure that runs through the whole of social security law:
+
+```yaml
+operation: DATE_ADD
+date:
+  operation: START_OF
+  date: $peildatum
+  in: month
+months: 1
+```
+
+Truncate first, add afterwards. In that order the result is exact for every input date, including the first of the month and including 31 January, because the truncated date is day 1 and the end-of-month clamping of `DATE_ADD` never comes into play. Where the law asks whether something happened *after* the first of the month, test the day number: a change on the first counts in that month itself.
 
 ## Further reading
 

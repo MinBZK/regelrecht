@@ -142,7 +142,8 @@ def render_markdown(operations, layers, schema_version):
         "Conditional": ["IF"],
         "Membership": ["IN"],
         "Collection": ["LIST"],
-        "Date": ["AGE", "DATE_ADD", "DATE", "DAY_OF_WEEK"],
+        "Date": ["AGE", "DATE_ADD", "DATE", "DAY_OF_WEEK", "DATE_DIFF",
+                 "DATE_PART", "START_OF"],
     }
 
     op_map = {op["name"]: op for op in operations}
