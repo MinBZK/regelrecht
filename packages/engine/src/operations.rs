@@ -1171,17 +1171,29 @@ pub fn execute_foreach(
 
     for (index, item) in items.iter().enumerate() {
         let mut child = context.create_child();
-        child.set_local(as_name.to_string(), item.clone());
 
         // Objects also expose their fields as bare locals, so `$status` works
         // where `$item.status` does. Existing laws are written that way. Dot
         // notation is clearer and does not risk shadowing an outer variable,
         // which is why RFC-016 recommends it for new laws.
+        //
+        // Two names are never taken from the element. `as_name` is bound last
+        // so a field of the same name cannot overwrite it — otherwise `as: kind`
+        // over `{kind: 7, ...}` would make `$kind.bedrag` a type error instead
+        // of a lookup. And `referencedate` is skipped because it resolves ahead
+        // of local scope (see `RuleContext::resolve_variable_internal`): writing
+        // it here would put a value somewhere nothing can read, so the law would
+        // silently get the calculation date instead of the element's field.
         if let Value::Object(fields) = item {
             for (key, value) in fields {
+                if key == as_name || key == "referencedate" {
+                    continue;
+                }
                 child.set_local(key.clone(), value.clone());
             }
         }
+
+        child.set_local(as_name.to_string(), item.clone());
 
         if tracing {
             context.trace_push(&format!("ITEM_{index}"), PathNodeType::Operation);
@@ -1306,20 +1318,23 @@ fn is_valid_binding_name(name: &str) -> bool {
 
 /// Combine FOREACH results with ADD.
 ///
-/// Null elements are dropped rather than propagated. A body that could not
-/// produce a value for one element should not abort the whole aggregation, and
-/// for the numeric case `add_values` already skips nulls; doing it here as well
-/// makes string and array combines behave the same way. All-null is `Null`: an
-/// unknown total, not zero.
+/// An unknown element makes the total unknown. RFC-016 already says this for a
+/// filter that evaluates to null ("the engine cannot tell whether this element
+/// belongs in the collection, so it cannot tell what the total is"), and a body
+/// that produces null is the same situation one step later: the element is
+/// definitely in the collection and its contribution is not known. Summing the
+/// rest would report a confident number that is short by an unknown amount.
+///
+/// An empty collection is `0`, the additive identity, because nothing is
+/// missing there.
 fn combine_add(results: &[Value]) -> Result<Value> {
     if results.is_empty() {
         return Ok(Value::Int(0));
     }
-    let non_null: Vec<Value> = results.iter().filter(|v| !v.is_null()).cloned().collect();
-    if non_null.is_empty() {
+    if results.iter().any(Value::is_null) {
         return Ok(Value::Null);
     }
-    add_values(&non_null)
+    add_values(results)
 }
 
 /// Combine FOREACH results with OR.
@@ -3459,15 +3474,20 @@ mod tests {
         }
 
         #[test]
-        fn test_foreach_combine_add_ignores_null_but_all_null_is_unknown() {
+        fn test_foreach_combine_add_is_unknown_as_soon_as_one_element_is() {
+            // Not "skip the null and sum the rest": that reports a confident
+            // total that is short by an unknown amount.
             assert_eq!(
                 sum_of(vec![Value::Int(5), Value::Null], Some(CombineOp::Add)).unwrap(),
-                Value::Int(5)
+                Value::Null
             );
             assert_eq!(
                 sum_of(vec![Value::Null, Value::Null], Some(CombineOp::Add)).unwrap(),
                 Value::Null
             );
+            // Nothing is missing from an empty collection, so it stays the
+            // additive identity.
+            assert_eq!(sum_of(vec![], Some(CombineOp::Add)).unwrap(), Value::Int(0));
         }
 
         #[test]
@@ -3636,6 +3656,112 @@ mod tests {
             assert_eq!(
                 sum_of(exactly, Some(CombineOp::Add)).unwrap(),
                 Value::Int(crate::config::MAX_ARRAY_SIZE as i64)
+            );
+        }
+
+        #[test]
+        fn test_foreach_add_propagates_an_unknown_element() {
+            // A body that cannot produce a value makes the total unknown. This
+            // is the same rule RFC-016 states for a null filter: the element is
+            // in the collection and its contribution is not known, so summing
+            // the rest would report a number that is short by an unknown amount.
+            assert_eq!(
+                sum_of(
+                    vec![Value::Int(10), Value::Null, Value::Int(20)],
+                    Some(CombineOp::Add)
+                )
+                .unwrap(),
+                Value::Null
+            );
+        }
+
+        #[test]
+        fn test_foreach_nested_min_over_empty_does_not_vanish_from_the_sum() {
+            // An inner MIN/MAX over an empty collection is null, and an outer
+            // ADD must not quietly leave it out: the total would look complete
+            // while one member of the collection was never evaluated.
+            let context = ctx(vec![(
+                "huishoudens",
+                Value::Array(vec![
+                    obj(vec![("leden", Value::Array(vec![Value::Int(100)]))]),
+                    obj(vec![("leden", Value::Array(vec![]))]),
+                ]),
+            )]);
+            let inner = ActionOperation::Foreach {
+                collection: var("huishouden.leden"),
+                as_name: "lid".to_string(),
+                body: var("lid"),
+                filter: None,
+                combine: Some(CombineOp::Max),
+            };
+            let outer = ActionOperation::Foreach {
+                collection: var("huishoudens"),
+                as_name: "huishouden".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&outer, &context, 0).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn test_foreach_element_field_cannot_overwrite_the_binding() {
+            // `as: kind` over `{kind: 7, bedrag: 5}`: the binding must stay the
+            // element, or `$kind.bedrag` becomes a type error on an integer.
+            let context = ctx(vec![(
+                "kinderen",
+                Value::Array(vec![obj(vec![
+                    ("kind", Value::Int(7)),
+                    ("bedrag", Value::Int(5)),
+                ])]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("kinderen"),
+                as_name: "kind".to_string(),
+                body: var("kind.bedrag"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(5));
+        }
+
+        #[test]
+        fn test_foreach_element_field_named_referencedate_is_not_bound() {
+            // `referencedate` resolves ahead of local scope, so flattening a
+            // field of that name would write somewhere nothing reads and the
+            // law would silently get the calculation date. Skipping it keeps
+            // the resolution honest, and the field stays reachable by dot
+            // notation.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![obj(vec![(
+                    "referencedate",
+                    Value::String("1990-01-01".to_string()),
+                )])]),
+            )]);
+            let bare = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("referencedate.iso"),
+                filter: None,
+                combine: None,
+            };
+            // The context's own reference date, not the element's field.
+            assert_eq!(
+                execute_operation(&bare, &context, 0).unwrap(),
+                Value::Array(vec![Value::String("2025-06-15".to_string())])
+            );
+
+            let dotted = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x.referencedate"),
+                filter: None,
+                combine: None,
+            };
+            assert_eq!(
+                execute_operation(&dotted, &context, 0).unwrap(),
+                Value::Array(vec![Value::String("1990-01-01".to_string())])
             );
         }
 

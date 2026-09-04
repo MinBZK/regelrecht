@@ -366,10 +366,17 @@ articles:
             description: 'Is gehuwd (bron: BRP)'
           - name: leeftijd_echtgenoot
             type: number
-            required: false
+            required: true
             description: >-
               Leeftijd van de echtgenoot in jaren (bron: BRP). Alleen van belang
-              indien gehuwd.
+              indien gehuwd, maar wel altijd vereist: `rekengetal_a` leest dit
+              veld zodra `is_gehuwd` waar is, en het schema kent geen operatie
+              om binnen een expressie op afwezigheid te toetsen. Vul voor een
+              ongehuwde belanghebbende een willekeurige waarde in; die wordt
+              niet gelezen.
+            # De alternatieve vorm, IS_NULL, staat niet in het schema: hij is
+            # een compat-alias van de engine en zou hier een YAML opleveren die
+            # `just validate` afwijst.
           - name: medebewoners
             type: array
             required: true

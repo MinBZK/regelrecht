@@ -180,8 +180,10 @@ articles:
               body: 1
               combine: ADD
 
-          # Een binnenste MAX onder een buitenste ADD: 200 + 50 + niets. Het
-          # lege huishouden levert null, dat door combine ADD wordt overgeslagen.
+          # Een binnenste MAX onder een buitenste ADD. Het lege huishouden levert
+          # null, en daarmee is het totaal onbekend: dat huishouden overslaan
+          # zou een stellig getal opleveren voor een verzameling waarvan een lid
+          # niet is doorgerekend.
           - output: hoogste_per_huishouden_totaal
             value:
               operation: FOREACH

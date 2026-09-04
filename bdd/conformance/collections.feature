@@ -108,7 +108,9 @@ Feature: Collection operations
     # a second level rather than summing one.
     When I evaluate "aantal_huishoudens" of "test_collections"
     Then output "aantal_huishoudens" equals 3
-    # An inner MAX under an outer ADD: 200 + 50, with the empty household
-    # contributing an unknown that ADD skips.
+    # An inner MAX under an outer ADD. The third household is empty, so its MAX
+    # is null, and the total is unknown rather than 250: leaving that household
+    # out would report a confident number for a collection one member of which
+    # was never evaluated.
     When I evaluate "hoogste_per_huishouden_totaal" of "test_collections"
-    Then output "hoogste_per_huishouden_totaal" equals 250
+    Then output "hoogste_per_huishouden_totaal" is null
