@@ -28,11 +28,19 @@ const HEADER = `// Design-system components this app renders, one entry point ea
 // Regenerate: npm run nldd:imports
 `;
 
-const { needed, unresolved } = resolveEntries(usedTags(sourceDir, EXTENSIONS), packageEntries());
+const entries = packageEntries();
+const { rendered, mentioned } = usedTags(sourceDir, EXTENSIONS);
+const { needed, unresolved } = resolveEntries(rendered, entries);
 
-if (unresolved.length > 0) {
+// A tag this source only names in prose needs no import, but it does have to
+// name a component that exists — that is what makes the mention true.
+const unknown = [
+  ...new Set([...unresolved, ...resolveEntries(mentioned, entries).unresolved]),
+].sort();
+
+if (unknown.length > 0) {
   console.error(`✗ ${sourceDir}: no design-system entry point defines these tags:`);
-  for (const tag of unresolved) console.error(`    nldd-${tag}`);
+  for (const tag of unknown) console.error(`    nldd-${tag}`);
   console.error('  Either the tag is a typo, or the package needs a new entry point.');
   process.exit(1);
 }

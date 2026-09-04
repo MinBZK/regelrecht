@@ -99,6 +99,13 @@ repos:
         pass_filenames: false
         files: ^(\.github/workflows/ci\.yml|script/ci-gate\.test\.mjs)$
 
+      - id: nldd-imports-tests
+        name: Ontwerpsysteem-guard telt proza niet als gebruik
+        entry: just nldd-imports-test
+        language: system
+        pass_filenames: false
+        files: ^script/(nldd-imports\.test\.mjs|nldd-imports\.mjs|check-nldd-imports\.mjs)$
+
       - id: dockerfile-consistency
         name: Rust-Dockerfiles blijven bij de cargo-workspace
         entry: just dockerfile-consistency-test

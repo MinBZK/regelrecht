@@ -43,17 +43,28 @@ function* sourceFiles(dir, extensions) {
   }
 }
 
-/** Tag names (without the `nldd-` prefix) used anywhere in `dir`. */
+/**
+ * Tag names (without the `nldd-` prefix) found in `dir`, split by what the use
+ * implies: `rendered` needs an import, `mentioned` only has to exist.
+ */
 export function usedTags(dir, extensions) {
-  const found = new Set();
+  const rendered = new Set();
+  const mentioned = new Set();
   for (const file of sourceFiles(dir, extensions)) {
     const text = readFileSync(file, 'utf8');
-    // Markup, plus the quoted form used by createElement/querySelector — the
-    // org picker builds its rows in JS, so markup alone would miss them.
-    for (const [, tag] of text.matchAll(/<(nldd-[a-z0-9-]+)/g)) found.add(tag.slice(5));
+    for (const [, tag] of text.matchAll(/<(nldd-[a-z0-9-]+)/g)) rendered.add(tag.slice(5));
+    // The quoted form used by createElement/querySelector — the org picker
+    // builds its rows in JS, so markup alone would miss them.
+    //
+    // In markdown a backtick is prose, not code: the docs describe which
+    // components the *frontend* uses, and importing those into the docs site
+    // only grows a bundle that never renders them. Such a name still has to
+    // resolve to a real entry point, so a typo or a component the design
+    // system dropped keeps failing the build.
+    const found = extname(file) === '.md' ? mentioned : rendered;
     for (const [, tag] of text.matchAll(/['"`](nldd-[a-z0-9-]+)['"`]/g)) found.add(tag.slice(5));
   }
-  return found;
+  return { rendered, mentioned };
 }
 
 /** Map tags onto entry points; `unresolved` holds anything the package cannot serve. */
