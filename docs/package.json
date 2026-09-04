@@ -14,9 +14,9 @@
     "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
   "dependencies": {
-    "@astrojs/mdx": "^7.0.5",
+    "@astrojs/mdx": "^7.0.8",
     "@nldd/design-system": "^0.8.83",
-    "astro": "^7.1.6",
+    "astro": "^7.2.9",
     "astro-pagefind": "^2.0.1",
     "rehype-mermaid": "^3",
     "rehype-stringify": "^10.0.1",
