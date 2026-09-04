@@ -4414,7 +4414,8 @@ articles:
         assert_eq!(refusal.required_layer, "MINISTERIELE_REGELING");
         assert_eq!(refusal.open_term, "standaardpremie");
 
-        let receipt = service.build_receipt(&result, &BTreeMap::new(), "2025-01-01");
+        let receipt =
+            service.build_receipt_with_outputs(&result, &BTreeMap::new(), "2025-01-01", &[]);
         assert_eq!(
             receipt.results.delegation_refusals, result.delegation_refusals,
             "the receipt carries the refusal even without a trace"
@@ -5800,7 +5801,8 @@ articles:
         assert_eq!(note.indexed_version.as_deref(), Some("2025-01-01"));
         assert_eq!(note.in_force_version.as_deref(), Some("2024-01-01"));
 
-        let receipt = service.build_receipt(&historic, &BTreeMap::new(), "2024-06-01");
+        let receipt =
+            service.build_receipt_with_outputs(&historic, &BTreeMap::new(), "2024-06-01", &[]);
         assert_eq!(
             receipt.results.declaration_version_notes, historic.declaration_version_notes,
             "the note belongs on the receipt, not only in the log"
@@ -5929,27 +5931,28 @@ articles:
             note.reason
         );
 
-        let receipt = service.build_receipt(&result, &BTreeMap::new(), "2026-06-01");
+        let receipt =
+            service.build_receipt_with_outputs(&result, &BTreeMap::new(), "2026-06-01", &[]);
         assert_eq!(
             receipt.results.declarations_not_in_force, result.declarations_not_in_force,
             "the receipt carries the skip even without a trace"
         );
 
         // With a trace the same skip is a node next to the output it addresses.
-        // `execute_stage_with_trace` pops its own root on the success path, so
-        // the test holds a node underneath it to read the tree back.
+        // `execute_stage_internal` takes the builder as it is, so the test
+        // holds a root node of its own to read the tree back.
         let trace = Rc::new(RefCell::new(TraceBuilder::new()));
         trace
             .borrow_mut()
             .push("test harness".to_string(), PathNodeType::Article);
         service
-            .execute_stage_with_trace(
+            .execute_stage_internal(
                 "kaderwet_bedrag",
                 "bedrag",
                 Some(state("BESLUIT")),
                 BTreeMap::new(),
                 "2026-06-01",
-                Rc::clone(&trace),
+                Some(Rc::clone(&trace)),
             )
             .unwrap();
         let rendered = trace
@@ -6056,7 +6059,8 @@ articles:
             note.reason
         );
 
-        let receipt = service.build_receipt(&before, &BTreeMap::new(), "2025-06-01");
+        let receipt =
+            service.build_receipt_with_outputs(&before, &BTreeMap::new(), "2025-06-01", &[]);
         assert_eq!(
             receipt.results.declarations_not_in_force, before.declarations_not_in_force,
             "a beschikking without its motivering must say so on the receipt"
@@ -6157,7 +6161,8 @@ articles:
         );
         assert!(note.reason.contains("in force yet"), "{}", note.reason);
 
-        let receipt = service.build_receipt(&before, &BTreeMap::new(), "2025-06-01");
+        let receipt =
+            service.build_receipt_with_outputs(&before, &BTreeMap::new(), "2025-06-01", &[]);
         assert_eq!(
             receipt.results.declarations_not_in_force,
             before.declarations_not_in_force
