@@ -23,6 +23,11 @@ interface Props {
   // narrower centered layout instead of the 3-column grid. Defaults to true
   // so the common sidebar'd docs pages need not pass it.
   hasSidebar?: boolean;
+  // Keep this page out of the Pagefind index. Pagefind indexes the whole
+  // <body> of every built page by default, so a page that is deliberately not
+  // linked would still be reachable through the site's own search box. Set
+  // this where "unlisted" is meant to include search.
+  noSearchIndex?: boolean;
 }
 
 const {
@@ -32,6 +37,7 @@ const {
   kind,
   pathname,
   hasSidebar = true,
+  noSearchIndex = false,
 } = Astro.props;
 
 const isLanding = kind === 'landing';
@@ -82,12 +88,28 @@ if (isStatusPage) {
 } else {
   globalLinks = [];
   const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
+  const isResearchRoot = pathname === '/research/' || pathname === '/research';
+  const inResearch = isResearchRoot || pathname.startsWith('/research/');
+  const isRoadmapRoot = pathname === '/roadmap/' || pathname === '/roadmap';
+  const inRoadmap = isRoadmapRoot || pathname.startsWith('/roadmap/');
   const cat = categoryForPath(pathname);
   const onCategoryPage = cat !== null && pathname === cat.prefix;
-  if (isDocsRoot) {
-    // The documentation root goes up to the site home.
+  if (isRoadmapRoot) {
+    // The roadmap root goes up to the site home, in the page's own language.
+    backHref = landingHome;
+    backText = t.nav.home;
+  } else if (inRoadmap) {
+    // A werkpakket goes up to the roadmap itself.
+    backHref = '/roadmap';
+    backText = 'Roadmap';
+  } else if (isDocsRoot || isResearchRoot) {
+    // The documentation and research roots go up to the site home.
     backHref = '/en/';
     backText = 'Home';
+  } else if (inResearch) {
+    // A research paper goes up to the research overview.
+    backHref = '/research/';
+    backText = 'Research';
   } else if (cat && !onCategoryPage) {
     // An article goes up to its category.
     backHref = cat.prefix;
@@ -159,7 +181,42 @@ const docsHref = '/docs/';
 const docsText = 'Documentation';
 const pageTitle = title.replace(/\s·\sRegelRecht$/, '');
 let breadcrumbs: BreadcrumbCrumb[] = [];
-if (!isLanding && !isNotFound) {
+if (
+  !isLanding &&
+  !isNotFound &&
+  (pathname === '/research' || pathname.startsWith('/research/'))
+) {
+  // Research pages sit next to the documentation: Home → Research → page.
+  const isResearchRoot =
+    pathname === '/research/' || pathname === '/research';
+  breadcrumbs.push({ text: homeText, href: homeHref });
+  breadcrumbs.push({
+    text: 'Research',
+    href: '/research/',
+    current: isResearchRoot,
+  });
+  if (!isResearchRoot) {
+    breadcrumbs.push({ text: pageTitle, current: true });
+  }
+} else if (
+  !isLanding &&
+  !isNotFound &&
+  (pathname === '/roadmap' || pathname.startsWith('/roadmap/'))
+) {
+  // The roadmap sits next to the documentation rather than under it, like
+  // /research: without this branch it would fall through to the docs trail
+  // below and claim to live under Documentation, which it does not.
+  const isRoadmapRoot = pathname === '/roadmap/' || pathname === '/roadmap';
+  breadcrumbs.push({ text: homeText, href: homeHref });
+  breadcrumbs.push({
+    text: 'Roadmap',
+    href: '/roadmap',
+    current: isRoadmapRoot,
+  });
+  if (!isRoadmapRoot) {
+    breadcrumbs.push({ text: pageTitle, current: true });
+  }
+} else if (!isLanding && !isNotFound) {
   const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
   breadcrumbs.push({ text: homeText, href: homeHref });
   breadcrumbs.push({
@@ -337,7 +394,7 @@ const legalLinks = [
       })();
     </script>
   </head>
-  <body>
+  <body data-pagefind-ignore={noSearchIndex ? 'all' : undefined}>
     <nldd-page background={isLanding ? 'base' : undefined}>
       {/* nldd-skip-link wraps the nav: its skip control sits before the nav and
           focuses the next sibling (the first main-content element) — no anchor
@@ -873,6 +930,99 @@ const legalLinks = [
           openSearch();
         }
       });
+    </script>
+
+    <script>
+      // Re-anchor after the page settles. The browser scrolls to the
+      // #fragment before RijksSans swaps in and before the nldd-code-viewer
+      // blocks render; the accumulated height change above the target puts
+      // it off — a full section off on a long page like the research paper,
+      // tens of pixels on a docs page reached through a search deep link.
+      // Once fonts and the code viewers are ready, scroll to the fragment
+      // again, unless the reader has scrolled in the meantime.
+      //
+      // Which navigation brought us here decides what "settled" should
+      // restore. A fresh load or a router push/replace anchored on the
+      // fragment: re-anchor. A router traverse (back/forward) restored the
+      // saved scroll position, but did so before the code viewers rendered,
+      // so the document may still have been too short to reach it: re-apply
+      // that position. A hard reload or back/forward is left to the browser,
+      // which keeps restoring on its own as the page grows.
+      let userScrolled = false;
+      let navigationType: string | null = null;
+      const SCROLL_KEYS = new Set([
+        'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ',
+      ]);
+      // Module scripts run once per document (ClientRouter does not re-run
+      // them), so binding here is binding once.
+      window.addEventListener('wheel', () => { userScrolled = true; }, { passive: true });
+      window.addEventListener('touchmove', () => { userScrolled = true; }, { passive: true });
+      window.addEventListener('keydown', (e) => {
+        if (SCROLL_KEYS.has(e.key)) userScrolled = true;
+      });
+      document.addEventListener('astro:before-swap', (e) => {
+        navigationType =
+          (e as Event & { navigationType?: string }).navigationType ?? null;
+      });
+      function consumeNavigationType(): string {
+        if (navigationType !== null) {
+          const t = navigationType;
+          navigationType = null;
+          return t;
+        }
+        const nav = performance.getEntriesByType('navigation')[0] as
+          | PerformanceNavigationTiming
+          | undefined;
+        return nav?.type ?? 'navigate';
+      }
+      function settled(): Promise<unknown> {
+        const viewers = Array.from(
+          document.querySelectorAll('nldd-code-viewer')
+        ) as Array<Element & { updateComplete?: Promise<unknown> }>;
+        return Promise.all([
+          document.fonts ? document.fonts.ready : Promise.resolve(),
+          customElements.whenDefined('nldd-code-viewer').then(() =>
+            Promise.all(viewers.map((v) => v.updateComplete ?? null))
+          ),
+        ]);
+      }
+      function reanchor() {
+        const type = consumeNavigationType();
+        if (type === 'reload' || type === 'back_forward') return;
+        const saved = history.state as
+          | { scrollX?: number; scrollY?: number }
+          | null;
+        let target: Element | null = null;
+        if (type === 'traverse') {
+          if (typeof saved?.scrollY !== 'number') return;
+        } else {
+          if (!location.hash) return;
+          try {
+            target = document.getElementById(
+              decodeURIComponent(location.hash.slice(1))
+            );
+          } catch {
+            return;
+          }
+          if (!target) return;
+        }
+        userScrolled = false;
+        settled().then(() => {
+          requestAnimationFrame(() => {
+            if (userScrolled) return;
+            if (target) {
+              target.scrollIntoView();
+            } else if (saved && typeof saved.scrollY === 'number') {
+              scrollTo({
+                left: saved.scrollX ?? 0,
+                top: saved.scrollY,
+                behavior: 'instant',
+              });
+            }
+          });
+        });
+      }
+      document.addEventListener('astro:page-load', reanchor);
     </script>
 
     <!-- Select lines in a doc/RFC, jump to GitHub edit at that source range.

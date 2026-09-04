@@ -80,6 +80,14 @@ conformance:
 deploy-filters-test:
     node --test script/deploy-filters.test.mjs
 
+# Pins the GHCR cleaner against its safety rules. It deletes manifests from a
+# production registry and there is no undo, so every rule that decides "delete"
+# versus "keep" is covered here. Same reasoning as deploy-filters-test: node's
+# built-in runner, no dependency.
+[doc("Check the GHCR cleanup safety rules")]
+ghcr-cleanup-test:
+    node --test script/ghcr-cleanup.test.mjs
+
 # Pins the build-time asset precompression the editor image relies on. Same
 # reasoning as deploy-filters-test: node's built-in runner, no dependency.
 [doc("Check the editor's build-time asset precompression")]
@@ -100,11 +108,43 @@ security-headers-test:
 first-load-test:
     node --test frontend/scripts/check-first-load.test.mjs
 
+# Draait het shellfragment van de `Test`-poort uit ci.yml met echte
+# resultaatwaarden. Zonder dit is een voorganger die wel in `needs` staat maar
+# niet gelezen wordt niet van een werkende poort te onderscheiden.
+[doc("Check that the Test gate in ci.yml blocks on a failed predecessor")]
+ci-gate-test:
+    node --test script/ci-gate.test.mjs
+
+# Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
+# of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
+# bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
+[doc("Check the Rust Dockerfiles against the cargo workspace")]
+dockerfile-consistency-test:
+    node --test script/dockerfile-consistency.test.mjs
+
+# De poort die productie op een groene CI laat wachten. Zonder deze test is een
+# poort die alles doorlaat niet te onderscheiden van een die werkt; `gh` staat
+# hier als stub op PATH, dus er gaat geen verkeer naar GitHub.
+[doc("Check the gate that holds production to a green CI")]
+deploy-gate-test:
+    script/require-ci-green.test.sh
+
+# De controle die na de uitrol nakijkt of productie antwoordt. `curl` staat in
+# de test als stub op PATH, dus er gaat geen verkeer naar buiten.
+[doc("Check the post-deploy health check")]
+deployed-urls-test:
+    script/check-deployed-urls.test.sh
+# De controle die telt wat de nachtelijke opruiming heeft achtergelaten. `gh`
+# staat in de test als stub op PATH, dus er gaat geen verkeer naar GitHub.
+[doc("Check the guard on leftover preview environments")]
+preview-environments-test:
+    script/check-preview-environments.test.sh
+
 # Run all quality checks, exactly what CI runs. Needs Docker for the
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 
@@ -278,15 +318,27 @@ bench-compare BASE:
 
 # --- Security ---
 
-# Run security audit on all dependencies (vulnerabilities, licenses, sources)
+# De deterministische helft van de security-audit, en de enige die een pull
+# request blokkeert. Bans, licenses en sources hangen alleen aan wat er in de
+# lockfiles staat: dezelfde commit geeft vandaag en over een maand dezelfde
+# uitslag. Kwetsbaarheden horen daar niet bij, want die komen van buiten en
+# maken een PR rood zonder dat er iets aan die PR veranderd is; die staan in
+# `just audit-advisories`.
 audit:
-    cd packages && cargo deny check --config ../deny.toml
-    # One npm workspace at the repo root covers all three frontends + the shared
-    # package, so audit/license-check the whole hoisted tree once. (license-checker
-    # drops --production because the workspace root has no production deps of its
-    # own; the whole-tree scan is strictly broader coverage.)
-    npm audit
+    script/cargo-deny.sh bans licenses sources
+    # license-checker draait alleen over de workspace in de root; die drops
+    # --production omdat de root geen eigen productie-deps heeft, en de
+    # hele-boom-scan is strikt ruimer.
     npx license-checker --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
+
+# De tijdsafhankelijke helft: advisories uit RustSec en npm. Draait periodiek
+# in .github/workflows/security-advisories.yml en meldt zich daar als issue.
+audit-advisories:
+    script/audit-advisories.sh
+
+# De meldlogica van de advisory-controle
+advisories-report-test:
+    script/report-advisories.test.sh
 
 # --- Admin ---
 
@@ -340,9 +392,8 @@ editor-api-fmt:
     cd packages && cargo fmt --check --package regelrecht-editor-api
 
 # Run ALL editor API tests: src unit tests + tests/*.rs integration tests
-# (the latter require Docker for testcontainers). This is what CI runs on
-# editor-api changes; excluded from `just check` for the same reason
-# `pipeline-integration-test` is.
+# (the latter require Docker for testcontainers). A shortcut for running this
+# crate alone; `just check` covers it through the workspace-wide `test`.
 [doc("Run ALL editor API tests, unit and integration (needs Docker)")]
 editor-api-test:
     cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api

@@ -9,7 +9,7 @@ All components are deployed to ZAD (RIG/Quattro/rijksapps) via GitHub Actions. D
 
 ### On pull request
 
-A PR only builds and deploys when it carries the `preview` label. Without that label nothing is built, because a preview costs about half of the repository's runner budget and no required check depends on it. Add the label and the build starts, whether the PR was opened a minute or a month ago:
+A PR only builds and deploys when it carries the `deploy:preview` label. Without that label nothing is built, because a preview costs about half of the repository's runner budget and no required check depends on it. Add the label and the build starts, whether the PR was opened a minute or a month ago:
 
 1. Changed components are detected automatically
 2. Docker images are built and pushed to `ghcr.io/minbzk/regelrecht-{component}:sha-{commit}`
@@ -18,7 +18,7 @@ A PR only builds and deploys when it carries the `preview` label. Without that l
 
 Every later commit on a labelled PR repeats this. Remove the label and the preview and its images are cleaned up.
 
-Only changed components are rebuilt. Any component can also be forced to build by adding its `deploy:<component>` label to the PR (for example `deploy:editor`); those labels are additive and do nothing on their own, since `preview` is what opens the gate.
+Only changed components are rebuilt. Any component can also be forced to build by adding its `deploy:<component>` label to the PR (for example `deploy:editor`); those labels are additive and do nothing on their own, since `deploy:preview` is what opens the gate.
 
 ### On merge to main
 
@@ -44,6 +44,8 @@ The preview deployment and its GHCR images are cleaned up automatically.
 | Lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
+
+The docs image also serves `/roadmap`, a read-only rendering of the werkpakketten in `docs/src/content/roadmap/` and the JSON file in `docs/src/data/`. It is not a component of its own and has no write path: changing the roadmap means editing those files through a pull request, and every werkpakket page links to its own source on GitHub. The page is deliberately not linked from the navigation or the landing page.
 
 ## ZAD CLI
 

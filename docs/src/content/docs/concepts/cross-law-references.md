@@ -97,3 +97,4 @@ The engine detects circular references (law A needs law B which needs law A) and
 - [Temporal Validity and Dates](./temporal-and-dates) - what happens when a reference points at a law that has ended
 - [Traceability](./traceability) - a real cross-law chain shown in an execution trace
 - [RFC-007: Cross-Law Execution](/rfcs/rfc-007) - the full design specification
+- [Rules as Executed, section 5.1](/research/rules-as-executed#sec:depgraphs) - the position paper's dependency graph behind a single zorgtoeslag decision

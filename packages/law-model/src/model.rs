@@ -1023,13 +1023,6 @@ impl Article {
             .is_some_and(|outputs| !outputs.is_empty())
     }
 
-    /// Get the competent authority for this article
-    pub fn get_competent_authority(&self) -> Option<&CompetentAuthority> {
-        self.machine_readable
-            .as_ref()
-            .and_then(|mr| mr.competent_authority.as_ref())
-    }
-
     /// Get inputs from this article's execution spec.
     pub fn get_inputs(&self) -> &[Input] {
         self.get_execution_spec()
@@ -1268,22 +1261,5 @@ impl ArticleBasedLaw {
     /// Get all publicly callable articles
     pub fn get_public_articles(&self) -> Vec<&Article> {
         self.articles.iter().filter(|art| art.is_public()).collect()
-    }
-
-    /// Get BWB identifier if available
-    pub fn get_bwb_id(&self) -> Option<&str> {
-        self.bwb_id
-            .as_deref()
-            .or_else(|| self.identifiers.as_ref()?.get("bwb_id").map(|s| s.as_str()))
-    }
-
-    /// Get official URL if available
-    pub fn get_url(&self) -> Option<&str> {
-        self.url.as_deref().or_else(|| {
-            let ids = self.identifiers.as_ref()?;
-            ids.get("url")
-                .or_else(|| ids.get("ref"))
-                .map(|s| s.as_str())
-        })
     }
 }

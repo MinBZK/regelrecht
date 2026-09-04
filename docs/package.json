@@ -9,17 +9,21 @@
     "preview": "astro preview",
     "check:rfc-coverage": "node scripts/check-rfc-coverage.mjs",
     "check:schema-version": "node scripts/check-schema-version.mjs",
-    "a11y": "astro build && node scripts/check-rfc-coverage.mjs && node scripts/check-mermaid-alt.mjs && node scripts/check-heading-order.mjs && node scripts/check-links.mjs && node scripts/gen-pa11yci.mjs && start-server-and-test 'astro preview --port 4173' http://localhost:4173 'pa11y-ci'",
+    "a11y": "astro build && node scripts/check-rfc-coverage.mjs && node scripts/check-roadmap-rfcs.mjs && node scripts/check-mermaid-alt.mjs && node scripts/check-heading-order.mjs && node scripts/check-links.mjs && node scripts/gen-pa11yci.mjs && start-server-and-test 'astro preview --port 4173' http://localhost:4173 'pa11y-ci'",
     "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
     "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.5",
-    "@nldd/design-system": "^0.8.78",
+    "@nldd/design-system": "^0.8.83",
     "astro": "^7.1.6",
     "astro-pagefind": "^2.0.1",
     "rehype-mermaid": "^3",
-    "remark-gfm": "^4"
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
     "pa11y-ci": "^4.1.1",

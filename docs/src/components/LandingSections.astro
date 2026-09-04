@@ -10,6 +10,7 @@
 import { Image, type ImageMetadata } from 'astro:assets';
 import { content } from '~/lib/landing-content';
 import SignupForm from './SignupForm.astro';
+import LinkCard from './LinkCard.astro';
 
 interface Props {
   lang: 'nl' | 'en';
@@ -18,7 +19,6 @@ interface Props {
 
 const { lang, showSignup } = Astro.props;
 const t = content[lang];
-const home = lang === 'en' ? '/en/' : '/';
 
 // Vacancy closing dates render as an absolute date at build time (also the
 // no-JS text); the script at the bottom rewrites them relative to the
@@ -69,19 +69,21 @@ function exampleImage(key: string): ImageMetadata {
   showSignup ? (
       <nldd-simple-section
         id="signup"
-        width="640px"
-        sm-padding-bottom="32"
-        md-padding-bottom="64"
-        lg-padding-bottom="96"
+        width="704px"
+        vertical-alignment="center"
       >
-        <nldd-title size="2">
-          <h1>{t.signup.pageTitle}</h1>
-        </nldd-title>
-        <nldd-spacer size="24" />
-        <SignupForm lang={lang} />
-        <noscript>
-          <p>{t.signup.noscript}</p>
-        </noscript>
+        <nldd-box>
+          <nldd-container sm-padding="16" md-padding="24" lg-padding="32">
+            <nldd-title size="2">
+              <h1>{t.signup.pageTitle}</h1>
+            </nldd-title>
+            <nldd-spacer size="24" />
+            <SignupForm lang={lang} />
+            <noscript>
+              <p>{t.signup.noscript}</p>
+            </noscript>
+          </nldd-container>
+        </nldd-box>
       </nldd-simple-section>
     ) : (
       <Fragment>
@@ -106,9 +108,9 @@ function exampleImage(key: string): ImageMetadata {
           <nldd-button-group orientation="horizontal">
             <nldd-button
               variant="inherit-filled"
-              href={home + '#what-is-it'}
-              start-icon="explore"
-              text={t.hero.cta}
+              href={t.feedback.ctaHref}
+              start-icon="notification"
+              text={t.feedback.cta}
             />
             <nldd-button
               variant="inherit-tinted"
@@ -118,9 +120,9 @@ function exampleImage(key: string): ImageMetadata {
             />
             <nldd-button
               variant="inherit-tinted"
-              href={t.feedback.ctaHref}
-              start-icon="notification"
-              text={t.feedback.cta}
+              href="/research/"
+              start-icon="text-document"
+              text={t.nav.research}
             />
           </nldd-button-group>
         </nldd-hero>
@@ -312,7 +314,7 @@ function exampleImage(key: string): ImageMetadata {
             <p>{t.howItWorks.lede}</p>
           </nldd-rich-text>
           <nldd-spacer size="24" />
-          <nldd-list no-dividers>
+          <nldd-list dividers="never">
             {t.howItWorks.steps.map((step, i, arr) => (
               <nldd-list-item>
                 <nldd-timeline-track-cell
@@ -470,6 +472,27 @@ function exampleImage(key: string): ImageMetadata {
         </nldd-simple-section>
 
         <nldd-simple-section
+          id="research"
+          sm-padding-block="32"
+          md-padding-block="64"
+          lg-padding-block="96"
+        >
+          <nldd-title size="2">
+            <h2>{t.research.title}</h2>
+          </nldd-title>
+          <nldd-spacer size="8" />
+          <nldd-rich-text>
+            <p>{t.research.lede}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="24" />
+          <nldd-collection layout="grid" item-width="320px">
+            {t.research.items.map((item) => (
+              <LinkCard lang={lang} tinted {...item} />
+            ))}
+          </nldd-collection>
+        </nldd-simple-section>
+
+        <nldd-simple-section
           id="references"
           background="tinted"
           sm-padding-top="32"
@@ -485,27 +508,7 @@ function exampleImage(key: string): ImageMetadata {
           <nldd-spacer size="24" />
           <nldd-collection layout="horizontal-scroll" item-width="320px">
             {t.references.items.map((ref) => (
-              <nldd-card accessible-label={ref.title}>
-                <nldd-container padding="20" padding-bottom="12">
-                  <nldd-title size="3">
-                    <h3>{ref.title}</h3>
-                    <p slot="subtitle">{ref.meta}</p>
-                  </nldd-title>
-                  <nldd-spacer size="12" />
-                  <nldd-rich-text>
-                    <p>{ref.text}</p>
-                  </nldd-rich-text>
-                </nldd-container>
-                <nldd-container slot="footer" padding="20" padding-top="0">
-                  <nldd-button
-                    variant="secondary"
-                    width="full"
-                    href={ref.href}
-                    text={`${lang === 'en' ? 'Read' : 'Lees'} ${ref.linkLabel}`}
-                    accessible-label={`${lang === 'en' ? 'Read' : 'Lees'} ${ref.linkLabel}: ${ref.title}`}
-                  />
-                </nldd-container>
-              </nldd-card>
+              <LinkCard lang={lang} {...ref} />
             ))}
           </nldd-collection>
         </nldd-simple-section>

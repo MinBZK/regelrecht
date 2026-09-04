@@ -98,3 +98,4 @@ Truncate first, add afterwards. In that order the result is exact for every inpu
 - [Cross-Law References](./cross-law-references) - how an expired reference surfaces in a chain
 - [Execution Provenance](./execution-provenance) - validity windows in the receipt
 - [RFC-019: Law End Dates](/rfcs/rfc-019) and [RFC-021: Date Comparison](/rfcs/rfc-021) - full specifications
+- [Rules as Executed, section 9.4](/research/rules-as-executed#sec:versioning) - the position paper on version management: Staatsblad dates as release tags, and every dependency resolved to the version in force on the relevant date

@@ -1,0 +1,332 @@
+---
+/*
+ * /roadmap/werkpakket/<uuid> — one werkpakket.
+ *
+ * Keyed on the frontmatter `id`, not on the filename slug: samenhangIds point
+ * at that value, so keying on it makes the cross-links correct by construction.
+ * The UUID stays in the URL because a title-derived slug would have to be kept
+ * in sync with those references and would break on every rename.
+ *
+ * Built entirely from design-system components: nldd-sidebar-section for the
+ * document layout (it collapses the sidebar into a sheet on narrow screens by
+ * itself), nldd-description-cell for the metadata pairs, nldd-text for every
+ * run of text. No layout CSS and no media queries live here — the components
+ * are responsive, so writing our own would fight them.
+ *
+ * Section headings are <h2> under the page <h1>. The app used <h3> here, which
+ * check-heading-order.mjs rejects as a rank skip; nldd-title's `size` carries
+ * the visual weight instead.
+ */
+import { getCollection } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import EditLink from '~/components/EditLink.astro';
+import {
+  getFase,
+  getDiscipline,
+  getPrioriteit,
+  getCategorie,
+  getCapability,
+  assertReferencesResolve,
+  assertPaperSections,
+  assertRfcReferences,
+  onderzoeksvraagLijst,
+  rfcVerwijzingen,
+  getOnderzoek,
+  getBouw,
+  NIET_BEPAALD,
+  NIET_GESPECIFICEERD,
+} from '~/lib/roadmap';
+import {
+  renderMarkdown,
+  yamlSequenceItemLines,
+} from '~/lib/roadmap-markdown';
+
+export async function getStaticPaths() {
+  const werkpakketten = await getCollection('werkpakketten');
+  assertReferencesResolve(werkpakketten);
+  // Fails the build on a question pointing at a paper section that is gone.
+  assertPaperSections(werkpakketten);
+  // Fails the build on a werkpakket pointing at an RFC that does not exist.
+  assertRfcReferences(werkpakketten);
+  return werkpakketten.map((entry) => ({
+    params: { id: entry.data.id },
+    props: { entry, all: werkpakketten },
+  }));
+}
+
+const { entry, all } = Astro.props;
+const wp = entry.data;
+
+const fase = getFase(wp.faseId);
+const discipline = getDiscipline(wp.disciplineId);
+const prioriteit = getPrioriteit(wp.prioriteit);
+const categorie = getCategorie(wp.categorie);
+const capability = getCapability(wp.capability);
+
+const samenhang = wp.samenhangIds
+  .map((id: string) => all.find((w) => w.data.id === id))
+  .filter(Boolean);
+
+// The absolute path of the source file, so the toelichting's markdown can be
+// stamped with the line numbers the select-to-edit affordance reads.
+// entry.filePath is relative to the docs/ project root, which is where the
+// build runs, so resolving against cwd lands on the real file.
+const sourcePath = entry.filePath
+  ? `${process.cwd()}/${entry.filePath}`
+  : undefined;
+
+// Both forms of a research question — plain text, or text plus a paper
+// section — come out of this as one shape.
+const vragen = onderzoeksvraagLijst(wp.onderzoeksvragen);
+
+const toelichting = renderMarkdown(
+  wp.toelichting,
+  sourcePath ? { filePath: sourcePath, field: 'toelichting' } : undefined,
+);
+
+// The onderzoeksvragen are a YAML sequence, not markdown, so they carry no
+// positions of their own; read their line ranges from the file so selecting
+// one offers the same edit link as the toelichting.
+const vraagRegels = sourcePath
+  ? yamlSequenceItemLines(sourcePath, 'onderzoeksvragen')
+  : [];
+
+// Base.astro's select-to-edit button builds its URL from this attribute plus
+// the data-line values above; the same wiring the docs and RFC pages use.
+const editBase = entry.filePath
+  ? `https://github.com/MinBZK/regelrecht/edit/main/docs/${entry.filePath}`
+  : undefined;
+
+const pathname = `/roadmap/werkpakket/${wp.id}`;
+
+// The RFCs whose design work belongs here. Their implementation state comes
+// from the RFC itself, so it cannot drift from what was actually decided.
+const rfcs = rfcVerwijzingen(wp.rfcs);
+
+// The metadata pairs, so the sidebar is one loop instead of five near-copies.
+const kerngegevens = [
+  { label: 'Onderzoek', tag: getOnderzoek(wp.onderzoek), value: '' },
+  { label: 'Bouw', tag: getBouw(wp.bouw), value: '' },
+  { label: 'Prioriteit', tag: prioriteit, value: '' },
+  { label: 'Geschatte omvang', value: wp.omvang, leeg: NIET_BEPAALD },
+  { label: 'Categorie', value: categorie?.label, leeg: NIET_BEPAALD },
+  { label: 'Capability', value: capability?.label, leeg: NIET_BEPAALD },
+  {
+    label: 'Benodigde capaciteit',
+    value: wp.capaciteit,
+    leeg: NIET_GESPECIFICEERD,
+  },
+];
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  noSearchIndex
+  title={`${wp.titel} · Roadmap · RegelRecht`}
+  description={`Werkpakket ${wp.titel} in de RegelRecht-roadmap.`}
+>
+  {/*
+    no-collapse is load-bearing, not decoration. Without it the section turns
+    the sidebar into a sheet below 1008px and leaves the trigger to the
+    consumer — and a page with no client script has none, so every bit of
+    metadata and the edit link were simply absent on phone and tablet.
+    Stacking is what this page wants anyway: the metadata is short and there
+    is no sticky chrome to escape.
+  */}
+  <nldd-sidebar-section
+    no-collapse
+    sidebar-label="Kerngegevens"
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <nldd-title slot="header" size="1">
+      <h1>{wp.titel}</h1>
+      <p slot="subtitle">
+        {[fase?.naam, discipline?.naam].filter(Boolean).join(' · ')}
+      </p>
+    </nldd-title>
+
+    <nldd-container slot="sidebar" padding="16" gap="16">
+      {/* A stack of label/value pairs. nldd-description-cell is a table and
+          list cell: standalone it has no width context and collapses to zero
+          height, so the pair is an nldd-container of two nldd-texts. */}
+      <nldd-container gap="16">
+        {
+          kerngegevens.map((veld) => (
+            <nldd-container gap="2">
+              <nldd-text size="xs" weight="medium" color="secondary">
+                {veld.label}
+              </nldd-text>
+              {veld.tag ? (
+                <nldd-container layout="wrap" gap="4">
+                  <nldd-tag
+                    color={veld.tag.tagColor}
+                    text={veld.tag.label}
+                    size="sm"
+                  />
+                </nldd-container>
+              ) : (
+                <nldd-text
+                  size="sm"
+                  color={veld.value ? 'default' : 'secondary'}
+                >
+                  {veld.value || veld.leeg || NIET_BEPAALD}
+                </nldd-text>
+              )}
+            </nldd-container>
+          ))
+        }
+      </nldd-container>
+
+      <nldd-divider />
+
+      <EditLink filePath={entry.filePath} text="Bewerk op GitHub" />
+    </nldd-container>
+
+    <nldd-container gap="32" data-edit-base={editBase}>
+      <nldd-container gap="12">
+        <nldd-title size="4"><h2>Onderzoeksvragen</h2></nldd-title>
+        {
+          vragen.length ? (
+            <nldd-rich-text>
+              <ol>
+                {vragen.map((v, i) => (
+                  <li
+                    data-line={vraagRegels[i]?.[0]}
+                    data-line-end={vraagRegels[i]?.[1]}
+                  >
+                    {v.vraag}
+                    {/* On its own line, and short: the reference is a pointer,
+                        not part of the sentence. The section title would be a
+                        second English clause after every Dutch question, and
+                        the paper's own name repeated per item drowned out the
+                        questions. The full title is on the link's target. */}
+                    {v.paper && (
+                      <a class="rr-papersectie" href={v.paper.href}>
+                        Rules as Executed §&nbsp;{v.paper.nummer}
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </nldd-rich-text>
+          ) : (
+            <nldd-text size="sm" color="secondary">
+              Nog geen onderzoeksvragen geregistreerd.
+            </nldd-text>
+          )
+        }
+      </nldd-container>
+
+      <nldd-container gap="12">
+        <nldd-title size="4"><h2>Toelichting</h2></nldd-title>
+        {
+          toelichting ? (
+            <nldd-rich-text>
+              <Fragment set:html={toelichting} />
+            </nldd-rich-text>
+          ) : (
+            <nldd-text size="sm" color="secondary">
+              Geen toelichting toegevoegd.
+            </nldd-text>
+          )
+        }
+      </nldd-container>
+
+      {
+        rfcs.length > 0 && (
+          <nldd-container gap="12">
+            <nldd-title size="4">
+              <h2>Ontwerp en implementatie</h2>
+            </nldd-title>
+            <nldd-list type="navigation" variant="box-tinted">
+              {rfcs.map((rfc) => (
+                <nldd-list-item href={rfc.link}>
+                  {/* The implementation state renders as a tag, the same
+                      treatment /rfcs gives the same field. A bare string here
+                      would have the site showing one value two ways. */}
+                  <nldd-text-cell overline={rfc.id} text={rfc.title} width="full">
+                    <nldd-container slot="supporting-text" layout="wrap" gap="4">
+                      <nldd-tag color="neutral" size="md">
+                        {rfc.implementation}
+                      </nldd-tag>
+                    </nldd-container>
+                  </nldd-text-cell>
+                  <nldd-spacer-cell />
+                  <nldd-icon-cell size="20" icon="chevron-right" />
+                </nldd-list-item>
+              ))}
+            </nldd-list>
+          </nldd-container>
+        )
+      }
+
+      <nldd-container gap="12">
+        <nldd-title size="4"><h2>Samenhang</h2></nldd-title>
+        {
+          samenhang.length ? (
+            <nldd-list type="navigation" variant="box-tinted">
+              {samenhang.map((related) => {
+                const relatedFase = getFase(related!.data.faseId);
+                const relatedDiscipline = getDiscipline(
+                  related!.data.disciplineId,
+                );
+                return (
+                  <nldd-list-item
+                    href={`/roadmap/werkpakket/${related!.data.id}`}
+                  >
+                    <nldd-text-cell
+                      text={related!.data.titel}
+                      supporting-text={[
+                        relatedFase?.naam,
+                        relatedDiscipline?.naam,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                      width="full"
+                    />
+                    <nldd-spacer-cell />
+                    <nldd-icon-cell size="20" icon="chevron-right" />
+                  </nldd-list-item>
+                );
+              })}
+            </nldd-list>
+          ) : (
+            <nldd-text size="sm" color="secondary">
+              Geen samenhang met andere werkpakketten geregistreerd.
+            </nldd-text>
+          )
+        }
+      </nldd-container>
+    </nldd-container>
+  </nldd-sidebar-section>
+</Base>
+
+<style>
+  /*
+   * The paper reference under a research question. Scoped to this page rather
+   * than living in roadmap.css: that stylesheet is imported by the matrix page
+   * and scopes everything under .rr-roadmap, which this page does not have.
+   *
+   * On its own line and visually quieter than the question. Running it on
+   * after the question mark made every item wrap into a second line of blue
+   * and buried the question itself; it is a pointer, not part of the sentence.
+   */
+  .rr-papersectie {
+    display: block;
+    width: fit-content;
+    margin-top: var(--primitives-space-4, 0.25rem);
+    font: var(--primitives-font-body-xs-regular-snug, inherit);
+    color: var(--semantics-content-secondary-color);
+    text-decoration-color: var(--semantics-surfaces-tinted-border-color);
+  }
+
+  .rr-papersectie:hover,
+  .rr-papersectie:focus-visible {
+    color: var(--semantics-content-accent-color);
+    text-decoration-color: currentColor;
+  }
+</style>

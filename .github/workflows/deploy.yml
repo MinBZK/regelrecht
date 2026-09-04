@@ -17,7 +17,7 @@ jobs:
   # Deze job is de poort van de hele keten: alles wat bouwt of deployt hangt er
   # via `needs: changes` aan, dus wat hier niet doorkomt kost geen runner.
   #
-  # Een PR bouwt alleen met het label `preview` erop. Getoetst op aanwezigheid
+  # Een PR bouwt alleen met het label `deploy:preview` erop. Getoetst op aanwezigheid
   # van het label, niet op het soort gebeurtenis, zodat dezelfde regel geldt bij
   # openen, bij elke volgende commit en op het moment dat het label erbij komt.
   # Bij `unlabeled` bouwt de keten nooit; dat event bestaat hier alleen om
@@ -34,7 +34,7 @@ jobs:
       github.event.pull_request.head.repo.fork != true &&
       (
         github.event_name == 'push' ||
-        contains(github.event.pull_request.labels.*.name, 'preview')
+        contains(github.event.pull_request.labels.*.name, 'deploy:preview')
       )
     permissions:
       contents: read
@@ -85,9 +85,49 @@ jobs:
         id: filter
         run: node script/deploy-filters.mjs --from-file changed.txt
 
+  # ci.yml en deze workflow hangen allebei aan `push` op main en weten niets van
+  # elkaar; er is geen `needs` tussen twee workflows. Op commit 4518c575 faalde
+  # CI op Security Audit en ging de productie-deploy diezelfde minuut door.
+  #
+  # Deze baan staat vóór de builds en niet vóór de deploy. build-image.yml tagt
+  # op main `latest` en pusht die naar GHCR; stond de poort achteraan, dan was
+  # dat image van een rood commit al gepubliceerd en scant de wekelijkse scan
+  # precies die tag.
+  #
+  # Geen job-level `if:`, maar guards per stap, zodat de baan op een pull request
+  # gewoon rapporteert in plaats van over te slaan. Een overgeslagen voorganger
+  # zou anders elke build meeslepen.
+  ci-green:
+    name: Wacht op een groene CI
+    runs-on: ubuntu-latest
+    # Ruim boven MAX_WAIT_SECONDS hieronder, zodat het script zelf stopt met een
+    # leesbare melding in plaats van dat Actions de job afkapt.
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        with:
+          fetch-depth: 1
+
+      - name: Wacht op een groene CI voor deze commit
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          MAX_WAIT_SECONDS: '1200'
+        run: script/require-ci-green.sh
+
+      - name: Niet van toepassing
+        if: "!(github.ref == 'refs/heads/main' && github.event_name == 'push')"
+        run: echo "Alleen een push op main wacht op CI; een preview bouwt op verzoek."
+
   # -- Build jobs --
   build:
-    needs: changes
+    needs: [changes, ci-green]
     if: >-
       github.event.action != 'closed' &&
       (
@@ -105,7 +145,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-admin:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.admin == 'true'
     permissions:
       contents: read
@@ -118,7 +158,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-harvester-worker:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.harvester-worker == 'true'
     permissions:
       contents: read
@@ -133,7 +173,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-enrich-worker:
-    needs: changes
+    needs: [changes, ci-green]
     if: >-
       github.event.action != 'closed' &&
       (
@@ -153,7 +193,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-pipeline-api:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.pipeline-api == 'true'
     permissions:
       contents: read
@@ -167,7 +207,7 @@ jobs:
       cache-scope: pipeline-api
 
   build-grafana:
-    needs: changes
+    needs: [changes, ci-green]
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.changes.outputs.grafana == 'true'
@@ -183,7 +223,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-lawmaking:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.lawmaking == 'true'
     permissions:
       contents: read
@@ -196,7 +236,7 @@ jobs:
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-docs:
-    needs: changes
+    needs: [changes, ci-green]
     if: github.event.action != 'closed' && needs.changes.outputs.docs == 'true'
     permissions:
       contents: read
@@ -275,7 +315,7 @@ jobs:
 
       - name: Deploy to ZAD (Preview)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
+        uses: RijksICTGilde/zad-actions/deploy@b844c76eba3502b40a19be868cdf0586e322f4b8  # v4.1.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -328,12 +368,41 @@ jobs:
         needs.build-lawmaking.result == 'success' ||
         needs.build-docs.result == 'success'
       )
-    permissions: {}
+    permissions:
+      # Voor script/check-deployed-urls.sh onderaan.
+      contents: read
     environment:
       name: production
       url: ${{ steps.editor-url.outputs.url }}
 
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # Faalt één gevraagd image, dan gaat er niets. De conditie hierboven laat
+      # de deploy al door zodra één build slaagt, en de lijst hieronder neemt
+      # alleen de geslaagde mee: het gevolg was dat een component stil op zijn
+      # vorige image bleef staan terwijl de rest meeschoof. De editor en
+      # editor-api delen een contract, dus dat is geen halve deploy maar een
+      # inconsistente. Nooit gebeurd in de laatste honderd runs op main, en dat
+      # is precies waarom het onopgemerkt kon blijven.
+      - name: Weiger een halve deploy
+        env:
+          RESULTS: >-
+            ${{ needs.build.result }} ${{ needs.build-admin.result }}
+            ${{ needs.build-harvester-worker.result }} ${{ needs.build-enrich-worker.result }}
+            ${{ needs.build-pipeline-api.result }} ${{ needs.build-grafana.result }}
+            ${{ needs.build-lawmaking.result }} ${{ needs.build-docs.result }}
+        run: |
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*)
+              echo "::error title=Deploy-poort::Niet elk gevraagd image is gebouwd ($RESULTS). Een deploy zou de rest vooruit zetten en het gevallen component op zijn vorige image laten staan; er gaat daarom niets naar productie."
+              exit 1
+              ;;
+          esac
+          echo "Geen gevallen build; alle gevraagde images staan klaar."
+
       - name: Get short SHA
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
@@ -381,7 +450,7 @@ jobs:
       # de bestaande config en moeten daar niet door een deploy verschuiven.
       - name: Deploy to ZAD (Production)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
+        uses: RijksICTGilde/zad-actions/deploy@b844c76eba3502b40a19be868cdf0586e322f4b8  # v4.1.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -394,6 +463,14 @@ jobs:
         env:
           URLS: ${{ steps.deploy.outputs.urls }}
         run: echo "url=$(jq -r '.editor // empty' <<<"$URLS")" >> "$GITHUB_OUTPUT"
+
+      # De poort vooraan bewaakt dat er niets van een rood commit uitgaat en dat
+      # er geen halve uitrol plaatsvindt. Geen van beide zegt iets over de
+      # uitkomst, en daar bestond verder geen enkele controle voor.
+      - name: Controleer of productie antwoordt
+        env:
+          URLS: ${{ steps.deploy.outputs.urls }}
+        run: script/check-deployed-urls.sh
 
       - name: Verklaar een mislukte deploy
         if: failure() && steps.deploy.outcome == 'failure'
@@ -411,9 +488,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Het label eraf halen ruimt op, net als het sluiten van de PR: een preview
-    # waar niemand meer naar kijkt hoort niet te blijven draaien. Sluiten ruimt
-    # ook op zonder dat het label er ooit op zat, want dan valt er niets te
-    # verwijderen en prunet deze job alsnog de verweesde sha-images.
+    # waar niemand meer naar kijkt hoort niet te blijven draaien. Zat het label
+    # er nooit op, dan valt er niets te verwijderen en doet deze job niets.
     #
     # Een fork-PR heeft nooit gebouwd of gedeployd, dus er valt niets op te
     # ruimen en de GHCR-aanroepen zouden alleen maar op rechten stuklopen.
@@ -422,7 +498,7 @@ jobs:
       github.event.pull_request.head.repo.fork != true &&
       (
         github.event.action == 'closed' ||
-        (github.event.action == 'unlabeled' && github.event.label.name == 'preview')
+        (github.event.action == 'unlabeled' && github.event.label.name == 'deploy:preview')
       )
     permissions:
       packages: write
@@ -431,7 +507,7 @@ jobs:
 
     steps:
       - name: Cleanup ZAD deployment and container images
-        uses: RijksICTGilde/zad-actions/cleanup@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
+        uses: RijksICTGilde/zad-actions/cleanup@b844c76eba3502b40a19be868cdf0586e322f4b8  # v4.1.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -453,22 +529,5 @@ jobs:
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
           comment-header: '## Preview Deployment'
 
-      - name: Prune orphaned SHA-tagged images
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-        run: |
-          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-pipeline-api regelrecht-grafana regelrecht-lawmaking regelrecht-docs; do
-            echo "Pruning sha-only images for $PACKAGE..."
-            gh api --paginate \
-              "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions" \
-              --jq '.[] | select(
-                (.metadata.container.tags | length == 0) or
-                (.metadata.container.tags | all(startswith("sha-")))
-              ) | .id' \
-            2>/dev/null | while read -r VERSION_ID; do
-              echo "Deleting $PACKAGE version $VERSION_ID"
-              gh api --method DELETE \
-                "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
-              2>/dev/null || true
-            done
-          done
+      # De sha-opruiming die hier stond kon het image onder productie vandaan
+      # halen en draait nu in scheduled-cleanup.yml.

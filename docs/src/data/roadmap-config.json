@@ -1,0 +1,61 @@
+{
+  "fases": [
+    {
+      "id": "wat",
+      "volgnummer": 1,
+      "naam": "Wat-fase",
+      "ondertitel": "Fundering & Definitie"
+    },
+    {
+      "id": "wat-fase-2",
+      "volgnummer": 2,
+      "naam": "Wat-fase 2",
+      "ondertitel": ""
+    },
+    {
+      "id": "hoe",
+      "volgnummer": 3,
+      "naam": "Hoe-fase",
+      "ondertitel": "Operationalisering & Tooling"
+    },
+    {
+      "id": "waar",
+      "volgnummer": 4,
+      "naam": "Waar-fase",
+      "ondertitel": "Institutionele Verankering"
+    },
+    {
+      "id": "garantie",
+      "volgnummer": 5,
+      "naam": "Garantie-fase",
+      "ondertitel": "Maturiteit & Systeemwaarborging"
+    }
+  ],
+  "disciplines": [
+    {
+      "id": "techniek",
+      "naam": "Techniek & Architectuur",
+      "ondertitel": "Van standaarden naar intelligente tooling"
+    },
+    {
+      "id": "service-design",
+      "naam": "Service Design",
+      "ondertitel": ""
+    },
+    {
+      "id": "mensen",
+      "naam": "Mensen & Proces",
+      "ondertitel": "Van competenties naar een interdisciplinaire cultuur"
+    },
+    {
+      "id": "recht",
+      "naam": "Recht & Instituties",
+      "ondertitel": "Van kaders naar herinrichting van de macht"
+    },
+    {
+      "id": "ethiek",
+      "naam": "Ethiek & Waarden",
+      "ondertitel": "Van principes naar toetsbare waarborgen"
+    }
+  ]
+}

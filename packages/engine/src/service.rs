@@ -616,17 +616,8 @@ impl LawExecutionService {
 
     /// Build an Execution Receipt (RFC-013) from an ArticleResult.
     ///
-    /// Wraps the result with provenance, engine config, and scope metadata.
-    pub fn build_receipt(
-        &self,
-        result: &ArticleResult,
-        parameters: &BTreeMap<String, Value>,
-        calculation_date: &str,
-    ) -> crate::receipt::ExecutionReceipt {
-        self.build_receipt_with_outputs(result, parameters, calculation_date, &[])
-    }
-
-    /// Build an Execution Receipt with explicit requested output tracking.
+    /// Wraps the result with provenance, engine config, and scope metadata,
+    /// and records which outputs were explicitly requested.
     pub fn build_receipt_with_outputs(
         &self,
         result: &ArticleResult,
@@ -934,60 +925,6 @@ impl LawExecutionService {
             calculation_date,
             None,
         )
-    }
-
-    /// Execute a single lifecycle stage with tracing enabled.
-    ///
-    /// Same as `execute_stage` but accepts a shared trace builder so the
-    /// staged execution is recorded in the trace tree.
-    pub fn execute_stage_with_trace(
-        &self,
-        law_id: &str,
-        output_name: &str,
-        state: Option<StageState>,
-        parameters: BTreeMap<String, Value>,
-        calculation_date: &str,
-        trace: Rc<RefCell<TraceBuilder>>,
-    ) -> Result<ExecutionOutcome> {
-        // Push a top-level trace node so partial traces are preserved on error,
-        // mirroring evaluate_law_output_with_trace_builder.
-        {
-            let mut tb = trace.borrow_mut();
-            tb.push(
-                format!("{} ({}) [stage]", law_id, output_name),
-                PathNodeType::Article,
-            );
-            tb.set_message(format!(
-                "Stage execution: {} ({} {})",
-                law_id, calculation_date, output_name,
-            ));
-        }
-
-        let result = self.execute_stage_internal(
-            law_id,
-            output_name,
-            state,
-            parameters,
-            calculation_date,
-            Some(Rc::clone(&trace)),
-        );
-
-        match result {
-            Ok(outcome) => {
-                let mut tb = trace.borrow_mut();
-                tb.pop();
-                Ok(outcome)
-            }
-            Err(e) => {
-                let mut tb = trace.borrow_mut();
-                tb.set_message(format!("Stage execution failed: {}", e));
-                let partial_trace = tb.pop();
-                Err(EngineError::TracedError {
-                    source: Box::new(e),
-                    trace: partial_trace.map(Box::new),
-                })
-            }
-        }
     }
 
     /// Internal stage execution with optional tracing.

@@ -277,7 +277,7 @@ The engine enforces compile-time security limits to prevent DoS:
 
 The engine can produce an Execution Receipt: a JSON document that captures everything needed to reproduce a specific execution result. The receipt includes `engine_version`, `schema_version`, and `regulation_hash` alongside the regular `ArticleResult` fields. This allows independent verification of past decisions.
 
-Use `LawExecutionService.build_receipt()` to construct a receipt programmatically, or pass `--receipt` to the CLI (see below).
+Use `LawExecutionService.build_receipt_with_outputs()` to construct a receipt programmatically, or pass `--receipt` to the CLI (see below).
 
 See [RFC-013](/rfcs/rfc-013) for the design rationale.
 

@@ -17,7 +17,7 @@
 
         <nldd-simple-section v-if="shownStage">
           <!-- Git ⇆ wetgeving mapping -->
-          <nldd-list variant="box">
+          <nldd-list variant="box-tinted">
             <nldd-list-item size="md">
               <nldd-text-cell text="Git / CI/CD" :supporting-text="shownStage.gitLabel"></nldd-text-cell>
             </nldd-list-item>

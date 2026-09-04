@@ -5,15 +5,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/data/*.test.mjs"
   },
   "dependencies": {
-    "@nldd/design-system": "^0.8.78",
+    "@nldd/design-system": "^0.8.83",
     "@regelrecht/frontend-shared": "*",
-    "vue": "^3.5.38"
+    "vue": "^3.5.41"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",
-    "vite": "^8.1.4"
+    "vite": "^8.2.2"
   }
 }

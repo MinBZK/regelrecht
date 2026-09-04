@@ -136,3 +136,19 @@ svg[id^='mermaid-'] .labelBkg {
   fill: transparent !important;
   background: transparent !important;
 }
+
+/* Pre-upgrade sizing for code blocks, on every page that has them. Before
+   the nldd-code-viewer custom element is defined, its light-DOM text
+   renders as one collapsed line; after upgrade the block takes its real
+   multi-line height, shifting everything below it and making anchor links
+   (search deep links, section links) land off-target. Rendering the raw
+   text monospaced and pre-wrapped puts the pre-upgrade height close to
+   the final one. */
+nldd-code-viewer:not(:defined) {
+  display: block;
+  white-space: pre;
+  overflow-x: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}

@@ -16,11 +16,11 @@ If you came here expecting test cases you can run against your own engine, there
 
 A manifest is checked in per schema version, up to `conformance/v0.6.0/manifest.json`. Each declares a set of conformance levels and, per level, the operations that level is responsible for. The v0.5.4 manifest added `DATE_DIFF` to the temporal level alongside the [date operations](../concepts/temporal-and-dates) it belongs with, and v0.6.0 added `DATE_PART` and `START_OF` there ([RFC-032](/rfcs/rfc-032)).
 
-What runs in CI is **operation coverage of the manifest itself**, nothing more. Three integration tests in `packages/engine/tests/conformance_coverage.rs` check each manifest's `operations` lists against the engine's own operation list:
+What runs in CI is **operation coverage of the manifests themselves**, nothing more. `packages/engine/tests/conformance_coverage.rs` checks their `operations` lists against the engine's own operation list in three integration tests:
 
-- every operation the engine supports appears in some level,
-- no level lists an operation the engine does not have,
-- no operation lands in two levels.
+- every operation the engine supports appears in some level, checked against the newest manifest only,
+- no level lists an operation the engine does not have, checked against every manifest,
+- no operation lands in two levels, checked against every manifest.
 
 So a new operation cannot be added to the engine without being classified into exactly one conformance level; CI fails otherwise, and those three properties keep holding as the engine grows. But it tests the *manifest*, not any law execution: it never runs a regulation, never checks an output. The cross-implementation guarantee a conformance suite is meant to provide does **not** hold today.
 
@@ -51,3 +51,4 @@ Writing the JSON test corpus and a runner that executes the cases against an arb
 - [Execution Provenance](../concepts/execution-provenance) - the receipt format a conformant engine produces
 - [Schema](./schema) - the versioned specification under test
 - [RFC-014: Engine Conformance Test Suite](/rfcs/rfc-014) - full specification and current status
+- [Rules as Executed, section 9.1](/research/rules-as-executed#sec:engines) - the position paper on multiple engines and semantic equivalence

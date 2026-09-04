@@ -13,6 +13,9 @@ on:
 
 env:
   ZAD_PROJECT: regel-k4c
+  # Dezelfde basis-URL die zad-actions zelf als default hanteert; hier expliciet
+  # omdat de scripts hieronder er rechtstreeks naartoe praten.
+  ZAD_API_BASE: https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api
 
 jobs:
   cleanup-stale-previews:
@@ -22,10 +25,17 @@ jobs:
       deployments: write
       packages: write
       actions: write
+      # Voor `gh pr list` in de controlestap onderaan.
+      pull-requests: read
 
     steps:
+      # Voor de scripts hieronder; de opruimactie zelf heeft de boom niet nodig.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+
       - name: Cleanup stale ZAD deployments and GitHub environments
-        uses: RijksICTGilde/zad-actions/scheduled-cleanup@13434cd415db0cd195a2c5f12bf67645acfcb635  # v4.0.6
+        uses: RijksICTGilde/zad-actions/scheduled-cleanup@b844c76eba3502b40a19be868cdf0586e322f4b8  # v4.1.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -37,32 +47,76 @@ jobs:
           dry-run: ${{ inputs.dry-run || false }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
 
-      - name: Cleanup stale container images
+      # De opruimactie hierboven inventariseert GitHub-environments en mist
+      # daarmee elk ZAD-deployment waarvan de environment al weg is.
+      - name: Ruim verweesde ZAD-deployments op
         env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-          ORG: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
+          ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
+          ZAD_PROJECT: ${{ env.ZAD_PROJECT }}
           DRY_RUN: ${{ inputs.dry-run || false }}
-        run: |
-          # Get open PR numbers to avoid deleting active preview images
-          OPEN_PRS=$(gh pr list --repo "${ORG}/regelrecht" --state open --json number --jq '.[].number') || { echo 'Failed to list open PRs, skipping cleanup'; exit 0; }
+        run: script/prune-orphaned-deployments.sh
 
-          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-docs; do
-            echo "Checking stale images for $PACKAGE..."
-            gh api --paginate \
-              "/orgs/${ORG}/packages/container/${PACKAGE}/versions" \
-              --jq '.[] | select(.metadata.container.tags | length > 0) | {id, tags: .metadata.container.tags}' \
-              2>/dev/null | jq -r 'select(.tags | any(startswith("pr-"))) | "\(.id) \(.tags | map(select(startswith("pr-"))) | .[0])"' \
-              2>/dev/null | while read -r VERSION_ID TAG; do
-                PR_NUM=$(echo "$TAG" | sed 's/pr-//')
-                if ! echo "$OPEN_PRS" | grep -qw "$PR_NUM"; then
-                  if [ "$DRY_RUN" = "true" ]; then
-                    echo "[dry-run] Would delete stale $PACKAGE:$TAG (version $VERSION_ID)"
-                  else
-                    echo "Deleting stale $PACKAGE:$TAG (version $VERSION_ID)"
-                    gh api --method DELETE \
-                      "/orgs/${ORG}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
-                      2>/dev/null || true
-                  fi
-                fi
-              done
-          done
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+
+      # Eén stap voor alle image-opruiming: stale pr-tags, uitgediende
+      # sha-tags en verweesde untagged manifesten. Ze delen dezelfde
+      # bescherming — wat ZAD draait blijft staan, en wat een getagde index nog
+      # als child heeft ook — en die afweging valt niet te verdelen over twee
+      # opruimers die elkaars uitzonderingen niet kennen.
+      #
+      # De logica staat in script/ghcr-cleanup.mjs en niet hier: ze volgt de
+      # referentiegraaf van de registry om te weten welke untagged versie een
+      # levend onderdeel van een getagde image is en welke een wees, en dat
+      # hoort in code die je kunt testen (script/ghcr-cleanup.test.mjs) in
+      # plaats van in een pipeline die je alleen in productie kunt proberen.
+      #
+      # De opruimer doet duizenden manifest-lookups; een vastgelopen call mag
+      # geen runner-uren opeten. Hij stopt zelf netjes bij een rate limit, dus
+      # `timeout-minutes` is het vangnet daaronder, niet de normale afloop.
+      #
+      # Draaide voor de sha-tak in cleanup-preview bij elke gesloten PR. Hier
+      # draait hij één keer per nacht, en staat een rode uitkomst in een run
+      # die iemand leest.
+      #
+      # Het automatische token volstaat: de images worden door deze repo zelf
+      # gepubliceerd (build-image.yml), dus de repo heeft de admin-rol op de
+      # packages en mag met `packages: write` versies opvragen en verwijderen.
+      # ADMIN_TOKEN is hier niet nodig — dat blijft alleen voor het verwijderen
+      # van GitHub-environments, waar geen automatische permissie voor bestaat.
+      - name: Cleanup stale container images
+        timeout-minutes: 45
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG: ${{ github.repository_owner }}
+          ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
+          ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
+          ZAD_PROJECT: ${{ env.ZAD_PROJECT }}
+          DRY_RUN: ${{ inputs.dry-run || false }}
+        run: node script/ghcr-cleanup.mjs
+
+      # De opruimactie meldt succes op basis van alleen de ZAD-kant, dus deze
+      # twee tellen de uitkomst. Achteraan en met !cancelled(), zodat een rode
+      # controle de opruiming erboven niet meesleept. Op een dry-run overslaan:
+      # die verwijdert niets, dus zouden ze altijd omvallen.
+      - name: Controleer wat er is achtergebleven
+        if: ${{ !cancelled() && !(inputs.dry-run || false) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: script/check-preview-environments.sh
+
+      - name: Controleer of er ZAD-deployments zijn achtergebleven
+        if: ${{ !cancelled() && !(inputs.dry-run || false) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ZAD_API_KEY: ${{ secrets.RIG_API_KEY }}
+          ZAD_API_BASE: ${{ env.ZAD_API_BASE }}
+          ZAD_PROJECT: ${{ env.ZAD_PROJECT }}
+        run: script/check-preview-deployments.sh

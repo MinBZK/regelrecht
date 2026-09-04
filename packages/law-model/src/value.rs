@@ -696,11 +696,6 @@ impl Operation {
         matches!(self, Operation::Max | Operation::Min)
     }
 
-    /// Check if this is a rounding operation (RFC-024)
-    pub fn is_rounding(&self) -> bool {
-        matches!(self, Operation::Round | Operation::Ceil | Operation::Floor)
-    }
-
     /// Check if this is a logical operation
     pub fn is_logical(&self) -> bool {
         matches!(self, Operation::And | Operation::Or | Operation::Not)

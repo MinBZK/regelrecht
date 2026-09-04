@@ -58,9 +58,11 @@ path = "src/bin/evaluate.rs"
 [[test]]
 name = "bdd"
 harness = false
-# Niet meelopen in `cargo test`: de BDD-suite draait tegen het echte corpus en
-# hoort bewust niet in CI (zie docs/operations/ci-cd.md). `just bdd` roept het
-# target expliciet aan.
+# Niet meelopen in `cargo test`: het target draait standaard beide buckets, en
+# bucket A (wetvalidatie tegen het echte corpus) hoort niet in een testbaan die
+# moet blokkeren. Aanroepers kiezen hun bucket met BDD_BUCKET en noemen het
+# target expliciet — `just bdd` lokaal, `BDD_BUCKET=conformance cargo test
+# --test bdd` in CI (zie docs/operations/ci-cd.md).
 test = false
 
 [features]

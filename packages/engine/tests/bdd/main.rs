@@ -22,6 +22,15 @@
 //! ```bash
 //! just bdd
 //! ```
+//!
+//! # Bucket selection
+//!
+//! `BDD_BUCKET` picks which bucket runs: `all` (default), `conformance`
+//! (bucket B) or `corpus` (bucket A). CI runs the conformance bucket as a
+//! blocking check — it is deterministic and depends only on the synthetic
+//! `test_*` laws. Bucket A stays out of CI: it asserts what the live laws
+//! currently produce, so a failure there is a question for a human, not a
+//! broken build.
 
 // Allow panic/expect in test code - these are appropriate for test setup
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
@@ -72,33 +81,70 @@ impl parser::Parser<Vec<PathBuf>> for ExplicitPaths {
     }
 }
 
-/// Collect every feature file from both buckets:
-/// - bucket A: any `*.feature` under a `scenarios/` directory in the corpus, and
-/// - bucket B: `bdd/conformance/*.feature`.
-fn collect_feature_paths(root: &Path) -> Vec<PathBuf> {
-    let mut features: Vec<PathBuf> = Vec::new();
+/// Which bucket(s) the run covers, read from `BDD_BUCKET`.
+#[derive(Clone, Copy, PartialEq)]
+enum Bucket {
+    All,
+    Corpus,
+    Conformance,
+}
 
-    // Bucket A — corpus scenarios.
-    for entry in WalkDir::new(root.join("corpus/regulation"))
-        .into_iter()
-        .flatten()
-    {
-        let p = entry.path();
-        let is_feature = p.extension().map(|e| e == "feature").unwrap_or(false);
-        let under_scenarios = p.components().any(|c| c.as_os_str() == "scenarios");
-        if is_feature && under_scenarios {
-            features.push(p.to_path_buf());
+impl Bucket {
+    fn from_env() -> Self {
+        match std::env::var("BDD_BUCKET").as_deref().map(str::trim) {
+            Ok("") | Err(_) | Ok("all") => Self::All,
+            Ok("corpus") | Ok("a") => Self::Corpus,
+            Ok("conformance") | Ok("b") => Self::Conformance,
+            Ok(other) => panic!("BDD_BUCKET={other}: expected all, corpus or conformance"),
         }
     }
 
-    // Bucket B — engine conformance.
-    for entry in WalkDir::new(root.join("bdd/conformance"))
-        .into_iter()
-        .flatten()
-    {
-        let p = entry.path();
-        if p.extension().map(|e| e == "feature").unwrap_or(false) {
-            features.push(p.to_path_buf());
+    fn covers_corpus(self) -> bool {
+        matches!(self, Self::All | Self::Corpus)
+    }
+
+    fn covers_conformance(self) -> bool {
+        matches!(self, Self::All | Self::Conformance)
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "corpus/regulation/**/scenarios or bdd/conformance",
+            Self::Corpus => "corpus/regulation/**/scenarios",
+            Self::Conformance => "bdd/conformance",
+        }
+    }
+}
+
+/// Collect the feature files of the selected bucket(s):
+/// - bucket A: any `*.feature` under a `scenarios/` directory in the corpus, and
+/// - bucket B: `bdd/conformance/*.feature`.
+fn collect_feature_paths(root: &Path, bucket: Bucket) -> Vec<PathBuf> {
+    let mut features: Vec<PathBuf> = Vec::new();
+
+    if bucket.covers_corpus() {
+        for entry in WalkDir::new(root.join("corpus/regulation"))
+            .into_iter()
+            .flatten()
+        {
+            let p = entry.path();
+            let is_feature = p.extension().map(|e| e == "feature").unwrap_or(false);
+            let under_scenarios = p.components().any(|c| c.as_os_str() == "scenarios");
+            if is_feature && under_scenarios {
+                features.push(p.to_path_buf());
+            }
+        }
+    }
+
+    if bucket.covers_conformance() {
+        for entry in WalkDir::new(root.join("bdd/conformance"))
+            .into_iter()
+            .flatten()
+        {
+            let p = entry.path();
+            if p.extension().map(|e| e == "feature").unwrap_or(false) {
+                features.push(p.to_path_buf());
+            }
         }
     }
 
@@ -122,11 +168,13 @@ async fn main() {
         .expect("Could not resolve project root")
         .to_path_buf();
 
-    let features = collect_feature_paths(&root);
+    let bucket = Bucket::from_env();
+    let features = collect_feature_paths(&root, bucket);
     assert!(
         !features.is_empty(),
-        "No feature files found under {} (corpus/regulation/**/scenarios or bdd/conformance)",
-        root.display()
+        "No feature files found under {} ({})",
+        root.display(),
+        bucket.label()
     );
 
     // Run cucumber over both buckets. `@wip` scenarios document genuine,

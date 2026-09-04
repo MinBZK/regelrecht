@@ -924,20 +924,29 @@ impl RepoBackend for GitHubApiBackend {
     }
 
     async fn changed_files(&self) -> Result<Vec<String>> {
+        self.changed_files_with_token(None).await
+    }
+
+    // Same per-call token override stance as `read_file_with_token`: a
+    // request-bound user token supersedes the backend's baked-in one, so a
+    // private traject repo without a configured service token can still be
+    // diffed as the acting editor user.
+    async fn changed_files_with_token(&self, token_override: Option<&str>) -> Result<Vec<String>> {
         // The diff is branch-against-base. Without a base to compare to,
         // or a token to read the (typically private) repo, there's nothing
         // meaningful to report — return empty rather than erroring.
         let Some(base) = self.base_branch.as_deref() else {
             return Ok(Vec::new());
         };
-        if self.token.is_none() {
+        let token = token_override.or(self.token.as_deref());
+        if token.is_none() {
             return Ok(Vec::new());
         }
         let in_repo_paths = {
             let inner = self.inner.lock().await;
             inner
                 .client
-                .compare_files(&self.full_repo(), base, &self.branch, self.token.as_deref())
+                .compare_files(&self.full_repo(), base, &self.branch, token)
                 .await?
         };
         // Map in-repo paths back to source-relative paths, dropping any

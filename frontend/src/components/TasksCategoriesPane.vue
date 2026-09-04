@@ -80,12 +80,12 @@ function select(categorie, lawId = null) {
   <!-- Alleen gevulde categorieën: een categorie zonder taken is geen keuze,
        dus verdwijnt hij. Zo is elke ingang die je ziet ook echt ergens goed
        voor - inclusief Prioriteit, dat wegvalt zodra er niets vastzit. -->
-  <nldd-list v-if="counts[ALLE] > 0" variant="simple" arrow-navigation>
+  <nldd-list v-if="counts[ALLE] > 0" variant="simple">
     <nldd-list-item
       v-if="counts[PRIORITEIT] > 0"
       size="md"
       button
-      :selected="isSelected(PRIORITEIT) || undefined"
+      :current="isSelected(PRIORITEIT) || undefined"
       @click="select(PRIORITEIT)"
     >
       <nldd-icon-cell size="20"><nldd-icon name="exclamation-circle"></nldd-icon></nldd-icon-cell>
@@ -106,7 +106,7 @@ function select(categorie, lawId = null) {
       v-if="counts[WACHTEN] > 0"
       size="md"
       button
-      :selected="isSelected(WACHTEN) || undefined"
+      :current="isSelected(WACHTEN) || undefined"
       @click="select(WACHTEN)"
     >
       <nldd-icon-cell size="20"><nldd-icon name="clock"></nldd-icon></nldd-icon-cell>
@@ -126,7 +126,7 @@ function select(categorie, lawId = null) {
     <nldd-list-item
       size="md"
       button
-      :selected="isSelected(ALLE) || undefined"
+      :current="isSelected(ALLE) || undefined"
       @click="select(ALLE)"
     >
       <nldd-icon-cell size="20"><nldd-icon name="circle-grid-2x2-top-left-check-mark"></nldd-icon></nldd-icon-cell>
@@ -155,12 +155,12 @@ function select(categorie, lawId = null) {
     <nldd-title size="5"><h3>Contexten</h3></nldd-title>
     <nldd-spacer size="8"></nldd-spacer>
 
-    <nldd-list variant="simple" arrow-navigation>
+    <nldd-list variant="simple">
       <nldd-list-item
         v-if="hasWerkdocumenten"
         size="md"
         button
-        :selected="isSelected(WERKDOCUMENTEN) || undefined"
+        :current="isSelected(WERKDOCUMENTEN) || undefined"
         @click="select(WERKDOCUMENTEN)"
       >
         <nldd-icon-cell size="20"><nldd-icon name="label"></nldd-icon></nldd-icon-cell>
@@ -183,7 +183,7 @@ function select(categorie, lawId = null) {
         :key="law.lawId"
         size="md"
         button
-        :selected="isSelected(WET, law.lawId) || undefined"
+        :current="isSelected(WET, law.lawId) || undefined"
         @click="select(WET, law.lawId)"
       >
         <nldd-icon-cell size="20"><nldd-icon name="label"></nldd-icon></nldd-icon-cell>

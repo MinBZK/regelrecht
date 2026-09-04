@@ -39,11 +39,6 @@ impl ProcessRunner {
         self.running.is_some()
     }
 
-    #[allow(dead_code)]
-    pub fn running_task(&self) -> Option<&str> {
-        self.running.as_deref()
-    }
-
     /// Spawn a `just` command and stream output back via messages.
     pub fn run_just(&mut self, task_id: String, target: &str) {
         self.run_command(task_id, "just", &[target]);

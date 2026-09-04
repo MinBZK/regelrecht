@@ -18,7 +18,7 @@ if (!sourceDir || !importsFile) {
   process.exit(2);
 }
 
-const EXTENSIONS = new Set(['vue', 'js', 'ts', 'astro', 'mdx', 'md']);
+const EXTENSIONS = new Set(['vue', 'js', 'ts', 'astro', 'mdx', 'md', 'html']);
 const HEADER = `// Design-system components this app renders, one entry point each.
 // The package root would pull in all ~110 components; this list is generated
 // from the nldd-* tags in the source and checked on every build by

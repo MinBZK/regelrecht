@@ -224,6 +224,7 @@ fn ids_query() -> Query<PaginationParams> {
         limit: None,
         q: None,
         ids: Some(format!("{TRAJECT_LAW},{SEED_ONLY_LAW}")),
+        source: None,
     })
 }
 

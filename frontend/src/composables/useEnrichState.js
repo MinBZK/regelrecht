@@ -19,7 +19,7 @@ import { computed, onMounted, toValue } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuth } from './useAuth.js';
 import { useTaskActions, usePollWhile } from './useTasks.js';
-import { reviewTarget } from '../lib/taskReview.js';
+import { reviewTarget, sameTraject } from '../lib/taskReview.js';
 
 /**
  * @param {object} sources - refs/getters van de view.
@@ -40,14 +40,25 @@ export function useEnrichState({ trajectRef, lawId, articleNumber, reviewActive 
     tasks: openTasks,
   } = useTaskActions();
 
-  // Loopt er al een verrijking voor deze wet? Dan meldt de lege pane dat in
-  // plaats van opnieuw de knoppen aan te bieden; een tweede aanvraag zou toch
-  // op een 409 stuiten.
-  const isEnriching = computed(() =>
-    runningJobs.value.some(
-      (job) => job.job_type === 'enrich' && job.law_id === toValue(lawId),
-    ),
-  );
+  // Loopt er al een verrijking voor deze wet in dit traject? Dan meldt de lege
+  // pane dat in plaats van opnieuw de knoppen aan te bieden; een tweede
+  // aanvraag zou toch op een 409 stuiten.
+  //
+  // Ook hier op traject matchen: `running` is net als de takenlijst
+  // account-breed, terwijl de 409 per (wet, traject) geldt
+  // (`idx_unique_active_enrich_job`). Een verrijking die in traject A loopt
+  // zette de pane in traject B anders op "bezig" en verborg daar de "Genereer
+  // een voorstel"-knop voor een aanvraag die gewoon gehonoreerd zou worden.
+  const isEnriching = computed(() => {
+    const traject = toValue(trajectRef);
+    if (!traject) return false;
+    return runningJobs.value.some(
+      (job) =>
+        job.job_type === 'enrich' &&
+        job.law_id === toValue(lawId) &&
+        sameTraject(job.traject_ref, traject),
+    );
+  });
   // Alleen pollen zolang je naar de bezig-staat kijkt; zie usePollWhile. Staat
   // hier ná isEnriching en achter de argumenten van deze composable: de watch
   // leest zijn bron meteen om de dependency te leggen, dus alles wat hij
@@ -61,9 +72,26 @@ export function useEnrichState({ trajectRef, lawId, articleNumber, reviewActive 
   // voor deze wet. Je kijkt naar één artikel, dus de taak van dát artikel gaat
   // voor; is die er niet, dan de eerste van de wet - beter naar een naburig
   // voorstel wijzen dan naar niets.
+  //
+  // Ook op traject matchen, niet alleen op wet: de takenlijst is account-breed
+  // en dezelfde wet leeft in meerdere trajecten. Een open taak uit traject A
+  // kaapte anders de pane in traject B - inclusief de "Beoordeel voorstel"-knop,
+  // die dan naar A navigeert en de "Genereer een voorstel"-knop van B verdringt.
+  // Zonder actief traject (globale corpus-weergave) matcht er dus niets: een
+  // voorstel hoort bij een traject en valt daarbuiten niet te beoordelen.
+  //
+  // Vergelijken via sameTraject en niet op de hele string: de taak draagt de
+  // ref van het aanvraagmoment, en het slug-deel daarvan verandert mee met de
+  // naam van het traject. Na een hernoeming zou een letterlijke vergelijking
+  // het eigen voorstel niet meer herkennen.
   const pendingReviewTask = computed(() => {
+    const traject = toValue(trajectRef);
+    if (!traject) return null;
     const forLaw = openTasks.value.filter(
-      (t) => t.task_type === 'job_review' && t.payload?.law_id === toValue(lawId),
+      (t) =>
+        t.task_type === 'job_review' &&
+        t.payload?.law_id === toValue(lawId) &&
+        sameTraject(t.payload?.traject_ref, traject),
     );
     if (!forLaw.length) return null;
     const here = String(toValue(articleNumber) ?? '');

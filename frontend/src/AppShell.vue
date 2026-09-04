@@ -9,6 +9,8 @@ import SettingsSheet from './components/SettingsSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useGithubAuth } from './composables/useGithubAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
+import { useColorScheme } from './composables/useColorScheme.js';
+import { useSettingsSections } from './composables/useSettingsSections.js';
 import { useAddActions } from './composables/useAddActions.js';
 import {
   lastHomePath,
@@ -62,6 +64,28 @@ function goToHarvesting() {
   router.push("/harvesting");
 }
 const { activeTrajectRef } = useTrajects();
+
+// Het kleurschema zit als submenu in dit menu en niet meer in de
+// instellingen-sheet: het is iets dat je even omzet, geen instelling die je
+// opzoekt. De radio's laten meteen zien welke aanstaat, wat een sheet pas na
+// openen doet.
+const { colorScheme, setColorScheme } = useColorScheme();
+const colorSchemeOptions = [
+  ['auto', 'Systeem', 'display'],
+  ['light', 'Licht', 'light-mode'],
+  ['dark', 'Donker', 'dark-mode'],
+];
+// `select` draagt geen payload; de gekozen waarde staat op het item zelf.
+function onColorSchemeSelect(e) {
+  const value = e.target?.getAttribute?.('value');
+  if (value) setColorScheme(value);
+}
+
+// Zonder Weergave houdt de sheet alleen secties over die achter een rol of een
+// omgevingsinstelling zitten. Is er niets van over, dan hoort het menu-item er
+// ook niet te staan: een "Instellingen" dat een lege sheet opent is erger dan
+// geen "Instellingen".
+const { hasContent: settingsHasContent } = useSettingsSections();
 // Universele "Toevoegen"-knop: vuurt intenties die LibraryView oppakt.
 const { triggerAddLaw, triggerNewWerkdoc, triggerUploadWerkdoc, triggerInviteMembers } = useAddActions();
 
@@ -353,21 +377,30 @@ function onTabDismiss(e) {
                 <nldd-menu slot="popup">
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16" padding-block="12">
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
-                  <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu @select="onColorSchemeSelect">
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="value"
+                        type="radio"
+                        :value="value"
+                        :text="label"
+                        :icon="icon"
+                        :selected="colorScheme === value || undefined"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="settingsHasContent" text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
                   <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
@@ -452,21 +485,30 @@ function onTabDismiss(e) {
                 <nldd-menu slot="popup">
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16" padding-block="12">
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
-                  <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu @select="onColorSchemeSelect">
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="value"
+                        type="radio"
+                        :value="value"
+                        :text="label"
+                        :icon="icon"
+                        :selected="colorScheme === value || undefined"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="settingsHasContent" text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
                   <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
@@ -727,21 +769,30 @@ function onTabDismiss(e) {
                 <nldd-menu slot="popup">
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16" padding-block="12">
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
-                  <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu @select="onColorSchemeSelect">
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="value"
+                        type="radio"
+                        :value="value"
+                        :text="label"
+                        :icon="icon"
+                        :selected="colorScheme === value || undefined"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="settingsHasContent" text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
                   <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>

@@ -45,6 +45,27 @@ export function changedLawsUrl(trajectRef) {
   return `${corpusBase(trajectRef)}/changed-laws`;
 }
 
+// Favorieten horen bij de plek waar je werkt: in een traject de wetten van dat
+// traject, in Corpus juris wat je bewaart terwijl je bladert. Beide sets staan
+// los van elkaar, dus de URL kiest de set. Geen `requireTraject`: zonder traject
+// is de globale route het juiste antwoord en niet een fout.
+export function favoritesUrl(trajectRef) {
+  return trajectRef ? `/api/trajects/${encodeURIComponent(trajectRef)}/favorites` : '/api/favorites';
+}
+
+export function favoriteUrl(trajectRef, lawId) {
+  return `${favoritesUrl(trajectRef)}/${encodeURIComponent(lawId)}`;
+}
+
+// De bronnen van een traject: id, naam, priority, law_count en index_error
+// per bron. Zit náást de corpus-prefix (`/api/trajects/{ref}/sources`), niet
+// erin - vandaar de eigen opbouw in plaats van `corpusBase`. Traject-only:
+// de globale tegenhanger `/api/sources` heeft geen aanroeper in de editor.
+export function trajectSourcesUrl(trajectRef) {
+  requireTraject(trajectRef, 'sources listing');
+  return `/api/trajects/${encodeURIComponent(trajectRef)}/sources`;
+}
+
 // Law ids whose articles `implements` an open_term of `lawId` (the IoC
 // reverse link). Computed server-side over the in-memory corpus, so the
 // scenario dependency loader resolves implementing regulations with a
