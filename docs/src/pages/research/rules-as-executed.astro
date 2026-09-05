@@ -70,7 +70,16 @@ const doiUrl = `https://doi.org/${meta.doi}`;
           <a href={doiUrl}>doi:{meta.doi}</a>
         </p>
         <p class="rr-paper-note">{meta.note}</p>
-        <Fragment set:html={paperHtml} />
+        {/*
+         * data-discuss-paper turns on the selection affordance in Base.astro:
+         * selecting text offers "Discuss this passage", which opens a
+         * prefilled issue. The value names the paper in the issue title.
+         * Scoped to the paper body so a selection in the byline above (authors,
+         * emails, DOI) does not offer to discuss a passage.
+         */}
+        <div data-discuss-paper={meta.title}>
+          <Fragment set:html={paperHtml} />
+        </div>
       </nldd-rich-text>
     </div>
   </nldd-one-third-two-thirds-section>
