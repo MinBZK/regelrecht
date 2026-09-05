@@ -1,0 +1,7 @@
+---
+# This directory holds the repository's only issue form, so its mere presence
+# switches every new issue from a blank body to the template chooser. Keeping
+# the blank option enabled is deliberate: the form is for one narrow case
+# (feedback on a published paper) and everything else in this repo is still an
+# ordinary issue.
+blank_issues_enabled: true

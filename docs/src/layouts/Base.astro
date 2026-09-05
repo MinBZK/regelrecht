@@ -1089,17 +1089,35 @@ const legalLinks = [
         // anchor the issue links back to. The generated paper HTML gives every
         // heading a stable id (pandoc's sec: prefixes), so this is a reliable
         // location without any source-line provenance.
-        const nearestHeading = (content, node) => {
+        const nearestHeading = (content, range) => {
           const headings = Array.from(
             content.querySelectorAll('h2[id], h3[id], h4[id]')
           );
+          // An element startContainer addresses a position *between* its
+          // children (startOffset indexes childNodes), so compare from the
+          // child actually at that offset. Without this, a range whose start
+          // is the wrapper itself (what select-all produces) makes every
+          // heading a descendant of `node`, which is CONTAINED_BY and never
+          // FOLLOWING, and the anchor is lost.
+          let node = range.startContainer;
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            node = node.childNodes[range.startOffset] ?? node.lastChild ?? node;
+          }
           let best = null;
           for (const h of headings) {
+            // A selection that starts on (or inside) a heading belongs to that
+            // heading's own section. compareDocumentPosition(h) is 0 against
+            // itself and never FOLLOWING, so without this the passage would be
+            // filed under the *previous* section.
+            if (h === node || h.contains(node)) return h;
             // compareDocumentPosition: heading precedes the selection start.
             const rel = h.compareDocumentPosition(node);
             if (rel & Node.DOCUMENT_POSITION_FOLLOWING) best = h;
           }
-          return best;
+          // A selection starting before the first heading (select-all begins
+          // at the generator comment that opens the pandoc output) has no
+          // preceding heading; the first one is still the right anchor.
+          return best ?? headings[0] ?? null;
         };
 
         const update = () => {
@@ -1121,7 +1139,7 @@ const legalLinks = [
           if (paper) {
             const text = sel.toString().trim();
             if (!text) return hide();
-            const heading = nearestHeading(content, range.startContainer);
+            const heading = nearestHeading(content, range);
             const section = heading
               ? heading.textContent.trim()
               : '';
