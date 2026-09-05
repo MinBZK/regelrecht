@@ -22,6 +22,13 @@ export function useTaskReview() {
   const loadError = ref(null);
 
   async function loadReview(taskId, currentLawEtag) {
+    // Elke load begint schoon. Niet elke wissel van taak gaat langs `reset()`:
+    // via de takenlijst springt `?task=` rechtstreeks van de ene taak naar de
+    // andere, en dan zou de uitkomst van de vorige (een foutmelding, of een
+    // stale-vlag die tegen een andere wet is berekend) boven de nieuwe blijven
+    // hangen.
+    stale.value = false;
+    loadError.value = null;
     try {
       const detail = await fetchTask(taskId);
       if (detail.task_type !== 'job_review' || detail.status !== 'open') {
@@ -55,17 +62,25 @@ export function useTaskReview() {
     }
   }
 
-  async function approveAfterSave() {
-    if (reviewTask.value) await resolveTask(reviewTask.value.id, 'approved');
+  // Terug naar "geen review". Ook `stale` en `loadError` gaan mee: een
+  // foutmelding van de vorige taak hoort niet boven de volgende (of boven een
+  // artikel waar helemaal geen taak op staat) te blijven hangen.
+  function reset() {
     reviewTask.value = null;
     proposedContent.value = null;
+    stale.value = false;
+    loadError.value = null;
+  }
+
+  async function approveAfterSave() {
+    if (reviewTask.value) await resolveTask(reviewTask.value.id, 'approved');
+    reset();
   }
 
   async function reject() {
     if (reviewTask.value) await resolveTask(reviewTask.value.id, 'rejected');
-    reviewTask.value = null;
-    proposedContent.value = null;
+    reset();
   }
 
-  return { reviewTask, proposedContent, stale, loadError, loadReview, approveAfterSave, reject };
+  return { reviewTask, proposedContent, stale, loadError, loadReview, reset, approveAfterSave, reject };
 }

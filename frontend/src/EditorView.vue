@@ -180,6 +180,14 @@ const canEditArticleText = computed(() => canEdit.value);
 const route = useRoute();
 const router = useRouter();
 
+// De review-taak uit de URL (`?task=`). Staat hier hoog omdat `editorRouteFor`
+// hem meeneemt: zolang een taak in beoordeling is, reist hij mee met elke
+// navigatie binnen de editor (tab-, artikel- en wetwissel). De hele
+// review-modus verderop hangt aan deze ene bron.
+const reviewTaskIdParam = computed(() =>
+  typeof route.query.task === 'string' ? route.query.task : null,
+);
+
 // Bibliotheek tab / "naar bibliotheek" buttons: restore the last library
 // position but re-stamp it with the currently active traject, so the
 // traject survives the Editor→Bibliotheek switch (it lives in the URL).
@@ -897,17 +905,24 @@ watch(graphSheetOpen, async (open) => {
  * fire here - but for safety it routes to the chooser with the law as
  * query rather than the (now removed) no-traject editor.
  */
-function editorRouteFor(lawIdVal, articleNumber) {
+function editorRouteFor(lawIdVal, articleNumber, { keepReviewTask = true } = {}) {
   const trajectRef = route.params.trajectRef;
+  // Een lopende beoordeling reist mee met de navigatie: `?task=` blijft op elke
+  // editor-URL staan tot de taak is afgehandeld (`clearReviewQuery` bouwt de
+  // enige route zonder). Zo overleeft de beoordeling een uitstapje naar een
+  // ander artikel - en een refresh onderweg - in plaats van stilletjes weg te
+  // vallen bij de eerste tabwissel. Zonder wet is er niets om bij te horen.
+  const task = keepReviewTask && lawIdVal ? reviewTaskIdParam.value : null;
   if (trajectRef) {
     return {
       name: 'editor-traject',
       params: { trajectRef, lawId: lawIdVal, articleNumber },
+      ...(task ? { query: { task } } : {}),
     };
   }
   return {
     name: 'editor',
-    query: { law: lawIdVal || undefined, article: articleNumber || undefined },
+    query: { law: lawIdVal || undefined, article: articleNumber || undefined, task: task || undefined },
   };
 }
 
@@ -1524,10 +1539,10 @@ const {
   stale: reviewStale,
   loadError: reviewLoadError,
   loadReview,
+  reset: resetReview,
   approveAfterSave,
   reject: rejectReviewInternal,
 } = useTaskReview();
-const reviewActive = computed(() => !!reviewTask.value);
 // `law_create`-taak: de wet bestaat nog niet in het traject; het voorstel
 // wordt integraal in de editor geseed en Opslaan gaat via het create-pad
 // (POST) in plaats van de PUT.
@@ -1545,14 +1560,34 @@ const reviewArticleNumber = computed(() => {
   const number = reviewTask.value?.payload?.article;
   return number == null ? null : String(number);
 });
+// Kijk je op dit moment naar waar de taak over gaat? De taak reist mee met de
+// navigatie (zie `editorRouteFor`), zodat een uitstapje naar een ander artikel
+// de beoordeling niet weggooit - maar de beoordeel-weergave hoort alleen te
+// staan boven het artikel waarover je je uitspreekt. Anders hangt de balk over
+// vreemde inhoud en keurt "Opslaan" de taak goed met een artikel dat de
+// verrijking nooit heeft aangeraakt.
+//
+// Een taak zonder artikelnummer gaat over de hele wet: die slaat het voorstel
+// integraal op (`reviewSavesWholeLaw`), dus dan is elk artikel van die wet een
+// geldige plek om hem te beoordelen.
+const reviewOnTarget = computed(() => {
+  const task = reviewTask.value;
+  if (!task) return false;
+  const taskLawId = task.payload?.law_id;
+  if (taskLawId && lawId.value && taskLawId !== lawId.value) return false;
+  const number = reviewArticleNumber.value;
+  if (number == null) return true;
+  return String(selectedArticleNumber.value ?? '') === number;
+});
+// De beoordeel-weergave (balk, Opslaan-als-goedkeuren, Verwerpen) staat aan.
+// Bewust smaller dan "er is een taak geladen": zie `reviewOnTarget`.
+const reviewActive = computed(() => !!reviewTask.value && reviewOnTarget.value);
+
 // Een taak die één artikel aanwijst, slaat op als elke andere artikel-save: de
 // splice van de zichtbare pane, inclusief wat de beoordelaar er zelf nog aan
 // veranderde. Alleen een taak zonder artikelnummer committeert het voorstel in
 // zijn geheel, want daar is geen kleinere eenheid om over te beslissen.
 const reviewSavesWholeLaw = computed(() => reviewActive.value && !reviewArticleNumber.value);
-const reviewTaskIdParam = computed(() =>
-  typeof route.query.task === 'string' ? route.query.task : null,
-);
 // Guards against re-firing loadReview for a task id already attempted -
 // approve/reject null out `reviewTask`, which would otherwise look
 // indistinguishable from "not loaded yet" and re-trigger against the
@@ -1568,7 +1603,9 @@ let reviewAttemptedForTaskId = null;
 // stale route param disagree with `selectedArticleNumber` and snap the
 // editor back to the pre-review article right after resolving.
 function clearReviewQuery() {
-  router.replace(editorRouteFor(lawId.value, selectedArticleNumber.value));
+  router.replace(
+    editorRouteFor(lawId.value, selectedArticleNumber.value, { keepReviewTask: false }),
+  );
 }
 
 // Whether the proposal seeded anything (false when every proposed article
@@ -1581,6 +1618,28 @@ const reviewSeeded = ref(false);
 // Opslaan now approves the FULL proposal regardless - this only drives the
 // banner copy that points the reviewer at the YAML panel for the rest.
 const reviewHasHiddenChanges = ref(false);
+// In welk artikel het voorstel hoort te landen (`payload.article`, of - bij een
+// voorstel over de hele wet - het artikel dat `proposalDivergence` uitkoos), en
+// welk artikel het op dit moment daadwerkelijk vasthoudt. Die twee lopen uiteen
+// zodra je naar een ander artikel kijkt: `watch(selectedArticle)` zet de panes
+// dan terug naar de opgeslagen wet. Het verschil is precies het signaal om bij
+// terugkomst opnieuw te seeden.
+const reviewSeedTarget = ref(null);
+// Waar het voorstel op dit moment daadwerkelijk in de panes staat, als
+// `wet::artikel`. De wet hoort in die sleutel: twee wetten in hetzelfde traject
+// kunnen dezelfde artikelnummers hebben ("B 5", "1", "2" zijn niet uniek), en
+// bij een wetwissel verandert `selectedArticleNumber` dan niet terwijl
+// `watch(selectedArticle)` de panes wél heeft teruggezet naar de opgeslagen wet.
+// Op het nummer alleen zou het voorstel er bij terugkomst niet opnieuw in gaan.
+const reviewSeededAt = ref(null);
+function reviewSeedKey(number) {
+  return `${lawId.value ?? ''}::${number ?? ''}`;
+}
+watch([lawId, selectedArticleNumber], ([, nr]) => {
+  if (reviewSeededAt.value && reviewSeededAt.value !== reviewSeedKey(nr)) {
+    reviewSeededAt.value = null;
+  }
+});
 
 function applyProposedContent(proposedYaml) {
   reviewSeeded.value = false;
@@ -1605,6 +1664,12 @@ function applyProposedContent(proposedYaml) {
   reviewHasHiddenChanges.value = hiddenChanges;
   if (!target) return; // nothing seedable differs - nothing to seed
   reviewSeeded.value = true;
+  reviewSeedTarget.value = String(target.number);
+  // Meteen (niet pas in de nextTick hieronder): de watch die bij een
+  // artikelwissel opruimt en de her-seed-watch draaien in de flush ertussen, en
+  // moeten dit al als "geseed" zien - anders seeden ze er direct nog eens
+  // overheen.
+  reviewSeededAt.value = reviewSeedKey(String(target.number));
   selectedArticleNumber.value = String(target.number);
   // `watch(selectedArticle)` (above) resets editedText/machineReadable to
   // the (still-saved) newly selected article; wait a tick so the seed
@@ -1705,7 +1770,23 @@ watch(
     if (reviewAttemptedForTaskId === taskId) return;
     reviewAttemptedForTaskId = taskId;
     loadReview(taskId, currentEtag.value).then(() => {
-      if (reviewProposedContent.value) applyProposedContent(reviewProposedContent.value);
+      if (!reviewProposedContent.value) return;
+      // Alleen seeden waar de taak over gaat - dezelfde vraag als voor de balk,
+      // dus dezelfde `reviewOnTarget`. Een taak die één artikel aanwijst hoort
+      // in dát artikel te landen, en `applyProposedContent` springt er zo nodig
+      // heen. Meestal ben je er al (de takenlijst linkt erheen), maar doordat de
+      // taak meereist met de navigatie staat `?task=` ook op de route van een
+      // ander artikel - en van een andere wet. Kom je daar binnen (een refresh
+      // terwijl je even elders keek), dan wint wat er op het scherm staat: niet
+      // ongevraagd wegspringen, en zeker het voorstel niet in vreemde inhoud
+      // laten landen. Het artikelnummer alleen is daarvoor geen toets: nummers
+      // als "B 5" bestaan in meerdere wetten. Het seed-doel wordt wel
+      // vastgelegd, zodat de her-seed-watch het oppakt zodra je er terug bent.
+      if (!reviewOnTarget.value) {
+        reviewSeedTarget.value = reviewArticleNumber.value;
+        return;
+      }
+      applyProposedContent(reviewProposedContent.value);
     });
   },
   { immediate: true },
@@ -1741,6 +1822,55 @@ watch(
   },
   { immediate: true },
 );
+
+// De keerzijde van de twee watches hierboven: `?task=` is niet alleen hoe een
+// review begint, het is ook wat hem gaande houdt. Elke artikel- of wetwissel in
+// de editor (een tabwissel, `selectTab`) stampt de URL opnieuw met
+// `editorRouteFor`, en die draagt geen query - de taak valt er dus vanzelf uit
+// zodra je iets anders bekijkt. Zonder deze watch bleef `reviewTask` staan: de
+// beoordeel-balk hing over een artikel waar de taak niet over gaat, terwijl het
+// geseede voorstel allang was teruggezet door `watch(selectedArticle)`. Erger
+// dan lelijk: "Opslaan" keurde de taak dan goed met de inhoud van dát andere
+// artikel, en zolang de modus aanstond hield `reviewReady` de knop "Beoordeel
+// voorstel" verborgen waarmee je terug had gekund.
+//
+// De guard gaat mee terug op null: kom je later met dezelfde taak terug (via de
+// takenlijst of "Beoordeel voorstel"), dan hoort het voorstel opnieuw geladen en
+// geseed te worden in plaats van als "al geprobeerd" te worden overgeslagen.
+watch(reviewTaskIdParam, (taskId) => {
+  if (taskId) return;
+  reviewAttemptedForTaskId = null;
+  resetReview();
+  reviewSeeded.value = false;
+  reviewHasHiddenChanges.value = false;
+  reviewSeedTarget.value = null;
+  reviewSeededAt.value = null;
+});
+
+// Terug op het artikel van de taak: zet het voorstel er weer in. De panes zijn
+// bij de artikelwissel teruggezet naar de opgeslagen wet, dus zonder dit zie je
+// een beoordeling zonder iets te beoordelen - balk aan, voorstel weg. Dat was
+// de tweede helft van de gemelde bug.
+//
+// `law_create` blijft erbuiten: daar is de wet zelf het voorstel en is het
+// integraal geseed (`seedFromYaml`), niet als artikel-splice.
+watch([reviewOnTarget, selectedArticle], ([onTarget, article]) => {
+  if (!onTarget || !article || reviewIsLawCreate.value) return;
+  if (!reviewProposedContent.value) return;
+  if (reviewSeededAt.value === reviewSeedKey(String(article.number))) return;
+  // Waar het voorstel heen moet. Bij een taak over één artikel ligt dat vast;
+  // bij een voorstel over de hele wet kiest `proposalDivergence` het artikel, en
+  // is het doel dus pas bekend na de eerste keer seeden. Kwam je binnen op een
+  // andere wet, dan is dat nog niet gebeurd - laat `applyProposedContent` het
+  // dan alsnog bepalen (die springt zo nodig zelf naar het juiste artikel).
+  if (reviewSeedTarget.value) {
+    if (String(article.number) !== reviewSeedTarget.value) return;
+  } else if (reviewArticleNumber.value) {
+    // Artikel-taak zonder doel: `applyProposedContent` vond niets seedbaars.
+    return;
+  }
+  applyProposedContent(reviewProposedContent.value);
+});
 
 // "Verwerpen" in the review banner: resolve the task as rejected, throw
 // away the seeded edit (same discard the Wijzigingenbalk offers), and
