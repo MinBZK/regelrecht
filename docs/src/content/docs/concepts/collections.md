@@ -33,7 +33,7 @@ combine: ADD                     # optional: reduce to a single value
 
 That is AWIR article 7 lid 5: the income of a medebewoner who is a first-degree relative in the descending line or a foster child, and who had not turned 23 at the start of the berekeningsjaar, counts only for the part above €4.100. Two conditions and an exemption, in one clause, the way the article states it. Splitting selection, transformation and totalling into separate operations would need intermediate outputs the article never names.
 
-The article is in the corpus and not yet modeled; this is what modeling it would look like.
+The article is in the corpus and not yet modeled; this is what modeling it would look like. One caveat if anyone does: `relatie` is not a field the BRP hands over. AWIR article 4 lid 1 equates a pleegkind with a relative in the descending line but never defines the term, so what counts as one comes from outside this law. That makes it an open term with its own source, not an enum value to type into a filter. The Participatiewet defines it differently again, in article 3 lid 8, which is why the same word across two laws needs checking before it is treated as one concept.
 
 `collection` is any expression that evaluates to an array. A single value iterates once; `null` is an empty collection.
 
