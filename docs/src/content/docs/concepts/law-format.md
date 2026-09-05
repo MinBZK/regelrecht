@@ -129,6 +129,8 @@ The logic of a law is written with operations:
 
 These 26 operations make up the schema. The engine also accepts the compat aliases `NOT_EQUALS`, `IS_NULL`, `NOT_NULL`, and `NOT_IN` for backward compatibility, but they are outside the schema, so prefer wrapping the positive operation in `NOT`. See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specification.
 
+The set is short on purpose. An operation earns its place when a real law needs it, not when an engine could plausibly offer it: `ROUND` because a law rounds to whole euros, `DATE_DIFF` because a deadline is measured in days, `FOREACH` because a norm counts medebewoners. What an engine *can* do is close to unbounded, and every operation added on that basis is a promise the schema, the editor, the conformance suite and every other engine have to keep. A law that cannot be expressed is the signal to extend the language; the absence of an operation someone imagined a use for is not.
+
 ### Rounding and precision
 
 Rounding is an **explicit, law-modeled instruction**: the engine never rounds a value implicitly (not even money). A law that must round says so with one of three unary operations, each taking a single `value:` operand and a `precision:` (the number of decimal places to round to, in the value's own [unit](#type-specifications)):

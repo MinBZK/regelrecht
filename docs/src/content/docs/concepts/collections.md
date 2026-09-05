@@ -14,14 +14,14 @@ operation: FOREACH
 collection: $medebewoners      # an array
 as: medebewoner                # names the element, defaults to "item"
 filter:                        # optional: skip elements where this is false
-  operation: GREATER_THAN_OR_EQUAL
+  operation: LESS_THAN
   subject: $medebewoner.leeftijd
-  value: 21
-body: $medebewoner.bijdrage    # evaluated once per surviving element
+  value: 23
+body: $medebewoner.toetsingsinkomen   # evaluated once per surviving element
 combine: ADD                   # optional: reduce to a single value
 ```
 
-Read it as one clause: *the total of the contributions of every medebewoner aged 21 or over*. Legal text puts it that way too, which is why selecting, transforming and totalling are one operation here rather than three.
+Read it as one clause: *the combined income of the medebewoners under 23*. Legal text puts it that way too, which is why selecting, transforming and totalling are one operation here rather than three. The shape comes from AWIR article 7 lid 5, which exempts part of the income of a medebewoner who is a first-degree relative under 23; that article is in the corpus and not yet modeled.
 
 `collection` is any expression that evaluates to an array. A single value iterates once; `null` is an empty collection.
 
