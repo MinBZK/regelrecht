@@ -229,27 +229,27 @@ items:
 ```
 
 ### FOREACH — iterate over a collection (RFC-016, schema v0.5.7+)
+Counting, which is what article 22a Participatiewet does:
+
 ```yaml
 operation: FOREACH
 collection: $medebewoners          # expression evaluating to an array
 as: medebewoner                    # names the element; defaults to "item"
-filter:                            # optional: skip elements where this is false
-  operation: LESS_THAN
-  subject: $medebewoner.leeftijd
-  value: 23
-body: $medebewoner.toetsingsinkomen   # evaluated once per surviving element
+body: 1                            # evaluated once per element
 combine: ADD                       # optional: ADD | OR | AND | MIN | MAX
 ```
 
 Use it when the law counts or totals over a group whose size is not fixed, so
-the legal test stays in the law instead of in the data source. Count with
-`body: 1` and `combine: ADD`. Without `combine` the result is an array.
+the legal test stays in the law instead of in the data source. Without `combine`
+the result is an array.
 
-Only use `filter` when the law actually restricts which elements take part, and
-check which noun the restriction attaches to. Article 22a Participatiewet counts
-kostendelende medebewoners without a filter: both age limits of 21 in that
-sentence govern the belanghebbende and the echtgenoot. Reading them onto the
-medebewoners is the mistake the first draft of RFC-016 made.
+`filter` skips elements, and it belongs there only when the law restricts which
+elements take part. Check which noun the restriction attaches to before writing
+one: article 22a counts kostendelende medebewoners without a filter, because
+both age limits of 21 in that sentence govern the belanghebbende and the
+echtgenoot. A filter must also carry every condition the law states, not the one
+that is easiest to express, and any per-element arithmetic the law applies
+belongs in `body`.
 
 `as` is bound only inside `filter` and `body`. In a nested FOREACH the inner
 `collection` can read the outer binding; the inner `body` cannot. Empty

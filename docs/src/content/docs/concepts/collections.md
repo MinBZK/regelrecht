@@ -11,17 +11,31 @@ Dutch law reasons about groups whose size nobody knows in advance: the medebewon
 
 ```yaml
 operation: FOREACH
-collection: $medebewoners      # an array
-as: medebewoner                # names the element, defaults to "item"
-filter:                        # optional: skip elements where this is false
-  operation: LESS_THAN
-  subject: $medebewoner.leeftijd
-  value: 23
-body: $medebewoner.toetsingsinkomen   # evaluated once per surviving element
-combine: ADD                   # optional: reduce to a single value
+collection: $medebewoners        # an array
+as: medebewoner                  # names the element, defaults to "item"
+filter:                          # optional: skip elements where this is false
+  operation: AND
+  conditions:
+    - operation: IN
+      subject: $medebewoner.relatie
+      values: [EERSTEGRAADS_NEERGAANDE_LIJN, PLEEGKIND]
+    - operation: LESS_THAN
+      subject: $medebewoner.leeftijd_bij_aanvang_berekeningsjaar
+      value: 23
+body:                            # evaluated once per surviving element
+  operation: MAX
+  values:
+    - 0
+    - operation: SUBTRACT
+      values: [$medebewoner.toetsingsinkomen, $vrijstelling]
+combine: ADD                     # optional: reduce to a single value
 ```
 
-Read it as one clause: *the combined income of the medebewoners under 23*. Legal text puts it that way too, which is why selecting, transforming and totalling are one operation here rather than three. The shape comes from AWIR article 7 lid 5, which exempts part of the income of a medebewoner who is a first-degree relative under 23; that article is in the corpus and not yet modeled.
+That is AWIR article 7 lid 5: the income of a medebewoner who is a first-degree relative in the descending line or a foster child, and who had not turned 23 at the start of the berekeningsjaar, counts only for the part above €4.100. Two conditions and an exemption, in one clause, the way the article states it. Splitting selection, transformation and totalling into separate operations would need intermediate outputs the article never names.
+
+The article is in the corpus and not yet modeled; this is what modeling it would look like.
+
+`collection` is any expression that evaluates to an array. A single value iterates once; `null` is an empty collection.
 
 `collection` is any expression that evaluates to an array. A single value iterates once; `null` is an empty collection.
 
