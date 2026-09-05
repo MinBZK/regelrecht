@@ -510,6 +510,7 @@ impl<'a> ArticleEngine<'a> {
             // Operations not supported at action level
             Operation::If
             | Operation::List
+            | Operation::ForEach
             | Operation::Age
             | Operation::DateAdd
             | Operation::Date

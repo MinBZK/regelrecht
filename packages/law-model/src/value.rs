@@ -558,9 +558,11 @@ pub enum Operation {
     #[serde(alias = "SWITCH")]
     If,
 
-    // Collection operations (2)
+    // Collection operations (3)
     In,
     List,
+    /// Iterate over a collection (RFC-016). Nested-only, like If and List.
+    ForEach,
 
     // Date operations (5)
     Age,
@@ -609,6 +611,7 @@ impl Operation {
         Operation::If,
         Operation::In,
         Operation::List,
+        Operation::ForEach,
         Operation::Age,
         Operation::DateAdd,
         Operation::Date,
@@ -653,6 +656,7 @@ impl Operation {
         Operation::If,
         Operation::In,
         Operation::List,
+        Operation::ForEach,
         Operation::Age,
         Operation::DateAdd,
         Operation::Date,
@@ -735,6 +739,7 @@ impl Operation {
             Operation::If => "IF",
             Operation::In => "IN",
             Operation::List => "LIST",
+            Operation::ForEach => "FOREACH",
             Operation::Age => "AGE",
             Operation::DateAdd => "DATE_ADD",
             Operation::Date => "DATE",

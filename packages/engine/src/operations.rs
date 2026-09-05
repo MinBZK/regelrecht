@@ -15,7 +15,8 @@
 //! **Engine-only (not in schema, accepted for backward compatibility):**
 //! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
 
-use crate::article::{ActionOperation, ActionValue, Case};
+use crate::article::{ActionOperation, ActionValue, Case, CombineOp};
+use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::types::{PathNodeType, Value};
 use chrono::{Datelike, NaiveDate};
@@ -96,6 +97,31 @@ pub trait ValueResolver {
     fn has_trace(&self) -> bool {
         false
     }
+
+    /// Execute a FOREACH (RFC-016), if this resolver can create child scopes.
+    ///
+    /// FOREACH is the one operation that binds a variable, so it needs a
+    /// resolver that can hand out a child scope to bind it in. That is more
+    /// than [`ValueResolver`] promises: the trait is generic over `&self` and
+    /// says nothing about scoping, and simple resolvers (a map of variables in
+    /// a unit test) have no scope to create.
+    ///
+    /// Returning `Option` rather than `Result` keeps those two cases apart.
+    /// `None` means "this resolver cannot do FOREACH at all", which the caller
+    /// turns into an error naming that reason; `Some(Err(..))` is a FOREACH
+    /// that ran and failed. [`RuleContext`](crate::context::RuleContext)
+    /// overrides this and delegates to [`execute_foreach`].
+    fn execute_foreach_op(
+        &self,
+        _collection: &ActionValue,
+        _as_name: &str,
+        _body: &ActionValue,
+        _filter: Option<&ActionValue>,
+        _combine: Option<&CombineOp>,
+        _depth: usize,
+    ) -> Option<Result<Value>> {
+        None
+    }
 }
 
 /// Evaluate an ActionValue to a concrete Value.
@@ -154,25 +180,24 @@ pub fn execute_operation<R: ValueResolver>(
         match &result {
             Ok(value) => {
                 resolver.trace_set_result(value.clone());
-                // For IF (cases/default), execute_if already set a message
-                // with case match info; incorporate it instead of overwriting.
+                // IF and FOREACH write their own message from inside the
+                // handler: which case matched, how many elements were seen.
+                // That says more than the value alone, so keep it instead of
+                // overwriting. FOREACH reports its own result through the
+                // combine, so its message stands on its own.
                 let existing_msg = resolver.trace_get_message();
-                let msg = if matches!(op, ActionOperation::If { .. }) {
-                    if let Some(case_info) = existing_msg {
+                let msg = match (op, existing_msg) {
+                    (ActionOperation::If { .. }, Some(case_info)) => {
                         format!("IF({}) = {}", case_info, format_value_for_trace(value))
-                    } else {
-                        format!(
-                            "Compute {}(...) = {}",
-                            op_name,
-                            format_value_for_trace(value)
-                        )
                     }
-                } else {
-                    format!(
+                    (ActionOperation::Foreach { .. }, Some(summary)) => {
+                        format!("{} = {}", summary, format_value_for_trace(value))
+                    }
+                    _ => format!(
                         "Compute {}(...) = {}",
                         op_name,
                         format_value_for_trace(value)
-                    )
+                    ),
                 };
                 resolver.trace_set_message(msg);
             }
@@ -301,6 +326,31 @@ fn execute_operation_internal<R: ValueResolver>(
             true,
         ),
         ActionOperation::List { items } => execute_list(items, resolver, depth),
+
+        // FOREACH needs a child scope to bind its element in, which the
+        // `ValueResolver` contract does not provide. Resolvers that can create
+        // one answer `Some`; the rest fall through to an error that says so,
+        // rather than a confusing "variable not found" on the loop variable.
+        ActionOperation::Foreach {
+            collection,
+            as_name,
+            body,
+            filter,
+            combine,
+        } => resolver
+            .execute_foreach_op(
+                collection,
+                as_name,
+                body,
+                filter.as_ref(),
+                combine.as_ref(),
+                depth,
+            )
+            .unwrap_or_else(|| {
+                Err(EngineError::InvalidOperation(
+                    "FOREACH requires a resolver that supports child scopes".to_string(),
+                ))
+            }),
 
         // Date
         ActionOperation::Age {
@@ -509,15 +559,23 @@ fn execute_add<R: ValueResolver>(
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let evaluated = evaluate_values(values, resolver, depth)?;
+    add_values(&evaluate_values(values, resolver, depth)?)
+}
 
+/// Sum already-evaluated values with RFC-007's polymorphic ADD.
+///
+/// Split out of [`execute_add`] so FOREACH's `combine: ADD` reduces with the
+/// same rules the standalone operation uses, instead of a second implementation
+/// that could drift from it. The first value picks the mode: numbers add,
+/// strings concatenate, arrays flatten.
+pub(crate) fn add_values(evaluated: &[Value]) -> Result<Value> {
     if evaluated.is_empty() {
         return Err(EngineError::InvalidOperation(
             "ADD requires at least one value".to_string(),
         ));
     }
 
-    if let Some(tainted) = find_untranslatable(&evaluated) {
+    if let Some(tainted) = find_untranslatable(evaluated) {
         return Ok(tainted);
     }
 
@@ -526,7 +584,7 @@ fn execute_add<R: ValueResolver>(
         Value::Array(_) => {
             // Concatenate arrays
             let mut result = Vec::new();
-            for val in &evaluated {
+            for val in evaluated {
                 match val {
                     Value::Array(arr) => result.extend(arr.iter().cloned()),
                     _ => {
@@ -542,7 +600,7 @@ fn execute_add<R: ValueResolver>(
         Value::String(_) => {
             // Concatenate strings
             let mut result = String::new();
-            for val in &evaluated {
+            for val in evaluated {
                 match val {
                     Value::String(s) => result.push_str(s),
                     _ => {
@@ -559,7 +617,7 @@ fn execute_add<R: ValueResolver>(
             // Original numeric addition
             let mut sum = Decimal::ZERO;
             let mut has_decimal = false;
-            for val in &evaluated {
+            for val in evaluated {
                 match val {
                     Value::Int(i) => sum += Decimal::from(*i),
                     Value::Decimal(d) => {
@@ -1049,6 +1107,327 @@ fn execute_list<R: ValueResolver>(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(Value::Array(values))
+}
+
+// =============================================================================
+// Collection Iteration (RFC-016)
+// =============================================================================
+
+/// Execute FOREACH: evaluate `body` once per element of `collection`.
+///
+/// Takes a concrete [`RuleContext`] rather than a generic `ValueResolver`,
+/// because FOREACH is the only operation that binds a variable and so needs a
+/// child scope to bind it in. Callers reach this through
+/// [`ValueResolver::execute_foreach_op`].
+///
+/// `collection` is evaluated in the context it was given, before any child
+/// exists. That is what lets a nested FOREACH read the outer binding: the inner
+/// `collection` expression is the only place the outer scope is still visible.
+///
+/// See RFC-016 for the scope, combine and taint rules this implements.
+pub fn execute_foreach(
+    collection: &ActionValue,
+    as_name: &str,
+    body: &ActionValue,
+    filter: Option<&ActionValue>,
+    combine: Option<&CombineOp>,
+    context: &RuleContext,
+    depth: usize,
+) -> Result<Value> {
+    // The schema constrains `as` with a pattern, but a law can reach the engine
+    // without passing schema validation, and a bad binding name would otherwise
+    // surface much later as a puzzling resolution failure.
+    if !is_valid_binding_name(as_name) {
+        return Err(EngineError::InvalidOperation(format!(
+            "FOREACH 'as' must be a non-empty lowercase identifier (got '{as_name}')"
+        )));
+    }
+
+    let collection_value = evaluate_value(collection, context, depth)?;
+    if collection_value.is_untranslatable() {
+        return Ok(collection_value);
+    }
+
+    // A non-array iterates once. Laws reach the engine with a data source that
+    // returned a single record where the law expects a list, and treating that
+    // as "one element" matches what the law means better than an error does.
+    let items = match &collection_value {
+        Value::Array(arr) => arr.clone(),
+        Value::Null => Vec::new(),
+        other => vec![other.clone()],
+    };
+
+    if items.len() > crate::config::MAX_ARRAY_SIZE {
+        return Err(EngineError::InvalidOperation(format!(
+            "FOREACH collection size {} exceeds limit {}",
+            items.len(),
+            crate::config::MAX_ARRAY_SIZE,
+        )));
+    }
+
+    let tracing = context.has_trace();
+    let mut results: Vec<Value> = Vec::with_capacity(items.len());
+    let mut skipped = 0usize;
+
+    for (index, item) in items.iter().enumerate() {
+        let mut child = context.create_child();
+
+        // Objects also expose their fields as bare locals, so `$status` works
+        // where `$item.status` does. Existing laws are written that way. Dot
+        // notation is clearer and does not risk shadowing an outer variable,
+        // which is why RFC-016 recommends it for new laws.
+        if let Value::Object(fields) = item {
+            for (key, value) in fields {
+                child.set_local(key.clone(), value.clone());
+            }
+        }
+
+        // Bound last, so a field named like the binding cannot displace it:
+        // `as: kind` over `{kind: 7, bedrag: 5}` must leave `$kind` the element,
+        // or `$kind.bedrag` becomes a type error on an integer.
+        //
+        // A field named `referencedate` is a different matter and stays
+        // unreachable by design: that name resolves ahead of local scope (see
+        // `RuleContext::resolve_variable_internal`), so the flattened form reads
+        // the calculation date. Dot notation gets at the field.
+        child.set_local(as_name.to_string(), item.clone());
+
+        if tracing {
+            context.trace_push(&format!("ITEM_{index}"), PathNodeType::Operation);
+        }
+
+        let outcome = evaluate_iteration(body, filter, &child, depth);
+
+        match outcome {
+            Ok(IterationOutcome::Skipped) => {
+                skipped += 1;
+                if tracing {
+                    context.trace_set_result(item.clone());
+                    context.trace_set_message(format!("ITEM {index}: skipped by filter"));
+                    context.trace_pop();
+                }
+            }
+            Ok(IterationOutcome::Value(value)) => {
+                if tracing {
+                    context.trace_set_result(value.clone());
+                    context.trace_set_message(format!(
+                        "ITEM {index}: {}",
+                        format_value_for_trace(&value)
+                    ));
+                    context.trace_pop();
+                }
+                // An untranslatable element taints the whole result. Combining
+                // the rest would produce a total that looks complete and is not
+                // (RFC-012). A null body value is not fatal here: the combine
+                // functions decide what an unknown element means per aggregation.
+                if value.is_untranslatable() {
+                    return Ok(value);
+                }
+                results.push(value);
+            }
+            Ok(IterationOutcome::Unknown(value)) => {
+                if tracing {
+                    context.trace_set_result(value.clone());
+                    context.trace_set_message(format!("ITEM {index}: unknown, aborting"));
+                    context.trace_pop();
+                }
+                return Ok(value);
+            }
+            Err(e) => {
+                if tracing {
+                    context.trace_set_message(format!("ITEM {index}: error: {e}"));
+                    context.trace_pop();
+                }
+                // Partial results are not returned: a sum over some of the
+                // children is not a legal determination.
+                return Err(e);
+            }
+        }
+    }
+
+    if tracing {
+        let evaluated = results.len();
+        context.trace_set_message(match skipped {
+            0 => format!("FOREACH over {evaluated} element(s)"),
+            n => format!("FOREACH over {evaluated} element(s), {n} skipped by filter"),
+        });
+    }
+
+    match combine {
+        Some(CombineOp::Add) => combine_add(&results),
+        Some(CombineOp::Or) => combine_or(&results),
+        Some(CombineOp::And) => combine_and(&results),
+        Some(CombineOp::Min) => combine_min_max(&results, true),
+        Some(CombineOp::Max) => combine_min_max(&results, false),
+        None => Ok(Value::Array(results)),
+    }
+}
+
+/// What one FOREACH iteration produced.
+enum IterationOutcome {
+    /// The filter rejected this element.
+    Skipped,
+    /// The body produced a value.
+    Value(Value),
+    /// The filter could not be decided, so neither can the collection.
+    Unknown(Value),
+}
+
+/// Run `filter` and `body` for one element, in its own child scope.
+fn evaluate_iteration(
+    body: &ActionValue,
+    filter: Option<&ActionValue>,
+    child: &RuleContext,
+    depth: usize,
+) -> Result<IterationOutcome> {
+    if let Some(filter_expr) = filter {
+        let verdict = evaluate_value(filter_expr, child, depth + 1)?;
+        if verdict.is_untranslatable() {
+            return Ok(IterationOutcome::Unknown(verdict));
+        }
+        // A null filter means the engine cannot tell whether this element
+        // belongs in the collection, and therefore cannot tell what the total
+        // is. Silently excluding it would report a confident wrong answer.
+        if verdict.is_null() {
+            return Ok(IterationOutcome::Unknown(Value::Null));
+        }
+        if !verdict.to_bool() {
+            return Ok(IterationOutcome::Skipped);
+        }
+    }
+
+    Ok(IterationOutcome::Value(evaluate_value(
+        body,
+        child,
+        depth + 1,
+    )?))
+}
+
+/// Whether a FOREACH `as` name is a usable binding: lowercase, digits and
+/// underscores, not starting with a digit. Mirrors the schema's pattern.
+fn is_valid_binding_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some('a'..='z' | '_') => chars.all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')),
+        _ => false,
+    }
+}
+
+/// Combine FOREACH results with ADD.
+///
+/// An unknown element makes the total unknown. RFC-016 already says this for a
+/// filter that evaluates to null ("the engine cannot tell whether this element
+/// belongs in the collection, so it cannot tell what the total is"), and a body
+/// that produces null is the same situation one step later: the element is
+/// definitely in the collection and its contribution is not known. Summing the
+/// rest would report a confident number that is short by an unknown amount.
+///
+/// An empty collection is `0`, the additive identity, because nothing is
+/// missing there.
+fn combine_add(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Int(0));
+    }
+    if results.iter().any(Value::is_null) {
+        return Ok(Value::Null);
+    }
+    add_values(results)
+}
+
+/// Combine FOREACH results with OR.
+///
+/// Mirrors `execute_or`: a definitive `true` wins over an unknown, because the
+/// answer is `true` whatever the unknown turns out to be. Otherwise any null
+/// makes the result unknown.
+fn combine_or(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Bool(false));
+    }
+    let mut has_null = false;
+    for v in results {
+        if v.is_untranslatable() {
+            return Ok(v.clone());
+        }
+        if v.is_null() {
+            has_null = true;
+            continue;
+        }
+        if v.to_bool() {
+            return Ok(Value::Bool(true));
+        }
+    }
+    Ok(if has_null {
+        Value::Null
+    } else {
+        Value::Bool(false)
+    })
+}
+
+/// Combine FOREACH results with AND.
+///
+/// Mirrors `execute_and`: a definitive `false` wins over an unknown. An empty
+/// collection is `true` by vacuous truth, so a law that must not read "no
+/// items" as "all conditions met" has to check for emptiness itself.
+fn combine_and(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Bool(true));
+    }
+    let mut has_null = false;
+    for v in results {
+        if v.is_untranslatable() {
+            return Ok(v.clone());
+        }
+        if v.is_null() {
+            has_null = true;
+            continue;
+        }
+        if !v.to_bool() {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(if has_null {
+        Value::Null
+    } else {
+        Value::Bool(true)
+    })
+}
+
+/// Combine FOREACH results with MIN or MAX.
+///
+/// Empty is `Null`: there is no lowest value of nothing, and the caller has to
+/// handle that. Comparison stays in `Decimal` so an all-integer collection
+/// returns `Int` without a detour through `f64`.
+fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Null);
+    }
+    if let Some(tainted) = find_untranslatable(results) {
+        return Ok(tainted);
+    }
+
+    let mut best: Option<Decimal> = None;
+    let mut all_int = true;
+
+    for v in results {
+        if v.is_null() {
+            continue;
+        }
+        if !matches!(v, Value::Int(_)) {
+            all_int = false;
+        }
+        let d = to_decimal(v)?;
+        best = Some(match best {
+            None => d,
+            Some(prev) if is_min => prev.min(d),
+            Some(prev) => prev.max(d),
+        });
+    }
+
+    match best {
+        None => Ok(Value::Null),
+        Some(d) if all_int => Ok(Value::Int(decimal_to_i64_safe(d)?)),
+        Some(d) => Ok(Value::Decimal(d)),
+    }
 }
 
 // =============================================================================
@@ -2770,6 +3149,828 @@ mod tests {
                     Value::String("two".to_string()),
                     Value::Bool(true),
                 ])
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Iteration Tests (FOREACH, RFC-016)
+    // -------------------------------------------------------------------------
+    //
+    // These drive a real `RuleContext` rather than `TestResolver`: FOREACH binds
+    // a variable, and only a resolver with child scopes can run it. A
+    // `TestResolver` returns `None` from `execute_foreach_op`, which is itself
+    // worth a test (see `test_foreach_needs_a_scoped_resolver`).
+
+    mod foreach {
+        use super::*;
+        use crate::context::RuleContext;
+
+        /// A context whose parameters are the given variables.
+        fn ctx(vars: Vec<(&str, Value)>) -> RuleContext {
+            let params: BTreeMap<String, Value> =
+                vars.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            RuleContext::new(params, "2025-06-15").expect("valid date")
+        }
+
+        /// `FOREACH $items as x: x` with the given combine.
+        fn sum_of(items: Vec<Value>, combine: Option<CombineOp>) -> Result<Value> {
+            let context = ctx(vec![("items", Value::Array(items))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine,
+            };
+            execute_operation(&op, &context, 0)
+        }
+
+        fn obj(pairs: Vec<(&str, Value)>) -> Value {
+            Value::Object(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+        }
+
+        #[test]
+        fn test_foreach_combine_add() {
+            let result = sum_of(
+                vec![Value::Int(10), Value::Int(20), Value::Int(30)],
+                Some(CombineOp::Add),
+            )
+            .unwrap();
+            assert_eq!(result, Value::Int(60));
+        }
+
+        #[test]
+        fn test_foreach_without_combine_returns_array() {
+            let result = sum_of(vec![Value::Int(1), Value::Int(2)], None).unwrap();
+            assert_eq!(result, Value::Array(vec![Value::Int(1), Value::Int(2)]));
+        }
+
+        #[test]
+        fn test_foreach_body_is_an_operation() {
+            // FOREACH items as x: MULTIPLY(x, 2), combine ADD => 2+4+6
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: ActionValue::Operation(Box::new(ActionOperation::Multiply {
+                    values: vec![var("x"), lit(2i64)],
+                })),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(12));
+        }
+
+        #[test]
+        fn test_foreach_filter_skips_elements() {
+            // Count the elements above 2, which is the kostendelersnorm shape:
+            // a threshold that stays in the law rather than in the data source.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![
+                    Value::Int(1),
+                    Value::Int(2),
+                    Value::Int(3),
+                    Value::Int(4),
+                ]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: lit(1i64),
+                filter: Some(ActionValue::Operation(Box::new(
+                    ActionOperation::GreaterThan {
+                        subject: var("x"),
+                        value: lit(2i64),
+                    },
+                ))),
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(2));
+        }
+
+        #[test]
+        fn test_foreach_filter_rejecting_everything_is_the_empty_identity() {
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(lit(false)),
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_dot_notation_on_objects() {
+            let context = ctx(vec![(
+                "kinderen",
+                Value::Array(vec![
+                    obj(vec![("bedrag", Value::Int(703))]),
+                    obj(vec![("bedrag", Value::Int(936))]),
+                ]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("kinderen"),
+                as_name: "kind".to_string(),
+                body: var("kind.bedrag"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(
+                execute_operation(&op, &context, 0).unwrap(),
+                Value::Int(1639)
+            );
+        }
+
+        #[test]
+        fn test_foreach_flattens_object_fields_into_scope() {
+            // `$bedrag` resolves without the `$kind.` prefix, which is how
+            // existing law YAML refers to element properties.
+            let context = ctx(vec![(
+                "kinderen",
+                Value::Array(vec![obj(vec![("bedrag", Value::Int(42))])]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("kinderen"),
+                as_name: "kind".to_string(),
+                body: var("bedrag"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(42));
+        }
+
+        #[test]
+        fn test_foreach_nested_inner_collection_sees_outer_binding() {
+            // The outer binding is reachable from the inner `collection`, and
+            // only from there. That is the whole scope contract of RFC-016.
+            let context = ctx(vec![(
+                "huishoudens",
+                Value::Array(vec![
+                    obj(vec![(
+                        "leden",
+                        Value::Array(vec![Value::Int(100), Value::Int(200)]),
+                    )]),
+                    obj(vec![("leden", Value::Array(vec![Value::Int(50)]))]),
+                ]),
+            )]);
+            let inner = ActionOperation::Foreach {
+                collection: var("huishouden.leden"),
+                as_name: "lid".to_string(),
+                body: var("lid"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let outer = ActionOperation::Foreach {
+                collection: var("huishoudens"),
+                as_name: "huishouden".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(
+                execute_operation(&outer, &context, 0).unwrap(),
+                Value::Int(350)
+            );
+        }
+
+        #[test]
+        fn test_foreach_inner_scope_does_not_see_outer_binding() {
+            // `$huishouden` is bound in the parent, and a child context starts
+            // with an empty local scope, so the inner body cannot resolve it.
+            let context = ctx(vec![(
+                "huishoudens",
+                Value::Array(vec![obj(vec![(
+                    "leden",
+                    Value::Array(vec![Value::Int(1)]),
+                )])]),
+            )]);
+            let inner = ActionOperation::Foreach {
+                collection: var("huishouden.leden"),
+                as_name: "lid".to_string(),
+                body: var("huishouden"),
+                filter: None,
+                combine: None,
+            };
+            let outer = ActionOperation::Foreach {
+                collection: var("huishoudens"),
+                as_name: "huishouden".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: None,
+            };
+            assert!(matches!(
+                execute_operation(&outer, &context, 0),
+                Err(EngineError::VariableNotFound(_))
+            ));
+        }
+
+        #[test]
+        fn test_foreach_empty_collection_per_combine() {
+            let empty = || Vec::new();
+            assert_eq!(
+                sum_of(empty(), Some(CombineOp::Add)).unwrap(),
+                Value::Int(0)
+            );
+            assert_eq!(
+                sum_of(empty(), Some(CombineOp::Or)).unwrap(),
+                Value::Bool(false)
+            );
+            // Vacuous truth: AND over nothing is true.
+            assert_eq!(
+                sum_of(empty(), Some(CombineOp::And)).unwrap(),
+                Value::Bool(true)
+            );
+            // There is no lowest value of nothing.
+            assert_eq!(sum_of(empty(), Some(CombineOp::Min)).unwrap(), Value::Null);
+            assert_eq!(sum_of(empty(), Some(CombineOp::Max)).unwrap(), Value::Null);
+            assert_eq!(sum_of(empty(), None).unwrap(), Value::Array(vec![]));
+        }
+
+        #[test]
+        fn test_foreach_null_collection_is_empty() {
+            let context = ctx(vec![("items", Value::Null)]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_non_array_iterates_once() {
+            let context = ctx(vec![("item", Value::Int(7))]);
+            let op = ActionOperation::Foreach {
+                collection: var("item"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(7));
+        }
+
+        #[test]
+        fn test_foreach_combine_min_and_max() {
+            let items = vec![Value::Int(30), Value::Int(10), Value::Int(20)];
+            assert_eq!(
+                sum_of(items.clone(), Some(CombineOp::Min)).unwrap(),
+                Value::Int(10)
+            );
+            assert_eq!(sum_of(items, Some(CombineOp::Max)).unwrap(), Value::Int(30));
+        }
+
+        #[test]
+        fn test_foreach_min_keeps_decimals_decimal() {
+            let items = vec![Value::Decimal(dec!(1.5)), Value::Int(3)];
+            assert_eq!(
+                sum_of(items, Some(CombineOp::Min)).unwrap(),
+                Value::Decimal(dec!(1.5))
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_add_concatenates_strings() {
+            // RFC-007 polymorphism reaches combine through the shared add_values.
+            let items = vec![Value::String("a".into()), Value::String("b".into())];
+            assert_eq!(
+                sum_of(items, Some(CombineOp::Add)).unwrap(),
+                Value::String("ab".to_string())
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_and_or_short_circuit_past_null() {
+            // A definitive verdict beats an unknown, matching AND/OR themselves.
+            assert_eq!(
+                sum_of(vec![Value::Null, Value::Bool(true)], Some(CombineOp::Or)).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                sum_of(vec![Value::Null, Value::Bool(false)], Some(CombineOp::And)).unwrap(),
+                Value::Bool(false)
+            );
+            // With no definitive verdict, the result is unknown.
+            assert_eq!(
+                sum_of(vec![Value::Null, Value::Bool(false)], Some(CombineOp::Or)).unwrap(),
+                Value::Null
+            );
+            assert_eq!(
+                sum_of(vec![Value::Null, Value::Bool(true)], Some(CombineOp::And)).unwrap(),
+                Value::Null
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_add_is_unknown_as_soon_as_one_element_is() {
+            // Not "skip the null and sum the rest": that reports a confident
+            // total that is short by an unknown amount.
+            assert_eq!(
+                sum_of(vec![Value::Int(5), Value::Null], Some(CombineOp::Add)).unwrap(),
+                Value::Null
+            );
+            assert_eq!(
+                sum_of(vec![Value::Null, Value::Null], Some(CombineOp::Add)).unwrap(),
+                Value::Null
+            );
+            // Nothing is missing from an empty collection, so it stays the
+            // additive identity.
+            assert_eq!(sum_of(vec![], Some(CombineOp::Add)).unwrap(), Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_in_collection_taints() {
+            let taint = Value::Untranslatable {
+                article: "22a".to_string(),
+                construct: "kostendelersnorm".to_string(),
+            };
+            let context = ctx(vec![("items", taint.clone())]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_in_body_taints_whole_result() {
+            let taint = Value::Untranslatable {
+                article: "7".to_string(),
+                construct: "naar redelijkheid".to_string(),
+            };
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1), Value::Int(2)])),
+                ("onbekend", taint.clone()),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("onbekend"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_filter_taints() {
+            let taint = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "in redelijkheid".to_string(),
+            };
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1)])),
+                ("onbekend", taint.clone()),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(var("onbekend")),
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        #[test]
+        fn test_foreach_null_filter_is_unknown_not_skipped() {
+            // Excluding an element the engine cannot judge would report a
+            // confident wrong total. The whole result is unknown instead.
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1), Value::Int(2)])),
+                ("onbekend", Value::Null),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(var("onbekend")),
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn test_foreach_error_in_body_aborts_without_partial_result() {
+            // A sum over some of the children is not a legal determination.
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("bestaat_niet"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert!(matches!(
+                execute_operation(&op, &context, 0),
+                Err(EngineError::VariableNotFound(_))
+            ));
+        }
+
+        #[test]
+        fn test_foreach_binding_shadows_outer_variable() {
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(9)])),
+                ("x", Value::Int(1)),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(9));
+        }
+
+        #[test]
+        fn test_foreach_rejects_invalid_binding_name() {
+            for bad in ["", "X", "1kind", "kind-naam", "kind naam"] {
+                let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+                let op = ActionOperation::Foreach {
+                    collection: var("items"),
+                    as_name: bad.to_string(),
+                    body: lit(1i64),
+                    filter: None,
+                    combine: None,
+                };
+                assert!(
+                    matches!(
+                        execute_operation(&op, &context, 0),
+                        Err(EngineError::InvalidOperation(_))
+                    ),
+                    "expected {bad:?} to be rejected as a binding name"
+                );
+            }
+        }
+
+        #[test]
+        fn test_foreach_accepts_valid_binding_names() {
+            for good in ["x", "kind", "_kind", "kind_2", "medebewoner"] {
+                let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+                let op = ActionOperation::Foreach {
+                    collection: var("items"),
+                    as_name: good.to_string(),
+                    body: lit(1i64),
+                    filter: None,
+                    combine: Some(CombineOp::Add),
+                };
+                assert_eq!(
+                    execute_operation(&op, &context, 0).unwrap(),
+                    Value::Int(1),
+                    "expected {good:?} to be accepted as a binding name"
+                );
+            }
+        }
+
+        #[test]
+        fn test_foreach_rejects_collection_over_max_array_size() {
+            let too_many: Vec<Value> = (0..=crate::config::MAX_ARRAY_SIZE as i64)
+                .map(Value::Int)
+                .collect();
+            assert!(matches!(
+                sum_of(too_many, Some(CombineOp::Add)),
+                Err(EngineError::InvalidOperation(_))
+            ));
+        }
+
+        #[test]
+        fn test_foreach_accepts_collection_at_max_array_size() {
+            // The limit is inclusive; one more is the error above.
+            let exactly = vec![Value::Int(1); crate::config::MAX_ARRAY_SIZE];
+            assert_eq!(
+                sum_of(exactly, Some(CombineOp::Add)).unwrap(),
+                Value::Int(crate::config::MAX_ARRAY_SIZE as i64)
+            );
+        }
+
+        #[test]
+        fn test_foreach_add_propagates_an_unknown_element() {
+            // A body that cannot produce a value makes the total unknown. This
+            // is the same rule RFC-016 states for a null filter: the element is
+            // in the collection and its contribution is not known, so summing
+            // the rest would report a number that is short by an unknown amount.
+            assert_eq!(
+                sum_of(
+                    vec![Value::Int(10), Value::Null, Value::Int(20)],
+                    Some(CombineOp::Add)
+                )
+                .unwrap(),
+                Value::Null
+            );
+        }
+
+        #[test]
+        fn test_foreach_nested_min_over_empty_does_not_vanish_from_the_sum() {
+            // An inner MIN/MAX over an empty collection is null, and an outer
+            // ADD must not quietly leave it out: the total would look complete
+            // while one member of the collection was never evaluated.
+            let context = ctx(vec![(
+                "huishoudens",
+                Value::Array(vec![
+                    obj(vec![("leden", Value::Array(vec![Value::Int(100)]))]),
+                    obj(vec![("leden", Value::Array(vec![]))]),
+                ]),
+            )]);
+            let inner = ActionOperation::Foreach {
+                collection: var("huishouden.leden"),
+                as_name: "lid".to_string(),
+                body: var("lid"),
+                filter: None,
+                combine: Some(CombineOp::Max),
+            };
+            let outer = ActionOperation::Foreach {
+                collection: var("huishoudens"),
+                as_name: "huishouden".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&outer, &context, 0).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn test_foreach_element_field_cannot_overwrite_the_binding() {
+            // `as: kind` over `{kind: 7, bedrag: 5}`: the binding must stay the
+            // element, or `$kind.bedrag` becomes a type error on an integer.
+            let context = ctx(vec![(
+                "kinderen",
+                Value::Array(vec![obj(vec![
+                    ("kind", Value::Int(7)),
+                    ("bedrag", Value::Int(5)),
+                ])]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("kinderen"),
+                as_name: "kind".to_string(),
+                body: var("kind.bedrag"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Int(5));
+        }
+
+        #[test]
+        fn test_foreach_element_field_named_referencedate_stays_unreachable_bare() {
+            // `referencedate` resolves ahead of local scope, so the flattened
+            // form reads the calculation date however the element is shaped.
+            // Worth pinning: a law author reading `$referencedate` inside a
+            // FOREACH gets the peildatum, never the element's own field, and
+            // dot notation is the only way at the latter.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![obj(vec![(
+                    "referencedate",
+                    Value::String("1990-01-01".to_string()),
+                )])]),
+            )]);
+            let bare = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("referencedate.iso"),
+                filter: None,
+                combine: None,
+            };
+            // The context's own reference date, not the element's field.
+            assert_eq!(
+                execute_operation(&bare, &context, 0).unwrap(),
+                Value::Array(vec![Value::String("2025-06-15".to_string())])
+            );
+
+            let dotted = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x.referencedate"),
+                filter: None,
+                combine: None,
+            };
+            assert_eq!(
+                execute_operation(&dotted, &context, 0).unwrap(),
+                Value::Array(vec![Value::String("1990-01-01".to_string())])
+            );
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_taints_the_array_too() {
+            // Without `combine` there is no aggregation to catch the taint on
+            // the way out, so FOREACH has to stop at the element itself. An
+            // array holding an untranslatable would read downstream as a list
+            // of real values.
+            let taint = Value::Untranslatable {
+                article: "1".to_string(),
+                construct: "naar omstandigheden".to_string(),
+            };
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1)])),
+                ("onbekend", taint.clone()),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("onbekend"),
+                filter: None,
+                combine: None,
+            };
+            assert_eq!(execute_operation(&op, &context, 0).unwrap(), taint);
+        }
+
+        /// Run an operation with tracing on, returning its trace node.
+        fn traced_operation(op: &ActionOperation, context: &RuleContext) -> crate::trace::PathNode {
+            let trace = std::rc::Rc::new(std::cell::RefCell::new(
+                crate::trace::TraceBuilder::new_untimed(),
+            ));
+            let mut traced = context.clone();
+            traced.set_trace(std::rc::Rc::clone(&trace));
+            trace.borrow_mut().push("root", PathNodeType::Action);
+            execute_operation(op, &traced, 0).expect("foreach should succeed");
+            let root = trace.borrow_mut().pop().expect("root node should pop");
+            root.children
+                .into_iter()
+                .next()
+                .expect("FOREACH should record a node")
+        }
+
+        #[test]
+        fn test_foreach_traces_every_iteration_and_counts_the_skipped() {
+            // RFC-013: a reduction that shows only its total does not explain
+            // how it was reached. The skip count in particular is the only
+            // place the filter's effect is visible in the trace.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(5), Value::Int(9)]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(ActionValue::Operation(Box::new(
+                    ActionOperation::GreaterThan {
+                        subject: var("x"),
+                        value: lit(4i64),
+                    },
+                ))),
+                combine: Some(CombineOp::Add),
+            };
+
+            let node = traced_operation(&op, &context);
+            assert_eq!(node.name, "FOREACH");
+            assert_eq!(
+                node.message.as_deref(),
+                Some("FOREACH over 2 element(s), 1 skipped by filter = 14")
+            );
+
+            // One node per element, skipped ones included, each naming its index.
+            let items: Vec<&crate::trace::PathNode> = node
+                .children
+                .iter()
+                .filter(|c| c.name.starts_with("ITEM_"))
+                .collect();
+            assert_eq!(items.len(), 3);
+            assert_eq!(items[0].name, "ITEM_0");
+            assert_eq!(
+                items[0].message.as_deref(),
+                Some("ITEM 0: skipped by filter")
+            );
+            assert_eq!(items[2].name, "ITEM_2");
+            assert!(items[2]
+                .message
+                .as_deref()
+                .is_some_and(|m| m.starts_with("ITEM 2: ")));
+        }
+
+        #[test]
+        fn test_foreach_trace_message_without_a_filter_omits_the_skip_count() {
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let node = traced_operation(&op, &context);
+            assert_eq!(
+                node.message.as_deref(),
+                Some("FOREACH over 1 element(s) = 1")
+            );
+        }
+
+        #[test]
+        fn test_if_keeps_its_own_trace_message() {
+            // The dispatcher normally overwrites a handler's trace message with
+            // "Compute OP(...) = value". IF and FOREACH are the exceptions: what
+            // they write from inside says which case matched, or how many
+            // elements were seen, and the value alone does not.
+            //
+            // This lives in the FOREACH module because adding the FOREACH arm is
+            // what turned that special case from an `if` into a `match`, and a
+            // match arm is the kind of thing a refactor drops silently.
+            let context = ctx(vec![("bedrag", Value::Int(50))]);
+
+            let matched = ActionOperation::If {
+                cases: vec![Case {
+                    when: ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                        subject: var("bedrag"),
+                        value: lit(10i64),
+                    })),
+                    then: lit(1i64),
+                }],
+                default: Some(lit(0i64)),
+            };
+            assert_eq!(
+                traced_operation(&matched, &context).message.as_deref(),
+                Some("IF(case 0 matched) = 1")
+            );
+
+            let defaulted = ActionOperation::If {
+                cases: vec![Case {
+                    when: lit(false),
+                    then: lit(1i64),
+                }],
+                default: Some(lit(0i64)),
+            };
+            assert_eq!(
+                traced_operation(&defaulted, &context).message.as_deref(),
+                Some("IF(took default) = 0")
+            );
+        }
+
+        #[test]
+        fn test_foreach_body_and_filter_count_against_the_depth_limit() {
+            // The body and filter are evaluated one level deeper than the
+            // FOREACH itself. Without that increment a deeply nested law would
+            // recurse past MAX_OPERATION_DEPTH instead of being rejected.
+            let context = ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // At the ceiling the body's own evaluation is over it.
+            assert!(matches!(
+                execute_operation(&op, &context, MAX_OPERATION_DEPTH),
+                Err(EngineError::MaxDepthExceeded(_))
+            ));
+
+            // The filter is evaluated one level deeper too, and it runs
+            // before the body. A literal body keeps the body path within the
+            // limit, so only the filter's own increment can trip this.
+            let with_filter = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: lit(1i64),
+                filter: Some(ActionValue::Operation(Box::new(ActionOperation::Not {
+                    value: lit(false),
+                }))),
+                combine: Some(CombineOp::Add),
+            };
+            // One below the ceiling is the depth that pins the filter's own
+            // increment: the FOREACH itself still fits, and only because the
+            // filter is evaluated a level deeper does its nested operation run
+            // over the limit.
+            assert!(matches!(
+                execute_operation(&with_filter, &context, MAX_OPERATION_DEPTH - 1),
+                Err(EngineError::MaxDepthExceeded(_))
+            ));
+            // A step further down and both fit, so the rejection above is the
+            // depth limit and not the shape of the operation.
+            assert_eq!(
+                execute_operation(&with_filter, &context, MAX_OPERATION_DEPTH - 2).unwrap(),
+                Value::Int(1)
+            );
+        }
+
+        #[test]
+        fn test_foreach_needs_a_scoped_resolver() {
+            // A resolver without child scopes says so, rather than failing later
+            // with a confusing "variable not found" on the loop variable.
+            let resolver = TestResolver::new().with_var("items", Value::Array(vec![Value::Int(1)]));
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let err = execute_operation(&op, &resolver, 0).unwrap_err();
+            assert!(
+                matches!(&err, EngineError::InvalidOperation(m) if m.contains("child scopes")),
+                "got {err:?}"
             );
         }
     }

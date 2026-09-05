@@ -160,6 +160,25 @@ Do **not** silently improvise. Follow these steps in order:
 
 If you needed **any additional CSS styling** on top of the design-system components (overrides, custom spacing, layout hacks, etc.), you **must report this explicitly** to the user — list exactly what custom CSS you added and why. Custom styling on top of the design system is a signal that may need a design-system change, so it must never be hidden.
 
+## Published papers are frozen
+
+`docs/src/research/` holds published work: `rules-as-executed.html` and its
+generated companions. **Never edit these to match the current state of the
+code.** A paper is a claim someone made at a moment in time, and the record of
+what was true then is the whole point of citing it. A paper that silently tracks
+the codebase cannot be cited at all.
+
+This comes up because the code moves past the paper. RFC-016 added collection
+operations to an engine the paper describes as having none ("There is no
+aggregation over collections: no `SUM`, no `COUNT`, no iteration"). That
+sentence stays. It was accurate when written, and the reader who follows a
+citation to it needs to find what the author wrote, not a retrofit.
+
+If the divergence matters, say so somewhere that is not the paper: the RFC that
+supersedes it, a docs page, or release notes. If a paper genuinely needs to
+change, that is an erratum or a new version, and it is the author's call, not a
+side effect of a code change.
+
 ## RFC Process
 
 This project uses an RFC process for design decisions.

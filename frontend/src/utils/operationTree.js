@@ -28,6 +28,7 @@ export const OPERATION_LABELS = {
   DATE_DIFF: 'datumverschil',
   // Verzameling
   LIST: 'lijst',
+  FOREACH: 'voor elk',
 };
 
 // DATE_DIFF units are English in the YAML (schema enum); subtitles read in Dutch.
@@ -160,6 +161,12 @@ function getChildOperations(node) {
   if (isOperationNode(node.from)) children.push(node.from);
   if (isOperationNode(node.to)) children.push(node.to);
 
+  // FOREACH holds its operands in collection/body/filter (`as` is a name and
+  // `combine` an enum, neither is ever an operation)
+  if (isOperationNode(node.collection)) children.push(node.collection);
+  if (isOperationNode(node.body)) children.push(node.body);
+  if (isOperationNode(node.filter)) children.push(node.filter);
+
   if (Array.isArray(node.cases)) {
     for (const c of node.cases) {
       if (isOperationNode(c.when)) children.push(c.when);
@@ -282,6 +289,17 @@ export function describeSubtitle(node) {
     const values = Array.isArray(node.values) ? node.values : [];
     if (values.length > COMPACT_THRESHOLD) return `lijst van ${values.length} items`;
     return `[${values.map(formatArgName).join(', ')}]`;
+  }
+
+  // FOREACH: name what it iterates and how it reduces. The body is usually a
+  // nested operation and shows up as a child node, so repeating it here would
+  // say the same thing twice.
+  if (op === 'FOREACH') {
+    const binding = node.as || 'item';
+    const over = `voor elke ${binding} in ${formatArgName(node.collection)}`;
+    const combine = node.combine ? OPERATION_LABELS[node.combine] || node.combine : null;
+    const filtered = node.filter ? ', gefilterd' : '';
+    return combine ? `${over}${filtered}, ${combine}` : `${over}${filtered}`;
   }
 
   return OPERATION_LABELS[op] || op;
