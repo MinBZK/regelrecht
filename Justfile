@@ -743,6 +743,11 @@ docs-preview:
 docs-a11y:
     cd docs && npm run a11y
 
+# Haal één CI-uitvoering op (leeg = nieuwste groene commit); vervang de blokken in
+# docs/src/lib/ci-pipeline.ts door de uitvoer (zie /operations/ci-doorlooptijd)
+measure-ci sha="":
+    ./script/measure-ci.sh {{sha}}
+
 # --- Architecture model ---
 
 # Generate the code-derived architecture model
