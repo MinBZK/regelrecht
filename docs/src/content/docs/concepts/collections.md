@@ -37,8 +37,6 @@ The article is in the corpus and not yet modeled; this is what modeling it would
 
 `collection` is any expression that evaluates to an array. A single value iterates once; `null` is an empty collection.
 
-`collection` is any expression that evaluates to an array. A single value iterates once; `null` is an empty collection.
-
 ## The element binding
 
 `as` names the current element, and that name exists only inside `filter` and `body`. It shadows an outer variable of the same name. `FOREACH` is the only operation that introduces a name rather than reading one.
