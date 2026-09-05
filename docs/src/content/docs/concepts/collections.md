@@ -11,17 +11,29 @@ Dutch law reasons about groups whose size nobody knows in advance: the medebewon
 
 ```yaml
 operation: FOREACH
-collection: $medebewoners      # an array
-as: medebewoner                # names the element, defaults to "item"
-filter:                        # optional: skip elements where this is false
-  operation: GREATER_THAN_OR_EQUAL
-  subject: $medebewoner.leeftijd
-  value: 21
-body: $medebewoner.bijdrage    # evaluated once per surviving element
-combine: ADD                   # optional: reduce to a single value
+collection: $medebewoners        # an array
+as: medebewoner                  # names the element, defaults to "item"
+filter:                          # optional: skip elements where this is false
+  operation: AND
+  conditions:
+    - operation: IN
+      subject: $medebewoner.relatie
+      values: [EERSTEGRAADS_NEERGAANDE_LIJN, PLEEGKIND]
+    - operation: LESS_THAN
+      subject: $medebewoner.leeftijd_bij_aanvang_berekeningsjaar
+      value: 23
+body:                            # evaluated once per surviving element
+  operation: MAX
+  values:
+    - 0
+    - operation: SUBTRACT
+      values: [$medebewoner.toetsingsinkomen, $vrijstelling]
+combine: ADD                     # optional: reduce to a single value
 ```
 
-Read it as one clause: *the total of the contributions of every medebewoner aged 21 or over*. Legal text puts it that way too, which is why selecting, transforming and totalling are one operation here rather than three.
+That is AWIR article 7 lid 5: the income of a medebewoner who is a first-degree relative in the descending line or a foster child, and who had not turned 23 at the start of the berekeningsjaar, counts only for the part above €4.100. Two conditions and an exemption, in one clause, the way the article states it. Splitting selection, transformation and totalling into separate operations would need intermediate outputs the article never names.
+
+The article is in the corpus and not yet modeled; this is what modeling it would look like. One caveat if anyone does: `relatie` is not a field the BRP hands over. AWIR article 4 lid 1 equates a pleegkind with a relative in the descending line but never defines the term, so what counts as one comes from outside this law. That makes it an open term with its own source, not an enum value to type into a filter. The Participatiewet defines it differently again, in article 3 lid 8, which is why the same word across two laws needs checking before it is treated as one concept.
 
 `collection` is any expression that evaluates to an array. A single value iterates once; `null` is an empty collection.
 
