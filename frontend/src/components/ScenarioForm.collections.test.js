@@ -66,7 +66,7 @@ describe('ScenarioForm collection parameters', () => {
     expect(table.exists()).toBe(true);
     expect(table.props('keyField')).toBeNull();
     expect(table.props('fields').map((f) => f.name)).toEqual(['leeftijd']);
-    expect(table.props('modelValue')).toEqual([{ _id: 0, leeftijd: 25 }, { _id: 1, leeftijd: 19 }]);
+    expect(table.props('modelValue')).toEqual([{ _id: 'init-0', leeftijd: 25 }, { _id: 'init-1', leeftijd: 19 }]);
     expect(w.emitted('drill-change').at(-1)).toEqual(['medebewoners']);
   });
 
@@ -77,6 +77,16 @@ describe('ScenarioForm collection parameters', () => {
     const params = engine.executeWithTrace.mock.calls[0][2];
     expect(params.leeftijd).toBe(35);
     expect(params.medebewoners).toEqual([{ leeftijd: 25 }, { leeftijd: 19 }]);
+  });
+
+  it('passes an untouched new cell as null, the value the saved table carries', async () => {
+    const engine = fakeEngine();
+    const w = mountForm(engine);
+    await w.find('[data-testid="coll-row-0"]').trigger('click');
+    w.findComponent(DataSourceTable).vm.$emit('update:modelValue', [{ _id: 7, leeftijd: '' }]);
+    await w.vm.$nextTick();
+    w.vm.execute();
+    expect(engine.executeWithTrace.mock.calls.at(-1)[2].medebewoners).toEqual([{ leeftijd: null }]);
   });
 
   it('passes an emptied collection as an empty array, not as a missing input', async () => {

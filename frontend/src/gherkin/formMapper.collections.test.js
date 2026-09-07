@@ -101,6 +101,41 @@ Feature: Null cell
     expect(formStateToGherkin(form)).toContain('| null | Bob |');
   });
 
+  it('escapes a pipe and a backslash in a cell and in a header, and reads them back', () => {
+    const form = mapFeatureToForm(parseFeature(`
+Feature: Escapes
+
+  Scenario: Odd cells
+    Given parameter "items" is the collection:
+      | naam    | pad\\|x |
+      | a\\|b    | c\\\\d   |
+    When I evaluate "x" of "law"
+`));
+    const p = form.scenarios[0].setup.parameters[0];
+    expect(p.columns).toEqual(['naam', 'pad|x']);
+    expect(p.value).toEqual([{ naam: 'a|b', 'pad|x': 'c\\d' }]);
+    const text = formStateToGherkin(form);
+    expect(text).toContain('| naam | pad\\|x |');
+    expect(text).toContain('| a\\|b | c\\\\d |');
+    expect(mapFeatureToForm(parseFeature(text)).scenarios[0].setup.parameters).toEqual(form.scenarios[0].setup.parameters);
+  });
+
+  it('types numeric cells by content, the same rule as a data-source table', () => {
+    const form = mapFeatureToForm(parseFeature(`
+Feature: Numbers
+
+  Scenario: Numeric strings
+    Given parameter "items" is the collection:
+      | code | bedrag |
+      | 007  | 1.0    |
+    When I evaluate "x" of "law"
+`));
+    // 007 and 1.0 are numbers to the runner too; the leading zero and the
+    // trailing .0 do not survive a save, and that is the documented rule.
+    expect(form.scenarios[0].setup.parameters[0].value).toEqual([{ code: 7, bedrag: 1 }]);
+    expect(formStateToGherkin(form)).toContain('| 7 | 1 |');
+  });
+
   describe('syncEditedValues', () => {
     // Form format as ScenarioForm.getFormValues() hands it back: typed
     // columns and rows carrying an `_id`.

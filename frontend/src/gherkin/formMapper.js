@@ -121,6 +121,16 @@ export function isCollectionValue(value) {
   return Array.isArray(value);
 }
 
+/**
+ * Type one cell of a collection as edited in the form: an empty or absent
+ * cell is null (what formatCell writes and the runner reads back), a string
+ * is typed by content, anything else is already typed.
+ */
+export function collectionCell(v) {
+  if (v === undefined || v === null || v === '') return null;
+  return typeof v === 'string' ? tableCellValue(v) : v;
+}
+
 /** Column names of a collection parameter: the recorded header, or the keys of the first element. */
 export function collectionColumns(param) {
   if (param.columns?.length) return param.columns;
@@ -292,8 +302,7 @@ function formCollectionToState(coll) {
   const records = (coll.rows || []).map((row) => {
     const record = {};
     for (const c of columns) {
-      const v = row[c];
-      record[c] = v === undefined || v === null ? null : typeof v === 'string' ? tableCellValue(v) : v;
+      record[c] = collectionCell(row[c]);
     }
     return record;
   });
@@ -522,7 +531,7 @@ function writeSetupSteps(lines, setup, indent) {
     if (isCollectionValue(param.value)) {
       lines.push(`${indent}${KW.set_parameter_collection} ${TPL.set_parameter_collection([param.name])}`);
       const columns = collectionColumns(param);
-      lines.push(`${indent}  | ${columns.join(' | ')} |`);
+      lines.push(`${indent}  | ${columns.map(formatCell).join(' | ')} |`);
       for (const record of param.value) {
         const cells = columns.map((c) => formatCell(record[c]));
         lines.push(`${indent}  | ${cells.join(' | ')} |`);

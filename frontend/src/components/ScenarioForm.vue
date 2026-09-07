@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { quotedValue, tableCellValue } from '../gherkin/actions.js';
-import { isCollectionValue, collectionColumns } from '../gherkin/formMapper.js';
+import { isCollectionValue, collectionColumns, collectionCell } from '../gherkin/formMapper.js';
 import { formatValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
@@ -70,7 +70,7 @@ function initCollections() {
   return [...byName.values()].map((p) => ({
     name: p.name,
     columns: collectionColumns(p).map((c) => ({ name: c, type: 'string', unit: null })),
-    rows: p.value.map((record, i) => ({ _id: i, ...record })),
+    rows: p.value.map((record, i) => ({ _id: `init-${i}`, ...record })),
   }));
 }
 
@@ -82,8 +82,10 @@ function initDataSources() {
     sourceName: ds.sourceName,
     keyField: ds.keyField,
     fields: ds.headers.filter((h) => h !== ds.keyField).map((h) => typeField(h)),
+    // A string id: DataSourceTable.addRow numbers new rows from a counter
+    // of its own, and an integer here would collide with it in `:key`.
     rows: ds.rows.map((row, i) => {
-      const obj = { _id: i };
+      const obj = { _id: `init-${i}` };
       ds.headers.forEach((h, j) => { obj[h] = row[j] ?? ''; });
       return obj;
     }),
@@ -237,13 +239,13 @@ function execute() {
       }
     }
     // A collection is passed whole, an empty one included: "no elements" is
-    // a value (no medebewoners), not a missing input.
+    // a value (no medebewoners), not a missing input. An empty cell is null,
+    // the same value the saved table carries (formatCell writes `null`).
     for (const coll of collections.value) {
       params[coll.name] = coll.rows.map((row) => {
         const record = {};
         for (const c of coll.columns) {
-          const v = row[c.name];
-          record[c.name] = v === undefined || v === null ? null : typeof v === 'string' ? tableCellValue(v) : v;
+          record[c.name] = collectionCell(row[c.name]);
         }
         return record;
       });
