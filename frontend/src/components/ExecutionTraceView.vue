@@ -32,6 +32,12 @@ function outputParts(name) {
   );
 }
 
+// A collection or record output renders as JSON; de-snaking its keys would
+// change the text, so humanize only a scalar.
+function humanizeOutput(text) {
+  return /^[[{]/.test(text) ? text : humanize(text);
+}
+
 const hasContent = computed(() =>
   props.result || props.traceText || props.error,
 );
@@ -100,7 +106,7 @@ const overallStatus = computed(() => {
             size="md"
             horizontal-alignment="right"
             width="100px"
-            :text="humanize(outputParts(name).text)"
+            :text="humanizeOutput(outputParts(name).text)"
             :supporting-text="outputParts(name).supportingText"
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>

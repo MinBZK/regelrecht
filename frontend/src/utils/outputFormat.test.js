@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatOutputValue, formatOutputValueParts } from './outputFormat.js';
+import { formatOutputValue, formatOutputValueParts, formatValue } from './outputFormat.js';
 
 // Intl renders the euro sign followed by a non-breaking space; matching on the
 // digits keeps the assertions readable and independent of that whitespace.
@@ -46,5 +46,19 @@ describe('formatOutputValue', () => {
   it('returns the bare value without a monetary unit', () => {
     expect(formatOutputValue(150000, null)).toBe('150000');
     expect(formatOutputValue(150000, 'eurocenten')).toBe('150000');
+  });
+});
+
+describe('formatValue', () => {
+  it('renders a collection as JSON instead of [object Object]', () => {
+    expect(formatValue([{ leeftijd: 25 }, { leeftijd: 19 }])).toBe('[{"leeftijd":25},{"leeftijd":19}]');
+    expect(formatValue({ leeftijd: 25 })).toBe('{"leeftijd":25}');
+    expect(formatValue([])).toBe('[]');
+  });
+
+  it('keeps scalars as they were', () => {
+    expect(formatValue(true)).toBe('ja');
+    expect(formatValue(null)).toBe('null');
+    expect(formatValue(42)).toBe('42');
   });
 });

@@ -108,9 +108,10 @@ const isDirty = ref(false);
 const selectedScenarioIndex = ref(null);
 const scenarioSheetEl = ref(null);
 
-// Name of the data source the active ScenarioForm is drilled into (null =
-// scenario overview). Reported by ScenarioForm via @drill-change; the
-// top-title-bar back button uses it to pop one level back out.
+// Name of the data source or collection parameter the active ScenarioForm
+// is drilled into (null = scenario overview). Reported by ScenarioForm via
+// @drill-change; the top-title-bar back button uses it to pop one level
+// back out.
 const drilledSourceName = ref(null);
 
 watch(selectedScenarioIndex, async (idx) => {
