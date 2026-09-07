@@ -84,7 +84,7 @@ export const getOnderzoek = (id: string) =>
 export const getBouw = (id: string) => BOUW_STANDEN.find((s) => s.id === id);
 
 export const CATEGORIEEN = [
-  { id: 'lat', label: 'Lat' },
+  { id: 'bar', label: 'Bar' },
   { id: 'pivot', label: 'Pivot' },
   { id: 'bet', label: 'Bet' },
 ] as const;
