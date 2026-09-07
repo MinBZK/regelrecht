@@ -5,7 +5,7 @@ faseId: wat
 disciplineId: recht
 prioriteit: ''
 omvang: ''
-categorie: lat
+categorie: bar
 capability: ''
 capaciteit: ''
 toelichting: ''

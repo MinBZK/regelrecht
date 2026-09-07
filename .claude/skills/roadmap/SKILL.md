@@ -101,7 +101,7 @@ build vallen met de naam van het werkpakket erbij.
 
 `prioriteit` — `hoog`, `midden`, `laag`, of `''`.
 `omvang` — `S`, `M`, `L`, `XL`, of `''`.
-`categorie` — `lat`, `pivot`, `bet`, of `''`.
+`categorie` — `bar`, `pivot`, `bet`, of `''`.
 `capability` — `basis`, `ontwikkelen`, `simuleren`, `publiceren`, `analyseren`,
 `implementeren`, `verifieren`, of `''`.
 
