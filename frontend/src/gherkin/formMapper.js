@@ -297,7 +297,7 @@ function formDataSourceToState(ds) {
  * Form format:  `{ name, columns: [{name, type}], rows: [{_id, [col]: v}] }`
  * State format: `{ columns: string[], records: object[] }`
  */
-function formCollectionToState(coll) {
+export function formCollectionToState(coll) {
   const columns = (coll.columns || []).map((c) => c.name);
   const records = (coll.rows || []).map((row) => {
     const record = {};

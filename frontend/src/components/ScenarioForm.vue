@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { quotedValue, tableCellValue } from '../gherkin/actions.js';
-import { isCollectionValue, collectionColumns, collectionCell } from '../gherkin/formMapper.js';
+import { isCollectionValue, collectionColumns, formCollectionToState } from '../gherkin/formMapper.js';
 import { formatValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
@@ -239,16 +239,10 @@ function execute() {
       }
     }
     // A collection is passed whole, an empty one included: "no elements" is
-    // a value (no medebewoners), not a missing input. An empty cell is null,
-    // the same value the saved table carries (formatCell writes `null`).
+    // a value (no medebewoners), not a missing input. The same conversion
+    // that a save applies, so the engine runs what the file will say.
     for (const coll of collections.value) {
-      params[coll.name] = coll.rows.map((row) => {
-        const record = {};
-        for (const c of coll.columns) {
-          record[c.name] = collectionCell(row[c.name]);
-        }
-        return record;
-      });
+      params[coll.name] = formCollectionToState(coll).records;
     }
 
     const execResult = engine.executeWithTrace(
