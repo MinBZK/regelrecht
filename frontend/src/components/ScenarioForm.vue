@@ -58,14 +58,20 @@ const parameterValues = ref(
 // no key field; the element fields are not typed by the law (an `array`
 // input declares no item shape), so cells are typed by content at run time,
 // the same rule the runner applies to the saved table.
+//
+// The setup is the merged background plus scenario list, so a scenario that
+// overrides a background collection lists the name twice. Last wins, the
+// same rule `Object.fromEntries` applies to the scalars above.
 function initCollections() {
-  return (props.setup.parameters || [])
-    .filter((p) => isCollectionValue(p.value))
-    .map((p) => ({
-      name: p.name,
-      columns: collectionColumns(p).map((c) => ({ name: c, type: 'string', unit: null })),
-      rows: p.value.map((record, i) => ({ _id: i, ...record })),
-    }));
+  const byName = new Map();
+  for (const p of props.setup.parameters || []) {
+    if (isCollectionValue(p.value)) byName.set(p.name, p);
+  }
+  return [...byName.values()].map((p) => ({
+    name: p.name,
+    columns: collectionColumns(p).map((c) => ({ name: c, type: 'string', unit: null })),
+    rows: p.value.map((record, i) => ({ _id: i, ...record })),
+  }));
 }
 
 const collections = ref(initCollections());

@@ -306,6 +306,9 @@ function formCollectionToState(coll) {
  * collection to "[object Object]" and call them all equal.
  */
 function parameterValuesEqual(a, b) {
+  // Key order counts: an override that lists the same columns in another
+  // order never collapses into the background. That keeps a step, it never
+  // loses one, so it is left as is.
   if (isCollectionValue(a) || isCollectionValue(b)) {
     return isCollectionValue(a) && isCollectionValue(b) && JSON.stringify(a) === JSON.stringify(b);
   }

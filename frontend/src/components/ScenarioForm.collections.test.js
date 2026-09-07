@@ -44,6 +44,21 @@ describe('ScenarioForm collection parameters', () => {
     expect(row.html()).toContain('text="2"');
   });
 
+  it('shows a background collection overridden by the scenario once, with the scenario rows', () => {
+    // getEffectiveSetup() concatenates background and scenario parameters,
+    // so an override lists the same name twice; the form shows the last.
+    const merged = setup();
+    merged.parameters = [
+      { name: 'medebewoners', value: [{ leeftijd: 25 }, { leeftijd: 19 }, { leeftijd: 50 }], columns: ['leeftijd'] },
+      ...merged.parameters,
+    ];
+    const w = mount(ScenarioForm, {
+      props: { scenario: { assertions: [] }, setup: merged, lawId: 'participatiewet' },
+    });
+    expect(w.findAll('[data-testid^="coll-row-"]')).toHaveLength(1);
+    expect(w.vm.getFormValues().collections.map((c) => c.rows.length)).toEqual([2]);
+  });
+
   it('drills into a keyless table of the elements and reports the drill', async () => {
     const w = mountForm();
     await w.find('[data-testid="coll-row-0"]').trigger('click');
