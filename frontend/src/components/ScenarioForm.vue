@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { quotedValue, tableCellValue } from '../gherkin/actions.js';
+import { isCollectionValue, collectionColumns } from '../gherkin/formMapper.js';
 import { formatValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
@@ -43,9 +44,31 @@ const emit = defineEmits(['show-details', 'executed', 'change', 'drill-change'])
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
 
+// Scalar parameters edit as one control each; a collection-valued parameter
+// (RFC-016, `Given parameter "x" is the collection:`) is a table and gets
+// the same drill-in treatment as a data source. The two are kept apart so
+// the control loop below never meets an array.
+const scalarParams = () => (props.setup.parameters || []).filter((p) => !isCollectionValue(p.value));
+
 const parameterValues = ref(
-  Object.fromEntries((props.setup.parameters || []).map((p) => [p.name, p.value ?? ''])),
+  Object.fromEntries(scalarParams().map((p) => [p.name, p.value ?? ''])),
 );
+
+// Convert collection parameters to DataSourceTable format. A collection has
+// no key field; the element fields are not typed by the law (an `array`
+// input declares no item shape), so cells are typed by content at run time,
+// the same rule the runner applies to the saved table.
+function initCollections() {
+  return (props.setup.parameters || [])
+    .filter((p) => isCollectionValue(p.value))
+    .map((p) => ({
+      name: p.name,
+      columns: collectionColumns(p).map((c) => ({ name: c, type: 'string', unit: null })),
+      rows: p.value.map((record, i) => ({ _id: i, ...record })),
+    }));
+}
+
+const collections = ref(initCollections());
 
 // Convert scenario data sources to DataSourceTable format
 function initDataSources() {
@@ -69,9 +92,15 @@ const dataSources = ref(initDataSources());
 // ActionSheet-style breadcrumb rows would be overkill), so the parent needs
 // to know the drilled source name and be able to pop back out.
 const selectedSource = ref(null);
+// Same, for a collection parameter (index into `collections`). At most one
+// of the two is non-null.
+const selectedCollection = ref(null);
+
+const drilledIn = computed(() => selectedSource.value !== null || selectedCollection.value !== null);
 
 function clearDrill() {
   selectedSource.value = null;
+  selectedCollection.value = null;
 }
 
 // Data-source names render human-readable AND sentence-cased ("personal_data"
@@ -81,8 +110,10 @@ function sourceLabel(name) {
   return h ? h.charAt(0).toUpperCase() + h.slice(1) : h;
 }
 
-watch(selectedSource, (idx) => {
-  emit('drill-change', idx == null ? null : (dataSources.value[idx]?.sourceName ?? null));
+watch([selectedSource, selectedCollection], ([src, coll]) => {
+  if (src != null) emit('drill-change', dataSources.value[src]?.sourceName ?? null);
+  else if (coll != null) emit('drill-change', collections.value[coll]?.name ?? null);
+  else emit('drill-change', null);
 });
 
 // Expectations from scenario assertions
@@ -119,10 +150,12 @@ const errorTraceText = ref(null);
 function discardEdits() {
   calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
   parameterValues.value = Object.fromEntries(
-    (props.setup.parameters || []).map((p) => [p.name, p.value ?? '']),
+    scalarParams().map((p) => [p.name, p.value ?? '']),
   );
+  collections.value = initCollections();
   dataSources.value = initDataSources();
   selectedSource.value = null;
+  selectedCollection.value = null;
   expectations.value = Object.fromEntries(
     (props.scenario.assertions || [])
       .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
@@ -197,6 +230,18 @@ function execute() {
         params[k] = typeof v === 'string' ? quotedValue(v) : v;
       }
     }
+    // A collection is passed whole, an empty one included: "no elements" is
+    // a value (no medebewoners), not a missing input.
+    for (const coll of collections.value) {
+      params[coll.name] = coll.rows.map((row) => {
+        const record = {};
+        for (const c of coll.columns) {
+          const v = row[c.name];
+          record[c.name] = v === undefined || v === null ? null : typeof v === 'string' ? tableCellValue(v) : v;
+        }
+        return record;
+      });
+    }
 
     const execResult = engine.executeWithTrace(
       props.lawId,
@@ -249,6 +294,7 @@ function getFormValues() {
     parameterValues: { ...parameterValues.value },
     calculationDate: calculationDate.value,
     dataSources: [...dataSources.value],
+    collections: [...collections.value],
   };
 }
 
@@ -257,7 +303,7 @@ defineExpose({ execute, getExecutionData, getFormValues, clearDrill, discardEdit
 // --- Auto-re-execute when input values change ---
 let executeTimer = null;
 watch(
-  [parameterValues, calculationDate, dataSources],
+  [parameterValues, calculationDate, dataSources, collections],
   () => {
     if (!props.engine || !props.ready) return;
     clearTimeout(executeTimer);
@@ -274,6 +320,13 @@ function updateDataSourceRows(index, rows) {
   const updated = [...dataSources.value];
   updated[index] = { ...updated[index], rows };
   dataSources.value = updated;
+  emit('change');
+}
+
+function updateCollectionRows(index, rows) {
+  const updated = [...collections.value];
+  updated[index] = { ...updated[index], rows };
+  collections.value = updated;
   emit('change');
 }
 
@@ -303,7 +356,7 @@ const dateErrorId = useId();
 <template>
   <div class="sf-root">
     <!-- Scenario overview -->
-    <template v-if="selectedSource === null">
+    <template v-if="!drilledIn">
       <!-- Expected outputs -->
       <template v-if="hasExpectations">
         <nldd-title size="5"><h2>Verwachte uitkomsten</h2></nldd-title>
@@ -370,6 +423,22 @@ const dateErrorId = useId();
             />
           </nldd-cell>
         </nldd-list-item>
+        <!-- Collection parameters: a row per collection, drill in one level
+             deeper to edit the elements, the same way a data source works. -->
+        <nldd-list-item
+          v-for="(coll, i) in collections"
+          :key="coll.name"
+          size="md"
+          button
+          :data-testid="`coll-row-${i}`"
+          @click="selectedCollection = i"
+        >
+          <nldd-text-cell :text="coll.name" :supporting-text="articleMap?.paramToArticle?.get(coll.name) ? `Artikel ${articleMap.paramToArticle.get(coll.name)}` : undefined" min-width="120px" max-width="200px"></nldd-text-cell>
+          <nldd-spacer-cell size="12"></nldd-spacer-cell>
+          <nldd-text-cell horizontal-alignment="right" :text="coll.rows.length ? String(coll.rows.length) : ''"></nldd-text-cell>
+          <nldd-spacer-cell size="12"></nldd-spacer-cell>
+          <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+        </nldd-list-item>
       </nldd-list>
 
       <!-- Data sources: a row per source, drill in one level deeper -->
@@ -397,7 +466,7 @@ const dateErrorId = useId();
     <!-- One level deeper: a single data source's table. Back to the scenario
          overview is the sheet's top-title-bar back button (driven by the
          parent via clearDrill / drill-change). -->
-    <template v-else>
+    <template v-else-if="selectedSource !== null">
       <DataSourceTable
         :key="dataSources[selectedSource].sourceName"
         :title="sourceLabel(dataSources[selectedSource].sourceName)"
@@ -406,6 +475,19 @@ const dateErrorId = useId();
         :model-value="dataSources[selectedSource].rows"
         :drilled-in="true"
         @update:model-value="updateDataSourceRows(selectedSource, $event)"
+      />
+    </template>
+
+    <!-- A collection parameter's elements: the same table, without a key column. -->
+    <template v-else>
+      <DataSourceTable
+        :key="collections[selectedCollection].name"
+        :title="collections[selectedCollection].name"
+        :key-field="null"
+        :fields="collections[selectedCollection].columns"
+        :model-value="collections[selectedCollection].rows"
+        :drilled-in="true"
+        @update:model-value="updateCollectionRows(selectedCollection, $event)"
       />
     </template>
 

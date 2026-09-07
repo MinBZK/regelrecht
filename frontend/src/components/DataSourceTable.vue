@@ -6,6 +6,8 @@ let nextRowId = 0;
 
 const props = defineProps({
   title: { type: String, required: true },
+  // The key column of a data source. `null` for a table that has no key,
+  // such as the elements of a collection-valued parameter (RFC-016).
   keyField: { type: String, default: 'bsn' },
   fields: { type: Array, required: true },
   modelValue: { type: Array, default: () => [] },
@@ -31,9 +33,11 @@ function toggleExpand() {
 
 function addRow() {
   const newRow = { _id: ++nextRowId };
-  newRow[props.keyField] = rows.value.length > 0
-    ? rows.value[0][props.keyField] || ''
-    : '';
+  if (props.keyField) {
+    newRow[props.keyField] = rows.value.length > 0
+      ? rows.value[0][props.keyField] || ''
+      : '';
+  }
   for (const field of props.fields) {
     if (!(field.name in newRow)) {
       newRow[field.name] = defaultForType(field.type);
@@ -83,8 +87,10 @@ const allColumns = computed(() => {
   const cols = [];
   const seen = new Set();
 
-  seen.add(props.keyField);
-  cols.push({ name: props.keyField, type: 'string', unit: null, isKey: true });
+  if (props.keyField) {
+    seen.add(props.keyField);
+    cols.push({ name: props.keyField, type: 'string', unit: null, isKey: true });
+  }
 
   for (const field of props.fields) {
     if (!seen.has(field.name)) {

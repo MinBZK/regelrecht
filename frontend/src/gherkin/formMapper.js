@@ -43,6 +43,13 @@ function extractFragment(entry, match, step) {
       };
     case 'set_parameters_table':
       return { type: 'parameterTable', parameters: tableToParams(step.dataTable) };
+    case 'set_parameter_collection': {
+      // A collection-valued parameter (RFC-016): header row plus one row per
+      // element. The columns are kept next to the records so a collection
+      // without elements still serializes with its header.
+      const { columns, records } = tableToCollection(step.dataTable);
+      return { type: 'parameter', name: match[1], value: records, columns };
+    }
     case 'set_data_source':
       return {
         type: 'dataSource',
@@ -91,6 +98,36 @@ function tableToParams(dataTable) {
     }));
 }
 
+// A `Given parameter "x" is the collection:` table has a header row and one
+// row per element (mirror of Rust `rows_to_records`): every element becomes
+// an object keyed by the column names, cells typed by content. Lenient on a
+// short row - a missing cell reads as null - so one ragged row does not
+// take the whole feature down in the editor.
+function tableToCollection(dataTable) {
+  if (!dataTable || dataTable.length === 0) return { columns: [], records: [] };
+  const columns = dataTable[0].map((h) => h.trim());
+  const records = dataTable.slice(1).map((row) => {
+    const record = {};
+    columns.forEach((h, i) => {
+      record[h] = i < row.length ? tableCellValue(row[i]) : null;
+    });
+    return record;
+  });
+  return { columns, records };
+}
+
+/** True when a parameter value is a collection (array of records). */
+export function isCollectionValue(value) {
+  return Array.isArray(value);
+}
+
+/** Column names of a collection parameter: the recorded header, or the keys of the first element. */
+export function collectionColumns(param) {
+  if (param.columns?.length) return param.columns;
+  const first = (param.value || [])[0];
+  return first ? Object.keys(first) : [];
+}
+
 function classifyStep(step) {
   const text = step.text;
   for (const entry of CORE_ENTRIES) {
@@ -128,7 +165,11 @@ function classifySteps(steps) {
         setup.dependencies.push(classified.lawId);
         break;
       case 'parameter':
-        setup.parameters.push({ name: classified.name, value: classified.value });
+        setup.parameters.push(
+          classified.columns
+            ? { name: classified.name, value: classified.value, columns: classified.columns }
+            : { name: classified.name, value: classified.value },
+        );
         break;
       case 'parameterTable':
         setup.parameters.push(...classified.parameters);
@@ -238,6 +279,39 @@ function formDataSourceToState(ds) {
   return { sourceName: ds.sourceName, keyField: ds.keyField, headers, rows };
 }
 
+/**
+ * Convert a collection as edited in the form to the formState parameter
+ * value: the column names plus one record per row, `_id` dropped and cells
+ * typed by content (the same rule the runner applies to the saved table).
+ *
+ * Form format:  `{ name, columns: [{name, type}], rows: [{_id, [col]: v}] }`
+ * State format: `{ columns: string[], records: object[] }`
+ */
+function formCollectionToState(coll) {
+  const columns = (coll.columns || []).map((c) => c.name);
+  const records = (coll.rows || []).map((row) => {
+    const record = {};
+    for (const c of columns) {
+      const v = row[c];
+      record[c] = v === undefined || v === null ? null : typeof v === 'string' ? tableCellValue(v) : v;
+    }
+    return record;
+  });
+  return { columns, records };
+}
+
+/**
+ * Equality for two parameter values, scalar or collection. A collection is
+ * compared record by record; `String()` on an array would flatten every
+ * collection to "[object Object]" and call them all equal.
+ */
+function parameterValuesEqual(a, b) {
+  if (isCollectionValue(a) || isCollectionValue(b)) {
+    return isCollectionValue(a) && isCollectionValue(b) && JSON.stringify(a) === JSON.stringify(b);
+  }
+  return String(a) === String(b);
+}
+
 /** Deep equality check for two state-format data sources. */
 function dataSourcesEqual(a, b) {
   if (!a || !b) return false;
@@ -278,7 +352,7 @@ export function syncEditedValues(formState, scenarioIndex, values) {
   const scenario = formState.scenarios[scenarioIndex];
   if (!scenario) return;
 
-  const { parameterValues, calculationDate, dataSources } = values;
+  const { parameterValues, calculationDate, dataSources, collections } = values;
 
   // --- Parameters ---
   const scenarioParamMap = new Map(
@@ -287,29 +361,38 @@ export function syncEditedValues(formState, scenarioIndex, values) {
   const bgParams = formState.background?.parameters || [];
   const bgParamMap = new Map(bgParams.map((p) => [p.name, p]));
 
+  // Scalar parameters and collections share the override rule: a value that
+  // lives in the scenario is updated in place, a background value that was
+  // changed becomes a scenario-level override. `columns` only exists on a
+  // collection.
+  const applyParameter = (name, value, columns) => {
+    const entry = columns ? { name, value, columns } : { name, value };
+    if (scenarioParamMap.has(name)) {
+      Object.assign(scenario.setup.parameters[scenarioParamMap.get(name)], entry);
+    } else if (bgParamMap.has(name)) {
+      if (!parameterValuesEqual(bgParamMap.get(name).value, value)) {
+        scenario.setup.parameters.push(entry);
+      }
+    }
+  };
+
   for (const [name, rawValue] of Object.entries(parameterValues)) {
     // Same rule as reading a step: the content decides. An input control hands
     // back a raw string, and leaving it at that would write `is "50000"` where
     // the scenario said `is 50000`.
-    const value = quotedValue(rawValue);
+    applyParameter(name, quotedValue(rawValue));
+  }
 
-    if (scenarioParamMap.has(name)) {
-      // Update existing scenario-level parameter
-      scenario.setup.parameters[scenarioParamMap.get(name)].value = value;
-    } else if (bgParamMap.has(name)) {
-      // Background param - add scenario override only if value differs
-      const bgValue = bgParamMap.get(name).value;
-      if (String(bgValue) !== String(value)) {
-        scenario.setup.parameters.push({ name, value });
-      }
-    }
+  for (const coll of collections || []) {
+    const { columns, records } = formCollectionToState(coll);
+    applyParameter(coll.name, records, columns);
   }
 
   // Drop scenario-level overrides that now match the background - otherwise
   // a save/edit/save cycle accumulates redundant `Given parameter ...` steps.
   scenario.setup.parameters = scenario.setup.parameters.filter((p) => {
     if (!bgParamMap.has(p.name)) return true;
-    return String(bgParamMap.get(p.name).value) !== String(p.value);
+    return !parameterValuesEqual(bgParamMap.get(p.name).value, p.value);
   });
 
   // --- Data sources ---
@@ -433,7 +516,15 @@ function writeSetupSteps(lines, setup, indent) {
   }
 
   for (const param of setup.parameters || []) {
-    if (typeof param.value === 'number') {
+    if (isCollectionValue(param.value)) {
+      lines.push(`${indent}${KW.set_parameter_collection} ${TPL.set_parameter_collection([param.name])}`);
+      const columns = collectionColumns(param);
+      lines.push(`${indent}  | ${columns.join(' | ')} |`);
+      for (const record of param.value) {
+        const cells = columns.map((c) => formatCell(record[c]));
+        lines.push(`${indent}  | ${cells.join(' | ')} |`);
+      }
+    } else if (typeof param.value === 'number') {
       lines.push(`${indent}${KW.set_parameter_number} ${TPL.set_parameter_number([param.name, formatValue(param.value)])}`);
     } else {
       lines.push(`${indent}${KW.set_parameter_string} ${TPL.set_parameter_string([param.name, formatValue(param.value)])}`);
