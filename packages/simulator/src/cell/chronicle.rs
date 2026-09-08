@@ -176,7 +176,7 @@ mod tests {
                 events,
             }],
         )
-        .unwrap_or_default()
+        .unwrap_or_else(|e| panic!("teststore moet op te bouwen zijn: {e}"))
     }
 
     #[test]
