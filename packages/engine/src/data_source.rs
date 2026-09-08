@@ -78,6 +78,18 @@ pub trait DataSource: Send + Sync {
 
     /// Get all available fields in this data source.
     fn fields(&self) -> Vec<&str>;
+
+    /// The law this source is bound to, if any.
+    ///
+    /// A source without a scope answers for every law. A scoped source is
+    /// consulted only while the inputs of that one law are being resolved, so
+    /// a raw register value (say a `personen.geboortedatum` column materialised
+    /// for `wet_brp`) can never shadow a cross-law input of the same name in a
+    /// law that expects the *computed* value from another law. The default is
+    /// unscoped, which keeps every existing source behaving as before.
+    fn law_scope(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Dictionary-based data source with key-based lookup.
@@ -107,6 +119,9 @@ pub struct DictDataSource {
     /// lookup key. This is needed for `from_records()`, which stores records by a
     /// single key field, while `get()` would otherwise build a key from ALL criteria.
     key_fields: Option<Vec<String>>,
+    /// Law this source answers for; `None` answers for every law. See
+    /// [`DataSource::law_scope`].
+    law_scope: Option<String>,
 }
 
 impl DictDataSource {
@@ -146,7 +161,14 @@ impl DictDataSource {
             data: normalized_data,
             field_index,
             key_fields: None,
+            law_scope: None,
         }
+    }
+
+    /// Bind this source to one law (see [`DataSource::law_scope`]).
+    pub fn with_law_scope(mut self, law_id: impl Into<String>) -> Self {
+        self.law_scope = Some(law_id.into());
+        self
     }
 
     /// Create a dictionary data source from a flat list of records.
@@ -264,6 +286,10 @@ impl DataSource for DictDataSource {
     fn fields(&self) -> Vec<&str> {
         self.field_index.iter().map(|s| s.as_str()).collect()
     }
+
+    fn law_scope(&self) -> Option<&str> {
+        self.law_scope.as_deref()
+    }
 }
 
 /// Registry for data sources with priority-based resolution.
@@ -325,12 +351,36 @@ impl DataSourceRegistry {
     ///
     /// # Returns
     /// A `DataSourceMatch` if the value was found, None otherwise.
+    ///
+    /// Only unscoped sources take part; use [`Self::resolve_for_law`] while
+    /// resolving the inputs of a specific law.
     pub fn resolve(
         &self,
         field: &str,
         criteria: &BTreeMap<String, Value>,
     ) -> Option<DataSourceMatch> {
+        self.resolve_for_law(field, criteria, None)
+    }
+
+    /// Resolve a value for an input of `law_id`.
+    ///
+    /// Unscoped sources always take part. A source bound to a law (see
+    /// [`DataSource::law_scope`]) takes part only when that law is the one
+    /// being resolved. Priority order is unchanged: a scoped and an unscoped
+    /// source compete on priority alone once both are eligible.
+    pub fn resolve_for_law(
+        &self,
+        field: &str,
+        criteria: &BTreeMap<String, Value>,
+        law_id: Option<&str>,
+    ) -> Option<DataSourceMatch> {
         for source in &self.sources {
+            if let Some(scope) = source.law_scope() {
+                if law_id != Some(scope) {
+                    continue;
+                }
+            }
+
             if !source.has_field(field) {
                 continue;
             }
@@ -819,5 +869,39 @@ mod tests {
             source.get("income", &criteria_single),
             Some(Value::Int(40000))
         );
+    }
+    #[test]
+    fn test_scoped_source_answers_only_for_its_law() {
+        let mut registry = DataSourceRegistry::new();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("123".to_string()));
+        record.insert("inkomen".to_string(), Value::Int(1000));
+        let scoped = DictDataSource::from_records("register", 10, "bsn", vec![record.clone()])
+            .unwrap()
+            .with_law_scope("wet_a");
+        registry.add_source(Box::new(scoped));
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("123".to_string()));
+
+        // The bound law sees the value.
+        let hit = registry.resolve_for_law("inkomen", &criteria, Some("wet_a"));
+        assert_eq!(hit.map(|m| m.value), Some(Value::Int(1000)));
+        // Another law does not: its same-named input stays free for cross-law
+        // resolution.
+        assert!(registry
+            .resolve_for_law("inkomen", &criteria, Some("wet_b"))
+            .is_none());
+        // Nor does an unscoped lookup.
+        assert!(registry.resolve("inkomen", &criteria).is_none());
+
+        // An unscoped source answers for every law, at the same priority rules.
+        let open = DictDataSource::from_records("open", 5, "bsn", vec![record]).unwrap();
+        registry.add_source(Box::new(open));
+        let hit = registry.resolve_for_law("inkomen", &criteria, Some("wet_b"));
+        assert_eq!(hit.map(|m| m.source_name), Some("open".to_string()));
+        // For wet_a the scoped source still wins on priority (10 > 5).
+        let hit = registry.resolve_for_law("inkomen", &criteria, Some("wet_a"));
+        assert_eq!(hit.map(|m| m.source_name), Some("register".to_string()));
     }
 }

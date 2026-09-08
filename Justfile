@@ -33,6 +33,8 @@ wasm-build:
     # python3 dependency) needed, and it works with or without dev-setup.
     cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
     wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+    # The demo runs the same engine in the browser; keep the two copies identical.
+    mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
 
 # --- Quality checks ---
 
@@ -189,6 +191,14 @@ test-db:
 # Run Rust BDD tests
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
+
+# Run the demo-corpus scenarios (corpus/demo) against the demo laws
+bdd-demo:
+    cd packages/engine && {{ci_flags}} BDD_BUCKET=demo REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+
+# Run the demo frontend locally (WASM engine + demo corpus, no backend) on :7400
+dev-demo: wasm-build
+    cd frontend-demo && npx vite --port 7400 --strictPort --host 0.0.0.0
 
 # Regenerate all BDD step bindings from bdd/grammar.yaml
 bdd-codegen:

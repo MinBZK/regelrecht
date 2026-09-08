@@ -692,6 +692,48 @@ impl WasmEngine {
             .map_err(engine_error_to_wasm)
     }
 
+    /// Register a tabular data source that answers only for one law.
+    ///
+    /// The records carry the law's `source: {}` inputs by name, keyed by
+    /// `key_field` (typically `bsn` or `kvk_nummer`). Bound to `law_id`, the
+    /// source is consulted only while that law's inputs are resolved, so a raw
+    /// register column can never shadow a same-named cross-law input elsewhere.
+    /// `priority` orders sources for the same law (higher wins); omit it for
+    /// the default of 10. Citizen corrections go in as a second, higher-priority
+    /// source for the same law.
+    ///
+    /// # Example (JavaScript)
+    /// ```javascript
+    /// engine.registerDataSourceForLaw('wet_brp', 'RvIG', 'bsn', [
+    ///     { bsn: '999993653', geboortedatum: '2000-01-01', partner_bsn: null }
+    /// ]);
+    /// engine.registerDataSourceForLaw('wet_brp', 'claims', 'bsn', [
+    ///     { bsn: '999993653', geboortedatum: '1999-12-31' }
+    /// ], 100);
+    /// ```
+    #[wasm_bindgen(js_name = registerDataSourceForLaw)]
+    pub fn register_data_source_for_law(
+        &mut self,
+        law_id: &str,
+        name: &str,
+        key_field: &str,
+        records: JsValue,
+        priority: Option<i32>,
+    ) -> Result<(), JsValue> {
+        let parsed: Vec<BTreeMap<String, Value>> = serde_wasm_bindgen::from_value(records)
+            .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))?;
+
+        self.service
+            .register_dict_source_for_law(law_id, name, key_field, parsed, priority.unwrap_or(10))
+            .map_err(engine_error_to_wasm)
+    }
+
+    /// Remove a data source by name (every law scope it was registered under).
+    #[wasm_bindgen(js_name = removeDataSource)]
+    pub fn remove_data_source(&mut self, name: &str) -> bool {
+        self.service.remove_data_source(name)
+    }
+
     /// Remove all registered data sources.
     #[wasm_bindgen(js_name = clearDataSources)]
     pub fn clear_data_sources(&mut self) {

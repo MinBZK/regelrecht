@@ -481,6 +481,12 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
             .get(property_path)
             .cloned()
             .ok_or_else(|| EngineError::VariableNotFound(format!(".{}", property_path))),
+        // A property of nothing is nothing: an unresolved register record (no
+        // WIA decision, no partner) reads as null, and every field of it does
+        // too, so the law's own null checks can decide (RFC-007 null
+        // propagation). Failing here would fail the whole calculation for a
+        // person the record simply does not apply to.
+        Value::Null => Ok(Value::Null),
         Value::Array(arr) => {
             // Support numeric indexing for arrays
             if let Ok(index) = property_path.parse::<usize>() {
@@ -976,6 +982,27 @@ mod tests {
         assert_eq!(
             ctx.resolve("period.iso").unwrap(),
             Value::String("1999-01-02".to_string())
+        );
+    }
+
+    #[test]
+    fn test_property_of_null_is_null() {
+        // An unresolved register record reads as null; so does every field of
+        // it, however deep the path. The law's null checks decide what that
+        // means instead of the calculation failing.
+        assert_eq!(
+            get_property(&Value::Null, "status", 0).unwrap(),
+            Value::Null
+        );
+        assert_eq!(
+            get_property(&Value::Null, "adres.postcode", 0).unwrap(),
+            Value::Null
+        );
+        let mut obj = BTreeMap::new();
+        obj.insert("partner".to_string(), Value::Null);
+        assert_eq!(
+            get_property(&Value::Object(obj), "partner.geboortedatum", 0).unwrap(),
+            Value::Null
         );
     }
 

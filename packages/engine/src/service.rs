@@ -1950,7 +1950,10 @@ impl LawExecutionService {
 
             // Check DataSourceRegistry before cross-law resolution.
             // An empty registry resolves to None, so no separate guard is needed.
-            if let Some(data_match) = self.data_registry.resolve(&input.name, parameters) {
+            if let Some(data_match) =
+                self.data_registry
+                    .resolve_for_law(&input.name, parameters, Some(&law.id))
+            {
                 tracing::debug!(
                     input = %input.name,
                     source = %data_match.source_name,
@@ -2134,13 +2137,52 @@ impl LawExecutionService {
         );
 
         // Build parameters for the target article
-        let target_params = match self.build_target_parameters(source_parameters, context) {
+        let mut target_params = match self.build_target_parameters(source_parameters, context) {
             Ok(p) => p,
             Err(e) => {
                 res_ctx.trace_set_message(format!("Failed to build parameters: {}", e));
                 return Err(e);
             }
         };
+
+        // A null parameter means there is nobody to look up: a partner's age
+        // when there is no partner, a child's data when there is no child. The
+        // referenced law cannot be executed for nobody, and failing here would
+        // fail the whole calculation for a person to whom that branch does not
+        // apply. The input resolves to null instead and the law's own null
+        // checks decide what that means (RFC-007 null propagation).
+        if let Some((name, _)) = target_params.iter().find(|(_, v)| v.is_null()) {
+            res_ctx.trace_set_message(format!(
+                "Parameter '{}' is null, so {} is not executed; input resolves to null",
+                name, regulation
+            ));
+            res_ctx.trace_set_result(Value::Null);
+            return Ok(Value::Null);
+        }
+
+        // A parameter the target article declares but the caller does not pass
+        // is unknown to this call, not an error: a permit law asked for its
+        // "current permit" output by a tax law does not get the application form
+        // fields the tax law never had. Those parameters read as null, and the
+        // target's unrelated actions resolve to unknown instead of failing the
+        // output that was asked for (RFC-007 null propagation). Only the
+        // cross-law path fills in; a top-level caller still has to supply what
+        // the law declares.
+        if let Some(article) = self
+            .get_law(regulation)
+            .and_then(|law| law.find_article_by_output(output))
+        {
+            if let Some(declared) = article
+                .get_execution_spec()
+                .and_then(|e| e.parameters.as_ref())
+            {
+                for param in declared {
+                    if !target_params.contains_key(&param.name) {
+                        target_params.insert(param.name.clone(), Value::Null);
+                    }
+                }
+            }
+        }
 
         // Enter cross-law resolution scope
         res_ctx.enter(key.clone());
@@ -2393,6 +2435,35 @@ impl LawExecutionService {
             None => Err(EngineError::DataSourceError(format!(
                 "Key field '{}' not found in records for source '{}'",
                 key_field, name
+            ))),
+        }
+    }
+
+    /// Register a dictionary data source that answers only for one law.
+    ///
+    /// The caller has resolved the external data for `law_id` outside the
+    /// YAML (the `source: {}` contract) and hands it over per record key, one
+    /// field per input name. Because the source is bound to `law_id`, a raw
+    /// register value can never shadow a same-named cross-law input of another
+    /// law. `priority` orders competing sources for the same law: a set of
+    /// citizen corrections registered above the register data overrides it.
+    pub fn register_dict_source_for_law(
+        &mut self,
+        law_id: &str,
+        name: &str,
+        key_field: &str,
+        records: Vec<BTreeMap<String, Value>>,
+        priority: i32,
+    ) -> Result<()> {
+        match DictDataSource::from_records(name, priority, key_field, records) {
+            Some(source) => {
+                self.data_registry
+                    .add_source(Box::new(source.with_law_scope(law_id)));
+                Ok(())
+            }
+            None => Err(EngineError::DataSourceError(format!(
+                "Key field '{}' not found in records for source '{}' (law '{}')",
+                key_field, name, law_id
             ))),
         }
     }
@@ -3679,6 +3750,290 @@ articles:
 
         // result = 42 * 3 = 126
         assert_eq!(result.outputs.get("result"), Some(&Value::Int(126)));
+    }
+
+    #[test]
+    fn test_cross_law_call_fills_undeclared_parameters_with_null() {
+        // The tax law asks the permit law for "heeft_vergunning" and passes only
+        // kvk_nummer; the permit law also declares application-form parameters it
+        // uses in other actions. Those read as null and the asked-for output
+        // still comes back.
+        let permit = r#"
+$id: fill_vergunning
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Vergunning
+    machine_readable:
+      execution:
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+          - name: terras_oppervlakte
+            type: number
+            required: true
+        input:
+          - name: vergunning_status
+            type: string
+            source: {}
+        output:
+          - name: heeft_vergunning
+            type: boolean
+          - name: past_oppervlakte
+            type: boolean
+        actions:
+          - output: heeft_vergunning
+            operation: EQUALS
+            subject: $vergunning_status
+            value: ACTIEF
+          - output: past_oppervlakte
+            operation: LESS_THAN
+            subject: $terras_oppervlakte
+            value: 50
+"#;
+        let tax = r#"
+$id: fill_belasting
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Belasting
+    machine_readable:
+      execution:
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+        input:
+          - name: heeft_vergunning
+            type: boolean
+            source:
+              regulation: fill_vergunning
+              output: heeft_vergunning
+              parameters:
+                kvk_nummer: $kvk_nummer
+        output:
+          - name: belastingplichtig
+            type: boolean
+        actions:
+          - output: belastingplichtig
+            value: $heeft_vergunning
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(permit).unwrap();
+        service.load_law(tax).unwrap();
+        let mut record = BTreeMap::new();
+        record.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        record.insert(
+            "vergunning_status".to_string(),
+            Value::String("ACTIEF".to_string()),
+        );
+        service
+            .register_dict_source_for_law(
+                "fill_vergunning",
+                "gemeente",
+                "kvk_nummer",
+                vec![record],
+                10,
+            )
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("belastingplichtig"),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    #[test]
+    fn test_cross_law_call_with_null_parameter_resolves_to_null() {
+        // A partner's age when there is no partner: the caller passes
+        // `bsn: $partner_bsn`, which is null. The referenced law is not run and
+        // the input is null, so the caller's own null check can decide.
+        let brp = r#"
+$id: null_brp
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: BRP
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: geboortedatum
+            type: date
+            source: {}
+        output:
+          - name: geboortedatum
+            type: date
+        actions:
+          - output: geboortedatum
+            value: $geboortedatum
+"#;
+        let caller = r#"
+$id: null_caller
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Caller
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: partner_bsn
+            type: string
+            required: false
+        input:
+          - name: partner_geboortedatum
+            type: date
+            source:
+              regulation: null_brp
+              output: geboortedatum
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: heeft_partner_geboortedatum
+            type: boolean
+        actions:
+          - output: heeft_partner_geboortedatum
+            operation: NOT
+            value:
+              operation: EQUALS
+              subject: $partner_geboortedatum
+              value: null
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(brp).unwrap();
+        service.load_law(caller).unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("123".to_string()));
+        params.insert("partner_bsn".to_string(), Value::Null);
+        let result = service
+            .evaluate_law_output(
+                "null_caller",
+                "heeft_partner_geboortedatum",
+                params,
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("heeft_partner_geboortedatum"),
+            Some(&Value::Bool(false))
+        );
+    }
+
+    #[test]
+    fn test_scoped_data_source_does_not_shadow_other_law() {
+        // wet_bron computes `inkomen` from a raw register column that happens to
+        // carry the same name. wet_afnemer takes `inkomen` cross-law from
+        // wet_bron. The register source is bound to wet_bron, so wet_afnemer's
+        // input must still come from the computed output (raw * 2), not from
+        // the raw column.
+        let bron = r#"
+$id: wet_bron
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bron
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: number
+            source: {}
+        output:
+          - name: inkomen
+            type: number
+        actions:
+          - output: inkomen
+            operation: MULTIPLY
+            values:
+              - $inkomen
+              - 2
+"#;
+        let afnemer = r#"
+$id: wet_afnemer
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Afnemer
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: number
+            source:
+              regulation: wet_bron
+              output: inkomen
+              parameters:
+                bsn: $bsn
+        output:
+          - name: resultaat
+            type: number
+        actions:
+          - output: resultaat
+            value: $inkomen
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(bron).unwrap();
+        service.load_law(afnemer).unwrap();
+
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("123".to_string()));
+        record.insert("inkomen".to_string(), Value::Int(500));
+        service
+            .register_dict_source_for_law("wet_bron", "register", "bsn", vec![record], 10)
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("123".to_string()));
+        let result = service
+            .evaluate_law_output("wet_afnemer", "resultaat", params.clone(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("resultaat"), Some(&Value::Int(1000)));
+
+        // A higher-priority scoped source (a citizen correction) overrides the
+        // register for the same law.
+        let mut claim = BTreeMap::new();
+        claim.insert("bsn".to_string(), Value::String("123".to_string()));
+        claim.insert("inkomen".to_string(), Value::Int(700));
+        service
+            .register_dict_source_for_law("wet_bron", "claims", "bsn", vec![claim], 100)
+            .unwrap();
+        let result = service
+            .evaluate_law_output("wet_afnemer", "resultaat", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("resultaat"), Some(&Value::Int(1400)));
     }
 
     #[test]

@@ -86,6 +86,13 @@ impl RegelrechtWorld {
                 let rows = rows_to_records(&table.expect("data source table"), table_cell_value);
                 self.data_sources.insert(source, (key, rows));
             }
+            "set_data_source_for_law" => {
+                let source = args[0].as_str().to_string();
+                let key = args[1].as_str().to_string();
+                let law = args[2].as_str().to_string();
+                let rows = rows_to_records(&table.expect("data source table"), table_cell_value);
+                self.scoped_data_sources.push((law, source, key, rows));
+            }
             "set_parameter_collection" => {
                 let name = args[0].as_str().to_string();
                 let records = rows_to_records(&table.expect("collection table"), table_cell_value);
@@ -225,6 +232,13 @@ impl RegelrechtWorld {
                 self.service
                     .register_dict_source(name, key, records.clone())
                     .expect("Failed to register data source");
+            }
+        }
+        for (law, name, key, records) in &self.scoped_data_sources {
+            if !records.is_empty() {
+                self.service
+                    .register_dict_source_for_law(law, name, key, records.clone(), 10)
+                    .expect("Failed to register scoped data source");
             }
         }
         self.requested_outputs = outputs.to_vec();

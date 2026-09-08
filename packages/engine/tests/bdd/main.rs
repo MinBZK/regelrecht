@@ -82,11 +82,18 @@ impl parser::Parser<Vec<PathBuf>> for ExplicitPaths {
 }
 
 /// Which bucket(s) the run covers, read from `BDD_BUCKET`.
+///
+/// `Demo` is a third bucket next to A and B: the demo corpus
+/// (`corpus/demo/regulation/**/scenarios`), run against the demo laws. It is
+/// never part of `all`, because the demo laws are a separate law set that the
+/// world has to load instead of the fixture corpus (`just bdd-demo` sets
+/// `REGULATION_PATH` accordingly).
 #[derive(Clone, Copy, PartialEq)]
 enum Bucket {
     All,
     Corpus,
     Conformance,
+    Demo,
 }
 
 impl Bucket {
@@ -95,7 +102,8 @@ impl Bucket {
             Ok("") | Err(_) | Ok("all") => Self::All,
             Ok("corpus") | Ok("a") => Self::Corpus,
             Ok("conformance") | Ok("b") => Self::Conformance,
-            Ok(other) => panic!("BDD_BUCKET={other}: expected all, corpus or conformance"),
+            Ok("demo") => Self::Demo,
+            Ok(other) => panic!("BDD_BUCKET={other}: expected all, corpus, conformance or demo"),
         }
     }
 
@@ -107,11 +115,16 @@ impl Bucket {
         matches!(self, Self::All | Self::Conformance)
     }
 
+    fn covers_demo(self) -> bool {
+        matches!(self, Self::Demo)
+    }
+
     fn label(self) -> &'static str {
         match self {
             Self::All => "corpus/regulation/**/scenarios or bdd/conformance",
             Self::Corpus => "corpus/regulation/**/scenarios",
             Self::Conformance => "bdd/conformance",
+            Self::Demo => "corpus/demo/regulation/**/scenarios",
         }
     }
 }
@@ -124,6 +137,20 @@ fn collect_feature_paths(root: &Path, bucket: Bucket) -> Vec<PathBuf> {
 
     if bucket.covers_corpus() {
         for entry in WalkDir::new(root.join("corpus/regulation"))
+            .into_iter()
+            .flatten()
+        {
+            let p = entry.path();
+            let is_feature = p.extension().map(|e| e == "feature").unwrap_or(false);
+            let under_scenarios = p.components().any(|c| c.as_os_str() == "scenarios");
+            if is_feature && under_scenarios {
+                features.push(p.to_path_buf());
+            }
+        }
+    }
+
+    if bucket.covers_demo() {
+        for entry in WalkDir::new(root.join("corpus/demo/regulation"))
             .into_iter()
             .flatten()
         {

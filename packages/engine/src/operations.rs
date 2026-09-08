@@ -497,6 +497,14 @@ where
         return Ok(tainted);
     }
 
+    // Comparing against nothing has no answer. A register that holds no value
+    // for this person (no rent, no partner income) makes the comparison
+    // unknown, not an error; AND/OR and IF already know what to do with an
+    // unknown (RFC-007 null propagation).
+    if subject_val.is_null() || value_val.is_null() {
+        return Ok(Value::Null);
+    }
+
     // Numbers first: the common case and the historical behavior.
     if is_numeric(&subject_val) && is_numeric(&value_val) {
         let subject_num = to_decimal(&subject_val)?;
@@ -548,6 +556,15 @@ fn is_numeric(val: &Value) -> bool {
 // Arithmetic Operations
 // =============================================================================
 
+/// Arithmetic over nothing is nothing: an operand that resolved to null (a
+/// register value this person does not have) makes the result unknown rather
+/// than a type error, in line with RFC-007 null propagation. AND/OR/IF know
+/// what to do with an unknown; a failing calculation would tell the person
+/// nothing at all.
+fn propagate_null(evaluated: &[Value]) -> Option<Value> {
+    evaluated.iter().any(Value::is_null).then_some(Value::Null)
+}
+
 /// Execute ADD operation: sum numbers, concatenate arrays, or concatenate strings.
 ///
 /// The type of the first value determines the operation mode:
@@ -559,7 +576,14 @@ fn execute_add<R: ValueResolver>(
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    add_values(&evaluate_values(values, resolver, depth)?)
+    let evaluated = evaluate_values(values, resolver, depth)?;
+    if let Some(tainted) = find_untranslatable(&evaluated) {
+        return Ok(tainted);
+    }
+    if let Some(unknown) = propagate_null(&evaluated) {
+        return Ok(unknown);
+    }
+    add_values(&evaluated)
 }
 
 /// Sum already-evaluated values with RFC-007's polymorphic ADD.
@@ -663,6 +687,9 @@ fn execute_subtract<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_null(&evaluated) {
+        return Ok(unknown);
+    }
 
     // SAFETY: values guaranteed non-empty by check above
     let Some((first, rest)) = evaluated.split_first() else {
@@ -699,6 +726,9 @@ fn execute_multiply<R: ValueResolver>(
 
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
+    }
+    if let Some(unknown) = propagate_null(&evaluated) {
+        return Ok(unknown);
     }
 
     let mut result = Decimal::ONE;
@@ -737,6 +767,9 @@ fn execute_divide<R: ValueResolver>(
 
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
+    }
+    if let Some(unknown) = propagate_null(&evaluated) {
+        return Ok(unknown);
     }
 
     // SAFETY: values guaranteed non-empty by check above
@@ -783,6 +816,9 @@ where
 
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
+    }
+    if let Some(unknown) = propagate_null(&evaluated) {
+        return Ok(unknown);
     }
 
     let mut has_decimal = false;
@@ -4521,6 +4557,26 @@ mod tests {
                 value: lit("2025-01-01"),
             };
             assert!(execute_operation(&op, &resolver, 0).is_err());
+        }
+
+        #[test]
+        fn test_comparison_and_arithmetic_with_null_are_unknown() {
+            // A register value this person does not have (null) makes the
+            // comparison and the sum unknown, not an error (RFC-007).
+            let resolver = TestResolver::new().with_var("leeg", Value::Null);
+            let gt = ActionOperation::GreaterThan {
+                subject: var("leeg"),
+                value: lit(10i64),
+            };
+            assert_eq!(execute_operation(&gt, &resolver, 0).unwrap(), Value::Null);
+            let add = ActionOperation::Add {
+                values: vec![lit(5i64), var("leeg")],
+            };
+            assert_eq!(execute_operation(&add, &resolver, 0).unwrap(), Value::Null);
+            let sub = ActionOperation::Subtract {
+                values: vec![var("leeg"), lit(5i64)],
+            };
+            assert_eq!(execute_operation(&sub, &resolver, 0).unwrap(), Value::Null);
         }
 
         #[test]

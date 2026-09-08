@@ -72,6 +72,19 @@ steps:
     args: [{name: source, type: string}, {name: key, type: string}]
     datatable: true
 
+  # External data that answers for one law only. The engine consults a scoped
+  # source solely while resolving that law's `source: {}` inputs (see
+  # `DataSource::law_scope`), so a raw register column can never shadow a
+  # same-named cross-law input of another law. The rows carry the law's inputs
+  # by name; the demo materialises persona data this way, one source per law.
+  - id: set_data_source_for_law
+    action: set_data_source_for_law
+    keyword: given
+    tier: core
+    text: 'the following "{source}" data with key "{key}" for law "{law}":'
+    args: [{name: source, type: string}, {name: key, type: string}, {name: law, type: string}]
+    datatable: true
+
   # A collection-valued parameter, for the operations that iterate one
   # (RFC-016). The table has a header row and one row per element, so each
   # element becomes an object keyed by the column names — the same shape as a
