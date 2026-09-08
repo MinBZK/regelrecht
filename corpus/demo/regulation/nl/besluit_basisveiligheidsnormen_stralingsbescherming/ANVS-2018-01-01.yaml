@@ -1,0 +1,208 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: besluit_basisveiligheidsnormen_stralingsbescherming
+regulatory_layer: WET
+publication_date: '2018-01-01'
+valid_from: '2018-01-01'
+name: Besluit basisveiligheidsnormen stralingsbescherming
+bwb_id: BWBR0040179
+url: https://wetten.overheid.nl/BWBR0040179/2018-01-01
+service: ANVS
+uuid: 7b4d8f3e-2c9a-4e1d-9f7b-5a3e6c8d1f4a
+discoverable: BUSINESS
+articles:
+  - number: '3.7'
+    text: >-
+      Een vergunning wordt geweigerd indien:
+        a. ten aanzien van de handeling waarop de aanvraag betrekking heeft, niet wordt
+      voldaan aan het bepaalde in:
+        1°. hoofdstuk 2, 7 of 8, met betrekking tot rechtvaardiging, optimalisatie en
+      dosislimitering,
+      of
+        2°. hoofdstuk 5, met betrekking tot deskundigheid;
+        b. voor een lid van de bevolking dat zich op enig punt buiten de locatie bevindt,
+      als gevolg van de handeling waarop de aanvraag betrekking heeft en ten gevolge van alle
+      toegestane handelingen die onder verantwoordelijkheid van de ondernemer worden verricht,
+      een effectieve dosis van 0,1 millisievert in een kalenderjaar wordt overschreden of kan
+      worden overschreden;
+        c. voor een lid van de bevolking dat zich buiten de locatie bevindt, ten gevolge
+      van de handeling waarop de aanvraag betrekking heeft en ten gevolge van andere handelingen
+      binnen en buiten deze locatie, een van de volgende doses wordt overschreden of kan worden
+      overschreden:
+        1°. een effectieve dosis van 1 millisievert in een kalenderjaar en, met inachtneming
+      daarvan:
+        2°. een equivalente dosis van 50 millisievert in een kalenderjaar voor de huid,
+      gemiddeld over enig huidoppervlak van 1 cm2;
+        d. de handeling waarop de aanvraag betrekking heeft behoort tot een soort of categorie
+      die op grond van paragraaf 2.2 generiek is gerechtvaardigd, maar het specifieke karakter
+      van die handeling op grond van het bepaalde in die paragraaf niet gerechtvaardigd is;
+        e. niet is aangetoond dat een krachtens dit besluit vereiste financiële zekerheid
+      is gesteld;
+        f. geen, of een ontoereikend, beveiligingsplan als bedoeld in artikel 4.7,
+      bedrijfsnoodplan
+      als bedoeld in artikel 6.7 of beëindigingsplan als bedoeld in artikel 10.8 bij de aanvraag
+      is gevoegd, voor zover vereist krachtens artikel 3.6, derde lid, aanhef en onder e;
+        g. niet wordt voldaan aan bij of krachtens de wet met het oog op stralingsbescherming
+      gestelde regels of voorschriften; of
+        h. internationale verplichtingen tot het weigeren van de vergunning noodzaken.
+    url: https://wetten.overheid.nl/BWBR0040179/2018-01-01#Artikel3.7
+    machine_readable:
+      definitions:
+        dosis_limiet_bevolking_algemeen: 1.0
+        dosis_limiet_bevolking_buiten_locatie: 0.1
+        dosis_limiet_huid: 50.0
+        limiet_type_algemeen: effectieve_dosis_algemeen
+        limiet_type_buiten_locatie: effectieve_dosis_buiten_locatie
+        limiet_type_huid: equivalente_dosis_huid
+      execution:
+        produces:
+          legal_character: BESLUIT_VAN_ALGEMENE_STREKKING
+          decision_type: ALGEMEEN_VERBINDEND_VOORSCHRIFT
+        parameters:
+          - name: verwachte_dosis_jaar
+            type: number
+            required: true
+            type_spec:
+              precision: 2
+              min: 0
+          - name: verwachte_dosis_huid
+            type: number
+            type_spec:
+              precision: 2
+              min: 0
+          - name: dosis_buiten_locatie
+            type: number
+            type_spec:
+              precision: 2
+              min: 0
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: verwachte_dosis_bevolking
+            type: number
+            type_spec:
+              precision: 2
+              min: 0
+          - name: dosislimiet_overschreden
+            type: boolean
+          - name: vergunning_toegestaan_straling
+            type: boolean
+          - name: overschreden_limieten
+            type: array
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              subject: $verwachte_dosis_jaar
+              operation: GREATER_THAN_OR_EQUAL
+              value: 0
+          - output: verwachte_dosis_bevolking
+            value: $verwachte_dosis_jaar
+            legal_basis:
+              law: Besluit basisveiligheidsnormen stralingsbescherming
+              bwb_id: BWBR0040179
+              article: '3.7'
+              url: >-
+                https://wetten.overheid.nl/BWBR0040179/2018-01-01#Hoofdstuk3_Paragraaf3.2_Artikel3.7
+              juriconnect: jci1.3:c:BWBR0040179&artikel=3.7&z=2018-01-01&g=2018-01-01
+              explanation: >-
+                Verwachte dosis voor bevolking wordt geëvalueerd tegen dosislimieten
+          - output: overschreden_limieten
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $verwachte_dosis_jaar
+                    value: $dosis_limiet_bevolking_algemeen
+                  then:
+                    operation: LIST
+                    items:
+                      - effectieve_dosis_algemeen
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $dosis_buiten_locatie
+                          value: null
+                      - operation: GREATER_THAN
+                        subject: $dosis_buiten_locatie
+                        value: $dosis_limiet_bevolking_buiten_locatie
+                  then:
+                    operation: LIST
+                    items:
+                      - effectieve_dosis_buiten_locatie
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $verwachte_dosis_huid
+                          value: null
+                      - operation: GREATER_THAN
+                        subject: $verwachte_dosis_huid
+                        value: $dosis_limiet_huid
+                  then:
+                    operation: LIST
+                    items:
+                      - equivalente_dosis_huid
+              default:
+                operation: LIST
+                items: []
+            legal_basis:
+              law: Besluit basisveiligheidsnormen stralingsbescherming
+              bwb_id: BWBR0040179
+              article: '3.7'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0040179/2018-01-01#Hoofdstuk3_Paragraaf3.2_Artikel3.7
+              juriconnect: >-
+                jci1.3:c:BWBR0040179&artikel=3.7&lid=1&z=2018-01-01&g=2018-01-01
+              explanation: >-
+                Artikel 3.7 lid 1 stelt verschillende dosislimieten vast die niet overschreden mogen
+                worden
+          - output: dosislimiet_overschreden
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $overschreden_limieten
+                      value:
+                        operation: LIST
+                        items: []
+                  then: true
+              default: false
+            legal_basis:
+              law: Besluit basisveiligheidsnormen stralingsbescherming
+              bwb_id: BWBR0040179
+              article: '3.7'
+              url: >-
+                https://wetten.overheid.nl/BWBR0040179/2018-01-01#Hoofdstuk3_Paragraaf3.2_Artikel3.7
+              juriconnect: jci1.3:c:BWBR0040179&artikel=3.7&z=2018-01-01&g=2018-01-01
+              explanation: >-
+                Indien dosislimieten worden overschreden, is dosislimiet_overschreden waar
+          - output: vergunning_toegestaan_straling
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $dosislimiet_overschreden
+                    value: false
+                  then: true
+              default: false
+            legal_basis:
+              law: Besluit basisveiligheidsnormen stralingsbescherming
+              bwb_id: BWBR0040179
+              article: '3.7'
+              url: >-
+                https://wetten.overheid.nl/BWBR0040179/2018-01-01#Hoofdstuk3_Paragraaf3.2_Artikel3.7
+              juriconnect: jci1.3:c:BWBR0040179&artikel=3.7&z=2018-01-01&g=2018-01-01
+              explanation: >-
+                Vergunning wordt niet verleend indien dosislimieten worden overschreden

@@ -1,0 +1,201 @@
+---
+# Demo configuration: the two presenter profiles and what each of them shows.
+# Ported from the POC's web/demo_profiles.py, web/feature_flags.py and
+# web/config/dashboard_outputs.json. Laws are addressed by `law_path`, the
+# directory of the law file under corpus/demo/regulation/nl (the POC's law
+# identifier), combined with the executing service.
+
+default_profile: merijn
+
+profiles:
+  merijn:
+    name: Merijn
+    type: burger
+    bsn: '100000001'
+    kvk: null
+    default_law: {law_path: zorgtoeslagwet, service: TOESLAGEN}
+    default_feature: zorgtoeslagwet
+    zaaksysteem_service: TOESLAGEN
+    portal_tab_label: Burger.nl
+    portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
+    portal_subtitle: >-
+      Bekijk hier uw toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
+    feature_flags: {DELEGATION: false, AUTO_APPROVE_CLAIMS: false}
+    sidebar_laws: null
+    disabled_laws:
+      BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]
+      GEMEENTE_ROTTERDAM:
+        - alcoholwet/vergunning/gemeenten
+        - >-
+          algemene_plaatselijke_verordening/exploitatievergunning/gemeenten
+        - algemene_plaatselijke_verordening/terrassen
+        - >-
+          algemene_plaatselijke_verordening/ontheffingspas_geluid/gemeenten
+        - verordening_precariobelasting/gemeenten
+      KVK: [handelsregisterwet/jaarrekening]
+      NVWA: [warenwet/haccp, warenwet/meldplicht]
+      PENSIOENFONDS: [pensioenwet]
+      RVO:
+        - omgevingswet/werkgebonden_personenmobiliteit
+        - omgevingswet/energiebesparing/informatieplicht
+      SVB:
+        - algemene_kinderbijslagwet
+        - algemene_nabestaandenwet
+        - algemene_ouderdomswet/leeftijdsbepaling
+        - algemene_ouderdomswet_gegevens
+        - participatiewet/aio
+      TOESLAGEN: [wet_kinderopvang]
+  claudia:
+    name: Claudia
+    type: ondernemer
+    bsn: '999999990'
+    kvk: '85234567'
+    default_law:
+      law_path: verordening_precariobelasting/gemeenten
+      service: GEMEENTE_ROTTERDAM
+    default_feature: verordening_precariobelasting
+    zaaksysteem_service: GEMEENTE_ROTTERDAM
+    portal_tab_label: Overheid.nl
+    portal_heading: Welke regelingen passen bij mijn bedrijf?
+    portal_subtitle: >-
+      Bekijk beschikbare subsidies, rapportageverplichtingen, vergunningen, wetten en andere
+      ondernemersregelingen.
+    feature_flags: {DELEGATION: true, AUTO_APPROVE_CLAIMS: true}
+    sidebar_laws: [verordening_precariobelasting/gemeenten]
+    disabled_laws:
+      BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]
+      DUO: [wet_studiefinanciering]
+      GEMEENTE_AMSTERDAM: [participatiewet/bijstand/gemeenten]
+      KIESRAAD: [kieswet]
+      PENSIOENFONDS: [pensioenwet]
+      RVO: [omgevingswet/werkgebonden_personenmobiliteit]
+      SVB:
+        - algemene_kinderbijslagwet
+        - algemene_nabestaandenwet
+        - algemene_ouderdomswet/leeftijdsbepaling
+        - algemene_ouderdomswet_gegevens
+        - participatiewet/aio
+      SZW:
+        - participatiewet/bijstand
+        - besluit_bijstandverlening_zelfstandigen
+      TOESLAGEN:
+        - zorgtoeslagwet
+        - wet_op_de_huurtoeslag
+        - wet_op_het_kindgebonden_budget
+        - wet_kinderopvang
+      UWV:
+        - werkloosheidswet
+        - ziektewet
+        - uwv_toetsingsinkomen
+        - uwv_werkgegevens
+        - wet_werk_en_inkomen_naar_arbeidsvermogen
+        - wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+        - wet_inkomstenbelasting
+
+# Laws that never appear on a portal: infrastructure, procedural or helper
+# laws that other laws consume (the POC's FeatureFlags.LAW_DEFAULTS).
+hidden_laws:
+  LBB: [wet_bibob]
+  SVH: [alcoholwet/register_sociale_hygiene]
+  VWS: [alcoholwet/vergunning, zorgtoeslagwet/regelingen]
+  ACICT: [wet_adviescollege_ict_toetsing]
+  ANVS:
+    - besluit_basisveiligheidsnormen_stralingsbescherming
+    - besluit_kerninstallaties
+    - kernenergiewet
+  AWB: [algemene_wet_bestuursrecht/artikel_1_1_bestuursorgaan]
+  RVO: [omgevingswet/werkgebonden_personenmobiliteit/gegevens]
+  RvIG: [wet_brp, wet_brp/laa]
+  BELASTINGDIENST: [wet_brp/terugmelding, belastingdienst_vermogen]
+  CJIB: [wet_brp/terugmelding]
+  TOESLAGEN: [wet_brp/terugmelding]
+  JenV: [awb/bezwaar, awb/beroep]
+  UWV:
+    - wet_werk_en_inkomen_naar_arbeidsvermogen
+    - ziektewet
+    - uwv_werkgegevens
+    - uwv_toetsingsinkomen
+    - wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+  RVZ: [zvw]
+  NATIONAAL_ARCHIEF: [archiefwet]
+  KVK: [handelsregisterwet/bedrijfsgegevens]
+  SVB:
+    - algemene_ouderdomswet_gegevens
+    - algemene_ouderdomswet/leeftijdsbepaling
+  CBS: [wet_op_het_centraal_bureau_voor_de_statistiek]
+
+# Primary output per law for ranking tiles on the portal (largest impact first).
+# Laws not listed fall back to their largest absolute numeric output.
+dashboard_outputs:
+  BELASTINGDIENST/wet_inkomstenbelasting: totale_belastingschuld
+  TOESLAGEN/zorgtoeslagwet: hoogte_toeslag
+  TOESLAGEN/wet_op_het_kindgebonden_budget: kindgebonden_budget_jaar
+  TOESLAGEN/wet_op_de_huurtoeslag: hoogte_huurtoeslag
+  TOESLAGEN/wet_kinderopvang: hoogte_toeslag
+  SVB/algemene_ouderdomswet: hoogte_aow
+  SVB/algemene_kinderbijslagwet: ontvangt_kinderbijslag
+  SVB/algemene_nabestaandenwet: hoogte_nabestaandenuitkering
+  SVB/participatiewet/aio: hoogte_aio
+  SZW/participatiewet/bijstand: hoogte_bijstand
+  SZW/besluit_bijstandverlening_zelfstandigen: algemene_bijstand_bedrag
+  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten: hoogte_bijstand
+  DUO/wet_studiefinanciering: studiefinanciering
+  UWV/werkloosheidswet: hoogte_ww_uitkering
+  UWV/ziektewet: hoogte_ziekengeld
+  UWV/wet_werk_en_inkomen_naar_arbeidsvermogen: hoogte_uitkering
+  BELASTINGDIENST/zorgverzekeringswet/bijdrage: verschuldigde_bijdrage
+  PENSIOENFONDS/pensioenwet: maandelijks_pensioen
+  KIESRAAD/kieswet: heeft_stemrecht
+  GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten: belasting_per_jaar
+  GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen: heeft_recht_op_terrasvergunning
+  GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten: heeft_recht_op_vergunning
+  NVWA/warenwet/haccp: heeft_haccp_verplichting
+  RVO/omgevingswet/energiebesparing/informatieplicht: heeft_informatieplicht
+  NVWA/warenwet/meldplicht: heeft_meldplicht
+  IND/vreemdelingenwet: heeft_verblijfsrecht
+
+# Which YAML paths the law viewer opens by default for a law, so the audience
+# sees the branch that matters (the POC's DEMO_COLLAPSE_CONFIG, trimmed to the
+# laws on the default tabs). Paths are dotted, arrays by index or by the value
+# of `output`/`name`.
+expanded_paths:
+  zorgtoeslagwet:
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag
+  verordening_precariobelasting:
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+    - articles.*.machine_readable.execution.actions
+
+# The presentation slides (Presentatie tab).
+slides:
+  - kind: title
+    title: RegelRecht
+    subtitle: van wet naar digitale werking
+    footer: >-
+      Bureau Architectuur, Ministerie van Binnenlandse Zaken en Koninkrijksrelaties
+  - kind: statement
+    overline: Huidige situatie
+    lines:
+      - Iedere organisatie
+      - heeft een **eigen interpretatie** van de wet
+      - die landt in **eigen software**
+  - kind: statement
+    overline: Het gevolg
+    lines:
+      - Geen overzicht
+      - Onvoorspelbaar
+      - Onbeheersbaar
+  - kind: statement
+    overline: Wat als
+    lines:
+      - We **beginnen met de wet**
+      - Deze **machine-uitvoerbaar** maken
+      - '**Openbaar** publiceren'
+  - kind: statement
+    overline: Demo RegelRecht
+    lines:
+      - Proof of concept
+      - Compleet verhaal, geen eindproduct
+      - We maken beleid door te doen

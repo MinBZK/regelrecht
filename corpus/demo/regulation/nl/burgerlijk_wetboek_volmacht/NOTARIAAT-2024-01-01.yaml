@@ -1,0 +1,271 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: burgerlijk_wetboek_volmacht
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: >-
+  Bepalen volmacht en vertegenwoordigingsbevoegdheid gevolmachtigde
+bwb_id: BWBR0005291
+url: https://wetten.overheid.nl/BWBR0005291/2024-01-01
+service: NOTARIAAT
+uuid: 5a437c98-30bb-4044-af1a-11701a9bf7ea
+discoverable: DELEGATION_PROVIDER
+articles:
+  - number: '60'
+    text: >-
+      1. Volmacht is de bevoegdheid die een volmachtgever verleent aan een ander, de
+      gevolmachtigde, om in zijn naam rechtshandelingen te verrichten. 2. Waar in deze titel van
+      rechtshandeling wordt gesproken, is daaronder het in ontvangst nemen van een verklaring
+      begrepen.
+    url: https://wetten.overheid.nl/BWBR0005291/2024-01-01#Artikel60
+    machine_readable:
+      definitions:
+        algemene_volmacht_rechten:
+          - LEZEN
+          - CLAIMS_INDIENEN
+          - BESLUITEN_ONTVANGEN
+        bijzondere_volmacht_rechten:
+          - LEZEN
+        volmacht_typen:
+          algemene_volmacht: GEVOLMACHTIGDE_ALGEMEEN
+          bijzondere_volmacht: GEVOLMACHTIGDE_BIJZONDER
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: volmacht_registraties
+            type: array
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: heeft_delegaties
+            type: boolean
+          - name: subject_ids
+            type: array
+          - name: subject_names
+            type: array
+          - name: subject_types
+            type: array
+          - name: delegation_types
+            type: array
+          - name: permissions
+            type: array
+          - name: valid_from_dates
+            type: array
+          - name: valid_until_dates
+            type: array
+        actions:
+          - output: voldoet_aan_voorwaarden
+        # POC: EXISTS op lijst $volmacht_registraties (uitvoer voldoet_aan_voorwaarden) betekende 'niet leeg'; expliciet
+        # als telling (RFC-016)
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $volmacht_registraties
+                body: 1
+                combine: ADD
+              value: 0
+          - output: actieve_volmachten
+            value:
+              operation: FOREACH
+              collection: $volmacht_registraties
+              filter:
+                operation: AND
+                conditions:
+                  - operation: EQUALS
+                    subject: $current.status
+                    value: ACTIEF
+                  - operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $current.is_herroepen
+                      value: true
+                  - operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $current.datum_einde
+                        value: null
+                      - operation: EQUALS
+                        subject: $current.datum_einde
+                        value: ''
+                      - operation: GREATER_THAN
+                        subject: $current.datum_einde
+                        value: $referencedate
+              body: $current
+              as: current
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '72'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel72
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=72&z=2024-01-01&g=2024-01-01
+              explanation: >
+                Art. 3:72 BW: volmacht eindigt door herroeping, dood volmachtgever, faillissement, etc.
+                Alleen actieve volmachten geven bevoegdheid.
+          - output: heeft_delegaties
+        # POC: EXISTS op lijst $actieve_volmachten (uitvoer heeft_delegaties) betekende 'niet leeg'; expliciet als
+        # telling (RFC-016)
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $actieve_volmachten
+                body: 1
+                combine: ADD
+              value: 0
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '60'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel60
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=60&z=2024-01-01&g=2024-01-01
+              explanation: |
+                Art. 3:60 BW bepaalt dat volmacht vertegenwoordigingsbevoegdheid geeft.
+          - output: subject_ids
+        # POC: impliciete map over een lijst ($actieve_volmachten.bsn_volmachtgever); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actieve_volmachten
+              as: item
+              body: $item.bsn_volmachtgever
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '60'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel60
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=60&z=2024-01-01&g=2024-01-01
+              explanation: BSN nummers van volmachtgevers uit notarieel register
+          - output: subject_names
+        # POC: impliciete map over een lijst ($actieve_volmachten.naam_volmachtgever); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actieve_volmachten
+              as: item
+              body: $item.naam_volmachtgever
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '60'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel60
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=60&z=2024-01-01&g=2024-01-01
+              explanation: Namen van volmachtgevers uit notarieel register
+          - output: subject_types
+            value:
+              operation: FOREACH
+              collection: $actieve_volmachten
+              body: CITIZEN
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '60'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel60
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=60&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Dit register betreft alleen natuurlijke personen, altijd CITIZEN
+          - output: delegation_types
+            value:
+              operation: FOREACH
+              collection: $actieve_volmachten
+              body:
+                operation: IF
+                cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $current.volmacht_type
+                      value: ALGEMENE_VOLMACHT
+                    then: GEVOLMACHTIGDE_ALGEMEEN
+                default: GEVOLMACHTIGDE_BIJZONDER
+              as: current
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '62'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel62
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=62&z=2024-01-01&g=2024-01-01
+              explanation: 'Art. 3:62 BW: onderscheid algemene en bijzondere volmacht'
+          - output: permissions
+            value:
+              operation: FOREACH
+              collection: $actieve_volmachten
+              body:
+                operation: IF
+                cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $current.volmacht_type
+                      value: ALGEMENE_VOLMACHT
+                    then: $algemene_volmacht_rechten
+                default: $bijzondere_volmacht_rechten
+              as: current
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '62'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel62
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=62&z=2024-01-01&g=2024-01-01
+              explanation: >
+                Art. 3:62 BW: Algemene volmacht strekt tot alle rechtshandelingen (volledige rechten),
+                bijzondere tot specifieke handelingen (beperkt).
+          - output: valid_from_dates
+        # POC: impliciete map over een lijst ($actieve_volmachten.datum_ingang); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actieve_volmachten
+              as: item
+              body: $item.datum_ingang
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '61'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel61
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=61&z=2024-01-01&g=2024-01-01
+              explanation: Ingangsdatum volmacht uit notarieel register
+          - output: valid_until_dates
+        # POC: impliciete map over een lijst ($actieve_volmachten.datum_einde); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actieve_volmachten
+              as: item
+              body: $item.datum_einde
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 3
+              bwb_id: BWBR0005291
+              article: '72'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005291/2024-01-01#Boek3_Titeldeel3_Artikel72
+              juriconnect: >-
+                jci1.3:c:BWBR0005291&boek=3&artikel=72&z=2024-01-01&g=2024-01-01
+              explanation: Einddatum volmacht, null indien onbepaalde tijd
+      untranslatables:
+        - construct: iteratie over variabel aantal volmacht-registraties
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal actieve volmachten is dynamisch en
+            kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal registraties tot een vast maximum
+          accepted: true

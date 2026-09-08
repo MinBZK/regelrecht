@@ -1,0 +1,381 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: algemene_ouderdomswet
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: AOW-uitkering
+bwb_id: BWBR0002221
+url: https://wetten.overheid.nl/BWBR0002221/2024-01-01
+service: SVB
+uuid: 13dc8a31-91eb-4598-998c-012c9129b9ea
+discoverable: CITIZEN
+articles:
+  - number: '7'
+    text: >-
+      1 Recht op ouderdomspensioen overeenkomstig de bepalingen van deze wet heeft degene, die
+        a. de pensioengerechtigde leeftijd heeft bereikt, en
+        b. ingevolge deze wet minimaal één kalenderjaar verzekerd is geweest in het tijdvak,
+      aanvangende met de dag waarop de aanvangsleeftijd is bereikt en eindigende met de dag
+      voorafgaande aan de dag waarop de pensioengerechtigde leeftijd is bereikt. 2 Bij
+      ministeriële regeling worden regels gesteld omtrent de herleiding van gedeelten van
+      kalenderjaren tot gehele kalenderjaren.
+    url: https://wetten.overheid.nl/BWBR0002221/2024-01-01#Artikel7
+    machine_readable:
+      definitions:
+        jaren_voor_volledig_pensioen: 50
+        opbouw_per_jaar: 0.02
+        basisbedrag_alleenstaand: 138000
+        basisbedrag_gedeeld: 95200
+        partner_toeslag_maximum: 25800
+        inkomensgrens_partner: 280000
+        kortingsdeler:
+          value: 50
+          type: amount
+          type_spec:
+            unit: eurocent
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: werkzame_verzekerde_jaren
+            type: number
+            type_spec:
+              precision: 2
+              min: 0
+              max: 50
+            source:
+              regulation: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+              output: verzekerde_jaren
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: continuous
+          - name: geboortedatum
+            type: date
+            source:
+              regulation: wet_brp
+              output: geboortedatum
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_geboortedatum
+            type: date
+            source:
+              regulation: wet_brp
+              output: partner_geboortedatum
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: leeftijd
+            type: number
+            type_spec:
+              unit: years
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: heeft_partner
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_partner
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_bsn
+            type: string
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+          - name: partner_leeftijd
+            type: number
+            type_spec:
+              unit: years
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_brp
+              output: leeftijd
+              parameters:
+                bsn: $partner_bsn
+            temporal:
+              type: point_in_time
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: partner_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: partner_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: pensioenleeftijd
+            type: number
+            type_spec:
+              unit: years
+              precision: 2
+              min: 65
+            source:
+              regulation: algemene_ouderdomswet/leeftijdsbepaling
+              output: pensioenleeftijd
+              parameters:
+                geboortedatum: $geboortedatum
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_pensioenleeftijd
+            type: number
+            type_spec:
+              unit: years
+              precision: 2
+              min: 65
+            source:
+              regulation: algemene_ouderdomswet/leeftijdsbepaling
+              output: pensioenleeftijd
+              parameters:
+                geboortedatum: $partner_geboortedatum
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: woonperiodes
+            type: number
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_gerechtigd
+            type: boolean
+          - name: basisbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: opbouwpercentage
+            type: number
+            type_spec:
+              precision: 4
+              min: 0
+              max: 1
+          - name: pensioenbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - subject: $leeftijd
+                  operation: GREATER_THAN_OR_EQUAL
+                  value: $pensioenleeftijd
+                - operation: GREATER_THAN
+                  subject:
+                    operation: ADD
+                    values:
+                      - $woonperiodes
+                      - $werkzame_verzekerde_jaren
+                  value: 0
+          - output: is_gerechtigd
+            value: true
+            legal_basis:
+              law: Algemene Ouderdomswet
+              bwb_id: BWBR0002221
+              article: '7'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002221/2024-01-01#HoofdstukIII_Artikel7
+              juriconnect: >-
+                jci1.3:c:BWBR0002221&artikel=7&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: 'Artikel 7 lid 1 AOW: toekenning recht op ouderdomspensioen'
+          - output: basisbedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_partner
+                    value: true
+                  then: $basisbedrag_gedeeld
+              default: $basisbedrag_alleenstaand
+            legal_basis:
+              law: Algemene Ouderdomswet
+              bwb_id: BWBR0002221
+              article: '9'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002221/2024-01-01#HoofdstukIII_Artikel9
+              juriconnect: >-
+                jci1.3:c:BWBR0002221&artikel=9&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 9 lid 1 AOW bepaalt bruto-ouderdomspensioen: gehuwde 50%, ongehuwde 70% van
+                netto-minimumloon
+          - output: opbouwpercentage
+            value:
+              operation: DIVIDE
+              values:
+                - operation: MIN
+                  values:
+                    - operation: ADD
+                      values:
+                        - $woonperiodes
+                        - $werkzame_verzekerde_jaren
+                    - $jaren_voor_volledig_pensioen
+                - $jaren_voor_volledig_pensioen
+            legal_basis:
+              law: Algemene Ouderdomswet
+              bwb_id: BWBR0002221
+              article: '13'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002221/2024-01-01#HoofdstukIII_Artikel13
+              juriconnect: >-
+                jci1.3:c:BWBR0002221&artikel=13&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 13 lid 1 AOW: pensioen verminderd met 2% voor elk niet-verzekerd jaar
+          - output: pensioenbedrag
+        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
+        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject:
+                      operation: MULTIPLY
+                      values:
+                        - $basisbedrag
+                        - $opbouwpercentage
+                        - operation: IF
+                          cases:
+                            - when:
+                                operation: EQUALS
+                                subject: $heeft_partner
+                                value: true
+                              then:
+                                operation: ADD
+                                values:
+                                  - 1
+                                  - operation: IF
+                                    cases:
+                                      - when:
+                                          operation: AND
+                                          conditions:
+                                            - operation: LESS_THAN
+                                              subject: $partner_leeftijd
+                                              value: $partner_pensioenleeftijd
+                                            - operation: LESS_THAN
+                                              subject: $partner_inkomen
+                                              value: $inkomensgrens_partner
+                                        then:
+                                          operation: MIN
+                                          values:
+                                            - operation: DIVIDE
+                                              values:
+                                                - $partner_toeslag_maximum
+                                                - $basisbedrag_gedeeld
+                                            - operation: DIVIDE
+                                              values:
+                                                - operation: SUBTRACT
+                                                  values:
+                                                    - $inkomensgrens_partner
+                                                    - $partner_inkomen
+                                                - $kortingsdeler
+                                    default: 0
+                          default: 1
+                    value: null
+                  then: null
+              default:
+                operation: ROUND
+                precision: 0
+                value:
+                  operation: MULTIPLY
+                  values:
+                    - $basisbedrag
+                    - $opbouwpercentage
+                    - operation: IF
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          then:
+                            operation: ADD
+                            values:
+                              - 1
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: AND
+                                      conditions:
+                                        - operation: LESS_THAN
+                                          subject: $partner_leeftijd
+                                          value: $partner_pensioenleeftijd
+                                        - operation: LESS_THAN
+                                          subject: $partner_inkomen
+                                          value: $inkomensgrens_partner
+                                    then:
+                                      operation: MIN
+                                      values:
+                                        - operation: DIVIDE
+                                          values:
+                                            - $partner_toeslag_maximum
+                                            - $basisbedrag_gedeeld
+                                        - operation: DIVIDE
+                                          values:
+                                            - operation: SUBTRACT
+                                              values:
+                                                - $inkomensgrens_partner
+                                                - $partner_inkomen
+                                            - $kortingsdeler
+                                default: 0
+                      default: 1
+            legal_basis:
+              law: Algemene Ouderdomswet
+              bwb_id: BWBR0002221
+              article: '9'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002221/2024-01-01#HoofdstukIII_Artikel9
+              juriconnect: jci1.3:c:BWBR0002221&artikel=9&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 9 AOW: berekening totaal ouderdomspensioen inclusief eventuele toeslag volgens
+                artikel 8

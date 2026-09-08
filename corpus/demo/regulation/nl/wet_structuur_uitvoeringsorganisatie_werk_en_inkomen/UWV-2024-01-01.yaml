@@ -1,0 +1,274 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bepalen verzekerde jaren 2025
+bwb_id: BWBR0013060
+url: https://wetten.overheid.nl/BWBR0013060/2024-01-01
+service: UWV
+uuid: c19a458e-3f5e-4d99-a7c3-67a4288aaa07
+articles:
+  - number: '33'
+    text: >-
+      1 Het Uitvoeringsinstituut werknemersverzekeringen draagt zorg voor de inrichting en
+      adequate werking van de polisadministratie.
+
+      2 De polisadministratie heeft tot doel:
+        a. van de werknemer gegevens over zijn arbeidsverhouding en uitkeringsverhouding
+      – daaronder begrepen duur, loon en premies werknemersverzekeringen – vast te leggen ten
+      behoeve van de werknemersverzekeringen en de uitvoering van taken die bij of krachtens
+      enige andere wet dan bedoeld in artikel 30, eerste lid, aan het Uitvoeringsinstituut
+      werknemersverzekeringen zijn opgedragen;
+        b. besluiten over recht op uitkering of verstrekking te baseren op gegevens als
+      bedoeld in onderdeel a met het oog waarop de werknemer wordt geïnformeerd over die
+      gegevens en het al dan niet verzekerd zijn voor de werknemersverzekeringen;
+        c. de verwerking van gegevens van de persoon die vrijwillig verzekerd is voor de
+      Ziektewet, de Wet werk en inkomen naar arbeidsvermogen, Werkloosheidswet en Wet op de
+      arbeidsongeschiktheidsverzekering waarbij de onderdelen a en b van overeenkomstige
+      toepassing zijn;
+        d. de verwerking van gegevens van de werknemer over genoten loon in de zin van
+      de Wet op de loonbelasting 1964, ingehouden loonbelasting, premie volksverzekeringen in de
+      zin van de Wet financiering sociale verzekeringen, inkomensafhankelijke bijdrage als
+      bedoeld in de Zorgverzekeringswet, alsmede andere gegevens van belang voor de heffing van
+      de inkomstenbelasting ten behoeve van de uitvoering van de taken van de Belastingdienst;
+        e. de verwerking van overige gegevens van de werknemers van belang voor statistische
+      doeleinden op het gebied van arbeid en lonen ten behoeve van het Centraal bureau voor de
+      statistiek. 3 Het Uitvoeringsinstituut werknemersverzekeringen is de
+      verwerkingsverantwoordelijke voorzover het betreft de verwerking van de gegevens, bedoeld
+      in het tweede lid, onderdelen a, b en c, en de verwerker voorzover het betreft de
+      verwerking van de gegevens, bedoeld in het tweede lid, onderdelen d en e.
+
+      4 De verwerkingsverantwoordelijke voor de verwerking van de gegevens, bedoeld in het
+      tweede lid, d en e, zijn respectievelijk Onze Minister van Financiën en het Centraal
+      bureau voor de statistiek.
+
+      5 De Belastingdienst verstrekt aan het Uitvoeringsinstituut werknemersverzekeringen, in
+      het kader van zijn taak bedoeld in het eerste lid, alle gegevens en inlichtingen, die
+      verkregen zijn bij de uitvoering van de heffing van loonbelasting en van de artikelen 58,
+      tweede lid, en 59 van de Wet financiering sociale verzekeringen, voorzover die gegevens en
+      inlichtingen noodzakelijk zijn voor de verwerking van gegevens in de polisadministratie.
+
+      6 De basisregistratie personen wordt ter verificatie geraadpleegd voor de verwerking van
+      gegevens door het Uitvoeringsinstituut werknemersverzekeringen op grond van dit artikel.
+
+      7 Het Uitvoeringsinstituut werknemersverzekeringen verstrekt aan de Belastingdienst alle
+      gegevens en inlichtingen, die noodzakelijk zijn ten behoeve van de uitvoering van de taken
+      van de Belastingdienst.
+
+      8 De gegevens, bedoeld in het tweede lid, onderdeel e, kunnen door het
+      Uitvoeringsinstituut werknemersverzekeringen, de Sociale verzekeringsbank en de colleges
+      van burgemeester en wethouders tevens verwerkt worden voor de uitvoering van de taken,
+      bedoeld in artikel 62.
+
+      9 Het Uitvoeringsinstituut werknemersverzekeringen verstrekt Onze Minister en
+      bestuursorganen als bedoeld in de artikelen, 62, 72 en 73, zevende lid, gegevens die op
+      grond van het tweede lid, onderdelen a tot en met c, verwerkt worden in de
+      polisadministratie, tenzij de gegevens, bedoeld in het tweede lid, onderdeel e, tevens
+      verwerkt kunnen worden op grond van het achtste lid.
+
+      10 Gegevens als bedoeld in het tweede lid, onderdeel e, over lonen kunnen voor de
+      uitvoering van de pensioenregelingen of beroepspensioenregelingen tevens verwerkt worden
+      door de pensioenuitvoerders en beroepspensioenfondsen, genoemd in artikel 73, eerste lid,
+      onderdeel a, en voor regelingen inzake vervroegd uittreden op grond van een algemeen
+      verbindend voorschrift door de stichtingen, genoemd in artikel 73, eerste lid,
+      onderdeel b. Artikel 73, eerste en vijfde lid, is van overeenkomstige toepassing.
+
+      11 Bij of krachtens algemene maatregel van bestuur worden nadere regels gesteld, in ieder
+      geval over de inrichting, de gegevensset en de wijze van verkrijging van de gegevens van
+      de polisadministratie. Tevens worden regels gesteld over het elektronische
+      gegevensverkeer, de daarbij te gebruiken elektronische infrastructuur en de eisen die aan
+      de gegevensverstrekking uit de polisadministratie worden gesteld.
+    url: https://wetten.overheid.nl/BWBR0013060/2024-01-01#Artikel33
+    machine_readable:
+      definitions:
+        geldige_uitkering_typen:
+          - WW
+          - WIA
+          - WAO
+          - ZW
+          - WAZO
+        dagen_per_jaar: 365.25
+        uren_per_dag: 8
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: dienstverbandperiodes
+            type: array
+            source: {}
+          - name: uitkeringsperiodes
+            type: array
+            source: {}
+        output:
+          - name: verzekerde_jaren
+            type: number
+            type_spec:
+              precision: 2
+              min: 0
+              max: 50
+          - name: gewerkte_uren
+            type: number
+            type_spec:
+              min: 0
+        actions:
+          - output: verzekerde_jaren
+        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject:
+                      operation: DIVIDE
+                      values:
+                        - operation: ADD
+                          values:
+                            - operation: FOREACH
+                              collection: $dienstverbandperiodes
+                              body:
+                                operation: DATE_DIFF
+                                from: $start_date
+                  # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
+                  # peildatum; de engine eist een datum, daarom expliciet gemaakt.
+                                to:
+                                  operation: IF
+                                  cases:
+                                    - when:
+                                        operation: OR
+                                        conditions:
+                                          - operation: EQUALS
+                                            subject: $end_date
+                                            value: null
+                                          - operation: EQUALS
+                                            subject: $end_date
+                                            value: ''
+                                      then: $referencedate
+                                  default: $end_date
+                                in: days
+                              combine: ADD
+                            - operation: FOREACH
+                              collection: $uitkeringsperiodes
+                              body:
+                                operation: DATE_DIFF
+                                from: $start_date
+                  # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
+                  # peildatum; de engine eist een datum, daarom expliciet gemaakt.
+                                to:
+                                  operation: IF
+                                  cases:
+                                    - when:
+                                        operation: OR
+                                        conditions:
+                                          - operation: EQUALS
+                                            subject: $end_date
+                                            value: null
+                                          - operation: EQUALS
+                                            subject: $end_date
+                                            value: ''
+                                      then: $referencedate
+                                  default: $end_date
+                                in: days
+                              combine: ADD
+                        - $dagen_per_jaar
+                    value: null
+                  then: null
+              default:
+                operation: ROUND
+                precision: 2
+                value:
+                  operation: DIVIDE
+                  values:
+                    - operation: ADD
+                      values:
+                        - operation: FOREACH
+                          collection: $dienstverbandperiodes
+                          body:
+                            operation: DATE_DIFF
+                            from: $start_date
+                  # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
+                  # peildatum; de engine eist een datum, daarom expliciet gemaakt.
+                            to:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: OR
+                                    conditions:
+                                      - operation: EQUALS
+                                        subject: $end_date
+                                        value: null
+                                      - operation: EQUALS
+                                        subject: $end_date
+                                        value: ''
+                                  then: $referencedate
+                              default: $end_date
+                            in: days
+                          combine: ADD
+                        - operation: FOREACH
+                          collection: $uitkeringsperiodes
+                          body:
+                            operation: DATE_DIFF
+                            from: $start_date
+                  # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
+                  # peildatum; de engine eist een datum, daarom expliciet gemaakt.
+                            to:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: OR
+                                    conditions:
+                                      - operation: EQUALS
+                                        subject: $end_date
+                                        value: null
+                                      - operation: EQUALS
+                                        subject: $end_date
+                                        value: ''
+                                  then: $referencedate
+                              default: $end_date
+                            in: days
+                          combine: ADD
+                    - $dagen_per_jaar
+          - output: gewerkte_uren
+            value:
+              operation: MULTIPLY
+              values:
+                - operation: FOREACH
+                  collection: $dienstverbandperiodes
+                  body:
+                    operation: DATE_DIFF
+                    from: $start_date
+                # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
+                # peildatum; de engine eist een datum, daarom expliciet gemaakt.
+                    to:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: OR
+                            conditions:
+                              - operation: EQUALS
+                                subject: $end_date
+                                value: null
+                              - operation: EQUALS
+                                subject: $end_date
+                                value: ''
+                          then: $referencedate
+                      default: $end_date
+                    in: days
+                  combine: ADD
+                - $uren_per_dag
+      untranslatables:
+        - construct: >-
+            iteratie over variabel aantal dienstverband- en uitkeringsperiodes
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal periodes is dynamisch en kan niet
+            vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal periodes tot een vast maximum
+          accepted: true

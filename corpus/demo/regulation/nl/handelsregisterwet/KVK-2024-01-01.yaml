@@ -1,0 +1,122 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: handelsregisterwet
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bepalen ondernemerschap
+bwb_id: BWBR0021777
+url: https://wetten.overheid.nl/BWBR0021777/2024-01-01
+service: KVK
+uuid: 8b59ef92-03f8-4294-bce9-4eaac01ba0ed
+articles:
+  - number: '2'
+    text: >-
+      Er is een handelsregister van ondernemingen en rechtspersonen:
+        a. ter bevordering van de rechtszekerheid in het economisch verkeer;
+        b. voor de verstrekking van gegevens van algemene, feitelijke aard omtrent de
+      samenstelling
+      van ondernemingen en rechtspersonen ter bevordering van de economische belangen van
+      handel, industrie, ambacht en dienstverlening;
+        c. voor het registreren van alle ondernemingen en rechtspersonen als onderdeel
+      van de gegevenshuishouding die bijdraagt aan het efficiënt functioneren van en de
+      rechtshandhaving door de overheid;
+        d. voor het registreren van uiteindelijk belanghebbenden ter voorkoming van het
+      gebruik van het financiële stelsel voor het witwassen van geld en terrorismefinanciering.
+    url: https://wetten.overheid.nl/BWBR0021777/2024-01-01#Artikel2
+    machine_readable:
+      definitions:
+        actieve_statussen:
+          - ACTIEF
+          - TIJDELIJK_GESTAAKT
+        ondernemersvormen:
+          - EENMANSZAAK
+          - VOF
+          - MAATSCHAP
+          - COMMANDITAIRE_VENNOOTSCHAP
+        ondernemers_posities:
+          - EIGENAAR
+          - VENNOOT
+          - MAAT
+          - BEHEREND_VENNOOT
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inschrijvingen
+            type: array
+            source: {}
+          - name: posities
+            type: array
+            source: {}
+        output:
+          - name: is_actieve_ondernemer
+            type: boolean
+          - name: kvk_nummer
+            type: string
+        actions:
+          - output: is_actieve_ondernemer
+        # POC: impliciete map over een lijst ($inschrijvingen.rechtsvorm); expliciet
+        # als FOREACH met combine OR: één actieve inschrijving of positie volstaat (RFC-016).
+            value:
+              operation: OR
+              conditions:
+                - operation: FOREACH
+                  collection: $inschrijvingen
+                  as: inschrijving
+                  combine: OR
+                  body:
+                    operation: AND
+                    conditions:
+                      - operation: IN
+                        subject: $inschrijving.rechtsvorm
+                        value: $ondernemersvormen
+                      - operation: IN
+                        subject: $inschrijving.status
+                        value: $actieve_statussen
+                - operation: FOREACH
+                  collection: $posities
+                  as: positie
+                  combine: OR
+                  body:
+                    operation: AND
+                    conditions:
+                      - operation: IN
+                        subject: $positie.functie
+                        value: $ondernemers_posities
+                      - operation: IN
+                        subject: $positie.status
+                        value: $actieve_statussen
+            legal_basis:
+              law: Handelsregisterwet 2007
+              bwb_id: BWBR0021777
+              article: '7'
+              url: >-
+                https://wetten.overheid.nl/BWBR0021777/2024-01-01#Hoofdstuk2_Artikel7
+              juriconnect: jci1.3:c:BWBR0021777&artikel=7&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 7 Handelsregisterwet bepaalt wanneer sprake is van actief ondernemerschap
+          - output: kvk_nummer
+        # POC: impliciete map over een lijst ($inschrijvingen.kvk_nummer); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $inschrijvingen
+              as: item
+              body: $item.kvk_nummer
+            legal_basis:
+              law: Handelsregisterwet 2007
+              bwb_id: BWBR0021777
+              article: '9'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0021777/2024-01-01#Hoofdstuk2_Artikel9
+              juriconnect: >-
+                jci1.3:c:BWBR0021777&artikel=9&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Het KvK-nummer wordt opgehaald uit de inschrijving in het handelsregister

@@ -1,0 +1,184 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: wet_brp/laa
+regulatory_layer: WET
+publication_date: '2023-05-15'
+valid_from: '2023-05-15'
+name: Landelijke Aanpak Adreskwaliteit (LAA)
+bwb_id: BWBR0034306
+url: https://wetten.overheid.nl/BWBR0034306/2023-05-15
+service: RvIG
+uuid: 7f3e9a2b-5c4d-4e8f-9b1a-3d6c8f2e4a5b
+articles:
+  - number: 28a
+    text: |-
+      De analysemethoden, bedoeld in artikel 2.37c, vierde lid, van de wet zien op:
+        a. de analyse van mededelingen als bedoeld in artikel 2.37b, eerste lid, van de wet;
+        b. de analyse aan de hand van profielen;
+        c. een onderzoek naar patronen.
+    url: https://wetten.overheid.nl/BWBR0034306/2023-05-15#Artikel28a
+    machine_readable:
+      definitions:
+        hoog_bewoners_drempel: 5
+        reactietermijn_weken: 4
+        onderzoekstermijn_maanden: 6
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: bsn
+            type: string
+          - name: adres
+            type: object
+            required: true
+        input:
+          - name: belastingdienst_twijfel
+            type: boolean
+            source:
+              regulation: wet_brp/terugmelding/belastingdienst
+              output: heeft_gerede_twijfel_adres
+              parameters:
+                bsn: $bsn
+                adres: $adres
+          - name: toeslagen_twijfel
+            type: boolean
+            source:
+              regulation: wet_brp/terugmelding/toeslagen
+              output: heeft_gerede_twijfel_adres
+              parameters:
+                bsn: $bsn
+                adres: $adres
+          - name: cjib_twijfel
+            type: boolean
+            source:
+              regulation: wet_brp/terugmelding/cjib
+              output: heeft_gerede_twijfel_adres
+              parameters:
+                bsn: $bsn
+                adres: $adres
+          - name: bag_gebruiksdoel
+            type: string
+            source:
+              regulation: wet_bag
+              output: gebruiksdoel
+              parameters:
+                adres: $adres
+          - name: bag_is_woonfunctie
+            type: boolean
+            source:
+              regulation: wet_bag
+              output: is_woonfunctie
+              parameters:
+                adres: $adres
+          - name: aantal_bewoners
+            type: number
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: genereer_signaal
+            type: boolean
+          - name: signaal_type
+            type: string
+          - name: reactietermijn_weken
+            type: number
+            type_spec:
+              unit: weeks
+              precision: 0
+          - name: onderzoekstermijn_maanden
+            type: number
+            type_spec:
+              unit: months
+              precision: 0
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $adres
+                    value: null
+          - output: genereer_signaal
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $belastingdienst_twijfel
+                  value: true
+                - operation: EQUALS
+                  subject: $toeslagen_twijfel
+                  value: true
+                - operation: EQUALS
+                  subject: $cjib_twijfel
+                  value: true
+                - operation: AND
+                  conditions:
+                    - operation: GREATER_THAN
+                      subject: $aantal_bewoners
+                      value: $hoog_bewoners_drempel
+                    - operation: EQUALS
+                      subject: $bag_is_woonfunctie
+                      value: false
+            legal_basis:
+              law: Besluit basisregistratie personen
+              bwb_id: BWBR0034306
+              article: 28f
+              url: >-
+                https://wetten.overheid.nl/BWBR0034306/2024-04-01#Hoofdstuk2_Afdeling2.6_Artikel28f
+              juriconnect: jci1.3:c:BWBR0034306&artikel=28f&z=2024-04-01&g=2024-04-01
+              explanation: Artikel 28f bepaalt verstrekking van signalen aan colleges
+          - output: signaal_type
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $belastingdienst_twijfel
+                        value: true
+                      - operation: EQUALS
+                        subject: $toeslagen_twijfel
+                        value: true
+                      - operation: EQUALS
+                        subject: $cjib_twijfel
+                        value: true
+                  then: MELDING
+              default: PROFIEL
+            legal_basis:
+              law: Besluit basisregistratie personen
+              bwb_id: BWBR0034306
+              article: 28a
+              url: >-
+                https://wetten.overheid.nl/BWBR0034306/2024-04-01#Hoofdstuk2_Afdeling2.6_Artikel28a
+              juriconnect: jci1.3:c:BWBR0034306&artikel=28a&z=2024-04-01&g=2024-04-01
+              explanation: >-
+                Artikel 28a onderscheidt meldingen en profielen (patroononderzoek leidt niet tot signaal)
+          - output: reactietermijn_weken
+            value: $reactietermijn_weken
+            legal_basis:
+              law: Besluit basisregistratie personen
+              bwb_id: BWBR0034306
+              article: 28g
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0034306/2024-04-01#Hoofdstuk2_Afdeling2.6_Artikel28g
+              juriconnect: >-
+                jci1.3:c:BWBR0034306&artikel=28g&lid=1&z=2024-04-01&g=2024-04-01
+              explanation: Artikel 28g lid 1 bepaalt vier weken reactietermijn
+          - output: onderzoekstermijn_maanden
+            value: $onderzoekstermijn_maanden
+            legal_basis:
+              law: Besluit basisregistratie personen
+              bwb_id: BWBR0034306
+              article: 28g
+              paragraph: '2'
+              url: >-
+                https://wetten.overheid.nl/BWBR0034306/2024-04-01#Hoofdstuk2_Afdeling2.6_Artikel28g
+              juriconnect: >-
+                jci1.3:c:BWBR0034306&artikel=28g&lid=2&z=2024-04-01&g=2024-04-01
+              explanation: Artikel 28g lid 2 bepaalt zes maanden onderzoekstermijn

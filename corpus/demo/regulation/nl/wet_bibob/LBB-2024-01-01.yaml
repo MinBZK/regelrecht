@@ -1,0 +1,234 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: wet_bibob
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bibob-advies Landelijk Bureau Bibob
+bwb_id: BWBR0013798
+url: https://wetten.overheid.nl/BWBR0013798/2024-01-01
+service: LBB
+uuid: 2d6430cb-dd3c-47fa-9741-2202386619a8
+discoverable: HIDDEN
+articles:
+  - number: '9'
+    text: >-
+      1 Het Bureau heeft tot taak aan bestuursorganen, voorzover deze bij of krachtens de wet de
+      bevoegdheid hebben gekregen het Bureau daartoe te verzoeken, op verzoek advies uit te
+      brengen over de mate van gevaar, bedoeld in artikel 3, eerste lid, of over de feiten en
+      omstandigheden, bedoeld in artikel 3, zesde lid.
+
+      2 Voor zover het gaat om een overheidsopdracht, heeft het Bureau voorts tot taak
+      rechtspersonen met een overheidstaak desgevraagd advies uit te brengen over:
+        a. feiten en omstandigheden die grond kunnen opleveren voor de toepassing ten aanzien
+      van een betrokkene van artikelen 2.86 tot en met 2.89 van de Aanbestedingswet 2012;
+        b. feiten en omstandigheden die grond kunnen opleveren voor de toepassing ten aanzien
+      van een betrokkene van artikel 3.65 van de Aanbestedingswet 2012 in samenhang gelezen met
+      de in onderdeel a genoemde bepalingen, indien het gaat om een speciale-sectoropdracht als
+      bedoeld in artikel 1.1 van de Aanbestedingswet 2012;
+        c. de mogelijkheid dat een betrokkene wordt gefinancierd met uit gepleegde strafbare
+      feiten verkregen of te verkrijgen, op geld waardeerbare voordelen;
+        d. de mate van gevaar dat een betrokkene, indien de overheidsopdracht aan hem zou
+      worden gegund, bij de uitvoering van die opdracht strafbare feiten zal plegen. 3 Voor
+      zover het gaat om een vastgoedtransactie, heeft het Bureau tot taak rechtspersonen met een
+      overheidstaak op verzoek advies uit te brengen over:
+        a. de mate van gevaar dat de vastgoedtransactie mede zal worden gebruikt om uit
+      gepleegde strafbare feiten verkregen of te verkrijgen, op geld waardeerbare voordelen te
+      benutten,
+        b. de mate van gevaar dat in of met de onroerende zaak waar de vastgoedtransactie
+      betrekking op heeft, mede strafbare feiten zullen worden gepleegd, of
+        c. de feiten en omstandigheden die er op wijzen of redelijkerwijs doen vermoeden
+      dat ter verkrijging of behoud van een vastgoedtransactie een strafbaar feit is gepleegd. 4
+      Artikel 3, tweede tot en met vijfde lid, is van overeenkomstige toepassing.
+
+      5 Het Bureau kan afzien van het uitbrengen van een advies indien:
+        a. het bestuursorgaan of de rechtspersoon met een overheidstaak niet de in artikel
+      7a, vierde lid, bedoelde informatie heeft toegezonden aan het Bureau; of
+        b. uit de in artikel 7a, vierde lid, bedoelde informatie naar het oordeel van het
+      Bureau blijkt dat het bestuursorgaan of de rechtspersoon met een overheidstaak onvoldoende
+      gebruik heeft gemaakt van de mogelijkheden tot het verrichten van eigen onderzoek.
+    url: https://wetten.overheid.nl/BWBR0013798/2024-01-01#Artikel9
+    machine_readable:
+      definitions:
+        mate_geen_gevaar: geen_gevaar
+        mate_mindere_mate: mindere_mate
+        mate_ernstig_gevaar: ernstig_gevaar
+        adviestermijn_weken: 8
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: kvk_nummer
+            type: string
+          - name: bsn
+            type: string
+          - name: beschikking_type
+            type: string
+            required: true
+            type_spec:
+              enum:
+                - vergunning
+                - subsidie
+                - overheidsopdracht
+                - vastgoedtransactie
+              enum_labels:
+                vergunning: Vergunning (horeca, bouw, milieu, etc.)
+                subsidie: Subsidie
+                overheidsopdracht: Overheidsopdracht of aanbesteding
+                vastgoedtransactie: Vastgoedtransactie
+        input:
+          - name: advies_uitgebracht
+            type: boolean
+            source: {}
+          - name: advies_mate_van_gevaar
+            type: string
+            source: {}
+          - name: advies_datum
+            type: date
+            source: {}
+          - name: relatie_tot_strafbare_feiten
+            type: boolean
+            source: {}
+          - name: financieringsrisico
+            type: boolean
+            source: {}
+          - name: voorschriften_geadviseerd
+            type: boolean
+            source: {}
+        output:
+          - name: advies_uitgebracht
+            type: boolean
+          - name: mate_van_gevaar
+            type: string
+          - name: weigering_mogelijk
+            type: boolean
+          - name: voorschriften_mogelijk
+            type: boolean
+          - name: verlening_geadviseerd
+            type: boolean
+          - name: financieringsrisico
+            type: boolean
+          - name: relatie_strafbare_feiten
+            type: boolean
+        actions:
+          - output: advies_uitgebracht
+            value: $advies_uitgebracht
+            legal_basis:
+              law: >-
+                Wet bevordering integriteitsbeoordelingen door het openbaar bestuur
+              bwb_id: BWBR0013798
+              article: '9'
+              url: >-
+                https://wetten.overheid.nl/BWBR0013798/2024-01-01#Paragraaf3_Artikel9
+              explanation: Geeft door of er een advies is uitgebracht
+          - output: mate_van_gevaar
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $advies_uitgebracht
+                    value: true
+                  then: $advies_mate_van_gevaar
+            legal_basis:
+              law: >-
+                Wet bevordering integriteitsbeoordelingen door het openbaar bestuur
+              bwb_id: BWBR0013798
+              article: '3'
+              url: >-
+                https://wetten.overheid.nl/BWBR0013798/2024-01-01#Paragraaf2_Artikel3
+              explanation: >-
+                De mate van gevaar wordt alleen bepaald als er een advies is uitgebracht
+          - output: weigering_mogelijk
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $advies_uitgebracht
+                  value: true
+                - operation: EQUALS
+                  subject: $advies_mate_van_gevaar
+                  value: $mate_ernstig_gevaar
+            legal_basis:
+              law: >-
+                Wet bevordering integriteitsbeoordelingen door het openbaar bestuur
+              bwb_id: BWBR0013798
+              article: '3'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0013798/2024-01-01#Paragraaf2_Artikel3
+              explanation: Weigering of intrekking is mogelijk bij ernstig gevaar
+          - output: voorschriften_mogelijk
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $advies_uitgebracht
+                  value: true
+                - operation: OR
+                  conditions:
+                    - operation: EQUALS
+                      subject: $advies_mate_van_gevaar
+                      value: $mate_mindere_mate
+                    - operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $advies_mate_van_gevaar
+                          value: $mate_ernstig_gevaar
+                        - operation: EQUALS
+                          subject: $voorschriften_geadviseerd
+                          value: true
+            legal_basis:
+              law: >-
+                Wet bevordering integriteitsbeoordelingen door het openbaar bestuur
+              bwb_id: BWBR0013798
+              article: '3'
+              paragraph: '7'
+              url: >-
+                https://wetten.overheid.nl/BWBR0013798/2024-01-01#Paragraaf2_Artikel3
+              explanation: >-
+                Voorschriften zijn mogelijk bij mindere mate van gevaar of bij ernstig gevaar waar
+                weigering niet proportioneel is
+          - output: verlening_geadviseerd
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $advies_uitgebracht
+                  value: false
+                - operation: EQUALS
+                  subject: $advies_mate_van_gevaar
+                  value: $mate_geen_gevaar
+            legal_basis:
+              law: >-
+                Wet bevordering integriteitsbeoordelingen door het openbaar bestuur
+              bwb_id: BWBR0013798
+              article: '3'
+              url: >-
+                https://wetten.overheid.nl/BWBR0013798/2024-01-01#Paragraaf2_Artikel3
+              explanation: >-
+                Verlening wordt geadviseerd als er geen advies is of als er geen gevaar is gebleken
+          - output: financieringsrisico
+            value: $financieringsrisico
+            legal_basis:
+              law: >-
+                Wet bevordering integriteitsbeoordelingen door het openbaar bestuur
+              bwb_id: BWBR0013798
+              article: '3'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0013798/2024-01-01#Paragraaf2_Artikel3
+              explanation: Geeft door of er sprake is van financieringsrisico
+          - output: relatie_strafbare_feiten
+            value: $relatie_tot_strafbare_feiten
+            legal_basis:
+              law: >-
+                Wet bevordering integriteitsbeoordelingen door het openbaar bestuur
+              bwb_id: BWBR0013798
+              article: '3'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0013798/2024-01-01#Paragraaf2_Artikel3
+              explanation: Geeft door of er een relatie is tot strafbare feiten

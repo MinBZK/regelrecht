@@ -1,0 +1,292 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: burgerlijk_wetboek_minderjarigheid
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bepalen handelingsbekwaamheid minderjarigen
+bwb_id: BWBR0002656
+url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
+service: RvIG
+uuid: 848e8af1-5b25-454d-9813-8d295a93fd44
+discoverable: DELEGATION_PROVIDER
+articles:
+  - number: '234'
+    text: >-
+      1 Een minderjarige is, mits hij met toestemming van zijn wettelijke vertegenwoordiger
+      handelt, bekwaam rechtshandelingen te verrichten, voor zover de wet niet anders bepaalt.
+
+      2 De toestemming kan slechts worden verleend voor een bepaalde rechtshandeling of voor een
+      bepaald doel.
+
+      3 De toestemming wordt aan de minderjarige verondersteld te zijn verleend, indien het een
+      rechtshandeling betreft ten aanzien waarvan in het maatschappelijk verkeer gebruikelijk is
+      dat minderjarigen van zijn leeftijd deze zelfstandig verrichten.
+    url: https://wetten.overheid.nl/BWBR0002656/2024-01-01#Artikel234
+    machine_readable:
+      definitions:
+        meerderjarigheid_leeftijd: 18
+        minderjarige_rechten:
+          - LEZEN
+        volledige_rechten:
+          - LEZEN
+          - CLAIMS_INDIENEN
+          - BESLUITEN_ONTVANGEN
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: persoonsgegevens
+            type: object
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_minderjarig
+            type: boolean
+          - name: leeftijd
+            type: number
+          - name: base_permissions
+            type: array
+          - name: heeft_handlichting
+            type: boolean
+          - name: handlichting_gebieden
+            type: array
+          - name: heeft_delegaties
+            type: boolean
+          - name: subject_ids
+            type: array
+          - name: subject_names
+            type: array
+          - name: subject_types
+            type: array
+          - name: delegation_types
+            type: array
+          - name: permissions
+            type: array
+          - name: valid_from_dates
+            type: array
+          - name: valid_until_dates
+            type: array
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: NOT
+              value:
+                operation: EQUALS
+                subject: $persoonsgegevens
+                value: null
+          - output: leeftijd
+            value:
+              operation: AGE
+              reference_date: $referencedate
+              date_of_birth: $persoonsgegevens.geboortedatum
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '233'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel233
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=233&z=2024-01-01&g=2024-01-01
+              explanation: Leeftijdsberekening voor bepaling minderjarigheid
+          - output: is_minderjarig
+            value:
+              operation: LESS_THAN
+              subject: $leeftijd
+              value: $meerderjarigheid_leeftijd
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '233'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel233
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=233&z=2024-01-01&g=2024-01-01
+              explanation: 'Art. 1:233 BW: minderjarigen zijn personen onder 18 jaar'
+          - output: heeft_handlichting
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $persoonsgegevens.heeft_handlichting
+                      value: null
+                  then: $persoonsgegevens.heeft_handlichting
+              default: false
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '235'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Afdeling2_Artikel235
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=235&z=2024-01-01&g=2024-01-01
+              explanation: Handlichting uit BRP registratie, default false
+          - output: handlichting_gebieden
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $persoonsgegevens.handlichting_gebieden
+                      value: null
+                  then: $persoonsgegevens.handlichting_gebieden
+              default:
+                operation: LIST
+                items: []
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '235'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Afdeling2_Artikel235
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=235&z=2024-01-01&g=2024-01-01
+              explanation: Handlichting gebieden uit BRP registratie, default leeg
+          - output: base_permissions
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - $is_minderjarig
+                      - operation: EQUALS
+                        subject: $heeft_handlichting
+                        value: false
+                  then: $minderjarige_rechten
+              default: $volledige_rechten
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >
+                Art. 1:234 lid 1 BW: minderjarigen hebben beperkte handelingsbekwaamheid zonder
+                toestemming wettelijk vertegenwoordiger. Bij handlichting hebben zij voor bepaalde
+                gebieden wel volledige rechten (Art. 1:235 BW).
+          - output: heeft_delegaties
+            value: true
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&z=2024-01-01&g=2024-01-01
+              explanation: Iedereen heeft een SELF delegatie
+          - output: subject_ids
+            value:
+              operation: LIST
+              items:
+                - $bsn
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&z=2024-01-01&g=2024-01-01
+              explanation: BSN van de persoon zelf
+          - output: subject_names
+            value:
+              operation: LIST
+              items:
+                - Mezelf
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&z=2024-01-01&g=2024-01-01
+              explanation: Weergavenaam voor SELF delegatie
+          - output: subject_types
+            value:
+              operation: LIST
+              items:
+                - SELF
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&z=2024-01-01&g=2024-01-01
+              explanation: SELF type voor eigen zaken
+          - output: delegation_types
+            value:
+              operation: LIST
+              items:
+                - EIGEN_ZAKEN
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&z=2024-01-01&g=2024-01-01
+              explanation: EIGEN_ZAKEN type voor SELF delegatie
+          - output: permissions
+            value:
+              operation: LIST
+              items:
+                - $base_permissions
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: Rechten afhankelijk van minderjarigheid
+          - output: valid_from_dates
+            value:
+              operation: LIST
+              items:
+                - null
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&z=2024-01-01&g=2024-01-01
+              explanation: SELF delegatie heeft geen ingangsdatum
+          - output: valid_until_dates
+            value:
+              operation: LIST
+              items:
+                - null
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '234'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel13_Artikel234
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=234&z=2024-01-01&g=2024-01-01
+              explanation: SELF delegatie heeft geen einddatum

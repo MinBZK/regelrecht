@@ -1,0 +1,185 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: kernenergiewet
+regulatory_layer: WET
+publication_date: '2024-07-01'
+valid_from: '2024-07-01'
+name: Kernenergiewet Vergunningverlening Splijtstoffen
+bwb_id: BWBR0002402
+url: https://wetten.overheid.nl/BWBR0002402/2024-07-01
+service: ANVS
+uuid: 3f8a5c2d-9e7b-4f1c-8d6a-1b9e4c7a2f5d
+discoverable: BUSINESS
+articles:
+  - number: '15'
+    text: >-
+      Het is verboden zonder vergunning van de Autoriteit:
+        a. splijtstoffen of ertsen te vervoeren, voorhanden te hebben, binnen of buiten
+      Nederlands grondgebied te brengen of te doen brengen, dan wel zich daarvan te ontdoen;
+        b. een inrichting, waarin kernenergie kan worden vrijgemaakt, splijtstoffen kunnen
+      worden vervaardigd, bewerkt of verwerkt, dan wel splijtstoffen worden opgeslagen, op te
+      richten, inwerking te brengen, in werking te houden, buiten gebruik te stellen of te
+      wijzigen of een inrichting, waarin kernenergie kon worden vrijgemaakt, splijtstoffen
+      konden worden vervaardigd, bewerkt of verwerkt, dan wel splijtstoffen werden opgeslagen,
+      te ontmantelen;
+        c. een uitrusting, geschikt om een vaartuig of ander vervoermiddel door middel
+      van kernenergie voort te bewegen, daarin aan te brengen of aangebracht te houden, dan wel
+      zodanige daarin aangebrachte uitrusting in werking te brengen, in werking te houden of te
+      wijzigen.
+    url: https://wetten.overheid.nl/BWBR0002402/2024-07-01#Artikel15
+    machine_readable:
+      definitions:
+        activiteit_transport: transport
+        activiteit_bezit: bezit
+        activiteit_invoer: invoer
+        activiteit_uitvoer: uitvoer
+        activiteit_inrichting_oprichten: inrichting_oprichten
+        activiteit_inrichting_exploiteren: inrichting_exploiteren
+        activiteit_kernvoortstuwing: kernvoortstuwing
+        materiaal_splijtstof: splijtstof
+        materiaal_erts: erts
+        weigeringsgrond_veiligheid: bescherming_mensen_dieren_planten_goederen
+        weigeringsgrond_staatsveiligheid: staatsveiligheid
+        weigeringsgrond_beveiliging: behoud_beveiliging_splijtstoffen
+        weigeringsgrond_schadevergoeding: zekerheid_betaling_schadevergoeding
+        weigeringsgrond_internationale_verplichtingen: internationale_verplichtingen
+        weigeringsgrond_technologie_verouderd: technologie_verouderd
+        dosis_limiet_bevolking: 1.0
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: activiteit_type
+            type: string
+            required: true
+          - name: materiaal_type
+            type: string
+            required: true
+          - name: is_nieuwe_installatie
+            type: boolean
+          - name: technologie_beschrijving
+            type: string
+          - name: verwachte_dosis_jaar
+            type: number
+          - name: verwachte_dosis_huid
+            type: number
+          - name: dosis_buiten_locatie
+            type: number
+          - name: heeft_beveiligingsplan
+            type: boolean
+          - name: heeft_noodplan
+            type: boolean
+          - name: financiele_zekerheid_bedrag
+            type: number
+          - name: aantal_deskundigen
+            type: number
+        input:
+          - name: verwachte_stralingsdosis
+            type: number
+            type_spec:
+              precision: 2
+              min: 0
+            source:
+              regulation: besluit_basisveiligheidsnormen_stralingsbescherming
+              output: verwachte_dosis_bevolking
+              parameters:
+                verwachte_dosis_jaar: $verwachte_dosis_jaar
+                verwachte_dosis_huid: $verwachte_dosis_huid
+                dosis_buiten_locatie: $dosis_buiten_locatie
+          - name: heeft_financiele_zekerheid
+            type: boolean
+            source:
+              regulation: besluit_kerninstallaties
+              output: financiele_zekerheid_gesteld
+              parameters:
+                heeft_beveiligingsplan: $heeft_beveiligingsplan
+                heeft_noodplan: $heeft_noodplan
+                financiele_zekerheid_bedrag: $financiele_zekerheid_bedrag
+                aantal_deskundigen: $aantal_deskundigen
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: vergunning_vereist
+            type: boolean
+          - name: vergunning_toegestaan
+            type: boolean
+          - name: weigeringsgronden
+            type: array
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              subject: $activiteit_type
+              operation: IN
+              values:
+                - transport
+                - bezit
+                - invoer
+                - uitvoer
+                - inrichting_oprichten
+                - inrichting_exploiteren
+                - kernvoortstuwing
+          - output: vergunning_vereist
+            value: true
+            legal_basis:
+              law: Kernenergiewet
+              bwb_id: BWBR0002402
+              article: '15'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002402/2024-07-01#Hoofdstuk3_Artikel15
+              juriconnect: jci1.3:c:BWBR0002402&artikel=15&z=2024-07-01&g=2024-07-01
+              explanation: >-
+                Artikel 15 bepaalt dat voor alle genoemde activiteiten een vergunning vereist is
+          - output: weigeringsgronden
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $verwachte_stralingsdosis
+                    value: $dosis_limiet_bevolking
+                  then:
+                    operation: LIST
+                    items:
+                      - bescherming_mensen_dieren_planten_goederen
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_financiele_zekerheid
+                    value: false
+                  then:
+                    operation: LIST
+                    items:
+                      - zekerheid_betaling_schadevergoeding
+              default:
+                operation: LIST
+                items: []
+            legal_basis:
+              law: Kernenergiewet
+              bwb_id: BWBR0002402
+              article: 15b
+              url: >-
+                https://wetten.overheid.nl/BWBR0002402/2024-07-01#Hoofdstuk3_Artikel15b
+              juriconnect: jci1.3:c:BWBR0002402&artikel=15b&z=2024-07-01&g=2024-07-01
+              explanation: Artikel 15b bepaalt de weigeringsgronden voor vergunningen
+          - output: vergunning_toegestaan
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $weigeringsgronden
+                    value:
+                      operation: LIST
+                      items: []
+                  then: true
+              default: false
+            legal_basis:
+              law: Kernenergiewet
+              bwb_id: BWBR0002402
+              article: 15b
+              url: >-
+                https://wetten.overheid.nl/BWBR0002402/2024-07-01#Hoofdstuk3_Artikel15b
+              juriconnect: jci1.3:c:BWBR0002402&artikel=15b&z=2024-07-01&g=2024-07-01
+              explanation: >-
+                Artikel 15b bepaalt wanneer een vergunning geweigerd kan worden

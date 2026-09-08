@@ -1,0 +1,90 @@
+---
+# Organisations that appear in the demo: the executing service of a law
+# (`service` in the law YAML) and the owners of register tables (bindings).
+# `logo` refers to frontend-demo/public/logos/<logo>.png; organisations without
+# a logo file fall back to their abbreviation.
+services:
+  ACICT:
+    name: Adviescollege ICT-toetsing
+  ANVS:
+    name: Autoriteit Nucleaire Veiligheid en Stralingsbescherming
+    logo: ANVS
+  AWB:
+    name: Algemene wet bestuursrecht
+  BELASTINGDIENST:
+    name: Belastingdienst
+    logo: BELASTINGDIENST
+  CBS:
+    name: Centraal Bureau voor de Statistiek
+    logo: CBS
+  CJIB:
+    name: Centraal Justitieel Incassobureau
+    logo: CJIB
+  DJI:
+    name: Dienst Justitiële Inrichtingen
+    logo: DJI
+  DUO:
+    name: Dienst Uitvoering Onderwijs
+    logo: DUO
+  GEMEENTE_AMSTERDAM:
+    name: Gemeente Amsterdam
+    logo: GEMEENTE_AMSTERDAM
+  GEMEENTE_ROTTERDAM:
+    name: Gemeente Rotterdam
+    logo: GEMEENTE_ROTTERDAM
+  IND:
+    name: Immigratie- en Naturalisatiedienst
+    logo: IND
+  JenV:
+    name: Ministerie van Justitie en Veiligheid
+    logo: JenV
+  JUSTID:
+    name: Justitiële Informatiedienst
+    logo: JUSTID
+  KADASTER:
+    name: Kadaster
+    logo: KADASTER
+  KIESRAAD:
+    name: Kiesraad
+    logo: KIESRAAD
+  KVK:
+    name: Kamer van Koophandel
+    logo: KVK
+  LBB:
+    name: Landelijk Bureau Bibob
+  NATIONAAL_ARCHIEF:
+    name: Nationaal Archief
+  NOTARIAAT:
+    name: Notariaat
+  NVWA:
+    name: Nederlandse Voedsel- en Warenautoriteit
+    logo: NVWA
+  PENSIOENFONDS:
+    name: Pensioenfonds
+  RECHTSPRAAK:
+    name: De Rechtspraak
+  RVO:
+    name: Rijksdienst voor Ondernemend Nederland
+    logo: RVO
+  RVZ:
+    name: Register verzekerden zorgverzekering
+  RvIG:
+    name: Rijksdienst voor Identiteitsgegevens
+    logo: RvIG
+  SVB:
+    name: Sociale Verzekeringsbank
+    logo: SVB
+  SVH:
+    name: Stichting Vakbekwaamheid Horeca
+  SZW:
+    name: Ministerie van Sociale Zaken en Werkgelegenheid
+    logo: SZW
+  TOESLAGEN:
+    name: Dienst Toeslagen
+    logo: TOESLAGEN
+  UWV:
+    name: UWV
+    logo: UWV
+  VWS:
+    name: Ministerie van Volksgezondheid, Welzijn en Sport
+    logo: VWS

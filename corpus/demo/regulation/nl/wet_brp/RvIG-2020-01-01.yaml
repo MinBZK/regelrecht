@@ -1,0 +1,515 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: wet_brp
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '2020-01-01'
+name: Bepalen persoonsgegevens BRP
+bwb_id: BWBR0033715
+url: https://wetten.overheid.nl/BWBR0033715/2020-01-01
+service: RvIG
+uuid: fcf09c18-1584-4565-9223-e8a86fbddc09
+discoverable: BUSINESS
+articles:
+  - number: '1.1'
+    text: >-
+      In deze wet en de daarop berustende bepalingen wordt verstaan onder: a. Onze Minister:
+      Onze Minister van Binnenlandse Zaken en Koninkrijksrelaties; b. de basisregistratie: de
+      basisregistratie personen, bedoeld in artikel 1.2; c. de persoonslijst: het geheel van
+      gegevens, bedoeld in artikel 2.7, eerste lid, 2.69, eerste lid, en 2.84, eerste lid, over
+      een persoon in de basisregistratie; d. de inschrijving: de opneming van een persoonslijst
+      in de basisregistratie; e. de ingeschrevene: degene ten aanzien van wie een persoonslijst
+      in de basisregistratie is opgenomen; f. de ingezetene: de ingeschrevene die zijn adres
+      heeft in een gemeente in Nederland en op wiens persoonslijst niet het gegeven van zijn
+      overlijden of van vertrek uit Nederland als actueel gegeven is opgenomen; g. de
+      systematische verstrekking van gegevens of het systematisch verstrekken van gegevens: de
+      verstrekking of het verstrekken van gegevens uit de basisregistratie, bedoeld in artikel
+      3.1, tweede lid; h. de bijhoudingsgemeente: de gemeente waarvan het college van
+      burgemeester en wethouders op grond van artikel 1.4 verantwoordelijk is voor de bijhouding
+      van de persoonslijst; i. een vreemdeling: degene die de Nederlandse nationaliteit niet
+      bezit en niet op grond van een wettelijke bepaling als Nederlander wordt behandeld; j. de
+      aangifte van verblijf en adres: de aangifte, bedoeld in artikel 2.38; k. een beedigd
+      vertaler: een vertaler als bedoeld in artikel 1, onder d, van de Wet beedigde tolken en
+      vertalers; l. de aangifte van adreswijziging: de aangifte, bedoeld in artikel 2.39; m. de
+      aangifte van vertrek: de aangifte, bedoeld in artikel 2.43; n. een authentiek gegeven: een
+      in de basisregistratie opgenomen gegeven dat op grond van artikel 1.6 als authentiek wordt
+      aangemerkt; o. het woonadres: 1. het adres waar betrokkene woont, waaronder begrepen het
+      adres van een woning die zich in een voertuig of vaartuig bevindt, indien het voertuig of
+      vaartuig een vaste stand- of ligplaats heeft, of, indien betrokkene op meer dan een adres
+      woont, het adres waar hij naar redelijke verwachting gedurende een half jaar de meeste
+      malen zal overnachten; 2. het adres waar, bij het ontbreken van een adres als bedoeld
+      onder 1, betrokkene naar redelijke verwachting gedurende drie maanden ten minste twee
+      derde van de tijd zal overnachten; p. het briefadres: het adres waar voor betrokkene
+      bestemde geschriften in ontvangst worden genomen; q. het adres: het woonadres, dan wel bij
+      het ontbreken hiervan of bij toepassing van artikel 2.40 of 2.41, het briefadres; r. de
+      briefadresgever: de natuurlijke persoon of rechtspersoon, bedoeld in artikel 2.42, die een
+      briefadres ter beschikking stelt; s. het burgerservicenummer: het nummer, bedoeld in
+      artikel 1, onder b, van de Wet algemene bepalingen burgerservicenummer; t. een
+      overheidsorgaan: 1. een orgaan van een rechtspersoon die krachtens publiekrecht is
+      ingesteld, of 2. een ander persoon of college, met enig openbaar gezag bekleed; u. een
+      derde: elke natuurlijke persoon, niet zijnde een overheidsorgaan of de ingeschrevene, en
+      elke rechtspersoon die niet krachtens publiekrecht is ingesteld, noch met enig openbaar
+      gezag is bekleed; v. de openbare lichamen: de openbare lichamen Bonaire, Sint Eustatius en
+      Saba; w. een inschrijfvoorziening: een voorziening als bedoeld in artikel 2.64; x. het
+      Besluit bevolkingsboekhouding: het Besluit bevolkingsboekhouding zoals dat gold op de
+      laatste dag voor de intrekking van de Wet bevolkings- en verblijfsregisters; y. de
+      verordening: Verordening (EU) nr. 2016/679 van het Europees Parlement en de Raad van 27
+      april 2016 betreffende de bescherming van natuurlijke personen in verband met de
+      verwerking van persoonsgegevens en betreffende het vrije verkeer van die gegevens en tot
+      intrekking van Richtlijn 95/46/EG (Algemene verordening gegevensbescherming) (PbEU 2016, L
+      119); z. het tijdelijk verblijfsadres: het adres in Nederland, niet zijnde het woonadres
+      of het briefadres, waar betrokkene naar redelijke verwachting gedurende een maand
+      meestentijds en gedurende een half jaar minder dan twee derde van de tijd zal overnachten;
+      aa. contactgegevens: telefoonnummer en e-mailadres van de niet-ingezetene; ab. de
+      ingezetene van een openbaar lichaam: de ingeschrevene die zijn adres heeft in een van de
+      openbare lichamen, en op wiens persoonslijst niet het gegeven van zijn overlijden of van
+      zijn vertrek uit een van de openbare lichamen als actueel gegeven is opgenomen; ac.
+      Nederland: het Europese deel van Nederland.
+    url: https://wetten.overheid.nl/BWBR0033715/2020-01-01#Artikel1.1
+    machine_readable:
+      definitions:
+        nederlandse_nationaliteiten:
+          - NEDERLANDS
+        address_match_distance_m: 100
+        geldige_partnertypen:
+          - HUWELIJK
+          - GEREGISTREERD_PARTNERSCHAP
+        vaste_adres_typen:
+          - WOONADRES
+        post_adres_typen:
+          - BRIEFADRES
+        kind_max_leeftijd_combinatiekorting: 12
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: geboortedatum
+            type: date
+            source: {}
+          - name: partner_geboortedatum
+            type: date
+            source: {}
+          - name: partnerschap_type
+            type: object
+            source: {}
+          - name: partner_bsn
+            type: string
+            source: {}
+          - name: kinderen_gegevens
+            type: array
+            source: {}
+          - name: verblijfsadres
+            type: object
+            source: {}
+          - name: ouder_adressen
+            type: array
+            source: {}
+          - name: land_verblijf
+            type: string
+            source: {}
+          - name: nationaliteit
+            type: string
+            source: {}
+          - name: adres
+            type: object
+            source: {}
+          - name: medebewoners
+            type: array
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: leeftijd
+            type: number
+            type_spec:
+              unit: years
+              precision: 0
+              min: 0
+          - name: heeft_partner
+            type: boolean
+          - name: partner_bsn
+            type: string
+          - name: woonsituatie
+            type: string
+          - name: land_van_verblijf
+            type: string
+          - name: heeft_nederlandse_nationaliteit
+            type: boolean
+          - name: woont_in_nederland
+            type: boolean
+          - name: geboortedatum
+            type: date
+          - name: partner_geboortedatum
+            type: date
+          - name: heeft_vast_adres
+            type: boolean
+          - name: kinderen_bsns
+            type: array
+          - name: verblijfsadres
+            type: string
+          - name: postadres
+            type: string
+          - name: woonplaats
+            type: string
+          - name: huishoudgrootte
+            type: number
+            type_spec:
+              precision: 0
+              min: 1
+          - name: huishoudleden
+            type: array
+          - name: kinderen
+            type: array
+          - name: heeft_kinderen_onder_12
+            type: boolean
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $geboortedatum
+                    value: null
+          - output: geboortedatum
+            value: $geboortedatum
+          - output: partner_geboortedatum
+            value: $partner_geboortedatum
+          - output: partner_bsn
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: IN
+                    subject: $partnerschap_type
+                    value: $geldige_partnertypen
+                  then: $partner_bsn
+          - output: leeftijd
+        # POC: een onbekende geboortedatum gaf leeftijd None; de engine eist een
+        # datum, daarom expliciet afgevangen.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $geboortedatum
+                      value: null
+                  then:
+                    operation: AGE
+                    reference_date: $referencedate
+                    date_of_birth: $geboortedatum
+              default: null
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '1.6'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk1_Paragraaf1.2_Artikel1.6
+              juriconnect: jci1.3:c:BWBR0033715&artikel=1.6&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 1.6 Wet BRP bepaalt verplicht gebruik van basisregistratie voor persoonsgegevens
+          - output: kinderen_bsns
+            value:
+              operation: FOREACH
+              collection: $kinderen_gegevens
+              body: $bsn
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.9'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.2_Artikel2.9
+              juriconnect: jci1.3:c:BWBR0033715&artikel=2.9&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.9 Wet BRP bepaalt registratie van gegevens over kinderen
+          - output: heeft_partner
+            value:
+              operation: IN
+              subject: $partnerschap_type
+              value: $geldige_partnertypen
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '1.7'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk1_Paragraaf1.2_Artikel1.7
+              juriconnect: jci1.3:c:BWBR0033715&artikel=1.7&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 1.7 Wet BRP verplicht gebruik authentieke gegevens over huwelijk en partnerschap
+          - output: woonsituatie
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $verblijfsadres
+                    value: $ouder_adressen
+                  then: THUIS
+              default: UIT
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.4'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.1_Artikel2.4
+              juriconnect: jci1.3:c:BWBR0033715&artikel=2.4&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.4 Wet BRP bepaalt meldingsplicht bij adreswijziging en woonsituatie
+          - output: land_van_verblijf
+            value: $land_verblijf
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.7'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.2_Artikel2.7
+              juriconnect: jci1.3:c:BWBR0033715&artikel=2.7&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.7 Wet BRP bepaalt registratie van algemene gegevens zoals nationaliteit
+          - output: heeft_nederlandse_nationaliteit
+            value:
+              operation: IN
+              subject: $nationaliteit
+              value: $nederlandse_nationaliteiten
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.7'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.2_Artikel2.7
+              juriconnect: >-
+                jci1.3:c:BWBR0033715&artikel=2.7&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.7 lid 1 Wet BRP bepaalt dat nationaliteit als algemeen gegeven wordt
+                geregistreerd
+          - output: woont_in_nederland
+            value:
+              operation: EQUALS
+              subject: $land_verblijf
+              value: NEDERLAND
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.10'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.2_Artikel2.10
+              juriconnect: jci1.3:c:BWBR0033715&artikel=2.10&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.10 Wet BRP bepaalt dat verblijfplaats in Nederland wordt geregistreerd
+          - output: heeft_vast_adres
+        # POC: eigenschap van een ontbrekend adres was None (en dus "niet in de lijst");
+        # de engine weigert een pad op null, daarom expliciet afgevangen.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $adres
+                      value: null
+                  then:
+                    operation: IN
+                    subject: $adres.type
+                    value: $vaste_adres_typen
+              default: false
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.10'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.2_Artikel2.10
+              juriconnect: jci1.3:c:BWBR0033715&artikel=2.10&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.10 Wet BRP bepaalt registratie van verblijfplaatsgegevens
+          - output: verblijfsadres
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $adres
+                      value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - $adres.straat
+                      - ' '
+                      - $adres.huisnummer
+                      - ', '
+                      - $adres.postcode
+                      - ' '
+                      - $adres.woonplaats
+          - output: huishoudgrootte
+        # POC: EXISTS op lijst $medebewoners (uitvoer huishoudgrootte) betekende 'niet leeg'; expliciet als telling (RFC-016)
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject:
+                      operation: FOREACH
+                      collection: $medebewoners
+                      body: 1
+                      combine: ADD
+                    value: 0
+                  then:
+                    operation: ADD
+                    values:
+                      - 1
+                      - operation: FOREACH
+                        collection: $medebewoners
+                        body: 1
+                        combine: ADD
+              default: 1
+          - output: postadres
+        # POC: eigenschap van een ontbrekend adres was None; de engine weigert een
+        # pad op null, daarom eerst op een aanwezig adres getoetst.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $adres
+                          value: null
+                      - operation: IN
+                        subject: $adres.type
+                        value: $post_adres_typen
+                  then:
+                    operation: ADD
+                    values:
+                      - $adres.straat
+                      - ' '
+                      - $adres.huisnummer
+                      - ', '
+                      - $adres.postcode
+                      - ' '
+                      - $adres.woonplaats
+          - output: woonplaats
+        # POC: eigenschap van een ontbrekend adres was None; de engine weigert een
+        # pad op null, daarom expliciet afgevangen.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $adres
+                      value: null
+                  then: $adres.woonplaats
+              default: null
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.10'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.2_Artikel2.10
+              juriconnect: jci1.3:c:BWBR0033715&artikel=2.10&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.10 Wet BRP bepaalt registratie van woonplaats als onderdeel van
+                verblijfplaatsgegevens
+          - output: huishoudleden
+        # POC: EXISTS op lijst $medebewoners (uitvoer huishoudleden) betekende 'niet leeg'; expliciet als telling (RFC-016)
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject:
+                      operation: FOREACH
+                      collection: $medebewoners
+                      body: 1
+                      combine: ADD
+                    value: 0
+                  then: $medebewoners
+              default: null
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.4'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.1_Artikel2.4
+              juriconnect: jci1.3:c:BWBR0033715&artikel=2.4&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.4 Wet BRP bepaalt meldingsplicht bij adreswijziging en woonsituatie
+          - output: kinderen
+        # POC: EXISTS op lijst $kinderen_gegevens (uitvoer kinderen) betekende 'niet leeg'; expliciet als telling (RFC-016)
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject:
+                      operation: FOREACH
+                      collection: $kinderen_gegevens
+                      body: 1
+                      combine: ADD
+                    value: 0
+                  then: $kinderen_gegevens
+              default: null
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '1.6'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk1_Paragraaf1.2_Artikel1.6
+              juriconnect: jci1.3:c:BWBR0033715&artikel=1.6&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 1.6 Wet BRP bepaalt verplicht gebruik van basisregistratie voor persoonsgegevens
+          - output: heeft_kinderen_onder_12
+        # POC: EXISTS op lijst $kinderen_gegevens (uitvoer heeft_kinderen_onder_12) betekende 'niet leeg'; expliciet als
+        # telling (RFC-016)
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject:
+                      operation: FOREACH
+                      collection: $kinderen_gegevens
+                      body: 1
+                      combine: ADD
+                    value: 0
+                  then:
+                    operation: GREATER_THAN
+                    subject:
+                      operation: FOREACH
+                      collection: $kinderen_gegevens
+                      body: 1
+                      combine: ADD
+                    value: 0
+              default: false
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '1.6'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk1_Paragraaf1.2_Artikel1.6
+              juriconnect: jci1.3:c:BWBR0033715&artikel=1.6&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 1.6 Wet BRP bepaalt verplicht gebruik van basisregistratie voor persoonsgegevens
+      untranslatables:
+        - construct: iteratie over variabel aantal kinderen en huishoudleden
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal kinderen en huishoudleden is
+            dynamisch en kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal personen tot een vast maximum
+          accepted: true

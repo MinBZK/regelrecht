@@ -1,0 +1,101 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: alcoholwet/register_sociale_hygiene
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Landelijk Register Sociale Hygiëne
+bwb_id: BWBR0002458
+url: https://wetten.overheid.nl/BWBR0002458/2024-01-01
+service: SVH
+uuid: 4e7f7c46-e0fe-4cf0-b72c-d446e6dd1f55
+discoverable: HIDDEN
+articles:
+  - number: '8'
+    text: >-
+      1 Leidinggevenden van het horecabedrijf en het slijtersbedrijf voldoen aan de volgende
+      eisen:
+        a. zij hebben de leeftijd van eenentwintig jaar bereikt;
+        b. zij zijn niet in enig opzicht van slecht levensgedrag;
+        c. zij mogen niet onder curatele staan.
+      2 Bij of krachtens algemene maatregel van bestuur worden naast de in het eerste lid
+      gestelde eisen andere eisen ten aanzien van het zedelijk gedrag van leidinggevenden
+      gesteld en kan de in dat lid, onder b, gestelde eis nader worden omschreven.
+
+      3 Leidinggevenden beschikken tevens over voldoende kennis en inzicht met betrekking tot
+      sociale hygiëne en zijn ingeschreven in het Register sociale hygiëne, genoemd in artikel
+      11c.
+
+      4 De in het derde lid gestelde eis geldt niet voor leidinggevenden voor wier rekening en
+      risico het horecabedrijf of het slijtersbedrijf wordt uitgeoefend, indien die
+      leidinggevenden geen bemoeienis hebben met de bedrijfsvoering of de exploitatie van het
+      horecabedrijf of het slijtersbedrijf waarvoor vergunning wordt gevraagd of is verkregen en
+      de vergunninghouder dit in een schriftelijke verklaring bevestigt.
+
+      5 Indien een paracommerciële rechtspersoon het horecabedrijf uitoefent, voldoen ten minste
+      twee leidinggevenden aan de bij of krachtens dit artikel gestelde eisen.
+    url: https://wetten.overheid.nl/BWBR0002458/2024-01-01#Artikel8
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: registratie
+            type: object
+            source: {}
+        output:
+          - name: is_geregistreerd
+            type: boolean
+          - name: registratienummer
+            type: string
+          - name: naam
+            type: string
+          - name: registratiedatum
+            type: date
+        actions:
+          - output: is_geregistreerd
+            value: $registratie.is_geregistreerd
+            legal_basis:
+              law: Alcoholwet
+              bwb_id: BWBR0002458
+              article: '8'
+              paragraph: '4'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002458/2024-01-01#Hoofdstuk2_Artikel8
+              explanation: Controle of persoon in register voorkomt
+          - output: registratienummer
+            value: $registratie.registratienummer
+            legal_basis:
+              law: Alcoholwet
+              bwb_id: BWBR0002458
+              article: '8'
+              paragraph: '4'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002458/2024-01-01#Hoofdstuk2_Artikel8
+              explanation: Ophalen registratienummer
+          - output: naam
+            value: $registratie.naam
+            legal_basis:
+              law: Alcoholwet
+              bwb_id: BWBR0002458
+              article: '8'
+              paragraph: '4'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002458/2024-01-01#Hoofdstuk2_Artikel8
+              explanation: Ophalen naam
+          - output: registratiedatum
+            value: $registratie.registratiedatum
+            legal_basis:
+              law: Alcoholwet
+              bwb_id: BWBR0002458
+              article: '8'
+              paragraph: '4'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002458/2024-01-01#Hoofdstuk2_Artikel8
+              explanation: Ophalen registratiedatum

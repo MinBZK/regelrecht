@@ -1,0 +1,514 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: wet_op_het_kindgebonden_budget
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+name: Kindgebonden Budget
+bwb_id: BWBR0022751
+url: https://wetten.overheid.nl/BWBR0022751/2025-01-01
+service: TOESLAGEN
+uuid: 5d8e4b3a-6f9c-4a2d-8e7b-1c9f2a5b8d3e
+discoverable: CITIZEN
+articles:
+  - number: '2'
+    text: >-
+      1 Aanspraak op een kindgebonden budget heeft de ouder voor een kind voor wie aan die ouder
+      op grond van artikel 18 van de Algemene Kinderbijslagwet kinderbijslag wordt betaald of
+      zou worden betaald indien artikel 7, tweede lid van die wet niet van toepassing zou zijn,
+      met dien verstande dat de aanspraak op een kindgebonden budget bestaat met ingang van de
+      kalendermaand na de maand waarin het kind is geboren dan wel tot het huishouden is gaan
+      behoren tot en met de kalendermaand waarin het kind de leeftijd van 18 jaar bereikt.
+
+      2 Het kindgebonden budget bedraagt voor een berekeningsjaar:
+        a. indien de ouder aanspraak heeft voor een kind: € 2.511;
+        b. indien de ouder aanspraak heeft voor twee of meer kinderen: € 2.511 per kind
+      voor het tweede of volgende kind. 3 Een ouder heeft aanspraak op een verhoging van het
+      kindgebonden budget in een berekeningsjaar voor een kind met ingang van de kalendermaand
+      na de maand waarin dat kind de leeftijd van 12 jaar heeft bereikt.
+
+      4 Voor een kind dat 12 jaar of ouder is, maar jonger is dan 16 jaar bedraagt de verhoging
+      van het kindgebonden budget € 703.
+
+      5 Voor een kind dat 16 of 17 jaar is, bedraagt de verhoging van het kindgebonden budget
+      met ingang van de kalendermaand na de maand waarin het kind de leeftijd van 16 jaar heeft
+      bereikt € 936,00.
+
+      6 De ouder die geen partner heeft, heeft aanspraak op een verhoging van het kindgebonden
+      budget van € 3.389.
+
+      7 Bij een toetsingsinkomen van de ouder die geen partner heeft, van meer dan het
+      drempelinkomen wordt de som van de bedragen waarop recht bestaat op grond van het tweede,
+      vierde, vijfde en zesde lid verminderd met 7,10% van het verschil tussen het
+      toetsingsinkomen en het drempelinkomen.
+
+      8 Bij een gezamenlijk toetsingsinkomen van de ouder en zijn partner van meer dan het met
+      € 9.139,00 verhoogde drempelinkomen wordt de som van de bedragen waarop recht bestaat op
+      grond van het tweede, vierde en vijfde lid verminderd met 7,10% van het verschil tussen
+      het gezamenlijk toetsingsinkomen en het met € 9.139,00 verhoogde drempelinkomen.
+
+      9 Een ouder als bedoeld in het eerste en derde lid en zijn partner die tevens ouder is als
+      bedoeld in het eerste lid worden voor de toepassing van deze wet geacht gezamenlijk één
+      aanspraak te hebben.
+
+      10 Indien aan twee ouders kinderbijslag wordt uitbetaald op basis van het recht op
+      kinderbijslag van één van die ouders, heeft alleen de ouder, wiens recht op kinderbijslag
+      wordt uitbetaald aanspraak op een kindgebonden budget.
+
+      11 De aanspraak op een kindgebonden budget wordt voor iedere kalendermaand afzonderlijk
+      bepaald.
+
+      12 Indien de ouder:
+        a. aanspraak heeft op kindgebonden budget voor een kind, en
+        b. voor dat kind voor de toepassing van de Algemene Kinderbijslagwet een ander
+      land dan Nederland, een van de andere lidstaten van de Europese Unie, een andere staat die
+      partij is bij de Overeenkomst betreffende de Europese Economische Ruimte en Zwitserland
+      als woonland in aanmerking wordt genomen, bedraagt het kindgebonden budget een bij
+      ministeriële regeling vastgesteld percentage van de in het tweede lid, onderdeel a, en
+      vierde tot en met zesde lid bedoelde bedragen. Het percentage wordt zo bepaald dat het een
+      weergave is van de verhouding tussen het kostenniveau van het land dat als woonland in
+      aanmerking wordt genomen en dat van Nederland. Het percentage bedraagt maximaal 100.
+
+      13 Indien de ouder:
+        a. aanspraak heeft op kindgebonden budget voor meer dan een kind, en
+        b. voor een of meer van die kinderen voor de toepassing van de Algemene Kinderbijslagwet
+      een ander land dan Nederland, een van de andere lidstaten van de Europese Unie, een andere
+      staat die partij is bij de Overeenkomst betreffende de Europese Economische Ruimte en
+      Zwitserland als woonland in aanmerking wordt genomen, bedraagt het kindgebonden budget een
+      volgens bij ministeriële regeling te stellen regels vastgesteld bedrag. Dat bedrag is
+      gebaseerd op de in het tweede en vierde tot en met zesde lid, opgenomen bedragen en de
+      verhouding tussen het kostenniveau van het land dat als woonland in aanmerking wordt
+      genomen voor het desbetreffende kind of voor de desbetreffende kinderen en dat van
+      Nederland uitgedrukt in procenten. Het percentage bedraagt maximaal 100.
+
+      14 Het twaalfde en dertiende lid zijn niet van toepassing indien het een kind betreft dat
+      op de eerste dag van een kalenderkwartaal niet in Nederland woont doch langer dan drie
+      maanden onafgebroken in Nederland verblijft.
+    url: https://wetten.overheid.nl/BWBR0022751/2025-01-01#Artikel2
+    machine_readable:
+      definitions:
+        basisbedrag_per_kind: 251100
+        extra_12_15_jaar: 70300
+        extra_16_17_jaar: 93600
+        alo_kop: 348000
+        drempelinkomen_alleenstaand: 2840600
+        drempelinkomen_partner: 4041600
+        extra_drempel_partner: 913900
+        afbouwpercentage: 0.071
+        vermogensgrens_alleenstaand: 14189600
+        vermogensgrens_partner: 17942900
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: heeft_partner
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_partner
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_bsn
+            type: string
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: aantal_kinderen
+            type: number
+            type_spec:
+              precision: 0
+              min: 0
+            source:
+              regulation: algemene_kinderbijslagwet
+              output: aantal_kinderen
+              parameters:
+                bsn: $bsn
+          - name: kinderen_leeftijden
+            type: array
+            source:
+              regulation: algemene_kinderbijslagwet
+              output: kinderen_leeftijden
+              parameters:
+                bsn: $bsn
+          - name: ontvangt_kinderbijslag
+            type: boolean
+            source:
+              regulation: algemene_kinderbijslagwet
+              output: ontvangt_kinderbijslag
+              parameters:
+                bsn: $bsn
+          - name: toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: uwv_toetsingsinkomen
+              output: toetsingsinkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+              immutable_after: P2Y
+          - name: partner_toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: uwv_toetsingsinkomen
+              output: toetsingsinkomen
+              parameters:
+                bsn: $partner_bsn
+            temporal:
+              type: period
+              period_type: year
+              immutable_after: P2Y
+          - name: vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: belastingdienst_vermogen
+              output: vermogen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: belastingdienst_vermogen
+              output: vermogen
+              parameters:
+                bsn: $partner_bsn
+            temporal:
+              type: point_in_time
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: heeft_recht_op_kindgebonden_budget
+            type: boolean
+          - name: kindgebonden_budget_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: alo_kop_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - subject: $ontvangt_kinderbijslag
+                  operation: EQUALS
+                  value: true
+                - subject: $aantal_kinderen
+                  operation: GREATER_THAN
+                  value: 0
+                - operation: IF
+                  cases:
+                    - when:
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
+                      then:
+                        operation: LESS_THAN
+                        subject:
+                          operation: ADD
+                          values:
+                            - $vermogen
+                            - $partner_vermogen
+                        value: $vermogensgrens_partner
+                  default:
+                    operation: LESS_THAN
+                    subject: $vermogen
+                    value: $vermogensgrens_alleenstaand
+          - output: leeftijdstoeslagen
+            value:
+              operation: FOREACH
+              collection: $kinderen_leeftijden
+              body:
+                operation: IF
+                cases:
+                  - when:
+                      operation: GREATER_THAN_OR_EQUAL
+                      subject: $leeftijd
+                      value: 16
+                    then:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: LESS_THAN_OR_EQUAL
+                            subject: $leeftijd
+                            value: 17
+                          then: $extra_16_17_jaar
+                      default: 0
+                  - when:
+                      operation: GREATER_THAN_OR_EQUAL
+                      subject: $leeftijd
+                      value: 12
+                    then:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: LESS_THAN_OR_EQUAL
+                            subject: $leeftijd
+                            value: 15
+                          then: $extra_12_15_jaar
+                      default: 0
+                default: 0
+              combine: ADD
+              as: leeftijd
+          - output: alo_kop_bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_partner
+                    value: false
+                  then: $alo_kop
+              default: 0
+            legal_basis:
+              law: Wet op het kindgebonden budget
+              bwb_id: BWBR0022751
+              article: '2'
+              paragraph: '6'
+              url: https://wetten.overheid.nl/BWBR0022751/2025-01-01#Artikel2
+              juriconnect: >-
+                jci1.3:c:BWBR0022751&artikel=2&lid=6&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                Artikel 2 lid 6 bepaalt dat alleenstaande ouders zonder partner recht hebben op verhoging
+                van €3.480
+          - output: heeft_partner
+            value: $heeft_partner
+            legal_basis:
+              law: Wet op het kindgebonden budget
+              bwb_id: BWBR0022751
+              article: '2'
+              paragraph: '6'
+              url: https://wetten.overheid.nl/BWBR0022751/2025-01-01#Artikel2
+              juriconnect: >-
+                jci1.3:c:BWBR0022751&artikel=2&lid=6&z=2025-01-01&g=2025-01-01
+              explanation: Partnerstatus bepaalt of ALO-kop van toepassing is
+          - output: kindgebonden_budget_jaar
+        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
+        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: false
+                          then:
+                            operation: MAX
+                            values:
+                              - operation: SUBTRACT
+                                values:
+                                  - operation: ADD
+                                    values:
+                                      - operation: MULTIPLY
+                                        values:
+                                          - $aantal_kinderen
+                                          - $basisbedrag_per_kind
+                                      - $leeftijdstoeslagen
+                                      - $alo_kop_bedrag
+                                  - operation: IF
+                                    cases:
+                                      - when:
+                                          operation: GREATER_THAN
+                                          subject: $toetsingsinkomen
+                                          value: $drempelinkomen_alleenstaand
+                                        then:
+                                          operation: MULTIPLY
+                                          values:
+                                            - operation: SUBTRACT
+                                              values:
+                                                - $toetsingsinkomen
+                                                - $drempelinkomen_alleenstaand
+                                            - $afbouwpercentage
+                                    default: 0
+                              - 0
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          then:
+                            operation: MAX
+                            values:
+                              - operation: SUBTRACT
+                                values:
+                                  - operation: ADD
+                                    values:
+                                      - operation: MULTIPLY
+                                        values:
+                                          - $aantal_kinderen
+                                          - $basisbedrag_per_kind
+                                      - $leeftijdstoeslagen
+                                  - operation: IF
+                                    cases:
+                                      - when:
+                                          operation: GREATER_THAN
+                                          subject:
+                                            operation: ADD
+                                            values:
+                                              - $toetsingsinkomen
+                                              - $partner_toetsingsinkomen
+                                          value:
+                                            operation: ADD
+                                            values:
+                                              - $drempelinkomen_partner
+                                              - $extra_drempel_partner
+                                        then:
+                                          operation: MULTIPLY
+                                          values:
+                                            - operation: SUBTRACT
+                                              values:
+                                                - operation: ADD
+                                                  values:
+                                                    - $toetsingsinkomen
+                                                    - $partner_toetsingsinkomen
+                                                - operation: ADD
+                                                  values:
+                                                    - $drempelinkomen_partner
+                                                    - $extra_drempel_partner
+                                            - $afbouwpercentage
+                                    default: 0
+                              - 0
+                    value: null
+                  then: null
+              default:
+                operation: ROUND
+                precision: 0
+                value:
+                  operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $heeft_partner
+                        value: false
+                      then:
+                        operation: MAX
+                        values:
+                          - operation: SUBTRACT
+                            values:
+                              - operation: ADD
+                                values:
+                                  - operation: MULTIPLY
+                                    values:
+                                      - $aantal_kinderen
+                                      - $basisbedrag_per_kind
+                                  - $leeftijdstoeslagen
+                                  - $alo_kop_bedrag
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: GREATER_THAN
+                                      subject: $toetsingsinkomen
+                                      value: $drempelinkomen_alleenstaand
+                                    then:
+                                      operation: MULTIPLY
+                                      values:
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $toetsingsinkomen
+                                            - $drempelinkomen_alleenstaand
+                                        - $afbouwpercentage
+                                default: 0
+                          - 0
+                    - when:
+                        operation: EQUALS
+                        subject: $heeft_partner
+                        value: true
+                      then:
+                        operation: MAX
+                        values:
+                          - operation: SUBTRACT
+                            values:
+                              - operation: ADD
+                                values:
+                                  - operation: MULTIPLY
+                                    values:
+                                      - $aantal_kinderen
+                                      - $basisbedrag_per_kind
+                                  - $leeftijdstoeslagen
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: GREATER_THAN
+                                      subject:
+                                        operation: ADD
+                                        values:
+                                          - $toetsingsinkomen
+                                          - $partner_toetsingsinkomen
+                                      value:
+                                        operation: ADD
+                                        values:
+                                          - $drempelinkomen_partner
+                                          - $extra_drempel_partner
+                                    then:
+                                      operation: MULTIPLY
+                                      values:
+                                        - operation: SUBTRACT
+                                          values:
+                                            - operation: ADD
+                                              values:
+                                                - $toetsingsinkomen
+                                                - $partner_toetsingsinkomen
+                                            - operation: ADD
+                                              values:
+                                                - $drempelinkomen_partner
+                                                - $extra_drempel_partner
+                                        - $afbouwpercentage
+                                default: 0
+                          - 0
+            legal_basis:
+              law: Wet op het kindgebonden budget
+              bwb_id: BWBR0022751
+              article: '2'
+              url: https://wetten.overheid.nl/BWBR0022751/2025-01-01#Artikel2
+              juriconnect: jci1.3:c:BWBR0022751&artikel=2&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                Artikel 2 bepaalt berekening afhankelijk van partnerstatus en inkomen
+      untranslatables:
+        - construct: iteratie over variabel aantal kinderen voor leeftijdstoeslag
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal kinderen is dynamisch en kan niet
+            vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal kinderen tot een vast maximum
+          accepted: true

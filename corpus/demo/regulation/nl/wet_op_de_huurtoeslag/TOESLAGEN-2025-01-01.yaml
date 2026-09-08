@@ -1,0 +1,535 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: wet_op_de_huurtoeslag
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+name: Huurtoeslag
+bwb_id: BWBR0008659
+url: https://wetten.overheid.nl/BWBR0008659/2025-01-01
+service: TOESLAGEN
+uuid: a611a7ea-98d5-42f5-a05c-475b1be4590e
+discoverable: CITIZEN
+articles:
+  - number: '1'
+    text: >-
+      In deze wet en de bepalingen die daarop berusten wordt verstaan onder:
+        a. burgemeester en wethouders: burgemeester en wethouders van de gemeente waar
+      de woning is gelegen waarop de huurtoeslag betrekking heeft;
+        b. huurcommissie: de huurcommissie, bedoeld in artikel 3a, eerste lid, van de
+      Uitvoeringswet
+      huurprijzen woonruimte;
+        c. huurder: persoon die zijn hoofdverblijf heeft in een door hem gehuurde woning,
+      daaronder begrepen een woonwagen, tenzij:
+        1°. de overeenkomst van huur en verhuur een gebruik van de woning betreft dat naar
+      zijn aard slechts van korte duur is, of
+        2°. de woning onderdeel uitmaakt van een hotel-, pension-, kamp- of
+      vakantiebestedingsbedrijf,
+      ongeacht de duur van de huurovereenkomst;
+        d. huurprijs: de prijs die bij huur en verhuur is verschuldigd voor het enkele
+      gebruik van een woning;
+        e. huurtoeslag: een tegemoetkoming van het Rijk als bedoeld in artikel 2, eerste
+      lid, onderdeel h, van de Algemene wet inkomensafhankelijke regelingen in de kosten van het
+      huren van een woning;
+        f. onderhuurder: persoon als bedoeld in artikel 2, eerste lid, onderdeel e, onder
+      2°, van de Algemene wet inkomensafhankelijke regelingen;
+        g. Onze Minister: Onze Minister van Volkshuisvesting en Ruimtelijke Ordening;
+        h. rekenhuur: de rekenhuur, bedoeld in artikel 5;
+        i. rekeninkomen: de gezamenlijke toetsingsinkomens, bedoeld in artikel 8 van de
+      Algemene wet inkomensafhankelijke regelingen, die in aanmerking worden genomen voor het
+      bepalen van de draagkracht, bedoeld in artikel 7 van die wet;
+        j. standplaats: kavel, bestemd voor het plaatsen van een woonwagen, waarop voorzieningen
+      aanwezig zijn die op het leidingnet van de openbare nutsbedrijven, andere instellingen of
+      van gemeenten kunnen worden aangesloten;
+        k. woning: een gebouwde onroerende zaak voor zover deze als zelfstandige woonruimte,
+      onvrije etage dan wel andere onzelfstandige woonruimte is verhuurd, alsmede de onroerende
+      aanhorigheden;
+        l. woonwagen: voor bewoning bestemd gebouw dat is geplaatst op een standplaats
+      en dat in zijn geheel of in delen kan worden verplaatst.
+    url: https://wetten.overheid.nl/BWBR0008659/2025-01-01#Artikel1
+    machine_readable:
+      definitions:
+        minimum_leeftijd: 18
+        kwaliteitskortingsgrens: 47720
+        aftoppingsgrens_1_2: 68296
+        aftoppingsgrens_3_plus: 73193
+        maximale_huurgrens: 90007
+        vermogensgrens_alleenstaande: 3695200
+        vermogensgrens_partners: 7390400
+        inkomensgrens_alleenstaande: 4400000
+        inkomensgrens_partners: 5400000
+        subsidiepercentage_onder_kwaliteitskortingsgrens: 1.0
+        subsidiepercentage_tussen_kwaliteit_aftop: 0.65
+        subsidiepercentage_boven_aftop: 0.4
+        minimum_basishuur_percentage: 0.0486
+        maximale_servicekosten: 4800
+        kind_vrijstelling: 543200
+        leeftijdsgrens_kind_inkomen: 23
+        minimum_inkomensijkpunt_alleenstaande: 1800000
+        minimum_inkomensijkpunt_partners: 2400000
+        referentie_inkomensijkpunt_alleenstaande: 3262500
+        referentie_inkomensijkpunt_partners: 4247500
+        normhuur_bij_minimum_inkomen: 23801
+        normhuur_bij_referentie_inkomen: 48378
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: huishoudleden
+            type: array
+            source:
+              regulation: wet_brp
+              output: huishoudleden
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: kinderen
+            type: array
+            source:
+              regulation: wet_brp
+              output: kinderen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_bsn
+            type: string
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_adres
+            type: string
+            source:
+              regulation: wet_brp
+              output: verblijfsadres
+              parameters:
+                bsn: $partner_bsn
+            temporal:
+              type: point_in_time
+          - name: leeftijd
+            type: number
+            source:
+              regulation: wet_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: heeft_partner
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_partner
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: huishoudgrootte
+            type: number
+            source:
+              regulation: wet_brp
+              output: huishoudgrootte
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: verblijfsadres
+            type: string
+            source:
+              regulation: wet_brp
+              output: verblijfsadres
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting/toetsingsinkomen
+              output: inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: partner_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting/toetsingsinkomen
+              output: partner_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: vermogen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: gezamenlijk_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: gezamenlijk_vermogen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: huurprijs
+            type: amount
+            required: true
+            source: {}
+          - name: servicekosten
+            type: amount
+            required: true
+            source: {}
+          - name: subsidiabele_servicekosten
+            type: amount
+            required: true
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_gerechtigd
+            type: boolean
+          - name: basishuur
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: subsidiebedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - subject: $leeftijd
+                  operation: GREATER_THAN_OR_EQUAL
+                  value: $minimum_leeftijd
+                - operation: LESS_THAN
+                  subject:
+                    operation: ADD
+                    values:
+                      - $inkomen
+                      - $partner_inkomen
+                      - operation: FOREACH
+                        collection: $huishoudleden
+                        combine: ADD
+                        body:
+                          operation: IF
+                          cases:
+                            - when:
+                                operation: GREATER_THAN_OR_EQUAL
+                                subject: $leeftijd
+                                value: 21
+                              then: $inkomen
+                          default:
+                            operation: SUBTRACT
+                            values:
+                              - $inkomen
+                              - $kind_vrijstelling
+                      - operation: FOREACH
+                        collection: $kinderen
+                        combine: ADD
+                        body:
+                          operation: IF
+                          cases:
+                            - when:
+                                operation: LESS_THAN
+                                subject: $leeftijd
+                                value: $leeftijdsgrens_kind_inkomen
+                              then:
+                                operation: SUBTRACT
+                                values:
+                                  - $inkomen
+                                  - $kind_vrijstelling
+                          default: $inkomen
+                  value:
+                    operation: IF
+                    cases:
+                      - when:
+                          subject: $heeft_partner
+                          operation: EQUALS
+                          value: true
+                        then: $inkomensgrens_partners
+                    default: $inkomensgrens_alleenstaande
+                - operation: IF
+                  cases:
+                    - when:
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
+                      then:
+                        operation: EQUALS
+                        subject: $verblijfsadres
+                        value: $partner_adres
+                  default: true
+                - operation: IF
+                  cases:
+                    - when:
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
+                      then:
+                        operation: LESS_THAN
+                        subject: $gezamenlijk_vermogen
+                        value: $vermogensgrens_partners
+                  default:
+                    operation: LESS_THAN
+                    subject: $vermogen
+                    value: $vermogensgrens_alleenstaande
+                - operation: IF
+                  cases:
+                    - when:
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
+                      then:
+                        operation: LESS_THAN
+                        subject:
+                          operation: ADD
+                          values:
+                            - $inkomen
+                            - $partner_inkomen
+                        value: $inkomensgrens_partners
+                  default:
+                    operation: LESS_THAN
+                    subject: $inkomen
+                    value: $inkomensgrens_alleenstaande
+                - operation: LESS_THAN
+                  subject:
+                    operation: ADD
+                    values:
+                      - $huurprijs
+                      - operation: MIN
+                        values:
+                          - $subsidiabele_servicekosten
+                          - $maximale_servicekosten
+                  value: $maximale_huurgrens
+          - output: is_gerechtigd
+            value: true
+            legal_basis:
+              law: Wet op de huurtoeslag
+              bwb_id: BWBR0008659
+              article: '7'
+              url: >-
+                https://wetten.overheid.nl/BWBR0008659/2025-01-01#Paragraaf2_Artikel7
+              juriconnect: jci1.3:c:BWBR0008659&artikel=7&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                Het recht op huurtoeslag wordt toegekend als aan alle voorwaarden wordt voldaan conform
+                artikel 7
+          - output: basishuur
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          then:
+                            operation: ADD
+                            values:
+                              - $inkomen
+                              - $partner_inkomen
+                      default: $inkomen
+                    value:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          then: $minimum_inkomensijkpunt_partners
+                      default: $minimum_inkomensijkpunt_alleenstaande
+                  then: $normhuur_bij_minimum_inkomen
+              default:
+                operation: ADD
+                values:
+                  - $normhuur_bij_minimum_inkomen
+                  - operation: MULTIPLY
+                    values:
+                      - operation: DIVIDE
+                        values:
+                          - operation: SUBTRACT
+                            values:
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: EQUALS
+                                      subject: $heeft_partner
+                                      value: true
+                                    then:
+                                      operation: ADD
+                                      values:
+                                        - $inkomen
+                                        - $partner_inkomen
+                                default: $inkomen
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: EQUALS
+                                      subject: $heeft_partner
+                                      value: true
+                                    then: $minimum_inkomensijkpunt_partners
+                                default: $minimum_inkomensijkpunt_alleenstaande
+                          - operation: SUBTRACT
+                            values:
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: EQUALS
+                                      subject: $heeft_partner
+                                      value: true
+                                    then: $referentie_inkomensijkpunt_partners
+                                default: $referentie_inkomensijkpunt_alleenstaande
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: EQUALS
+                                      subject: $heeft_partner
+                                      value: true
+                                    then: $minimum_inkomensijkpunt_partners
+                                default: $minimum_inkomensijkpunt_alleenstaande
+                      - operation: SUBTRACT
+                        values:
+                          - $normhuur_bij_referentie_inkomen
+                          - $normhuur_bij_minimum_inkomen
+            legal_basis:
+              law: Wet op de huurtoeslag
+              bwb_id: BWBR0008659
+              article: '19'
+              url: >-
+                https://wetten.overheid.nl/BWBR0008659/2025-01-01#Paragraaf3_Artikel19
+              juriconnect: jci1.3:c:BWBR0008659&artikel=19&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                De basishuur is gelijk aan de normhuur berekend op basis van inkomen conform artikel 19
+          - output: subsidiebedrag
+            value:
+              operation: ADD
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - operation: MIN
+                      values:
+                        - operation: MAX
+                          values:
+                            - 0
+                            - operation: SUBTRACT
+                              values:
+                                - operation: ADD
+                                  values:
+                                    - $huurprijs
+                                    - $subsidiabele_servicekosten
+                                - $basishuur
+                        - operation: SUBTRACT
+                          values:
+                            - $kwaliteitskortingsgrens
+                            - $basishuur
+                    - $subsidiepercentage_onder_kwaliteitskortingsgrens
+                - operation: MULTIPLY
+                  values:
+                    - operation: MAX
+                      values:
+                        - 0
+                        - operation: MIN
+                          values:
+                            - operation: SUBTRACT
+                              values:
+                                - operation: ADD
+                                  values:
+                                    - $huurprijs
+                                    - $subsidiabele_servicekosten
+                                - $kwaliteitskortingsgrens
+                            - operation: SUBTRACT
+                              values:
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: LESS_THAN_OR_EQUAL
+                                        subject: $huishoudgrootte
+                                        value: 2
+                                      then: $aftoppingsgrens_1_2
+                                  default: $aftoppingsgrens_3_plus
+                                - $kwaliteitskortingsgrens
+                    - $subsidiepercentage_tussen_kwaliteit_aftop
+                - operation: MULTIPLY
+                  values:
+                    - operation: MAX
+                      values:
+                        - 0
+                        - operation: SUBTRACT
+                          values:
+                            - operation: ADD
+                              values:
+                                - $huurprijs
+                                - $subsidiabele_servicekosten
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: LESS_THAN_OR_EQUAL
+                                    subject: $huishoudgrootte
+                                    value: 2
+                                  then: $aftoppingsgrens_1_2
+                              default: $aftoppingsgrens_3_plus
+                    - $subsidiepercentage_boven_aftop
+            legal_basis:
+              law: Wet op de huurtoeslag
+              bwb_id: BWBR0008659
+              article: '21'
+              url: >-
+                https://wetten.overheid.nl/BWBR0008659/2025-01-01#Paragraaf3_Artikel21
+              juriconnect: jci1.3:c:BWBR0008659&artikel=21&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                De hoogte van de huurtoeslag wordt berekend volgens de formule in artikel 21
+      untranslatables:
+        - construct: >-
+            iteratie over variabel aantal huishoudleden en kinderen voor inkomenstoets
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal huishoudleden en kinderen is
+            dynamisch en kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal huishoudleden tot een vast maximum
+          accepted: true

@@ -1,0 +1,223 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: wet_kinderopvang
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bepalen kinderopvangtoeslag
+bwb_id: BWBR0017017
+url: https://wetten.overheid.nl/BWBR0017017/2024-01-01
+service: TOESLAGEN
+uuid: f8e7d6c5-4321-4f0f-bbbb-123456789abc
+discoverable: CITIZEN
+articles:
+  - number: '1.5'
+    text: >-
+      1 Een ouder heeft aanspraak op een kinderopvangtoeslag in de door hem of zijn partner
+      betaalde kosten, indien het betreft:
+        a. kinderopvang in een geregistreerd kindercentrum; of
+        b. gastouderopvang in een geregistreerde voorziening voor gastouderopvang.
+      2 Indien het ouderparticipatieopvang in een ouderparticipatiecrèche betreft, heeft de
+      ouder in de aanloopperiode, bedoeld in artikel 1.60b, in afwijking van het eerste lid,
+      geen aanspraak op kinderopvangtoeslag.
+
+      3 Een ouder en diens partner die tevens ouder is worden voor de toepassing van deze wet
+      geacht gezamenlijk één aanspraak te hebben.
+    url: https://wetten.overheid.nl/BWBR0017017/2024-01-01#Artikel1.5
+    machine_readable:
+      definitions:
+        max_uurtarief_dagopvang: 902
+        max_uurtarief_bso: 766
+        max_hours_per_year: 2760
+        inkomensdrempel_1: 3500000
+        inkomensdrempel_2: 7000000
+        percentage_1: 0.96
+        percentage_2: 0.8
+        percentage_3: 0.33
+        min_hours_partner: 1040
+        min_hours_per_week: 20
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+          - name: partner_bsn
+            type: string
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+          - name: partner_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $partner_bsn
+          - name: kinderen_bsns
+            type: array
+            source:
+              regulation: wet_brp
+              output: kinderen_bsns
+              parameters:
+                bsn: $bsn
+          - name: gewerkte_uren
+            type: number
+            source:
+              regulation: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+              output: gewerkte_uren
+              parameters:
+                bsn: $bsn
+          - name: partner_gewerkte_uren
+            type: number
+            source:
+              regulation: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+              output: gewerkte_uren
+              parameters:
+                bsn: $partner_bsn
+          - name: kinderopvang_kvk
+            type: string
+            required: true
+            source: {}
+          - name: aangegeven_uren
+            type: array
+            required: true
+            source: {}
+          - name: verwachte_partner_uren
+            type: number
+            required: true
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_gerechtigd
+            type: boolean
+          - name: jaarbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - operation: OR
+                  conditions:
+                    - operation: EQUALS
+                      subject: $partner_bsn
+                      value: null
+                    - operation: OR
+                      conditions:
+                        - subject: $partner_gewerkte_uren
+                          operation: GREATER_THAN_OR_EQUAL
+                          value: $min_hours_partner
+                        - subject: $verwachte_partner_uren
+                          operation: GREATER_THAN_OR_EQUAL
+                          value: $min_hours_per_week
+                - subject: $gewerkte_uren
+                  operation: GREATER_THAN
+                  value: 0
+          - output: is_gerechtigd
+        # POC: uitvoer werd alleen berekend als aan de voorwaarden was voldaan, dus
+        # is_gerechtigd was None (gelezen als false) voor wie niet voldeed; de engine
+        # berekent elke uitvoer, daarom expliciet aan voldoet_aan_voorwaarden gekoppeld.
+            value: $voldoet_aan_voorwaarden
+          - output: jaarbedrag
+            value:
+              operation: FOREACH
+              collection: $aangegeven_uren
+              body:
+                operation: MULTIPLY
+                values:
+                  - operation: MIN
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $soort_opvang
+                              value: DAGOPVANG
+                            then: $max_uurtarief_dagopvang
+                        default: $max_uurtarief_bso
+                      - $uurtarief
+                  - operation: MIN
+                    values:
+                      - $uren_per_jaar
+                      - $max_hours_per_year
+                  - operation: IF
+                    cases:
+                      - when:
+                          operation: LESS_THAN
+                          subject:
+                            operation: ADD
+                            values:
+                              - $inkomen
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: NOT
+                                      value:
+                                        operation: EQUALS
+                                        subject: $partner_bsn
+                                        value: null
+                                    then: $partner_inkomen
+                                default: 0
+                          value: $inkomensdrempel_1
+                        then: $percentage_1
+                      - when:
+                          operation: LESS_THAN
+                          subject:
+                            operation: ADD
+                            values:
+                              - $inkomen
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: NOT
+                                      value:
+                                        operation: EQUALS
+                                        subject: $partner_bsn
+                                        value: null
+                                    then: $partner_inkomen
+                                default: 0
+                          value: $inkomensdrempel_2
+                        then: $percentage_2
+                    default: $percentage_3
+              combine: ADD
+            legal_basis:
+              law: Wet kinderopvang
+              bwb_id: BWBR0017017
+              article: '1.6'
+              url: >-
+                https://wetten.overheid.nl/BWBR0017017/2024-12-11#Hoofdstuk1_Afdeling1_Paragraaf4_Artikel1.6
+              juriconnect: jci1.3:c:BWBR0017017&artikel=1.6&z=2024-12-11&g=2024-12-11
+              explanation: >-
+                Artikel 1.6 Wet kinderopvang bepaalt optelling toeslag voor alle kinderen
+      untranslatables:
+        - construct: >-
+            iteratie over variabel aantal kinderen voor toeslagberekening
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal aangegeven kinderopvanguren per kind
+            is dynamisch en kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal kinderen tot een vast maximum
+          accepted: true

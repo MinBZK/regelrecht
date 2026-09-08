@@ -1,0 +1,59 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: handelsregisterwet/bedrijfsgegevens
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bedrijfsgegevens organisatie
+bwb_id: BWBR0021777
+url: https://wetten.overheid.nl/BWBR0021777/2024-01-01
+service: KVK
+uuid: 1b3c8d9e-5f2a-4c7b-8e1d-9a2b3c4d5e6f
+articles:
+  - number: '14'
+    text: >-
+      1 In het handelsregister worden over een vestiging van een rechtspersoon waaraan geen
+      onderneming toebehoort opgenomen:
+        a. een door de Kamer toegekend uniek nummer;
+        b. de naam;
+        c. het post- en bezoekadres;
+        d. de datum van ingebruikname of beëindiging.
+      2 Indien een rechtspersoon meerdere vestigingen heeft, wordt in het handelsregister
+      opgenomen welke vestiging de hoofdvestiging of de hoofdnederzetting is.
+    url: https://wetten.overheid.nl/BWBR0021777/2024-01-01#Artikel14
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+        input:
+          - name: organisatie_gegevens
+            type: object
+            source: {}
+        output:
+          - name: aantal_werknemers
+            type: number
+          - name: status
+            type: string
+          - name: rechtsvorm
+            type: string
+          - name: datum_aanvang
+            type: date
+          - name: vestigingsadres
+            type: string
+        actions:
+          - output: aantal_werknemers
+            value: $organisatie_gegevens.aantal_werknemers
+          - output: status
+            value: $organisatie_gegevens.status
+          - output: rechtsvorm
+            value: $organisatie_gegevens.rechtsvorm
+          - output: datum_aanvang
+            value: $organisatie_gegevens.datum_aanvang
+          - output: vestigingsadres
+            value: $organisatie_gegevens.vestigingsadres

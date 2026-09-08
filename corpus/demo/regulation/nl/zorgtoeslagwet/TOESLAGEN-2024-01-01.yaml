@@ -1,0 +1,465 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: zorgtoeslagwet
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Zorgtoeslag
+bwb_id: BWBR0018451
+url: https://wetten.overheid.nl/BWBR0018451/2024-01-01
+service: TOESLAGEN
+uuid: 5be9dbe7-f565-40e2-8931-da82825dcf21
+discoverable: CITIZEN
+articles:
+  - number: '1'
+    text: >-
+      1 In deze wet en de daarop berustende bepalingen wordt, tenzij anders is geregeld,
+      verstaan onder:
+        a. Onze Minister: Onze Minister van Volksgezondheid, Welzijn en Sport;
+        b. zorgverzekering: de schadeverzekering, bedoeld in artikel 1, onder d, van de
+      Zorgverzekeringswet;
+        c. verzekerde: de persoon, bedoeld in artikel 1, onder f, of in artikel 69 van
+      de Zorgverzekeringswet, vanaf de eerste dag van de kalendermaand volgende op de maand
+      waarin hij achttien jaar wordt, met uitzondering van de verzekerde, bedoeld in artikel 24,
+      eerste of tweede lid, van die wet;
+        d. premie: een premie als bedoeld in afdeling 3.3.1 van de Zorgverzekeringswet;
+        e. zorgtoeslag: een tegemoetkoming in een premie dan wel in een bestuursrechtelijke
+      premie als bedoeld in artikel 18d of 18e van de Zorgverzekeringswet en in het verplicht
+      eigen risico, bedoeld in artikel 19 van de Zorgverzekeringswet;
+        f. drempelinkomen: 108% van het twaalfvoud van het voor de maand januari van het
+      berekeningsjaar geldende in artikel 8, eerste lid, onderdeel b, van de Wet minimumloon en
+      minimumvakantiebijslag bedoelde bedrag per maand;
+        g. de standaardpremie: het op grond van artikel 4 vastgestelde bedrag;
+        h. de normpremie: de aan de hand van het drempelinkomen en het toetsingsinkomen
+      van de verzekerde berekende premie voor een zorgverzekering in het berekeningsjaar. 2 De
+      hoogte van de zorgtoeslag is afhankelijk van de draagkracht op basis van het inkomen en
+      het vermogen.
+    url: https://wetten.overheid.nl/BWBR0018451/2024-01-01#Artikel1
+    machine_readable:
+      definitions:
+        minimum_leeftijd: 18
+        percentage_drempelinkomen_met_partner: 0.0486
+        percentage_drempelinkomen_alleenstaand: 0.0486
+        afbouwpercentage_minimum: 0.1367
+        afbouwpercentage_boven_drempel: 0.0387
+        drempelinkomen_alleenstaande: 3749600
+        drempelinkomen_toeslagpartner: 4821800
+        vermogensgrens_alleenstaande: 14193900
+        vermogensgrens_toeslagpartner: 17942900
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: leeftijd
+            type: number
+            type_spec:
+              unit: years
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: heeft_partner
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_partner
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: heeft_verzekering
+            type: boolean
+            source:
+              regulation: zvw
+              output: heeft_verzekering
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: month
+          - name: heeft_verdragsverzekering
+            type: boolean
+            source:
+              regulation: zvw
+              output: heeft_verdragsverzekering
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: month
+          - name: is_gedetineerd
+            type: boolean
+            source:
+              regulation: penitentiaire_beginselenwet
+              output: is_gedetineerd
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: is_forensisch
+            type: boolean
+            source:
+              regulation: wet_forensische_zorg
+              output: is_forensisch
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+              immutable_after: P2Y
+          - name: vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: vermogen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: gezamenlijk_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: gezamenlijk_vermogen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: partner_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+              immutable_after: P2Y
+          - name: standaardpremie
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: >-
+                zorgtoeslagwet/regelingen/regeling_vaststelling_standaardpremie_en_bestuursrechtelijke_premies
+              output: standaardpremie
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_verzekerde_zorgtoeslag
+            type: boolean
+          - name: hoogte_toeslag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - operation: OR
+                  conditions:
+                    - subject: $heeft_verzekering
+                      operation: EQUALS
+                      value: true
+                    - subject: $heeft_verdragsverzekering
+                      operation: EQUALS
+                      value: true
+                - subject: $leeftijd
+                  operation: GREATER_THAN_OR_EQUAL
+                  value: $minimum_leeftijd
+                - subject: $is_gedetineerd
+                  operation: EQUALS
+                  value: false
+                - subject: $is_forensisch
+                  operation: EQUALS
+                  value: false
+          - output: is_verzekerde_zorgtoeslag
+            value: true
+          - output: hoogte_toeslag
+        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
+        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: false
+                          then:
+                            operation: IF
+                            cases:
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject: $inkomen
+                                  value: $drempelinkomen_alleenstaande
+                                then: 0
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject: $vermogen
+                                  value: $vermogensgrens_alleenstaande
+                                then: 0
+                            default:
+                              operation: SUBTRACT
+                              values:
+                                - $standaardpremie
+                                - operation: ADD
+                                  values:
+                                    - operation: MULTIPLY
+                                      values:
+                                        - $percentage_drempelinkomen_alleenstaand
+                                        - operation: MIN
+                                          values:
+                                            - $inkomen
+                                            - $drempelinkomen_alleenstaande
+                                    - operation: IF
+                                      cases:
+                                        - when:
+                                            operation: GREATER_THAN
+                                            subject: $inkomen
+                                            value: $drempelinkomen_alleenstaande
+                                          then:
+                                            operation: MULTIPLY
+                                            values:
+                                              - operation: SUBTRACT
+                                                values:
+                                                  - $inkomen
+                                                  - $drempelinkomen_alleenstaande
+                                              - $afbouwpercentage_minimum
+                                      default: 0
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          then:
+                            operation: IF
+                            cases:
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject:
+                                    operation: ADD
+                                    values:
+                                      - $inkomen
+                                      - $partner_inkomen
+                                  value: $drempelinkomen_toeslagpartner
+                                then: 0
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject: $gezamenlijk_vermogen
+                                  value: $vermogensgrens_toeslagpartner
+                                then: 0
+                            default:
+                              operation: SUBTRACT
+                              values:
+                                - operation: MULTIPLY
+                                  values:
+                                    - $standaardpremie
+                                    - 2
+                                - operation: ADD
+                                  values:
+                                    - operation: MULTIPLY
+                                      values:
+                                        - $percentage_drempelinkomen_met_partner
+                                        - operation: MIN
+                                          values:
+                                            - operation: ADD
+                                              values:
+                                                - $inkomen
+                                                - $partner_inkomen
+                                            - $drempelinkomen_toeslagpartner
+                                    - operation: IF
+                                      cases:
+                                        - when:
+                                            operation: GREATER_THAN
+                                            subject:
+                                              operation: ADD
+                                              values:
+                                                - $inkomen
+                                                - $partner_inkomen
+                                            value: $drempelinkomen_toeslagpartner
+                                          then:
+                                            operation: MULTIPLY
+                                            values:
+                                              - operation: SUBTRACT
+                                                values:
+                                                  - operation: ADD
+                                                    values:
+                                                      - $inkomen
+                                                      - $partner_inkomen
+                                                  - $drempelinkomen_toeslagpartner
+                                              - $afbouwpercentage_boven_drempel
+                                      default: 0
+                    value: null
+                  then: null
+              default:
+                operation: ROUND
+                precision: 0
+                value:
+                  operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $heeft_partner
+                        value: false
+                      then:
+                        operation: IF
+                        cases:
+                          - when:
+                              operation: GREATER_THAN
+                              subject: $inkomen
+                              value: $drempelinkomen_alleenstaande
+                            then: 0
+                          - when:
+                              operation: GREATER_THAN
+                              subject: $vermogen
+                              value: $vermogensgrens_alleenstaande
+                            then: 0
+                        default:
+                          operation: SUBTRACT
+                          values:
+                            - $standaardpremie
+                            - operation: ADD
+                              values:
+                                - operation: MULTIPLY
+                                  values:
+                                    - $percentage_drempelinkomen_alleenstaand
+                                    - operation: MIN
+                                      values:
+                                        - $inkomen
+                                        - $drempelinkomen_alleenstaande
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: GREATER_THAN
+                                        subject: $inkomen
+                                        value: $drempelinkomen_alleenstaande
+                                      then:
+                                        operation: MULTIPLY
+                                        values:
+                                          - operation: SUBTRACT
+                                            values:
+                                              - $inkomen
+                                              - $drempelinkomen_alleenstaande
+                                          - $afbouwpercentage_minimum
+                                  default: 0
+                    - when:
+                        operation: EQUALS
+                        subject: $heeft_partner
+                        value: true
+                      then:
+                        operation: IF
+                        cases:
+                          - when:
+                              operation: GREATER_THAN
+                              subject:
+                                operation: ADD
+                                values:
+                                  - $inkomen
+                                  - $partner_inkomen
+                              value: $drempelinkomen_toeslagpartner
+                            then: 0
+                          - when:
+                              operation: GREATER_THAN
+                              subject: $gezamenlijk_vermogen
+                              value: $vermogensgrens_toeslagpartner
+                            then: 0
+                        default:
+                          operation: SUBTRACT
+                          values:
+                            - operation: MULTIPLY
+                              values:
+                                - $standaardpremie
+                                - 2
+                            - operation: ADD
+                              values:
+                                - operation: MULTIPLY
+                                  values:
+                                    - $percentage_drempelinkomen_met_partner
+                                    - operation: MIN
+                                      values:
+                                        - operation: ADD
+                                          values:
+                                            - $inkomen
+                                            - $partner_inkomen
+                                        - $drempelinkomen_toeslagpartner
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: GREATER_THAN
+                                        subject:
+                                          operation: ADD
+                                          values:
+                                            - $inkomen
+                                            - $partner_inkomen
+                                        value: $drempelinkomen_toeslagpartner
+                                      then:
+                                        operation: MULTIPLY
+                                        values:
+                                          - operation: SUBTRACT
+                                            values:
+                                              - operation: ADD
+                                                values:
+                                                  - $inkomen
+                                                  - $partner_inkomen
+                                              - $drempelinkomen_toeslagpartner
+                                          - $afbouwpercentage_boven_drempel
+                                  default: 0
+  - number: '4'
+    text: >-
+      Onze Minister stelt jaarlijks, uiterlijk 22 dagen voorafgaande aan het berekeningsjaar,
+      bij regeling de standaardpremie voor dat berekeningsjaar vast.
+    url: https://wetten.overheid.nl/BWBR0018451/2024-01-01#Artikel4
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          description: De standaardpremie, bedoeld in artikel 4

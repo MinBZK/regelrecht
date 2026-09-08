@@ -41,7 +41,12 @@ rules:
     require-starting-space: true
     ignore-shebangs: true
 
-  comments-indentation: enable
+  comments-indentation:
+    level: warning
+    # The demo corpus is migrated from the POC by tooling; its comments keep the
+    # indentation they had there, and re-indenting them by hand buys nothing.
+    ignore: |
+      corpus/demo/
 
   # Empty lines
   empty-lines:
