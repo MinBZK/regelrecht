@@ -42,6 +42,7 @@ The preview deployment and its GHCR images are cleaned up automatically.
 | Enrich Worker | `regelrecht-enrich-worker` | (no web UI) |
 | Pipeline API | `regelrecht-pipeline-api` | (no public URL; reached in-cluster) |
 | Lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
+| Demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` (not wired into deploy.yml yet) |
 | Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 

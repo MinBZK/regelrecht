@@ -6,6 +6,7 @@ COPY package.json package-lock.json .npmrc ./
 COPY packages/frontend-shared/package.json packages/frontend-shared/
 COPY frontend/package.json frontend/
 COPY frontend-lawmaking/package.json frontend-lawmaking/
+COPY frontend-demo/package.json frontend-demo/
 # --ignore-scripts: een gekaapte release mag zijn install-hooks hier niet
 # draaien; de build eronder heeft ze niet nodig.
 RUN npm ci --ignore-scripts

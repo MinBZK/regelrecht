@@ -58,7 +58,7 @@ repos:
         entry: just validate
         language: system
         pass_filenames: true
-        files: ^corpus/regulation/.*\.yaml$
+        files: ^corpus/(regulation|demo/regulation)/.*\.yaml$
         # Skip dot-prefixed sidecars (.enrichment.yaml, .enrichment-result.yaml):
         # enrichment metadata/result envelopes, not law files.
         exclude: (^|/)\.[^/]*\.yaml$

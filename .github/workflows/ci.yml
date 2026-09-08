@@ -41,9 +41,12 @@ jobs:
               - packages/**
               - frontend/**
               - frontend-lawmaking/**
+              - frontend-demo/**
               - packages/frontend-shared/**
               - bdd/**
               - corpus/regulation/**
+              # De demo-wetten en -scenario's: gevalideerd en gedraaid als bucket demo.
+              - corpus/demo/**
               - schema/**
               - script/**
               # De npm-workspace zelf: een dependency-bump raakt alleen deze
@@ -496,6 +499,58 @@ jobs:
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture
 
+  # De demo-bucket: de 80 gemigreerde POC-wetten onder corpus/demo met hun
+  # scenario's en persona-data. Anders dan bucket A hangt deze aan niets buiten
+  # de repo en zijn de gegevens synthetisch, dus rood hier is een echte fout
+  # (een wet, een binding of de engine) en geen oordeel van een mens.
+  bdd-demo:
+    name: BDD demo
+    needs: changes
+    if: needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+
+      - name: Install mold linker
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - name: Run sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
+
+      - name: Cache cargo registry (shared)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      # De pre-commit-hook valideert corpus/demo ook, maar alleen de bestanden
+      # in de commit; hier het hele demo-corpus tegen schema/latest.
+      - name: Validate demo laws
+        env:
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: |
+          find corpus/demo/regulation -name '*.yaml' ! -name '.*' -print0 | sort -z \
+            | xargs -0 script/validate.sh
+
+      - name: Run demo bucket
+        working-directory: packages/engine
+        env:
+          BDD_BUCKET: demo
+          REGULATION_PATH: ${{ github.workspace }}/corpus/demo/regulation
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: cargo test --test bdd -- --nocapture
+
   nldd-imports:
     name: Ontwerpsysteem-imports
     needs: changes
@@ -566,7 +621,7 @@ jobs:
       - name: BDD grammar codegen is in sync
         run: |
           node bdd/codegen/gen-js.mjs
-          git diff --exit-code frontend/src/gherkin/grammar.generated.js \
+          git diff --exit-code packages/frontend-shared/src/gherkin/grammar.generated.js \
             || { echo "::error::grammar.generated.js is stale — run 'just bdd-codegen' and commit the result"; exit 1; }
 
       - name: Run frontend tests
@@ -576,6 +631,9 @@ jobs:
 
       - name: Run lawmaking tests
         run: npm test -w frontend-lawmaking
+
+      - name: Run demo tests
+        run: npm test -w frontend-demo
 
       # packages/arch-extract/ui is geen workspace-member (eigen package.json en
       # lockfile), dus `npm test -w` bereikt het niet en de test die er ligt
@@ -603,6 +661,12 @@ jobs:
       - name: Build lawmaking bundle
         run: npm run build -w frontend-lawmaking
 
+      # De demo bundelt corpus/demo (prebuild) en verwacht de WASM-engine onder
+      # public/wasm/pkg; die bouwt frontend-demo/Dockerfile zelf. Hier volstaat
+      # de bundel zonder engine: het gaat om de Vue-build en de corpuskopie.
+      - name: Build demo bundle
+        run: npm run build -w frontend-demo
+
   # Verplichte check op main. De benen hierboven dragen nieuwe namen en mogen
   # dus van vorm veranderen; deze naam moet blijven bestaan, want een required
   # check die niet verschijnt laat elke PR eeuwig hangen. Skipped benen (geen
@@ -615,6 +679,7 @@ jobs:
       - changes
       - rust-tests
       - bdd-conformance
+      - bdd-demo
       - frontend-tests
       - nldd-imports
       # Deze vier draaiden al bij elke PR maar blokkeerden niets. Ze hier
@@ -657,6 +722,7 @@ jobs:
           require changes "${{ needs.changes.result }}"
           check rust-tests "${{ needs.rust-tests.result }}"
           check bdd-conformance "${{ needs.bdd-conformance.result }}"
+          check bdd-demo "${{ needs.bdd-demo.result }}"
           check frontend-tests "${{ needs.frontend-tests.result }}"
           check nldd-imports "${{ needs.nldd-imports.result }}"
           check e2e "${{ needs.e2e.result }}"
