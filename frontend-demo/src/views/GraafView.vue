@@ -233,10 +233,3 @@ watch(() => graph.value.nodes.length, async () => {
     </nldd-split-view-pane>
   </nldd-navigation-split-view>
 </template>
-
-<style>
-/* vue-flow node dimming for the selection focus (no design-system hook). */
-.vue-flow__node.graph-dim {
-  opacity: 0.25;
-}
-</style>

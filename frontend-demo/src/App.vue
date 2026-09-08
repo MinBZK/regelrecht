@@ -19,7 +19,7 @@ onMounted(() => {
 });
 
 const tabs = computed(() => [
-  { name: 'presentatie', text: 'Presentatie', icon: 'book-batch-play', to: '/' },
+  { name: 'presentatie', text: 'Presentatie', icon: 'display', to: '/' },
   { name: 'wetten', text: 'Wetten', icon: 'books', to: '/wetten' },
   { name: 'graaf', text: 'Graaf', icon: 'centralized-network', to: '/graaf' },
   { name: 'scenarios', text: "Scenario's", icon: 'checklist', to: '/scenarios' },

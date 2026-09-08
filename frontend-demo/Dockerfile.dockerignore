@@ -1,0 +1,36 @@
+# Dockerfile-specific .dockerignore for the demo build (context: repo root).
+# BuildKit resolves this by naming convention (Dockerfile.dockerignore); it
+# replaces the root .dockerignore, so the engine crates, the shared frontend
+# package and corpus/demo stay in the context.
+**/.git
+**/.vscode
+**/.idea
+**/.worktrees
+**/node_modules
+**/dist
+**/target
+**/__pycache__
+**/.pytest_cache
+.github
+.claude
+docs
+corpus/regulation
+corpus/annotations
+frontend-demo/public/data
+frontend-demo/public/wasm/pkg
+# Other frontends: only their manifests are needed for the workspace `npm ci`.
+frontend
+!frontend/package.json
+frontend-lawmaking
+!frontend-lawmaking/package.json
+# Rust crates the WASM build does not need.
+packages/admin
+packages/editor-api
+packages/harvester
+packages/pipeline
+packages/tui
+packages/grafana
+packages/auth
+packages/github
+packages/corpus
+packages/arch-extract

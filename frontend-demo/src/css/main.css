@@ -231,3 +231,8 @@ body {
 .graph-node--selected {
   outline: 2px solid var(--primitives-color-donkerblauw-600, #1a5490);
 }
+
+/* vue-flow node dimming for the selection focus (no design-system hook). */
+.vue-flow__node.graph-dim {
+  opacity: 0.25;
+}

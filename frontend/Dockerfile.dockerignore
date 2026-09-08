@@ -14,6 +14,9 @@
 **/.pytest_cache
 .github
 .claude
+# The demo frontend: only its manifest is needed for the workspace `npm ci`.
+frontend-demo
+!frontend-demo/package.json
 # Exclude packages not needed for the editor-api build.
 packages/admin
 packages/tui

@@ -29,6 +29,15 @@ just dev-demo        # WASM bouwen + Vite op :7400
 just bdd-demo        # de demo-scenario's natively, met cargo
 ```
 
+## Ontbrekende registerwaarden
+
+De materialiser (`src/data/materialize.js`) vult een `amount`- of `number`-input
+waarvoor geen registerrij bestaat met `0`, niet met `null`. Dat is de
+POC-semantiek (een optelling sloeg ontbrekende operanden over) en het houdt de
+tegels rekenbaar voor persona's zonder loon, uitkering of vermogen. De keerzijde:
+een wet die `$inkomen == null` toetst ziet een nul, geen onbekende. Voor andere
+typen blijft een ontbrekende rij `null`, zodat de null-checks in de wetten werken.
+
 ## Eigen CSS bovenop het design system
 
 `src/css/main.css` bevat, naast een box-sizing/body-reset, alleen hooks waarvoor het

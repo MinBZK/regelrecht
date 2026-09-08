@@ -20,7 +20,9 @@ import {
 const STORAGE_KEY = 'rr-demo-state-v1';
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  // Local calendar date, not UTC: in the evening the two differ.
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function defaultState() {
@@ -327,6 +329,7 @@ export function useDemo() {
     personaParams,
     setProfile,
     setReferenceDate,
+    reregister,
     portalLaws,
     isLawEnabled,
     evaluate,

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { parseFeature, dispatch, tableToRecords, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
+import { parseFeature, dispatch, quotedValue, bareValue, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
 import OrgLogo from '../components/OrgLogo.vue';
 import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.js';
 import { useDemo } from '../store/demoStore.js';
@@ -103,12 +103,10 @@ async function run(index) {
         break;
       }
       const { entry, args } = match;
-      const typed = args.map((raw, i) => (entry.argTypes[i] === 'number' ? Number(raw) : parseQuoted(raw)));
+      const typed = args.map((raw, i) => (entry.argTypes[i] === 'number' ? bareValue(raw) : quotedValue(raw)));
       const table = step.dataTable ?? null;
       try {
-        if (entry.action === 'set_data_source_for_law') {
-          e.registerDataSourceForLaw(typed[2], typed[0], typed[1], tableToRecords(table));
-        } else if (entry.action === 'evaluate_outputs') {
+        if (entry.action === 'evaluate_outputs') {
           const outputs = String(typed[0]).split(',').map((s) => s.trim());
           evaluateWithTrace(ctx, e, typed[1], outputs, state);
         } else if (entry.action === 'evaluate') {
@@ -128,7 +126,7 @@ async function run(index) {
   } finally {
     // Give the portal its persona data back.
     e.clearDataSources();
-    reregisterPersonas();
+    demo.reregister();
   }
 }
 
@@ -156,19 +154,6 @@ function renderTraceFallback(err) {
   return `Uitvoering mislukt: ${err.error ?? err.message ?? err}`;
 }
 
-function reregisterPersonas() {
-  // The store re-registers persona data and claims (bumps dataVersion).
-  demo.setReferenceDate(demo.state.referenceDate);
-}
-
-function parseQuoted(raw) {
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
-  if (raw === 'null') return null;
-  if (/^-?\d+$/.test(raw)) return Number(raw);
-  if (/^-?\d+\.\d+$/.test(raw)) return Number(raw);
-  return raw;
-}
 
 async function runAll() {
   for (let i = 0; i < (parsed.value?.scenarios.length ?? 0); i += 1) {
@@ -229,7 +214,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               </nldd-segmented-control>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-button size="sm" variant="primary" start-icon="book-batch-play" text="Alles uitvoeren" @click="runAll"></nldd-button>
+              <nldd-button size="sm" variant="primary" start-icon="play" text="Alles uitvoeren" @click="runAll"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="selectedLaw">
               <nldd-button size="sm" variant="neutral-tinted" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(selectedLaw.id)}`)"></nldd-button>
@@ -269,7 +254,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
                 :color="runs[index]?.status === 'pass' ? 'success' : runs[index]?.status === 'fail' ? 'critical' : 'secondary'"
               ></nldd-icon-cell>
               <nldd-title-cell size="5" :text="scenario.name" :supporting-text="scenario.tags.join(' ') || undefined"></nldd-title-cell>
-              <nldd-button size="sm" variant="secondary" start-icon="book-batch-play" text="Uitvoeren" @click="run(index)"></nldd-button>
+              <nldd-button size="sm" variant="secondary" start-icon="play" text="Uitvoeren" @click="run(index)"></nldd-button>
               <nldd-button v-if="runs[index]?.traceText" size="sm" variant="neutral-tinted" start-icon="list" text="Trace" @click="activeTrace = index"></nldd-button>
             </nldd-container>
             <nldd-container padding-inline="16" padding-bottom="12">

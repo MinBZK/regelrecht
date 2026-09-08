@@ -1,9 +1,0 @@
-node_modules
-dist
-public/data
-public/wasm/pkg
-.git
-.gitignore
-*.md
-.vscode
-.idea
