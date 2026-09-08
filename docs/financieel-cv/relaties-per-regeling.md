@@ -142,7 +142,7 @@ verloond uur zou afronding in euro's over een jaar zichtbaar gaan schelen.
 | Parameters | 9 |
 | Cross-law | 0 |
 | Open terms | **1** |
-| Markeringen | 6 — het hoogste aantal van alle regelingen |
+| Markeringen | 6 — samen met Ziektewet 29b het hoogste per artikel |
 | Rechtskarakter | BESCHIKKING · eenheid `eurocent` |
 
 **Mechanisme: delegatie (RFC-003), en veel markeringen.**
@@ -275,8 +275,9 @@ arbeidsbeperkte is, en twee regelingen die dat overnemen.
 behoort. Dat is een kwalificatie, geen besluit met rechtsgevolg voor de burger —
 het besluit valt pas in de regeling die de status gebruikt. Vandaar TOETS.
 
-38f is het enige `BESLUIT_VAN_ALGEMENE_STREKKING` in het dossier: een besluit
-dat niet op één persoon ziet.
+38f is een `BESLUIT_VAN_ALGEMENE_STREKKING`: een besluit dat niet op één
+persoon ziet. Het Reïntegratiebesluit draagt hetzelfde karakter; samen zijn dat
+de enige twee in het dossier.
 
 ---
 
@@ -313,8 +314,9 @@ valkuil komt terug bij elke volgende verwijzing naar hoofdstuk 2.
 
 ### Bevinding 2 — er is niets dat op BESCHIKKING vuurt
 
-Elf van de dertien gemodelleerde FCV-artikelen declareren
-`produces.legal_character: BESCHIKKING`. Dat veld is volgens RFC-001 en RFC-008
+Zeventien van de 26 gemodelleerde FCV-artikelen declareren
+`produces.legal_character: BESCHIKKING` (verder 2× TOETS, 2×
+BESLUIT_VAN_ALGEMENE_STREKKING en 5 artikelen zonder karakter). Dat veld is volgens RFC-001 en RFC-008
 het filter waarop Awb-hooks vuren: art. 3:46 motiveringsplicht, 6:7
 bezwaartermijn.
 
@@ -331,17 +333,24 @@ demo-branch, waar de Awb wél gemodelleerd was.
 
 ## 4. Samenvattend
 
-| Regeling | Cross-law | Delegatie | Markeringen | Karakter |
-|---|---|---|---|---|
-| NRP | **8** | — | 6 | BESCHIKKING |
-| LKV | 1 (+2 intra) | — | 6 | BESCHIKKING |
-| LKS | — | 1 | 6 | BESCHIKKING |
-| Gemeentelijke route | — | **9** ⚠ | — | BESCHIKKING + TOETS |
-| LDP | — | 1 | — | BESCHIKKING |
-| JC / WPA | — | 1 ✅ gekoppeld | 4 | BESCHIKKING |
-| PP (4 wetten) | — | 3 | 2 | BESCHIKKING |
-| DGR | — | — | 5 | TOETS |
-| Reïntegratiebesluit | — | 2 (1 werkt) | — | BESLUIT VAN ALGEMENE STREKKING |
+Markeringen zijn hier per artikel geteld en opgeteld over de artikelen die de
+regeling beslaat.
+
+| Regeling | Artikelen | Cross-law | Delegatie | Markeringen | Karakter |
+|---|---|---|---|---|---|
+| NRP | ZW 29b | **8** | — | 6 | BESCHIKKING |
+| LKV | Wtl 2.1, 2.6, 2.14 | 1 (+2 intra) | — | 6 | BESCHIKKING |
+| LKS | Pwet 10c | — | 1 | 6 | BESCHIKKING |
+| Gemeentelijke route | Pwet 8a, 10, 10b, 10da, 10e | — | **9** ⚠ | 10 | BESCHIKKING + TOETS |
+| LDP | Wajong 140 | — | 1 | 3 | BESCHIKKING |
+| JC / WPA | WIA 35 | — | 1 ✅ gekoppeld | 4 | BESCHIKKING |
+| PP (4 wetten) | WW 76a, WIA 37, Wajong 144, Pwet 8a | — | 3 (+1 in 8a) | 8 | BESCHIKKING |
+| DGR | Wfsv 38b, 38f | — | — | 9 | TOETS + BvAS |
+| Reïntegratiebesluit | art. 1a | — | 2 (1 werkt) | 0 | BESLUIT VAN ALGEMENE STREKKING |
+
+De Pwet-artikelen komen in twee rijen terug: 10c hoort bij de LKS, 8a hoort bij
+zowel de gemeentelijke route als de proefplaatsing. Bij elkaar opgeteld draagt
+de Participatiewet 16 markeringen, de meeste van alle wetten in het dossier.
 
 ⚠ De negen bij de gemeentelijke route zijn **gedeclareerde** open terms, geen
 werkende koppelingen: er is geen enkele AMvB die zich met `implements` op een van

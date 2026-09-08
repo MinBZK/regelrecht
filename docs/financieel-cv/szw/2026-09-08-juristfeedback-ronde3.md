@@ -61,10 +61,13 @@ voldoet_aan_grond_38b_1_c = AND(
   daar stond het omgekeerde van wat de wet zegt. Ook de verwijzing
   uitgebreid: de wet noemt Wajong 1a:1 lid 1, 2:4 lid 1 én 3:8a lid 1, wij
   noemden alleen 1a:1.
-- Drie scenario's bij `doelgroepregister_banenafspraak.feature`, die samen de
-  drie assen afdekken: duurzaam geen mogelijkheden zonder werk (buiten
-  onderdeel c), met werk (binnen onderdeel c), en een dienstbetrekking zonder
-  Wajong-recht (opent niets — de slotzin werkt alleen binnen onderdeel c).
+- Drie scenario's bij `doelgroepregister_banenafspraak.feature` dekken samen de
+  drie assen af: duurzaam geen mogelijkheden zonder werk (buiten onderdeel c),
+  met werk (binnen onderdeel c), en een dienstbetrekking zonder Wajong-recht
+  (opent niets — de slotzin werkt alleen binnen onderdeel c). Daarvan zijn er
+  **twee nieuw**; het eerste bestond al en is hernoemd en aangescherpt, want de
+  oude titel beweerde dat de uitsluiting absoluut was. De suite gaat daarmee van
+  74 naar 76 scenario's.
 
 **Onderdeel f is gecontroleerd en blijft ongewijzigd.** Dat kent een
 vergelijkbare constructie, maar daar staat "met uitzondering van de persoon
@@ -76,7 +79,7 @@ zonder dienstbetrekking-clausule. Dat is wél een absolute uitsluiting.
 De fix is rood-groen aangetoond: met de oude regel faalt precies het nieuwe
 scenario *"Wajong met duurzaam geen mogelijkheden telt wel mee zodra hij
 werkt"* (76 scenario's, 1 gefaald); met de nieuwe regel draaien alle 76 groen
-(521 steps). Schemavalidatie v0.5.4 op alle drie de gewijzigde YAML's: nul
+(521 steps, 21 features, exitcode 0). Schemavalidatie v0.5.4 op alle drie de gewijzigde YAML's: nul
 fouten.
 
 ---
