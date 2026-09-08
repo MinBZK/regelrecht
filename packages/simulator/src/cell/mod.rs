@@ -32,6 +32,10 @@ pub struct Lexostatus {
     /// Het moment waarop gevraagd is; het antwoord geldt op dat moment.
     pub op_moment: NaiveDate,
     /// De waarden die de reductie opleverde.
+    ///
+    /// Niet alleen de uitkomst die de definitie noemt: een lexostatus is een
+    /// rechtstoestand, dus alles wat de engine onderweg naar die uitkomst
+    /// berekende hoort erbij.
     pub values: BTreeMap<String, Value>,
 }
 
@@ -86,7 +90,7 @@ impl Cell {
         Ok(Self {
             id: config.id.clone(),
             service: RefCell::new(service),
-            chronicles: ChronicleStore::from_streams(config.chronicles.clone())?,
+            chronicles: ChronicleStore::from_streams(&config.id, config.chronicles.clone())?,
             published,
         })
     }

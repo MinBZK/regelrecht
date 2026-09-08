@@ -138,11 +138,41 @@ pub enum SimulatorError {
         op_moment: String,
     },
 
+    /// Twee kroniekstromen met dezelfde naam in één cel.
+    ///
+    /// De stroomnaam is tevens de naam van de databron in de engine. Twee
+    /// stromen met dezelfde naam schaduwen elkaar daar stil; dat is een
+    /// configuratiefout en geen keuze.
+    #[error("cel '{cell}' definieert kroniekstroom '{stream}' twee keer")]
+    DuplicateStream {
+        /// Cel waarin het dubbel staat.
+        cell: String,
+        /// De dubbele stroomnaam.
+        stream: String,
+    },
+
     /// Twee cellen met hetzelfde id in één scenario.
     #[error("scenario definieert cel '{cell}' twee keer")]
     DuplicateCell {
         /// Het dubbele cel-id.
         cell: String,
+    },
+
+    /// Een vraag in het scenario legt niets vast wat ze moet opleveren.
+    ///
+    /// De assertie hoort bij het scenario. Een vraag zonder `expect` slaagt
+    /// altijd en bewijst niets; dat mag geen groen opleveren.
+    #[error(
+        "scenario '{scenario}': vraag naar '{cell}.{lexostatus}' heeft geen `expect` \
+         en bewijst dus niets"
+    )]
+    QueryWithoutExpectation {
+        /// Het scenario waarin de vraag staat.
+        scenario: String,
+        /// De bevraagde cel.
+        cell: String,
+        /// De gevraagde lexostatus.
+        lexostatus: String,
     },
 
     /// Een vraag richt zich tot een cel die het scenario niet kent.
@@ -173,6 +203,18 @@ pub enum SimulatorError {
     /// Het scenario is geen geldige YAML of mist verplichte velden.
     #[error("kon scenario niet lezen: {0}")]
     ScenarioParse(#[from] serde_yaml_ng::Error),
+
+    /// Een regelingdocument uit het corpus is geen geldige YAML of mist `$id`.
+    ///
+    /// Eigen variant, want zonder pad wijst de melding de lezer naar het
+    /// scenariobestand terwijl het bestand in het corpus stuk is.
+    #[error("kon regelingdocument '{path}' niet lezen: {source}")]
+    RegulationParse {
+        /// Het gelezen bestand.
+        path: PathBuf,
+        /// De onderliggende YAML-fout.
+        source: serde_yaml_ng::Error,
+    },
 
     /// De engine kon een regeling niet laden of uitvoeren.
     #[error("engine: {0}")]

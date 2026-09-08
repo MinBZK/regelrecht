@@ -99,7 +99,12 @@ impl ParameterType {
 pub struct Reduction {
     /// De regeling, bij `$id`. Moet in `laws` van dezelfde cel staan.
     pub regulation: String,
-    /// De uitkomst van die regeling die de reductie oplevert.
+    /// De uitkomst van die regeling die de reductie moet opleveren.
+    ///
+    /// Dit stuurt de evaluatie aan; het begrenst het antwoord niet. Een
+    /// lexostatus is een rechtstoestand, en de engine levert alle uitkomsten die
+    /// ze onderweg naar deze berekende. Een scenario mag daar dus ook op
+    /// controleren.
     pub output: String,
     /// De parameters voor de regeling. Een waarde `$naam` verwijst naar een
     /// gedocumenteerde parameter van de lexostatus; elke andere waarde is een

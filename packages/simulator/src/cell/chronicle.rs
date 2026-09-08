@@ -12,7 +12,7 @@ use crate::error::{Result, SimulatorError};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Eén vastlegging in een kroniekstroom.
 #[derive(Debug, Clone, Deserialize)]
@@ -61,9 +61,18 @@ impl ChronicleStore {
     /// Bouw een store uit de stromen van een celconfiguratie.
     ///
     /// Faalt als een vastlegging het sleutelveld van haar stroom mist: dan valt
-    /// niet vast te stellen over welk onderwerp het feit gaat.
-    pub(crate) fn from_streams(streams: Vec<ChronicleStream>) -> Result<Self> {
+    /// niet vast te stellen over welk onderwerp het feit gaat. Faalt ook op twee
+    /// stromen met dezelfde naam: die naam is tevens de naam van de databron in
+    /// de engine, en daar zou de tweede de eerste stil schaduwen.
+    pub(crate) fn from_streams(cell: &str, streams: Vec<ChronicleStream>) -> Result<Self> {
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
         for stream in &streams {
+            if !seen.insert(stream.stream.as_str()) {
+                return Err(SimulatorError::DuplicateStream {
+                    cell: cell.to_string(),
+                    stream: stream.stream.clone(),
+                });
+            }
             for event in &stream.events {
                 if !event
                     .fields
@@ -87,6 +96,13 @@ impl ChronicleStore {
     /// vraag niet, en van de rest wint per sleutel en per veld de laatste
     /// vastlegging. Een vraag over een moment in het verleden levert dus het
     /// beeld van toen, niet het beeld van nu.
+    ///
+    /// Twee vastleggingen op hetzelfde moment kunnen niet op de tijdas uit
+    /// elkaar gehouden worden. De volgorde in de configuratie beslist dan, en de
+    /// laatste wint — `sort_by_key` is stabiel, dus dat is een vastgelegde
+    /// eigenschap en geen toeval. De dag is in deze versie de fijnste korrel;
+    /// wie twee vastleggingen op één dag wil ordenen, heeft een fijnere tijdas
+    /// nodig en niet een andere sorteersleutel.
     pub(crate) fn reduce_to(&self, op_moment: NaiveDate) -> Vec<ReducedStream> {
         self.streams
             .iter()
@@ -148,11 +164,14 @@ mod tests {
     }
 
     fn store(events: Vec<ChronicleEvent>) -> ChronicleStore {
-        ChronicleStore::from_streams(vec![ChronicleStream {
-            stream: "relatie".to_string(),
-            key: "bsn".to_string(),
-            events,
-        }])
+        ChronicleStore::from_streams(
+            "toeslagen",
+            vec![ChronicleStream {
+                stream: "relatie".to_string(),
+                key: "bsn".to_string(),
+                events,
+            }],
+        )
         .unwrap_or_default()
     }
 
@@ -212,15 +231,73 @@ mod tests {
 
     #[test]
     fn vastlegging_zonder_sleutel_wordt_geweigerd() {
-        let err = ChronicleStore::from_streams(vec![ChronicleStream {
-            stream: "relatie".to_string(),
-            key: "bsn".to_string(),
-            events: vec![event("2024-01-01", &[("partnerschap_type", Value::Null)])],
-        }])
+        let err = ChronicleStore::from_streams(
+            "toeslagen",
+            vec![ChronicleStream {
+                stream: "relatie".to_string(),
+                key: "bsn".to_string(),
+                events: vec![event("2024-01-01", &[("partnerschap_type", Value::Null)])],
+            }],
+        )
         .expect_err("een vastlegging zonder sleutelveld hoort te falen");
         assert!(matches!(
             err,
             SimulatorError::ChronicleEventWithoutKey { .. }
         ));
+    }
+
+    #[test]
+    fn twee_stromen_met_dezelfde_naam_worden_geweigerd() {
+        let stream = |events| ChronicleStream {
+            stream: "relatie".to_string(),
+            key: "bsn".to_string(),
+            events,
+        };
+        let err = ChronicleStore::from_streams(
+            "toeslagen",
+            vec![
+                stream(vec![event(
+                    "2024-01-01",
+                    &[("bsn", Value::String("1".to_string()))],
+                )]),
+                stream(vec![event(
+                    "2024-02-01",
+                    &[("bsn", Value::String("1".to_string()))],
+                )]),
+            ],
+        )
+        .expect_err("twee stromen met dezelfde naam horen te falen");
+        assert!(
+            matches!(err, SimulatorError::DuplicateStream { .. }),
+            "verwachtte DuplicateStream, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn bij_gelijk_moment_wint_de_laatste_uit_de_configuratie() {
+        let store = store(vec![
+            event(
+                "2024-07-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("HUWELIJK".to_string())),
+                ],
+            ),
+            event(
+                "2024-07-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("GEEN".to_string())),
+                ],
+            ),
+        ]);
+
+        let reduced = store.reduce_to(date("2025-01-01"));
+        assert_eq!(
+            reduced[0].records[0].get("partnerschap_type"),
+            Some(&Value::String("GEEN".to_string())),
+            "de tijdas kan twee vastleggingen op één dag niet ordenen; \
+             dan beslist de volgorde in de configuratie"
+        );
     }
 }

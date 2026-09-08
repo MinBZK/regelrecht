@@ -62,7 +62,12 @@ pub(crate) fn regulation_versions(root: &Path, regulation: &str) -> Result<Vec<S
                     path: path.clone(),
                     source,
                 })?;
-            let parsed: RegulationId = serde_yaml_ng::from_str(&text)?;
+            let parsed: RegulationId = serde_yaml_ng::from_str(&text).map_err(|source| {
+                SimulatorError::RegulationParse {
+                    path: path.clone(),
+                    source,
+                }
+            })?;
             if parsed.id != regulation {
                 return Err(SimulatorError::RegulationIdMismatch {
                     path,

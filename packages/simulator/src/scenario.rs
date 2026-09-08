@@ -46,8 +46,9 @@ pub struct Query {
     pub params: BTreeMap<String, Value>,
     /// Het moment waarop gevraagd wordt. Expliciet, nooit de wandklok.
     pub op_moment: NaiveDate,
-    /// De verwachte waarden in het antwoord. Waarden die hier niet staan,
-    /// worden niet gecontroleerd.
+    /// De verwachte waarden in het antwoord. Uitkomsten die hier niet staan,
+    /// worden niet gecontroleerd — maar minstens één verwachting is verplicht,
+    /// anders bewijst de vraag niets.
     #[serde(default)]
     pub expect: BTreeMap<String, Value>,
 }
@@ -123,8 +124,31 @@ impl ScenarioRun {
 
 impl Scenario {
     /// Lees een scenario uit YAML.
+    ///
+    /// Weigert meteen een scenario dat niets vastlegt: zie [`Scenario::validate`].
     pub fn from_yaml(yaml: &str) -> Result<Self> {
-        Ok(serde_yaml_ng::from_str(yaml)?)
+        let scenario: Self = serde_yaml_ng::from_str(yaml)?;
+        scenario.validate()?;
+        Ok(scenario)
+    }
+
+    /// Controleer dat elke vraag ook iets vastlegt.
+    ///
+    /// De assertie hoort bij het scenario, en dat werkt alleen als een vraag
+    /// zonder assertie geen groen kan opleveren. Zonder deze controle draait een
+    /// scenariobestand dat niets verwacht mee in de suite en meldt het `ok` —
+    /// het duurste soort groen, want het lijkt op bewijs.
+    fn validate(&self) -> Result<()> {
+        for query in &self.queries {
+            if query.expect.is_empty() {
+                return Err(SimulatorError::QueryWithoutExpectation {
+                    scenario: self.name.clone(),
+                    cell: query.cell.clone(),
+                    lexostatus: query.lexostatus.clone(),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Lees een scenario van schijf.
@@ -225,6 +249,23 @@ queeries: []
         assert!(
             Scenario::from_yaml(yaml).is_err(),
             "een onbekend veld hoort te falen, anders verdwijnt een typfout stil"
+        );
+    }
+
+    #[test]
+    fn vraag_zonder_verwachting_wordt_geweigerd() {
+        let yaml = r"
+name: bewijst niets
+cells: []
+queries:
+  - cell: toeslagen
+    lexostatus: toeslagpartnerschap
+    op_moment: 2025-01-01
+";
+        let err = Scenario::from_yaml(yaml).expect_err("een vraag zonder `expect` hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::QueryWithoutExpectation { .. }),
+            "verwachtte QueryWithoutExpectation, kreeg {err}"
         );
     }
 

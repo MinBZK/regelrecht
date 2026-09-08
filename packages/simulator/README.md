@@ -56,6 +56,11 @@ Lexostatus-definities zijn dan ook **data en geen Rust**: ze staan in de
 cel-configuratie van het scenario. Een nieuwe lexostatus is een blok YAML, geen
 nieuwe functie.
 
+De `output` in de definitie stuurt de evaluatie aan maar begrenst het antwoord
+niet. Een lexostatus is een rechtstoestand, dus het antwoord draagt alles wat de
+engine onderweg naar die uitkomst berekende — het meegeleverde scenario
+controleert daarom naast `heeft_recht_op_zorgtoeslag` ook `hoogte_zorgtoeslag`.
+
 `op_moment` is het moment waarop gevraagd wordt, altijd expliciet en nooit de
 wandklok. Feiten die pas later in de cel zijn vastgelegd, bestaan voor dat
 antwoord niet, en de engine kiest op datzelfde moment de regelingversie.
@@ -114,7 +119,10 @@ queries:
                                                 # worden niet gecontroleerd
 ```
 
-Onbekende velden worden geweigerd, zodat een typfout niet stil verdwijnt.
+Onbekende velden worden geweigerd, zodat een typfout niet stil verdwijnt. Elke
+vraag heeft minstens één verwachting: een vraag zonder `expect` slaagt altijd en
+zou als `ok` in het verslag komen, wat op bewijs lijkt en het niet is. De loader
+weigert zo'n scenario.
 
 ### Kroniekstromen en tijd
 
@@ -122,14 +130,23 @@ Per stroom geldt: alleen vastleggingen met `op_moment <= ` het gevraagde moment
 tellen mee, en van de rest wint per sleutelwaarde en per veld de laatste
 vastlegging. Een vraag over een moment in het verleden levert dus het beeld van
 toen. De stromen worden aan de engine aangeboden als databronnen, waar ze de
-inputs van de eigen regelingen invullen.
+inputs van de eigen regelingen invullen. Twee stromen met dezelfde naam worden
+geweigerd: de stroomnaam is tevens de naam van de databron, dus daar zou de
+tweede de eerste stil schaduwen.
+
+De dag is de fijnste korrel van de tijdas. Twee vastleggingen op hetzelfde
+`op_moment` vallen daar niet uit elkaar te houden; dan beslist de volgorde in het
+bestand, en de laatste wint. Wie ze wél wil ordenen heeft een fijnere tijdas
+nodig, geen andere schrijfvolgorde.
 
 Feiten die in de echte wereld van een andere organisatie komen, staan hier als
 binnengekomen feit in de eigen kroniek. Zolang er geen transport tussen cellen
 is, is dat het eerlijke model: de cel kan niets ophalen wat ze niet zelf heeft.
-Vraag je een moment op waarop een binnengekomen feit nog niet vastlag, dan valt
-de engine terug op kruisverwijzing en faalt de reductie met "Law not found" —
-de cel reikt niet buiten zichzelf.
+Vraag je een moment op waarop een binnengekomen feit nog niet vastlag, dan faalt
+de reductie: bij een input met een `source` naar een regeling die deze cel niet
+laadt met "Law not found", en anders met "Variable not found". Beide zeggen
+hetzelfde — de cel reikt niet buiten zichzelf, en levert dus geen antwoord in
+plaats van een geraden antwoord.
 
 ## Een scenario draaien
 
