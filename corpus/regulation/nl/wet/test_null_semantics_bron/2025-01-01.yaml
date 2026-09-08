@@ -1,0 +1,48 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: test_null_semantics_bron
+name: Testwet null-semantiek (bron)
+regulatory_layer: WET
+bwb_id: BWBR9999909
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_null_semantics_bron
+
+articles:
+  - number: '1'
+    url: https://example.com/test_null_semantics_bron/1
+    text: >-
+      Het geboortejaar is het in de registratie opgenomen geboortejaar. Een
+      aanvraag past indien het aangevraagde bedrag meer dan honderd bedraagt.
+    machine_readable:
+      # Een afnemende wet vraagt deze wet alleen om `geboortejaar` en geeft
+      # daarbij enkel `bsn` mee. `aanvraag_bedrag` is een formulierveld dat die
+      # afnemer nooit heeft; het staat daarom als optioneel gemarkeerd, zodat
+      # de engine het als onbekend (null) mag invullen (RFC-036).
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: aanvraag_bedrag
+            type: number
+            required: false
+        input:
+          - name: geboortejaar
+            type: number
+            source: {}
+            description: Geboortejaar uit de registratie, buiten de wet opgelost.
+        output:
+          - name: geboortejaar
+            type: number
+          - name: past_aanvraag
+            type: boolean
+        actions:
+          - output: geboortejaar
+            value: $geboortejaar
+          - output: past_aanvraag
+            value:
+              operation: GREATER_THAN
+              subject: $aanvraag_bedrag
+              value: 100

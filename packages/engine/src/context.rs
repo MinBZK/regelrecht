@@ -483,7 +483,7 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
             .ok_or_else(|| EngineError::VariableNotFound(format!(".{}", property_path))),
         // A property of nothing is nothing: an unresolved register record (no
         // WIA decision, no partner) reads as null, and every field of it does
-        // too, so the law's own null checks can decide (RFC-007 null
+        // too, so the law's own null checks can decide (RFC-036 null
         // propagation). Failing here would fail the whole calculation for a
         // person the record simply does not apply to.
         Value::Null => Ok(Value::Null),

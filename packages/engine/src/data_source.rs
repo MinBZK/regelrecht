@@ -870,6 +870,7 @@ mod tests {
             Some(Value::Int(40000))
         );
     }
+
     #[test]
     fn test_scoped_source_answers_only_for_its_law() {
         let mut registry = DataSourceRegistry::new();

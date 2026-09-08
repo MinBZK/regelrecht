@@ -500,7 +500,7 @@ where
     // Comparing against nothing has no answer. A register that holds no value
     // for this person (no rent, no partner income) makes the comparison
     // unknown, not an error; AND/OR and IF already know what to do with an
-    // unknown (RFC-007 null propagation).
+    // unknown (RFC-036 null semantics).
     if subject_val.is_null() || value_val.is_null() {
         return Ok(Value::Null);
     }
@@ -558,7 +558,7 @@ fn is_numeric(val: &Value) -> bool {
 
 /// Arithmetic over nothing is nothing: an operand that resolved to null (a
 /// register value this person does not have) makes the result unknown rather
-/// than a type error, in line with RFC-007 null propagation. AND/OR/IF know
+/// than a type error, in line with RFC-036 null semantics. AND/OR/IF know
 /// what to do with an unknown; a failing calculation would tell the person
 /// nothing at all.
 fn propagate_null(evaluated: &[Value]) -> Option<Value> {

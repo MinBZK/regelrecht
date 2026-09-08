@@ -1,0 +1,90 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: test_null_semantics
+name: Testwet null-semantiek
+regulatory_layer: WET
+bwb_id: BWBR9999910
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_null_semantics
+
+articles:
+  - number: '1'
+    url: https://example.com/test_null_semantics/1
+    text: >-
+      De huur is hoog indien zij meer dan vijfhonderd bedraagt. De verhoogde
+      huur is de huur vermeerderd met honderd. De status is de status van de
+      beschikking. Het geboortejaar van de partner is het geboortejaar,
+      bedoeld in artikel 1 van de Testwet null-semantiek (bron), van de
+      partner. Of de aanvraag past wordt bepaald overeenkomstig dat artikel.
+    machine_readable:
+      # Elke input kan in de registratie ontbreken (null). RFC-036 zegt wat de
+      # engine dan doet: vergelijken, rekenen en een veld lezen van niets
+      # levert niets op, en een wet aanroepen voor niemand (null als
+      # verplichte parameter) voert die wet niet uit.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: huur
+            type: number
+            source: {}
+          - name: partner_bsn
+            type: string
+            source: {}
+          - name: beschikking
+            type: object
+            source: {}
+          - name: partner_geboortejaar
+            type: number
+            source:
+              regulation: test_null_semantics_bron
+              output: geboortejaar
+              parameters:
+                bsn: $partner_bsn
+          - name: aanvraag_past
+            type: boolean
+            source:
+              regulation: test_null_semantics_bron
+              output: past_aanvraag
+              parameters:
+                bsn: $bsn
+        output:
+          - name: huur_hoog
+            type: boolean
+          - name: verhoogde_huur
+            type: number
+          - name: status
+            type: string
+          - name: partner_geboortejaar
+            type: number
+          - name: aanvraag_past
+            type: boolean
+          - name: heeft_huur
+            type: boolean
+        actions:
+          - output: huur_hoog
+            value:
+              operation: GREATER_THAN
+              subject: $huur
+              value: 500
+          - output: verhoogde_huur
+            operation: ADD
+            values:
+              - $huur
+              - 100
+          - output: status
+            value: $beschikking.status
+          - output: partner_geboortejaar
+            value: $partner_geboortejaar
+          - output: aanvraag_past
+            value: $aanvraag_past
+          - output: heeft_huur
+            operation: NOT
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null

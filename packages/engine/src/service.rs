@@ -2145,13 +2145,44 @@ impl LawExecutionService {
             }
         };
 
-        // A null parameter means there is nobody to look up: a partner's age
-        // when there is no partner, a child's data when there is no child. The
-        // referenced law cannot be executed for nobody, and failing here would
-        // fail the whole calculation for a person to whom that branch does not
-        // apply. The input resolves to null instead and the law's own null
-        // checks decide what that means (RFC-007 null propagation).
-        if let Some((name, _)) = target_params.iter().find(|(_, v)| v.is_null()) {
+        // The target's declared parameters and whether each is required. A
+        // parameter is required unless it says `required: false`; the flag is
+        // what makes the two rules below safe (RFC-036 null semantics).
+        let declared: Vec<(String, bool)> = self
+            .get_law(regulation)
+            .and_then(|law| law.find_article_by_output(output))
+            .and_then(|article| {
+                article
+                    .get_execution_spec()
+                    .and_then(|e| e.parameters.as_ref())
+                    .map(|params| {
+                        params
+                            .iter()
+                            .map(|p| (p.name.clone(), p.required != Some(false)))
+                            .collect()
+                    })
+            })
+            .unwrap_or_default();
+        let is_required = |name: &str| {
+            declared
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, required)| *required)
+                .unwrap_or(true)
+        };
+
+        // A null value for a required parameter means there is nobody to look
+        // up: a partner's age when there is no partner, a child's data when
+        // there is no child. The referenced law cannot be executed for nobody,
+        // and failing here would fail the whole calculation for a person to
+        // whom that branch does not apply. The input resolves to null instead
+        // and the law's own null checks decide what that means. An optional
+        // parameter that is null is passed through: the target declared it
+        // knows how to do without.
+        if let Some((name, _)) = target_params
+            .iter()
+            .find(|(name, v)| v.is_null() && is_required(name))
+        {
             res_ctx.trace_set_message(format!(
                 "Parameter '{}' is null, so {} is not executed; input resolves to null",
                 name, regulation
@@ -2160,27 +2191,17 @@ impl LawExecutionService {
             return Ok(Value::Null);
         }
 
-        // A parameter the target article declares but the caller does not pass
-        // is unknown to this call, not an error: a permit law asked for its
-        // "current permit" output by a tax law does not get the application form
-        // fields the tax law never had. Those parameters read as null, and the
+        // An optional parameter the target declares but the caller does not
+        // pass is unknown to this call, not an error: a permit law asked for
+        // its "current permit" output by a tax law does not get the application
+        // form fields the tax law never had. Those read as null, and the
         // target's unrelated actions resolve to unknown instead of failing the
-        // output that was asked for (RFC-007 null propagation). Only the
-        // cross-law path fills in; a top-level caller still has to supply what
-        // the law declares.
-        if let Some(article) = self
-            .get_law(regulation)
-            .and_then(|law| law.find_article_by_output(output))
-        {
-            if let Some(declared) = article
-                .get_execution_spec()
-                .and_then(|e| e.parameters.as_ref())
-            {
-                for param in declared {
-                    if !target_params.contains_key(&param.name) {
-                        target_params.insert(param.name.clone(), Value::Null);
-                    }
-                }
+        // output that was asked for. A required parameter is never filled in:
+        // leaving it out stays the error it always was, so a misspelled key in
+        // `parameters:` cannot silently turn into an unknown outcome.
+        for (name, required) in &declared {
+            if !required && !target_params.contains_key(name) {
+                target_params.insert(name.clone(), Value::Null);
             }
         }
 
@@ -3753,12 +3774,85 @@ articles:
     }
 
     #[test]
-    fn test_cross_law_call_fills_undeclared_parameters_with_null() {
+    fn test_cross_law_call_fills_optional_parameters_with_null() {
         // The tax law asks the permit law for "heeft_vergunning" and passes only
-        // kvk_nummer; the permit law also declares application-form parameters it
-        // uses in other actions. Those read as null and the asked-for output
-        // still comes back.
-        let permit = r#"
+        // kvk_nummer; the permit law also declares an optional application-form
+        // parameter it uses in another action. That reads as null and the
+        // asked-for output still comes back.
+        let (permit, tax) = fill_laws("required: false");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("belastingplichtig"),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    #[test]
+    fn test_cross_law_call_missing_required_parameter_still_fails() {
+        // The same call, but the permit law insists on the form field. The
+        // engine must not invent a null for it: a caller that forgets (or
+        // misspells) a required parameter gets the error, not an unknown.
+        let (permit, tax) = fill_laws("required: true");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service.evaluate_law_output(
+            "fill_belasting",
+            "belastingplichtig",
+            params,
+            "2025-01-01",
+        );
+        assert!(
+            matches!(result, Err(EngineError::VariableNotFound(_))),
+            "expected VariableNotFound, got {result:?}"
+        );
+    }
+
+    fn register_fill_permit(service: &mut LawExecutionService) {
+        let mut record = BTreeMap::new();
+        record.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        record.insert(
+            "vergunning_status".to_string(),
+            Value::String("ACTIEF".to_string()),
+        );
+        service
+            .register_dict_source_for_law(
+                "fill_vergunning",
+                "gemeente",
+                "kvk_nummer",
+                vec![record],
+                10,
+            )
+            .unwrap();
+    }
+
+    /// A permit law with a form parameter (`required` as given) and a tax law
+    /// that asks it for "heeft_vergunning" with only the KVK number.
+    fn fill_laws(form_param_required: &str) -> (String, String) {
+        let permit = format!(
+            r#"
 $id: fill_vergunning
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -3773,11 +3867,11 @@ articles:
             required: true
           - name: terras_oppervlakte
             type: number
-            required: true
+            {form_param_required}
         input:
           - name: vergunning_status
             type: string
-            source: {}
+            source: {{}}
         output:
           - name: heeft_vergunning
             type: boolean
@@ -3792,7 +3886,8 @@ articles:
             operation: LESS_THAN
             subject: $terras_oppervlakte
             value: 50
-"#;
+"#
+        );
         let tax = r#"
 $id: fill_belasting
 regulatory_layer: WET
@@ -3821,40 +3916,7 @@ articles:
           - output: belastingplichtig
             value: $heeft_vergunning
 "#;
-        let mut service = LawExecutionService::new();
-        service.load_law(permit).unwrap();
-        service.load_law(tax).unwrap();
-        let mut record = BTreeMap::new();
-        record.insert(
-            "kvk_nummer".to_string(),
-            Value::String("85234567".to_string()),
-        );
-        record.insert(
-            "vergunning_status".to_string(),
-            Value::String("ACTIEF".to_string()),
-        );
-        service
-            .register_dict_source_for_law(
-                "fill_vergunning",
-                "gemeente",
-                "kvk_nummer",
-                vec![record],
-                10,
-            )
-            .unwrap();
-
-        let mut params = BTreeMap::new();
-        params.insert(
-            "kvk_nummer".to_string(),
-            Value::String("85234567".to_string()),
-        );
-        let result = service
-            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
-            .unwrap();
-        assert_eq!(
-            result.outputs.get("belastingplichtig"),
-            Some(&Value::Bool(true))
-        );
+        (permit, tax.to_string())
     }
 
     #[test]

@@ -1,0 +1,38 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: test_null_semantics_strikt
+name: Testwet null-semantiek (strikt)
+regulatory_layer: WET
+bwb_id: BWBR9999911
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_null_semantics_strikt
+
+articles:
+  - number: '1'
+    url: https://example.com/test_null_semantics_strikt/1
+    text: >-
+      Het geboortejaar is het geboortejaar, bedoeld in artikel 1 van de
+      Testwet null-semantiek (bron).
+    machine_readable:
+      # Bewust fout: de aanroep geeft de verplichte parameter `bsn` van de
+      # bron niet mee. De engine mag die niet stilzwijgend met null invullen;
+      # de uitvoering moet falen (RFC-036).
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: geboortejaar
+            type: number
+            source:
+              regulation: test_null_semantics_bron
+              output: geboortejaar
+        output:
+          - name: geboortejaar
+            type: number
+        actions:
+          - output: geboortejaar
+            value: $geboortejaar
