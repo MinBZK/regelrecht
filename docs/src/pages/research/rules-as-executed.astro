@@ -23,6 +23,18 @@ const description =
   `${meta.kind} by ${authors}: publish law execution as machine-executable ` +
   'specifications, so that decisions can be re-executed and rules analyzed.';
 const doiUrl = `https://doi.org/${meta.doi}`;
+
+// Every issue the "Discuss this passage" button (Base.astro) opens carries the
+// contribution:paper label from the issue form, and names the paper in its
+// Paper field. The label alone would list feedback on every paper; the quoted
+// title narrows it to this one, and also catches issues filed by hand from the
+// issue chooser as long as the paper is named. Open and closed both show:
+// a closed thread is still part of the discussion of a frozen paper.
+const discussionUrl =
+  'https://github.com/MinBZK/regelrecht/issues?q=' +
+  encodeURIComponent(
+    `is:issue label:contribution:paper "${meta.title}" sort:updated-desc`
+  );
 ---
 
 <Base
@@ -42,14 +54,24 @@ const doiUrl = `https://doi.org/${meta.doi}`;
       <p slot="subtitle">{meta.subtitle}</p>
     </nldd-title>
     <div slot="left">
-      <nldd-button
-        href={doiUrl}
-        text="PDF on Zenodo"
-        start-icon="external-link"
-        target="_blank"
-        rel="noopener"
-        variant="secondary"
-      ></nldd-button>
+      <nldd-button-group>
+        <nldd-button
+          href={doiUrl}
+          text="PDF on Zenodo"
+          start-icon="external-link"
+          target="_blank"
+          rel="noopener"
+          variant="secondary"
+        ></nldd-button>
+        <nldd-button
+          href={discussionUrl}
+          text="Discussion on GitHub"
+          start-icon="comment"
+          target="_blank"
+          rel="noopener"
+          variant="secondary"
+        ></nldd-button>
+      </nldd-button-group>
       <nldd-spacer size="24" sm-size="16" />
       <DocsOutline headings={headings} />
     </div>
