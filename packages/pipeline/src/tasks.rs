@@ -181,6 +181,64 @@ pub async fn get_task_for_account(
     Ok(task)
 }
 
+/// Alle taken van één job voor dit account, oudste eerst — de onderdelen van
+/// één verrijking. Afgehandelde taken blijven meekomen: wie een verrijking
+/// verwerkt moet kunnen zien dat een zusje al dicht is (bijvoorbeeld omdat
+/// het traject eronder verdween, zie [`dismiss_open_tasks_for_traject`]).
+///
+/// Zelfde account-gating als [`get_task_for_account`]: een job van iemand
+/// anders levert een lege lijst, niet andermans taken.
+pub async fn list_tasks_for_job_and_account(
+    pool: &PgPool,
+    job_id: Uuid,
+    account_id: Uuid,
+) -> Result<Vec<Task>> {
+    let query = format!(
+        "SELECT {RETURNING} FROM tasks \
+         WHERE job_id = $1 AND assignee_account_id = $2 \
+         ORDER BY created_at, id",
+    );
+    let tasks = sqlx::query_as::<_, Task>(&query)
+        .bind(job_id)
+        .bind(account_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(tasks)
+}
+
+/// Handel een reeks taken in één keer af en lever het aantal rijen dat
+/// daadwerkelijk dichtging. Generiek over de executor, zodat het verwerken van
+/// een hele verrijking (alle onderdelen tegelijk) in dezelfde transactie past
+/// als de schrijfactie die eruit volgt.
+///
+/// De aanroeper hoort te controleren of het aantal klopt: is het lager dan wat
+/// hij aanbood, dan was een taak niet meer open (race of vreemd account) en
+/// hoort de hele verwerking terug te rollen in plaats van half te landen.
+/// Dezelfde WHERE-voorwaarden als [`resolve_task`] doen dat werk.
+pub async fn resolve_tasks<'e, E>(
+    executor: E,
+    task_ids: &[Uuid],
+    account_id: Uuid,
+    new_status: TaskStatus,
+) -> Result<u64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    if task_ids.is_empty() || new_status == TaskStatus::Open {
+        return Ok(0);
+    }
+    let result = sqlx::query(
+        "UPDATE tasks SET status = $3, resolved_at = now(), resolved_by = $2 \
+         WHERE id = ANY($1) AND assignee_account_id = $2 AND status = 'open'",
+    )
+    .bind(task_ids)
+    .bind(account_id)
+    .bind(new_status)
+    .execute(executor)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 /// Handel een taak af. Alleen de assignee mag dat, en alleen vanuit 'open':
 /// beide voorwaarden zitten in de WHERE zodat een race of vreemd account
 /// simpelweg `None` oplevert (geen aparte foutklasse nodig).

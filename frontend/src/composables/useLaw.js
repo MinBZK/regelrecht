@@ -439,6 +439,31 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   }
 
   /**
+   * Herlaad de open wet van de server, langs de cache heen.
+   *
+   * Voor schrijfacties waarvan de backend de eindstand zelf samenstelt en de
+   * client die dus niet kent - het verwerken van een verrijking splicet de
+   * overgenomen artikelen server-side in de wet. `saveLaw` kan zijn eigen body
+   * terugleggen, hier is er geen body om terug te leggen.
+   *
+   * Zelfde stale-guard als `saveLaw`: is de gebruiker tijdens de fetch naar een
+   * andere wet of een ander traject gesprongen, dan wordt er niets overschreven.
+   *
+   * @returns {Promise<boolean>} of deze aanroep de state daadwerkelijk bijwerkte.
+   */
+  async function reloadLaw() {
+    if (!lawId.value) return false;
+    const reloadedLawId = lawId.value;
+    const reloadedTrajectRef = currentTrajectRef;
+    const entry = await fetchLawFresh(reloadedTrajectRef, reloadedLawId);
+    if (lawId.value !== reloadedLawId || currentTrajectRef !== reloadedTrajectRef) return false;
+    law.value = entry.law;
+    rawYaml.value = entry.rawYaml;
+    currentEtag.value = entry.etag ?? null;
+    return true;
+  }
+
+  /**
    * Create a NEW law in the active traject via POST (the approve-step of a
    * `law_create` review task). Same body/etag/PR plumbing as `saveLaw`, but
    * without `If-Match` (there is nothing to be concurrent with yet); the
@@ -508,6 +533,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     saving,
     saveError,
     saveLaw,
+    reloadLaw,
     seedFromYaml,
     createLaw,
     currentEtag,

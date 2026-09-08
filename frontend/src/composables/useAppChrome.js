@@ -74,8 +74,11 @@ const documentTabsTrajectRef = shallowRef(null);
 // `main`: it belongs to the bar-split-view, not to the editor's own content
 // flow, so it lines up with the tab bar and the changes bar instead of
 // scrolling with the panes.
-const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo, review, reviewStatus, reviewVariant } | null
-const editorActions = shallowRef(null); // { save, discard, undo, redo, reject } | null
+// `reviewCanRejectRest` zegt of er meer dan één onbeoordeeld onderdeel over is;
+// dan biedt de bar "rond af, neem de rest niet over" aan, zodat een verrijking
+// af te ronden is zonder elk onderdeel langs te lopen.
+const editorChanges = shallowRef(null); // { dirty, saving, canUndo, canRedo, review, reviewStatus, reviewVariant, reviewCanRejectRest } | null
+const editorActions = shallowRef(null); // { save, discard, undo, redo, reject, rejectRest } | null
 
 // --- Library-only chrome ---
 // Whether the library has nothing curated yet (no favorites, no traject edits,
