@@ -1,0 +1,26 @@
+[package]
+name = "regelrecht-simulator"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "RegelRecht chronolexografie simulator - cells, chronicle stores and scenario runner"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+homepage = "https://github.com/MinBZK/regelrecht"
+keywords = ["law", "legal", "simulation", "dutch", "regelrecht"]
+categories = ["simulation"]
+
+[dependencies]
+regelrecht-engine = { path = "../engine" }
+chrono.workspace = true
+serde.workspace = true
+serde_yaml_ng.workspace = true
+thiserror.workspace = true
+walkdir.workspace = true
+
+[[bin]]
+name = "run-scenario"
+path = "src/bin/run_scenario.rs"
+
+[lints]
+workspace = true

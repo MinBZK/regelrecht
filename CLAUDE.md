@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/editor-api/` - Rust backend API for the editor frontend
 - `packages/corpus/` - Shared library for working with YAML regulation files
 - `packages/shared/` - Common types/utilities across packages
+- `packages/simulator/` - Chronolexografie testopstelling (RFC-022): cellen met een privé kroniekstore, lexostatus-reducties en een scenario-loader
 - `packages/tui/` - Terminal UI dashboard
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)

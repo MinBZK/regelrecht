@@ -4302,6 +4302,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-simulator"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regelrecht-engine",
+ "serde",
+ "serde_yaml_ng",
+ "thiserror 2.0.20",
+ "walkdir",
+]
+
+[[package]]
 name = "regelrecht-tui"
 version = "0.1.0"
 dependencies = [

@@ -74,6 +74,15 @@ validate-annotations *FILES:
 conformance:
     cd packages && {{ci_flags}} cargo test -p regelrecht-engine --features validate --test conformance
 
+# Draai één chronolexografie-scenario (RFC-022) en druk het verslag af. De
+# scenario's zelf dragen hun assertie, dus `just test` dekt ze al; deze recipe is
+# voor het lezen van de uitkomst tijdens het schrijven van een scenario. Het pad
+# is relatief aan de repo-wortel, niet aan packages/. Zie
+# packages/simulator/README.md.
+[doc("Draai een chronolexografie-scenario en druk het verslag af")]
+simulate SCENARIO='packages/simulator/scenarios/toeslagen_zorgtoeslag.yaml':
+    cd packages && cargo run -q -p regelrecht-simulator --bin run-scenario -- {{justfile_directory()}}/{{SCENARIO}}
+
 # Pins the deploy filters against the real cargo graph. Node's built-in test
 # runner, so no dependency for one file. Needs `cargo metadata`, not a build.
 [doc("Check the deploy filters against the real cargo dependency graph")]

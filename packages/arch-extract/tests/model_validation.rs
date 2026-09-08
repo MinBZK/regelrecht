@@ -105,6 +105,7 @@ fn product_crates_present() {
         "law-model",
         "pipeline",
         "shared",
+        "simulator",
         "tui",
     ]
     .iter()
