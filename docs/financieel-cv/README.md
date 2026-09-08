@@ -490,6 +490,7 @@ juridische context per regeling.)
 | `docs/financieel-cv/szw/actieregister.md`                                         | Doorlopend actieregister: wat is gesignaleerd, wanneer gedaan |
 | `docs/financieel-cv/szw/2026-07-23-juristvalidatie-notities.md`                   | Ronde 1 — juristvalidatie                              |
 | `docs/financieel-cv/szw/2026-09-02-juristfeedback-doorloop.md`                    | Ronde 2 — feedback op de doorloop Koen en Sadee        |
+| `docs/financieel-cv/szw/2026-09-08-juristfeedback-ronde3.md`                      | Ronde 3 — Wfsv 38b-correctie, doelgroepverklaring, disclaimer |
 | `PLAN.md`                                                                         | Oorspronkelijk sessieplan                              |
 
 ## Quality checks

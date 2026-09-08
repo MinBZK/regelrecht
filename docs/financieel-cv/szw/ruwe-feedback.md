@@ -18,6 +18,43 @@ gevraagd is, wint dit bestand van de gestructureerde notitie.
 
 ---
 
+## Ronde 3 — 8 september 2026
+
+Feedback op de terugkoppeling van het modelleerwerk. Vier punten, letterlijk
+overgenomen:
+
+> - Wajongeren die duurzaam geen arbeidsvermogen hebben, vallen wel onder de
+>   banenafspraak als ze aan het werk zijn: (Wsfv 38b, lid c: "[...] met dien
+>   verstande dat de persoon die duurzaam geen mogelijkheden tot
+>   arbeidsparticipatie heeft [...] slechts wordt aangemerkt als
+>   arbeidsbeperkte indien die persoon arbeid verricht in een
+>   dienstbetrekking."
+> - "Wat bij die nieuwe artikelen een aangeleverd feit is gebleven": deze
+>   vraag begrijp ik niet
+> - "De doelgroepverklaring is nu een harde eis geworden". Dat klopt. In de
+>   banenafspraak kon de doelgroepverklaring afgeschaft worden omdat het
+>   doelgroepregister gekoppeld kan worden met de polisadministratie (en
+>   daarmee de loonaangifte). Daar is een doelgroepverklaring dus niet meer
+>   nodig. Bij de WIA kan dat helaas (nog) niet, en blijft een
+>   doelgroepverklaring dus noodzakelijk.
+> - "Drie niet-berekenbare bepalingen staan voorlopig op "aanvaard"". Lijkt me
+>   heel ingewikkeld dit op enige manier mee te nemen in de berekening omdat
+>   gebruiker dan die informatie zelf moet aanleveren. Mogelijk wel als een
+>   soort disclaimer meenemen in uiteindelijke tool.
+
+**Herkomst van de citaten.** Punt 2, 3 en 4 reageren op zinnen uit een
+terugkoppeling die niet in deze repo staat en ook niet in het gepubliceerde
+ronde-2-artifact. De geciteerde formuleringen zijn hier bewaard; de
+oorspronkelijke terugkoppeling zelf is niet teruggevonden.
+
+**Punt 2 is een signaal over ons, niet over de wet.** De vraag "wat bij die
+nieuwe artikelen een aangeleverd feit is gebleven" was niet te volgen. Dat is
+onze formulering: "aangeleverd feit" is modelleerjargon voor een parameter die
+de gebruiker of een bronsysteem moet invullen, tegenover een waarde die de
+engine zelf afleidt. Bij een volgende terugkoppeling zonder dat jargon stellen.
+
+---
+
 ## Ronde 2 — 2 september 2026
 
 Feedback op het doorloop-artifact "Koen en Sadee door het stelsel".

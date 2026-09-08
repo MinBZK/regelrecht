@@ -58,6 +58,20 @@ Bron: [2026-09-02-juristfeedback-doorloop.md](2026-09-02-juristfeedback-doorloop
 
 ---
 
+## Ronde 3 — juristfeedback op de terugkoppeling, 8 september 2026
+
+Bron: [2026-09-08-juristfeedback-ronde3.md](2026-09-08-juristfeedback-ronde3.md)
+
+| # | Actie | Bij wie | Status | Wanneer gedaan | Waar |
+|---|---|---|---|---|---|
+| 3.1 | Wfsv 38b onderdeel c: slotzin is een voorwaardelijke insluiting, geen uitsluiting — wie duurzaam geen arbeidsvermogen heeft telt wel mee zodra hij werkt | ons | gedaan | 2026-09-08 | `wet_financiering_sociale_verzekeringen/2026-07-01.yaml`; nieuwe parameter `verricht_arbeid_in_dienstbetrekking`, doorgegeven vanuit Wtl en Ziektewet; drie scenario's in `doelgroepregister_banenafspraak.feature` |
+| 3.2 | Terugkoppeling zonder modelleerjargon schrijven — "aangeleverd feit" was niet te volgen | ons | gedaan | 2026-09-08 | Antwoord + parameteroverzicht per nieuw artikel in de rondenotitie; werkafspraak in `ruwe-feedback.md` |
+| 3.3 | Reden vastleggen waarom de doelgroepverklaring bij de WIA blijft en bij de banenafspraak verviel | ons | gedaan | 2026-09-08 | `wet_tegemoetkomingen_loondomein/2026-01-01.yaml` bij `heeft_geldige_doelgroepverklaring_2_15` en in de samenloop-untranslatable |
+| 3.4 | De drie aanvaarde LKV-bepalingen niet als invoer modelleren maar als disclaimer tonen | ons | belegd | — | Uitspraak genoteerd bij de drie untranslatables; uitvoering hoort bij actie 2.6 (presentatielaag) |
+| 3.5 | Onderdeel f van Wfsv 38b controleren op dezelfde constructie | ons | gedaan | 2026-09-08 | Gecontroleerd: f is wél een absolute uitsluiting ("niet langer … meer heeft", zonder dienstbetrekking-clausule). Ongewijzigd |
+
+---
+
 ## Openstaand, samengevat
 
 | # | Actie | Status |
@@ -70,3 +84,4 @@ Bron: [2026-09-02-juristfeedback-doorloop.md](2026-09-02-juristfeedback-doorloop
 | 2.6 | Twee sterktes van aanspraak in de presentatielaag | open |
 | 2.7 | Verordeningen wel of niet laden | open, scopevraag |
 | 2.8 | Samenloop proefplaatsing ↔ LKS | open |
+| 3.4 | Drie aanvaarde LKV-bepalingen als disclaimer tonen | belegd bij de presentatielaag (2.6) |
