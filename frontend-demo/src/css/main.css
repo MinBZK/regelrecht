@@ -1,0 +1,233 @@
+/* Demo app: the design system supplies every visual value. This file only
+ * resets the document box and hosts the few layout hooks the design system has
+ * no component for (listed in frontend-demo/README.md under "Eigen CSS"). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Presentation slides: a full-height stage with centred text. There is no
+ * slide component in the design system; typography comes from nldd-title and
+ * nldd-rich-text, only the stage geometry lives here. */
+.slide-stage {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--primitives-space-40, 40px);
+}
+
+.slide-stage .slide {
+  max-width: 56rem;
+  text-align: center;
+  /* Slides are read from the back of a room: scale the design-system
+   * typography up as a whole rather than restyling each component. */
+  zoom: 1.5;
+}
+
+/* Organisation logos in tiles and data rows: fixed box, image scaled inside.
+ * nldd-image forces full width, which is wrong for a 40px mark. */
+.org-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--primitives-radius-8, 8px);
+  background: #fff; /* logos are designed on white, also in dark mode */
+  overflow: hidden;
+  flex: none;
+}
+
+.org-logo img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.org-logo--sm {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--primitives-radius-4, 4px);
+}
+
+/* Gherkin and YAML renderers: token colouring on top of nldd-code-viewer's
+ * monospace surface. The viewer highlights a fixed grammar set; our scenario
+ * status marks and the cross-law links inside YAML are demo-specific. */
+.yaml-tree {
+  font-family: var(--primitives-font-family-monospace, monospace);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.yaml-tree .yaml-node {
+  padding-left: 1.25rem;
+}
+
+.yaml-tree .yaml-key {
+  color: var(--primitives-color-donkerblauw-700, #1a4a8a);
+}
+
+.yaml-tree .yaml-scalar {
+  color: var(--semantics-content-color, var(--primitives-color-neutral-800, #222));
+}
+
+.yaml-tree .yaml-string {
+  color: var(--primitives-color-groen-700, #276e2c);
+}
+
+.yaml-tree .yaml-var {
+  color: var(--primitives-color-paars-700, #5b2d8e);
+  font-weight: 600;
+}
+
+.yaml-tree .yaml-toggle {
+  cursor: pointer;
+  user-select: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+.yaml-tree .yaml-toggle::before {
+  content: '▸';
+  display: inline-block;
+  width: 1rem;
+  color: var(--semantics-content-secondary-color, var(--primitives-color-neutral-500, #888));
+}
+
+.yaml-tree .yaml-toggle[aria-expanded='true']::before {
+  content: '▾';
+}
+
+.yaml-tree .yaml-link {
+  color: var(--primitives-color-donkerblauw-700, #1a4a8a);
+  text-decoration: underline dotted;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  font: inherit;
+  padding: 0;
+}
+
+.yaml-tree .yaml-highlight {
+  background: var(--primitives-color-geel-100, #fff6cc);
+  border-radius: 3px;
+}
+
+.gherkin {
+  font-family: var(--primitives-font-family-monospace, monospace);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.gherkin .kw {
+  color: var(--primitives-color-donkerblauw-700, #1a4a8a);
+  font-weight: 600;
+}
+
+.gherkin .str {
+  color: var(--primitives-color-groen-700, #276e2c);
+}
+
+.gherkin .num {
+  color: var(--primitives-color-oranje-700, #a04a00);
+}
+
+.gherkin .table-wrap {
+  overflow-x: auto;
+  margin: 0.25rem 0 0.5rem 2rem;
+}
+
+.gherkin table {
+  border-collapse: collapse;
+}
+
+.gherkin td,
+.gherkin th {
+  border: 1px solid var(--primitives-color-neutral-300, #ccc);
+  padding: 0.1rem 0.5rem;
+  text-align: left;
+  font-weight: normal;
+}
+
+.gherkin .step {
+  padding-left: 2rem;
+}
+
+.gherkin .step.pass {
+  border-left: 3px solid var(--primitives-color-green-600, #2e9e3a);
+}
+
+.gherkin .step.fail {
+  border-left: 3px solid var(--primitives-color-red-600, #c62828);
+}
+
+.trace {
+  font-family: var(--primitives-font-family-monospace, monospace);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* The tile grid on the portal: cards of equal width. nldd-collection
+ * layout="grid" does this; the class only pins the tile's inner stack. */
+.tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-12, 12px);
+}
+
+/* Data lineage tree in a tile (value rows nest under the input they feed). */
+.data-tree {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.data-tree .data-tree {
+  padding-left: var(--primitives-space-16, 16px);
+  border-left: 1px solid var(--primitives-color-neutral-200, #e2e2e2);
+}
+
+/* Case board: three columns that wrap on narrow screens. */
+.case-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--primitives-space-16, 16px);
+}
+
+/* Law graph canvas: vue-flow needs an explicit height. */
+.graph-canvas {
+  height: 100%;
+  min-height: 60vh;
+}
+
+.graph-node {
+  border: 1px solid var(--primitives-color-neutral-300, #ccc);
+  background: var(--semantics-surfaces-base-background-color, light-dark(#fff, #222));
+  color: var(--semantics-content-color, var(--primitives-color-neutral-900, #111));
+  border-radius: var(--primitives-radius-8, 8px);
+  padding: 8px 12px;
+  font: 500 1rem var(--primitives-font-family-body, system-ui, sans-serif);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+}
+
+.graph-node--selected {
+  outline: 2px solid var(--primitives-color-donkerblauw-600, #1a5490);
+}

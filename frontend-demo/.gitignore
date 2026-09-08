@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# Generated at predev/prebuild from corpus/demo (copy-demo-corpus.mjs).
+public/data/
+# Built by `just wasm-build` / the Dockerfile.
+public/wasm/pkg/
