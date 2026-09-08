@@ -72,6 +72,16 @@ const discussionUrl =
           variant="secondary"
         ></nldd-button>
       </nldd-button-group>
+      <nldd-spacer size="8" />
+      {/*
+       * The selection affordance (Base.astro) is invisible until text is
+       * selected, so nothing on the page says it exists; this line does.
+       */}
+      <nldd-rich-text>
+        <p class="rr-paper-note">
+          Select a passage in the paper to start a discussion about it.
+        </p>
+      </nldd-rich-text>
       <nldd-spacer size="24" sm-size="16" />
       <DocsOutline headings={headings} />
     </div>
