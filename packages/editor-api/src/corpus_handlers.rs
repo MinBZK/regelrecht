@@ -26,7 +26,7 @@ use regelrecht_corpus::CorpusError;
 use regelrecht_github::GithubClient;
 
 use crate::accounts::AccountRecord;
-use crate::credentials::{self, TrajectCredentials};
+use crate::credentials::{self, TrajectCredentials, WriteAuthorization};
 use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{ScenarioListEntry, TrajectCorpus, TrajectCorpusError};
 use crate::traject_index_diagnosis::{
@@ -1844,7 +1844,9 @@ async fn editor_user_from_session(session: &Session) -> Option<EditorUser> {
 /// and will hit this 403 even when the user's email *is* verified at
 /// the IdP. The message therefore nudges towards a re-login, which
 /// re-runs the OIDC callback and populates the missing claim.
-async fn require_editor_user(session: &Session) -> Result<EditorUser, (StatusCode, String)> {
+pub(crate) async fn require_editor_user(
+    session: &Session,
+) -> Result<EditorUser, (StatusCode, String)> {
     editor_user_from_session(session).await.ok_or_else(|| {
         (
             StatusCode::FORBIDDEN,
@@ -2028,8 +2030,8 @@ fn traject_write_source_id(traject: &TrajectCorpus, law: &LoadedLaw) -> String {
 /// Resolved write routing for a law in a traject: the law's index
 /// entry, the id of the source whose backend the write goes to, and an
 /// owned guard over that backend.
-struct TrajectLawWrite {
-    law: LoadedLaw,
+pub(crate) struct TrajectLawWrite {
+    pub(crate) law: LoadedLaw,
     /// Source id of the backend behind `backend`. Differs from
     /// `law.source_id` when the law comes from a federated read-only
     /// source and its writes are routed to the traject's writable-own
@@ -2040,14 +2042,14 @@ struct TrajectLawWrite {
     /// backend registration. Fed to [`TrajectCredentials::for_write`] as the
     /// explicit "has own write credential" capability instead of a runtime
     /// `is_writable()` probe.
-    write_source_writable: bool,
-    backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
+    pub(crate) write_source_writable: bool,
+    pub(crate) backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
 }
 
 /// Resolve the writable-own backend within a traject's corpus. Returns
 /// the looked-up law (for its `relative_path`), the write-target source
 /// id, and an owned guard over the traject's writable backend.
-async fn resolve_traject_law_write(
+pub(crate) async fn resolve_traject_law_write(
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<TrajectLawWrite, (StatusCode, String)> {
@@ -2756,28 +2758,93 @@ pub async fn save_law(
         .await?;
     let relative_path = PathBuf::from(&write.law.relative_path);
 
+    let written = write_composed_law(
+        &traject,
+        write,
+        auth,
+        &relative_path,
+        &law_id,
+        author,
+        extract_if_match(&headers),
+        false,
+        |_current| Ok((body, format!("Update law {law_id}"))),
+    )
+    .await?;
+
+    let mut response = written.response;
+    response.etag = Some(written.etag.clone());
+    Ok(([(axum::http::header::ETAG, written.etag)], Json(response)).into_response())
+}
+
+/// Wat een geslaagde wet-schrijfactie oplevert: het save-antwoord (inclusief
+/// een eventuele PR) en de ETag van wat er nu op de branch staat, die de
+/// client als `If-Match` van de volgende save meeneemt.
+pub(crate) struct WrittenLaw {
+    pub response: SaveResponse,
+    pub etag: String,
+}
+
+/// Schrijf een wet als **één** commit naar het schrijfdoel van een traject.
+///
+/// Gedeelde kern van de gewone wet-PUT ([`save_law`]) en het verwerken van een
+/// verrijking (`enrich_review::apply`). Wat die twee onderscheidt is alleen
+/// wát er geschreven wordt en onder welke commit-message; alles eromheen — de
+/// `If-Match`-controle onder dezelfde write-lock, de commit, de
+/// read-your-writes-overlay en de changed-laws-cache — is identiek en hoort
+/// dus één keer te bestaan.
+///
+/// `compose` krijgt de huidige inhoud van het bestand op de branch (`None`
+/// wanneer het er nog niet staat) en levert het paar (body, commit-message).
+/// Het draait *binnen* de write-lock die de aanroeper via
+/// [`resolve_traject_law_write`] vasthoudt, dus de eindstand wordt samengesteld
+/// tegen precies de bytes waartegen de `If-Match` is gecontroleerd — een
+/// concurrent save kan er niet tussen glippen.
+///
+/// De huidige inhoud wordt gelezen wanneer er een `If-Match` is óf wanneer
+/// `needs_current` dat vraagt; een blinde overschrijving die zijn body al kent
+/// (de gewone PUT zonder `If-Match`) bespaart daarmee een leesronde naar
+/// GitHub.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn write_composed_law<F>(
+    traject: &Arc<TrajectCorpus>,
+    write: TrajectLawWrite,
+    auth: WriteAuthorization,
+    relative_path: &std::path::Path,
+    law_id: &str,
+    author: Option<EditorUser>,
+    if_match: Option<String>,
+    needs_current: bool,
+    compose: F,
+) -> Result<WrittenLaw, (StatusCode, String)>
+where
+    F: FnOnce(Option<&str>) -> Result<(String, String), (StatusCode, String)>,
+{
     // Optimistic concurrency, same semantics as the document PUT: a
     // present `If-Match` must equal the current content's ETag (412 on
     // mismatch), an absent header stays a permissive blind write for
     // backward compatibility. Checked while holding the write backend's
-    // mutex (acquired by `resolve_traject_law_write` above), so a
-    // concurrent save cannot slip between the check and the write.
-    if let Some(if_match) = extract_if_match(&headers) {
-        let current =
-            current_content_for_write(&traject, &write, &relative_path, "law", auth.read_token())
-                .await?;
-        check_if_match(current.as_deref(), Some(&if_match), "Wet")?;
+    // mutex (acquired by `resolve_traject_law_write`), so a concurrent
+    // save cannot slip between the check and the write.
+    let current = if if_match.is_some() || needs_current {
+        current_content_for_write(traject, &write, relative_path, "law", auth.read_token()).await?
+    } else {
+        None
+    };
+    if if_match.is_some() {
+        check_if_match(current.as_deref(), if_match.as_deref(), "Wet")?;
     }
+
+    let (body, message) = compose(current.as_deref())?;
 
     let outcome = {
         write
             .backend
-            .write_file(&relative_path, &body)
+            .write_file(relative_path, &body)
             .await
             .map_err(corpus_write_error("law"))?;
         write
             .backend
-            .persist(&auth.into_write_context(format!("Update law {}", law_id), author))
+            .persist(&auth.into_write_context(message, author))
             .await
             .map_err(corpus_write_error("law"))?
     };
@@ -2794,18 +2861,19 @@ pub async fn save_law(
     // We DO mirror into the per-traject overlay so a subsequent GET in
     // the same traject (any session) sees the new content — that is
     // the read-your-writes follow-up that used to be punted.
-    traject.record_save(law_id.clone(), body).await;
+    traject.record_save(law_id.to_string(), body).await;
 
     // This save added (or kept) this law on the traject branch — fold it
     // into the cached changed-laws diff so the sidebar's "Bewerkt in dit
     // traject" section reflects the edit on the next load, without the
     // synchronous GitHub Compare call a cache invalidation would cost
     // that load.
-    traject.record_changed_law(&law_id).await;
+    traject.record_changed_law(law_id).await;
 
-    let mut response = save_response_from_traject(outcome);
-    response.etag = Some(new_etag.clone());
-    Ok(([(axum::http::header::ETAG, new_etag)], Json(response)).into_response())
+    Ok(WrittenLaw {
+        response: save_response_from_traject(outcome),
+        etag: new_etag,
+    })
 }
 
 /// DELETE /api/trajects/{traject_id}/corpus/laws/{law_id}/scenarios/{filename}
@@ -3131,7 +3199,7 @@ struct DocumentsWriter {
 }
 
 /// Read the `If-Match` header value, trimmed. `None` when absent or empty.
-fn extract_if_match(headers: &axum::http::HeaderMap) -> Option<String> {
+pub(crate) fn extract_if_match(headers: &axum::http::HeaderMap) -> Option<String> {
     headers
         .get(axum::http::header::IF_MATCH)
         .and_then(|v| v.to_str().ok())
