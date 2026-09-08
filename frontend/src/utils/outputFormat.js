@@ -6,6 +6,9 @@
 export function formatValue(value) {
   if (value === null || value === undefined) return 'null';
   if (typeof value === 'boolean') return value ? 'ja' : 'nee';
+  // A collection (RFC-016) or a record reaches the trace as an array or an
+  // object; String() would render every element as "[object Object]".
+  if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
 
