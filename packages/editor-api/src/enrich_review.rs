@@ -206,6 +206,17 @@ struct Accepted {
 /// 3. Niets overnemen schrijft niets — geen lege commit. De taken gaan wel
 ///    dicht.
 ///
+/// Wat die transactie **niet** kan: de git-commit terugdraaien. Twee systemen
+/// zonder gedeelde transactie hebben één moment waarop ze uiteen kunnen lopen,
+/// en hier ligt dat tussen een geslaagde `persist` en `tx.commit()`. Valt de
+/// databaseverbinding precies dáár weg, dan staat de wijziging in de wet
+/// terwijl de taken open blijven; de beoordelaar ziet de verrijking dan
+/// opnieuw in zijn lijst. Dat is de kant waar deze volgorde bewust op faalt —
+/// een verrijking die nog een keer beoordeeld moet worden is te herstellen,
+/// een taak die dicht staat terwijl er niets geschreven is niet, want dan is
+/// het voorstel weg. Die uitkomst wordt hard gelogd, want hij is aan niets
+/// anders te zien.
+///
 /// De `If-Match`-header draagt de ETag van de wet zoals de beoordelaar hem
 /// zag. Dat is meteen de enige staleness-bepaling die deze flow nog kent: één
 /// schrijfmoment, één controle. Hij is daarom **verplicht** zodra er iets
@@ -326,6 +337,20 @@ pub async fn apply(
         ));
     }
 
+    // Een whole-law-onderdeel zet de aangeleverde inhoud integraal op de
+    // plaats van de wet — precies wat de PUT doet, dus precies dezelfde poort.
+    // De artikel-route heeft hem niet nodig: daar wordt in de opgeslagen wet
+    // gespliced, dus blijven `$id` en de rest van het bestand van de server.
+    //
+    // Dat de editor hier in de praktijk het onbewerkte voorstel terugstuurt,
+    // is geen bescherming: het endpoint accepteert geaccordeerde inhoud (dat
+    // is het punt van criterium 2) en moet zelf weten wat het aanneemt.
+    if whole_law {
+        for part in accepted.iter().filter(|a| a.article.is_none()) {
+            corpus_handlers::validate_whole_law_body(&part.content, &law_id)?;
+        }
+    }
+
     let accepted_count = accepted.len();
     let total = open.len();
 
@@ -344,6 +369,18 @@ pub async fn apply(
     };
 
     // --- taken dicht + schrijven, of terugrollen -------------------------
+    //
+    // Deze transactie blijft openstaan over de schrijfactie heen, en houdt dus
+    // één poolverbinding vast zolang GitHub erover doet. Dat is de prijs van
+    // "alle taken in dezelfde transactie als de write": zonder die overlap kan
+    // een mislukte `If-Match` de al afgehandelde taken niet meer terugdraaien.
+    //
+    // Wat de prijs begrenst is de volgorde hierboven. De write-lock op de
+    // backend wordt vóór deze transactie genomen, dus twee verwerkingen op
+    // hetzelfde traject staan op die mutex te wachten en niet op een
+    // verbinding. Wat er tegelijk openstaat is daarmee hooguit één transactie
+    // per traject dat op dit moment geschreven wordt — niet één per
+    // beoordelaar.
     let mut tx = pool.begin().await.map_err(db_error)?;
     let closed = tasks::resolve_tasks(&mut *tx, &approved_ids, account.id, TaskStatus::Approved)
         .await
@@ -374,7 +411,22 @@ pub async fn apply(
             }
         }
     };
-    tx.commit().await.map_err(db_error)?;
+    if let Err(e) = tx.commit().await {
+        // Het enige punt waarop wet en takenlijst uiteen kunnen lopen: is er
+        // geschreven, dan staat die commit er en komt hij hier niet meer weg.
+        // Loggen op error-niveau, met de wet erbij — aan de takenlijst alleen
+        // is niet te zien dat het voorstel al geland is.
+        if written.is_some() {
+            tracing::error!(
+                error = %e,
+                job_id = %job_id,
+                law_id = %law_id,
+                "verrijking is weggeschreven maar de taken bleven open staan; \
+                 de wet is bijgewerkt, de beoordelaar ziet de verrijking opnieuw"
+            );
+        }
+        return Err(db_error(e));
+    }
 
     // Pas nu de blobs opruimen: dit was het laatste moment waarop iemand het
     // voorstel nog nodig had. Best-effort, net als na een losse resolve — de

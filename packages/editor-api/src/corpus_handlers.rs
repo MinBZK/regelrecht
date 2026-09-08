@@ -2726,27 +2726,7 @@ pub async fn save_law(
     // supporting-text and we don't want self-XSS if the dialog ever renders
     // that attribute as markup. The path law_id is already known to the
     // caller, so the generic message is sufficient.
-    validate_yaml_syntax(&body).map_err(|e| {
-        tracing::debug!(law_id = %law_id, error = %e, "save_law received malformed YAML body");
-        (
-            StatusCode::BAD_REQUEST,
-            "Body is not valid YAML".to_string(),
-        )
-    })?;
-
-    let body_id = extract_law_id(&body).ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Body missing top-level `$id` field".to_string(),
-        )
-    })?;
-
-    if body_id != law_id {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Body $id does not match path law_id".to_string(),
-        ));
-    }
+    validate_whole_law_body(&body, &law_id)?;
 
     // Resolve the write target AND keep a handle on the per-traject
     // corpus so we can mirror the saved body into its read-your-writes
@@ -2774,6 +2754,56 @@ pub async fn save_law(
     let mut response = written.response;
     response.etag = Some(written.etag.clone());
     Ok(([(axum::http::header::ETAG, written.etag)], Json(response)).into_response())
+}
+
+/// De poort voor elke body die als **hele wet** naar het corpus geschreven
+/// wordt: de PUT van de editor ([`save_law`]) en het overnemen van een
+/// whole-law-voorstel (`enrich_review::apply`). Beide zetten een door de
+/// client aangeleverd bestand integraal op de plaats van een bestaande wet,
+/// dus beide hebben dezelfde drie controles nodig — één plek, want een tweede
+/// schrijfpad dat er één vergeet is precies hoe een corpus stukgaat.
+///
+/// 1. De body moet geldige YAML zijn. [`extract_law_id`] is een regelscanner
+///    die `"$id: foo\n<rommel>"` gewoon accepteert, dus zonder deze controle
+///    landt een kapotte body op schijf.
+/// 2. De body moet een top-level `$id` hebben.
+/// 3. Dat `$id` moet gelijk zijn aan de wet die overschreven wordt. Een
+///    afwijking is óf een phantom-law (een nieuw id op een bestaand bestand)
+///    óf een verweesde wet (het oude id wordt onvindbaar).
+///
+/// Bewust géén volledige JSON-Schema-validatie: dat is een apart vervolg
+/// (spiegel van `just validate`).
+///
+/// De foutmelding echoot het aangeleverde `$id` niet terug: die tekst loopt
+/// via de frontend in de supporting-text van een dialoog, en een id uit de
+/// body daarin renderen zou self-XSS zijn zodra die attribuut-tekst ooit als
+/// markup gelezen wordt. De aanroeper kent `law_id` al.
+pub(crate) fn validate_whole_law_body(
+    body: &str,
+    law_id: &str,
+) -> Result<(), (StatusCode, String)> {
+    validate_yaml_syntax(body).map_err(|e| {
+        tracing::debug!(law_id = %law_id, error = %e, "law write received malformed YAML body");
+        (
+            StatusCode::BAD_REQUEST,
+            "Body is not valid YAML".to_string(),
+        )
+    })?;
+
+    let body_id = extract_law_id(body).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Body missing top-level `$id` field".to_string(),
+        )
+    })?;
+
+    if body_id != law_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Body $id does not match path law_id".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// Wat een geslaagde wet-schrijfactie oplevert: het save-antwoord (inclusief

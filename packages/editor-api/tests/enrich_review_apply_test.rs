@@ -571,6 +571,43 @@ async fn a_whole_law_part_is_taken_over_in_one_piece() {
     assert_eq!(task_status(&f.db.pool, whole).await, "approved");
 }
 
+/// Een whole-law-onderdeel zet de aangeleverde inhoud integraal op de plaats
+/// van de wet. Dezelfde daad als de PUT, dus dezelfde poort: kapotte YAML of
+/// een `$id` dat een andere wet aanwijst hoort er niet langs te komen. De
+/// artikel-route heeft dat niet nodig - daar splicet de server in de
+/// opgeslagen wet en blijft `$id` van hem.
+#[tokio::test]
+async fn een_whole_law_onderdeel_met_onbruikbare_inhoud_wordt_geweigerd() {
+    for (label, content) in [
+        (
+            "kapotte YAML",
+            "$id: wet_op_de_zorgtoeslag\narticles: [oops\n",
+        ),
+        (
+            "ander $id",
+            "$id: een_andere_wet\narticles:\n- number: '1'\n  text: x\n",
+        ),
+        ("geen $id", "articles:\n- number: '1'\n  text: x\n"),
+    ] {
+        let f = Fixture::new().await;
+        let whole = f.task(None).await;
+        let etag = f.etag().await;
+
+        let (status, _message) = f
+            .apply(
+                if_match_headers(&etag),
+                vec![decision(whole, "approved", Some(content))],
+            )
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{label} hoort geweigerd te worden"));
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{label}");
+        assert_eq!(f.law(), SAVED_LAW, "{label}");
+        assert_eq!(task_status(&f.db.pool, whole).await, "open", "{label}");
+    }
+}
+
 #[tokio::test]
 async fn an_article_without_content_falls_back_to_the_proposal() {
     let f = Fixture::new().await;
