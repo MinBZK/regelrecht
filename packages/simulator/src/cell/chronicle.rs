@@ -149,8 +149,12 @@ fn record_key(fields: &BTreeMap<String, Value>, key: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Faalt luid op een onleesbare datum: deze tests gáán over de tijdas, dus
+    /// een typfout die stil op de standaarddatum uitkomt zou een gebroken test
+    /// achter een onschuldige assertie verstoppen.
     fn date(text: &str) -> NaiveDate {
-        NaiveDate::parse_from_str(text, "%Y-%m-%d").unwrap_or_default()
+        NaiveDate::parse_from_str(text, "%Y-%m-%d")
+            .unwrap_or_else(|e| panic!("testdatum '{text}' moet leesbaar zijn: {e}"))
     }
 
     fn event(op_moment: &str, fields: &[(&str, Value)]) -> ChronicleEvent {

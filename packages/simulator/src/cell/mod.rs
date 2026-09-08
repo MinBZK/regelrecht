@@ -192,7 +192,8 @@ lexostatus_definitions:
     }
 
     fn moment() -> NaiveDate {
-        NaiveDate::from_ymd_opt(2025, 1, 1).unwrap_or_default()
+        NaiveDate::from_ymd_opt(2025, 1, 1)
+            .unwrap_or_else(|| panic!("2025-01-01 moet een geldige datum zijn"))
     }
 
     #[test]
