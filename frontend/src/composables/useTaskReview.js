@@ -86,10 +86,16 @@ export function useTaskReview() {
   const jobParts = ref([]);
 
   const jobId = computed(() => reviewTask.value?.job_id ?? null);
+  // Waaronder de tussenstand wordt bewaard. Eén sleutel voor de hele
+  // verrijking; valt terug op de taak zelf voor een taak zonder job, want dan
+  // is die taak in zijn eentje de verrijking. Alles wat de oordelen leest of
+  // schrijft gebruikt déze sleutel - een lezer die `jobId` neemt en een
+  // schrijver die terugvalt, zouden elkaars oordelen niet zien.
+  const verdictKey = computed(() => jobId.value ?? reviewTask.value?.id ?? null);
   const openParts = computed(() => jobParts.value.filter((p) => p.status === 'open'));
   /** Onderdelen die nog op een oordeel wachten. */
   const undecidedParts = computed(() => {
-    const decided = verdictsForJob(jobId.value);
+    const decided = verdictsForJob(verdictKey.value);
     return openParts.value.filter((p) => !decided[p.id]);
   });
   /** Hoeveelste onderdeel je nu beoordeelt, 1-based (0 als het er niet bij zit). */
@@ -166,7 +172,7 @@ export function useTaskReview() {
   function decide(action, content) {
     const task = reviewTask.value;
     if (!task) return { done: false, next: null };
-    recordVerdict(jobId.value ?? task.id, task.id, action, content ?? null);
+    recordVerdict(verdictKey.value, task.id, action, content ?? null);
     const next = undecidedParts.value.find((p) => p.id !== task.id) ?? null;
     return { done: !next, next };
   }
@@ -180,7 +186,7 @@ export function useTaskReview() {
   async function processEnrichment(etag, { rejectRemaining = false } = {}) {
     const task = reviewTask.value;
     if (!task) return null;
-    const key = jobId.value ?? task.id;
+    const key = verdictKey.value;
     const decided = verdictsForJob(key);
     const decisions = openParts.value
       .map((part) => {
@@ -193,7 +199,7 @@ export function useTaskReview() {
         return rejectRemaining ? { task_id: part.id, action: 'rejected' } : null;
       })
       .filter(Boolean);
-    const result = await applyEnrichment(jobId.value ?? task.id, decisions, etag);
+    const result = await applyEnrichment(key, decisions, etag);
     clearVerdicts(key);
     reviewTask.value = null;
     proposedContent.value = null;

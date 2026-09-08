@@ -612,3 +612,98 @@ async fn a_second_verwerking_of_the_same_enrichment_is_a_conflict() {
         .expect_err("een verwerkte verrijking hoort niet nog eens te kunnen");
     assert_eq!(status, StatusCode::CONFLICT);
 }
+
+/// Zonder `If-Match` zou het verwerken een blinde overschrijving zijn. Dat is
+/// precies de controle die deze flow nog heeft: de staleness-vlag per taak is
+/// weg omdat er nog maar één schrijfmoment is, dus dat ene moment moet hem
+/// dragen.
+#[tokio::test]
+async fn overnemen_zonder_if_match_schrijft_niet_en_handelt_niets_af() {
+    let f = Fixture::new().await;
+    let one = f.task(Some("1")).await;
+    let two = f.task(Some("2")).await;
+
+    let (status, _message) = f
+        .apply(
+            HeaderMap::new(),
+            vec![
+                decision(
+                    one,
+                    "approved",
+                    Some("number: '1'\ntext: artikel een verrijkt\n"),
+                ),
+                decision(two, "rejected", None),
+            ],
+        )
+        .await
+        .expect_err("verwerken zonder If-Match hoort geweigerd te worden");
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(f.law(), SAVED_LAW);
+    assert_eq!(task_status(&f.db.pool, one).await, "open");
+    assert_eq!(task_status(&f.db.pool, two).await, "open");
+}
+
+/// Niets overnemen schrijft niet, en vraagt dus ook niet om een `If-Match`:
+/// er is geen eindstand om tegen iets af te zetten.
+#[tokio::test]
+async fn niets_overnemen_mag_zonder_if_match() {
+    let f = Fixture::new().await;
+    let one = f.task(Some("1")).await;
+
+    let response = f
+        .apply(HeaderMap::new(), vec![decision(one, "rejected", None)])
+        .await
+        .expect("niets overnemen hoort te lukken");
+
+    assert_eq!(response["accepted"], serde_json::json!(0));
+    assert_eq!(f.law(), SAVED_LAW);
+    assert_eq!(task_status(&f.db.pool, one).await, "rejected");
+}
+
+/// Een verrijking van iemand anders bestaat niet voor jou - niet om te lezen
+/// en niet om te verwerken. De account-filter zit in de query, dus een vreemd
+/// account krijgt een lege lijst en daarmee een 404, niet andermans taken.
+#[tokio::test]
+async fn de_verrijking_van_een_ander_account_is_onvindbaar() {
+    let f = Fixture::new().await;
+    let one = f.task(Some("1")).await;
+    let etag = f.etag().await;
+    let (intruder_id, intruder_sub) = seed_account(&f.db.pool, "mallory@test.local").await;
+    let intruder = AccountRecord {
+        id: intruder_id,
+        person_sub: intruder_sub.clone(),
+        email: "mallory@test.local".to_string(),
+        name: "Test User".to_string(),
+    };
+
+    let (read_status, _) = job_tasks(
+        State(f.state.clone()),
+        Extension(intruder.clone()),
+        Path(f.job_id),
+    )
+    .await
+    .err()
+    .expect("de onderdelen van andermans verrijking horen niet leesbaar te zijn");
+    assert_eq!(read_status, StatusCode::NOT_FOUND);
+
+    let body = serde_json::from_value(
+        serde_json::json!({ "decisions": [decision(one, "approved", None)] }),
+    )
+    .unwrap();
+    let (status, _message) = apply(
+        State(f.state.clone()),
+        Extension(intruder),
+        session_for(&intruder_sub).await,
+        Path(f.job_id),
+        if_match_headers(&etag),
+        Json(body),
+    )
+    .await
+    .err()
+    .expect("andermans verrijking hoort niet verwerkt te kunnen worden");
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(f.law(), SAVED_LAW);
+    assert_eq!(task_status(&f.db.pool, one).await, "open");
+}

@@ -22,6 +22,7 @@
 //! serverbeslissing.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -30,12 +31,14 @@ use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
 use uuid::Uuid;
 
+use regelrecht_corpus::backend::EditorUser;
 use regelrecht_pipeline::tasks::{self, BlobKind, Task, TaskStatus};
 
 use crate::accounts::AccountRecord;
-use crate::corpus_handlers::{self, SavePrInfo};
-use crate::credentials::TrajectCredentials;
+use crate::corpus_handlers::{self, SavePrInfo, TrajectLawWrite};
+use crate::credentials::{TrajectCredentials, WriteAuthorization};
 use crate::state::AppState;
+use crate::traject_corpus::TrajectCorpus;
 
 fn get_pool(state: &AppState) -> Result<&sqlx::PgPool, (StatusCode, String)> {
     state.pool.as_ref().ok_or((
@@ -203,9 +206,13 @@ struct Accepted {
 /// 3. Niets overnemen schrijft niets — geen lege commit. De taken gaan wel
 ///    dicht.
 ///
-/// De `If-Match`-header hoort de ETag te dragen van de wet zoals de beoordelaar
-/// hem zag. Dat is meteen de enige staleness-bepaling die deze flow nog kent:
-/// één schrijfmoment, één controle.
+/// De `If-Match`-header draagt de ETag van de wet zoals de beoordelaar hem
+/// zag. Dat is meteen de enige staleness-bepaling die deze flow nog kent: één
+/// schrijfmoment, één controle. Hij is daarom **verplicht** zodra er iets
+/// overgenomen wordt — de permissieve blinde write die de gewone PUT om
+/// historische redenen toestaat, zou hier de enige controle wegnemen die er
+/// nog is. Verwerken zonder overnemen schrijft niets en vraagt er dus ook niet
+/// om.
 pub async fn apply(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -322,6 +329,20 @@ pub async fn apply(
     let accepted_count = accepted.len();
     let total = open.len();
 
+    // De schrijfactie helemaal klaarzetten *voordat* de taak-transactie
+    // opengaat. Zie [`PreparedWrite`]: elke stap eronder leent zelf een
+    // verbinding uit dezelfde pool, en de write-lock op de backend hoort in
+    // dezelfde volgorde genomen te worden als `save_law` hem neemt.
+    //
+    // Alleen wanneer er iets overgenomen wordt: "niets overnemen" schrijft
+    // niet, en hoeft dus ook geen schrijfrecht, geen GitHub-koppeling en geen
+    // `If-Match`.
+    let prepared = if accepted.is_empty() {
+        None
+    } else {
+        Some(prepare_write(&state, &account, &session, &headers, &traject_ref, &law_id).await?)
+    };
+
     // --- taken dicht + schrijven, of terugrollen -------------------------
     let mut tx = pool.begin().await.map_err(db_error)?;
     let closed = tasks::resolve_tasks(&mut *tx, &approved_ids, account.id, TaskStatus::Approved)
@@ -338,29 +359,18 @@ pub async fn apply(
         ));
     }
 
-    let written = if accepted.is_empty() {
+    let written = match prepared {
         // Niets overnemen: de wet blijft zoals hij is. Een commit die niets
         // verandert zou het traject-log vervuilen met een gebeurtenis die
         // alleen in de takenlijst thuishoort.
-        None
-    } else {
-        match write_accepted(
-            &state,
-            &account,
-            &session,
-            &headers,
-            &traject_ref,
-            &law_id,
-            &accepted,
-            whole_law,
-            total,
-        )
-        .await
-        {
-            Ok(written) => Some(written),
-            Err(e) => {
-                let _ = tx.rollback().await;
-                return Err(e);
+        None => None,
+        Some(prepared) => {
+            match write_accepted(prepared, &law_id, &accepted, whole_law, total).await {
+                Ok(written) => Some(written),
+                Err(e) => {
+                    let _ = tx.rollback().await;
+                    return Err(e);
+                }
             }
         }
     };
@@ -451,18 +461,53 @@ fn article_from_proposal(proposal: &str, number: &str) -> Result<String, (Status
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn write_accepted(
+/// Alles wat de schrijfactie nodig heeft, opgehaald *voordat* de
+/// taak-transactie opengaat.
+///
+/// Waarom vooraf, en niet gewoon binnen de transactie: elk van die stappen
+/// leent zelf een verbinding uit dezelfde pool waar de transactie er al een
+/// van vasthoudt (de traject-lookup, de sessie-store, de feature-flag). Dat
+/// binnen de transactie doen laat één verzoek op twee verbindingen tegelijk
+/// wachten, en de pool telt er vijf — een handvol gelijktijdige verwerkingen
+/// wacht dan op zichzelf, met een schrijfactie naar GitHub als duur van het
+/// venster.
+///
+/// En het houdt de slotvolgorde gelijk aan die van [`corpus_handlers::save_law`]:
+/// eerst de write-lock op de backend, dan de database. Andersom (transactie
+/// eerst, dan de lock) staan de twee schrijfpaden precies omgekeerd in de rij
+/// en kunnen ze elkaar vasthouden.
+///
+/// Wat er ná dit punt nog in de transactie gebeurt raakt alleen `tasks` en de
+/// git-backend.
+struct PreparedWrite {
+    traject: Arc<TrajectCorpus>,
+    write: TrajectLawWrite,
+    auth: WriteAuthorization,
+    author: Option<EditorUser>,
+    relative_path: std::path::PathBuf,
+    /// De ETag van de wet zoals de beoordelaar hem zag. Verplicht: dit is het
+    /// enige moment waarop deze flow nog op verouderdheid controleert, dus
+    /// zonder `If-Match` zou het verwerken een blinde overschrijving zijn.
+    if_match: String,
+}
+
+async fn prepare_write(
     state: &AppState,
     account: &AccountRecord,
     session: &Session,
     headers: &HeaderMap,
     traject_ref: &str,
     law_id: &str,
-    accepted: &[Accepted],
-    whole_law: bool,
-    total: usize,
-) -> Result<corpus_handlers::WrittenLaw, (StatusCode, String)> {
+) -> Result<PreparedWrite, (StatusCode, String)> {
+    // Niet 428: die code is editor-breed gereserveerd voor de
+    // GitHub-koppelflow (zie `frontend/src/lib/apiAuthGuard.js`) en zou de
+    // beoordelaar naar een koppelscherm sturen voor iets wat een herlading is.
+    let if_match = corpus_handlers::extract_if_match(headers).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Verwerken vraagt om de versie van de wet zoals je hem zag. Herlaad de pagina en \
+         beoordeel de verrijking opnieuw."
+            .to_string(),
+    ))?;
     let author = Some(corpus_handlers::require_editor_user(session).await?);
     let traject =
         corpus_handlers::require_traject_corpus_from_ref(state, session, traject_ref).await?;
@@ -471,6 +516,31 @@ async fn write_accepted(
         .for_write(&**write.backend, write.write_source_writable)
         .await?;
     let relative_path = std::path::PathBuf::from(&write.law.relative_path);
+    Ok(PreparedWrite {
+        traject,
+        write,
+        auth,
+        author,
+        relative_path,
+        if_match,
+    })
+}
+
+async fn write_accepted(
+    prepared: PreparedWrite,
+    law_id: &str,
+    accepted: &[Accepted],
+    whole_law: bool,
+    total: usize,
+) -> Result<corpus_handlers::WrittenLaw, (StatusCode, String)> {
+    let PreparedWrite {
+        traject,
+        write,
+        auth,
+        author,
+        relative_path,
+        if_match,
+    } = prepared;
     let message = commit_message(law_id, accepted.len(), total, whole_law);
 
     corpus_handlers::write_composed_law(
@@ -480,7 +550,7 @@ async fn write_accepted(
         &relative_path,
         law_id,
         author,
-        corpus_handlers::extract_if_match(headers),
+        Some(if_match),
         true,
         |current| {
             if whole_law {
@@ -512,11 +582,10 @@ fn commit_message(law_id: &str, accepted: usize, total: usize, whole_law: bool) 
     if whole_law {
         return format!("Verrijking verwerkt: hele wet overgenomen in {law_id}");
     }
-    let artikelen = if accepted == 1 {
-        "artikel"
-    } else {
-        "artikelen"
-    };
+    // Het zelfstandig naamwoord hoort bij het getal dat er direct voor staat -
+    // het totaal, niet het aantal overgenomen. "1 van de 4 artikel" leest als
+    // een schrijffout in een commit-log dat je later terugleest.
+    let artikelen = if total == 1 { "artikel" } else { "artikelen" };
     format!("Verrijking verwerkt: {accepted} van de {total} {artikelen} overgenomen in {law_id}")
 }
 
@@ -675,9 +744,15 @@ mod tests {
             commit_message("test_wet", 3, 7, false),
             "Verrijking verwerkt: 3 van de 7 artikelen overgenomen in test_wet"
         );
+        // Het meervoud volgt het totaal, niet het aantal overgenomen: "1 van
+        // de 4 artikel" zou een schrijffout in het log zijn.
         assert_eq!(
             commit_message("test_wet", 1, 4, false),
-            "Verrijking verwerkt: 1 van de 4 artikel overgenomen in test_wet"
+            "Verrijking verwerkt: 1 van de 4 artikelen overgenomen in test_wet"
+        );
+        assert_eq!(
+            commit_message("test_wet", 0, 1, false),
+            "Verrijking verwerkt: 0 van de 1 artikel overgenomen in test_wet"
         );
         assert_eq!(
             commit_message("test_wet", 1, 1, true),
