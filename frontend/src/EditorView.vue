@@ -1906,7 +1906,7 @@ async function enrichLaw() {
     } else {
       enrichFeedback.value = {
         variant: 'success',
-        text: 'Verrijking gestart - je krijgt een taak zodra het resultaat klaarstaat.',
+        text: 'Verrijking van de hele wet gestart - je krijgt een taak per gewijzigd artikel zodra het resultaat klaarstaat.',
       };
     }
   } catch (e) {
@@ -2803,7 +2803,7 @@ async function handleActionSave() {
                     v-if="canEnrichLaw && isEnrichPane(view) && hasMachineReadable"
                     slot="overflow"
                     icon="ai"
-                    text="Genereer nieuw voorstel"
+                    text="Verrijk deze wet opnieuw"
                     @select="enrichLaw"
                   ></nldd-menu-item>
                 </nldd-toolbar>

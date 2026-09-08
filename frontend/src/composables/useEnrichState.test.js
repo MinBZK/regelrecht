@@ -117,8 +117,8 @@ describe('useEnrichState', () => {
   // De takenlijst is account-breed. Een open taak voor dezelfde wet in een
   // ander traject (of in een traject dat inmiddels verwijderd is, waarvan de
   // taak bleef staan) mag hier geen voorstel melden: de "Beoordelen"-knop zou
-  // naar dat andere traject navigeren en de "Genereer een voorstel"-knop van
-  // het actieve traject verdringen.
+  // naar dat andere traject navigeren en de "Verrijk deze wet"-knop van het
+  // actieve traject verdringen.
   it('negeert taken van een ander traject', async () => {
     apiFetch.mockResolvedValue(
       tasksResponse({
@@ -159,7 +159,7 @@ describe('useEnrichState', () => {
 
   // `running` is net zo account-breed als de takenlijst, terwijl de 409 op een
   // tweede aanvraag per (wet, traject) geldt. Een verrijking in traject A mag
-  // hier dus niet "bezig" melden en de "Genereer een voorstel"-knop verbergen.
+  // hier dus niet "bezig" melden en de "Verrijk deze wet"-knop verbergen.
   it('negeert een lopende verrijking van een ander traject', async () => {
     apiFetch.mockResolvedValue(
       tasksResponse({ running: [runningEnrich({ traject_ref: 'ander-traject-9f8e7d6c' })] }),

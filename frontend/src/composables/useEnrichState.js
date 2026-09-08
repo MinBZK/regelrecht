@@ -7,7 +7,7 @@
  * tonen en dus hetzelfde moeten melden. Die blokken stonden regel-voor-regel
  * dubbel en liepen uit elkaar: de ene helft kreeg wél een refresh van de
  * gedeelde takenlijst en de andere niet, waardoor de editor bij een deeplink
- * "Genereer een voorstel" aanbood terwijl er al een voorstel klaarlag.
+ * "Verrijk deze wet" aanbood terwijl er al een voorstel klaarlag.
  *
  * Bewust op useTaskActions gebouwd en niet op useTasks: dit is de niet-pollende
  * helft. Een view die een wet toont mag de 30s-poll van de takenlijst niet
@@ -47,8 +47,8 @@ export function useEnrichState({ trajectRef, lawId, articleNumber, reviewActive 
   // Ook hier op traject matchen: `running` is net als de takenlijst
   // account-breed, terwijl de 409 per (wet, traject) geldt
   // (`idx_unique_active_enrich_job`). Een verrijking die in traject A loopt
-  // zette de pane in traject B anders op "bezig" en verborg daar de "Genereer
-  // een voorstel"-knop voor een aanvraag die gewoon gehonoreerd zou worden.
+  // zette de pane in traject B anders op "bezig" en verborg daar de "Verrijk
+  // deze wet"-knop voor een aanvraag die gewoon gehonoreerd zou worden.
   const isEnriching = computed(() => {
     const traject = toValue(trajectRef);
     if (!traject) return false;
@@ -76,7 +76,7 @@ export function useEnrichState({ trajectRef, lawId, articleNumber, reviewActive 
   // Ook op traject matchen, niet alleen op wet: de takenlijst is account-breed
   // en dezelfde wet leeft in meerdere trajecten. Een open taak uit traject A
   // kaapte anders de pane in traject B - inclusief de "Beoordeel voorstel"-knop,
-  // die dan naar A navigeert en de "Genereer een voorstel"-knop van B verdringt.
+  // die dan naar A navigeert en de "Verrijk deze wet"-knop van B verdringt.
   // Zonder actief traject (globale corpus-weergave) matcht er dus niets: een
   // voorstel hoort bij een traject en valt daarbuiten niet te beoordelen.
   //
