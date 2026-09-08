@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+// De echte app-router, alleen voor `resolve` in de router-stub verderop: de
+// href van het Beoordelen-item hoort uit de route-definities van de app te
+// komen, niet uit een handgemaakte url.
+import appRouter from '../router.js';
 
 // nldd-sheet compileert tot een kaal custom element; de details-sheet stuurt
 // het imperatief aan met show()/hide(). Zelfde stub als MobileTrajectSheet.test.js.
@@ -15,9 +19,14 @@ beforeAll(() => {
 });
 
 // Route useTasks.js's network leg through a controllable spy - same pattern
-// as useTasks.test.js.
+// as useTasks.test.js. Only apiFetch is replaced; the rest of the package
+// stays real, because the app router (imported above) pulls useAuth from it
+// through AppShell.
 const apiFetch = vi.fn();
-vi.mock('@regelrecht/frontend-shared', () => ({ apiFetch: (...a) => apiFetch(...a) }));
+vi.mock('@regelrecht/frontend-shared', async (importOriginal) => ({
+  ...(await importOriginal()),
+  apiFetch: (...a) => apiFetch(...a),
+}));
 
 // De pane vertaalt law_ids naar weergavenamen via useCorpusLaws; dat is de
 // tweede netwerkpoot (zelfde mock-vorm als useCorpusLaws.test.js).
@@ -27,11 +36,15 @@ vi.mock('../lib/apiFetch.js', () => ({
   apiFetch: (...a) => apiFetch(...a),
 }));
 
-// The component navigates on "Beoordelen" via vue-router; stub it so the
+// The component navigates on "Beoordelen" via vue-router; stub `push` so the
 // pane mounts without a real router (route-building itself is verified
-// against the real router in ../lib/taskReview.test.js).
+// against the real router in ../lib/taskReview.test.js). `resolve` is the real
+// one, so the item's href is the url the app would produce.
 const pushMock = vi.fn();
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: pushMock }) }));
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useRouter: () => ({ push: pushMock, resolve: (target) => appRouter.resolve(target) }),
+}));
 
 const DOC_TASK = {
   id: 't5',
@@ -102,10 +115,32 @@ describe('TasksListPane', () => {
   function itemLabels(wrapper) {
     return menuItems(wrapper).map((i) => i.attributes('text'));
   }
-  async function selectItem(wrapper, text) {
+  function findItem(wrapper, text) {
     const item = menuItems(wrapper).find((i) => i.attributes('text') === text);
     if (!item) throw new Error(`Geen menu-item "${text}" - wel: ${itemLabels(wrapper).join(', ')}`);
-    await item.trigger('select');
+    return item;
+  }
+  async function selectItem(wrapper, text) {
+    await findItem(wrapper, text).trigger('select');
+  }
+
+  // Een echte klik op een nldd-menu-item loopt in deze volgorde: capture-fase
+  // op het host-element, dan de click-handler ín het item (die `select` vuurt,
+  // composed + bubbles), dan de bubble-fase op het host-element. Hier is het
+  // item een onbekend element zonder shadow root (het ontwerpsysteem wordt in
+  // deze test niet geladen), dus staat dat "binnenwerk" als tijdelijke
+  // kindnode die het select-event vuurt - alleen zo loopt het select-pad écht
+  // tussen beide click-fases door.
+  function clickItem(item, init = {}) {
+    const inner = document.createElement('span');
+    item.element.appendChild(inner);
+    inner.addEventListener('click', () => {
+      inner.dispatchEvent(new CustomEvent('select', { bubbles: true, composed: true }));
+    });
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, ...init });
+    inner.dispatchEvent(event);
+    inner.remove();
+    return event;
   }
 
   it('geeft elke rij één Acties-knop in plaats van losse knoppen', async () => {
@@ -212,10 +247,79 @@ describe('TasksListPane', () => {
     const wrapper = await mountPane([
       { id: 't3', task_type: 'job_review', title: 'Verrijking beoordelen: ???', payload: {} },
     ]);
-    const item = menuItems(wrapper).find((i) => i.attributes('text') === 'Beoordelen');
+    const item = findItem(wrapper, 'Beoordelen');
     expect(item.attributes('disabled')).toBeDefined();
+    // Geen bruikbare href: zonder bestemming is er niets om naartoe te linken,
+    // dus houdt het ontwerpsysteem het item op de <button>-tak en ontstaat er
+    // geen kapotte link. Niet `toBeUndefined()`: in deze test is het item een
+    // onbekend element en verdwijnt het attribuut, maar in de app reflecteert
+    // een opgewaardeerde nldd-menu-item zijn lege standaardwaarde terug als
+    // `href=""`. Leeg óf afwezig is wat telt - beide vallen op de button-tak.
+    expect(item.attributes('href')).toBeFalsy();
     await item.trigger('select');
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  // --- Beoordelen is een echte link ---
+
+  it('geeft Beoordelen de href van de editor-route, met het artikel als de taak er een noemt', async () => {
+    const wrapper = await mountPane([LAW_TASK]);
+    expect(findItem(wrapper, 'Beoordelen').attributes('href')).toBe(
+      '/trajecten/traject-abcd1234/editor/test_wet?task=t2',
+    );
+
+    const withArticle = await mountPane([
+      { ...LAW_TASK, id: 't2a', payload: { ...LAW_TASK.payload, article: '2' } },
+    ]);
+    expect(findItem(withArticle, 'Beoordelen').attributes('href')).toBe(
+      '/trajecten/traject-abcd1234/editor/test_wet/2?task=t2a',
+    );
+  });
+
+  it('geeft Beoordelen op een document-review de href van de werkdocumenten-route', async () => {
+    const wrapper = await mountPane([DOC_TASK]);
+    expect(findItem(wrapper, 'Beoordelen').attributes('href')).toBe(
+      '/trajecten/traject-abcd1234/werkdocumenten/bijv-rapport.md?task=t5',
+    );
+  });
+
+  it('houdt een gewone klik op Beoordelen bij de router - geen page load', async () => {
+    const wrapper = await mountPane([LAW_TASK]);
+    const event = clickItem(findItem(wrapper, 'Beoordelen'));
+    // preventDefault: anders volgt de browser de href en herlaadt de hele app.
+    expect(event.defaultPrevented).toBe(true);
+    expect(pushMock).toHaveBeenCalledTimes(1);
+    expect(pushMock).toHaveBeenCalledWith({
+      name: 'editor-traject',
+      params: { trajectRef: 'traject-abcd1234', lawId: 'test_wet' },
+      query: { task: 't2' },
+    });
+  });
+
+  it('laat een ctrl/cmd/shift-klik en een middenklik aan de browser - navigeert niet zelf', async () => {
+    const wrapper = await mountPane([LAW_TASK]);
+    for (const init of [
+      { ctrlKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      // Middenklik vuurt in de praktijk auxclick, maar een click met button=1
+      // hoort net zo goed niet door ons afgevangen te worden.
+      { button: 1 },
+    ]) {
+      const event = clickItem(findItem(wrapper, 'Beoordelen'), init);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    // Ook het select-event dat het menu-item bij zo'n klik meestuurt mag niet
+    // alsnog het huidige tabblad meenemen.
+    expect(pushMock).not.toHaveBeenCalled();
+
+    // En het overslaan geldt alleen voor die klik: een select zónder klik
+    // erachter (het menu activeert een item programmatisch als je op het ene
+    // item indrukt en op het andere loslaat) moet daarna gewoon weer
+    // navigeren. Zonder de terugzetter zou dat pad hierna dood blijven.
+    await selectItem(wrapper, 'Beoordelen');
+    expect(pushMock).toHaveBeenCalledTimes(1);
   });
 
   // --- Probeer opnieuw: één bedoeling, twee mechanieken ---
