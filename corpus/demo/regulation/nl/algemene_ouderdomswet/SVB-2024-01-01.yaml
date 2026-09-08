@@ -273,7 +273,6 @@ articles:
               explanation: >-
                 Artikel 13 lid 1 AOW: pensioen verminderd met 2% voor elk niet-verzekerd jaar
           - output: pensioenbedrag
-        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
               operation: IF

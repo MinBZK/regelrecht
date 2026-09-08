@@ -664,7 +664,6 @@ articles:
                       - $inkomensafhankelijke_combinatiekorting_max
               default: 0
           - output: totale_heffingskortingen
-        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
               operation: IF
@@ -689,7 +688,6 @@ articles:
                     - $arbeidskorting
                     - $inkomensafhankelijke_combinatiekorting
           - output: totale_belastingschuld
-        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
               operation: IF

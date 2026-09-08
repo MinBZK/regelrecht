@@ -464,7 +464,6 @@ articles:
               explanation: >-
                 Artikel 10 Pensioenwet: berekening ouderdomspensioen afhankelijk van type regeling
           - output: pensioen_uitkering_maandelijks
-        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
               operation: IF

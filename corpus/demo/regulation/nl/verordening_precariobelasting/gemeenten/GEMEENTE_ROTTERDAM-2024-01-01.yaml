@@ -74,9 +74,15 @@ articles:
           - name: is_belastingplichtig
             type: boolean
           - name: belasting_per_jaar
-            type: number
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
           - name: tarief_per_m2
-            type: number
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
           - name: heffingsmaatstaf_m2
             type: number
         actions:

@@ -320,7 +320,6 @@ articles:
                 jci1.3:c:BWBR0022751&artikel=2&lid=6&z=2025-01-01&g=2025-01-01
               explanation: Partnerstatus bepaalt of ALO-kop van toepassing is
           - output: kindgebonden_budget_jaar
-        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
               operation: IF

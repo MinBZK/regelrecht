@@ -188,7 +188,6 @@ articles:
           - output: is_verzekerde_zorgtoeslag
             value: true
           - output: hoogte_toeslag
-        # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
               operation: IF
