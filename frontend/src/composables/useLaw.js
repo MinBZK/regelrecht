@@ -439,15 +439,20 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
   }
 
   /**
-   * Herlaad de open wet van de server, langs de cache heen.
+   * Haal de open wet opnieuw op bij de server, langs de cache heen.
    *
-   * Voor schrijfacties waarvan de backend de eindstand zelf samenstelt en de
-   * client die dus niet kent - het verwerken van een verrijking splicet de
-   * overgenomen artikelen server-side in de wet. `saveLaw` kan zijn eigen body
-   * terugleggen, hier is er geen body om terug te leggen.
+   * Na een gewone opslag weet de client wat er in de wet staat: hij stuurde de
+   * YAML zelf mee, dus `saveLaw` legt die body terug in `law`/`rawYaml` en in
+   * de cache. Bij het verwerken van een verrijking stuurt de client geen wet,
+   * maar alleen oordelen ("artikel 5 wel, artikel 7 niet"); de server voegt de
+   * overgenomen artikelen samen tot de nieuwe wet. Die uitkomst heeft de client
+   * nooit gezien en kan hij dus niet terugleggen - hij moet hem ophalen.
    *
-   * Zelfde stale-guard als `saveLaw`: is de gebruiker tijdens de fetch naar een
-   * andere wet of een ander traject gesprongen, dan wordt er niets overschreven.
+   * Langs de cache heen, want daarin staat de wet van vóór het verwerken; de
+   * gewone loader zou juist die verouderde versie teruggeven.
+   *
+   * Springt de gebruiker tijdens het ophalen naar een andere wet of een ander
+   * traject, dan wordt er niets overschreven - zelfde guard als `saveLaw`.
    *
    * @returns {Promise<boolean>} of deze aanroep de state daadwerkelijk bijwerkte.
    */
