@@ -5,7 +5,13 @@
   "type": "module",
   "description": "Shared frontend primitives (auth, color scheme, API fetch) for the regelrecht Vue frontends",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./gherkin": "./src/gherkin/index.js",
+    "./gherkin/*": "./src/gherkin/*"
+  },
+  "dependencies": {
+    "@cucumber/gherkin": "^42.0.1",
+    "@cucumber/messages": "^34.2.1"
   },
   "scripts": {
     "test": "vitest run",

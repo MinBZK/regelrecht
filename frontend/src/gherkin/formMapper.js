@@ -58,6 +58,17 @@ function extractFragment(entry, match, step) {
         headers: step.dataTable?.[0] || [],
         rows: step.dataTable?.slice(1) || [],
       };
+    case 'set_data_source_for_law':
+      // Same shape plus the law the source is bound to; the builder shows it
+      // as a data source and writes the scoped step back out.
+      return {
+        type: 'dataSource',
+        sourceName: match[1],
+        keyField: match[2],
+        lawId: match[3],
+        headers: step.dataTable?.[0] || [],
+        rows: step.dataTable?.slice(1) || [],
+      };
     case 'evaluate':
       return { type: 'execution', outputName: match[1], lawId: match[2] };
     case 'assert_succeeds':
@@ -188,6 +199,7 @@ function classifySteps(steps) {
         setup.dataSources.push({
           sourceName: classified.sourceName,
           keyField: classified.keyField,
+          ...(classified.lawId ? { lawId: classified.lawId } : {}),
           headers: classified.headers,
           rows: classified.rows,
         });
@@ -327,7 +339,7 @@ function parameterValuesEqual(a, b) {
 /** Deep equality check for two state-format data sources. */
 function dataSourcesEqual(a, b) {
   if (!a || !b) return false;
-  if (a.sourceName !== b.sourceName || a.keyField !== b.keyField) return false;
+  if (a.sourceName !== b.sourceName || a.keyField !== b.keyField || (a.lawId ?? null) !== (b.lawId ?? null)) return false;
   if ((a.headers || []).length !== (b.headers || []).length) return false;
   for (let i = 0; i < a.headers.length; i++) {
     if (a.headers[i] !== b.headers[i]) return false;
@@ -545,7 +557,11 @@ function writeSetupSteps(lines, setup, indent) {
 
   for (const ds of setup.dataSources || []) {
     if (ds.headers.length === 0) continue;
-    lines.push(`${indent}${KW.set_data_source} ${TPL.set_data_source([ds.sourceName, ds.keyField])}`);
+    lines.push(
+      ds.lawId
+        ? `${indent}${KW.set_data_source_for_law} ${TPL.set_data_source_for_law([ds.sourceName, ds.keyField, ds.lawId])}`
+        : `${indent}${KW.set_data_source} ${TPL.set_data_source([ds.sourceName, ds.keyField])}`,
+    );
 
     // Header
     lines.push(`${indent}  | ${ds.headers.join(' | ')} |`);

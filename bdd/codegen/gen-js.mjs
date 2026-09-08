@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Generate frontend/src/gherkin/grammar.generated.js from bdd/grammar.yaml.
+// Generate packages/frontend-shared/src/gherkin/grammar.generated.js from bdd/grammar.yaml.
 //
 // Single source of truth: bdd/grammar.yaml. Never hand-edit the generated file.
 // Run via `just bdd-codegen`, or automatically through the frontend
@@ -82,6 +82,6 @@ ${entries.join(',\n')},
 ];
 `;
 
-const dest = join(root, 'frontend', 'src', 'gherkin', 'grammar.generated.js');
+const dest = join(root, 'packages', 'frontend-shared', 'src', 'gherkin', 'grammar.generated.js');
 writeFileSync(dest, out);
 console.log(`wrote ${dest} (${grammar.steps.length} steps)`);
