@@ -61,7 +61,7 @@ articles:
             required: true
           - name: terras_locatie
             type: string
-            required: true
+            required: false
             type_spec:
               enum:
                 - voor
@@ -73,19 +73,19 @@ articles:
                 achter: Achter het pand
           - name: terras_oppervlakte
             type: number
-            required: true
+            required: false
             type_spec:
               precision: 2
               min: 0
           - name: obstakelvrije_ruimte
             type: number
-            required: true
+            required: false
             type_spec:
               precision: 2
               min: 0
           - name: seizoen
             type: string
-            required: true
+            required: false
             type_spec:
               enum:
                 - jaarrond
@@ -97,7 +97,7 @@ articles:
                 winter: Winterseizoen (1 november - 1 maart)
           - name: gewenste_openingstijd
             type: string
-            required: true
+            required: false
             type_spec:
               enum:
                 - 6
@@ -129,7 +129,7 @@ articles:
                 18: 18:00
           - name: gewenste_sluitingstijd_doordeweeks
             type: string
-            required: true
+            required: false
             type_spec:
               enum:
                 - 13
@@ -161,7 +161,7 @@ articles:
                 1: 01:00 (maximum)
           - name: gewenste_sluitingstijd_weekend
             type: string
-            required: true
+            required: false
             type_spec:
               enum:
                 - 13

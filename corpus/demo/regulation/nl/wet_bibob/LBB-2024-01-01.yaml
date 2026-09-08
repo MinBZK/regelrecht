@@ -64,6 +64,7 @@ articles:
             type: string
           - name: bsn
             type: string
+            required: false
           - name: beschikking_type
             type: string
             required: true

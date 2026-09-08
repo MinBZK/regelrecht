@@ -133,6 +133,7 @@ articles:
             required: true
           - name: heeft_beeindigingsplan
             type: boolean
+            required: false
           - name: financiele_zekerheid_bedrag
             type: amount
             required: true
