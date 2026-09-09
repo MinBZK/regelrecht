@@ -9,21 +9,30 @@
  *
  * The matrix is a real <table>: fases are columns, disciplines are rows, and a
  * screen reader needs that relationship to place a card. CSS gives it back the
- * grid layout (see roadmap.css).
+ * grid layout (see roadmap.css). Disciplines are further grouped into
+ * swimlanes (roadmap-config.json), rendered as a narrow vertical bar to the
+ * left of the row-header column, one per swimlane, spanning down over all of
+ * its rows; see `matrixRijen` below.
+ *
+ * The five fases (Fase I..V) are the Wat/Wat/Hoe/Waar/Garantie maturity
+ * staging; each fase's ondertitel names both that stage and its theme (e.g.
+ * "Wat · Fundering en definitie"). An earlier version of this page also cut
+ * the Wat-fase into its own nested time-subkolommen (nu/half-jaar/later-ooit)
+ * — a second axis stacked inside the first, which read as two unrelated
+ * dimensions in one matrix and was dropped; see the discussion on PR #1356.
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
+import RoadmapMatrixCel from '~/components/RoadmapMatrixCel.astro';
 import {
   fases,
-  disciplines,
+  swimlanes,
+  getDiscipline,
   FILTER_OPTIES,
-  GEEN_CATEGORIE,
-  getPrioriteit,
-  getCategorie,
-  getCapability,
   werkpakkettenInCel,
   assertReferencesResolve,
   assertFilterRules,
+  type Discipline,
 } from '~/lib/roadmap';
 import '~/styles/roadmap.css';
 // The stylesheet's own text, so the filter check below can read the rules it
@@ -37,6 +46,51 @@ const werkpakketten = await getCollection('werkpakketten');
 assertReferencesResolve(werkpakketten);
 // Fails the build when a filter option has no rule to show its cards again.
 assertFilterRules(roadmapCss);
+
+/*
+ * One row per discipline, grouped under its swimlane —
+ * assertSwimlanesMatchDisciplines() (lib/roadmap.ts) guarantees every
+ * discipline is in exactly one, so this partitions all of them without
+ * dropping or duplicating a row. The first row of each swimlane carries
+ * `bar`: the swimlane's name plus how many rows (including its own) belong
+ * to it, so the template can draw one vertical cell there spanning down —
+ * the same rowspan-via-inline-grid-style technique the header uses for its
+ * fase columns. Every later row of that swimlane leaves `bar` undefined; the
+ * grid's own auto-placement skips the column there, the same way it already
+ * skips columns under a rowspan header.
+ *
+ * `bar.zichtbaar` is false when a swimlane has exactly one discipline whose
+ * name is identical to the swimlane's own — "Transitie-ondersteuning" and
+ * "Samenwerking met andere initiatieven" both name themselves twice today.
+ * The vertical bar and the row-header would then print the same word twice,
+ * once sideways, right next to each other. The `<th>` still renders (the
+ * accessible name stays, and the coloured/bordered bar keeps running the
+ * full height of the matrix, uninterrupted), only its text is visually
+ * hidden — `.rr-sr-only` in roadmap.css. Give the discipline a name distinct
+ * from its swimlane's and both show.
+ */
+interface MatrixRow {
+  discipline: Discipline;
+  label: string;
+  bar?: { naam: string; rowspan: number; zichtbaar: boolean };
+}
+const matrixRijen: MatrixRow[] = swimlanes.flatMap((lane) => {
+  const laneDisciplines = lane.disciplineIds.map((id) => getDiscipline(id)!);
+  return laneDisciplines.map((discipline, index) => ({
+    discipline,
+    label: discipline.naam,
+    bar:
+      index === 0
+        ? {
+            naam: lane.naam,
+            rowspan: laneDisciplines.length,
+            zichtbaar: !(
+              laneDisciplines.length === 1 && lane.naam === discipline.naam
+            ),
+          }
+        : undefined,
+  }));
+});
 
 const pathname = '/roadmap';
 ---
@@ -97,18 +151,26 @@ const pathname = '/roadmap';
       >
         <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
           <caption class="rr-matrix__caption">
-            Werkpakketten per fase (kolommen) en discipline (rijen).
+            Werkpakketten per fase (kolommen) en discipline (rijen). De vijf
+            fases zijn Wat (in twee stappen), Hoe, Waar en Garantie. De
+            disciplines zijn gegroepeerd in vier swimlanes: Scope RegelRecht,
+            Onderzoek, Samenwerking met andere initiatieven, en
+            Transitie-ondersteuning.
           </caption>
           <thead>
+            {/* Corner spans both the swimlane-bar column and the row-header
+                column, so the fase headers start at the same column as the
+                cards below them. */}
             <tr>
-              <td class="rr-matrix__corner"></td>
+              <td
+                class="rr-matrix__corner"
+                colspan={2}
+                style="grid-column: span 2"
+              ></td>
               {
                 fases.map((fase) => (
                   <th scope="col" class="rr-matrix__header rr-matrix__header--fase">
                     <nldd-container gap="4" horizontal-alignment="center">
-                      <nldd-text size="xs" weight="medium" color="secondary">
-                        Fase {fase.volgnummer}
-                      </nldd-text>
                       <nldd-text size="md" weight="bold">{fase.naam}</nldd-text>
                       {fase.ondertitel && (
                         <nldd-text size="xs" color="secondary">
@@ -123,116 +185,50 @@ const pathname = '/roadmap';
           </thead>
           <tbody>
             {
-              disciplines.map((discipline) => (
-                <tr>
-                  <th
-                    scope="row"
-                    class="rr-matrix__header rr-matrix__header--discipline"
-                  >
-                    <nldd-container gap="4">
-                      <nldd-text size="md" weight="bold">
-                        {discipline.naam}
-                      </nldd-text>
-                      {discipline.ondertitel && (
-                        <nldd-text size="xs" color="secondary">
-                          {discipline.ondertitel}
+              matrixRijen.map((rij) => (
+                  <tr>
+                    {rij.bar && (
+                      <th
+                        scope="rowgroup"
+                        rowspan={rij.bar.rowspan}
+                        style={`grid-row: span ${rij.bar.rowspan}`}
+                        class="rr-matrix__header rr-matrix__header--swimlanebalk"
+                      >
+                        <nldd-text
+                          size="sm"
+                          weight="bold"
+                          class={rij.bar.zichtbaar ? undefined : 'rr-sr-only'}
+                        >
+                          {rij.bar.naam}
                         </nldd-text>
-                      )}
-                    </nldd-container>
-                  </th>
-                  {
-                    fases.map((fase) => {
-                      const cel = werkpakkettenInCel(
-                        werkpakketten,
-                        fase.id,
-                        discipline.id,
-                      );
-                      return (
-                        <td class="rr-matrix__cell">
-                          <nldd-container gap="8">
-                            {cel.map((wp) => {
-                              const prioriteit = getPrioriteit(wp.data.prioriteit);
-                              const categorie = getCategorie(wp.data.categorie);
-                              const capability = getCapability(wp.data.capability);
-                              const tags = [
-                                prioriteit && {
-                                  color: prioriteit.tagColor,
-                                  text: prioriteit.label,
-                                  label: prioriteit.label,
-                                },
-                                wp.data.omvang && {
-                                  color: 'neutral',
-                                  text: wp.data.omvang,
-                                  label: `Omvang ${wp.data.omvang}`,
-                                },
-                                categorie && {
-                                  color: 'neutral',
-                                  text: categorie.label,
-                                  label: categorie.label,
-                                },
-                                capability && {
-                                  color: 'accent',
-                                  text: capability.label.split(' ')[0],
-                                  label: capability.label,
-                                },
-                              ].filter(Boolean);
-                              return (
-                                <nldd-card
-                                  class="rr-wp-card"
-                                  href={`/roadmap/werkpakket/${wp.data.id}`}
-                                  accessible-label={[
-                                    wp.data.titel,
-                                    ...tags.map((t: any) => t.label),
-                                    ...(wp.data.rfcs.length
-                                      ? [`${wp.data.rfcs.length} RFC${wp.data.rfcs.length > 1 ? "'s" : ''}`]
-                                      : []),
-                                  ].join(', ')}
-                                  data-categorie={wp.data.categorie || GEEN_CATEGORIE}
-                                >
-                                  {/* nldd-card leaves padding to a nested
-                                      container by design; without one the
-                                      content sits flush against the border. */}
-                                  <nldd-container padding="12" gap="8">
-                                    <nldd-text size="sm" weight="medium">
-                                      {wp.data.titel}
-                                    </nldd-text>
-                                    {(tags.length > 0 || wp.data.rfcs.length > 0) && (
-                                      <nldd-container
-                                        layout="wrap"
-                                        gap="4"
-                                        vertical-alignment="center"
-                                      >
-                                        {tags.map((tag: any) => (
-                                          <nldd-tag
-                                            color={tag.color}
-                                            text={tag.text}
-                                            accessible-label={tag.label}
-                                            size="sm"
-                                          />
-                                        ))}
-                                        {/* Not a tag: the card already carries
-                                            up to four, and a fifth would make
-                                            the title compete with its own
-                                            metadata. This is a quiet count of
-                                            the design behind the werkpakket —
-                                            the detail page names them. */}
-                                        {wp.data.rfcs.length > 0 && (
-                                          <nldd-text size="xs" color="secondary">
-                                            {wp.data.rfcs.length} RFC{wp.data.rfcs.length > 1 ? "'s" : ''}
-                                          </nldd-text>
-                                        )}
-                                      </nldd-container>
-                                    )}
-                                  </nldd-container>
-                                </nldd-card>
-                              );
-                            })}
-                          </nldd-container>
-                        </td>
-                      );
-                    })
-                  }
-                </tr>
+                      </th>
+                    )}
+                    <th
+                      scope="row"
+                      class="rr-matrix__header rr-matrix__header--discipline"
+                    >
+                      <nldd-container gap="4">
+                        <nldd-text size="md" weight="bold">{rij.label}</nldd-text>
+                        {rij.discipline.ondertitel && (
+                          <nldd-text size="xs" color="secondary">
+                            {rij.discipline.ondertitel}
+                          </nldd-text>
+                        )}
+                      </nldd-container>
+                    </th>
+                    {
+                      fases.map((fase, index) => (
+                        <RoadmapMatrixCel
+                          class={index > 0 ? 'rr-matrix__cell--kolom-start' : undefined}
+                          cel={werkpakkettenInCel(
+                            werkpakketten,
+                            fase.id,
+                            rij.discipline.id,
+                          )}
+                        />
+                      ))
+                    }
+                  </tr>
               ))
             }
           </tbody>

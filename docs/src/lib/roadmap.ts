@@ -29,6 +29,19 @@ export interface Discipline {
   ondertitel: string;
 }
 
+/**
+ * A swimlane: the matrix's real grouping on the vertical axis. Disciplines
+ * are the rows the matrix draws; a swimlane says which of them belong
+ * together and in which order, top to bottom. One discipline belongs to
+ * exactly one swimlane — enforced at load time, see the check below
+ * `disciplines`.
+ */
+export interface Swimlane {
+  id: string;
+  naam: string;
+  disciplineIds: string[];
+}
+
 /** A werkpakket's frontmatter, mirroring the zod schema in content.config.ts. */
 export interface WerkpakketData {
   id: string;
@@ -191,6 +204,15 @@ const configSchema = z.object({
       }),
     )
     .min(1),
+  swimlanes: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        naam: z.string().min(1),
+        disciplineIds: z.array(z.string().min(1)).min(1),
+      }),
+    )
+    .min(1),
 });
 
 const config = configSchema.parse(configJson);
@@ -199,10 +221,57 @@ export const fases: Fase[] = [...config.fases].sort(
   (a, b) => a.volgnummer - b.volgnummer,
 );
 export const disciplines: Discipline[] = config.disciplines;
+export const swimlanes: Swimlane[] = config.swimlanes;
 
 export const getFase = (id: string) => fases.find((f) => f.id === id);
 export const getDiscipline = (id: string) =>
   disciplines.find((d) => d.id === id);
+
+/**
+ * Fail the build when swimlanes and disciplines disagree about which rows
+ * exist: a disciplineId a swimlane points at but that isn't in
+ * `disciplines`, a discipline in two swimlanes at once (it would render
+ * twice), or a discipline in none (it would silently not render at all,
+ * the same failure mode `assertReferencesResolve` guards against for
+ * werkpakketten). This runs at import time, like the zod parse above,
+ * because roadmap-config.json is static — there is no per-request state
+ * that could still make it valid.
+ */
+function assertSwimlanesMatchDisciplines(): void {
+  const disciplineIds = new Set(disciplines.map((d) => d.id));
+  const gezien = new Set<string>();
+  const problems: string[] = [];
+
+  for (const lane of swimlanes) {
+    for (const id of lane.disciplineIds) {
+      if (!disciplineIds.has(id)) {
+        problems.push(
+          `swimlane "${lane.id}" verwijst naar onbekende disciplineId "${id}"`,
+        );
+        continue;
+      }
+      if (gezien.has(id)) {
+        problems.push(`disciplineId "${id}" zit in meer dan één swimlane`);
+        continue;
+      }
+      gezien.add(id);
+    }
+  }
+
+  for (const id of disciplineIds) {
+    if (!gezien.has(id)) {
+      problems.push(`discipline "${id}" zit in geen enkele swimlane`);
+    }
+  }
+
+  if (problems.length) {
+    throw new Error(
+      `roadmap-config.json: swimlanes en disciplines komen niet overeen:\n  ${problems.join('\n  ')}`,
+    );
+  }
+}
+
+assertSwimlanesMatchDisciplines();
 
 /** Placeholder wording for fields the roadmap has not filled in yet. */
 export const NIET_BEPAALD = 'Nog niet bepaald';

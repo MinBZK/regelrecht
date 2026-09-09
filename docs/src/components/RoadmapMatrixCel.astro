@@ -1,0 +1,100 @@
+---
+/*
+ * One matrix cell: the stack of werkpakket-cards for a fase/discipline
+ * combination.
+ *
+ * Split out of index.astro so the (sizeable) card markup lives in one place
+ * instead of being inlined once per fase column in the matrix template.
+ */
+import {
+  GEEN_CATEGORIE,
+  getPrioriteit,
+  getCategorie,
+  getCapability,
+  type WerkpakketData,
+} from '~/lib/roadmap';
+
+interface Props {
+  cel: { data: WerkpakketData }[];
+  class?: string;
+}
+
+const { cel, class: className } = Astro.props;
+---
+
+<td class:list={['rr-matrix__cell', className]}>
+  <nldd-container gap="8">
+    {
+      cel.map((wp) => {
+        const prioriteit = getPrioriteit(wp.data.prioriteit);
+        const categorie = getCategorie(wp.data.categorie);
+        const capability = getCapability(wp.data.capability);
+        const tags = [
+          prioriteit && {
+            color: prioriteit.tagColor,
+            text: prioriteit.label,
+            label: prioriteit.label,
+          },
+          wp.data.omvang && {
+            color: 'neutral',
+            text: wp.data.omvang,
+            label: `Omvang ${wp.data.omvang}`,
+          },
+          categorie && {
+            color: 'neutral',
+            text: categorie.label,
+            label: categorie.label,
+          },
+          capability && {
+            color: 'accent',
+            text: capability.label.split(' ')[0],
+            label: capability.label,
+          },
+        ].filter(Boolean);
+        return (
+          <nldd-card
+            class="rr-wp-card"
+            href={`/roadmap/werkpakket/${wp.data.id}`}
+            accessible-label={[
+              wp.data.titel,
+              ...tags.map((t: any) => t.label),
+              ...(wp.data.rfcs.length
+                ? [`${wp.data.rfcs.length} RFC${wp.data.rfcs.length > 1 ? "'s" : ''}`]
+                : []),
+            ].join(', ')}
+            data-categorie={wp.data.categorie || GEEN_CATEGORIE}
+          >
+            {/* nldd-card leaves padding to a nested container by design;
+                without one the content sits flush against the border. */}
+            <nldd-container padding="12" gap="8">
+              <nldd-text size="sm" weight="medium">
+                {wp.data.titel}
+              </nldd-text>
+              {(tags.length > 0 || wp.data.rfcs.length > 0) && (
+                <nldd-container layout="wrap" gap="4" vertical-alignment="center">
+                  {tags.map((tag: any) => (
+                    <nldd-tag
+                      color={tag.color}
+                      text={tag.text}
+                      accessible-label={tag.label}
+                      size="sm"
+                    />
+                  ))}
+                  {/* Not a tag: the card already carries up to four, and a
+                      fifth would make the title compete with its own
+                      metadata. This is a quiet count of the design behind
+                      the werkpakket — the detail page names them. */}
+                  {wp.data.rfcs.length > 0 && (
+                    <nldd-text size="xs" color="secondary">
+                      {wp.data.rfcs.length} RFC{wp.data.rfcs.length > 1 ? "'s" : ''}
+                    </nldd-text>
+                  )}
+                </nldd-container>
+              )}
+            </nldd-container>
+          </nldd-card>
+        );
+      })
+    }
+  </nldd-container>
+</td>
