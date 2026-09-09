@@ -111,11 +111,40 @@ function reregister() {
   dataVersion.value += 1;
 }
 
+/**
+ * Drop persisted cases and claims whose persona no longer exists. The persona
+ * BSNs live in profiles.yaml and can change between deploys (they moved into
+ * the 999-test range once); a record that survived in localStorage from before
+ * such a change refers to data the materialiser cannot produce, so it can never
+ * be recomputed. A record is kept when either its BSN is a persona in
+ * profiles.yaml or its KvK number belongs to a configured presenter profile.
+ */
+function pruneStaleRecords(c) {
+  const knownBsns = new Set(Object.keys(c.profiles?.profiles ?? {}));
+  const knownKvks = new Set(
+    Object.values(c.config?.profiles ?? {})
+      .map((p) => p.kvk)
+      .filter(Boolean),
+  );
+  const isKnown = (rec) => knownBsns.has(String(rec.bsn)) || (rec.kvk != null && knownKvks.has(String(rec.kvk)));
+  const keptCases = state.cases.filter(isKnown);
+  const keptClaims = state.claims.filter(isKnown);
+  const droppedCases = state.cases.length - keptCases.length;
+  const droppedClaims = state.claims.length - keptClaims.length;
+  if (droppedCases === 0 && droppedClaims === 0) return;
+  state.cases = keptCases;
+  state.claims = keptClaims;
+  console.info(
+    `Demo: ${droppedCases} verouderde zaken en ${droppedClaims} verouderde correcties uit de opgeslagen staat verwijderd (persona bestaat niet meer in profiles.yaml).`,
+  );
+}
+
 async function boot() {
   if (bootPromise) return bootPromise;
   bootPromise = (async () => {
     try {
       corpus.value = markRaw(await loadCorpus());
+      pruneStaleRecords(corpus.value);
       engine.value = markRaw(await prepareEngine(corpus.value));
       reregister();
       ready.value = true;

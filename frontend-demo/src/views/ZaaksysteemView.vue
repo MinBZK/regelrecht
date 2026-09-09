@@ -50,7 +50,9 @@ function close() {
 }
 
 function personaName(bsn) {
-  return corpus.value?.profiles?.profiles?.[bsn]?.name ?? bsn;
+  // A BSN without a persona (e.g. a case persisted before profiles.yaml
+  // changed) is stated as a fact, not passed off as a name.
+  return corpus.value?.profiles?.profiles?.[bsn]?.name ?? `onbekende persoon (BSN ${bsn})`;
 }
 function lawOf(c) {
   return corpus.value?.lawById(c.lawId) ?? null;
@@ -69,14 +71,17 @@ const verified = computed(() => {
 function outputRows(c) {
   const law = lawOf(c);
   const claimed = c.claimedResult ?? {};
-  const now = verified.value?.ok ? verified.value.outputs : {};
+  // A failed recomputation has no "now" value to compare against: show the
+  // claimed values as they are and let the warning banner explain the failure.
+  const recomputed = !!verified.value?.ok;
+  const now = recomputed ? verified.value.outputs : {};
   const names = [...new Set([...Object.keys(claimed), ...Object.keys(now)])];
   return names.map((name) => ({
     name,
     spec: fieldSpec(law?.doc, name),
     claimed: claimed[name],
-    now: now[name],
-    differs: JSON.stringify(claimed[name]) !== JSON.stringify(now[name]),
+    now: recomputed ? now[name] : claimed[name],
+    differs: recomputed && JSON.stringify(claimed[name]) !== JSON.stringify(now[name]),
   }));
 }
 
@@ -192,7 +197,7 @@ function claimSpec(cl) {
 
           <nldd-container gap="4">
 
-            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Uitkomst</nldd-text><nldd-text size="xs" color="secondary">aangevraagd → nu berekend door de engine</nldd-text></nldd-container>
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Uitkomst</nldd-text><nldd-text size="xs" color="secondary">{{ verified?.ok ? 'aangevraagd → nu berekend door de engine' : 'zoals aangevraagd' }}</nldd-text></nldd-container>
 
             <nldd-list variant="box-tinted" accessible-label="Uitkomst">
               <nldd-list-item v-for="row in outputRows(selected)" :key="row.name" size="sm">
