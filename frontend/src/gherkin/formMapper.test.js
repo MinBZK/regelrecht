@@ -155,6 +155,30 @@ Feature: Param table
     ]);
   });
 
+  // RFC-036: an empty value cell is a parameter that is not passed. The runners
+  // leave it out, so the form does too; the word null is an absence and stays.
+  it('leaves a parameter with an empty cell out of the form', () => {
+    const parsed = parseFeature(`
+Feature: Blank cell
+
+  Scenario: Not filled in
+    Given the following parameters:
+      | bsn             | 999993653 |
+      | aanvraag_bedrag |           |
+      | partner_bsn     | null      |
+    When I evaluate "past_aanvraag" of "test_null_semantics_bron"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    expect(form.scenarios[0].setup.parameters).toEqual([
+      { name: 'bsn', value: 999993653 },
+      { name: 'partner_bsn', value: null },
+    ]);
+    const gherkin = formStateToGherkin(form);
+    expect(gherkin).not.toContain('aanvraag_bedrag');
+    expect(gherkin).toContain('Given parameter "partner_bsn" is "null"');
+  });
+
   it('keeps a single-row parameter table', () => {
     const parsed = parseFeature(`
 Feature: One param
@@ -384,6 +408,59 @@ Feature: Background override
 
     // Second scenario should still have no overrides
     expect(form.scenarios[1].setup.parameters).toHaveLength(0);
+  });
+
+  // RFC-036: a blank field is "not filled in", never `parameter "x" is ""`
+  // (which the Rust runner would read back as an absence, null).
+  it('drops a scenario parameter the form left blank instead of writing is ""', () => {
+    const parsed = parseFeature(`
+Feature: Blank field
+
+  Background:
+    Given parameter "bsn" is "999993653"
+
+  Scenario: Test
+    Given parameter "aanvraag_bedrag" is 250
+    Given parameter "huur" is 650
+    When I evaluate "result" of "law"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    syncEditedValues(form, 0, {
+      parameterValues: { bsn: '999993653', aanvraag_bedrag: '', huur: '700' },
+      calculationDate: null,
+    });
+
+    expect(form.scenarios[0].setup.parameters).toEqual([{ name: 'huur', value: 700 }]);
+    const gherkin = formStateToGherkin(form);
+    expect(gherkin).not.toContain('aanvraag_bedrag');
+    expect(gherkin).not.toContain('is ""');
+    expect(gherkin).toContain('Given parameter "huur" is 700');
+  });
+
+  it('never writes is "" for a background parameter the form left blank', () => {
+    const parsed = parseFeature(`
+Feature: Blank background field
+
+  Background:
+    Given parameter "bsn" is "999993653"
+    Given parameter "loon" is 30000
+
+  Scenario: Test
+    When I evaluate "result" of "law"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    syncEditedValues(form, 0, {
+      parameterValues: { bsn: '999993653', loon: '' },
+      calculationDate: null,
+    });
+
+    // There is no step that un-passes a background parameter; the background
+    // value stands and no override is written.
+    expect(form.scenarios[0].setup.parameters).toHaveLength(0);
+    expect(form.background.parameters[1].value).toBe(30000);
+    expect(formStateToGherkin(form)).not.toContain('is ""');
   });
 
   it('does not add override when value matches background', () => {

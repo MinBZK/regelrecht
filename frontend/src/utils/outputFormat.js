@@ -12,11 +12,13 @@ import { isUnknown, missingFacts } from '@regelrecht/frontend-shared';
  * - `null` is absence, a value the register vouches for ("no partner"): `geen`;
  * - Unknown is a fact nobody supplied: `onbekend`, with the missing facts as
  *   supporting text (see formatOutputValueParts).
- * An `undefined` output (the engine produced nothing under that name) reads
- * as absence too; there is nothing else to say about it.
+ * An `undefined` output is neither: the engine never produced a value under
+ * that name (a failed run, an output of another article), and calling that
+ * `geen` would state an absence nobody stated. It reads as `niet berekend`.
  */
 export function formatValue(value) {
-  if (value === null || value === undefined) return 'geen';
+  if (value === undefined) return 'niet berekend';
+  if (value === null) return 'geen';
   if (isUnknown(value)) return 'onbekend';
   if (typeof value === 'boolean') return value ? 'ja' : 'nee';
   // A collection (RFC-016) or a record reaches the trace as an array or an

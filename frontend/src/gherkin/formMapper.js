@@ -107,10 +107,12 @@ function extractFragment(entry, match, step) {
 function tableToParams(dataTable) {
   if (!dataTable) return [];
   return dataTable
-    .filter((row) => row.length >= 2)
+    // An empty value cell is a parameter that is not passed (RFC-036), the
+    // same as in the runners: it does not become a form value at all.
+    .filter((row) => row.length >= 2 && row[1].trim() !== '')
     .map((row) => ({
       name: row[0].trim(),
-      value: tableCellValue(row[1] || ''),
+      value: tableCellValue(row[1]),
     }));
 }
 
@@ -412,7 +414,24 @@ export function syncEditedValues(formState, scenarioIndex, values) {
     }
   };
 
+  // A field left blank is a parameter that is not filled in, not a value
+  // (RFC-036): the scenario must not say `parameter "x" is ""`. A scenario-
+  // level entry for it is dropped; a background value stands, because a
+  // scenario has no step that un-passes a parameter its background passes.
+  // The live run (ScenarioForm) drops blanks the same way.
+  const isBlank = (v) => v === undefined || v === null || v === '';
+  const dropParameter = (name) => {
+    if (!scenarioParamMap.has(name)) return;
+    scenario.setup.parameters = scenario.setup.parameters.filter((p) => p.name !== name);
+    scenarioParamMap.clear();
+    scenario.setup.parameters.forEach((p, i) => scenarioParamMap.set(p.name, i));
+  };
+
   for (const [name, rawValue] of Object.entries(parameterValues)) {
+    if (isBlank(rawValue)) {
+      dropParameter(name);
+      continue;
+    }
     // Same rule as reading a step: the content decides. An input control hands
     // back a raw string, and leaving it at that would write `is "50000"` where
     // the scenario said `is 50000`.
@@ -556,6 +575,9 @@ function writeSetupSteps(lines, setup, indent) {
   }
 
   for (const param of setup.parameters || []) {
+    // A parameter without a value is not passed; there is no step for that
+    // (RFC-036), and `parameter "x" is ""` would pass an absence instead.
+    if (param.value === undefined || param.value === '') continue;
     if (isCollectionValue(param.value)) {
       lines.push(`${indent}${KW.set_parameter_collection} ${TPL.set_parameter_collection([param.name])}`);
       const columns = collectionColumns(param);

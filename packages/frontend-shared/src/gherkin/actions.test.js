@@ -156,6 +156,29 @@ describe('quoted and table-cell values', () => {
     expect(quotedValue('null')).toBe(null);
     expect(quotedValue('GM0384')).toBe('GM0384');
   });
+
+  // RFC-036: the Rust runner reads `parameter "x" is ""` as Null
+  // (`convert_gherkin_value("")`), so the quoted empty string is an absence
+  // here too, not the string ''. The empty *cell* never gets this far.
+  it('reads the quoted empty string as null, like the Rust runner', () => {
+    expect(quotedValue('')).toBe(null);
+    expect(quotedValue('   ')).toBe(null);
+    expect(tableCellValue('')).toBe(null);
+  });
+});
+
+describe('set_parameters_table through dispatch', () => {
+  it('leaves a parameter with an empty cell out and passes null for the word null (RFC-036)', async () => {
+    const ctx = { parameters: {} };
+    await dispatch(ctx, null, 'set_parameters_table', [], [
+      ['bsn', '999993653'],
+      ['aanvraag_bedrag', ''],
+      ['partner_bsn', 'null'],
+      ['huur', '   '],
+    ], { loadDependency: async () => {} });
+    expect(ctx.parameters).toEqual({ bsn: 999993653, partner_bsn: null });
+    expect(Object.hasOwn(ctx.parameters, 'aanvraag_bedrag')).toBe(false);
+  });
 });
 
 describe('assert_equals through dispatch', () => {

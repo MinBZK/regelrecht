@@ -76,9 +76,16 @@ describe('formatValue', () => {
   // RFC-036: the user never reads the token `null` or the raw unknown object.
   it('renders absence as geen and an unknown outcome as onbekend', () => {
     expect(formatValue(null)).toBe('geen');
-    expect(formatValue(undefined)).toBe('geen');
     expect(formatValue(unknownFor(['huur', 'wet_x']))).toBe('onbekend');
     expect(formatValue({ __unknown: true, missing: [] })).toBe('onbekend');
+  });
+
+  // An output the engine never produced is not an absence the data stated:
+  // "geen" would be the very conflation RFC-036 removes.
+  it('renders an output the engine never produced as niet berekend, not as geen', () => {
+    expect(formatValue(undefined)).toBe('niet berekend');
+    expect(formatOutputValue(undefined, 'eurocent')).toBe('niet berekend');
+    expect(formatOutputValueParts(undefined, null)).toEqual({ text: 'niet berekend', supportingText: '' });
   });
 
   it('still renders an ordinary object as JSON', () => {

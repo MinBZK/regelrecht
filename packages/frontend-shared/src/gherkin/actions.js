@@ -18,18 +18,23 @@ import { VALUE_TYPING } from './grammar.generated.js';
 import { isUnknown, missingFacts } from '../values.js';
 
 /**
- * Parse a string value to a typed value, mirroring Rust value_conversion.rs.
+ * Parse a string value to a typed value, mirroring Rust value_conversion.rs
+ * (`convert_gherkin_value`).
  * - "true"/"false" → boolean
- * - "null" → null
+ * - "null" and the empty string → null (an absence; the Rust runner reads
+ *   `parameter "x" is ""` as Null, so this runner must too)
  * - numeric → number (int or float)
  * - otherwise → string
+ *
+ * The empty *cell* in a table never reaches here: `tableToRecords` and
+ * `set_parameters_table` leave the key out first (RFC-036, "not stated").
  */
 export function parseValue(str) {
   // Already typed (a form hands real booleans and numbers straight through).
   if (typeof str !== 'string') return str;
   if (str === 'true') return true;
   if (str === 'false') return false;
-  if (str === 'null') return null;
+  if (str === 'null' || str.trim() === '') return null;
 
   // A JSON array or object literal: the only way an array- or object-typed
   // register input fits in a table cell. Mirrors the Rust helper
@@ -94,14 +99,15 @@ export function tableCellValue(raw) {
  * column, so the key is left out of the record altogether (RFC-036): a data
  * source that lacks the field makes the input Unknown, with the field named
  * as the missing fact. The literal `null` in a cell stays `null`, an absence
- * the data states. `tableCellValue('')` on its own is not changed.
+ * the data states.
  *
  * The same rule applies to every header-row table, collection parameters
  * (`set_parameter_collection`) included, because the Rust mirror
  * (`rows_to_records`) is one function for both. An element with an omitted
  * key behaves like any object without that property; an author who means
  * "this element has no such value" writes `null`. A parameter table
- * (`set_parameters_table`) has no header row and does not pass through here.
+ * (`set_parameters_table`) has no header row and does not pass through here,
+ * but follows the same rule: an empty value cell leaves the parameter out.
  *
  * A row that does not match the header row is rejected rather than filled with
  * undefined: today the Gherkin parser already rejects a varying cell count, but
@@ -237,11 +243,14 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
       break;
 
     // No header row on a parameter table (mirror of Rust `rows_to_params`);
-    // every row is a name/value pair.
+    // every row is a name/value pair. An empty value cell means the parameter
+    // is not passed (RFC-036): an optional one is then unknown for lack of
+    // it, a required one is the caller's omission. The word `null` passes an
+    // absence. The same meaning of the empty cell as in a data table.
     case 'set_parameters_table':
       for (const row of table || []) {
-        if (row.length < 2) continue;
-        ctx.parameters[row[0].trim()] = tableCellValue(row[1] || '');
+        if (row.length < 2 || row[1].trim() === '') continue;
+        ctx.parameters[row[0].trim()] = tableCellValue(row[1]);
       }
       break;
 
