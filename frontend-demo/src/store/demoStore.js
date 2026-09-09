@@ -293,17 +293,43 @@ function decideObjection(caseId, upheld, reason) {
 // ---- claims ----------------------------------------------------------------
 
 /**
- * The citizen corrects a value. `lawId` is the law that owns the input (which
- * may be a dependency of the tile's law), `tileLawId` the law shown on the tile.
+ * Someone corrects a value. `lawId` is the law that owns the input (which may
+ * be a dependency of the tile's law), `tileLawId` the law shown on the tile.
+ *
+ * By default this is the citizen (the active profile) correcting a register
+ * value from the portal. The caseworker corrects the same values from the case
+ * inspector: then `claimant` is 'BEHANDELAAR', `bsn` and `caseId` are the
+ * case's, and `approve` is true, because the caseworker is the one who would
+ * otherwise approve it.
+ *
+ * `evidence` is `{ name, type, size, dataUrl? }` for an uploaded document;
+ * `hardship` is `{ clause }` when the correction appeals to a hardship clause.
  */
-function submitClaim({ lawId, tileLawId, input, keyField, keyValue, oldValue, newValue, reason, evidence = null, selfDeclared = false }) {
+function submitClaim({
+  lawId,
+  tileLawId,
+  input,
+  keyField,
+  keyValue,
+  oldValue,
+  newValue,
+  reason,
+  evidence = null,
+  hardship = null,
+  selfDeclared = false,
+  claimant = 'BURGER',
+  bsn = profile.value?.bsn,
+  caseId = null,
+  approve = null,
+}) {
   // A value no register holds is the citizen's own declaration and applies at
   // once; a correction of a register value waits for the caseworker unless the
-  // profile auto-approves.
-  const autoApprove = selfDeclared || !!profile.value?.feature_flags?.AUTO_APPROVE_CLAIMS;
+  // profile auto-approves. An appeal to a hardship clause always needs a human,
+  // whatever the profile says. An explicit `approve` (the caseworker) wins.
+  const autoApprove = approve ?? (hardship ? false : selfDeclared || !!profile.value?.feature_flags?.AUTO_APPROVE_CLAIMS);
   const claim = {
     id: newId('claim'),
-    bsn: profile.value?.bsn,
+    bsn,
     lawId,
     tileLawId,
     input,
@@ -313,10 +339,11 @@ function submitClaim({ lawId, tileLawId, input, keyField, keyValue, oldValue, ne
     newValue,
     reason,
     evidence,
-    claimant: 'BURGER',
+    hardship,
+    claimant,
     selfDeclared,
     status: autoApprove ? 'APPROVED' : 'PENDING',
-    caseId: null,
+    caseId,
     submittedAt: nowIso(),
     decidedAt: autoApprove ? nowIso() : null,
   };

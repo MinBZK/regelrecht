@@ -1,12 +1,17 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import DataLineage from '../components/DataLineage.vue';
+import EditValueSheet from '../components/EditValueSheet.vue';
 import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
+import { lineageFromTrace } from '../data/lineage.js';
 import { useDemo } from '../store/demoStore.js';
 
 // The caseworker's side: applications the citizen submitted, in three lanes,
 // with the engine's fresh verdict next to what the citizen claimed, the
-// corrections that wait for a decision, and the decision itself.
+// corrections that wait for a decision, and the decision itself. The caseworker
+// sees exactly what the citizen sees (the same data tree under the outcome) and
+// can make every change the citizen can; such a correction applies at once.
 
 const route = useRoute();
 const router = useRouter();
@@ -67,6 +72,21 @@ const verified = computed(() => {
   void dataVersion.value;
   return demo.evaluate(law, c.parameters);
 });
+
+// The same tree the citizen sees in the application: the values the law used,
+// keyed on the case's own parameters (not the active profile's).
+const lineage = computed(() => {
+  const c = selected.value;
+  if (!c || !verified.value?.ok || !verified.value.trace) return [];
+  return lineageFromTrace(verified.value.trace, c.lawId, c.parameters ?? {});
+});
+/** The lineage value node the caseworker is correcting; null = sheet closed. */
+const editing = ref(null);
+
+function formatSize(bytes) {
+  if (!Number.isFinite(bytes)) return '';
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} kB`;
+}
 
 function outputRows(c) {
   const law = lawOf(c);
@@ -170,6 +190,11 @@ function claimSpec(cl) {
             <nldd-list variant="box-tinted" accessible-label="Correcties ter beoordeling">
               <nldd-list-item v-for="cl in serviceClaims" :key="cl.id" size="md">
                 <nldd-text-cell :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`" :supporting-text="`${personaName(cl.bsn)} · ${claimLawName(cl)} · ${cl.reason}`"></nldd-text-cell>
+                <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" :text="`Hardheidsclausule: ${cl.hardship.clause}`"></nldd-tag></nldd-cell>
+                <nldd-cell v-if="cl.evidence">
+                  <nldd-button v-if="cl.evidence.dataUrl" size="sm" variant="neutral-transparent" start-icon="file" :text="cl.evidence.name" :href="cl.evidence.dataUrl" target="_blank" rel="noopener"></nldd-button>
+                  <nldd-tag v-else size="sm" color="neutral" icon="file" :text="`${cl.evidence.name} (${formatSize(cl.evidence.size)})`"></nldd-tag>
+                </nldd-cell>
                 <nldd-cell>
                   <nldd-button-group orientation="horizontal" size="sm">
                     <nldd-button size="sm" variant="primary" text="Goedkeuren" @click="demo.decideClaim(cl.id, true)"></nldd-button>
@@ -212,11 +237,31 @@ function claimSpec(cl) {
           </nldd-container>
           <nldd-banner v-if="verified && !verified.ok" variant="warning" text="Herberekening mislukt" :supporting-text="verified.error"></nldd-banner>
 
-          <nldd-container v-if="caseClaims.length" padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Correcties van de burger"></nldd-text-cell></nldd-container>
-<nldd-list v-if="caseClaims.length" variant="box-tinted" accessible-label="Correcties">
+          <nldd-container v-if="lineage.length" gap="4">
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Gebruikte gegevens</nldd-text><nldd-text size="xs" color="secondary">dezelfde gegevens als de burger ziet; klik op een gegeven om het te corrigeren</nldd-text></nldd-container>
+            <nldd-list type="tree" variant="box-tinted" accessible-label="Gebruikte gegevens">
+              <DataLineage :nodes="lineage" @edit="editing = $event" />
+            </nldd-list>
+          </nldd-container>
+
+          <nldd-container v-if="caseClaims.length" padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Correcties"></nldd-text-cell></nldd-container>
+          <nldd-list v-if="caseClaims.length" variant="box-tinted" accessible-label="Correcties">
             <nldd-list-item v-for="cl in caseClaims" :key="cl.id" size="sm">
-              <nldd-text-cell size="sm" :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`" :supporting-text="cl.reason"></nldd-text-cell>
-              <nldd-cell>
+              <nldd-text-cell size="sm" :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`">
+                <span slot="supporting-text">
+                  {{ cl.reason }}
+                  <template v-if="cl.hardship?.clause"><br />Beroep op hardheidsclausule: {{ cl.hardship.clause }}</template>
+                </span>
+              </nldd-text-cell>
+              <!-- The inspector is narrow: the clause itself is in the supporting text above. -->
+              <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" text="Hardheidsclausule"></nldd-tag></nldd-cell>
+              <nldd-cell v-if="cl.evidence">
+                <nldd-button v-if="cl.evidence.dataUrl" size="sm" variant="neutral-transparent" start-icon="file" :text="cl.evidence.name" :href="cl.evidence.dataUrl" target="_blank" rel="noopener"></nldd-button>
+                <nldd-tag v-else size="sm" color="neutral" icon="file" :text="`${cl.evidence.name} (${formatSize(cl.evidence.size)})`"></nldd-tag>
+              </nldd-cell>
+              <!-- A caseworker's correction is approved by definition: one tag says both. -->
+              <nldd-cell v-if="cl.claimant === 'BEHANDELAAR'"><nldd-tag size="sm" color="success" text="Door behandelaar"></nldd-tag></nldd-cell>
+              <nldd-cell v-else>
                 <nldd-tag v-if="cl.status !== 'PENDING'" size="sm" :color="cl.status === 'APPROVED' ? 'success' : 'critical'" :text="cl.status === 'APPROVED' ? 'Goedgekeurd' : 'Afgewezen'"></nldd-tag>
                 <nldd-button-group v-else orientation="horizontal" size="sm">
                   <nldd-button size="sm" variant="primary" text="Goedkeuren" @click="demo.decideClaim(cl.id, true)"></nldd-button>
@@ -264,4 +309,15 @@ function claimSpec(cl) {
       </nldd-page>
     </nldd-split-view-pane>
   </nldd-navigation-split-view>
+  <!-- The same correction sheet as on the portal, filled in by the caseworker for this case. -->
+  <EditValueSheet
+    v-if="selected"
+    :open="!!editing"
+    :node="editing"
+    :tile-law-id="selected.lawId"
+    claimant="BEHANDELAAR"
+    :bsn="selected.bsn"
+    :case-id="selected.id"
+    @close="editing = null"
+  />
 </template>

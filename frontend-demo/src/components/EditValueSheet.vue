@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 import OrgLogo from './OrgLogo.vue';
 import { fieldSpec, formatValue, humanize, isAmountSpec } from '../data/format.js';
 import { useDemo } from '../store/demoStore.js';
@@ -17,14 +17,37 @@ const props = defineProps({
   tileLawId: { type: String, default: null },
   /** A value only the citizen can know (no register): applies at once. */
   selfDeclared: { type: Boolean, default: false },
+  /** Who corrects: the citizen from the portal, or the caseworker from a case. */
+  claimant: { type: String, default: 'BURGER' },
+  /** The person the correction is about; null = the active profile. */
+  bsn: { type: String, default: null },
+  /** The case the caseworker corrects from; null from the portal. */
+  caseId: { type: String, default: null },
 });
 const emit = defineEmits(['close', 'submitted']);
 const { corpus, submitClaim, profile } = useDemo();
 
+// The hardship clauses the POC offered (web/templates/partials/edit_form.html).
+const HARDSHIP_CLAUSES = [
+  { value: '', label: 'Geen' },
+  { value: 'Awb Art. 4:84', label: 'Awb Art. 4:84 – Inherente afwijkingsbevoegdheid bestuursorgaan' },
+  { value: 'Participatiewet Art. 18', label: 'Participatiewet Art. 18 – Bijzondere bijstand' },
+  { value: 'Wmo 2015 Art. 2.3.5', label: 'Wmo 2015 Art. 2.3.5 – Maatwerkvoorziening' },
+  { value: 'Belastingwet Art. 63', label: 'Belastingwet Art. 63 – Hardheidsclausule Belastingen' },
+  { value: 'Jeugdwet Art. 2.3', label: 'Jeugdwet Art. 2.3 – Maatwerkvoorziening jeugdhulp' },
+  { value: 'Anders', label: 'Anders – Andere specifieke hardheidsclausule' },
+];
+/** Above this the file is not kept in localStorage; only its name, type and size are. */
+const EVIDENCE_INLINE_LIMIT = 400 * 1024;
+
 const sheet = ref(null);
 const newValue = ref('');
 const reason = ref('');
+const hardship = ref('');
+// Shallow so the identity check in onEvidenceChange sees the object it stored.
+const evidence = shallowRef(null);
 const error = ref('');
+const caseworker = computed(() => props.claimant === 'BEHANDELAAR');
 
 const spec = computed(() => (props.node ? fieldSpec(corpus.value?.lawById(props.node.law)?.doc, props.node.name) : null));
 const law = computed(() => (props.node ? corpus.value?.lawById(props.node.law) : null));
@@ -47,6 +70,8 @@ watch(
     }
     error.value = '';
     reason.value = '';
+    hardship.value = '';
+    evidence.value = null;
     const v = props.node?.value;
     if (kind.value === 'amount' && typeof v === 'number') newValue.value = (v / 100).toFixed(2).replace('.', ',');
     else if (kind.value === 'boolean') newValue.value = v ? 'true' : 'false';
@@ -87,6 +112,24 @@ function parse() {
   }
 }
 
+// The chosen document. Small files travel along as a data URL so the caseworker
+// can open them; larger ones keep only name, type and size (localStorage budget).
+function onEvidenceChange(e) {
+  const file = e.detail?.files?.[0] ?? null;
+  if (!file) {
+    evidence.value = null;
+    return;
+  }
+  const meta = { name: file.name, type: file.type, size: file.size, dataUrl: null };
+  evidence.value = meta;
+  if (file.size > EVIDENCE_INLINE_LIMIT) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (evidence.value === meta) evidence.value = { ...meta, dataUrl: reader.result };
+  };
+  reader.readAsDataURL(file);
+}
+
 function submit() {
   if (!props.node) return;
   let value;
@@ -97,7 +140,7 @@ function submit() {
     return;
   }
   if (!reason.value.trim() && !props.selfDeclared) {
-    error.value = 'Geef een reden op; die ziet de behandelaar.';
+    error.value = caseworker.value ? 'Geef een reden op; die komt in het dossier van de zaak.' : 'Geef een reden op; die ziet de behandelaar.';
     return;
   }
   const claim = submitClaim({
@@ -105,11 +148,18 @@ function submit() {
     tileLawId: props.tileLawId,
     input: props.node.name,
     keyField: props.node.keyField ?? 'bsn',
-    keyValue: props.node.keyValue ?? profile.value?.bsn,
+    keyValue: props.node.keyValue ?? props.bsn ?? profile.value?.bsn,
     oldValue: props.node.value,
     newValue: value,
     reason: reason.value.trim(),
+    evidence: evidence.value,
+    hardship: hardship.value ? { clause: hardship.value } : null,
     selfDeclared: props.selfDeclared,
+    claimant: props.claimant,
+    ...(props.bsn ? { bsn: props.bsn } : {}),
+    caseId: props.caseId,
+    // The caseworker is the one who would approve it; the correction applies at once.
+    ...(caseworker.value ? { approve: true } : {}),
   });
   emit('submitted', claim);
   emit('close');
@@ -143,13 +193,25 @@ function submit() {
             <nldd-text-field v-else :value="newValue" :placeholder="kind === 'date' ? 'JJJJ-MM-DD' : ''" @input="newValue = $event.detail?.value ?? $event.target.value"></nldd-text-field>
           </nldd-form-field>
           <nldd-form-field :label="selfDeclared ? 'Toelichting' : 'Waarom klopt het geregistreerde gegeven niet?'" :optional="selfDeclared || undefined">
-            <nldd-multi-line-text-field :value="reason" rows="3" placeholder="Bijvoorbeeld: mijn inkomen is dit jaar lager door minder opdrachten." @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
-            <nldd-form-field-help-text>{{ selfDeclared || profile?.feature_flags?.AUTO_APPROVE_CLAIMS ? 'Uw opgave wordt direct gebruikt in de berekening.' : 'Een behandelaar beoordeelt de correctie; tot die tijd rekent de wet met het geregistreerde gegeven.' }}</nldd-form-field-help-text>
+            <nldd-multi-line-text-field :value="reason" rows="3" :placeholder="caseworker ? 'Bijvoorbeeld: bewijsstuk van de burger ontvangen en gecontroleerd.' : 'Bijvoorbeeld: mijn inkomen is dit jaar lager door minder opdrachten.'" @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
+            <nldd-form-field-help-text>{{ caseworker ? 'De correctie geldt direct en komt in het dossier van de zaak; de burger ziet haar op het portaal.' : hardship ? 'Een beroep op een hardheidsclausule beoordeelt een behandelaar altijd; tot die tijd rekent de wet met het geregistreerde gegeven.' : selfDeclared || profile?.feature_flags?.AUTO_APPROVE_CLAIMS ? 'Uw opgave wordt direct gebruikt in de berekening.' : 'Een behandelaar beoordeelt de correctie; tot die tijd rekent de wet met het geregistreerde gegeven.' }}</nldd-form-field-help-text>
+          </nldd-form-field>
+          <nldd-form-field label="Beroep op een hardheidsclausule" optional>
+            <nldd-dropdown width="full">
+              <select :value="hardship" @change="hardship = $event.target.value">
+                <option v-for="o in HARDSHIP_CLAUSES" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </nldd-dropdown>
+            <nldd-form-field-help-text>Een hardheidsclausule maakt het mogelijk om af te wijken van de standaardregel wanneer die tot een onredelijke uitkomst leidt. Een behandelaar beoordeelt het beroep.</nldd-form-field-help-text>
+          </nldd-form-field>
+          <nldd-form-field label="Bewijsstuk" optional>
+            <nldd-file-field accept=".pdf,image/*" accessible-label="Bewijsstuk kiezen" @change="onEvidenceChange"></nldd-file-field>
+            <nldd-form-field-help-text>{{ evidence && !evidence.dataUrl && evidence.size > EVIDENCE_INLINE_LIMIT ? 'Dit bestand is groter dan 400 kB; in de demo wordt alleen de naam bewaard.' : 'Een document dat de correctie onderbouwt, bijvoorbeeld een loonstrook of een huurcontract (pdf of afbeelding).' }}</nldd-form-field-help-text>
           </nldd-form-field>
           <nldd-banner v-if="error" variant="critical" :text="error"></nldd-banner>
           <nldd-form-actions>
             <nldd-button-group orientation="horizontal">
-              <nldd-button variant="primary" :text="selfDeclared ? 'Opgeven' : 'Correctie indienen'" @click="submit"></nldd-button>
+              <nldd-button variant="primary" :text="caseworker ? 'Correctie doorvoeren' : selfDeclared ? 'Opgeven' : 'Correctie indienen'" @click="submit"></nldd-button>
               <nldd-button variant="secondary" text="Annuleren" @click="emit('close')"></nldd-button>
             </nldd-button-group>
           </nldd-form-actions>

@@ -183,6 +183,21 @@ const claimedPrimary = computed(() => {
   const name = primaryName.value ?? Object.keys(c.claimedResult ?? {}).find((k) => typeof c.claimedResult[k] === 'number');
   return name ? { name, value: c.claimedResult?.[name] } : null;
 });
+// The corrections on this case, the citizen's own and the caseworker's: the
+// same list the caseworker reads in the Zaaksysteem, so both sides see one thing.
+const caseClaims = computed(() => {
+  const c = currentCase.value;
+  if (!c) return [];
+  return demo.state.claims.filter((cl) => cl.caseId === c.id || (cl.bsn === c.bsn && cl.tileLawId === c.lawId));
+});
+function claimSpec(cl) {
+  return fieldSpec(corpus.value?.lawById(cl.lawId)?.doc, cl.input);
+}
+function claimStatus(cl) {
+  if (cl.status === 'APPROVED') return { color: 'success', text: cl.claimant === 'BEHANDELAAR' ? 'Doorgevoerd' : 'Goedgekeurd' };
+  if (cl.status === 'REJECTED') return { color: 'critical', text: 'Afgewezen' };
+  return { color: 'neutral', text: 'In beoordeling' };
+}
 </script>
 
 <template>
@@ -297,6 +312,22 @@ const claimedPrimary = computed(() => {
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatDateTime(currentCase.submittedAt)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
+            <template v-if="caseClaims.length">
+              <nldd-title size="5"><h3>Correcties op uw gegevens</h3></nldd-title>
+              <nldd-list variant="box-tinted" accessible-label="Correcties op uw gegevens">
+                <nldd-list-item v-for="cl in caseClaims" :key="cl.id" size="sm">
+                  <nldd-text-cell size="sm" :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`">
+                    <span slot="supporting-text">
+                      {{ cl.claimant === 'BEHANDELAAR' ? 'door behandelaar' : 'door u' }} · {{ cl.reason }}
+                      <template v-if="cl.hardship?.clause"><br />Beroep op hardheidsclausule: {{ cl.hardship.clause }}</template>
+                      <template v-if="cl.evidence"><br />Bewijsstuk: {{ cl.evidence.name }}</template>
+                    </span>
+                  </nldd-text-cell>
+                  <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" text="Hardheidsclausule"></nldd-tag></nldd-cell>
+                  <nldd-cell><nldd-tag size="sm" :color="claimStatus(cl).color" :text="claimStatus(cl).text"></nldd-tag></nldd-cell>
+                </nldd-list-item>
+              </nldd-list>
+            </template>
             <nldd-title size="5"><h3>Verloop</h3></nldd-title>
             <nldd-list variant="simple" accessible-label="Verloop van de aanvraag">
               <nldd-list-item v-for="(e, i) in citizenEvents" :key="i" size="sm">
