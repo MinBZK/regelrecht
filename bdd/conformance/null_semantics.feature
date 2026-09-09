@@ -91,13 +91,13 @@ Feature: Absent and unknown values — RFC-036
     # Membership is structural too: an absence is not in a list of amounts.
     Then output "huur_in_lijst" is false
 
-  Scenario: A field of a null record is null
+  Scenario: A field of an absent record is absent
     Given the following "register" data with key "bsn" for law "test_null_semantics":
       | bsn       | huur | partner_bsn | beschikking |
       | 999993653 | 650  | null        | null        |
     When I evaluate outputs "status" of "test_null_semantics"
     Then the execution succeeds
-    Then output "status" is null
+    Then output "status" is absent
 
   Scenario: A null required parameter does not run the other law
     Given the following "register" data with key "bsn" for law "test_null_semantics":
@@ -107,7 +107,7 @@ Feature: Absent and unknown values — RFC-036
     # null, so the caller's own absence test can decide.
     When I evaluate outputs "partner_geboortejaar" of "test_null_semantics"
     Then the execution succeeds
-    Then output "partner_geboortejaar" is null
+    Then output "partner_geboortejaar" is absent
 
   # ---------------------------------------------------------------------------
   # 3. Calculating or deciding on an absence is an error

@@ -91,7 +91,7 @@ Feature: Assertions
     Then output "b" is false
     Then output "c" equals 42
     Then output "d" equals "hello"
-    Then output "e" is null
+    Then output "e" is absent
     Then output "f" contains "sub"
 `);
 

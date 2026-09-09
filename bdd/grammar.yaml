@@ -160,7 +160,7 @@ steps:
     action: assert_null
     keyword: then
     tier: core
-    text: output "{output}" is null
+    text: output "{output}" is absent
     args: [{name: output, type: string}]
 
   - id: assert_unknown

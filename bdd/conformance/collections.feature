@@ -74,9 +74,9 @@ Feature: Collection operations
     # There is no highest or lowest value of nothing, so the caller has to
     # handle it rather than receive a number that was never computed.
     When I evaluate "hoogste_bijdrage" of "test_collections"
-    Then output "hoogste_bijdrage" is null
+    Then output "hoogste_bijdrage" is absent
     When I evaluate "laagste_bijdrage" of "test_collections"
-    Then output "laagste_bijdrage" is null
+    Then output "laagste_bijdrage" is absent
     # Vacuous truth: every element of nothing qualifies, and none does.
     When I evaluate "iedereen_draagt_bij" of "test_collections"
     Then output "iedereen_draagt_bij" is true
