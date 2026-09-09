@@ -232,13 +232,9 @@ articles:
                         value: null
                   then: null
               default: false
-            legal_basis:
-              law: Burgerlijk Wetboek
-              article: '5:42'
-              explanation: >-
-                Lid 1: verbod binnen de afstand van lid 2, tenzij toestemming
-                is gegeven of het naburige erf een openbare weg of openbaar
-                water is.
+          # Grondslag: Burgerlijk Wetboek art. 5:42. Lid 1: verbod binnen de
+          # afstand van lid 2, tenzij toestemming is gegeven of het naburige
+          # erf een openbare weg of openbaar water is.
 
           # Lid 3: geen verzetsrecht als de beplanting niet hoger reikt dan de
           # scheidsmuur; wel verzetsrecht als de beplanting hoger reikt. Een
@@ -259,13 +255,10 @@ articles:
                     value: false
                   then: false
               default: true
-            legal_basis:
-              law: Burgerlijk Wetboek
-              article: '5:42'
-              explanation: >-
-                Lid 3: de nabuur kan zich niet verzetten tegen bomen, heesters
-                of heggen die niet hoger reiken dan de scheidsmuur; buiten dat
-                geval bestaat het verzetsrecht wel.
+          # Grondslag: Burgerlijk Wetboek art. 5:42. Lid 3: de nabuur kan zich
+          # niet verzetten tegen bomen, heesters of heggen die niet hoger
+          # reiken dan de scheidsmuur; buiten dat geval bestaat het
+          # verzetsrecht wel.
 
           # Lid 4: schade is pas vergoedbaar vanaf de aanmaning. Zonder
           # aanmaning is er geen vergoedbare schade (geen ongeoorloofde
@@ -274,6 +267,10 @@ articles:
           # ontbrekende schadedatum bij een bestaande aanmaning levert een
           # onbekende uitkomst (DATE_DIFF wijst null af, dus een expliciete
           # afwezigheidstoets eerst).
+          # Grondslag: Burgerlijk Wetboek art. 5:42. Lid 4: van de schade als
+          # gevolg van een ongeoorloofde toestand is alleen vergoeding
+          # verschuldigd voor zover zij is ontstaan na het tijdstip waartegen
+          # tot opheffing is aangemaand.
           - output: vergoedbare_schade
             value:
               operation: IF
@@ -296,10 +293,3 @@ articles:
                   to: $datum_ontstaan_schade
                   in: days
                 value: 0
-            legal_basis:
-              law: Burgerlijk Wetboek
-              article: '5:42'
-              explanation: >-
-                Lid 4: van de schade als gevolg van een ongeoorloofde toestand
-                is alleen vergoeding verschuldigd voor zover zij is ontstaan na
-                het tijdstip waartegen tot opheffing is aangemaand.
