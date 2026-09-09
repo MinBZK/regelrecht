@@ -119,17 +119,49 @@ export function getOutput(ctx, name) {
   return ctx.result.outputs[name];
 }
 
-export function primitiveEqual(a, b) {
+/**
+ * Structural equality between an engine output and an expected value,
+ * mirroring the Rust harness (`values_equal_with_tolerance` on top of
+ * `Value`'s `PartialEq` in law-model):
+ * - numbers: equal within 1e-9 (the engine keeps exact decimals, the JS side
+ *   sees f64, so literal-parsing noise must not fail a scenario);
+ * - null only equals null (a missing output is `undefined`, not null);
+ * - a number never equals its string form, a boolean never equals anything
+ *   but the same boolean;
+ * - arrays: same length, elements equal in order;
+ * - objects: same key set, values equal per key (a BTreeMap on the Rust
+ *   side, so key order is irrelevant).
+ * The tolerance is applied at every depth. Rust applies it only at the top
+ * level and compares nested Int/Decimal exactly, but that distinction does
+ * not exist in JS (both are `number`), so a recursive tolerance is the
+ * closest mapping and never rejects what Rust accepts.
+ */
+export function valuesEqual(a, b) {
   if (a === b) return true;
-  if (a === null || b === null) return false;
+  if (a === null || b === null || a === undefined || b === undefined) return false;
   if (typeof a !== typeof b) return false;
   if (typeof a === 'number') return Math.abs(a - b) < 1e-9;
-  return false;
+  if (typeof a !== 'object') return false;
+
+  const aIsArray = Array.isArray(a);
+  if (aIsArray !== Array.isArray(b)) return false;
+  if (aIsArray) {
+    if (a.length !== b.length) return false;
+    return a.every((item, i) => valuesEqual(item, b[i]));
+  }
+
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => Object.hasOwn(b, key) && valuesEqual(a[key], b[key]));
 }
+
+/** @deprecated Kept for callers of the old name; arrays and objects are compared too. */
+export const primitiveEqual = valuesEqual;
 
 function assertOutput(ctx, name, expected) {
   const actual = getOutput(ctx, name);
-  if (!primitiveEqual(actual, expected)) {
+  if (!valuesEqual(actual, expected)) {
     throw new Error(
       `Expected output "${name}" to equal ${JSON.stringify(expected)}, got: ${JSON.stringify(actual)}`,
     );
