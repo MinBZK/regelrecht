@@ -115,9 +115,21 @@ wet noemt dat expliciet.
 **De vraag:** klopt die voorrangsregel? Het verschil is **€3.394,56 per jaar** op
 hetzelfde dienstverband — puur door één extra status.
 
-**Bijvraag:** wij nemen aan dat een Wajonger automatisch categorie b is
-(`is_arbeidsgehandicapte_werknemer` is bij ons een gewone parameter, geen
-afleiding). Klopt dat, of vergt het altijd een aparte doelgroepverklaring?
+**Bijvraag — BEANTWOORD 2026-08-20:** wij nemen aan dat een Wajonger automatisch
+categorie b is (`is_arbeidsgehandicapte_werknemer` is bij ons een gewone
+parameter, geen afleiding). Klopt dat, of vergt het altijd een aparte
+doelgroepverklaring?
+
+> **Antwoord:** nee. J. Hoor1 (SZW) zette die parameter in de editor op `false`
+> (commit `61cfbb1fd2a`). Een Wajonger is geen arbeidsgehandicapte werknemer in
+> de zin van artikel 2.1; de categorie is banenafspraak, dus €1.680,64.
+>
+> Het tweede deel van de aanname is inmiddels ook achterhaald: sinds commit
+> `e495a057161` is `is_arbeidsgehandicapte_werknemer` géén gewone parameter meer
+> maar een afleiding — artikel 2.1 haalt hem via een intra-law source op uit
+> artikel 2.6.
+>
+> **De hoofdvraag hierboven staat nog open.**
 
 ## 6 · De drie Wajong-tijdperken
 

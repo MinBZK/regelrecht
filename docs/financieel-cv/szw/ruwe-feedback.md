@@ -18,6 +18,52 @@ gevraagd is, wint dit bestand van de gestructureerde notitie.
 
 ---
 
+## Ronde 4 — 20 augustus 2026, via de editor
+
+**Andere vorm dan de andere rondes: geen tekst, maar een commit.** J. Hoor1
+(SZW) heeft op 2026-08-20 om 10:42 in de editor het bestand
+`wet_tegemoetkomingen_loondomein/scenarios/financieel_cv_sadee.feature` bewerkt
+op de RVO-demobranch, commit `61cfbb1fd2a`, met de boodschap
+"Update scenario financieel_cv_sadee.feature for wet_tegemoetkomingen_loondomein".
+
+De inhoudelijke wijziging, letterlijk uit de diff:
+
+> ```
+> -      | is_arbeidsgehandicapte_werknemer             | true      |
+> +    Given parameter "is_arbeidsgehandicapte_werknemer" is "false"
+> ```
+
+**Dat is een antwoord op onze eigen vraag.** In
+[agenda-vervolgsessie-hoogte.md](agenda-vervolgsessie-hoogte.md), punt 5, staat:
+
+> **Bijvraag:** wij nemen aan dat een Wajonger automatisch categorie b is
+> (`is_arbeidsgehandicapte_werknemer` is bij ons een gewone parameter, geen
+> afleiding). Klopt dat, of vergt het altijd een aparte doelgroepverklaring?
+
+Antwoord: nee. Een Wajonger is geen arbeidsgehandicapte werknemer in de zin van
+Wtl artikel 2.1; de categorie is banenafspraak. Dat scheelt €3.394,56 per jaar
+op hetzelfde dienstverband — van €5.075,20 naar €1.680,64.
+
+**De hoofdvraag is niet beantwoord.** Of "hoogste bedrag wint" (Wtl art. 4.1
+lid 3) de juiste voorrangsregel is, staat nog steeds nergens bevestigd; de MvT
+zwijgt erover. Die blijft op de agenda.
+
+### Wat dit over onze werkwijze zegt
+
+Feedback komt niet alleen uit sessies. Deze kwam binnen als een commit op een
+branch waar wij niet naar keken, en is drie weken onopgemerkt gebleven — terwijl
+de vraag als "nog niet beantwoord" in het actieregister stond. De lus moet dus
+ook de editor-commits van de deelnemers meenemen, niet alleen wat er in een
+sessie wordt gezegd.
+
+Twee dingen bij de vorm. De wijziging bleef **halverwege**: de parameter ging
+naar `false`, de asserties eronder bleven op `arbeidsgehandicapte_werknemer` en
+507520 staan. En de editor kortte bij het opslaan 37 regels toelichting in en
+zette de parametertabel om naar losse `Given parameter`-regels. Of dat laatste
+een keuze was of een neveneffect van opslaan is niet vastgesteld.
+
+---
+
 ## Ronde 3 — 8 september 2026
 
 Feedback op de terugkoppeling van het modelleerwerk. Vier punten, letterlijk
