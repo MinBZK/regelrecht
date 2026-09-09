@@ -75,7 +75,7 @@ circular, or inefficient. That is intentional — model it as the law writes it.
 | YES | YES | Keep |
 | YES | NO | Keep (informational) |
 | NO, but in another provision | YES | **Scope violation** — must be refactored to use `source` reference |
-| NO | YES | Report as assumption |
+| NO | YES | **Record as a claim** — see below |
 | NO | NO | **Remove** |
 
 **Scope violations are the highest priority finding.** They mean logic from one provision
@@ -83,7 +83,25 @@ has leaked into another. This is worse than a missing element, because it produc
 that look correct but cannot be traced back to the provision that claims to produce them.
 
 4. For elements classified as "Remove": delete them from the YAML using Edit
-5. For elements classified as "Report as assumption": collect them for the report
+5. For elements classified as "Record as a claim": write each one down, do not just count it
+
+### An assumption is a claim, not a line in a report
+
+An element that is needed for the logic but cannot be traced to the text is an
+interpretation choice. Until now this skill collected those for a report, so the choice
+survived as prose in a chat message and was gone the next day. The reader of the corpus a
+month later cannot see that a choice was made at all, let alone which alternative was
+rejected.
+
+Record each one instead, in the form `regelrecht-verantwoording` defines: what was assumed,
+on what ground, which alternative was rejected and with what consequence, and who is
+competent to confirm it. State `voorgesteld` — a model proposed it and no human has looked
+yet. That state matters: it is the only way to later measure how often a reviewer adopts a
+machine proposal unchanged.
+
+**Recording does not block.** The specification stays executable and the chain keeps
+calculating on the assumption. What the record buys is that the choice can be found,
+challenged, and closed — and that a milestone cannot pass while it is still open.
 6. **After any removals:** re-run `just validate <file>` to ensure the file still
    passes schema validation. Removing elements can break required field constraints
    or leave dangling `$variable` references. Fix any validation errors before

@@ -23,6 +23,14 @@ valide + tests groen + modellering-fouten gefixt + resterende open punten zijn j
 Na de sessie gaan correctiepunten + bevestigde interpretaties terug de desk-cyclus in.
 Canonieke flow: zie `regelrecht-dossier/references/routing.md`.
 
+**Een sessie levert uitspraken op, geen verslag.** De agenda is een reductie over de claims
+die op een uitspraak wachten — niet een lijst die iemand samenstelt — en elk antwoord landt
+als vastlegging bij de kwestie zelf: wie sprak, welk verdict (bekrachtigd · gecorrigeerd ·
+weerlegd · bewust onbeslist gelaten) en op welke grond. Bewust onbeslist laten mag, met
+reden; niets zeggen is geen uitspraak. Zonder dat blijft de oogst in een verslag hangen en
+staat een half jaar later niet meer vast wat er juridisch besloten is — dat is precies hoe
+checklists onaangevinkt blijven staan. Vorm: `regelrecht-verantwoording`.
+
 Deze skill bevat **geen casus-inhoud**. Hij is generiek over dossiers; alleen de
 regelrecht-*methode* ligt vast. Concrete casus-inhoud (welke wet, welke gronden,
 welke bedragen) komt uit de aangeleverde casus-map of uit de analist tijdens het
