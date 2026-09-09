@@ -32,31 +32,44 @@ articles:
     url: https://wetten.overheid.nl/BWBR0003045/2024-01-01#Artikel240
     machine_readable:
       definitions:
+        # Art. 2:240 lid 2 BW: "De bevoegdheid tot vertegenwoordiging komt mede aan iedere
+        # bestuurder toe." Alleen bestuurders van rechtspersonen (Boek 2 BW) vallen hieronder.
         bestuurder_functies:
           - BESTUURDER
           - DIRECTEUR
           - ALGEMEEN_DIRECTEUR
+        # Art. 2:240 lid 4 BW: "De statuten kunnen ook aan andere personen dan bestuurders
+        # bevoegdheid tot vertegenwoordiging toekennen." Dit zijn statutair gemachtigden van de
+        # rechtspersoon zelf, niet de bestuurders van lid 2. VOORZITTER (bv. van een vereniging)
+        # is zo'n statutair aangewezen andere persoon en staat daarom hier, niet bij bestuurders.
+        gemachtigde_functies:
+          - GEMACHTIGDE
+          - PROCURATIEHOUDER
+          - GEVOLMACHTIGDE
+          - VOORZITTER
+        # Vallen NIET onder art. 2:240 BW: dat artikel regelt de vertegenwoordiging van
+        # rechtspersonen (Boek 2 BW). Eigenaar (eenmanszaak), vennoot/maat (VOF/maatschap,
+        # Boek 7A BW) en beherend vennoot (CV) zijn geen rechtspersonen met een bestuur in de zin
+        # van Boek 2. Hun vertegenwoordigingsbevoegdheid berust op andere titels (Boek 7A BW,
+        # niet in dit corpus aanwezig); zie de untranslatable hieronder. Grondslag hier is daarom
+        # de Handelsregisterwet-registratie van de functie, niet art. 2:240.
         eigenaar_functies:
           - EIGENAAR
           - VENNOOT
           - BEHEREND_VENNOOT
           - MAAT
-        gemachtigde_functies:
-          - GEMACHTIGDE
-          - PROCURATIEHOUDER
-          - GEVOLMACHTIGDE
         bevoegde_functies:
           - BESTUURDER
           - DIRECTEUR
           - ALGEMEEN_DIRECTEUR
+          - GEMACHTIGDE
+          - PROCURATIEHOUDER
+          - GEVOLMACHTIGDE
+          - VOORZITTER
           - EIGENAAR
           - VENNOOT
           - BEHEREND_VENNOOT
           - MAAT
-          - VOORZITTER
-          - GEMACHTIGDE
-          - PROCURATIEHOUDER
-          - GEVOLMACHTIGDE
         volledige_bevoegdheid_rechten:
           - LEZEN
           - CLAIMS_INDIENEN
@@ -118,6 +131,9 @@ articles:
                 value: $bevoegde_functies
               body: $current
               as: current
+            # De filter combineert drie verschillende grondslagen (lid 2, lid 4, en buiten
+            # art. 2:240) tot één bevoegdheidscontrole; de opsplitsing staat in de definities
+            # hierboven en de aparte legal_basis-vermelding bij "heeft_delegaties" hieronder.
             legal_basis:
               law: Burgerlijk Wetboek Boek 2
               bwb_id: BWBR0003045
@@ -128,9 +144,12 @@ articles:
               juriconnect: >-
                 jci1.3:c:BWBR0003045&boek=2&artikel=240&lid=2&z=2024-01-01&g=2024-01-01
               explanation: >
-                Art. 2:240 lid 2 BW: alleen bestuurders hebben vertegenwoordigingsbevoegdheid. Art. 2:240
-                lid 4 BW: statuten kunnen ook anderen bevoegdheid toekennen (gemachtigden). Commissarissen
-                en andere toezichthouders zijn NIET bevoegd de rechtspersoon te vertegenwoordigen.
+                Art. 2:240 lid 2 BW: bestuurders hebben vertegenwoordigingsbevoegdheid. Art. 2:240 lid 4
+                BW: de statuten kunnen ook aan andere personen dan bestuurders bevoegdheid toekennen
+                (gemachtigde, procuratiehouder, gevolmachtigde, voorzitter). Eigenaar/vennoot/maat/beherend
+                vennoot vallen buiten art. 2:240 (geen rechtspersoon-bestuur in de zin van Boek 2); zie
+                de untranslatable onderaan dit artikel. Commissarissen en andere toezichthouders zijn
+                NIET bevoegd de rechtspersoon te vertegenwoordigen.
           - output: heeft_delegaties
         # POC: EXISTS op lijst $bevoegde_functionarissen (uitvoer heeft_delegaties) betekende 'niet leeg'; expliciet als
         # telling (RFC-016)
@@ -152,8 +171,11 @@ articles:
               juriconnect: >-
                 jci1.3:c:BWBR0003045&boek=2&artikel=240&lid=2&z=2024-01-01&g=2024-01-01
               explanation: >
-                Art. 2:240 lid 2 BW bepaalt dat iedere bestuurder vertegenwoordigingsbevoegd is. Alleen
-                functies met vertegenwoordigingsbevoegdheid worden meegeteld.
+                Art. 2:240 lid 2 en lid 4 BW bepalen wie voor een rechtspersoon vertegenwoordigingsbevoegd
+                is (bestuurders, en bij statuten aangewezen andere personen). Eigenaar/vennoot/maat/
+                beherend vennoot tellen hier ook mee op grond van hun Handelsregisterinschrijving, niet
+                op grond van art. 2:240 (zie de untranslatable onderaan dit artikel). Alleen functies
+                met vertegenwoordigingsbevoegdheid worden meegeteld.
           - output: subject_ids
         # POC: impliciete map over een lijst ($bevoegde_functionarissen.kvk_nummer); expliciet als FOREACH (RFC-016)
             value:
@@ -298,4 +320,20 @@ articles:
             rechtspersoon is dynamisch en kan niet vooraf worden uitgerold
           suggestion: >-
             Voeg FOREACH toe aan het schema of beperk het aantal functionarissen tot een vast maximum
+          accepted: true
+        - construct: >-
+            vertegenwoordigingsbevoegdheid van eigenaar (eenmanszaak), vennoot/maat (VOF, maatschap)
+            en beherend vennoot (CV) (definitie eigenaar_functies)
+          reason: >-
+            Art. 2:240 BW regelt uitsluitend de vertegenwoordiging van rechtspersonen met een bestuur
+            in de zin van Boek 2 BW. Eenmanszaak, VOF, maatschap en CV zijn geen rechtspersonen en
+            hebben geen bestuur; hun vertegenwoordigingsbevoegdheid berust op Boek 7A BW (titel 9,
+            maatschap/vennootschap) en op de vennootschapsovereenkomst, niet op art. 2:240. Die
+            wettekst staat niet in dit corpus (alleen Burgerlijk Wetboek Boek 2 en de
+            Handelsregisterwet 2007), dus de grondslag kan hier niet worden aangehaald.
+          legal_text_excerpt: >-
+            2 De bevoegdheid tot vertegenwoordiging komt mede aan iedere bestuurder toe.
+          suggestion: >-
+            Boek 7A BW (maatschap/vennootschap onder firma) opnemen in het corpus en eigenaar_functies
+            daaraan koppelen in plaats van aan art. 2:240
           accepted: true

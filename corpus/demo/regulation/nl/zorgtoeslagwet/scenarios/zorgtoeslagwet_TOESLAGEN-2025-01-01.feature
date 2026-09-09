@@ -69,6 +69,31 @@ Feature: Berekening Zorgtoeslag 2025
     Then output "is_verzekerde_zorgtoeslag" is true
     And output "hoogte_toeslag" equals 210821
 
+  # Art. 2 lid 4: partner die geen verzekerde is geeft vijftig procent van het lid-1-bedrag.
+  # Partner 999200003 heeft polis_status null (geen actieve zorgverzekering, geen
+  # verdragsverzekering), dus zvw.is_verzekerde is false voor die bsn.
+  Scenario: Partner die geen verzekerde is geeft de helft van de zorgtoeslag
+    Given the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
+      | bsn       | status | inrichting_type |
+      | 999993653 | null   | null            |
+      | 999200003 | null   | null            |
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1998-01-01    | HUWELIJK          | 999200003   | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
+      | 999200003 | 1998-01-01    | HUWELIJK          | 999993653   | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
+    And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
+      | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 10000     | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+    And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
+      | bsn       | verwachting_65 |
+      | 999993653 | 20.5           |
+    And the following "RVZ" data with key "bsn" for law "zvw":
+      | bsn       | polis_status | registratie |
+      | 999993653 | ACTIEF       | null        |
+      | 999200003 | null         | null        |
+    When I evaluate outputs "hoogte_toeslag" of "zorgtoeslagwet"
+    Then output "hoogte_toeslag" equals 210773
+
   Scenario: Persoon met studiefinanciering heeft recht op zorgtoeslag
     Given the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |

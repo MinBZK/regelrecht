@@ -82,9 +82,26 @@ articles:
         verhoging_2023: 24
         verhoging_2024: 24
         verhoging_2025: 24
-        referentie_leeftijd: 65
-        referentie_levensverwachting: 20.0
-        maanden_verhoging_per_jaar: 3
+        # Art. 7a lid 2: constanten van de formule V = 2/3 * (L - 20,64) - (P - 67),
+        # letterlijk overgenomen uit de tekst (audit AUDIT_GETROUWHEID.md constateerde
+        # dat referentie_levensverwachting: 20.0 een andere waarde was dan de 20,64 uit
+        # de tekst, en dat P ontbrak).
+        levensverwachting_constante: 20.64
+        pensioenleeftijd_constante: 67
+        verhouding_levensverwachting: 0.6666666666666666
+        verhogingsdrempel: 0.25
+        verhoging_bij_overschrijding: 3
+        # P uit de formule: de pensioengerechtigde leeftijd in het kalenderjaar
+        # voorafgaand aan het jaar van verhoging. Er is in dit corpus geen
+        # jaargebonden tabel van pensioenleeftijden na 2025 (dat vergt de
+        # vijfjaarscyclus van lid 3, hier niet gemodelleerd; zie untranslatables),
+        # dus voor de eerste verhogingsronde (2026, P = leeftijd in 2025) is dit
+        # de bij tekst vastgestelde waarde uit lid 1 onder n. Voor rondes na 2026
+        # is dit een vereenvoudiging.
+        pensioenleeftijd_voorafgaand_jaar: 67
+        # Art. 7a lid 3: de verhoging treedt pas vijf jaar na vaststelling in werking,
+        # voor de eerste maal per 1 januari 2026; hier niet gebruikt omdat er geen
+        # jaargebonden pensioenleeftijd-tabel is (zie untranslatables).
         aankondigingsperiode_jaren: 5
       execution:
         produces:
@@ -244,29 +261,77 @@ articles:
                         values:
                           - $verhoging_2024
                           - 12
+                    # Art. 7a lid 1 onder n: geboren in 1960 bereikt de pensioengerechtigde
+                    # leeftijd in 2025 (67 jaar, verhoging_2025 maanden). Deze case ontbrak,
+                    # waardoor 1960-geborenen ten onrechte in de formule-tak (lid 2, vanaf
+                    # 2026) vielen (audit AUDIT_GETROUWHEID.md).
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1961-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2025
+                          - 12
+                  # Art. 7a lid 2: V = 2/3 * (L - 20,64) - (P - 67); is V < 0,25 dan
+                  # geen verhoging, is V >= 0,25 dan een stap van precies drie maanden
+                  # (geen proportionele verhoging: de tekst noemt alleen 0 of drie
+                  # maanden). De vorige modellering rekende MIN((L - 20.0) * 3/12, 2)
+                  # zonder P en met een verkeerde referentiewaarde (audit
+                  # AUDIT_GETROUWHEID.md); dit vervangt die door de formule uit de tekst.
+                  #
+                  # De buitenste ADD telt deze uitkomst op bij $basis_pensioenleeftijd
+                  # (65). Omdat de pensioenleeftijd na lid 1 al op P (67) staat, wordt
+                  # hier ook (P - basis_pensioenleeftijd) meegeteld, zodat de uitkomst
+                  # "P (+ 3 maanden)" is en niet "65 (+ 3 maanden)".
                   default:
-                    operation: IF
-                    cases:
-                      - when:
-                          operation: GREATER_THAN
-                          subject: $levensverwachting_65
-                          value: $referentie_levensverwachting
-                        then:
-                          operation: MIN
-                          values:
-                            - operation: MULTIPLY
+                    operation: ADD
+                    values:
+                      - operation: SUBTRACT
+                        values:
+                          - $pensioenleeftijd_voorafgaand_jaar
+                          - $basis_pensioenleeftijd
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: GREATER_THAN_OR_EQUAL
+                              subject:
+                                operation: SUBTRACT
+                                values:
+                                  - operation: MULTIPLY
+                                    values:
+                                      - $verhouding_levensverwachting
+                                      - operation: SUBTRACT
+                                        values:
+                                          - $levensverwachting_65
+                                          - $levensverwachting_constante
+                                  - operation: SUBTRACT
+                                    values:
+                                      - $pensioenleeftijd_voorafgaand_jaar
+                                      - $pensioenleeftijd_constante
+                              value: $verhogingsdrempel
+                            then:
+                              operation: DIVIDE
                               values:
-                                - operation: SUBTRACT
-                                  values:
-                                    - $levensverwachting_65
-                                    - $referentie_levensverwachting
-                                - operation: DIVIDE
-                                  values:
-                                    - $maanden_verhoging_per_jaar
-                                    - 12
-                            - 2
-                    # Artikel 7a lid 2 AOW: is de levensverwachting niet hoger dan de
-                    # referentiewaarde, dan is V negatief en wordt de verhoging op 0
-                    # gesteld. Zonder default was dit geval een afwezige waarde waarmee
-                    # de optelling niet kan rekenen (RFC-036).
-                    default: 0
+                                - $verhoging_bij_overschrijding
+                                - 12
+                        # Art. 7a lid 2, derde alinea: "Indien V negatief is of minder
+                        # dan 0,25 bedraagt, wordt deze gesteld op 0."
+                        default: 0
+      untranslatables:
+        - construct: >-
+            P uit de formule van art. 7a lid 2 (de pensioengerechtigde leeftijd in het
+            kalenderjaar voorafgaand aan het jaar van verhoging) als jaargebonden,
+            per verhogingsronde vastgestelde waarde
+          reason: >-
+            Lid 3 koppelt elke verhoging aan een vijf jaar eerder vastgestelde
+            Staatscourant-bekendmaking; dit corpus heeft geen tabel van
+            pensioengerechtigde leeftijden per kalenderjaar na 2025 om P uit af te
+            leiden. `pensioenleeftijd_voorafgaand_jaar` is daarom een vaste waarde
+            (67, de bij tekst laatst vastgestelde leeftijd, lid 1 onder n), correct
+            voor de eerste verhogingsronde (2026) maar niet voor rondes daarna.
+          suggestion: >-
+            Modelleer een jaargebonden gegeven `pensioengerechtigde_leeftijd_kalenderjaar`
+            dat de vijfjaarscyclus van lid 3 volgt, zodra zo'n tabel beschikbaar is.
+          accepted: true

@@ -92,6 +92,53 @@ articles:
             type: boolean
             nullable: true
             source: {}
+          # Lid 2 onder a: de wetgevende macht. Nullable boolean; afwezig (unknown)
+          # betekent geen uitsluitingsgrond, niet "nee" (RFC-036 absentiesemantiek).
+          - name: is_wetgevende_macht
+            type: boolean
+            nullable: true
+            source: {}
+          # Lid 2 onder d: de Raad van State en zijn afdelingen.
+          - name: is_raad_van_state
+            type: boolean
+            nullable: true
+            source: {}
+          # Lid 2 onder g: voorzitters, leden, griffiers en secretarissen van de in
+          # onderdelen b t/m f bedoelde organen, de procureur-generaal, de plaatsvervangend
+          # procureur-generaal en de advocaten-generaal bij de Hoge Raad, de besturen van de
+          # in onderdeel c bedoelde organen en hun voorzitters, en de commissies uit het
+          # midden van de in b t/m f bedoelde organen. Eén functionaris-grond: de tekst
+          # somt verschillende ambten op maar koppelt ze allemaal aan hetzelfde in onderdeel
+          # g bedoelde uitsluitingsgevolg.
+          - name: is_functionaris_uitgezonderd_orgaan
+            type: boolean
+            nullable: true
+            source: {}
+          # Lid 2 onder h: de commissie van toezicht op de inlichtingen- en
+          # veiligheidsdiensten (CTIVD) en haar afdelingen.
+          - name: is_ctivd
+            type: boolean
+            nullable: true
+            source: {}
+          # Lid 2 onder i: de toetsingscommissie inzet bevoegdheden (TIB).
+          - name: is_tib
+            type: boolean
+            nullable: true
+            source: {}
+          # Lid 3: voor de terug-uitzondering is nodig of het uitgezonderde orgaan/de
+          # uitgezonderde persoon een ambtenaarrechtelijk besluit neemt (jegens eigen
+          # personeel, nagelaten betrekkingen of rechtverkrijgenden in de zin van art. 3
+          # Ambtenarenwet 2017), en of het gaat om een voor het leven benoemde ambtenaar bij
+          # de Raad van State (en zijn afdelingen) of de Algemene Rekenkamer — voor hen geldt
+          # de terug-uitzondering weer niet.
+          - name: is_ambtenarenrechtelijk_besluit_eigen_personeel
+            type: boolean
+            nullable: true
+            source: {}
+          - name: is_voor_het_leven_benoemde_ambtenaar_rvs_of_rekenkamer
+            type: boolean
+            nullable: true
+            source: {}
         output:
           - name: is_bestuursorgaan
             type: boolean
@@ -110,9 +157,16 @@ articles:
             type: boolean
         actions:
           - output: is_excluded
+            # Lid 2: alle negen gronden (a t/m i) als OR-takken. a, d, g, h, i zijn
+            # toegevoegd; b/c/e/f waren al gemodelleerd als
+            # is_volksvertegenwoordigend_orgaan / is_rechterlijk_orgaan / is_ombudsman /
+            # is_algemene_rekenkamer.
             value:
               operation: OR
               conditions:
+                - operation: EQUALS
+                  subject: $is_wetgevende_macht
+                  value: true
                 - operation: EQUALS
                   subject: $is_volksvertegenwoordigend_orgaan
                   value: true
@@ -120,10 +174,22 @@ articles:
                   subject: $is_rechterlijk_orgaan
                   value: true
                 - operation: EQUALS
-                  subject: $is_ombudsman
+                  subject: $is_raad_van_state
                   value: true
                 - operation: EQUALS
                   subject: $is_algemene_rekenkamer
+                  value: true
+                - operation: EQUALS
+                  subject: $is_ombudsman
+                  value: true
+                - operation: EQUALS
+                  subject: $is_functionaris_uitgezonderd_orgaan
+                  value: true
+                - operation: EQUALS
+                  subject: $is_ctivd
+                  value: true
+                - operation: EQUALS
+                  subject: $is_tib
                   value: true
           - output: qualifies_as_bestuursorgaan
             value:
@@ -165,17 +231,38 @@ articles:
                       subject: $criteria_door_overheid_bepaald
                       value: true
           - output: is_bestuursorgaan
+            # Lid 3: een op grond van lid 2 uitgezonderd orgaan/persoon/college wordt tóch
+            # als bestuursorgaan aangemerkt voor zover het ambtenarenrechtelijke besluiten
+            # neemt over eigen personeel (art. 3 Ambtenarenwet 2017), met een terug-
+            # uitzondering voor een voor het leven benoemde ambtenaar bij de Raad van State
+            # (en zijn afdelingen) of de Algemene Rekenkamer. Gemodelleerd als OR naast de
+            # reguliere lid 1-toets, conform de wettekst.
             value:
-              operation: AND
+              operation: OR
               conditions:
-                - operation: EQUALS
-                  subject: $qualifies_as_bestuursorgaan
-                  value: true
-                - operation: NOT
-                  value:
-                    operation: EQUALS
-                    subject: $is_excluded
-                    value: true
+                - operation: AND
+                  conditions:
+                    - operation: EQUALS
+                      subject: $qualifies_as_bestuursorgaan
+                      value: true
+                    - operation: NOT
+                      value:
+                        operation: EQUALS
+                        subject: $is_excluded
+                        value: true
+                - operation: AND
+                  conditions:
+                    - operation: EQUALS
+                      subject: $is_excluded
+                      value: true
+                    - operation: EQUALS
+                      subject: $is_ambtenarenrechtelijk_besluit_eigen_personeel
+                      value: true
+                    - operation: NOT
+                      value:
+                        operation: EQUALS
+                        subject: $is_voor_het_leven_benoemde_ambtenaar_rvs_of_rekenkamer
+                        value: true
           - output: is_a_orgaan
             value:
               operation: AND
@@ -243,9 +330,17 @@ articles:
                   then: B_ORGAAN
               default: GEEN_BESTUURSORGAAN
           - output: exclusion_reason
+            # Volgorde volgt de opsomming van lid 2 (a t/m i). Bij lid 3-terugval blijft
+            # exclusion_reason de oorspronkelijke lid 2-grond tonen; is_bestuursorgaan is
+            # dan alsnog true, wat samen laat zien dát en waaróm de terugval toepast.
             value:
               operation: IF
               cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_wetgevende_macht
+                    value: true
+                  then: WETGEVENDE_MACHT
                 - when:
                     operation: EQUALS
                     subject: $is_volksvertegenwoordigend_orgaan
@@ -258,11 +353,31 @@ articles:
                   then: RECHTERLIJK_ORGAAN
                 - when:
                     operation: EQUALS
-                    subject: $is_ombudsman
+                    subject: $is_raad_van_state
                     value: true
-                  then: OMBUDSMAN
+                  then: RAAD_VAN_STATE
                 - when:
                     operation: EQUALS
                     subject: $is_algemene_rekenkamer
                     value: true
                   then: ALGEMENE_REKENKAMER
+                - when:
+                    operation: EQUALS
+                    subject: $is_ombudsman
+                    value: true
+                  then: OMBUDSMAN
+                - when:
+                    operation: EQUALS
+                    subject: $is_functionaris_uitgezonderd_orgaan
+                    value: true
+                  then: FUNCTIONARIS_UITGEZONDERD_ORGAAN
+                - when:
+                    operation: EQUALS
+                    subject: $is_ctivd
+                    value: true
+                  then: CTIVD
+                - when:
+                    operation: EQUALS
+                    subject: $is_tib
+                    value: true
+                  then: TIB

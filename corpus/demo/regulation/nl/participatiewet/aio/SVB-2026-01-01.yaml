@@ -29,9 +29,33 @@ articles:
       tenzij in deze paragraaf anders is bepaald.
     url: https://wetten.overheid.nl/BWBR0015703/2026-01-01#Artikel47a
     machine_readable:
+      # Art. 33 lid 5 Participatiewet kent een inkomensvrijlating (een vast bedrag
+      # per maand op het inkomen van een AOW- of Anw-gerechtigde) die hier niet is
+      # gemodelleerd: de tekst van art. 33 staat niet in dit bestand en niet in
+      # corpus/regulation, dus de bedragen zijn niet uit een wettekst in de corpus af
+      # te leiden (RFC-012).
+      untranslatables:
+        - construct: inkomensvrijlating art. 33 lid 5 op het inkomen van een AOW- of
+            Anw-gerechtigde bij de AIO-berekening
+          reason: >-
+            De tekst van art. 33 Participatiewet staat niet in dit bestand en niet in
+            corpus/regulation, dus de hoogte van de vrijlating volgt niet uit een
+            wettekst in de corpus.
+          suggestion: >-
+            Art. 33 lid 5 als tekst opnemen (in dit bestand of in corpus/regulation)
+            zodra beschikbaar, en de vrijlating aftrekken van totaal_inkomen.
+          accepted: true
+      # Art. 22 lid 1 onderdeel a en b Participatiewet (niet in dit bestand, wel in
+      # corpus/regulation/nl/wet/participatiewet/2022-03-15.yaml): de norm voor
+      # AIO-gerechtigden (pensioengerechtigde leeftijd bereikt) staat in art. 22,
+      # niet in art. 21 (dat regelt de norm van 21 jaar tot de pensioengerechtigde
+      # leeftijd). De bedragen hieronder zijn de per 2022-03-15 geldende bedragen uit
+      # die tekst (€ 1.213,06 resp. € 1.642,54 per kalendermaand); de op 2026-01-01
+      # geldende bedragen (audit noemt 156469/214416) staan nergens in de corpus als
+      # wettekst, dus die worden hier niet overgenomen.
       definitions:
-        norm_alleenstaand: 138000
-        norm_gehuwden: 197000
+        norm_alleenstaand: 121306
+        norm_gehuwden: 164254
         vermogensgrens_alleenstaand: 800000
         vermogensgrens_gehuwden: 1600000
         maanden_per_jaar: 12
@@ -189,7 +213,7 @@ articles:
               bwb_id: BWBR0015703
               article: 47a
               url: >-
-                https://wetten.overheid.nl/BWBR0015703/2024-01-01#Hoofdstuk3_Paragraaf3.4_Artikel47a
+                https://wetten.overheid.nl/BWBR0015703/2024-01-01#Hoofdstuk5_Paragraaf5.4_Artikel47a
               juriconnect: jci1.3:c:BWBR0015703&artikel=47a&z=2024-01-01&g=2024-01-01
               explanation: 'Artikel 47a: toekenning AIO-aanvulling'
           - output: sociaal_minimum
@@ -202,26 +226,39 @@ articles:
                     value: true
                   then: $norm_gehuwden
               default: $norm_alleenstaand
+            # Art. 22, niet art. 21: AIO-gerechtigden hebben de pensioengerechtigde
+            # leeftijd bereikt (voorwaarde art. 47a lid 1), en art. 21 regelt juist de
+            # norm van 21 jaar tot de pensioengerechtigde leeftijd. Art. 22 regelt de
+            # norm voor pensioengerechtigden. Ankers verwijzen naar de vindplaats van
+            # art. 22 in corpus/regulation (2022-03-15; hoofdstuk 3, paragraaf 3.2).
             legal_basis:
               law: Participatiewet
               bwb_id: BWBR0015703
-              article: '21'
+              article: '22'
               url: >-
-                https://wetten.overheid.nl/BWBR0015703/2024-01-01#Hoofdstuk3_Paragraaf3.2_Artikel21
-              juriconnect: jci1.3:c:BWBR0015703&artikel=21&z=2024-01-01&g=2024-01-01
-              explanation: 'Artikel 21: bijstandsnorm afhankelijk van leefsituatie'
+                https://wetten.overheid.nl/BWBR0015703/2022-03-15#Hoofdstuk3_Paragraaf3.2_Artikel22
+              juriconnect: jci1.3:c:BWBR0015703&artikel=22&z=2022-03-15&g=2022-03-15
+              explanation: 'Artikel 22: normen voor pensioengerechtigden'
           - output: totaal_inkomen
+            # Art. 32/33: totaal_inkomen was algebraïsch gelijk aan inkomen/12, want de
+            # AOW-term werd opgeteld en in dezelfde som weer afgetrokken. Bedoeld is het
+            # in aanmerking te nemen inkomen als AOW-uitkering plus het overige
+            # maandinkomen (art. 32 lid 1: "de op grond van deze wet, de Ziektewet en
+            # de Werkloosheidswet toegekende uitkeringen" resp. overig inkomen, samen
+            # het inkomen waarmee de bijstandsnorm wordt verminderd). De vrijlating van
+            # art. 33 lid 5 (een vast bedrag per maand op het inkomen van een AOW- of
+            # Anw-gerechtigde) staat niet als tekst in dit bestand of in corpus/regulation;
+            # de bedragen (€ 26,50 / € 53,00) komen uit de audit, niet uit een wettekst
+            # in de corpus, dus die worden hier niet verzonnen. Zie untranslatables
+            # hieronder.
             value:
               operation: ADD
               values:
                 - $aow_uitkering
-                - operation: SUBTRACT
+                - operation: DIVIDE
                   values:
-                    - operation: DIVIDE
-                      values:
-                        - $inkomen
-                        - $maanden_per_jaar
-                    - $aow_uitkering
+                    - $inkomen
+                    - $maanden_per_jaar
             legal_basis:
               law: Participatiewet
               bwb_id: BWBR0015703
@@ -229,7 +266,7 @@ articles:
               url: >-
                 https://wetten.overheid.nl/BWBR0015703/2024-01-01#Hoofdstuk3_Paragraaf3.4_Artikel32
               juriconnect: jci1.3:c:BWBR0015703&artikel=32&z=2024-01-01&g=2024-01-01
-              explanation: 'Artikel 32: totaal inkomen voor AIO-berekening'
+              explanation: 'Artikel 32: totaal inkomen (AOW-uitkering plus overig maandinkomen) voor AIO-berekening'
           - output: aio_aanvulling
             value:
               operation: MAX
@@ -244,7 +281,7 @@ articles:
               bwb_id: BWBR0015703
               article: 47a
               url: >-
-                https://wetten.overheid.nl/BWBR0015703/2024-01-01#Hoofdstuk3_Paragraaf3.4_Artikel47a
+                https://wetten.overheid.nl/BWBR0015703/2024-01-01#Hoofdstuk5_Paragraaf5.4_Artikel47a
               juriconnect: jci1.3:c:BWBR0015703&artikel=47a&z=2024-01-01&g=2024-01-01
               explanation: >-
                 Artikel 47a: berekening AIO als verschil tussen norm en inkomen

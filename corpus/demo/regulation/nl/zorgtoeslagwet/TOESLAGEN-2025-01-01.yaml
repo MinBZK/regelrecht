@@ -155,6 +155,32 @@ articles:
                 referentiedatum: $referencedate
             temporal:
               type: point_in_time
+          # Art. 2 lid 4: de halvering geldt voor "een partner die geen verzekerde is". Nodig om
+          # dat vast te stellen: de bsn van de partner (nullable, GEEN partner geeft null) en of
+          # die partner zelf verzekerde is (nullable via de skip-regel: bsn null -> is_verzekerde
+          # null, geen aparte guard nodig).
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: point_in_time
+          - name: partner_is_verzekerde
+            type: boolean
+            nullable: true
+            source:
+              regulation: zvw
+              output: is_verzekerde
+              parameters:
+                bsn: $partner_bsn
+            temporal:
+              type: period
+              period_type: month
           - name: standaardpremie
             type: amount
             type_spec:
@@ -225,46 +251,101 @@ articles:
                             value: $vermogensgrens_toeslagpartner
                           then: 0
                       default:
-                        operation: SUBTRACT
-                        values:
-                          - operation: MULTIPLY
-                            values:
-                              - $standaardpremie
-                              - 2
-                          - operation: ADD
-                            values:
-                              - operation: MULTIPLY
-                                values:
-                                  - $percentage_drempelinkomen_met_partner
-                                  - operation: MIN
-                                    values:
-                                      - operation: ADD
-                                        values:
-                                          - $inkomen
-                                          - $partner_inkomen
-                                      - $drempelinkomen_toeslagpartner
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: GREATER_THAN
-                                      subject:
-                                        operation: ADD
-                                        values:
-                                          - $inkomen
-                                          - $partner_inkomen
-                                      value: $drempelinkomen_toeslagpartner
-                                    then:
-                                      operation: MULTIPLY
+                        # Art. 2 lid 4: "in afwijking van het eerste lid" de helft van het lid-1-bedrag
+                        # als de partner geen verzekerde is. partner_is_verzekerde is nullable (skip-regel
+                        # via partner_bsn); EQUALS ... false is alleen waar bij een bevestigd
+                        # niet-verzekerde partner, niet bij ontbrekende partnergegevens ("onbekend").
+                        operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_is_verzekerde
+                              value: false
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - 0.5
+                                - operation: SUBTRACT
+                                  values:
+                                    - operation: MULTIPLY
                                       values:
-                                        - operation: SUBTRACT
+                                        - $standaardpremie
+                                        - 2
+                                    - operation: ADD
+                                      values:
+                                        - operation: MULTIPLY
                                           values:
-                                            - operation: ADD
+                                            - $percentage_drempelinkomen_met_partner
+                                            - operation: MIN
                                               values:
-                                                - $inkomen
-                                                - $partner_inkomen
-                                            - $drempelinkomen_toeslagpartner
-                                        - $afbouwpercentage_boven_drempel
-                                default: 0
+                                                - operation: ADD
+                                                  values:
+                                                    - $inkomen
+                                                    - $partner_inkomen
+                                                - $drempelinkomen_toeslagpartner
+                                        - operation: IF
+                                          cases:
+                                            - when:
+                                                operation: GREATER_THAN
+                                                subject:
+                                                  operation: ADD
+                                                  values:
+                                                    - $inkomen
+                                                    - $partner_inkomen
+                                                value: $drempelinkomen_toeslagpartner
+                                              then:
+                                                operation: MULTIPLY
+                                                values:
+                                                  - operation: SUBTRACT
+                                                    values:
+                                                      - operation: ADD
+                                                        values:
+                                                          - $inkomen
+                                                          - $partner_inkomen
+                                                      - $drempelinkomen_toeslagpartner
+                                                  - $afbouwpercentage_boven_drempel
+                                          default: 0
+                        default:
+                          operation: SUBTRACT
+                          values:
+                            - operation: MULTIPLY
+                              values:
+                                - $standaardpremie
+                                - 2
+                            - operation: ADD
+                              values:
+                                - operation: MULTIPLY
+                                  values:
+                                    - $percentage_drempelinkomen_met_partner
+                                    - operation: MIN
+                                      values:
+                                        - operation: ADD
+                                          values:
+                                            - $inkomen
+                                            - $partner_inkomen
+                                        - $drempelinkomen_toeslagpartner
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: GREATER_THAN
+                                        subject:
+                                          operation: ADD
+                                          values:
+                                            - $inkomen
+                                            - $partner_inkomen
+                                        value: $drempelinkomen_toeslagpartner
+                                      then:
+                                        operation: MULTIPLY
+                                        values:
+                                          - operation: SUBTRACT
+                                            values:
+                                              - operation: ADD
+                                                values:
+                                                  - $inkomen
+                                                  - $partner_inkomen
+                                              - $drempelinkomen_toeslagpartner
+                                          - $afbouwpercentage_boven_drempel
+                                  default: 0
                 default:
                   operation: IF
                   cases:

@@ -106,9 +106,32 @@ articles:
             type: string
             required: true
             source: {}
+          - name: is_geregistreerd
+            type: boolean
+            required: true
+            # Art. 1.5 lid 1: aanspraak bestaat alleen als het gaat om kinderopvang in een
+            # geregistreerd kindercentrum of gastouderopvang in een geregistreerde voorziening
+            # (LRK). De demo heeft geen LRK-bron; de ouder claimt de registratie zelf
+            # (bindings.yaml, kind: claim, dus onbeantwoord = unknown, geen 0/false-default).
+            source: {}
           - name: aangegeven_uren
             type: array
             required: true
+            source: {}
+          - name: aanvraag_soort_opvang
+            type: string
+            required: true
+            # Art. 1.5 lid 2: nodig om ouderparticipatieopvang te onderscheiden van de overige
+            # opvangvormen die wel aanspraak geven. Eigen naam (niet "soort_opvang"): dat veld
+            # bestaat al per kind binnen aangegeven_uren (art. 1.6-berekening) en zou daarin
+            # aangewezen worden door de FOREACH-body als het dezelfde naam kreeg.
+            source: {}
+          - name: binnen_aanloopperiode
+            type: boolean
+            required: true
+            # Art. 1.5 lid 2: de aanloopperiode van art. 1.60b is in deze wet niet zelf
+            # gemodelleerd (geen eigen berekening in dit bestand); de vraag of de aanvraag
+            # in die periode valt is een claim van de ouder.
             source: {}
           - name: verwachte_partner_uren
             type: number
@@ -130,9 +153,50 @@ articles:
             # Art. 1.6 lid 1 en 3 Wko: met partner bestaat het recht als ook de partner werkt of een
             # traject volgt. Zonder partner is er geen partnervoorwaarde; de gewerkte uren van de partner
             # komen uit het UWV-register en zijn afwezig zonder partner (RFC-036).
+            # Art. 1.5 lid 1: aanspraak vereist geregistreerde opvang (LRK); zonder registratiebron in
+            # de demo is dit de claim van de ouder, EQUALS true zodat "unknown" (nog niet geclaimd)
+            # geen aanspraak geeft.
+            # Art. 1.5 lid 2: "in afwijking van het eerste lid" - een ouderparticipatiecrèche in de
+            # aanloopperiode (art. 1.60b) heeft geen aanspraak, ook als aan lid 1 is voldaan. AND-conditie
+            # naast lid 1, met eigen legal_basis lid 2.
             value:
               operation: AND
               conditions:
+                - operation: EQUALS
+                  subject: $is_geregistreerd
+                  value: true
+                  legal_basis:
+                    law: Wet kinderopvang
+                    bwb_id: BWBR0017017
+                    article: '1.5'
+                    paragraph: '1'
+                    url: https://wetten.overheid.nl/BWBR0017017/2024-01-01#Artikel1.5
+                    juriconnect: jci1.3:c:BWBR0017017&artikel=1.5&lid=1&z=2024-01-01&g=2024-01-01
+                    explanation: >-
+                      Artikel 1.5 lid 1 Wet kinderopvang: aanspraak bestaat alleen bij opvang in een
+                      geregistreerd kindercentrum of een geregistreerde voorziening voor
+                      gastouderopvang.
+                - operation: NOT
+                  value:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $aanvraag_soort_opvang
+                        value: OUDERPARTICIPATIECRECHE
+                      - operation: EQUALS
+                        subject: $binnen_aanloopperiode
+                        value: true
+                  legal_basis:
+                    law: Wet kinderopvang
+                    bwb_id: BWBR0017017
+                    article: '1.5'
+                    paragraph: '2'
+                    url: https://wetten.overheid.nl/BWBR0017017/2024-01-01#Artikel1.5
+                    juriconnect: jci1.3:c:BWBR0017017&artikel=1.5&lid=2&z=2024-01-01&g=2024-01-01
+                    explanation: >-
+                      Artikel 1.5 lid 2 Wet kinderopvang: bij ouderparticipatieopvang in een
+                      ouderparticipatiecrèche is er in de aanloopperiode van art. 1.60b, in afwijking
+                      van het eerste lid, geen aanspraak op kinderopvangtoeslag.
                 - operation: OR
                   conditions:
                     - operation: EQUALS

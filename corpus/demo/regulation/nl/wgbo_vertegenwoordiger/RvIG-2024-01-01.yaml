@@ -52,6 +52,12 @@ articles:
     url: https://wetten.overheid.nl/BWBR0005290/2024-01-01#Artikel465
     machine_readable:
       definitions:
+        # Art. 7:465 lid 3 BW: rangorde is schriftelijk gemachtigde, dan partnercategorie
+        # (echtgenoot/geregistreerd partner/levensgezel), dan familiecategorie (ouder, kind,
+        # broer, zus, grootouder, kleinkind); elke categorie kent een "tenzij deze persoon dat
+        # niet wenst"-uitzondering. wgbo_relatie_hierarchie blijft de volledige lijst voor de
+        # IN-toets die bepaalt of een familierelatie überhaupt vertegenwoordigingsbevoegdheid kan
+        # geven; grootouder/kleinkind stonden hier ten onrechte niet in (audit).
         wgbo_relatie_hierarchie:
           - ECHTGENOOT
           - GEREGISTREERD_PARTNER
@@ -60,6 +66,8 @@ articles:
           - KIND
           - BROER
           - ZUS
+          - GROOTOUDER
+          - KLEINKIND
         wgbo_vertegenwoordiger_rechten:
           - LEZEN
           - CLAIMS_INDIENEN
@@ -73,6 +81,12 @@ articles:
             type: string
             required: true
         input:
+          # Elk item draagt, naast de familierelatie, of deze persoon door de patiënt schriftelijk
+          # is gemachtigd (is_gemachtigd) en of de persoon niet wenst op te treden
+          # (wenst_niet_op_te_treden) — de twee feiten die de rangorde van lid 3 nodig heeft.
+          # Item-niveau nullable is niet declareerbaar in dit schema (zie untranslatables); de
+          # afwezigheid van een schriftelijk gemachtigde wordt daarom getoetst met
+          # "geen enkele relatie in de lijst is gemachtigd", niet met een null-veld.
           - name: familie_relaties
             type: array
             source: {}
@@ -107,6 +121,14 @@ articles:
                 body: 1
                 combine: ADD
               value: 0
+          # Art. 7:465 lid 3 BW: rangorde. Een relatie telt alleen als vertegenwoordiger als de
+          # persoon niet heeft laten weten dat hij dat niet wenst ("tenzij deze persoon dat niet
+          # wenst"); voor de gemachtigde geldt die uitzondering niet (die staat in de tekst alleen
+          # bij de partner- en familiecategorie). Lid 1 (patiënt onder de twaalf, ouders met gezag
+          # of voogd) en lid 2 (curatele/mentorschap) blijven buiten deze actie: dat vergt een
+          # opzoeking in een ander register (burgerlijk_wetboek_gezag resp. _curatele/_mentorschap)
+          # per patiënt uit deze lijst, en de engine kan geen cross-law source binnen een FOREACH
+          # per item aanroepen (zie untranslatables).
           - output: wgbo_vertegenwoordigingen
             value:
               operation: FOREACH
@@ -117,9 +139,21 @@ articles:
                   - operation: EQUALS
                     subject: $current.is_wilsonbekwaam
                     value: true
-                  - operation: IN
-                    subject: $current.relatie_type
-                    value: $wgbo_relatie_hierarchie
+                  - operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $current.is_gemachtigd
+                        value: true
+                      - operation: AND
+                        conditions:
+                          - operation: IN
+                            subject: $current.relatie_type
+                            value: $wgbo_relatie_hierarchie
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $current.wenst_niet_op_te_treden
+                              value: true
               body: $current
               as: current
             legal_basis:
@@ -132,8 +166,9 @@ articles:
               juriconnect: >-
                 jci1.3:c:BWBR0005290&boek=7&artikel=465&lid=3&z=2024-01-01&g=2024-01-01
               explanation: >
-                Art. 7:465 lid 3 BW: familieleden kunnen optreden als vertegenwoordiger voor wilsonbekwame
-                patienten. Alleen relevante relaties geven bevoegdheid.
+                Art. 7:465 lid 3 BW: bij ontbreken van gezag/voogd/curator/mentor kan de schriftelijk
+                gemachtigde, en anders de partner- of familiecategorie, optreden als vertegenwoordiger.
+                Een partner of familielid dat dit niet wenst, telt niet mee.
           - output: heeft_delegaties
         # POC: EXISTS op lijst $wgbo_vertegenwoordigingen (uitvoer heeft_delegaties) betekende 'niet leeg'; expliciet
         # als telling (RFC-016)
@@ -201,6 +236,10 @@ articles:
               juriconnect: >-
                 jci1.3:c:BWBR0005290&boek=7&artikel=465&z=2024-01-01&g=2024-01-01
               explanation: Patienten zijn natuurlijke personen, altijd CITIZEN
+          # Art. 7:465 lid 3 BW: rangorde-labels. Een gemachtigde krijgt een eigen categorie
+          # (voorrang boven de familiecategorieën); grootouder en kleinkind ontbraken hier
+          # (audit) en krijgen, net als broer/zus, elk hun eigen waarde in plaats van de
+          # SIBLING-default op te vangen.
           - output: delegation_types
             value:
               operation: FOREACH
@@ -208,6 +247,11 @@ articles:
               body:
                 operation: IF
                 cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $current.is_gemachtigd
+                      value: true
+                    then: WGBO_VERTEGENWOORDIGER_GEMACHTIGDE
                   - when:
                       operation: IN
                       subject: $current.relatie_type
@@ -226,7 +270,19 @@ articles:
                       subject: $current.relatie_type
                       value: KIND
                     then: WGBO_VERTEGENWOORDIGER_KIND
-                default: WGBO_VERTEGENWOORDIGER_SIBLING
+                  - when:
+                      operation: IN
+                      subject: $current.relatie_type
+                      values:
+                        - BROER
+                        - ZUS
+                    then: WGBO_VERTEGENWOORDIGER_SIBLING
+                  - when:
+                      operation: EQUALS
+                      subject: $current.relatie_type
+                      value: GROOTOUDER
+                    then: WGBO_VERTEGENWOORDIGER_GROOTOUDER
+                default: WGBO_VERTEGENWOORDIGER_KLEINKIND
               as: current
             legal_basis:
               law: Burgerlijk Wetboek Boek 7
@@ -295,4 +351,35 @@ articles:
             dynamisch en kan niet vooraf worden uitgerold
           suggestion: >-
             Voeg FOREACH toe aan het schema of beperk het aantal registraties tot een vast maximum
+          accepted: true
+        - construct: >-
+            Art. 7:465 lid 1 en 2 BW ("indien de patiënt de leeftijd van twaalf jaren nog niet
+            heeft bereikt ... jegens de ouders die het gezag over de patiënt uitoefenen dan wel
+            jegens zijn voogd" resp. "tenzij zodanige patiënt meerderjarig is en onder curatele
+            staat of ten behoeve van hem het mentorschap is ingesteld, in welke gevallen nakoming
+            jegens de curator of de mentor geschiedt")
+          reason: >-
+            Deze leden vergen, per patiënt in $familie_relaties, een opzoeking in
+            burgerlijk_wetboek_gezag (patiënt onder de twaalf) resp. burgerlijk_wetboek_curatele en
+            burgerlijk_wetboek_mentorschap (patiënt meerderjarig en wilsonbekwaam). Een cross-law
+            `source` wordt eenmalig bij het inladen van een input opgelost met de
+            actie-parameters (bv. $bsn); er is geen operatie om die aanroep te herhalen per item
+            van een FOREACH over $familie_relaties met het bsn van dat item als parameter. Zonder
+            die opzoeking kan de actie niet vaststellen of lid 3 (de rangorde die deze actie wel
+            modelleert) hier toepassing mist doordat lid 1 of 2 al voorziet.
+          suggestion: >-
+            Voeg een operatie toe die een regeling per FOREACH-item met een dynamische parameter
+            kan aanroepen (of maak $familie_relaties zelf een first-class binding die deze feiten
+            al meelevert), zodat lid 1 en 2 hier naast lid 3 gemodelleerd kunnen worden.
+          accepted: true
+        - construct: >-
+            nullable veld binnen een item van de array-input $familie_relaties (bv. of een
+            specifieke relatie schriftelijk is gemachtigd, of "dat niet wenst")
+          reason: >-
+            `nullable` is in dit schema alleen declareerbaar op een top-level input of output,
+            niet op een veld binnen een item van een array. De afwezigheid van een schriftelijk
+            gemachtigde ("ontbreekt zodanige persoon") wordt daarom getoetst als "geen enkele
+            relatie in de lijst heeft is_gemachtigd true", niet als een nullable veld.
+          suggestion: >-
+            Voeg item-niveau nullable-declaraties toe aan het array input-schema.
           accepted: true

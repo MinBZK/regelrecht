@@ -109,13 +109,19 @@ articles:
               precision: 0
               min: 0
         actions:
+          # Art. 41: de bijdrageplicht is onvoorwaardelijk ("De inhoudingsplichtige en de
+          # verzekeringsplichtige zijn een inkomensafhankelijke bijdrage verschuldigd."). De
+          # eerdere drempel (inkomen_loon > 0) had geen grondslag in de tekst en is verwijderd;
+          # voldoet_aan_voorwaarden is nu altijd true en blijft staan als procesveld/aanslagvlag.
           - output: voldoet_aan_voorwaarden
-            value:
-              operation: AND
-              conditions:
-                - subject: $inkomen_loon
-                  operation: GREATER_THAN
-                  value: 0
+            value: true
+            legal_basis:
+              law: Zorgverzekeringswet
+              bwb_id: BWBR0018450
+              article: '41'
+              url: https://wetten.overheid.nl/BWBR0018450/2026-01-01#Artikel41
+              juriconnect: jci1.3:c:BWBR0018450&artikel=41&z=2026-01-01&g=2026-01-01
+              explanation: 'Artikel 41 Zvw: de bijdrageplicht is onvoorwaardelijk'
           - output: is_aow_gerechtigd
             value:
               operation: GREATER_THAN_OR_EQUAL
@@ -150,16 +156,29 @@ articles:
                 https://wetten.overheid.nl/BWBR0018450/2024-01-01#Hoofdstuk5_Paragraaf5.1_Artikel43
               juriconnect: jci1.3:c:BWBR0018450&artikel=43&z=2024-01-01&g=2024-01-01
               explanation: 'Artikel 43 Zvw: bepaling toepasselijk tarief'
+          # Art. 43 lid 1: bijdrage_inkomen is de som van vier IB-bestanddelen (loon, winst uit
+          # onderneming, resultaat overige werkzaamheden, periodieke uitkeringen), zonder
+          # eigenwoningforfait. $inkomen_loon is hier box1_inkomen uit wet_inkomstenbelasting,
+          # dat het eigenwoningforfait wél meetelt. wet_inkomstenbelasting in deze corpus
+          # exposeert de vier bestanddelen niet los als outputs (alleen de opgetelde
+          # box1_inkomen), dus de correcte optelling kan niet uit die outputs worden opgebouwd.
+          # Waarde blijft op $inkomen_loon staan (geen verzonnen correctie); zie untranslatables.
           - output: bijdrage_inkomen
             value: $inkomen_loon
             legal_basis:
               law: Zorgverzekeringswet
               bwb_id: BWBR0018450
-              article: '42'
+              article: '43'
+              paragraph: '1'
               url: >-
-                https://wetten.overheid.nl/BWBR0018450/2024-01-01#Hoofdstuk5_Paragraaf5.1_Artikel42
-              juriconnect: jci1.3:c:BWBR0018450&artikel=42&z=2024-01-01&g=2024-01-01
-              explanation: 'Artikel 42 Zvw: bepaling bijdrage-inkomen'
+                https://wetten.overheid.nl/BWBR0018450/2024-01-01#Hoofdstuk5_Paragraaf5.1_Artikel43
+              juriconnect: >-
+                jci1.3:c:BWBR0018450&artikel=43&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 43 lid 1 Zvw: bijdrage-inkomen is de som van loon, winst uit onderneming,
+                resultaat overige werkzaamheden en periodieke uitkeringen (zonder
+                eigenwoningforfait); wegens ontbrekende outputs in wet_inkomstenbelasting
+                genaderd met box1_inkomen, zie untranslatables
           - output: bijdrage_inkomen_begrensd
             value:
               operation: MIN
@@ -202,3 +221,27 @@ articles:
                 https://wetten.overheid.nl/BWBR0018450/2024-01-01#Hoofdstuk5_Paragraaf5.1_Artikel41
               juriconnect: jci1.3:c:BWBR0018450&artikel=41&z=2024-01-01&g=2024-01-01
               explanation: 'Artikel 41 Zvw: berekening inkomensafhankelijke bijdrage'
+      untranslatables:
+        - construct: >-
+            optelling van de vier IB-bestanddelen (loon, winst uit onderneming, resultaat
+            overige werkzaamheden, periodieke uitkeringen) tot het bijdrage-inkomen, zonder
+            eigenwoningforfait
+          reason: >-
+            wet_inkomstenbelasting in deze corpus exposeert loon_uit_dienstbetrekking,
+            winst_uit_onderneming, resultaat_overige_werkzaamheden en
+            uitkeringen_en_pensioenen alleen als inputs, niet als outputs; alleen de
+            opgetelde box1_inkomen (mét eigenwoningforfait) is een output van die wet.
+            De vier bestanddelen kunnen daardoor niet los als source-outputs worden
+            opgehaald om de juiste optelling te modelleren.
+          suggestion: >-
+            Voeg aan wet_inkomstenbelasting outputs toe voor loon_uit_dienstbetrekking,
+            winst_uit_onderneming, resultaat_overige_werkzaamheden en
+            uitkeringen_en_pensioenen (of een gecombineerde output zonder
+            eigenwoningforfait), zodat deze wet artikel 43 lid 1 letterlijk kan optellen.
+          legal_text_excerpt: >-
+            Artikel 43 1 Het bijdrage-inkomen van een jaar is het gezamenlijke bedrag van
+            hetgeen door de verzekeringsplichtige in dat jaar is genoten aan: a. belastbaar
+            loon [...]; b. belastbare winst uit onderneming [...]; c. belastbaar resultaat
+            uit overige werkzaamheden [...]; d. belastbare periodieke uitkeringen en
+            verstrekkingen [...].
+          accepted: true

@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
 $id: burgerlijk_wetboek_boek_5
 uuid: 5a42b000-5a42-5a42-5a42-5a42b0000042
 regulatory_layer: WET
@@ -57,6 +57,31 @@ articles:
                       then: 200
                   default: 50
 
+      # Lid 2, "of een plaatselijke gewoonte": naast de verordening kent lid 2
+      # een tweede afwijkingsgrond. Een plaatselijke gewoonte is ongeschreven
+      # recht, geen document dat een gemeente kan "implementeren" (open_terms/
+      # implements zijn gebouwd op registreerbare bronnen). Er is geen
+      # mechanisme om deze afwijkingsgrond zelf uit te voeren; alleen de
+      # verordeningstak (gemeentelijke_afstand_cm) is gemodelleerd.
+      untranslatables:
+        - construct: afwijking van de wettelijke afstand op grond van een plaatselijke gewoonte
+          reason: >-
+            Een plaatselijke gewoonte is ongeschreven recht: er is geen
+            register, verordening of ander document waaraan de engine dit kan
+            binden. De open_terms/implements-constructie (RFC-003) veronderstelt
+            een bron die een gemeente vaststelt en publiceert; "gewoonte" is per
+            definitie niet dat. Alleen de verordeningstak van lid 2 is
+            gemodelleerd (open term gemeentelijke_afstand_cm).
+          suggestion: >-
+            Geen automatische oplossing: een plaatselijke gewoonte is per zaak
+            een feitelijke vaststelling (getuigenbewijs, lokale praktijk), niet
+            iets dat vooraf in een bron ligt. Zou alsnog gemodelleerd moeten
+            worden zodra er een vastlegging bestaat die als bron kan dienen.
+          legal_text_excerpt: >-
+            tenzij ingevolge een verordening of een plaatselijke gewoonte een
+            kleinere afstand is toegelaten
+          accepted: true
+
       execution:
         produces:
           legal_character: INFORMATIEF
@@ -71,6 +96,51 @@ articles:
             type: string
             required: true
             description: Type beplanting - "boom" of "heg_of_heester"
+          # Lid 1: het verbod geldt niet als de eigenaar toestemming heeft
+          # gegeven. Feitelijk gegeven, niet uit een register af te leiden;
+          # nullable omdat "geen toestemming gegeven" en "onbekend of
+          # toestemming is gegeven" verschillende zaken zijn.
+          - name: toestemming_nabuur_gegeven
+            type: boolean
+            nullable: true
+            required: false
+            description: >-
+              Of de eigenaar van het naburige erf toestemming heeft gegeven
+              voor beplanting binnen de afstand van lid 2 (lid 1)
+          # Lid 1: het verbod geldt niet als het naburige erf een openbare weg
+          # of openbaar water is. Feitelijk gegeven over het naburige erf.
+          - name: naburig_erf_is_openbare_weg_of_water
+            type: boolean
+            nullable: true
+            required: false
+            description: >-
+              Of het naburige erf een openbare weg of een openbaar water is
+              (lid 1)
+          # Lid 3: uitsluiting van het verzetsrecht als de beplanting niet
+          # hoger reikt dan de scheidsmuur. Feitelijke hoogtevergelijking.
+          - name: beplanting_hoger_dan_scheidsmuur
+            type: boolean
+            nullable: true
+            required: false
+            description: >-
+              Of de bomen, heesters of heggen hoger reiken dan de scheidsmuur
+              tussen de erven (lid 3)
+          # Lid 4: schade is pas vergoedbaar vanaf de aanmaning. Datum van de
+          # aanmaning tot opheffing van de ongeoorloofde toestand.
+          - name: datum_aanmaning_opheffing
+            type: date
+            nullable: true
+            required: false
+            description: >-
+              Datum waartegen is aangemaand tot opheffing van de ongeoorloofde
+              toestand (lid 4); ontbreekt zolang niet is aangemaand
+          # Lid 4: datum waarop de schade is ontstaan, te vergelijken met de
+          # aanmaningsdatum.
+          - name: datum_ontstaan_schade
+            type: date
+            nullable: true
+            required: false
+            description: Datum waarop de schade als gevolg van de ongeoorloofde toestand is ontstaan (lid 4)
 
         output:
           - name: minimale_afstand_cm
@@ -79,6 +149,39 @@ articles:
           - name: minimale_afstand_m
             type: number
             description: De geldende minimale afstand tot de erfgrens in meters
+          # Lid 1: het verbod (binnen de afstand van lid 2) geldt niet bij
+          # toestemming of een openbaar erf. Nullable: bij ontbrekende
+          # toestemmings- of erfgegevens is de geoorloofdheid onbekend, geen
+          # stilzwijgend "geoorloofd".
+          - name: beplanting_geoorloofd
+            type: boolean
+            nullable: true
+            description: >-
+              Of de beplanting binnen de afstand van lid 2 geoorloofd is: bij
+              toestemming van de nabuur, of als het naburige erf een openbare
+              weg of openbaar water is (lid 1)
+          # Lid 3: uitsluiting van het verzetsrecht bij beplanting die niet
+          # hoger reikt dan de scheidsmuur. Nullable: onbekende hoogte geeft
+          # een onbekend verzetsrecht, geen stilzwijgend "kan zich verzetten".
+          - name: nabuur_kan_zich_verzetten
+            type: boolean
+            nullable: true
+            description: >-
+              Of de nabuur zich kan verzetten tegen de aanwezigheid van de
+              beplanting: niet als deze niet hoger reikt dan de scheidsmuur
+              (lid 3)
+          # Lid 4: schade is alleen vergoedbaar vanaf de aanmaning. Nullable:
+          # zonder aanmaning of schadedatum is er geen vergoedbare-schadetoets
+          # mogelijk (geen aanmaning betekent hier geen vergoedbare schade,
+          # maar een ontbrekende schadedatum bij een wél bestaande aanmaning
+          # levert een onbekende uitkomst, geen default).
+          - name: vergoedbare_schade
+            type: boolean
+            nullable: true
+            description: >-
+              Of de schade als gevolg van de ongeoorloofde toestand vergoedbaar
+              is: alleen de schade die is ontstaan na het tijdstip waartegen is
+              aangemaand tot opheffing (lid 4)
 
         actions:
           # De geldende afstand is de open term: de gemeentelijke afstand waar
@@ -94,3 +197,109 @@ articles:
               values:
                 - $minimale_afstand_cm
                 - 100
+
+          # Lid 1: geoorloofd bij toestemming, of als het naburige erf een
+          # openbare weg of openbaar water is. Zonder een van beide gronden
+          # ongeoorloofd. Volgorde als bij mag_vernietigd_worden (Archiefwet
+          # art. 5): eerst de gronden die al op waar vaststaan (definitief
+          # geoorloofd, ongeacht of de andere grond bekend is), dan de
+          # gronden die op onwaar vaststaan maar waarvan de andere nog
+          # onbekend is (onbekende uitkomst, geen stilzwijgend "ongeoorloofd"),
+          # pas daarna de definitieve "beide gronden ontbreken of zijn onwaar"
+          # -> ongeoorloofd.
+          - output: beplanting_geoorloofd
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $toestemming_nabuur_gegeven
+                    value: true
+                  then: true
+                - when:
+                    operation: EQUALS
+                    subject: $naburig_erf_is_openbare_weg_of_water
+                    value: true
+                  then: true
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $toestemming_nabuur_gegeven
+                        value: null
+                      - operation: EQUALS
+                        subject: $naburig_erf_is_openbare_weg_of_water
+                        value: null
+                  then: null
+              default: false
+            legal_basis:
+              law: Burgerlijk Wetboek
+              article: '5:42'
+              explanation: >-
+                Lid 1: verbod binnen de afstand van lid 2, tenzij toestemming
+                is gegeven of het naburige erf een openbare weg of openbaar
+                water is.
+
+          # Lid 3: geen verzetsrecht als de beplanting niet hoger reikt dan de
+          # scheidsmuur; wel verzetsrecht als de beplanting hoger reikt. Een
+          # onbekende hoogte geeft een onbekend verzetsrecht (EQUALS … null
+          # -> then: null), geen stilzwijgend oordeel.
+          - output: nabuur_kan_zich_verzetten
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $beplanting_hoger_dan_scheidsmuur
+                    value: null
+                  then: null
+                - when:
+                    operation: EQUALS
+                    subject: $beplanting_hoger_dan_scheidsmuur
+                    value: false
+                  then: false
+              default: true
+            legal_basis:
+              law: Burgerlijk Wetboek
+              article: '5:42'
+              explanation: >-
+                Lid 3: de nabuur kan zich niet verzetten tegen bomen, heesters
+                of heggen die niet hoger reiken dan de scheidsmuur; buiten dat
+                geval bestaat het verzetsrecht wel.
+
+          # Lid 4: schade is pas vergoedbaar vanaf de aanmaning. Zonder
+          # aanmaning is er geen vergoedbare schade (geen ongeoorloofde
+          # toestand is dan nog "aangemaand"); met aanmaning is de schade
+          # vergoedbaar als zij is ontstaan na de aanmaningsdatum. Een
+          # ontbrekende schadedatum bij een bestaande aanmaning levert een
+          # onbekende uitkomst (DATE_DIFF wijst null af, dus een expliciete
+          # afwezigheidstoets eerst).
+          - output: vergoedbare_schade
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $datum_aanmaning_opheffing
+                    value: null
+                  then: false
+                - when:
+                    operation: EQUALS
+                    subject: $datum_ontstaan_schade
+                    value: null
+                  then: null
+              default:
+                operation: GREATER_THAN
+                subject:
+                  operation: DATE_DIFF
+                  from: $datum_aanmaning_opheffing
+                  to: $datum_ontstaan_schade
+                  in: days
+                value: 0
+            legal_basis:
+              law: Burgerlijk Wetboek
+              article: '5:42'
+              explanation: >-
+                Lid 4: van de schade als gevolg van een ongeoorloofde toestand
+                is alleen vergoeding verschuldigd voor zover zij is ontstaan na
+                het tijdstip waartegen tot opheffing is aangemaand.

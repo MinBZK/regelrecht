@@ -23,6 +23,9 @@ articles:
         minimale_leeftijd_jaren: 20
         maximale_termijn_overbrengen_jaren: 10
         uiterste_leeftijd_jaren: 30
+        # Art. 13 lid 4: de machtiging tot opschorting wordt verleend voor een periode
+        # van ten hoogste tien jaar.
+        maximale_termijn_machtiging_jaren: 10
       execution:
         produces:
           legal_character: BESCHIKKING
@@ -51,6 +54,15 @@ articles:
             # een afwezigheid waarop de wet beslist).
             nullable: true
             required: false
+          - name: machtiging_datum
+            type: date
+            # Art. 13 lid 4: de machtiging wordt "verleend voor een periode van ten
+            # hoogste tien jaar". Zonder een verleningsdatum is die termijn niet te
+            # toetsen; nullable omdat een aanvrager die geen machtiging heeft dit
+            # veld weglaat (RFC-036, zelfde afwezigheidssemantiek als de andere
+            # aanvraaggegevens hier).
+            nullable: true
+            required: false
         output:
           - name: moet_overgebracht_worden
             type: boolean
@@ -75,9 +87,28 @@ articles:
                   conditions:
                     - operation: NOT
                       value:
-                        operation: EQUALS
-                        subject: $opschortingsmachtiging
-                        value: true
+                        operation: AND
+                        conditions:
+                          # Art. 13 lid 3: de machtiging tot opschorting.
+                          - operation: EQUALS
+                            subject: $opschortingsmachtiging
+                            value: true
+                          # Art. 13 lid 4: de machtiging geldt alleen "voor een periode
+                          # van ten hoogste tien jaar" vanaf de verleningsdatum; zonder
+                          # verleningsdatum is de machtiging niet vast te stellen en dus
+                          # niet werkzaam.
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $machtiging_datum
+                              value: null
+                          - operation: LESS_THAN
+                            subject:
+                              operation: DATE_DIFF
+                              from: $machtiging_datum
+                              to: $referencedate.iso
+                              in: years
+                            value: $maximale_termijn_machtiging_jaren
                     - operation: NOT
                       value:
                         operation: EQUALS
@@ -114,3 +145,23 @@ articles:
               juriconnect: jci1.3:c:BWBR0007748&artikel=11&z=2020-01-01&g=2020-01-01
               explanation: >-
                 Artikel 11 Archiefbesluit bepaalt de uiterste termijn voor overbrenging
+  - number: '13'
+    text: >-
+      1. De zorgdrager kan archiefbescheiden die niet voor vernietiging in aanmerking komen
+      en jonger zijn dan twintig jaar naar een archiefbewaarplaats overbrengen, wanneer naar
+      het oordeel van de beheerder van de archiefbewaarplaats voldoende aanleiding bestaat
+      hiervoor ruimte beschikbaar te stellen. 2. Een afwijzende beslissing krachtens het
+      eerste lid kan door degene aan wie de beheerder onmiddellijk ondergeschikt is worden
+      herzien. 3. Indien archiefbescheiden ouder dan twintig jaar door het overheidsorgaan
+      nog veelvuldig worden gebruikt of geraadpleegd kan op verzoek van de zorgdrager
+      machtiging tot opschorting van de overbrenging van die archiefbescheiden worden
+      verleend door Onze minister dan wel, indien het archiefbescheiden betreft voor de
+      bewaring waarvan een andere dan een rijksarchiefbewaarplaats of een provinciale
+      archiefbewaarplaats is aangewezen, door gedeputeerde staten. 4. De in het derde lid
+      bedoelde machtiging, waaraan voorwaarden kunnen worden verbonden, wordt verleend voor
+      een periode van ten hoogste tien jaar, na afloop waarvan verlenging kan worden
+      verkregen.
+    url: https://wetten.overheid.nl/BWBR0007376/2024-01-01#Artikel13
+    # De opschortingslogica van lid 3/4 is gemodelleerd in de machine_readable van
+    # artikel 12 (de moet_overgebracht_worden-actie), omdat die uitkomst daar de output
+    # is; deze tekst dient als bron/legal_basis voor die tak.

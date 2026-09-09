@@ -67,3 +67,25 @@ Feature: Berekening Inkomstenbelasting
     And output "box3_inkomen" equals 0
     And output "totale_heffingskortingen" equals 727646
     And output "totale_belastingschuld" equals 347017
+
+  Scenario: Berekening box 3 partnerinkomen zonder dubbele heffingsvrije voet
+    # Art. 2.17 Wet IB 2001: bij een partner geldt de gezamenlijke heffingsvrije voet
+    # (box3_heffingsvrije_voet_partners) op de rendementsgrondslag; die voet wordt in
+    # box3_bezittingen al toegepast op het vermogen van de belastingplichtige zelf. Het
+    # vermogen van de partner in partner_box3_inkomen kent geen eigen, tweede heffingsvrije
+    # voet meer (audit: corpus/demo/tools/AUDIT_GETROUWHEID.md, § Wet IB Belastingdienst).
+    Given the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1985-05-15    | HUWELIJK          | 999993654   | []                | Amsterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | 1986-05-15            |
+      | 999993654 | 1986-05-15    | HUWELIJK          | 999993653   | []                | Amsterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | 1985-05-15            |
+    And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
+      | 999993653 | 3000000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 20000000           | 0                   | 0                      | 0                | 0                           | 0                   |
+    And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
+      | bsn       | verwachting_65 |
+      | 999993653 | 20.5           |
+    When I evaluate outputs "box3_inkomen, partner_box3_inkomen, partner_inkomen" of "wet_inkomstenbelasting"
+    Then the execution succeeds
+    And output "box3_inkomen" equals 0
+    And output "partner_box3_inkomen" equals 1348000
+    And output "partner_inkomen" equals 1348000

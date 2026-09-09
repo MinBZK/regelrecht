@@ -22,10 +22,15 @@ Feature: Berekening Kindgebonden Budget
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 999200001 | 1988-04-12    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+    # Art. 2 lid 12/13: geen bekend woonland per kind, dus geen korting (woonlandfactor 100)
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 999200001 | null                 |
     When I evaluate outputs "voldoet_aan_voorwaarden, alo_kop_bedrag, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
-    And output "alo_kop_bedrag" equals 348000
-    And output "kindgebonden_budget_jaar" equals 599100
+    # Art. 2 lid 6: de tekst noemt € 3.389 (338900 eurocent), niet € 3.480 (audit AUDIT_GETROUWHEID.md)
+    And output "alo_kop_bedrag" equals 338900
+    And output "kindgebonden_budget_jaar" equals 590000
 
   Scenario: Paar met 2 kinderen krijgt aangepast bedrag zonder ALO-kop
     Given parameter "bsn" is "999200002"
@@ -45,6 +50,9 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 999200002 | 1985-09-22    | HUWELIJK          | 999200003   | []                |                | []             |               |               | null  | []           |                       |
       | 999200003 |               | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 999200002 | null                 |
     When I evaluate outputs "voldoet_aan_voorwaarden, alo_kop_bedrag, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "alo_kop_bedrag" equals 0
@@ -65,6 +73,9 @@ Feature: Berekening Kindgebonden Budget
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 999200004 | 1982-11-30    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 999200004 | null                 |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "kindgebonden_budget_jaar" equals 0
@@ -83,9 +94,12 @@ Feature: Berekening Kindgebonden Budget
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 999200005 | 1990-01-15    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 999200005 | null                 |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
-    And output "kindgebonden_budget_jaar" equals 599100
+    And output "kindgebonden_budget_jaar" equals 590000
 
   Scenario: Alleenstaande met kind en hoger inkomen
     Given parameter "bsn" is "999200006"
@@ -101,9 +115,12 @@ Feature: Berekening Kindgebonden Budget
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 999200006 | 1987-06-20    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 999200006 | null                 |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
-    And output "kindgebonden_budget_jaar" equals 599100
+    And output "kindgebonden_budget_jaar" equals 590000
 
   Scenario: Geen kinderbijslag betekent geen kindgebonden budget
     Given parameter "bsn" is "999200007"
@@ -153,7 +170,81 @@ Feature: Berekening Kindgebonden Budget
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 200000009 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 200000009 | null                 |
     When I evaluate outputs "voldoet_aan_voorwaarden, alo_kop_bedrag, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
-    And output "alo_kop_bedrag" equals 348000
-    And output "kindgebonden_budget_jaar" equals 599100
+    # Art. 2 lid 6: de tekst noemt € 3.389 (338900 eurocent), niet € 3.480 (audit AUDIT_GETROUWHEID.md)
+    And output "alo_kop_bedrag" equals 338900
+    And output "kindgebonden_budget_jaar" equals 590000
+
+  Scenario: Onbekend woonland telt niet als woonland buiten Nederland
+    # Art. 2 lid 12: de woonlandfactor geldt alleen als voor het kind een ander land dan
+    # Nederland als woonland in aanmerking wordt genomen. Onbekend (RFC-036) is geen
+    # vaststaand ander woonland, dus het kind telt hier voor het volle bedrag (factor 100).
+    Given parameter "bsn" is "200000010"
+    And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
+      | bsn       | kinderen_data                                                                 |
+      | 200000010 | {"aantal_kinderen":1,"kinderen_leeftijden":[6],"ontvangt_kinderbijslag":true} |
+    And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
+      | bsn       | vermogensgegevens    |
+      | 200000010 | {"vermogen":1000000} |
+    And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
+      | bsn       | inkomensgegevens             |
+      | 200000010 | {"toetsingsinkomen":2500000} |
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 200000010 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 200000010 | [null]               |
+    When I evaluate outputs "woonlandfactor, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
+    Then output "woonlandfactor" equals 100
+    And output "kindgebonden_budget_jaar" equals 590000
+
+  Scenario: Kind woont in Nederland telt volledig mee voor de woonlandfactor
+    # Art. 2 lid 12 is niet van toepassing als het kind in Nederland woont: factor 100.
+    Given parameter "bsn" is "200000011"
+    And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
+      | bsn       | kinderen_data                                                                 |
+      | 200000011 | {"aantal_kinderen":1,"kinderen_leeftijden":[6],"ontvangt_kinderbijslag":true} |
+    And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
+      | bsn       | vermogensgegevens    |
+      | 200000011 | {"vermogen":1000000} |
+    And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
+      | bsn       | inkomensgegevens             |
+      | 200000011 | {"toetsingsinkomen":2500000} |
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 200000011 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 200000011 | ["NEDERLAND"]        |
+    When I evaluate outputs "woonlandfactor, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
+    Then output "woonlandfactor" equals 100
+    And output "kindgebonden_budget_jaar" equals 590000
+
+  Scenario: Kind woont buiten Nederland zonder ministeriële regeling houdt de woonlandfactor op 100
+    # Art. 2 lid 12: zonder een regeling die het percentage vaststelt (open_term
+    # woonlandpercentage, geen implementerende regeling in dit corpus) geldt het door de
+    # tekst zelf genoemde maximum van 100.
+    Given parameter "bsn" is "200000012"
+    And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
+      | bsn       | kinderen_data                                                                 |
+      | 200000012 | {"aantal_kinderen":1,"kinderen_leeftijden":[6],"ontvangt_kinderbijslag":true} |
+    And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
+      | bsn       | vermogensgegevens    |
+      | 200000012 | {"vermogen":1000000} |
+    And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
+      | bsn       | inkomensgegevens             |
+      | 200000012 | {"toetsingsinkomen":2500000} |
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 200000012 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+    And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
+      | bsn       | kinderen_woonlanden |
+      | 200000012 | ["MAROKKO"]          |
+    When I evaluate outputs "woonlandfactor, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
+    Then output "woonlandfactor" equals 100
+    And output "kindgebonden_budget_jaar" equals 590000

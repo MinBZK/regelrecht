@@ -74,17 +74,6 @@ articles:
           - name: valid_until_dates
             type: array
         actions:
-          - output: voldoet_aan_voorwaarden
-        # POC: EXISTS op lijst $faillissement_registraties (uitvoer voldoet_aan_voorwaarden) betekende 'niet leeg';
-        # expliciet als telling (RFC-016)
-            value:
-              operation: GREATER_THAN
-              subject:
-                operation: FOREACH
-                collection: $faillissement_registraties
-                body: 1
-                combine: ADD
-              value: 0
           - output: actieve_faillissementen
             value:
               operation: FOREACH
@@ -116,6 +105,27 @@ articles:
               explanation: >
                 Alleen actieve faillissementen geven curatorbevoegdheid. Art. 193 Fw: faillissement
                 eindigt bij vereffening of opheffing.
+          - output: voldoet_aan_voorwaarden
+        # Audit: telde eerder alle registraties, ook beëindigde. Art. 68 jo. 193 Fw: curatorbevoegdheid
+        # bestaat alleen zolang het faillissement actief is, dus telling over $actieve_faillissementen
+        # (gelijk aan heeft_delegaties).
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $actieve_faillissementen
+                body: 1
+                combine: ADD
+              value: 0
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '68'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel68
+              juriconnect: jci1.3:c:BWBR0001860&artikel=68&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Art. 68 jo. 193 Fw: curatorbevoegdheid geldt zolang het faillissement actief is.
           - output: heeft_delegaties
         # POC: EXISTS op lijst $actieve_faillissementen (uitvoer heeft_delegaties) betekende 'niet leeg'; expliciet als
         # telling (RFC-016)
@@ -171,6 +181,11 @@ articles:
               explanation: >-
                 Namen met 'Boedel' prefix om boedelvertegenwoordiging aan te geven
           - output: subject_types
+        # Audit: default CITIZEN als vangnet voor alles wat niet RECHTSPERSOON is, was een geraden
+        # waarde. Art. 1 Fw noemt alleen natuurlijke persoon en rechtspersoon; twee expliciete cases,
+        # geen default. Een niet-matchende $current.gefailleerde_type levert null in het item (de
+        # afwezigheidstoets die de tekst bedoelt); het schema kent nog geen nullable op array-items
+        # (zie AUDIT_GETROUWHEID.md), dus dat blijft ongedeclareerd op het item-niveau.
             value:
               operation: FOREACH
               collection: $actieve_faillissementen
@@ -182,7 +197,11 @@ articles:
                       subject: $current.gefailleerde_type
                       value: RECHTSPERSOON
                     then: BUSINESS
-                default: CITIZEN
+                  - when:
+                      operation: EQUALS
+                      subject: $current.gefailleerde_type
+                      value: NATUURLIJK_PERSOON
+                    then: CITIZEN
               as: current
             legal_basis:
               law: Faillissementswet

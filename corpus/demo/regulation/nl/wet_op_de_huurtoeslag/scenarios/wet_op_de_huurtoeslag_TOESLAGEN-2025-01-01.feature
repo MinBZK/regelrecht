@@ -22,6 +22,30 @@ Feature: Berekening Huurtoeslag
     When I evaluate outputs "voldoet_aan_voorwaarden" of "wet_op_de_huurtoeslag"
     Then output "voldoet_aan_voorwaarden" is false
 
+  # Art. 19 lid 3: de normhuur wordt naar boven afgerond op hele euro's. Bij een
+  # inkomen tussen de twee ankerpunten (lid 2) levert de lineaire interpolatie
+  # een niet-hele-euro normhuur op (hier 355,6435... euro); de wet schrijft
+  # afronding naar boven voor, dus 356 euro (35600 eurocent), niet 355 euro.
+  Scenario: Basishuur wordt naar boven afgerond op hele euro's
+    Given parameter "bsn" is "999444444"
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres        | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999444444 | 1985-01-01    | GEEN              | null        | []                | Voorstraat 1, Utrecht | []             | NEDERLAND     |               | null  | []           |                       |
+    And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
+      | 999444444 | 2500000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+    And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
+      | bsn       | verwachting_65 |
+      | 999444444 | 20.5           |
+    # POC: the citizen submitted these values as claims; they override the inputs of the same name
+    And the following parameters:
+      | huurprijs                  | 60000 |
+      | servicekosten              | 5000  |
+      | subsidiabele_servicekosten | 4800  |
+    When I evaluate outputs "basishuur, subsidiebedrag" of "wet_op_de_huurtoeslag"
+    Then output "basishuur" equals 35600
+    And output "subsidiebedrag" equals 23222
+
   Scenario: Alleenstaande met laag inkomen en hogere huur
     Given parameter "bsn" is "999222222"
     And the following "RvIG" data with key "bsn" for law "wet_brp":

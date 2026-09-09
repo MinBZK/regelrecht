@@ -483,28 +483,28 @@ articles:
               explanation: >-
                 Artikel 1.6 Wet BRP bepaalt verplicht gebruik van basisregistratie voor persoonsgegevens
           - output: heeft_kinderen_onder_12
-        # POC: EXISTS op lijst $kinderen_gegevens (uitvoer heeft_kinderen_onder_12) betekende 'niet leeg'; expliciet als
-        # telling (RFC-016)
+        # Audit AUDIT_GETROUWHEID.md, wet_brp: de vorige versie telde alleen of
+        # $kinderen_gegevens niet leeg was (IF met identieke when/then-tak) en gebruikte de
+        # definitie kind_max_leeftijd_combinatiekorting nooit; zo werd elk kind meegeteld,
+        # ook een kind van 15. Dit veld heet "heeft_kinderen_onder_12" en veronderstelt dus
+        # een leeftijdstoets. Nu: FOREACH met filter AGE < kind_max_leeftijd_combinatiekorting
+        # (12 jaar) over $kinderen_gegevens, combine als telling (RFC-016), GREATER_THAN 0.
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: GREATER_THAN
-                    subject:
-                      operation: FOREACH
-                      collection: $kinderen_gegevens
-                      body: 1
-                      combine: ADD
-                    value: 0
-                  then:
-                    operation: GREATER_THAN
-                    subject:
-                      operation: FOREACH
-                      collection: $kinderen_gegevens
-                      body: 1
-                      combine: ADD
-                    value: 0
-              default: false
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $kinderen_gegevens
+                filter:
+                  operation: LESS_THAN
+                  subject:
+                    operation: AGE
+                    reference_date: $referentiedatum
+                    date_of_birth: $current.geboortedatum
+                  value: $kind_max_leeftijd_combinatiekorting
+                body: 1
+                as: current
+                combine: ADD
+              value: 0
             legal_basis:
               law: Wet basisregistratie personen
               bwb_id: BWBR0033715

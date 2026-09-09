@@ -81,6 +81,12 @@ articles:
                 bsn: $bsn
           - name: kostendelersnorm
             type: number
+            # Nullable: participatiewet/bijstand geeft voor vijf of meer kostendelende
+            # personen geen factor (art. 22a lid 1 Participatiewet staat niet als tekst
+            # in het corpus), dus die output is daar null. Zonder norm is er geen bedrag
+            # te berekenen: uitkeringsbedrag en startkapitaal zijn dan eveneens null
+            # (afwezigheidstoets, RFC-036) in plaats van een verzonnen getal.
+            nullable: true
             source:
               regulation: participatiewet/bijstand
               output: kostendelersnorm
@@ -140,6 +146,8 @@ articles:
             type: boolean
           - name: uitkeringsbedrag
             type: amount
+            # Null wanneer de kostendelersnorm onbekend is (zie input kostendelersnorm).
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -152,6 +160,8 @@ articles:
               min: 0
           - name: startkapitaal
             type: amount
+            # Null wanneer de kostendelersnorm onbekend is (zie input kostendelersnorm).
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -190,62 +200,72 @@ articles:
           - output: uitkeringsbedrag
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
-              operation: ROUND
-              precision: 0
-              value:
-                operation: ADD
-                values:
-                  - operation: MULTIPLY
-                    values:
-                      - $landelijk_basisbedrag
-                      - $kostendelersnorm
-                  - operation: IF
-                    cases:
-                      - when:
-                          operation: AND
-                          conditions:
-                            - operation: LESS_THAN_OR_EQUAL
-                              subject: $leeftijd
-                              value: $jeugd_max_leeftijd
-                            - operation: EQUALS
-                              subject: $heeft_vast_adres
-                              value: true
-                        then: $jeugd_toeslag
-                    default: 0
-                  - operation: IF
-                    cases:
-                      - when:
-                          operation: AND
-                          conditions:
-                            - operation: EQUALS
-                              subject: $is_ondernemer
-                              value: true
-                            - operation: GREATER_THAN
-                              subject: $bedrijfsinkomen
-                              value: 0
-                            - operation: LESS_THAN
-                              subject:
-                                operation: DIVIDE
+              operation: IF
+              cases:
+                # Geen kostendelersnorm (vijf of meer kostendelende personen): geen
+                # bedrag, zie de toelichting bij de input kostendelersnorm.
+                - when:
+                    operation: EQUALS
+                    subject: $kostendelersnorm
+                    value: null
+                  then: null
+              default:
+                operation: ROUND
+                precision: 0
+                value:
+                  operation: ADD
+                  values:
+                    - operation: MULTIPLY
+                      values:
+                        - $landelijk_basisbedrag
+                        - $kostendelersnorm
+                    - operation: IF
+                      cases:
+                        - when:
+                            operation: AND
+                            conditions:
+                              - operation: LESS_THAN_OR_EQUAL
+                                subject: $leeftijd
+                                value: $jeugd_max_leeftijd
+                              - operation: EQUALS
+                                subject: $heeft_vast_adres
+                                value: true
+                          then: $jeugd_toeslag
+                      default: 0
+                    - operation: IF
+                      cases:
+                        - when:
+                            operation: AND
+                            conditions:
+                              - operation: EQUALS
+                                subject: $is_ondernemer
+                                value: true
+                              - operation: GREATER_THAN
+                                subject: $bedrijfsinkomen
+                                value: 0
+                              - operation: LESS_THAN
+                                subject:
+                                  operation: DIVIDE
+                                  values:
+                                    - $bedrijfsinkomen
+                                    - $maanden_per_jaar
+                                value:
+                                  operation: MULTIPLY
+                                  values:
+                                    - $landelijk_basisbedrag
+                                    - $kostendelersnorm
+                          then:
+                            operation: MULTIPLY
+                            values:
+                              - operation: DIVIDE
                                 values:
                                   - $bedrijfsinkomen
                                   - $maanden_per_jaar
-                              value:
-                                operation: MULTIPLY
-                                values:
-                                  - $landelijk_basisbedrag
-                                  - $kostendelersnorm
-                        then:
-                          operation: MULTIPLY
-                          values:
-                            - operation: DIVIDE
-                              values:
-                                - $bedrijfsinkomen
-                                - $maanden_per_jaar
-                            - $zzp_inkomen_vrijlating_percentage
-                    default: 0
-                  - operation: IF
-                    cases: []
-                    default: 0
+                              - $zzp_inkomen_vrijlating_percentage
+                      default: 0
+                    - operation: IF
+                      cases: []
+                      default: 0
           - output: woonkostentoeslag
             value:
               operation: IF
@@ -265,6 +285,13 @@ articles:
             value:
               operation: IF
               cases:
+                # Geen kostendelersnorm (vijf of meer kostendelende personen): geen
+                # bedrag, zie de toelichting bij de input kostendelersnorm.
+                - when:
+                    operation: EQUALS
+                    subject: $kostendelersnorm
+                    value: null
+                  then: null
                 - when:
                     operation: AND
                     conditions:

@@ -36,7 +36,9 @@ articles:
         box3_forfaitair_rendement: 0.06
         box3_belastingtarief: 0.34
         box3_rendement: 0.0674
-        heffingsvrij_vermogen: 5720000
+        # heffingsvrij_vermogen verwijderd: gaf een dubbele vrijstelling in partner_box3_inkomen naast
+        # de partnervoet die box3_bezittingen al toepast (audit: AUDIT_GETROUWHEID.md § Wet IB
+        # Belastingdienst). Overal elders ongebruikt.
         algemene_heffingskorting_max: 310400
         algemene_heffingskorting_afbouw_start: 2466800
         algemene_heffingskorting_afbouw: 0.06578
@@ -821,6 +823,10 @@ articles:
           - output: partner_box3_inkomen
             # Art. 2.17 Wet IB 2001: de rendementsgrondslag van de partner telt mee als er een partner
             # is; een bezitting of schuld die de partner niet heeft telt voor 0 (RFC-036).
+            # Geen aftrek van een heffingsvrije voet hier: die is al verwerkt in box3_bezittingen, dat
+            # bij een partner (box3_heffingsvrije_voet_partners) de gezamenlijke grondslag aftrekt.
+            # Nog eens heffingsvrij_vermogen aftrekken op het partnervermogen alleen was een dubbele
+            # vrijstelling (audit: corpus/demo/tools/AUDIT_GETROUWHEID.md, § Wet IB Belastingdienst).
             value:
               operation: IF
               cases:
@@ -833,46 +839,44 @@ articles:
                   then:
                     operation: MULTIPLY
                     values:
-                      - operation: MAX
+                      - operation: ADD
                         values:
-                          - operation: SUBTRACT
-                            values:
-                              - operation: ADD
-                                values:
-                                  - operation: IF
-                                    cases:
-                                      - when:
-                                          operation: EQUALS
-                                          subject: $partner_spaargeld
-                                          value: null
-                                        then: 0
-                                    default: $partner_spaargeld
-                                  - operation: IF
-                                    cases:
-                                      - when:
-                                          operation: EQUALS
-                                          subject: $partner_beleggingen
-                                          value: null
-                                        then: 0
-                                    default: $partner_beleggingen
-                                  - operation: IF
-                                    cases:
-                                      - when:
-                                          operation: EQUALS
-                                          subject: $partner_onroerend_goed
-                                          value: null
-                                        then: 0
-                                    default: $partner_onroerend_goed
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: EQUALS
-                                      subject: $partner_schulden
-                                      value: null
-                                    then: 0
-                                default: $partner_schulden
-                              - $heffingsvrij_vermogen
-                          - 0
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_spaargeld
+                                  value: null
+                                then: 0
+                            default: $partner_spaargeld
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_beleggingen
+                                  value: null
+                                then: 0
+                            default: $partner_beleggingen
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_onroerend_goed
+                                  value: null
+                                then: 0
+                            default: $partner_onroerend_goed
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_schulden
+                                  value: null
+                                then: 0
+                            default:
+                              operation: SUBTRACT
+                              values:
+                                - 0
+                                - $partner_schulden
                       - $box3_rendement
               default: 0
           - output: partner_buitenlands_inkomen

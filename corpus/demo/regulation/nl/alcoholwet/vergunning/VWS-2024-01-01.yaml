@@ -60,6 +60,21 @@ articles:
           - name: is_ingeschreven_svh_register
             type: boolean
             nullable: true
+          - name: heeft_bemoeienis_bedrijfsvoering
+            # Art. 8 lid 4: de uitzondering op de inschrijvingseis geldt alleen
+            # voor de leidinggevende voor wiens rekening en risico het bedrijf
+            # wordt uitgeoefend "indien die leidinggevenden geen bemoeienis
+            # hebben met de bedrijfsvoering of de exploitatie". Nullable: is
+            # deze bemoeienis onbekend, dan is niet vast te stellen of de
+            # uitzondering geldt, dus geen "voldoet".
+            type: boolean
+            nullable: true
+          - name: schriftelijke_verklaring_bevestigd
+            # Art. 8 lid 4: de uitzondering geldt alleen als "de
+            # vergunninghouder dit in een schriftelijke verklaring bevestigt".
+            # Nullable, zelfde reden als hierboven.
+            type: boolean
+            nullable: true
           - name: vloeroppervlakte
             type: number
             required: true
@@ -165,9 +180,19 @@ articles:
                 https://wetten.overheid.nl/BWBR0002458/2024-01-01#Hoofdstuk2_Artikel8
               explanation: Mag niet van slecht levensgedrag zijn
           - output: voldoet_aan_svh_eis
-            # Art. 8 lid 3/4: een onbekende inschrijving (null, geen gegevens
-            # over het Register sociale hygiëne) is niet "voldoet aan de eis";
-            # de eerdere EQUALS ... null -> true tak is daarom verwijderd.
+            # Art. 8 lid 3: ingeschreven in het Register sociale hygiëne
+            # voldoet direct. Lid 4: is de leidinggevende niet ingeschreven,
+            # dan voldoet hij toch als hij voor eigen rekening en risico
+            # het bedrijf uitoefent (NOT heeft_bemoeienis_bedrijfsvoering)
+            # én de vergunninghouder dit schriftelijk heeft bevestigd
+            # (schriftelijke_verklaring_bevestigd). Ontbreekt de inschrijving
+            # en is een van deze twee onbekend (null), dan is niet vast te
+            # stellen of de lid 4-uitzondering geldt: dat is "onbekend", geen
+            # "voldoet" (de eerdere EQUALS ... null -> true tak is daarom
+            # verwijderd, en de lid 4-tak gebruikt bewust EQUALS in plaats van
+            # NOT zodat een null in heeft_bemoeienis_bedrijfsvoering niet naar
+            # false wordt herschreven, en de OR-tak bij een onbekende
+            # inschrijving nooit stilzwijgend true wordt).
             value:
               operation: IF
               cases:
@@ -176,15 +201,29 @@ articles:
                     subject: $is_ingeschreven_svh_register
                     value: true
                   then: true
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $heeft_bemoeienis_bedrijfsvoering
+                        value: false
+                      - operation: EQUALS
+                        subject: $schriftelijke_verklaring_bevestigd
+                        value: true
+                  then: true
               default: false
             legal_basis:
               law: Alcoholwet
               bwb_id: BWBR0002458
               article: '8'
-              paragraph: '1'
+              paragraph: '3'
               url: >-
                 https://wetten.overheid.nl/BWBR0002458/2024-01-01#Hoofdstuk2_Artikel8
-              explanation: Moet ingeschreven zijn in Register sociale hygiëne
+              explanation: >-
+                Moet ingeschreven zijn in Register sociale hygiëne, tenzij de
+                uitzondering van lid 4 geldt (geen bemoeienis met de
+                bedrijfsvoering, schriftelijk bevestigd door de
+                vergunninghouder)
           - output: voldoet_aan_inrichtingseis
             value:
               operation: IF

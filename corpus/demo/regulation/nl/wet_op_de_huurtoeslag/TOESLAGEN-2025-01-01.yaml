@@ -373,58 +373,67 @@ articles:
                           then: $minimum_inkomensijkpunt_partners
                       default: $minimum_inkomensijkpunt_alleenstaande
                   then: $normhuur_bij_minimum_inkomen
+              # Art. 19 lid 3: de normhuur wordt vastgesteld op een veelvoud van hele
+              # euro's naar boven. De lineair-geinterpoleerde normhuur (tussen de twee
+              # ankerpunten van lid 2, zie audit-notitie hierboven) wordt daarom naar
+              # boven afgerond op hele euro's (CEIL, precision 0 in eurocent-eenheid
+              # zou op 2 decimalen ronden; hier is de eenheid al eurocent en rondt
+              # precision -2 af op hele euro's uitgedrukt in eurocent).
               default:
-                operation: ADD
-                values:
-                  - $normhuur_bij_minimum_inkomen
-                  - operation: MULTIPLY
-                    values:
-                      - operation: DIVIDE
-                        values:
-                          - operation: SUBTRACT
-                            values:
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: EQUALS
-                                      subject: $heeft_partner
-                                      value: true
-                                    then:
-                                      operation: ADD
-                                      values:
-                                        - $inkomen
-                                        - $partner_inkomen
-                                default: $inkomen
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: EQUALS
-                                      subject: $heeft_partner
-                                      value: true
-                                    then: $minimum_inkomensijkpunt_partners
-                                default: $minimum_inkomensijkpunt_alleenstaande
-                          - operation: SUBTRACT
-                            values:
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: EQUALS
-                                      subject: $heeft_partner
-                                      value: true
-                                    then: $referentie_inkomensijkpunt_partners
-                                default: $referentie_inkomensijkpunt_alleenstaande
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: EQUALS
-                                      subject: $heeft_partner
-                                      value: true
-                                    then: $minimum_inkomensijkpunt_partners
-                                default: $minimum_inkomensijkpunt_alleenstaande
-                      - operation: SUBTRACT
-                        values:
-                          - $normhuur_bij_referentie_inkomen
-                          - $normhuur_bij_minimum_inkomen
+                operation: CEIL
+                precision: -2
+                value:
+                  operation: ADD
+                  values:
+                    - $normhuur_bij_minimum_inkomen
+                    - operation: MULTIPLY
+                      values:
+                        - operation: DIVIDE
+                          values:
+                            - operation: SUBTRACT
+                              values:
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $heeft_partner
+                                        value: true
+                                      then:
+                                        operation: ADD
+                                        values:
+                                          - $inkomen
+                                          - $partner_inkomen
+                                  default: $inkomen
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $heeft_partner
+                                        value: true
+                                      then: $minimum_inkomensijkpunt_partners
+                                  default: $minimum_inkomensijkpunt_alleenstaande
+                            - operation: SUBTRACT
+                              values:
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $heeft_partner
+                                        value: true
+                                      then: $referentie_inkomensijkpunt_partners
+                                  default: $referentie_inkomensijkpunt_alleenstaande
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $heeft_partner
+                                        value: true
+                                      then: $minimum_inkomensijkpunt_partners
+                                  default: $minimum_inkomensijkpunt_alleenstaande
+                        - operation: SUBTRACT
+                          values:
+                            - $normhuur_bij_referentie_inkomen
+                            - $normhuur_bij_minimum_inkomen
             legal_basis:
               law: Wet op de huurtoeslag
               bwb_id: BWBR0008659

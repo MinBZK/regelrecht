@@ -52,3 +52,21 @@ Feature: WPM Rapportageverplichting
     And output "zakelijk_auto_diesel" equals 2000
     And output "woon_werk_openbaar_vervoer" equals 8000
     And output "co2_uitstoot_totaal" equals 3500000
+
+  Scenario: Emissie per reizigerskilometer wordt berekend per mobiliteitssoort
+    Given parameter "kvk_nummer" is "66666666"
+    And the following "RVO" data with key "kvk_nummer" for law "omgevingswet/werkgebonden_personenmobiliteit/gegevens":
+      | kvk_nummer | woon_werk_auto_benzine | woon_werk_auto_diesel | zakelijk_auto_benzine | zakelijk_auto_diesel | woon_werk_openbaar_vervoer |
+      | 66666666   | 1000                   | 0                     | 0                     | 1000                  | 0                          |
+    When I evaluate outputs "emissie_per_reizigerskilometer_woon_werk, emissie_per_reizigerskilometer_zakelijk" of "omgevingswet/werkgebonden_personenmobiliteit/gegevens"
+    Then output "emissie_per_reizigerskilometer_woon_werk" equals 170
+    And output "emissie_per_reizigerskilometer_zakelijk" equals 150
+
+  Scenario: Emissie per reizigerskilometer is nul zonder gereisde kilometers
+    Given parameter "kvk_nummer" is "77777777"
+    And the following "RVO" data with key "kvk_nummer" for law "omgevingswet/werkgebonden_personenmobiliteit/gegevens":
+      | kvk_nummer | woon_werk_auto_benzine | woon_werk_auto_diesel | zakelijk_auto_benzine | zakelijk_auto_diesel | woon_werk_openbaar_vervoer |
+      | 77777777   | 0                      | 0                     | 0                     | 0                     | 0                          |
+    When I evaluate outputs "emissie_per_reizigerskilometer_woon_werk, emissie_per_reizigerskilometer_zakelijk" of "omgevingswet/werkgebonden_personenmobiliteit/gegevens"
+    Then output "emissie_per_reizigerskilometer_woon_werk" equals 0
+    And output "emissie_per_reizigerskilometer_zakelijk" equals 0

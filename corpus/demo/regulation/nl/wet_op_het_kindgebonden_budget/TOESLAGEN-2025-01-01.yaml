@@ -91,9 +91,12 @@ articles:
         basisbedrag_per_kind: 251100
         extra_12_15_jaar: 70300
         extra_16_17_jaar: 93600
-        alo_kop: 348000
         drempelinkomen_alleenstaand: 2840600
         drempelinkomen_partner: 4041600
+        # Lid 6: de artikeltekst hierboven noemt € 3.389 (in cent: 338900); de eerdere
+        # waarde 348000 (€ 3.480) kwam noch in de tekst in dit bestand, noch op
+        # wetten.overheid.nl voor. Aangepast aan de tekst (audit AUDIT_GETROUWHEID.md).
+        alo_kop: 338900
         extra_drempel_partner: 913900
         afbouwpercentage: 0.071
         vermogensgrens_alleenstaand: 14189600
@@ -145,6 +148,19 @@ articles:
               output: kinderen_leeftijden
               parameters:
                 bsn: $bsn
+          # Lid 12/13: het woonland per kind (voor de toepassing van de AKW) bepaalt de
+          # woonlandfactor. Geen bron in dit corpus levert dit per kind (de AKW-gegevensbron
+          # hier levert alleen leeftijden, geen woonland; toevoegen aan de AKW-regeling of
+          # bindings.yaml valt buiten de scope van deze wijziging), dus rechtstreekse invoer
+          # (source: {}, net als kinderen_data in de AKW). Elk element correspondeert qua
+          # index met kinderen_leeftijden. `nullable` kan niet op een veld/element binnen een
+          # array worden gedeclareerd (zie audit-vermelding hierover; RFC-kandidaat), dus de
+          # afwezigheidstoets (element = null = woonland onbekend, RFC-036, nooit
+          # "Nederland") gebeurt in de FOREACH-body zelf.
+          - name: kinderen_woonlanden
+            type: array
+            nullable: true
+            source: {}
           - name: ontvangt_kinderbijslag
             type: boolean
             source:
@@ -231,6 +247,11 @@ articles:
               unit: eurocent
               precision: 0
               min: 0
+          - name: woonlandfactor
+            type: number
+            type_spec:
+              min: 0
+              max: 100
         actions:
           - output: voldoet_aan_voorwaarden
             # Art. 1 lid 2 Wkb jo. art. 7 lid 3 Awir: met partner geldt de vermogensgrens voor partners over
@@ -306,6 +327,57 @@ articles:
                 default: 0
               combine: ADD
               as: leeftijd
+          - output: woonlandfactor
+            # Lid 12/13: een bij ministeriële regeling vastgesteld percentage (open_term
+            # woonlandpercentage, hierboven, default 100 zonder implementerende regeling)
+            # geldt voor een kind waarvoor een ander land dan Nederland (of EU/EER/Zwitserland)
+            # als woonland in aanmerking wordt genomen. Onbekend woonland (element = null,
+            # RFC-036) is geen "Nederland": zonder vaststaand woonland kan de uitzondering
+            # niet worden toegepast en telt het kind hier voor 100%, net als een kind dat wél
+            # in Nederland woont. Lid 14: de uitzondering (langer dan drie maanden onafgebroken
+            # verblijf in Nederland op de eerste dag van het kwartaal) wordt in dit corpus niet
+            # apart bijgehouden per kind (geen "dagen verblijf in Nederland"-register beschikbaar
+            # binnen de scope van deze wijziging); alleen het feitelijk geregistreerde woonland
+            # bepaalt hier de factor. MIN over de kinderen omdat lid 13 het kostenniveau van "het
+            # desbetreffende kind of de desbetreffende kinderen" aanhoudt en de amvb/regeling zelf
+            # ontbreekt om een gewogen bedrag per kind te berekenen (schema kent geen index/zip
+            # om het bedrag per kind te wegen); de zwaarste korting die voor een van de kinderen
+            # geldt, wordt hier voor het geheel toegepast. Bij geen kinderen (leeg) of alle
+            # kinderen in Nederland: 100. Een lege of afwezige kinderen_woonlanden-array
+            # (FOREACH behandelt null als lege collectie) levert bij MIN anders null op,
+            # terwijl "geen kinderen buiten Nederland bekend" hier 100 moet zijn.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $aantal_kinderen
+                    value: 0
+                  then: 100
+                - when:
+                    operation: EQUALS
+                    subject: $kinderen_woonlanden
+                    value: null
+                  then: 100
+              default:
+                operation: FOREACH
+                collection: $kinderen_woonlanden
+                body:
+                  operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $woonland
+                        value: null
+                      then: 100
+                    - when:
+                        operation: EQUALS
+                        subject: $woonland
+                        value: NEDERLAND
+                      then: 100
+                  default: $woonlandpercentage
+                combine: MIN
+                as: woonland
           - output: alo_kop_bedrag
             value:
               operation: IF
@@ -326,7 +398,7 @@ articles:
                 jci1.3:c:BWBR0022751&artikel=2&lid=6&z=2025-01-01&g=2025-01-01
               explanation: >-
                 Artikel 2 lid 6 bepaalt dat alleenstaande ouders zonder partner recht hebben op verhoging
-                van €3.480
+                van €3.389
           - output: heeft_partner
             value: $heeft_partner
             legal_basis:
@@ -360,13 +432,21 @@ articles:
                       values:
                         - operation: SUBTRACT
                           values:
-                            - operation: ADD
+                            # Lid 12/13: de woonlandfactor werkt op de bedragen van lid 2 onderdeel a
+                            # en lid 4 t/m 6, vóór de inkomensafhankelijke vermindering van lid 7/8.
+                            - operation: MULTIPLY
                               values:
-                                - operation: MULTIPLY
+                                - operation: ADD
                                   values:
-                                    - $aantal_kinderen
-                                    - $basisbedrag_per_kind
-                                - $leeftijdstoeslagen
+                                    - operation: MULTIPLY
+                                      values:
+                                        - $aantal_kinderen
+                                        - $basisbedrag_per_kind
+                                    - $leeftijdstoeslagen
+                                - operation: DIVIDE
+                                  values:
+                                    - $woonlandfactor
+                                    - 100
                             - operation: IF
                               cases:
                                 - when:
@@ -416,14 +496,22 @@ articles:
                   values:
                     - operation: SUBTRACT
                       values:
-                        - operation: ADD
+                        # Lid 12/13: de woonlandfactor werkt op de bedragen van lid 2 onderdeel a
+                        # en lid 4 t/m 6 (incl. de ALO-kop van lid 6), vóór de vermindering van lid 7.
+                        - operation: MULTIPLY
                           values:
-                            - operation: MULTIPLY
+                            - operation: ADD
                               values:
-                                - $aantal_kinderen
-                                - $basisbedrag_per_kind
-                            - $leeftijdstoeslagen
-                            - $alo_kop_bedrag
+                                - operation: MULTIPLY
+                                  values:
+                                    - $aantal_kinderen
+                                    - $basisbedrag_per_kind
+                                - $leeftijdstoeslagen
+                                - $alo_kop_bedrag
+                            - operation: DIVIDE
+                              values:
+                                - $woonlandfactor
+                                - 100
                         - operation: IF
                           cases:
                             - when:
@@ -448,6 +536,27 @@ articles:
               juriconnect: jci1.3:c:BWBR0022751&artikel=2&z=2025-01-01&g=2025-01-01
               explanation: >-
                 Artikel 2 bepaalt berekening afhankelijk van partnerstatus en inkomen
+      # Lid 12/13: "een bij ministeriële regeling vastgesteld percentage" resp. "een
+      # volgens bij ministeriële regeling te stellen regels vastgesteld bedrag" is een
+      # bij AMvB/ministeriële regeling te bepalen open norm (IoC-patroon, RFC-003).
+      # Zonder implementerende regeling in dit corpus geldt het door de tekst zelf
+      # genoemde maximum van 100%: geen korting, dezelfde bedragen als bij een kind dat
+      # in Nederland woont.
+      open_terms:
+        - id: woonlandpercentage
+          type: number
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 2, twaalfde en dertiende lid, Wet op het kindgebonden budget
+          description: >-
+            Het percentage, bedoeld in artikel 2 lid 12 en 13, dat de verhouding weergeeft
+            tussen het kostenniveau van het woonland van het kind en dat van Nederland.
+            Maximaal 100 (lid 12, laatste zin; lid 13, laatste zin).
+          default:
+            actions:
+              - output: woonlandpercentage
+                value: 100
       untranslatables:
         - construct: iteratie over variabel aantal kinderen voor leeftijdstoeslag
           reason: >-

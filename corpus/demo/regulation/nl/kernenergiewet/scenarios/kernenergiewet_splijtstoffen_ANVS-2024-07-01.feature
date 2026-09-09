@@ -106,6 +106,58 @@ Feature: Kernenergiewet Vergunningverlening Splijtstoffen
     # POC: output is an empty list
     And output "weigeringsgronden" equals "[]"
 
+  Scenario: Weigering wegens onvoldoende beveiliging (art. 15b lid 1 onder c)
+    Given the following parameters:
+      | activiteit_type             | inrichting_exploiteren |
+      | materiaal_type              | splijtstof             |
+      | is_nieuwe_installatie       | false                  |
+      | verwachte_dosis_jaar        | 0.3                    |
+      | verwachte_dosis_huid        | 5                      |
+      | dosis_buiten_locatie        | 0.02                   |
+      | heeft_beveiligingsplan      | false                  |
+      | heeft_noodplan              | true                   |
+      | financiele_zekerheid_bedrag | 200000000              |
+      | aantal_deskundigen          | 5                      |
+    # POC: parameter "technologie_beschrijving" not provided by the scenario (None in the POC)
+    And parameter "technologie_beschrijving" is "null"
+    When I evaluate outputs "vergunning_vereist, vergunning_toegestaan" of "kernenergiewet"
+    Then output "vergunning_vereist" is true
+    And output "vergunning_toegestaan" is false
+    # Art. 15b lid 1 onder c: weigeringsgronden bevat behoud_beveiliging_splijtstoffen
+    # (array membership niet uitdrukbaar in de canonieke grammatica)
+
+  Scenario: Verouderde technologie te beoordelen bij oprichting nieuwe installatie (art. 15b lid 2)
+    Given the following parameters:
+      | activiteit_type             | inrichting_oprichten |
+      | materiaal_type              | splijtstof            |
+      | is_nieuwe_installatie       | true                  |
+      | technologie_beschrijving    | reactor type X        |
+      | verwachte_dosis_jaar        | 0.3                   |
+      | verwachte_dosis_huid        | 5                     |
+      | dosis_buiten_locatie        | 0.02                  |
+      | heeft_beveiligingsplan      | true                  |
+      | heeft_noodplan              | true                  |
+      | financiele_zekerheid_bedrag | 200000000             |
+      | aantal_deskundigen          | 5                     |
+    When I evaluate outputs "verouderde_technologie_te_beoordelen" of "kernenergiewet"
+    Then output "verouderde_technologie_te_beoordelen" is true
+
+  Scenario: Geen beoordeling verouderde technologie zonder technologiebeschrijving
+    Given the following parameters:
+      | activiteit_type             | inrichting_oprichten |
+      | materiaal_type              | splijtstof            |
+      | is_nieuwe_installatie       | true                  |
+      | verwachte_dosis_jaar        | 0.3                   |
+      | verwachte_dosis_huid        | 5                     |
+      | dosis_buiten_locatie        | 0.02                  |
+      | heeft_beveiligingsplan      | true                  |
+      | heeft_noodplan              | true                  |
+      | financiele_zekerheid_bedrag | 200000000             |
+      | aantal_deskundigen          | 5                     |
+    And parameter "technologie_beschrijving" is "null"
+    When I evaluate outputs "verouderde_technologie_te_beoordelen" of "kernenergiewet"
+    Then output "verouderde_technologie_te_beoordelen" is false
+
   Scenario: Meerdere weigeringsgronden tegelijk (hoge dosis en geen financiële zekerheid)
     Given the following parameters:
       | activiteit_type             | invoer     |

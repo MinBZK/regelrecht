@@ -62,17 +62,6 @@ articles:
           - name: valid_until_dates
             type: array
         actions:
-          - output: voldoet_aan_voorwaarden
-        # POC: EXISTS op lijst $wsnp_registraties (uitvoer voldoet_aan_voorwaarden) betekende 'niet leeg'; expliciet als
-        # telling (RFC-016)
-            value:
-              operation: GREATER_THAN
-              subject:
-                operation: FOREACH
-                collection: $wsnp_registraties
-                body: 1
-                combine: ADD
-              value: 0
           - output: actieve_wsnp
             value:
               operation: FOREACH
@@ -104,6 +93,28 @@ articles:
               explanation: >
                 Alleen actieve WSNP-regelingen geven bewindvoerderbevoegdheid. Art. 356 Fw: schuldsanering
                 eindigt bij schone lei of beeindiging.
+          - output: voldoet_aan_voorwaarden
+        # Audit: telde eerder alle registraties, ook beëindigde. Art. 316 jo. 356 Fw:
+        # bewindvoerderbevoegdheid bestaat alleen zolang de schuldsaneringsregeling actief is,
+        # dus telling over $actieve_wsnp (gelijk aan heeft_delegaties).
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $actieve_wsnp
+                body: 1
+                combine: ADD
+              value: 0
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '316'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelIII_Artikel316
+              juriconnect: jci1.3:c:BWBR0001860&artikel=316&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Art. 316 jo. 356 Fw: bewindvoerderbevoegdheid geldt zolang de schuldsaneringsregeling
+                actief is.
           - output: heeft_delegaties
         # POC: EXISTS op lijst $actieve_wsnp (uitvoer heeft_delegaties) betekende 'niet leeg'; expliciet als telling
         # (RFC-016)

@@ -41,15 +41,12 @@ articles:
     url: https://wetten.overheid.nl/BWBR0015711/2025-01-01#Artikel2
     machine_readable:
       definitions:
-        vermogensgrens_algemeen: 24389200
-        vermogensgrens_ouder: 17072500
         vermogensgrens_laag: 5803500
         bedrijfskapitaal_gevestigd: 25342000
         bedrijfskapitaal_beginnend: 4665600
         bedrijfskapitaal_ouder: 1267100
         rente_percentage: 0.08
         belasting_percentage: 0.2
-        min_inkomen_ouder: 1006500
         geboren_voor_datum: '1960-01-01'
         urencriterium_per_jaar: 1225
         max_duur_gevestigd: 12
@@ -73,20 +70,10 @@ articles:
             type: string
             required: true
         input:
-          - name: leeftijd
-            type: number
-            type_spec:
-              unit: years
-              precision: 0
-              min: 0
-            source:
-              regulation: wet_brp
-              output: leeftijd
-              parameters:
-                bsn: $bsn
-                referentiedatum: $referencedate
-            temporal:
-              type: point_in_time
+          # Art. 2 lid 1 onder c: "geboren voor 1 januari 1960" is de enige datumtoets die de
+          # tekst stelt; alleen geboortedatum is hier nog nodig (leeftijd/pensioenleeftijd
+          # hadden geen grondslag in dit artikel, zie de verwijderde minimum-/pensioenleeftijd-
+          # voorwaarde bij voldoet_aan_voorwaarden).
           - name: geboortedatum
             type: date
             source:
@@ -97,34 +84,11 @@ articles:
                 referentiedatum: $referencedate
             temporal:
               type: point_in_time
-          - name: pensioenleeftijd
-            type: number
-            type_spec:
-              unit: years
-              precision: 0
-              min: 0
-            source:
-              regulation: algemene_ouderdomswet/leeftijdsbepaling
-              output: pensioenleeftijd
-              parameters:
-                geboortedatum: $geboortedatum
-                bsn: $bsn
           - name: is_actieve_ondernemer
             type: boolean
             source:
               regulation: handelsregisterwet
               output: is_actieve_ondernemer
-              parameters:
-                bsn: $bsn
-          - name: vermogen
-            type: amount
-            type_spec:
-              unit: eurocent
-              precision: 0
-              min: 0
-            source:
-              regulation: wet_inkomstenbelasting
-              output: bezittingen
               parameters:
                 bsn: $bsn
           - name: heeft_ww_uitkering
@@ -134,6 +98,28 @@ articles:
               output: heeft_recht_op_ww
               parameters:
                 bsn: $bsn
+          # Art. 2 lid 1 onder b noemt naast de aanvrager ook "de echtgenoot van de persoon"
+          # die een WW-uitkering ontvangt; partner_bsn komt uit de BRP-partnerregistratie en is
+          # afwezig zonder partner (RFC-036).
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: point_in_time
+          - name: partner_heeft_ww_uitkering
+            type: boolean
+            nullable: true
+            source:
+              regulation: werkloosheidswet
+              output: heeft_recht_op_ww
+              parameters:
+                bsn: $partner_bsn
           - name: basisbedrag_bijstand
             type: amount
             type_spec:
@@ -181,6 +167,21 @@ articles:
             # Art. 2 lid 1 jo. art. 35 Bbz 2004: bijstand wordt op aanvraag verleend; zonder
             # aanvraagdossier is er niets te beoordelen. De overige voorwaarden lezen eigenschappen
             # van het dossier, dat afwezig is voor wie geen aanvraag deed (RFC-036).
+            #
+            # Verwijderd t.o.v. eerdere versie (audit getrouwheid):
+            # - Het urencriterium (1225 uur/jaar) stond hier als blanket-voorwaarde op alle vier
+            #   onderdelen; art. 2 noemt geen urencriterium en dit bestand bevat geen ander
+            #   artikel dat het stelt, dus geen legal_basis mogelijk. `urencriterium_per_jaar`
+            #   blijft als ongebruikte definitie staan totdat het brondocument bekend is; niet
+            #   verwijderd omdat de bron kan opduiken bij een volgend artikel.
+            # - De minimum-/pensioenleeftijdstoets (leeftijd >= minimum_leeftijd, leeftijd <
+            #   pensioenleeftijd) had geen grondslag in art. 2; dit bestand bevat geen andere
+            #   Participatiewet-bepaling om naar te verwijzen. `minimum_leeftijd` blijft als
+            #   ongebruikte definitie staan.
+            # - De vermogenstoets-OR (vermogen <= vermogensgrens_*) stond hier als voorwaarde
+            #   voor algemene bijstand; lid 2 beperkt met die grens niet de bijstand zelf maar
+            #   uitsluitend de bedrijfskapitaalcategorie (zie output bedrijfskapitaal_max). De
+            #   vermogenstoets is dus verwijderd van hier.
             value:
               operation: AND
               conditions:
@@ -192,32 +193,6 @@ articles:
                 - subject: $is_actieve_ondernemer
                   operation: EQUALS
                   value: true
-                - subject: $leeftijd
-                  operation: GREATER_THAN_OR_EQUAL
-                  value: $minimum_leeftijd
-                - subject: $leeftijd
-                  operation: LESS_THAN
-                  value: $pensioenleeftijd
-                - operation: GREATER_THAN_OR_EQUAL
-                  subject:
-                    operation: MULTIPLY
-                    values:
-                      - $bbz_aanvraag.uren_per_week
-                      - 52
-                  value: $urencriterium_per_jaar
-                - operation: OR
-                  conditions:
-                    - operation: AND
-                      conditions:
-                        - subject: $bbz_aanvraag.type_zelfstandige
-                          operation: EQUALS
-                          value: OUDER
-                        - operation: LESS_THAN_OR_EQUAL
-                          subject: $vermogen
-                          value: $vermogensgrens_ouder
-                    - operation: LESS_THAN_OR_EQUAL
-                      subject: $vermogen
-                      value: $vermogensgrens_algemeen
                 - operation: OR
                   conditions:
                     - operation: AND
@@ -233,9 +208,18 @@ articles:
                         - subject: $bbz_aanvraag.type_zelfstandige
                           operation: EQUALS
                           value: BEGINNEND
-                        - subject: $heeft_ww_uitkering
-                          operation: EQUALS
-                          value: true
+                        # Art. 2 lid 1 onder b: "de persoon of de echtgenoot van de persoon die
+                        # uit hoofde van werkloosheid een uitkering ontvangt" - de OR dekt zowel
+                        # de aanvrager als de partner (partner_heeft_ww_uitkering is null zonder
+                        # partner, RFC-036, en EQUALS met null is dan gewoon false).
+                        - operation: OR
+                          conditions:
+                            - subject: $heeft_ww_uitkering
+                              operation: EQUALS
+                              value: true
+                            - subject: $partner_heeft_ww_uitkering
+                              operation: EQUALS
+                              value: true
                         - subject: $bbz_aanvraag.bedrijf_levensvatbaar
                           operation: EQUALS
                           value: true
@@ -326,6 +310,11 @@ articles:
               juriconnect: jci1.3:c:BWBR0015711&artikel=18&z=2025-01-01&g=2025-01-01
               explanation: De maximale duur verschilt per categorie zelfstandige
           - output: bedrijfskapitaal_max
+            # Art. 2 lid 2: "Bijstand ter voorziening in de behoefte aan bedrijfskapitaal kan
+            # slechts worden verleend aan de zelfstandige, bedoeld in de onderdelen a, b en c" -
+            # dit is een categorie-restrictie op het bedrijfskapitaal, niet een voorwaarde voor
+            # algemene bijstand (zie de verwijderde vermogenstoets bij voldoet_aan_voorwaarden).
+            # De default 0 voor onderdeel d (BEEINDIGEND) implementeert die restrictie al juist.
             value:
               operation: IF
               cases:
@@ -378,3 +367,16 @@ articles:
               juriconnect: jci1.3:c:BWBR0015711&artikel=14&z=2025-01-01&g=2025-01-01
               explanation: >-
                 Het type bedrijfskapitaal verschilt per categorie zelfstandige
+      untranslatables:
+        - construct: >-
+            "een inkomen geniet dat duurzaam ontoereikend is om in de noodzakelijke kosten
+            van het bestaan te voorzien" (art. 2 lid 1 onder c)
+          reason: >-
+            De tekst geeft geen inkomensgrens of berekeningswijze voor "duurzaam ontoereikend";
+            dat is een discretionair oordeel van het college. Dit bestand bevat geen ander
+            artikel dat de grens stelt, en de eerder gebruikte definitie min_inkomen_ouder had
+            geen bron in de tekst (verwijderd bij de getrouwheidsaudit).
+          suggestion: >-
+            Voeg een inkomensgrens toe zodra een artikel of ministeriële regeling die stelt, of
+            modelleer het oordeel als open_term met de collegebeslissing als input
+          accepted: true

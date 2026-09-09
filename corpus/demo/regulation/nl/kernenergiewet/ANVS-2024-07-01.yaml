@@ -45,7 +45,6 @@ articles:
         weigeringsgrond_schadevergoeding: zekerheid_betaling_schadevergoeding
         weigeringsgrond_internationale_verplichtingen: internationale_verplichtingen
         weigeringsgrond_technologie_verouderd: technologie_verouderd
-        dosis_limiet_bevolking: 1.0
       execution:
         produces:
           legal_character: BESCHIKKING
@@ -81,14 +80,16 @@ articles:
           - name: aantal_deskundigen
             type: number
         input:
-          - name: verwachte_stralingsdosis
-            type: number
-            type_spec:
-              precision: 2
-              min: 0
+          # Art. 15b lid 1 onder a: neemt het oordeel over de dosislimieten af van het Besluit
+          # basisveiligheidsnormen stralingsbescherming (art. 3.7), dat al GREATER_THAN-toetsen
+          # tegen de drie wettelijke limieten (0,1/1/50 mSv) uitvoert. De eigen constante
+          # dosis_limiet_bevolking (1.0) en de eigen GREATER_THAN-vergelijking dupliceerden die
+          # toets met één van de drie limieten; verwijderd (audit Kernenergiewet, punt lid 1a).
+          - name: dosislimiet_overschreden
+            type: boolean
             source:
               regulation: besluit_basisveiligheidsnormen_stralingsbescherming
-              output: verwachte_dosis_bevolking
+              output: dosislimiet_overschreden
               parameters:
                 verwachte_dosis_jaar: $verwachte_dosis_jaar
                 verwachte_dosis_huid: $verwachte_dosis_huid
@@ -103,6 +104,30 @@ articles:
                 heeft_noodplan: $heeft_noodplan
                 financiele_zekerheid_bedrag: $financiele_zekerheid_bedrag
                 aantal_deskundigen: $aantal_deskundigen
+          # Art. 15b lid 1 onder c: weigeringsgrond beveiliging ontbrak; het Besluit
+          # kerninstallaties levert beveiligingsplan_voldoet en noodplan_voldoet al op basis van
+          # dezelfde aanvraaggegevens (heeft_beveiligingsplan, heeft_noodplan). Toegevoegd zodat
+          # weigeringsgronden op onvoldoende beveiliging kan toetsen (audit, punt lid 1c).
+          - name: beveiligingsplan_voldoet
+            type: boolean
+            source:
+              regulation: besluit_kerninstallaties
+              output: beveiligingsplan_voldoet
+              parameters:
+                heeft_beveiligingsplan: $heeft_beveiligingsplan
+                heeft_noodplan: $heeft_noodplan
+                financiele_zekerheid_bedrag: $financiele_zekerheid_bedrag
+                aantal_deskundigen: $aantal_deskundigen
+          - name: noodplan_voldoet
+            type: boolean
+            source:
+              regulation: besluit_kerninstallaties
+              output: noodplan_voldoet
+              parameters:
+                heeft_beveiligingsplan: $heeft_beveiligingsplan
+                heeft_noodplan: $heeft_noodplan
+                financiele_zekerheid_bedrag: $financiele_zekerheid_bedrag
+                aantal_deskundigen: $aantal_deskundigen
         output:
           - name: voldoet_aan_voorwaarden
             type: boolean
@@ -112,6 +137,11 @@ articles:
             type: boolean
           - name: weigeringsgronden
             type: array
+          # Art. 15b lid 2: signaleert wanneer een oprichtingsaanvraag voor een nieuwe
+          # installatie een technologiebeschrijving bevat, zodat het discretionaire oordeel
+          # van de Autoriteit over "verouderde technologie" aan de orde is (audit, punt lid 2).
+          - name: verouderde_technologie_te_beoordelen
+            type: boolean
         actions:
           - output: voldoet_aan_voorwaarden
             value:
@@ -141,9 +171,9 @@ articles:
               operation: IF
               cases:
                 - when:
-                    operation: GREATER_THAN
-                    subject: $verwachte_stralingsdosis
-                    value: $dosis_limiet_bevolking
+                    operation: EQUALS
+                    subject: $dosislimiet_overschreden
+                    value: true
                   then:
                     operation: LIST
                     items:
@@ -156,6 +186,22 @@ articles:
                     operation: LIST
                     items:
                       - zekerheid_betaling_schadevergoeding
+                # Art. 15b lid 1 onder c: weigeringsgrond beveiliging ontbrak; toegevoegd op
+                # basis van het oordeel van het Besluit kerninstallaties over het
+                # beveiligingsplan en het noodplan (audit, punt lid 1c).
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $beveiligingsplan_voldoet
+                        value: false
+                      - operation: EQUALS
+                        subject: $noodplan_voldoet
+                        value: false
+                  then:
+                    operation: LIST
+                    items:
+                      - behoud_beveiliging_splijtstoffen
               default:
                 operation: LIST
                 items: []
@@ -163,10 +209,11 @@ articles:
               law: Kernenergiewet
               bwb_id: BWBR0002402
               article: 15b
+              paragraph: '1'
               url: >-
                 https://wetten.overheid.nl/BWBR0002402/2024-07-01#Hoofdstuk3_Artikel15b
-              juriconnect: jci1.3:c:BWBR0002402&artikel=15b&z=2024-07-01&g=2024-07-01
-              explanation: Artikel 15b bepaalt de weigeringsgronden voor vergunningen
+              juriconnect: jci1.3:c:BWBR0002402&artikel=15b&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: Artikel 15b lid 1 bepaalt de weigeringsgronden voor vergunningen
           - output: vergunning_toegestaan
             value:
               operation: IF
@@ -188,3 +235,54 @@ articles:
               juriconnect: jci1.3:c:BWBR0002402&artikel=15b&z=2024-07-01&g=2024-07-01
               explanation: >-
                 Artikel 15b bepaalt wanneer een vergunning geweigerd kan worden
+          # Art. 15b lid 2: is_nieuwe_installatie en technologie_beschrijving bestonden als
+          # parameter zonder dat een actie ze gebruikte (audit, punt lid 2). Deze actie
+          # signaleert de casus die de tekst beschrijft (oprichting van een nieuwe installatie
+          # met een technologiebeschrijving); het oordeel zelf ("verouderde technologie") is
+          # discretionair en niet in operaties uit te drukken, zie untranslatables.
+          - output: verouderde_technologie_te_beoordelen
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $activiteit_type
+                  value: inrichting_oprichten
+                - operation: EQUALS
+                  subject: $is_nieuwe_installatie
+                  value: true
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $technologie_beschrijving
+                    value: null
+            legal_basis:
+              law: Kernenergiewet
+              bwb_id: BWBR0002402
+              article: 15b
+              paragraph: '2'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002402/2024-07-01#Hoofdstuk3_Artikel15b
+              juriconnect: jci1.3:c:BWBR0002402&artikel=15b&lid=2&z=2024-07-01&g=2024-07-01
+              explanation: >-
+                Artikel 15b lid 2 staat weigering toe bij verouderde technologie voor nieuwe
+                installaties; de casus is herkenbaar, het oordeel zelf niet
+      untranslatables:
+        - construct: >-
+            "naar het oordeel van de Autoriteit ... zal zijn verouderd" (art. 15b lid 2)
+          reason: >-
+            De tekst legt het oordeel over technologische veroudering expliciet bij de
+            Autoriteit; er is geen norm die de engine zelf kan toepassen (geen drempel, geen
+            lijst van verouderde technieken). verouderde_technologie_te_beoordelen signaleert
+            wanneer de casus uit lid 2 zich voordoet (oprichting van een nieuwe installatie met
+            een technologiebeschrijving); of die techniek verouderd zal zijn is en blijft een
+            discretionair oordeel.
+          suggestion: >-
+            Geen engine-operatie kan een bestuurlijk oordeel vervangen; dit blijft een
+            beoordelingspunt voor de Autoriteit bij de aanvraagbehandeling.
+          legal_text_excerpt: >-
+            kan een vergunning voor het oprichten van een inrichting als bedoeld in artikel 15,
+            onder b, worden geweigerd, indien de in de aanvraag beschreven techniek voor het
+            vrijmaken van kernenergie, het vervaardigen, bewerken of verwerken van splijtstoffen
+            dan wel het opslaan van splijtstoffen in de inrichting naar het oordeel van de
+            Autoriteit bij het in werking brengen van de inrichting zal zijn verouderd
+          accepted: true

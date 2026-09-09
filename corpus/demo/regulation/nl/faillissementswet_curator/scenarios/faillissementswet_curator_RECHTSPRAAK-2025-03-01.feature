@@ -57,7 +57,10 @@ Feature: Faillissementswet Curator (Fw Art. 64-71)
       | bsn       | faillissement_registraties                                                                                                                                                                                                   |
       | 400000004 | [{"gefailleerde_id":999500006,"gefailleerde_naam":"Henk Visser","gefailleerde_type":"NATUURLIJK_PERSOON","insolventie_nummer":"F.10/24/123","datum_uitspraak":"2024-03-15","datum_einde":"2025-01-15","status":"OPGEHEVEN"}] |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties, subject_ids" of "faillissementswet_curator"
-    Then output "voldoet_aan_voorwaarden" is true
+    # Audit-correctie: voldoet_aan_voorwaarden telde eerder alle registraties, ook opgeheven
+    # faillissementen; art. 68 jo. 193 Fw geeft curatorbevoegdheid alleen zolang het faillissement
+    # actief is.
+    Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_delegaties" is false
     # POC: output is an empty list
     And output "subject_ids" equals "[]"

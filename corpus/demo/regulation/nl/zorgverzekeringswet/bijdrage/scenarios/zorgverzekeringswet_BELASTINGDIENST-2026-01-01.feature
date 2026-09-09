@@ -75,7 +75,7 @@ Feature: Zorgverzekeringswet - Inkomensafhankelijke bijdrage
     And output "bijdrage_inkomen_begrensd" equals 7541200
     And output "verschuldigde_bijdrage" equals 490178
 
-  Scenario: Persoon zonder inkomen voldoet niet aan voorwaarden
+  Scenario: Persoon zonder inkomen is toch bijdrageplichtig (art. 41 onvoorwaardelijk)
     Given parameter "bsn" is "999200005"
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
@@ -87,4 +87,4 @@ Feature: Zorgverzekeringswet - Inkomensafhankelijke bijdrage
       | bsn       | verwachting_65 |
       | 999200005 | 20.5           |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "zorgverzekeringswet/bijdrage"
-    Then output "voldoet_aan_voorwaarden" is false
+    Then output "voldoet_aan_voorwaarden" is true

@@ -39,8 +39,11 @@ articles:
     machine_readable:
       definitions:
         minimum_leeftijd: 18
-        percentage_drempelinkomen_met_partner: 0.0486
-        percentage_drempelinkomen_alleenstaand: 0.0486
+        # Art. 2 lid 3 (Wet op de zorgtoeslag): 4,256% voor een verzekerde met toeslagpartner,
+        # 1,879% voor een verzekerde zonder toeslagpartner (berekeningsjaar 2024). Bron:
+        # corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2024-01-01.yaml, art. 2 lid 3.
+        percentage_drempelinkomen_met_partner: 0.04256
+        percentage_drempelinkomen_alleenstaand: 0.01879
         afbouwpercentage_minimum: 0.1367
         afbouwpercentage_boven_drempel: 0.0387
         drempelinkomen_alleenstaande: 3749600
@@ -217,6 +220,30 @@ articles:
                 - subject: $is_forensisch
                   operation: EQUALS
                   value: false
+                # Art. 2a: de vermogenstoets stond alleen verwerkt in hoogte_toeslag (bedrag
+                # nul bij te hoog vermogen), waardoor "geen aanspraak" niet te onderscheiden
+                # was van "aanspraak op nihil". Hier als eigen voorwaarde: bij een partner
+                # geldt gezamenlijk vermogen tegen de partnergrens, anders eigen vermogen
+                # tegen de alleenstaandengrens (dezelfde grenzen als in hoogte_toeslag).
+                - operation: LESS_THAN_OR_EQUAL
+                  subject:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $heeft_partner
+                          value: true
+                        then: $gezamenlijk_vermogen
+                    default: $vermogen
+                  value:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $heeft_partner
+                          value: true
+                        then: $vermogensgrens_toeslagpartner
+                    default: $vermogensgrens_alleenstaande
           # Art. 2 lid 1: "verzekerde" (art. 1 sub c) is de voorwaarde voor de aanspraak; deze
           # toets was een constante true. voldoet_aan_voorwaarden toetst ook leeftijd, detentie
           # en forensische zorg, dus hier alleen de verzekerdheidscomponent (zorgverzekering of

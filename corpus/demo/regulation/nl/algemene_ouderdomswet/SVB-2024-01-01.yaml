@@ -29,6 +29,17 @@ articles:
         basisbedrag_alleenstaand: 138000
         basisbedrag_gedeeld: 95200
         partner_toeslag_maximum: 25800
+        # AUDIT_GETROUWHEID.md (art. 10/11): de tekst van art. 10 en 11 AOW geeft de
+        # toeslagkorting als een vrijlating van 15% van het bruto-minimumloon, met twee
+        # derde van het meerdere in mindering op de toeslag. Die tekst staat niet in dit
+        # bestand (alleen art. 7 is hier opgenomen) en er is geen minimumloon-regeling in
+        # deze corpus om als cross-law input te gebruiken (vergt een minimumloonbron, zie
+        # audit). `inkomensgrens_partner` en `kortingsdeler` zijn daarom een eigen,
+        # niet in enige tekst in dit bestand of in corpus/regulation gevonden constante
+        # lineaire aftopping, geen 15%-vrijlating/twee-derde-formule. Niet gewijzigd
+        # omdat er geen brontekst is om de vervanging op te baseren (RFC-012: geen getal
+        # verzinnen); zodra een minimumloonwet als source: {} beschikbaar is, kan dit naar
+        # de getrouwe vorm uit de audit.
         inkomensgrens_partner: 280000
         kortingsdeler:
           value: 50
@@ -354,5 +365,9 @@ articles:
                 https://wetten.overheid.nl/BWBR0002221/2024-01-01#HoofdstukIII_Artikel9
               juriconnect: jci1.3:c:BWBR0002221&artikel=9&z=2024-01-01&g=2024-01-01
               explanation: >-
-                Artikel 9 AOW: berekening totaal ouderdomspensioen inclusief eventuele toeslag volgens
-                artikel 8
+                Artikel 9 AOW: berekening totaal ouderdomspensioen inclusief eventuele toeslag.
+                Toeslagvoorwaarde (partner jonger dan pensioengerechtigde leeftijd) volgt art. 8;
+                de toeslagkorting bij partnerinkomen (art. 10/11 AOW: vrijlating 15% van het
+                bruto-minimumloon, twee derde van het meerdere in mindering) is in dit bestand
+                vervangen door een eigen constante zonder brontekst, zie commentaar bij
+                `inkomensgrens_partner`/`kortingsdeler` hierboven

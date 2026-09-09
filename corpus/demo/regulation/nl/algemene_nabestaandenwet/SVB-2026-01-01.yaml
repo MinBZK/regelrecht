@@ -119,11 +119,29 @@ articles:
           - name: ao_percentage
             type: number
             source: {}
-          - name: heeft_kinderen_onder_18
-            type: boolean
+          # Art. 14 lid 1 onder a Anw: de drie eisen (ongehuwd, jonger dan 18, niet tot
+          # het huishouden van een ander behorend) zijn eisen aan een kind, geen losse
+          # boolean over de nabestaande. De kinderen zelf komen uit de Wet BRP
+          # (output "kinderen", zie bindings.yaml "kinderen_gegevens" -> tabel
+          # "relaties", veld "kinderen"); die levert per kind alleen "kind_bsn" en
+          # "geboortedatum" (zie corpus/demo/profiles.yaml). AGE wordt daarom hier
+          # per kind berekend (zie action). Ongehuwd en "niet tot het huishouden van
+          # een ander" hebben geen bronveld in de BRP-uitvoer of elders in de demo-
+          # corpus; zie untranslatables.
+          - name: kinderen
+            type: array
             nullable: true
-            source: {}
+            source:
+              regulation: wet_brp
+              output: kinderen
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: point_in_time
         output:
+          - name: heeft_kind_onder_18
+            type: boolean
           - name: voldoet_aan_voorwaarden
             type: boolean
           - name: is_gerechtigd
@@ -147,6 +165,39 @@ articles:
               precision: 0
               min: 0
         actions:
+          # Art. 14 lid 1 onder a Anw: "een ongehuwd kind heeft, dat jonger is dan 18
+          # jaar en niet tot het huishouden van een ander behoort". Van de drie
+          # cumulatieve eisen aan het kind is alleen de leeftijd (AGE < 18 jaar op
+          # $referencedate) hier te toetsen, met de geboortedatum die de Wet BRP per
+          # kind levert. "Ongehuwd" en "niet tot het huishouden van een ander
+          # behorend" hebben geen bronveld (zie untranslatables); zolang die
+          # ontbreken, telt AGE < 18 als noodzakelijke maar niet voldoende
+          # voorwaarde, dus deze OR kan onterecht waar worden voor een kind dat wel
+          # jong genoeg is maar gehuwd is of elders in huishouden zit.
+          - output: heeft_kind_onder_18
+            value:
+              operation: FOREACH
+              collection: $kinderen
+              as: kind
+              body:
+                operation: LESS_THAN
+                subject:
+                  operation: AGE
+                  reference_date: $referencedate
+                  date_of_birth: $kind.geboortedatum
+                value: 18
+              combine: OR
+            legal_basis:
+              law: Algemene nabestaandenwet
+              bwb_id: BWBR0007795
+              article: '14'
+              url: >-
+                https://wetten.overheid.nl/BWBR0007795/2026-01-01#Artikel14
+              juriconnect: jci1.3:c:BWBR0007795&artikel=14&z=2026-01-01&g=2026-01-01
+              explanation: >-
+                Artikel 14 lid 1 onder a Anw: leeftijdstoets (jonger dan 18 jaar) op de
+                kinderen van de nabestaande; ongehuwd-eis en huishoudeneis zijn
+                untranslatable (zie untranslatables)
           - output: voldoet_aan_voorwaarden
             value:
               operation: AND
@@ -164,7 +215,7 @@ articles:
                   value: $pensioenleeftijd
                 - operation: OR
                   conditions:
-                    - subject: $heeft_kinderen_onder_18
+                    - subject: $heeft_kind_onder_18
                       operation: EQUALS
                       value: true
                     - subject: $ao_percentage
@@ -231,3 +282,23 @@ articles:
                 https://wetten.overheid.nl/BWBR0007795/2024-01-01#Hoofdstuk3_Paragraaf2_Artikel18
               juriconnect: jci1.3:c:BWBR0007795&artikel=18&z=2024-01-01&g=2024-01-01
               explanation: 'Artikel 18 Anw: netto uitkering na inkomensverrekening'
+      untranslatables:
+        - construct: >-
+            "ongehuwd" en "niet tot het huishouden van een ander behoort" als
+            eisen aan het kind (art. 14 lid 1 onder a)
+          reason: >-
+            De Wet BRP levert per kind alleen kind_bsn en geboortedatum (zie
+            bindings.yaml "kinderen_gegevens"); er is geen bronveld voor de
+            burgerlijke staat van een kind, en geen bronveld voor de vraag of
+            een kind tot het huishouden van een ander (dan de nabestaande)
+            behoort. De leeftijdstoets (AGE < 18) is wel gemodelleerd
+            (output heeft_kind_onder_18).
+          suggestion: >-
+            Voeg een bron toe voor de burgerlijke staat van een kind en voor
+            de huishoudensrelatie van een kind tot de nabestaande, of harvest
+            deze uit de BRP-huishoudenregistratie zodra die de demo-corpus
+            heeft.
+          legal_text_excerpt: >-
+            een ongehuwd kind heeft, dat jonger is dan 18 jaar en niet tot het
+            huishouden van een ander behoort
+          accepted: true

@@ -66,6 +66,53 @@ articles:
       lid, worden uitgevoerd en bekendgemaakt door het CBS.
     url: https://wetten.overheid.nl/BWBR0002221/2020-01-01#Artikel7a
     machine_readable:
+      # Lid 1 onder a t/m m: de tabel geeft de pensioengerechtigde leeftijd per kalenderjaar
+      # tot en met 2024 met een vast, in de tekst genoemd getal. Vanaf lid 1 onder n (2025
+      # en later) verwijst de tekst zelf naar de formule van het tweede lid, niet naar een
+      # getal: die tak is daarom als untranslatable gemarkeerd (zie onder) en leest de
+      # geregistreerde pensioenleeftijd, in lijn met de audit (AUDIT_GETROUWHEID.md).
+      untranslatables:
+        - construct: >-
+            formule van lid 2 (V = (L - 18,26) - (P - 65)) voor het kalenderjaar van
+            verhoging vanaf 2025
+          reason: >-
+            P is de pensioengerechtigde leeftijd in het voorafgaande kalenderjaar, dus de
+            uitkomst van diezelfde formule een jaar eerder. De tekst geeft geen getal voor
+            P in enig jaar vanaf 2025 (in tegenstelling tot de tabel in lid 1 onder a t/m m,
+            die tot en met 2024 wel vaste getallen geeft); zonder een jaarreeks van eerder
+            vastgestelde P-waarden (het "landelijk vastgesteld gegeven" waarnaar Onze
+            Minister via de Staatscourant verwijst, lid 2 slot) kan de cascade voor 2025 en
+            later niet uit deze tekst worden afgeleid. Zie ook de leeftijdsbepaling-wet
+            (algemene_ouderdomswet/leeftijdsbepaling/SVB-2024-01-01.yaml), die dezelfde
+            formule voor 2026+ modelleert met een reeks vaste jaarwaarden
+            (`verhoging_2013`..`verhoging_2025`) die evenmin uit déze wettekst blijken.
+          suggestion: >-
+            Voeg een jaargebonden gegeven `pensioengerechtigde_leeftijd_kalenderjaar` toe
+            (bv. als source: {} tabel per jaar) zodat P voor elk jaar vanaf 2025 uit een
+            vastgestelde reeks kan worden gelezen in plaats van uit het register.
+          legal_text_excerpt: >-
+            n. in 2025 en de kalenderjaren daarna: de pensioengerechtigde leeftijd en de
+            aanvangsleeftijd, die jaarlijks op basis van de verhoging van de
+            pensioengerechtigde leeftijd en de aanvangsleeftijd op grond van het tweede lid
+            worden vastgesteld.
+          accepted: true
+      definitions:
+        # Lid 1 onder a t/m m: vaste, in de tekst genoemde pensioengerechtigde leeftijd
+        # per kalenderjaar (afgerond op hele jaren; de maanden in de tekst tellen niet mee
+        # voor deze wet, die alleen de pensioenleeftijd in jaren uitgeeft).
+        pensioenleeftijd_voor_2013: 65
+        pensioenleeftijd_2013: 65
+        pensioenleeftijd_2014: 65
+        pensioenleeftijd_2015: 65
+        pensioenleeftijd_2016: 65
+        pensioenleeftijd_2017: 65
+        pensioenleeftijd_2018: 66
+        pensioenleeftijd_2019: 66
+        pensioenleeftijd_2020: 66
+        pensioenleeftijd_2021: 66
+        pensioenleeftijd_2022: 66
+        pensioenleeftijd_2023: 66
+        pensioenleeftijd_2024: 67
       execution:
         produces:
           legal_character: BESCHIKKING
@@ -75,6 +122,9 @@ articles:
             type: string
             required: true
         input:
+          # Register-uitkomst voor 2025 en later (lid 1 onder n): zie untranslatables
+          # hierboven. Voor jaren tot en met 2024 wordt deze niet gebruikt; de tabel in
+          # lid 1 geeft dan zelf het getal.
           - name: pensioengegevens
             type: object
             source: {}
@@ -82,9 +132,84 @@ articles:
           - name: pensioenleeftijd
             type: number
             type_spec:
+              unit: years
               precision: 0
-              min: 65
-              max: 70
+              # Geen min/max: de wettekst stelt geen ondergrens of bovengrens aan de
+              # pensioengerechtigde leeftijd (audit: "geen wettelijke grens"). De vorige
+              # min: 65 / max: 70 was een ongefundeerde redelijkheidscontrole en is
+              # verwijderd in plaats van gedocumenteerd, omdat lid 1 onder n zelf al laat
+              # zien dat de leeftijd boven 70 kan uitkomen (jaarlijkse verhoging zonder
+              # wettelijk plafond).
         actions:
           - output: pensioenleeftijd
-            value: $pensioengegevens.pensioenleeftijd
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN
+                    subject: $referencedate.year
+                    value: 2013
+                  then: $pensioenleeftijd_voor_2013
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2013
+                  then: $pensioenleeftijd_2013
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2014
+                  then: $pensioenleeftijd_2014
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2015
+                  then: $pensioenleeftijd_2015
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2016
+                  then: $pensioenleeftijd_2016
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2017
+                  then: $pensioenleeftijd_2017
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2018
+                  then: $pensioenleeftijd_2018
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2019
+                  then: $pensioenleeftijd_2019
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2020
+                  then: $pensioenleeftijd_2020
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2021
+                  then: $pensioenleeftijd_2021
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2022
+                  then: $pensioenleeftijd_2022
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2023
+                  then: $pensioenleeftijd_2023
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.year
+                    value: 2024
+                  then: $pensioenleeftijd_2024
+              # Lid 1 onder n (2025 en later): geen getal in de tekst, zie untranslatables.
+              # De geregistreerde pensioenleeftijd is de enige beschikbare bron voor deze tak.
+              default: $pensioengegevens.pensioenleeftijd

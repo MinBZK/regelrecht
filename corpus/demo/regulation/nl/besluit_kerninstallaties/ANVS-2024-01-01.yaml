@@ -124,6 +124,11 @@ articles:
         produces:
           legal_character: BESLUIT_VAN_ALGEMENE_STREKKING
           decision_type: ALGEMEEN_VERBINDEND_VOORSCHRIFT
+        # Parameter heeft_beeindigingsplan is verwijderd (audit art. 1): artikel 1 kent geen
+        # "beëindigingsplan"; het definieert wel "ontmantelingsplan" (lid 1), maar dat is een
+        # ander begrip en wordt door dit artikel niet als voorwaarde gesteld. Geen tekstbasis
+        # om de parameter te gebruiken in administratieve_eisen_voldaan, dus verwijderd in
+        # plaats van verzonnen legal_basis.
         parameters:
           - name: heeft_beveiligingsplan
             type: boolean
@@ -131,10 +136,6 @@ articles:
           - name: heeft_noodplan
             type: boolean
             required: true
-          - name: heeft_beeindigingsplan
-            type: boolean
-            nullable: true
-            required: false
           - name: financiele_zekerheid_bedrag
             type: amount
             required: true

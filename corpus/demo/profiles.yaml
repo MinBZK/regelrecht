@@ -4431,7 +4431,6 @@ profiles:
           - kvk_nummer: '85234567'
             elektriciteit_kwh: 62000
             gasverbruik_m3: 8000
-            is_woonfunctie: false
       NVWA:
         nvwa_registratie:
           - kvk_nummer: '85234567'

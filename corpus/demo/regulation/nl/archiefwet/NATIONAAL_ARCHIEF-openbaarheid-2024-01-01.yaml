@@ -90,6 +90,14 @@ articles:
             # een afwezigheid waarop de wet beslist).
             nullable: true
             required: false
+          - name: minister_of_gs_besluit_anders
+            type: boolean
+            # Art. 15 lid 4: de doorbreking na 75 jaar geldt "tenzij door Onze minister dan
+            # wel [...] door gedeputeerde staten anders wordt beslist". Dat is een discretionair
+            # besluit van de minister of GS, geen aanvraaggegeven; de wet toetst op de afwezigheid
+            # ervan (RFC-036), dus nullable met een afwezigheidstoets in plaats van een default.
+            nullable: true
+            required: false
         output:
           - name: is_openbaar
             type: boolean
@@ -122,6 +130,14 @@ articles:
                         reference_date: $referencedate
                         date_of_birth: $aanmaakdatum
                       value: $maximale_beperking_jaren
+                    # Lid 4: de doorbreking na 75 jaar geldt "tenzij door Onze minister dan wel
+                    # [...] door gedeputeerde staten anders wordt beslist"; bij een positief
+                    # besluit blijft de beperking dus onverkort van kracht.
+                    - operation: NOT
+                      value:
+                        operation: EQUALS
+                        subject: $minister_of_gs_besluit_anders
+                        value: true
                     - operation: OR
                       conditions:
                         - operation: NOT
@@ -222,6 +238,14 @@ articles:
                             - operation: EQUALS
                               subject: $ministerraad_besluit_staatsbelang
                               value: true
+                        then: null
+                      # Lid 4: bij een positief besluit van de minister of GS geldt de
+                      # doorbreking na 75 jaar niet, dus is er geen datum waarop de beperking
+                      # vervalt.
+                      - when:
+                          operation: EQUALS
+                          subject: $minister_of_gs_besluit_anders
+                          value: true
                         then: null
                     default:
                       operation: DATE_ADD

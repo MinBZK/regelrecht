@@ -135,15 +135,6 @@ algemene_nabestaandenwet:
     # an arbeidsongeschiktheid percentage nobody assessed is unknown, not 0%; the dossier booleans
     # decide the claim
     absent: unknown
-  heeft_kinderen_onder_18:
-    table: anw_dossiers
-    field: heeft_kinderen_onder_18
-    select_on:
-      - name: bsn
-        value: $bsn
-    kind: table
-    service: SVB
-    absent: null
 algemene_ouderdomswet:
   woonperiodes:
     table: verzekerde_tijdvakken
@@ -254,35 +245,9 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-  alle_hebben_vog:
-    table: beheerders
-    field: alle_hebben_vog
-    select_on:
-      - name: kvk_nummer
-        value: $kvk_nummer
-    kind: table
-    service: GEMEENTE_ROTTERDAM
-    absent: null
-  alle_voldoen_leeftijd:
-    table: beheerders
-    field: alle_voldoen_leeftijd
-    select_on:
-      - name: kvk_nummer
-        value: $kvk_nummer
-      - name: schenkt_alcohol
-        value: $schenkt_alcohol
-    kind: table
-    service: GEMEENTE_ROTTERDAM
-    absent: null
-  geen_onder_curatele:
-    table: beheerders
-    field: geen_onder_curatele
-    select_on:
-      - name: kvk_nummer
-        value: $kvk_nummer
-    kind: table
-    service: GEMEENTE_ROTTERDAM
-    absent: null
+  # alle_hebben_vog, alle_voldoen_leeftijd en geen_onder_curatele zijn vervallen: art. 2:28 lid 4
+  # aanhef wordt nu met FOREACH over $beheerders in de wet zelf berekend (RFC-016) in plaats van
+  # een kant-en-klare aggregatie uit deze binding.
   heeft_svh_diploma:
     table: beheerders
     field: heeft_svh_diploma
@@ -318,7 +283,60 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $adres
     kind: table
     service: GEMEENTE_ROTTERDAM
+  afwijkende_vergunningsduur:
+    table: vergunningen
+    field: afwijkende_vergunningsduur
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: GEMEENTE_ROTTERDAM
+    # art. 2:28 lid 2: geen afwijkende bepaling in de vergunning is een echte afwezigheid (de
+    # standaardtermijn van vijf jaar geldt dan), geen onbekende waarde
     absent: null
+  # heeft_dhw_vergunning heeft geen binding: cross-law naar alcoholwet/vergunning/rotterdam
+  # (zie de wet zelf)
+  voorschriften_overtreden:
+    table: vergunningen_historie
+    field: voorschriften_overtreden
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: GEMEENTE_ROTTERDAM
+    # art. 2:28 lid 5 onder h: geen register in de demo; absent betekent onbekend, niet "niet
+    # overtreden"
+    absent: unknown
+  kvk_inschrijving_geldig:
+    table: vergunningen
+    field: kvk_inschrijving_geldig
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: GEMEENTE_ROTTERDAM
+    # art. 2:28 lid 5 onder i: geen register in de demo; absent betekent onbekend
+    absent: unknown
+  feitelijke_toestand_conform_aanvraag:
+    table: vergunningen
+    field: feitelijke_toestand_conform_aanvraag
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: GEMEENTE_ROTTERDAM
+    # art. 2:28 lid 5 onder j: geen register in de demo; absent betekent onbekend
+    absent: unknown
+  voldoet_aan_horecabeleid:
+    table: vergunningen
+    field: voldoet_aan_horecabeleid
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: GEMEENTE_ROTTERDAM
+    # art. 2:28 lid 5 onder k: geen register in de demo; absent betekent onbekend
+    absent: unknown
 algemene_plaatselijke_verordening/ontheffingspas_geluid:
   verleende_ontheffingen_dit_jaar:
     select_on:
@@ -576,6 +594,19 @@ algemene_wet_bestuursrecht:
     # characteristic not set is 'no', so absence, not unknown (reviewed, heuristic kept)
     absent: null
 awb/beroep:
+  # Art. 8:1/8:3: zaak was nergens gedeclareerd als input, terwijl de wet zelf al
+  # via `$zaak.rulespec_uuid`/`$zaak.id` op de zaak selecteert (zie wet/gebeurtenissen
+  # hieronder) en de acties $zaak.status/$zaak.approved lezen (audit "Awb beroep JenV").
+  # zaak zelf heeft geen apart selectiekenmerk (het IS de zaak waarvoor deze wet
+  # draait), dus deze binding kan in de demo-materialiser niet op een sleutel
+  # selecteren zoals wet/gebeurtenissen dat doen; `kind: cases` levert bovendien een
+  # lijst op, geen los object (zie frontend-demo/src/data/materialize.js). De engine
+  # ziet zaak nu wel als gedeclareerde input met de juiste subvelden; het vullen ervan
+  # in de demo-materialiser (buiten scope van deze wettekst-correctie) is een bekende
+  # beperking, geen verzonnen waarde.
+  zaak:
+    kind: cases
+    service: JenV
   wet:
     table: laws
     fields:
@@ -902,6 +933,28 @@ handelsregisterwet/jaarrekening:
     kind: table
     service: KVK
     absent: null
+  ontheffing_verleend:
+    table: jaarrekeningen
+    field: ontheffing_verleend
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: KVK
+    # Art. 2:394 lid 5: geen ontheffingenregister in de demo; geen rij zegt niet "geen
+    # ontheffing" maar "onbekend".
+    absent: unknown
+  afm_toezending_gedaan:
+    table: jaarrekeningen
+    field: afm_toezending_gedaan
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: KVK
+    # Art. 2:394 lid 8: geen AFM-toezendingsregister in de demo; zelfde reden als
+    # ontheffing_verleend.
+    absent: unknown
 kieswet:
   verkiezingsdatum:
     table: verkiezingen
@@ -915,6 +968,18 @@ kieswet:
     # date is unknown, not absent. An absent date would make wet_brp skip the age on the
     # election day and the right to vote null, while nothing is decided about it.
     absent: unknown
+  # Art. B1 lid 2 onder a: "gedurende ten minste tien jaren ingezetene van Nederland is
+  # geweest". No register in the demo corpus tracks residency duration; the citizen's own
+  # claim is the only source. `kind: claim` never carries `absent` (see header comment):
+  # the input is always unknown until supplied.
+  ingezetenschapsduur_jaren:
+    kind: claim
+    service: KIESRAAD
+  # Art. B1 lid 2 onder b: "in Nederlandse openbare dienst ... werkzaam is". No register in
+  # the demo corpus for public-service employment abroad; same reasoning as above.
+  werkzaam_in_nederlandse_openbare_dienst:
+    kind: claim
+    service: KIESRAAD
 machtigingenwet:
   functionarissen:
     table: functionarissen
@@ -953,16 +1018,9 @@ omgevingswet/energiebesparing/informatieplicht:
     service: RVO
     # rvo_energiegegevens: unreported energy use is unknown, not 0 kWh (0 would exempt from the duty)
     absent: unknown
-  is_woonfunctie:
-    table: rvo_energiegegevens
-    field: is_woonfunctie
-    select_on:
-      - name: kvk_nummer
-        value: $kvk_nummer
-    kind: table
-    service: RVO
-    # rvo_energiegegevens: unreported energy use is unknown, not 0 kWh (0 would exempt from the duty)
-    absent: unknown
+  # is_woonfunctie is no longer a plain demo-table input: art. 5.15, eerste lid vrijstelling
+  # loopt via het BAG-gebruiksdoel, dus deze wet vraagt is_woonfunctie nu cross-law op bij
+  # wet_bag (via adres) i.p.v. deze losse RVO-tabelkolom te lezen.
 omgevingswet/werkgebonden_personenmobiliteit:
   aantal_werknemers:
     table: wpm_gegevens
@@ -1844,7 +1902,22 @@ wet_kinderopvang:
   kinderopvang_kvk:
     kind: claim
     service: TOESLAGEN
+  # Art. 1.5 lid 1: registratie in het LRK is de voorwaarde voor aanspraak; de demo heeft geen
+  # LRK-bron, dus de ouder claimt de registratie. `kind: claim` never carries `absent` (see header
+  # comment): unanswered stays unknown, not false.
+  is_geregistreerd:
+    kind: claim
+    service: TOESLAGEN
   aangegeven_uren:
+    kind: claim
+    service: TOESLAGEN
+  # Art. 1.5 lid 2: de opvangvorm is nodig om de ouderparticipatiecrèche-uitzondering te toetsen.
+  aanvraag_soort_opvang:
+    kind: claim
+    service: TOESLAGEN
+  # Art. 1.5 lid 2 jo. art. 1.60b: of de aanvraag in de aanloopperiode van een
+  # ouderparticipatiecrèche valt; niet zelf berekend in deze wet, dus een claim.
+  binnen_aanloopperiode:
     kind: claim
     service: TOESLAGEN
   verwachte_partner_uren:

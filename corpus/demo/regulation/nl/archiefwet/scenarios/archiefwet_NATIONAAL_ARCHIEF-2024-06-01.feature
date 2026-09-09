@@ -42,13 +42,14 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
     When I evaluate outputs "moet_overgebracht_worden" of "archiefwet/overbrenging"
     Then output "moet_overgebracht_worden" is false
 
-  Scenario: Overbrenging kan opgeschort worden bij veelvuldig gebruik met machtiging
+  Scenario: Overbrenging kan opgeschort worden bij veelvuldig gebruik met machtiging binnen de termijn
     Given the following parameters:
       | archiefstuk_id         | DOC-004    |
       | aanmaakdatum           | 2000-01-01 |
       | voor_vernietiging      | false      |
       | veelvuldig_gebruik     | true       |
       | opschortingsmachtiging | true       |
+      | machtiging_datum       | 2020-01-01 |
     When I evaluate outputs "moet_overgebracht_worden" of "archiefwet/overbrenging"
     Then output "moet_overgebracht_worden" is false
 
@@ -59,6 +60,34 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
       | voor_vernietiging      | false      |
       | veelvuldig_gebruik     | true       |
       | opschortingsmachtiging | false      |
+    # POC: parameter "machtiging_datum" not provided by the scenario (None in the POC)
+    And parameter "machtiging_datum" is "null"
+    When I evaluate outputs "moet_overgebracht_worden" of "archiefwet/overbrenging"
+    Then output "moet_overgebracht_worden" is true
+
+  Scenario: Overbrenging kan niet opgeschort worden als de machtiging ouder is dan tien jaar
+    # Art. 13 lid 4: de machtiging geldt "voor een periode van ten hoogste tien jaar";
+    # een machtiging van elf jaar oud is niet meer werkzaam.
+    Given the following parameters:
+      | archiefstuk_id         | DOC-006    |
+      | aanmaakdatum           | 2000-01-01 |
+      | voor_vernietiging      | false      |
+      | veelvuldig_gebruik     | true       |
+      | opschortingsmachtiging | true       |
+      | machtiging_datum       | 2013-01-01 |
+    When I evaluate outputs "moet_overgebracht_worden" of "archiefwet/overbrenging"
+    Then output "moet_overgebracht_worden" is true
+
+  Scenario: Overbrenging kan niet opgeschort worden als de machtiging geen verleningsdatum heeft
+    # Art. 13 lid 4: zonder verleningsdatum is de tienjaarstermijn niet vast te stellen,
+    # dus is de machtiging niet werkzaam (RFC-036 afwezigheidssemantiek).
+    Given the following parameters:
+      | archiefstuk_id         | DOC-007    |
+      | aanmaakdatum           | 2000-01-01 |
+      | voor_vernietiging      | false      |
+      | veelvuldig_gebruik     | true       |
+      | opschortingsmachtiging | true       |
+    And parameter "machtiging_datum" is "null"
     When I evaluate outputs "moet_overgebracht_worden" of "archiefwet/overbrenging"
     Then output "moet_overgebracht_worden" is true
 
@@ -68,9 +97,10 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
       | aanmaakdatum   | 2000-01-01 |
       | overbrengdatum | 2020-01-01 |
       | beperking_type | null       |
-    # POC: parameters "beperking_termijn_jaren", "ministerraad_besluit_staatsbelang" not provided by the scenario (None in the POC)
+    # POC: parameters "beperking_termijn_jaren", "ministerraad_besluit_staatsbelang", "minister_of_gs_besluit_anders" not provided by the scenario (None in the POC)
     And parameter "beperking_termijn_jaren" is "null"
     And parameter "ministerraad_besluit_staatsbelang" is "null"
+    And parameter "minister_of_gs_besluit_anders" is "null"
     When I evaluate outputs "is_openbaar" of "archiefwet/openbaarheid"
     Then output "is_openbaar" is true
 
@@ -81,8 +111,9 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
       | overbrengdatum          | 2020-01-01 |
       | beperking_type          | PRIVACY    |
       | beperking_termijn_jaren | 75         |
-    # POC: parameter "ministerraad_besluit_staatsbelang" not provided by the scenario (None in the POC)
+    # POC: parameters "ministerraad_besluit_staatsbelang", "minister_of_gs_besluit_anders" not provided by the scenario (None in the POC)
     And parameter "ministerraad_besluit_staatsbelang" is "null"
+    And parameter "minister_of_gs_besluit_anders" is "null"
     When I evaluate outputs "is_openbaar, beperking_reden, openbaar_vanaf_datum" of "archiefwet/openbaarheid"
     Then output "is_openbaar" is false
     And output "beperking_reden" equals "Beperkt vanwege eerbiediging van de persoonlijke levenssfeer"
@@ -96,8 +127,9 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
       | overbrengdatum          | 2020-01-01 |
       | beperking_type          | PRIVACY    |
       | beperking_termijn_jaren | 75         |
-    # POC: parameter "ministerraad_besluit_staatsbelang" not provided by the scenario (None in the POC)
+    # POC: parameters "ministerraad_besluit_staatsbelang", "minister_of_gs_besluit_anders" not provided by the scenario (None in the POC)
     And parameter "ministerraad_besluit_staatsbelang" is "null"
+    And parameter "minister_of_gs_besluit_anders" is "null"
     When I evaluate outputs "is_openbaar" of "archiefwet/openbaarheid"
     Then output "is_openbaar" is true
 
@@ -110,6 +142,8 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
       | beperking_type                    | STAATSBELANG |
       | beperking_termijn_jaren           | 75           |
       | ministerraad_besluit_staatsbelang | true         |
+    # POC: parameter "minister_of_gs_besluit_anders" not provided by the scenario (None in the POC)
+    And parameter "minister_of_gs_besluit_anders" is "null"
     When I evaluate outputs "is_openbaar, beperking_reden" of "archiefwet/openbaarheid"
     Then output "is_openbaar" is false
     And output "beperking_reden" equals "Beperkt vanwege het belang van de Staat of zijn bondgenoten"
@@ -123,8 +157,25 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
       | beperking_type                    | STAATSBELANG |
       | beperking_termijn_jaren           | 75           |
       | ministerraad_besluit_staatsbelang | false        |
+    # POC: parameter "minister_of_gs_besluit_anders" not provided by the scenario (None in the POC)
+    And parameter "minister_of_gs_besluit_anders" is "null"
     When I evaluate outputs "is_openbaar" of "archiefwet/openbaarheid"
     Then output "is_openbaar" is true
+
+  Scenario: Document met privacybeperking blijft beperkt na 75 jaar bij ministerbesluit
+    Given the calculation date is "2076-01-01"
+    And the following parameters:
+      | archiefstuk_id                | DOC-107    |
+      | aanmaakdatum                  | 2000-01-01 |
+      | overbrengdatum                | 2020-01-01 |
+      | beperking_type                | PRIVACY    |
+      | beperking_termijn_jaren       | 75         |
+      | minister_of_gs_besluit_anders | true       |
+    # POC: parameter "ministerraad_besluit_staatsbelang" not provided by the scenario (None in the POC)
+    And parameter "ministerraad_besluit_staatsbelang" is "null"
+    When I evaluate outputs "is_openbaar, openbaar_vanaf_datum" of "archiefwet/openbaarheid"
+    Then output "is_openbaar" is false
+    And output "openbaar_vanaf_datum" equals "null"
 
   Scenario: Document met korte beperking wordt openbaar na termijn
     Given the calculation date is "2030-01-01"
@@ -134,8 +185,9 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
       | overbrengdatum          | 2020-01-01            |
       | beperking_type          | ONEVENREDIGE_GEVOLGEN |
       | beperking_termijn_jaren | 10                    |
-    # POC: parameter "ministerraad_besluit_staatsbelang" not provided by the scenario (None in the POC)
+    # POC: parameters "ministerraad_besluit_staatsbelang", "minister_of_gs_besluit_anders" not provided by the scenario (None in the POC)
     And parameter "ministerraad_besluit_staatsbelang" is "null"
+    And parameter "minister_of_gs_besluit_anders" is "null"
     When I evaluate outputs "is_openbaar" of "archiefwet/openbaarheid"
     Then output "is_openbaar" is true
 
@@ -218,9 +270,10 @@ Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
     And parameter "opschortingsmachtiging" is "null"
     When I evaluate outputs "moet_overgebracht_worden" of "archiefwet/overbrenging"
     Then output "moet_overgebracht_worden" is true
-    # POC: parameters "beperking_termijn_jaren", "ministerraad_besluit_staatsbelang" not provided by the scenario (None in the POC)
+    # POC: parameters "beperking_termijn_jaren", "ministerraad_besluit_staatsbelang", "minister_of_gs_besluit_anders" not provided by the scenario (None in the POC)
     Given parameter "beperking_termijn_jaren" is "null"
     And parameter "ministerraad_besluit_staatsbelang" is "null"
+    And parameter "minister_of_gs_besluit_anders" is "null"
     When I evaluate outputs "is_openbaar" of "archiefwet/openbaarheid"
     Then output "is_openbaar" is true
     # POC: parameters "documenttype", "bewaartermijn_jaren", "selectielijst_vastgesteld", "selectielijst_gepubliceerd" not provided by the scenario (None in the POC)

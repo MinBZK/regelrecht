@@ -35,6 +35,29 @@ articles:
       heeft.
     url: https://wetten.overheid.nl/BWBR0015703/2025-01-01#Artikel11
     machine_readable:
+      # Art. 11 lid 3: bij AMvB kunnen andere vreemdelingen dan lid 2 met een
+      # Nederlander gelijk worden gesteld. Welke categorieën dat zijn, staat
+      # niet in deze wettekst maar in de nog te wijzen AMvB; een open_term
+      # (i.p.v. de vaste definitie geldige_verblijfsvergunningen) volgt daarmee
+      # het IoC-patroon (regel 3): leeg totdat een AMvB dit implementeert.
+      # Schema staat alleen scalaire typen toe voor open_terms (geen lijst),
+      # dus dit modelleert één extra vergunningtype; een AMvB die meerdere
+      # categorieën toevoegt implementeert het per categorie met een eigen
+      # `implements`-verwijzing zodra die AMvB in de corpus staat.
+      open_terms:
+        - id: aanvullend_gelijkgestelde_verblijfsvergunning
+          type: string
+          required: false
+          delegated_to: kroon
+          delegation_type: AMVB
+          legal_basis: artikel 11 lid 3 Participatiewet
+          # Geen AMvB in de corpus die dit lid invult: leeg totdat die er is
+          # (RFC-012-achtig, maar wel als open_term omdat de wet zelf naar een
+          # AMvB delegeert, niet omdat de tekst onvertaalbaar is).
+          default:
+            actions:
+              - output: aanvullend_gelijkgestelde_verblijfsvergunning
+                value: ''
       definitions:
         minimum_leeftijd: 18
         basisbedrag_alleenstaand_21_plus: 108900
@@ -45,11 +68,16 @@ articles:
           - FAMILY_REUNIFICATION
         vermogensgrens_alleenstaand: 750000
         vermogensgrens_partner: 1500000
-        kostendelersnorm_factoren:
-          '1': 1.0
-          '2': 0.5
-          '3': 0.43
-          '4': 0.4
+        # Art. 22a lid 1 (tekst niet in dit bestand): factoren voor 1 t/m 4
+        # kostendelende personen (belanghebbende, echtgenoot indien gehuwd, en
+        # medebewoners samen). De IF-keten in de kostendelersnorm-actie
+        # verwijst naar deze vier definities in plaats van literals te
+        # herhalen (regel 1 van de opdracht). Geen vijfde factor: die staat in
+        # geen bekende bron.
+        kostendelersnorm_factor_1: 1.0
+        kostendelersnorm_factor_2: 0.5
+        kostendelersnorm_factor_3: 0.43
+        kostendelersnorm_factor_4: 0.4
       execution:
         parameters:
           - name: bsn
@@ -223,6 +251,13 @@ articles:
               min: 0
           - name: kostendelersnorm
             type: number
+            # Nullable: art. 22a lid 1 (tekst niet in dit bestand) geeft factoren
+            # voor huishoudens van 1 t/m 4 personen via de kostendelersnorm_factor_*
+            # definities. Voor 5 of meer personen staat in geen bekende bron (dit
+            # bestand, noch corpus/regulation) een factor; een IF zonder default op
+            # dat geval geeft null, wat hier de bedoelde afwezigheidstoets is in
+            # plaats van een verzonnen getal (regel 2).
+            nullable: true
             type_spec:
               precision: 2
               min: 0
@@ -244,6 +279,10 @@ articles:
                   operation: LESS_THAN
                   value: $pensioenleeftijd
                 - operation: OR
+                  # Lid 2 gelijkstelling via geldige_verblijfsvergunningen, plus
+                  # lid 3 gelijkstelling via de AMvB die aanvullend_gelijkgestelde_
+                  # verblijfsvergunning invult (open_term, regel 3); leeg
+                  # (default '') matcht per definitie geen verblijfsvergunning_type.
                   conditions:
                     - subject: $heeft_nederlandse_nationaliteit
                       operation: EQUALS
@@ -251,6 +290,9 @@ articles:
                     - operation: IN
                       subject: $verblijfsvergunning_type
                       value: $geldige_verblijfsvergunningen
+                    - subject: $verblijfsvergunning_type
+                      operation: EQUALS
+                      value: $aanvullend_gelijkgestelde_verblijfsvergunning
                 - operation: NOT
                   value:
                     operation: EQUALS
@@ -357,6 +399,11 @@ articles:
                 Artikel 20 lid 1 bepaalt de hoogte van de bijstandsnorm voor personen van 21 jaar en ouder
                 afhankelijk van de leefsituatie
           - output: kostendelersnorm
+            # Factoren komen uit de kostendelersnorm_factor_* definities (art. 22a
+            # lid 1) in plaats van herhaalde literals. Geen default: voor 5 of
+            # meer personen geeft de wettekst in dit bestand geen factor, dus dat
+            # geval geeft null (afwezigheidstoets, regel 2) in plaats van een
+            # verzonnen waarde.
             value:
               operation: IF
               cases:
@@ -364,23 +411,22 @@ articles:
                     operation: EQUALS
                     subject: $huishoudleden
                     value: 1
-                  then: 1.0
+                  then: $kostendelersnorm_factor_1
                 - when:
                     operation: EQUALS
                     subject: $huishoudleden
                     value: 2
-                  then: 0.5
+                  then: $kostendelersnorm_factor_2
                 - when:
                     operation: EQUALS
                     subject: $huishoudleden
                     value: 3
-                  then: 0.43
+                  then: $kostendelersnorm_factor_3
                 - when:
                     operation: EQUALS
                     subject: $huishoudleden
                     value: 4
-                  then: 0.4
-              default: 0.38
+                  then: $kostendelersnorm_factor_4
             legal_basis:
               law: Participatiewet
               bwb_id: BWBR0015703

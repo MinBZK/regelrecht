@@ -30,6 +30,9 @@ articles:
         drempel_onderzoek_elektriciteit_kwh: 10000000
         drempel_onderzoek_gas_m3: 170000
         rapportage_frequentie_jaren: 4
+        # Art. 5.15d noemt geen basisdatum + rapportagefrequentie waaruit deze deadline te
+        # berekenen is; de tekst geeft alleen de vaste einddatum van het overgangsrecht zelf
+        # ("tot 1 december 2027 van toepassing"). Die datum is dus de bron, geen berekening.
         volgende_deadline: '2027-12-01'
         rapportage_methode: RVO eLoket (mijn.rvo.nl) met eHerkenning niveau 2+
       execution:
@@ -42,7 +45,7 @@ articles:
             required: true
         input:
       # Declared first: the engine resolves inputs in declaration order and
-      # `bag_gebruiksdoel` below passes $adres as a parameter (the POC resolved
+      # `is_woonfunctie` below passes $adres as a parameter (the POC resolved
       # inputs lazily, so its position did not matter there).
           - name: adres
             type: string
@@ -54,12 +57,22 @@ articles:
                 kvk_nummer: $kvk_nummer
             temporal:
               type: point_in_time
-          - name: bag_gebruiksdoel
-            type: string
+      # Art. 5.15, eerste lid: de vrijstelling voor woonfuncties is een BAG-gegeven (het
+      # gebruiksdoel van het verblijfsobject), geen los door de organisatie op te geven
+      # kenmerk. Cross-law binding op wet_bag/is_woonfunctie i.p.v. een losse input;
+      # `bag_gebruiksdoel` als los, ongebruikt tussenresultaat is verwijderd (audit
+      # AUDIT_GETROUWHEID.md, Omgevingswet energiebesparing informatieplicht).
+      # Nullable: `adres` is zelf nullable (KVK levert niet altijd een vestigingsadres),
+      # en zonder adres wordt wet_bag niet aangeroepen, dus is_woonfunctie is dan onbekend,
+      # niet false. Dat de vrijstelling dan niet vaststaat, is de afwezigheidstoets die de
+      # tekst bedoelt (RFC-036): voldoet_aan_voorwaarden wordt onbekend i.p.v. ten onrechte
+      # vastgesteld.
+          - name: is_woonfunctie
+            type: boolean
             nullable: true
             source:
               regulation: wet_bag
-              output: gebruiksdoel
+              output: is_woonfunctie
               parameters:
                 adres: $adres
             temporal:
@@ -69,9 +82,6 @@ articles:
             source: {}
           - name: gasverbruik_m3
             type: number
-            source: {}
-          - name: is_woonfunctie
-            type: boolean
             source: {}
         output:
           - name: voldoet_aan_voorwaarden

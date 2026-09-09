@@ -41,7 +41,9 @@ Feature: Faillissementswet WSNP Bewindvoerder (Fw Titel III)
       | 400000005 | [{"bsn_saniet":999500007,"naam_saniet":"Sandra Meijer","insolventie_nummer":"R.18/23/789","datum_uitspraak":"2023-09-01","datum_einde":"2025-02-01","status":"SCHONE_LEI"}] |
       | 999500007 | []                                                                                                                                                                          |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties, subject_ids" of "faillissementswet_wsnp_bewindvoerder"
-    Then output "voldoet_aan_voorwaarden" is true
+    # Audit-correctie: voldoet_aan_voorwaarden telde eerder alle registraties, ook beëindigde;
+    # art. 316 jo. 356 Fw geeft alleen bevoegdheid zolang de schuldsanering actief is.
+    Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_delegaties" is false
     # POC: output is an empty list
     And output "subject_ids" equals "[]"
@@ -53,7 +55,9 @@ Feature: Faillissementswet WSNP Bewindvoerder (Fw Titel III)
       | 400000005 | [{"bsn_saniet":999500007,"naam_saniet":"Sandra Meijer","insolventie_nummer":"R.18/23/789","datum_uitspraak":"2023-09-01","datum_einde":"2024-06-15","status":"BEEINDIGD"}] |
       | 999500007 | []                                                                                                                                                                         |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties, subject_ids" of "faillissementswet_wsnp_bewindvoerder"
-    Then output "voldoet_aan_voorwaarden" is true
+    # Audit-correctie: voldoet_aan_voorwaarden telde eerder alle registraties, ook beëindigde;
+    # art. 316 jo. 356 Fw geeft alleen bevoegdheid zolang de schuldsanering actief is.
+    Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_delegaties" is false
     # POC: output is an empty list
     And output "subject_ids" equals "[]"

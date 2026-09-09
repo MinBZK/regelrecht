@@ -88,3 +88,85 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | 999993653 | [{"startdatum":"2023-01-01","einddatum":"2024-01-01"}] |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "kieswet"
     Then output "voldoet_aan_voorwaarden" is true
+
+  # Art. B1 lid 1: werkelijke woonplaats in Aruba, Curacao of Sint Maarten sluit uit, en
+  # lid 2 geeft geen van beide uitzonderingen op de uitzondering (geen tien jaar
+  # ingezetenschap, geen Nederlandse openbare dienst): geen stemrecht.
+  Scenario: Persoon woonachtig in Aruba zonder tien jaar ingezetenschap of openbare dienst mag niet stemmen
+    Given the following "KIESRAAD" data with key "bsn" for law "kieswet":
+      | bsn       | verkiezingsdatum |
+      | 999993653 | 2025-10-29       |
+    And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
+      | bsn       | status | inrichting_type |
+      | 999993653 | null   | null            |
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | Oranjestad     | []             | ARUBA         | NEDERLANDS    | null  | []           |                       |
+    And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
+      | bsn       | stemrecht_uitsluitingen |
+      | 999993653 | []                      |
+    Given the following parameters:
+      | ingezetenschapsduur_jaren               | 3     |
+      | werkzaam_in_nederlandse_openbare_dienst | false |
+    When I evaluate outputs "heeft_stemrecht" of "kieswet"
+    Then output "heeft_stemrecht" is false
+
+  # Art. B1 lid 2 onder a: tien jaar ingezetenschap van Nederland heft de lid-1-uitzondering
+  # op, ook al woont de persoon nu in Curacao: wel stemrecht.
+  Scenario: Persoon woonachtig in Curacao met tien jaar ingezetenschap mag wel stemmen
+    Given the following "KIESRAAD" data with key "bsn" for law "kieswet":
+      | bsn       | verkiezingsdatum |
+      | 999993653 | 2025-10-29       |
+    And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
+      | bsn       | status | inrichting_type |
+      | 999993653 | null   | null            |
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1980-01-01    | null              | null        | []                | Willemstad     | []             | CURACAO       | NEDERLANDS    | null  | []           |                       |
+    And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
+      | bsn       | stemrecht_uitsluitingen |
+      | 999993653 | []                      |
+    Given the following parameters:
+      | ingezetenschapsduur_jaren               | 12    |
+      | werkzaam_in_nederlandse_openbare_dienst | false |
+    When I evaluate outputs "heeft_stemrecht" of "kieswet"
+    Then output "heeft_stemrecht" is true
+
+  # Art. B1 lid 2 onder b: werkzaam in Nederlandse openbare dienst in Sint Maarten heft de
+  # lid-1-uitzondering op, ook zonder tien jaar ingezetenschap: wel stemrecht.
+  Scenario: Persoon werkzaam in Nederlandse openbare dienst op Sint Maarten mag wel stemmen
+    Given the following "KIESRAAD" data with key "bsn" for law "kieswet":
+      | bsn       | verkiezingsdatum |
+      | 999993653 | 2025-10-29       |
+    And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
+      | bsn       | status | inrichting_type |
+      | 999993653 | null   | null            |
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | Philipsburg    | []             | SINT_MAARTEN  | NEDERLANDS    | null  | []           |                       |
+    And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
+      | bsn       | stemrecht_uitsluitingen |
+      | 999993653 | []                      |
+    Given the following parameters:
+      | ingezetenschapsduur_jaren               | 2    |
+      | werkzaam_in_nederlandse_openbare_dienst | true |
+    When I evaluate outputs "heeft_stemrecht" of "kieswet"
+    Then output "heeft_stemrecht" is true
+
+  # Art. B1 lid 1: wie in Nederland woont valt niet onder de uitzondering; die vraag speelt
+  # niet, dus stemrecht zoals in de gewone gevallen hierboven.
+  Scenario: Persoon woonachtig in Nederland mag wel stemmen, ongeacht ingezetenschapsduur
+    Given the following "KIESRAAD" data with key "bsn" for law "kieswet":
+      | bsn       | verkiezingsdatum |
+      | 999993653 | 2025-10-29       |
+    And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
+      | bsn       | status | inrichting_type |
+      | 999993653 | null   | null            |
+    And the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | Amsterdam      | []             | NLD           | NEDERLANDS    | null  | []           |                       |
+    And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
+      | bsn       | stemrecht_uitsluitingen |
+      | 999993653 | []                      |
+    When I evaluate outputs "heeft_stemrecht" of "kieswet"
+    Then output "heeft_stemrecht" is true

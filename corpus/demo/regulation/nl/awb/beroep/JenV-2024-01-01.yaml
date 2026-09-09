@@ -26,6 +26,9 @@ articles:
           - BESCHIKKING
           - BESLUIT_VAN_ALGEMENE_STREKKING
         default_termijn_beroep_weken: 6
+        # Art. 8:6: type_rechter is altijd een categorie (RECHTBANK, GERECHTSHOF, CRVB, CBB),
+        # nooit een concrete rechtbanknaam; de concrete naam volgt pas uit art. 8:7 lid 1 in
+        # bevoegde_rechtbank. Zie audit "Awb beroep JenV": categorie en naam waren vermengd.
         default_court_type: RECHTBANK
         default_court: RECHTBANK_DEN_HAAG
       execution:
@@ -33,6 +36,13 @@ articles:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
         input:
+          # Art. 8:1/8:3: de acties lezen $zaak.status en $zaak.approved (of er al een
+          # afwijzende beslissing op bezwaar ligt); zaak was nergens als input gedeclareerd,
+          # waardoor de typechecker deze velden niet zag (audit "Awb beroep JenV"). Zie
+          # bindings.yaml voor de binding (kind: cases).
+          - name: zaak
+            type: object
+            source: {}
           - name: wet
             type: object
             source: {}
@@ -86,7 +96,10 @@ articles:
                     operation: EQUALS
                     subject: $wet.name
                     value: vreemdelingenwet
-                  then: $default_court
+                  # Art. 8:6: vreemdelingenzaken lopen via de rechtbank (categorie), niet via een
+                  # vaste rechtbanknaam; welke rechtbank concreet bevoegd is, volgt uit art. 8:7
+                  # lid 1 in bevoegde_rechtbank.
+                  then: $default_court_type
                 - when:
                     operation: EQUALS
                     subject: $wet.name
@@ -103,6 +116,12 @@ articles:
               explanation: >-
                 Artikel 8:6 Awb bepaalt de absolute bevoegdheid van rechters voor verschillende wetten
           - output: bevoegde_rechtbank
+            # Art. 8:6 levert alleen de categorie op (type_rechter); welke rechtbank concreet
+            # bevoegd is, staat hier los daarvan in art. 8:7 lid 1. Voor GERECHTSHOF- en
+            # CRVB/CBB-zaken kent de wet zelf de bevoegde instantie toe (wet.competent_court);
+            # daar is geen "relatieve bevoegdheid van rechtbanken" te bepalen. Geen
+            # compensatietak meer nodig sinds type_rechter nooit meer een concrete
+            # rechtbanknaam bevat (audit "Awb beroep JenV").
             value:
               operation: IF
               cases:
@@ -121,17 +140,7 @@ articles:
                             value: null
                         then: $jurisdictie.rechtbank
                     default: $default_court
-                - when:
-                    operation: EQUALS
-                    subject: $type_rechter
-                    value: $default_court
-                  then: $default_court
-                - when:
-                    operation: EQUALS
-                    subject: $type_rechter
-                    value: GERECHTSHOF
-                  then: $wet.competent_court
-              default: $type_rechter
+              default: $wet.competent_court
             legal_basis:
               law: Algemene wet bestuursrecht
               bwb_id: BWBR0005537

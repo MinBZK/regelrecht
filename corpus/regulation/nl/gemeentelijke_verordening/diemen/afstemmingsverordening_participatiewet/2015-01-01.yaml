@@ -42,6 +42,109 @@ articles:
 
          c. derde categorie: het niet naar vermogen proberen algemeen geaccepteerde arbeid te verkrijgen.
     url: https://lokaleregelgeving.overheid.nl/CVDR345917/1#Artikel7
+    machine_readable:
+      # Art. 7 zelf legt geen norm vast (geen verlagingspercentage of -duur);
+      # het wijst gedragingen toe aan een categorie. Vandaar INFORMATIEF, niet
+      # WAARDEBEPALING (die zit in art. 9, dat de categorie inleest).
+      execution:
+        produces:
+          legal_character: INFORMATIEF
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: BSN van de belanghebbende
+          # Onderdeel a (eerste categorie): niet tijdig registreren als
+          # werkzoekende bij het UWV.
+          - name: heeft_niet_tijdig_geregistreerd_uwv
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel a. Belanghebbende heeft zich niet tijdig laten
+              registreren als werkzoekende bij het UWV
+          # Onderdeel b, sub 1 t/m 4 (tweede categorie): elk van deze vier
+          # gedragingen leidt op zichzelf al tot categorie 2 ("of").
+          - name: heeft_niet_meegewerkt_plan_van_aanpak
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel b, sub 1. Belanghebbende heeft niet of onvoldoende
+              meegewerkt aan het plan van aanpak (art. 44a Pw)
+          - name: heeft_niet_meegewerkt_onderzoek_jongeren
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel b, sub 2. Belanghebbende (jonger dan 27) heeft niet
+              binnen vier weken na melding voldoende meegewerkt aan het
+              onderzoek naar arbeidsinschakeling of sociale activering
+              (art. 43 vierde en vijfde lid Pw)
+          - name: heeft_als_alleenstaande_ouder_geen_deeltijdarbeid_getracht
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel b, sub 3. Belanghebbende heeft als alleenstaande
+              ouder niet naar vermogen getracht arbeid in deeltijd te
+              verkrijgen
+          - name: heeft_tegenprestatie_niet_verricht
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel b, sub 4. Belanghebbende heeft de opgedragen
+              tegenprestatie (art. 9 eerste lid onderdeel c Pw) niet of
+              onvoldoende verricht
+          # Onderdeel c (derde categorie): niet naar vermogen algemeen
+          # geaccepteerde arbeid trachten te verkrijgen.
+          - name: heeft_niet_naar_vermogen_arbeid_getracht_te_verkrijgen
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel c. Belanghebbende heeft niet naar vermogen algemeen
+              geaccepteerde arbeid getracht te verkrijgen
+        output:
+          # Zonder één van de gedragingen uit lid a t/m c is er geen
+          # gedragscategorie: dat is afwezigheid, geen categorie "0" (RFC-036).
+          # Art. 9 leest deze output in plaats van een los ingevoerd getal.
+          - name: gedragscategorie
+            type: number
+            nullable: true
+            description: >-
+              Categorie van de gedraging conform art. 7 (1, 2 of 3), of
+              afwezig als geen van de gedragingen zich voordoet
+        actions:
+          # Bij samenloop geldt de zwaarste categorie (c > b > a); de tekst
+          # noemt geen samenloopregel, maar de indeling in "categorieën" van
+          # toenemende ernst (5% / 30% / 100% in art. 9) maakt de derde
+          # categorie de zwaarste. Categorie 3 wordt daarom als eerste getoetst.
+          - output: gedragscategorie
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_niet_naar_vermogen_arbeid_getracht_te_verkrijgen
+                    value: true
+                  then: 3
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $heeft_niet_meegewerkt_plan_van_aanpak
+                        value: true
+                      - operation: EQUALS
+                        subject: $heeft_niet_meegewerkt_onderzoek_jongeren
+                        value: true
+                      - operation: EQUALS
+                        subject: $heeft_als_alleenstaande_ouder_geen_deeltijdarbeid_getracht
+                        value: true
+                      - operation: EQUALS
+                        subject: $heeft_tegenprestatie_niet_verricht
+                        value: true
+                  then: 2
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_niet_tijdig_geregistreerd_uwv
+                    value: true
+                  then: 1
 
   - number: '9'
     text: |-
@@ -83,11 +186,31 @@ articles:
             type: string
             required: true
             description: BSN van de belanghebbende
+          # Als parameter behouden zodat een aanroeper de categorie nog
+          # rechtstreeks kan meegeven (parameter overschrijft source, zie
+          # test_service_parameter_override); zonder parameter valt terug
+          # op de afgeleide waarde uit art. 7 hieronder.
           - name: gedragscategorie
             type: number
             required: false
-            description: Gedragscategorie (0=geen, 1, 2 of 3)
+            nullable: true
+            description: >-
+              Gedragscategorie (1, 2 of 3), of afwezig als geen verwijtbare
+              gedraging is vastgesteld; indien niet meegegeven wordt dit
+              afgeleid via art. 7
         input:
+          # Categorie komt uit art. 7 (intra-law): dat artikel leidt de
+          # categorie af uit de feitelijke criteria van lid a t/m c.
+          # Nullable: geen van de gedragingen betekent afwezigheid van een
+          # categorie, niet categorie "0" (RFC-036).
+          - name: gedragscategorie
+            type: number
+            nullable: true
+            description: >-
+              Gedragscategorie conform art. 7 (1, 2 of 3), of afwezig als
+              geen verwijtbare gedraging is vastgesteld
+            source:
+              output: gedragscategorie
           # Categorie 3 percentage is vastgelegd in Participatiewet art. 18 lid 5
           # Dit is GEEN gemeentelijke bevoegdheid - de rijkswet schrijft 100% voor
           - name: percentage_categorie_3
@@ -111,15 +234,13 @@ articles:
             nullable: true
             description: Aantal maanden dat de verlaging duurt
         actions:
+          # Zonder categorie (art. 7 leverde geen gedraging op) blijft
+          # verlaging_percentage afwezig: geen IF-tak matcht, dus de output
+          # is nullable-afwezig in plaats van 0 (RFC-036).
           - output: verlaging_percentage
             value:
               operation: IF
               cases:
-                - when:
-                    operation: EQUALS
-                    subject: $gedragscategorie
-                    value: 0
-                  then: 0
                 - when:
                     operation: EQUALS
                     subject: $gedragscategorie
@@ -142,10 +263,6 @@ articles:
                 - when:
                     operation: EQUALS
                     subject: $gedragscategorie
-                    value: 0
-                  then: 0
-                - when:
-                    operation: GREATER_THAN_OR_EQUAL
-                    subject: $gedragscategorie
-                    value: 1
-                  then: $DUUR_MAANDEN
+                    value: null
+                  then: null
+              default: $DUUR_MAANDEN
