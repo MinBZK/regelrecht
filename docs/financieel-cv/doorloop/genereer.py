@@ -172,6 +172,14 @@ PERSONAS = [
              'Koen kan geen proefplaatsing met behoud van uitkering aangaan zonder WW',
              'regulation/nl/wet/werkloosheidswet/scenarios/financieel_cv_koen.feature'),
 
+            ('025', 'Wajong', 'art. 2:20', 'geen recht', 'c-nee',
+             '<b>Loondispensatie</b> is voorbehouden aan Wajong-gerechtigden. Koen heeft die status '
+             'niet — zijn loonaanvulling loopt via de loonkostensubsidie van de gemeente. Het paneel '
+             'staat er juist omdat het Financieel CV ook moet tonen wat niet van toepassing is, en '
+             'waarom.',
+             ['heeft_recht_op_loondispensatie'],
+             'Koen', 'regulation/nl/wet/wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten/scenarios/financieel_cv_koen.feature'),
+
             ('007', 'Participatiewet', 'art. 8a lid 2 d', 'recht', 'c-ok',
              'Proefplaatsing bestaat namelijk in <b>vier</b> wetten. Voor Koen loopt hij via de '
              'Participatiewet — en met een ander kader: twee maanden in plaats van zes, verlengbaar '
@@ -203,11 +211,11 @@ PERSONAS = [
              'regulation/nl/wet/wet_financiering_sociale_verzekeringen/scenarios/doelgroepregister_banenafspraak.feature'),
 
             ('053', 'Wet tegemoetkomingen loondomein', 'art. 2.1', 'recht', 'c-ok',
-             'Het <b>loonkostenvoordeel</b> — en hier zit de grootste verandering in bedrag. Sadee '
-             'valt in de categorie <b>banenafspraak</b>, niet arbeidsgehandicapt. Dat scheelt '
-             '€3.394,56 per jaar: €1.680,64 in plaats van €5.075,20. De correctie kwam van SZW zelf, '
-             'op 20 augustus, als antwoord op onze vraag of een Wajonger automatisch in de '
-             'categorie arbeidsgehandicapt valt. Dat is niet zo.',
+             'Het <b>loonkostenvoordeel</b>. Sadee valt in de categorie <b>banenafspraak</b>, niet '
+             'arbeidsgehandicapt — een verschil van €3.394,56 per jaar. Die correctie stond al in '
+             'de vorige versie van deze doorloop; wat er sindsdien bij is gekomen is de herkomst. '
+             'SZW bevestigde op 20 augustus dat een Wajonger niet automatisch arbeidsgehandicapt '
+             'is, en de categorie wordt nu door artikel 2.1 zelf afgeleid in plaats van aangeleverd.',
              ['heeft_recht_op_lkv', 'categorie_lkv', 'hoogte_lkv_per_jaar_eurocent'],
              'Sadee krijgt LKV-banenafspraak',
              'regulation/nl/wet/wet_tegemoetkomingen_loondomein/scenarios/financieel_cv_sadee.feature'),
@@ -242,6 +250,20 @@ PERSONAS = [
              'het Financieel CV anders "geen recht" toonde terwijl het recht bestond.',
              ['heeft_recht_op_jobcoaching', 'heeft_recht_op_werkplekaanpassing'],
              'Sadee komt via Wajong art. 2:22', 'regulation/nl/wet/wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten/scenarios/financieel_cv_sadee.feature'),
+
+            ('008', 'Participatiewet', 'art. 10c en 10d', 'geen recht', 'c-nee',
+             'De <b>loonkostensubsidie</b> is een gemeente-instrument voor de '
+             'Participatiewet-doelgroep. Sadee heeft een Wajong-uitkering en valt daar niet onder. '
+             'Het spiegelbeeld van Koen, bij wie deze regeling juist het hoofdbedrag levert.',
+             ['heeft_recht_op_lks'],
+             'Sadee', 'regulation/nl/wet/participatiewet/scenarios/financieel_cv_sadee.feature'),
+
+            ('022', 'Werkloosheidswet', 'art. 76a', 'niet van toepassing', 'c-nee',
+             'Geen WW-uitkering, dus geen proefplaatsing langs deze route — dezelfde uitsluiting als '
+             'bij Koen, om dezelfde reden. Voor Sadee loopt de proefplaatsing via de Wajong, met een '
+             'ander kader.',
+             ['mag_proefplaatsing_aangaan'],
+             'Sadee', 'regulation/nl/wet/werkloosheidswet/scenarios/financieel_cv_sadee.feature'),
 
             ('033', 'Wajong', 'art. 2:24', 'recht', 'c-ok',
              'De <b>proefplaatsing</b> van de Wajong: zes maanden, met de arbeidsondersteuning en de '

@@ -29,6 +29,27 @@ hernoemd.** Controleer na een corpuswijziging of elk paneel nog de bedoelde
 afleiding toont; het script meldt het niet als een id iets anders is gaan
 betekenen. Het draait wel door met een lege plek als een id niet bestaat.
 
+## Vergelijken met de vorige versie
+
+`vergelijk.py` zet twee gegenereerde doorlopen naast elkaar: links de oude,
+rechts de nieuwe, gekoppeld op wet plus artikel.
+
+```bash
+python3 docs/financieel-cv/doorloop/vergelijk.py oud.html nieuw.html vergelijking.html
+```
+
+Het onderscheidt een echte wijziging van een andere formulering: alleen wanneer
+een uitkomst die in **beide** versies voorkomt van waarde verandert, heet dat
+"uitkomst gewijzigd". Verschilt alleen het statuslabel, dan staat er "zelfde
+uitkomst, andere benaming". Zonder dat onderscheid markeert de vergelijking
+bijna elk paneel als gewijzigd, want de twee versies noemen niet dezelfde set
+asserties.
+
+De koppeling moet twee schrijfwijzen overbruggen: de vorige versie zette een
+toevoeging achter de wetnaam ("Participatiewet, loonkostensubsidie"), kortte de
+Wet WIA af, en voegde artikelnummers samen ("art. 2.1 + 4.1"). Dat zit in
+`WET_ALIAS` en `sleutel()`.
+
 ## Onderdelen
 
 | Bestand | Wat |
@@ -36,6 +57,7 @@ betekenen. Het draait wel door met een lege plek als een id niet bestaat.
 | `genereer.py` | De generator; bevat ook het verhaal per paneel |
 | `style.css` | Overgenomen uit de eerste versie |
 | `viewer.js` | Klapt de trace-bomen uit. Rendert pas als het omliggende `details` opengaat |
+| `vergelijk.py` | Zet twee versies naast elkaar |
 
 Het verhaal per paneel staat als spec bovenin `genereer.py` — dat is het
 redactionele werk en de plek waar juristfeedback landt.
