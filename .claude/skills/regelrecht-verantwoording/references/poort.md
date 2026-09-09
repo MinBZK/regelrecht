@@ -5,7 +5,10 @@ Zonder dwang loopt elk register vol met punten die niemand meer sluit; met de
 verkeerde dwang staat het werk stil op een moment dat de analist nog aan het
 denken is.
 
-Vandaar de scheiding: **blokkeren op de mijlpaal, adviseren daarbuiten.**
+Vandaar de scheiding: **blokkeren op de mijlpaal, adviseren daarbuiten.** Wat een mijlpaal is —
+een reductie op een peildatum, geen document — en waarom een cyclus zonder uitspraken het
+zekerheidsniveau nooit verhoogt, staat in `regelrecht-traject`. Dit blad gaat alleen over de
+poort zelf.
 
 ## Twee momenten
 

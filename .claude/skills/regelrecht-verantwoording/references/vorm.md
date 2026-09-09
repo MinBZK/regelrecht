@@ -32,7 +32,12 @@ automation bias, en zonder dit veld blijft het een zorg in plaats van een getal.
 `uiterlijk` verwijst naar een mijlpaal en niet naar een datum, omdat een datum
 verschuift en een mijlpaal een gebeurtenis is.
 
-## Voorbeeld
+## Voorbeeld — de logische vorm
+
+Dit is hoe je over een claim *denkt*. De **opslagvorm** is de notitie in `SKILL.md`, stap 3:
+dezelfde velden, maar als bodies van één annotatie, omdat het notitieschema geen eigen velden
+voor kwestie, lezing of alternatief kent. Schrijf nooit de vorm hieronder letterlijk in
+`annotations.yaml`; hij valideert niet.
 
 Een open term in de zorgtoeslagketen die van buiten wordt gevuld:
 
@@ -70,8 +75,8 @@ over: <verwijzing naar het feit hierboven>
 
 ## Waar dit terechtkomt
 
-Bij de tekst waar het over gaat, als stand-off notitie — niet in een eigen
-bestand. Het notitieschema kan vandaag nog niet alles hierboven dragen: `workflow`
+Bij de tekst waar het over gaat, als stand-off notitie — niet in een eigen bestand. Het
+ritme waarin dat gebeurt (werkronde, uitspraak, verwerken, mijlpaal) is van `regelrecht-traject`. Het notitieschema kan vandaag nog niet alles hierboven dragen: `workflow`
 kent alleen `open` en `resolved`, er is geen bevoegde en geen termijn, en de body
 is één string of één verwijzing, dus gestructureerde alternatieven passen er niet
 in. Tot dat opgelost is: leg de kwestie, de lezing, de grond en het alternatief in
