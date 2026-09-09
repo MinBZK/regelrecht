@@ -76,8 +76,16 @@ function allParameterNames(corpus) {
  * (law, organisation, key field). Called once at start-up and again when the
  * reference date changes (a few bindings select on the year).
  */
-export function registerPersonaData(engine, corpus, referenceDate, cases = []) {
+export function registerPersonaData(engine, corpus, referenceDate, cases = [], claims = []) {
   engine.clearDataSources();
+  // A persona's answers to a law's application form (approved claims) count as
+  // that law's parameters while its register rows are looked up: the terrace
+  // location decides which BGT row applies.
+  const paramsFor = (keyField, keyValue, lawId) => {
+    const out = {};
+    for (const c of claims) if (c.lawId === lawId && c.keyField === keyField && c.keyValue === keyValue) out[c.input] = c.newValue;
+    return out;
+  };
   const rowsFor = tablesFromProfiles(corpus.profiles);
   const allTables = [];
   const seen = new Set();
@@ -111,7 +119,7 @@ export function registerPersonaData(engine, corpus, referenceDate, cases = []) {
   };
 
   // Pass 1: everything that follows from parameters and register rows alone.
-  register(materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, cases }));
+  register(materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, cases, paramsFor }));
 
   // Pass 2: a few bindings select on a cross-law input (`adres: $vestigingsadres`,
   // the address the KVK law derives). With pass 1 registered, the engine can
@@ -142,7 +150,7 @@ export function registerPersonaData(engine, corpus, referenceDate, cases = []) {
     cache.set(key, value);
     return value;
   };
-  const sources = materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, cases, resolveRef });
+  const sources = materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, cases, resolveRef, paramsFor });
   engine.clearDataSources();
   register(sources);
   return sources;

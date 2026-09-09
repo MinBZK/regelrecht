@@ -106,7 +106,7 @@ function approvedClaimsForEngine() {
 
 function reregister() {
   if (!engine.value || !corpus.value) return;
-  registerPersonaData(engine.value, corpus.value, state.referenceDate, casesForMaterialiser());
+  registerPersonaData(engine.value, corpus.value, state.referenceDate, casesForMaterialiser(), approvedClaimsForEngine());
   registerClaims(engine.value, approvedClaimsForEngine());
   dataVersion.value += 1;
 }

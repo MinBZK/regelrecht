@@ -16,6 +16,14 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
   (`engine.registerDataSourceForLaw`). Correcties van de burger komen als bron
   `correcties` met hogere prioriteit bovenop. Dezelfde module gebruikt de
   scenario-converter (`corpus/demo/tools/convert_features.mjs`).
+- **Aanvragen** gebeuren in het portaal (`ApplicationSheet.vue`), just in time zoals de
+  POC: `src/data/askedInputs.js` bepaalt uit de laatste uitvoeringstrace welke input die
+  alleen de burger kent de engine daadwerkelijk tegenkwam, vraagt die één voor één en
+  laat de engine na elk antwoord opnieuw rekenen. Antwoorden worden claims (`selfDeclared`)
+  op de wet, gesleuteld op de identiteit van die wet (`kvk_nummer` voor een bedrijfswet), en
+  gelden ook als parameters bij het materialiseren, zodat een terraslocatie de juiste
+  registerrij vindt. Een wet die een andere wet kruiswet aanroept zonder die parameters
+  krijgt ze van de engine uit diezelfde antwoorden (RFC-036, regel 5).
 - **Toestand** (profiel, aanvragen, correcties) in `src/store/demoStore.js`, bewaard in
   `localStorage`; "Demo resetten" in het menu wist het.
 - **Scenario's** draaien met de gedeelde Gherkin-runner uit

@@ -243,7 +243,7 @@ export function materialiseRecord(shape, lawBindings, params, rowsFor, context =
  *   (e.g. { bsn: ['100000001', ...], kvk_nummer: ['85234567'] })
  * @param {object} context  { referencedate?: string, cases?: any[],
  *   resolveRef?: (lawId, inputName, params) => value | undefined,
- *   paramsFor?: (keyField, keyValue) => Record<string, any> }  the optional
+ *   paramsFor?: (keyField, keyValue, lawId) => Record<string, any> }  the optional
  *   resolver answers for cross-law inputs a `select_on` refers to; `paramsFor`
  *   supplies further parameters known for one key (an application form's
  *   answers), so bindings that select on them find their row
@@ -269,7 +269,7 @@ export function materialiseAll(laws, bindings, rowsFor, keyValues, context = {})
       // call's parameters simply finds no record and the registry moves on.
       const byService = new Map();
       for (const keyValue of values) {
-        const params = { ...(context.paramsFor?.(keyField, keyValue) ?? {}), [keyField]: keyValue, referencedate: context.referencedate, year };
+        const params = { ...(context.paramsFor?.(keyField, keyValue, lawId) ?? {}), [keyField]: keyValue, referencedate: context.referencedate, year };
         const { record, sources } = materialiseRecord(shape, lawBindings, params, rowsFor, context);
         for (const [name, value] of Object.entries(record)) {
           const service = sources[name] ?? 'demo';

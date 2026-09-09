@@ -5,6 +5,7 @@ import OrgLogo from './OrgLogo.vue';
 import DataLineage from './DataLineage.vue';
 import { fieldSpec, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
+import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
 import { useDemo } from '../store/demoStore.js';
 
 // One regeling on the portal: the outcome of the law for this persona, the
@@ -14,7 +15,7 @@ import { useDemo } from '../store/demoStore.js';
 const props = defineProps({
   law: { type: Object, required: true },
 });
-const emit = defineEmits(['edit-value', 'evaluated']);
+const emit = defineEmits(['edit-value', 'evaluated', 'apply']);
 const router = useRouter();
 const demo = useDemo();
 const { corpus, dataVersion, profile, personaParams, findCase } = demo;
@@ -61,37 +62,20 @@ const valueCount = computed(() => leafValues(lineage.value).length);
 
 const currentCase = computed(() => findCase(props.law));
 
-// Inputs only the citizen can supply (`kind: claim` in the bindings): rent,
-// childcare hours. Without them the law cannot be calculated; the tile asks
-// for them instead of showing an error.
-const claimInputs = computed(() => {
-  const bindings = corpus.value?.bindings?.[props.law.id] ?? {};
-  return Object.entries(bindings)
-    .filter(([, b]) => b.kind === 'claim')
-    .map(([name]) => ({ name, claim: demo.claimFor(props.law.id, name), spec: fieldSpec(doc.value, name) }));
+// The questions this regeling has for the citizen (see askedInputs.js): the
+// inputs no register holds and the application-form parameters. Until
+// answered they are unknown; the tile asks for them instead of showing an
+// error, and the answers are passed as parameters where the law wants them.
+const askedInputs = computed(() => {
+  void dataVersion.value;
+  return corpus.value ? askedInputsFor(corpus.value, props.law, demo.claimFor) : [];
 });
-// Parameters the law declares beyond the persona's identity (an application
-// form: terrace size, whether food is served). They are asked for the same
-// way; until supplied they are passed as null so the law computes with unknowns.
-const formParameters = computed(() => {
-  const identity = new Set(Object.keys(personaParams()));
-  const out = [];
-  for (const article of doc.value.articles ?? []) {
-    for (const p of article.machine_readable?.execution?.parameters ?? []) {
-      if (identity.has(p.name) || out.some((o) => o.name === p.name)) continue;
-      out.push({ name: p.name, claim: demo.claimFor(props.law.id, p.name), spec: p, isParameter: true });
-    }
-  }
-  return out;
-});
-const askedInputs = computed(() => [...claimInputs.value, ...formParameters.value]);
-const missingInputs = computed(() => askedInputs.value.filter((i) => !i.claim));
+// What the engine ran into that only the citizen can answer (just in time).
+const missingInputs = computed(() => nextQuestions(askedInputs.value, evaluation.value, props.law.id, evaluationParams()));
 function evaluationParams() {
-  const params = personaParams();
-  for (const p of formParameters.value) params[p.name] = p.claim ? p.claim.newValue : null;
-  return params;
+  return evaluationParamsFor(personaParams(), askedInputs.value);
 }
-// After the computeds it reads: the immediate run needs `formParameters`.
+// After the computeds it reads: the immediate run needs `askedInputs`.
 watch([dataVersion, () => profile.value?.bsn], run, { immediate: true });
 
 function supply(input) {
@@ -99,7 +83,7 @@ function supply(input) {
   emit('edit-value', {
     law: props.law,
     selfDeclared: true,
-    node: { kind: 'value', law: props.law.id, name: input.name, value: input.claim?.newValue ?? null, service: null, keyField: params.kvk_nummer && !params.bsn ? 'kvk_nummer' : 'bsn', keyValue: params.bsn ?? params.kvk_nummer },
+    node: { kind: 'value', law: props.law.id, name: input.name, value: input.claim?.newValue ?? null, service: null, ...claimKeyFor(props.law, params) },
   });
 }
 const produces = computed(() => {
@@ -111,9 +95,10 @@ const produces = computed(() => {
 });
 const canApply = computed(() => evaluation.value?.ok && requirementsMet.value && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
 
+// The application stays in the portal (a sheet); the case system is the
+// caseworker's world.
 function apply() {
-  const c = demo.submitCase(props.law, evaluation.value, evaluationParams());
-  if (c) router.push(`/zaaksysteem/${c.id}`);
+  emit('apply', { law: props.law, evaluation: evaluation.value });
 }
 
 watch(showTrace, async (open) => {
@@ -144,15 +129,7 @@ const statusTag = computed(() => {
         <nldd-activity-indicator timing="instant" size="24"></nldd-activity-indicator>
       </template>
       <template v-else-if="missingInputs.length">
-        <nldd-inline-dialog icon="edit" text="Aanvullende gegevens nodig" supporting-text="Deze gegevens staan in geen register; alleen u kunt ze opgeven."></nldd-inline-dialog>
-        <nldd-list variant="box" accessible-label="Benodigde gegevens">
-          <nldd-list-item v-for="input in askedInputs" :key="input.name" size="sm" button @click="supply(input)">
-            <nldd-icon-cell :icon="input.claim ? 'checked' : 'exclamation-circle'" size="16" :color="input.claim ? 'success' : 'warning'"></nldd-icon-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.spec?.description"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'default' : 'warning'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'Opgeven'"></nldd-text-cell>
-          </nldd-list-item>
-        </nldd-list>
+        <nldd-inline-dialog icon="edit" text="Nog een gegeven nodig" :supporting-text="`De wet is doorgerekend met wat de overheid weet en loopt vast op ${humanize(missingInputs[0].name).toLowerCase()}: dat staat in geen register, alleen u kunt het opgeven.`"></nldd-inline-dialog>
       </template>
       <template v-else-if="!evaluation.ok">
         <nldd-inline-dialog variant="alert" text="Kon deze regeling niet berekenen" :supporting-text="evaluation.error"></nldd-inline-dialog>
@@ -204,8 +181,9 @@ const statusTag = computed(() => {
     </nldd-container>
 
     <nldd-container slot="footer" padding="16" layout="row" gap="8" vertical-alignment="center">
-      <nldd-button v-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
-      <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="inbox" text="Bekijk zaak" @click="router.push(`/zaaksysteem/${currentCase.id}`)"></nldd-button>
+      <nldd-button v-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Mijn aanvraag" @click="apply"></nldd-button>
+      <nldd-button v-else-if="evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Gegevens aanvullen" @click="apply"></nldd-button>
+      <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
       <nldd-spacer size="flexible" direction="horizontal"></nldd-spacer>
       <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" text="Berekening" @click="showTrace = true"></nldd-button>
       <nldd-button variant="neutral-transparent" size="sm" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(law.id)}`)"></nldd-button>

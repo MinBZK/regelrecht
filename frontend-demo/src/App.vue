@@ -112,7 +112,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             </nldd-tab-bar>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
-            <nldd-tag color="warning" :text="`${openCases} te beoordelen`" icon="inbox"></nldd-tag>
+            <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="`${openCases} te beoordelen`" @click="router.push('/zaaksysteem')"></nldd-button>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="profile">
             <nldd-tag color="accent" :text="`Profiel: ${profile.name}`" icon="person"></nldd-tag>

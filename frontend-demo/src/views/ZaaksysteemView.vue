@@ -85,12 +85,6 @@ function decideObjection(upheld) {
   demo.decideObjection(selected.value.id, upheld, reason.value.trim() || (upheld ? 'Bezwaar gegrond.' : 'Bezwaar ongegrond.'));
   reason.value = '';
 }
-const objectionReason = ref('');
-function fileObjection() {
-  if (!selected.value) return;
-  demo.objectToCase(selected.value.id, objectionReason.value.trim() || 'Ik ben het niet eens met het besluit.');
-  objectionReason.value = '';
-}
 
 function laneTag(c) {
   if (c.status === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend' } : { color: 'critical', text: 'Afgewezen' };
@@ -215,12 +209,7 @@ function claimSpec(cl) {
               <nldd-button variant="secondary" text="Bezwaar ongegrond" @click="decideObjection(false)"></nldd-button>
             </nldd-button-group>
           </template>
-          <template v-else-if="selected.status === 'DECIDED' && !selected.objection">
-            <nldd-form-field label="Namens de burger: bezwaar maken" optional>
-              <nldd-multi-line-text-field :value="objectionReason" rows="2" placeholder="Reden van het bezwaar (Awb art. 6:5)" @input="objectionReason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
-            </nldd-form-field>
-            <nldd-button variant="secondary" start-icon="flag" text="Bezwaar indienen" @click="fileObjection"></nldd-button>
-          </template>
+          <nldd-rich-text v-else-if="selected.status === 'DECIDED' && !selected.objection" spacing="tight"><p><small>Besloten. De burger kan op het portaal bezwaar maken; dat verschijnt dan hier.</small></p></nldd-rich-text>
 
           <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Gebeurtenissen"></nldd-text-cell></nldd-container>
 <nldd-list variant="box" accessible-label="Gebeurtenissen">
