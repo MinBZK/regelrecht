@@ -35,6 +35,21 @@ export default defineConfig({
   build: {
     cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: 'dist',
+    rolldownOptions: {
+      output: {
+        // Keep echarts (only the simulation tab needs it) out of the entry
+        // graph; same grouping as the editor, see frontend/vite.config.js.
+        codeSplitting: {
+          groups: [
+            {
+              name: 'echarts',
+              test: /node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/,
+              includeDependenciesRecursively: false,
+            },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: 3000,

@@ -93,6 +93,18 @@ describe('keyFieldsFor', () => {
     expect(keyFieldsFor(lawShape(LAW), { eigen_verklaring: BINDINGS.eigen_verklaring })).toEqual(['bsn']);
   });
 
+  it('keys on the identity only, never on a form parameter a binding selects on', () => {
+    const shape = { id: 'x', parameters: ['kvk_nummer', 'seizoen', 'terras_locatie'], inputTypes: {} };
+    const bindings = {
+      a: { kind: 'table', select_on: [{ name: 'kvk_nummer', value: '$kvk_nummer' }] },
+      b: { kind: 'table', select_on: [{ name: 'seizoen', value: '$seizoen' }, { name: 'locatie', value: '$terras_locatie' }] },
+      c: { kind: 'table', select_on: [{ name: 'seizoen', value: '$seizoen' }] },
+    };
+    expect(keyFieldsFor(shape, bindings)).toEqual(['kvk_nummer']);
+    const noIdentity = { id: 'y', parameters: ['adres', 'jaar'], inputTypes: {} };
+    expect(keyFieldsFor(noIdentity, { a: { kind: 'table', select_on: [{ name: 'adres', value: '$adres' }] } })).toEqual(['adres']);
+  });
+
   it('prefers bsn on a tie', () => {
     const shape = { id: 'x', parameters: ['kvk_nummer', 'bsn'], inputTypes: {} };
     const bindings = {
@@ -169,6 +181,23 @@ describe('materialiseAll', () => {
     expect(rvig.records).toHaveLength(2);
     expect(rvig.records[0]).toMatchObject({ bsn: '100000001', geboortedatum: '1990-01-01' });
     expect(out.map((s) => s.service).sort()).toEqual(['BELASTINGDIENST', 'RvIG', 'TOESLAGEN']);
+  });
+
+  it('lets paramsFor supply per-key parameters that bindings select on', () => {
+    const law = {
+      $id: 'terras',
+      articles: [{ machine_readable: { execution: { parameters: [{ name: 'kvk_nummer' }, { name: 'terras_locatie' }], input: [{ name: 'beschikbaar', type: 'number', source: {} }] } } }],
+    };
+    const bindings = {
+      terras: {
+        beschikbaar: { kind: 'table', service: 'GEMEENTE', table: 'locaties', field: 'oppervlakte', select_on: [{ name: 'kvk_nummer', value: '$kvk_nummer' }, { name: 'locatie', value: '$terras_locatie' }] },
+      },
+    };
+    const rows = (service, table) => (table === 'locaties' ? [{ kvk_nummer: '1', locatie: 'voor', oppervlakte: 30 }, { kvk_nummer: '1', locatie: 'zij', oppervlakte: 12 }] : []);
+    const without = materialiseAll({ terras: law }, bindings, rows, { kvk_nummer: ['1'] });
+    expect(without[0].records[0].beschikbaar).toBe(0);
+    const withForm = materialiseAll({ terras: law }, bindings, rows, { kvk_nummer: ['1'] }, { paramsFor: () => ({ terras_locatie: 'zij' }) });
+    expect(withForm[0].records[0].beschikbaar).toBe(12);
   });
 
   it('skips laws that are not loaded and keys without values', () => {

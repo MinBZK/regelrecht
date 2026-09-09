@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
-- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; target domain `demo.regelrecht.rijks.app` (not wired into deploy.yml yet)
+- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, population simulation, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; target domain `demo.regelrecht.rijks.app` (not wired into deploy.yml yet)
 - `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
 - `corpus/demo/` - The demo corpus: 80 laws migrated from the POC (`regulation/nl/`, schema v0.5.7, `source: {}` for external data), their scenarios (`**/scenarios/*.feature`, canonical grammar, run with `just bdd-demo`), `bindings.yaml` (which register table/column feeds which `source: {}` input; the demo materialises persona data from it), `profiles.yaml` (fictitious personas), `demo-config.yaml` and `services.yaml`. `tools/` holds the one-off migration and conversion scripts

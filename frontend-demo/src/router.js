@@ -8,6 +8,7 @@ const routes = [
   { path: '/wetten/:lawId?', name: 'wetten', component: () => import('./views/WettenView.vue') },
   { path: '/graaf', name: 'graaf', component: () => import('./views/GraafView.vue') },
   { path: '/scenarios/:featurePath(.*)?', name: 'scenarios', component: () => import('./views/ScenariosView.vue') },
+  { path: '/simulatie', name: 'simulatie', component: () => import('./views/SimulatieView.vue') },
   { path: '/portaal', name: 'portaal', component: () => import('./views/PortaalView.vue') },
   { path: '/zaaksysteem/:caseId?', name: 'zaaksysteem', component: () => import('./views/ZaaksysteemView.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/' },

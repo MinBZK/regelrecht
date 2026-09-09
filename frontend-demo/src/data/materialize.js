@@ -46,10 +46,18 @@ export function lawShape(doc) {
   return { id: doc.$id, parameters: [...parameters], inputTypes };
 }
 
+/** Parameters that identify whom a law is run for. */
+const IDENTITY_KEYS = ['bsn', 'kvk_nummer'];
+
 /**
- * Decide which parameter keys a law's records. Every `$param` a binding
- * selects on counts; the most used one wins, `bsn` on a tie. A law without
- * bindings on any of its parameters keys on its first parameter.
+ * Decide which parameter keys a law's records. A law run for a person or a
+ * business is keyed on that identity (`bsn`, `kvk_nummer`) and nothing else:
+ * an application-form parameter a binding also selects on (`$seizoen`,
+ * `$terras_locatie`) would otherwise become a key of its own, and a source
+ * keyed on it answers every call that passes the same form value, with a
+ * record that never knew the identity. A law without an identity parameter
+ * (a register keyed on an address or a year) is keyed on the parameter its
+ * bindings select on most; without any, on its first parameter.
  */
 export function keyFieldsFor(shape, lawBindings) {
   const counts = new Map();
@@ -59,10 +67,11 @@ export function keyFieldsFor(shape, lawBindings) {
       if (ref && shape.parameters.includes(ref)) counts.set(ref, (counts.get(ref) ?? 0) + 1);
     }
   }
+  const identity = IDENTITY_KEYS.filter((k) => counts.has(k));
+  if (identity.length) return identity;
   if (counts.size === 0) return shape.parameters.length ? [shape.parameters[0]] : [];
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || (a[0] === 'bsn' ? -1 : b[0] === 'bsn' ? 1 : 0))
-    .map(([name]) => name);
+  const [best] = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  return [best[0]];
 }
 
 /** `$x` -> `x`, `$x.y` -> `x`; anything else -> null. */
@@ -233,8 +242,11 @@ export function materialiseRecord(shape, lawBindings, params, rowsFor, context =
  * @param {Record<string, any[]>} keyValues       key field -> values to materialise
  *   (e.g. { bsn: ['100000001', ...], kvk_nummer: ['85234567'] })
  * @param {object} context  { referencedate?: string, cases?: any[],
- *   resolveRef?: (lawId, inputName, params) => value | undefined }  the optional
- *   resolver answers for cross-law inputs a `select_on` refers to
+ *   resolveRef?: (lawId, inputName, params) => value | undefined,
+ *   paramsFor?: (keyField, keyValue) => Record<string, any> }  the optional
+ *   resolver answers for cross-law inputs a `select_on` refers to; `paramsFor`
+ *   supplies further parameters known for one key (an application form's
+ *   answers), so bindings that select on them find their row
  * @returns {Array<{law: string, service: string, keyField: string, records: object[]}>}
  */
 export function materialiseAll(laws, bindings, rowsFor, keyValues, context = {}) {
@@ -257,7 +269,7 @@ export function materialiseAll(laws, bindings, rowsFor, keyValues, context = {})
       // call's parameters simply finds no record and the registry moves on.
       const byService = new Map();
       for (const keyValue of values) {
-        const params = { [keyField]: keyValue, referencedate: context.referencedate, year };
+        const params = { ...(context.paramsFor?.(keyField, keyValue) ?? {}), [keyField]: keyValue, referencedate: context.referencedate, year };
         const { record, sources } = materialiseRecord(shape, lawBindings, params, rowsFor, context);
         for (const [name, value] of Object.entries(record)) {
           const service = sources[name] ?? 'demo';

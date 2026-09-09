@@ -1,7 +1,7 @@
 # RegelRecht demo
 
 De demo-werkruimte van RegelRecht: presentatie, wettenbrowser, afhankelijkheidsgraaf,
-scenario-runner, burger-/ondernemersportaal en zaaksysteem. Opvolger van de losse
+scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger van de losse
 `poc-machine-law`-repository; bestemd voor `demo.regelrecht.rijks.app`.
 
 ## Architectuur
@@ -21,6 +21,14 @@ scenario-runner, burger-/ondernemersportaal en zaaksysteem. Opvolger van de loss
 - **Scenario's** draaien met de gedeelde Gherkin-runner uit
   `@regelrecht/frontend-shared/gherkin` (canonieke grammar); `src/data/gherkinNl.js`
   geeft de stappen in het Nederlands weer.
+- **Simulatie** (`src/simulation/`): een gegenereerde populatie burgers of bedrijven
+  (`population.js`, seeded) in dezelfde tabelvorm als `profiles.yaml`, door de
+  materialiser en de engine gehaald voor elke regeling van het portaal
+  (`runner.js`), samengevat en uitgesplitst (`stats.js`). Constanten uit de
+  `definitions` van een wet zijn per run aan te passen (`lawParameters.js`): de
+  wet wordt met gewijzigde waarden herladen en na de run teruggezet. De
+  simulatie vervangt tijdelijk de persona-data in de engine en zet die daarna
+  terug. Grafieken met echarts, zoals in de editor.
 
 ## Draaien
 
@@ -45,7 +53,7 @@ design system geen component heeft:
 
 | Selector | Waarom |
 |---|---|
-| `.slide-stage`, `.slide` | Dia-podium: gecentreerde stapel en `zoom: 1.5` zodat de typografie van `nldd-title` leesbaar is vanaf de achterste rij. Er is geen presentatiecomponent. |
+| `.slide-stage`, `.slide`, `.slide-controls` | Dia-podium: gecentreerde stapel, `zoom: 1.5` zodat de typografie van `nldd-title` leesbaar is vanaf de achterste rij, en het Rijkshuisstijl-blauwe verloop van de POC (hard-coded, een merkkleur volgt het kleurschema niet). `color-scheme: dark` op het podium laat de design-system-componenten erin hun donkere variant kiezen, dus lichte tekst zonder eigen styling. Er is geen presentatiecomponent. |
 | `.org-logo` | Vaste 40px/24px box voor organisatielogo's; `nldd-image` vult altijd de volle breedte. |
 | `.yaml-tree*` | Opvouwbare YAML-boom met kruiswet-links; `nldd-code-viewer` highlight wel YAML maar vouwt niet en kent geen links. |
 | `.gherkin*` | Gherkin-weergave met slaag/faal-markering per stap en tabellen; de viewer kent Gherkin als taal maar geen stapstatus. |
@@ -53,3 +61,9 @@ design system geen component heeft:
 | `.tile-body`, `.data-tree` | Verticale stapel in een tegel en de inspringing van de herkomstboom. |
 | `.case-board` | Drie kolommen die op smalle schermen onder elkaar vallen (`nldd-container layout="grid"` zit op 280px-kolommen vast met eigen padding). |
 | `.graph-canvas`, `.graph-node*`, `.graph-dim` | vue-flow heeft een expliciete hoogte nodig; knopen en dimmen van niet-geselecteerde knopen. Een graafcanvas bestaat niet in het design system (zelfde uitzondering als de editor). |
+
+Eén afwijking buiten CSS: `App.vue` roept na elke routewissel `_evaluateScrollMode()` van
+`nldd-app-view` aan. Het design system leidt bij het koppelen af of het document of elk
+paneel scrolt, maar onze split view komt pas later (lazy routes) en de afleiding blijft dan
+op "document". Zonder die aanroep scrollen de panelen niet zelf en blijven de kopregels
+niet staan.
