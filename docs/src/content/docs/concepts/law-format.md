@@ -131,6 +131,10 @@ These 26 operations make up the schema. The engine also accepts the compat alias
 
 The set is short on purpose. An operation earns its place when a real law needs it, not when an engine could plausibly offer it: `ROUND` because a law rounds to whole euros, `DATE_DIFF` because a deadline is measured in days, `FOREACH` because a norm counts medebewoners. What an engine *can* do is close to unbounded, and every operation added on that basis is a promise the schema, the editor, the conformance suite and every other engine have to keep. A law that cannot be expressed is the signal to extend the language; the absence of an operation someone imagined a use for is not.
 
+### Absent and unknown values
+
+A register does not hold a value for everyone, and the engine keeps two cases apart ([RFC-036](/rfcs/rfc-036)). An **absent** value, `null`, is a fact: the register says there is none (no partner, no rent). A law tests it with `EQUALS … null` and may branch on it, but calculating, ordering or deciding on it is an error, because a legal text never treats "geen" as an amount or a verdict without saying so. An **unknown** value is a fact nobody has yet: a `source: {}` input no data source could supply, or an optional parameter the caller did not pass. A law cannot write an unknown; it propagates through every operation (a definite `false` still decides an `AND`, a definite `true` an `OR`) and reaches the output carrying the names of the missing facts, so the portal can ask for them. In a data table an empty cell is unknown and the word `null` is absence.
+
 ### Rounding and precision
 
 Rounding is an **explicit, law-modeled instruction**: the engine never rounds a value implicitly (not even money). A law that must round says so with one of three unary operations, each taking a single `value:` operand and a `precision:` (the number of decimal places to round to, in the value's own [unit](#type-specifications)):
