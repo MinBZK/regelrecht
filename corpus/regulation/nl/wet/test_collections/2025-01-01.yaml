@@ -149,8 +149,6 @@ articles:
             type: number
           - name: aantal_huishoudens
             type: number
-          - name: hoogste_per_huishouden_totaal
-            type: number
         actions:
           # Geneste FOREACH. De binnenste `collection` leest $huishouden, want
           # die wordt geëvalueerd in de scope waar de binnenste FOREACH staat.
@@ -180,10 +178,34 @@ articles:
               body: 1
               combine: ADD
 
+  - number: '3'
+    url: https://example.com/test_collections/3
+    text: >-
+      Het totaal van de hoogste bijdragen per huishouden wordt vastgesteld.
+    machine_readable:
+      # Een eigen artikel, omdat deze uitkomst met opzet faalt (RFC-036): de
+      # engine voert alle acties van een artikel uit, en de uitkomsten van
+      # artikel 2 moeten wel te berekenen blijven.
+      definitions:
+        huishoudens:
+          value:
+            - leden:
+                - bijdrage: 100
+                - bijdrage: 200
+            - leden:
+                - bijdrage: 50
+            - leden: []
+      execution:
+        output:
+          - name: hoogste_per_huishouden_totaal
+            type: number
+        actions:
           # Een binnenste MAX onder een buitenste ADD. Het lege huishouden levert
-          # null, en daarmee is het totaal onbekend: dat huishouden overslaan
-          # zou een stellig getal opleveren voor een verzameling waarvan een lid
-          # niet is doorgerekend.
+          # null: er is geen hoogste van niets, en dat is afwezigheid, geen
+          # onbekende. Die afwezigheid optellen is een fout die de wet zelf moet
+          # oplossen (RFC-036): het huishouden overslaan zou een stellig getal
+          # opleveren voor een verzameling waarvan een lid niet is meegeteld, en
+          # "geen" als bedrag rekenen beslist wat de tekst niet zegt.
           - output: hoogste_per_huishouden_totaal
             value:
               operation: FOREACH

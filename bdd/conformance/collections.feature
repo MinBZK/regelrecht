@@ -109,8 +109,11 @@ Feature: Collection operations
     When I evaluate "aantal_huishoudens" of "test_collections"
     Then output "aantal_huishoudens" equals 3
     # An inner MAX under an outer ADD. The third household is empty, so its MAX
-    # is null, and the total is unknown rather than 250: leaving that household
-    # out would report a confident number for a collection one member of which
-    # was never evaluated.
+    # is null: there is no highest value of nothing, and that is an absence,
+    # not an unknown. Summing an absence is an error the author has to resolve
+    # in the law (RFC-036): leaving the household out would report a confident
+    # 250 for a collection one member of which was never counted, and counting
+    # "geen" as an amount would decide what the text never said.
     When I evaluate "hoogste_per_huishouden_totaal" of "test_collections"
-    Then output "hoogste_per_huishouden_totaal" is null
+    Then the execution fails
+    Then the execution fails with "operand is null"

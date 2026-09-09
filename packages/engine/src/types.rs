@@ -10,7 +10,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Re-export the canonical document-model value types from the law-model crate.
-pub use regelrecht_law_model::{Operation, ParameterType, RegulatoryLayer, Value};
+pub use regelrecht_law_model::{
+    MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, Value,
+};
 
 /// How the engine handles articles with `untranslatables` annotations (RFC-012).
 ///

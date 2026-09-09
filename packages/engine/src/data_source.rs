@@ -461,6 +461,7 @@ fn value_to_key(value: &Value) -> String {
         Value::Null => "null".to_string(),
         Value::Array(_) | Value::Object(_) => "complex".to_string(),
         Value::Untranslatable { .. } => "untranslatable".to_string(),
+        Value::Unknown(_) => "unknown".to_string(),
     }
 }
 

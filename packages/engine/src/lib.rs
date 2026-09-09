@@ -79,8 +79,8 @@ pub use resolver::RuleResolver;
 pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};
 pub use types::{
-    Connectivity, LegalStatus, Operation, ParameterType, PathNodeType, RegulatoryLayer,
-    ResolveType, UntranslatableMode, Value,
+    Connectivity, LegalStatus, MissingFact, MissingKind, Operation, ParameterType, PathNodeType,
+    RegulatoryLayer, ResolveType, UntranslatableMode, Value,
 };
 pub use uri::{internal_reference, ReferenceType, RegelrechtUri, RegelrechtUriBuilder};
 

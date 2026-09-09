@@ -36,8 +36,8 @@ use crate::priority;
 use crate::resolver::{RuleResolver, SelectionReason};
 use crate::trace::TraceBuilder;
 use crate::types::{
-    Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
-    Value,
+    Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType,
+    UntranslatableMode, Value,
 };
 use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
@@ -257,6 +257,28 @@ fn cache_key(law_id: &str, output_name: &str, params: &BTreeMap<String, Value>) 
     hasher.finish()
 }
 
+/// The first parameter `article` declares as required (`required` absent or
+/// `true`) that `parameters` does not carry, if any.
+///
+/// Used to tell "nobody has this fact" (Unknown, RFC-036) apart from "the
+/// register was never asked about anybody": a `source: {}` input cannot be
+/// resolved without its lookup key, and that is the caller's omission, not a
+/// missing fact.
+fn required_parameter_not_passed(
+    article: &Article,
+    parameters: &BTreeMap<String, Value>,
+) -> Option<String> {
+    article
+        .get_execution_spec()
+        .and_then(|exec| exec.parameters.as_ref())
+        .and_then(|declared| {
+            declared
+                .iter()
+                .find(|p| p.required != Some(false) && !parameters.contains_key(&p.name))
+                .map(|p| p.name.clone())
+        })
+}
+
 /// Hash a Value for cache key purposes.
 fn hash_value(value: &Value, hasher: &mut impl Hasher) {
     std::mem::discriminant(value).hash(hasher);
@@ -286,6 +308,14 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
         Value::Untranslatable { article, construct } => {
             article.hash(hasher);
             construct.hash(hasher);
+        }
+        Value::Unknown(missing) => {
+            missing.len().hash(hasher);
+            for fact in missing {
+                fact.law.hash(hasher);
+                fact.name.hash(hasher);
+                std::mem::discriminant(&fact.kind).hash(hasher);
+            }
         }
     }
 }
@@ -1533,6 +1563,14 @@ impl LawExecutionService {
         // Create execution context — pass parameters by reference, only clone
         // into combined_params below when we need ownership.
         let mut context = RuleContext::new(parameters.clone(), res_ctx.calculation_date)?;
+        // The optional parameters this caller left out resolve to Unknown for
+        // lack of them (RFC-036), also while cross-law parameters are built
+        // from this context: `bsn: $partner_bsn` with no partner_bsn passed
+        // hands the target an Unknown, not an error.
+        context.set_law_scope(
+            &law.id,
+            crate::engine::unpassed_optional_parameters(article, &parameters),
+        );
 
         // Attach trace builder if available
         if let Some(ref tb) = res_ctx.trace {
@@ -2099,13 +2137,38 @@ impl LawExecutionService {
                     });
                 }
             } else {
-                // Empty source (source: {}) — resolved from DataSourceRegistry only.
-                // If DataSourceRegistry didn't match above, leave unresolved.
+                // Empty source (source: {}) — resolved from DataSourceRegistry
+                // only, and no source had a value: no matching row, or a row
+                // without this field. The fact exists but nobody has it, so the
+                // input is Unknown for lack of exactly this fact (RFC-036). An
+                // explicit null cell never reaches here: the source answered
+                // "none", and that is absence, a value.
+                //
+                // Unless the register was never asked about anybody: a required
+                // parameter of this article (the lookup key, typically `bsn`)
+                // that the caller did not pass. Then nothing is known about
+                // the fact because the question was malformed, not because
+                // nobody has the answer, and the input stays unresolved as it
+                // did before RFC-036. A reference to it fails, so a forgotten
+                // or misspelled required parameter never becomes an unknown
+                // outcome.
                 let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                if let Some(missing) = required_parameter_not_passed(article, parameters) {
+                    res_ctx.trace_set_message(format!(
+                        "Input '{}' has empty source and no data source match; left unresolved \
+                         because required parameter '{}' was not passed",
+                        input.name, missing
+                    ));
+                    continue;
+                }
+                let unknown = Value::unknown(&law.id, &input.name, MissingKind::NoData);
+                res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                res_ctx.trace_set_result(unknown.clone());
                 res_ctx.trace_set_message(format!(
-                    "Input '{}' has empty source and no data source match, left unresolved",
+                    "Input '{}' has no value in any data source: unknown",
                     input.name
                 ));
+                context.set_resolved_input(&input.name, unknown);
             }
         }
 
@@ -2137,7 +2200,7 @@ impl LawExecutionService {
         );
 
         // Build parameters for the target article
-        let mut target_params = match self.build_target_parameters(source_parameters, context) {
+        let target_params = match self.build_target_parameters(source_parameters, context) {
             Ok(p) => p,
             Err(e) => {
                 res_ctx.trace_set_message(format!("Failed to build parameters: {}", e));
@@ -2147,9 +2210,12 @@ impl LawExecutionService {
 
         // The target's declared parameters and whether each is required. A
         // parameter is required unless it says `required: false`; the flag is
-        // what makes the two rules below safe (RFC-036 null semantics).
-        // Only a law the engine knows can be skipped for nobody; a call to a
-        // law that is not loaded keeps its LawNotFound error further down.
+        // what makes the two rules below safe (RFC-036). Only a law the engine
+        // knows can be skipped for nobody; a call to a law that is not loaded
+        // keeps its LawNotFound error further down. `target_params` holds
+        // exactly what the caller passed: an optional parameter the caller
+        // omits is not filled in here, the target resolves it as Unknown for
+        // lack of that parameter when one of its actions asks for it.
         let law_known = self.get_law(regulation).is_some();
         let declared: Vec<(String, bool)> = self
             .get_law(regulation)
@@ -2179,50 +2245,33 @@ impl LawExecutionService {
         // there is no child. The referenced law cannot be executed for nobody,
         // and failing here would fail the whole calculation for a person to
         // whom that branch does not apply. The input resolves to null instead
-        // and the law's own null checks decide what that means. An optional
-        // parameter that is null is passed through: the target declared it
-        // knows how to do without.
-        if let Some((name, _)) = target_params
+        // and the law's own absence checks decide what that means.
+        //
+        // An unknown value for a required parameter means nobody knows yet who
+        // to look up: the partner's BSN is a fact the register has not
+        // delivered. The referenced law is not executed either, and the input
+        // is unknown for the same facts, so the outcome still names them.
+        //
+        // An optional parameter that is null or unknown is passed through: the
+        // target declared it knows how to do without.
+        if let Some((name, value)) = target_params
             .iter()
-            .find(|(name, v)| law_known && v.is_null() && is_required(name))
+            .find(|(name, v)| law_known && (v.is_null() || v.is_unknown()) && is_required(name))
         {
+            if value.is_unknown() {
+                res_ctx.trace_set_message(format!(
+                    "Parameter '{}' is unknown, so {} is not executed; input is unknown for the same reason",
+                    name, regulation
+                ));
+                res_ctx.trace_set_result(value.clone());
+                return Ok(value.clone());
+            }
             res_ctx.trace_set_message(format!(
                 "Parameter '{}' is null, so {} is not executed; input resolves to null",
                 name, regulation
             ));
             res_ctx.trace_set_result(Value::Null);
             return Ok(Value::Null);
-        }
-
-        // An optional parameter the target declares but the caller does not
-        // pass is looked up in the target's own data first: an answer the
-        // applicant gave the permit law earlier (the terrace size on the
-        // application form) is kept as data bound to that law, and a tax law
-        // asking for the "current permit" gets the permit as it was applied
-        // for. Without such data the parameter is unknown to this call, not an
-        // error: those read as null, and the target's unrelated actions resolve
-        // to unknown instead of failing the output that was asked for. A
-        // required parameter is never filled in: leaving it out stays the error
-        // it always was, so a misspelled key in `parameters:` cannot silently
-        // turn into an unknown outcome.
-        for (name, required) in &declared {
-            if *required || target_params.contains_key(name) {
-                continue;
-            }
-            let value = self
-                .data_registry
-                .resolve_for_law(name, &target_params, Some(regulation))
-                .map(|found| {
-                    tracing::debug!(
-                        parameter = %name,
-                        law = %regulation,
-                        source = %found.source_name,
-                        "optional parameter taken from the law's data"
-                    );
-                    found.value
-                })
-                .unwrap_or(Value::Null);
-            target_params.insert(name.clone(), value);
         }
 
         // Enter cross-law resolution scope
@@ -2569,6 +2618,7 @@ impl ServiceProvider for LawExecutionService {
 mod tests {
     use super::*;
     use crate::article::LawLoad;
+    use crate::types::MissingFact;
 
     fn make_base_law() -> &'static str {
         r#"
@@ -3794,11 +3844,12 @@ articles:
     }
 
     #[test]
-    fn test_cross_law_call_fills_optional_parameters_with_null() {
+    fn test_cross_law_call_leaves_an_omitted_optional_parameter_unknown() {
         // The tax law asks the permit law for "heeft_vergunning" and passes only
         // kvk_nummer; the permit law also declares an optional application-form
-        // parameter it uses in another action. That reads as null and the
-        // asked-for output still comes back.
+        // parameter it uses in another action. That action resolves to unknown
+        // for lack of the form field (RFC-036), and the asked-for output still
+        // comes back.
         let (permit, tax) = fill_laws("required: false");
         let mut service = LawExecutionService::new();
         service.load_law(&permit).unwrap();
@@ -3811,11 +3862,65 @@ articles:
             Value::String("85234567".to_string()),
         );
         let result = service
-            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .evaluate_law_output(
+                "fill_belasting",
+                "belastingplichtig",
+                params.clone(),
+                "2025-01-01",
+            )
             .unwrap();
         assert_eq!(
             result.outputs.get("belastingplichtig"),
             Some(&Value::Bool(true))
+        );
+
+        // The same call for the output that needs the form field: unknown, and
+        // it says which fact of which law is missing.
+        let tax = tax.replace("heeft_vergunning", "past_oppervlakte");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        let outcome = result.outputs.get("belastingplichtig").unwrap();
+        assert_eq!(
+            outcome.missing_facts(),
+            &[MissingFact {
+                law: "fill_vergunning".to_string(),
+                name: "terras_oppervlakte".to_string(),
+                kind: MissingKind::NotPassed,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_top_level_call_leaves_an_omitted_optional_parameter_unknown() {
+        // Not only across laws: a caller that evaluates the permit law itself
+        // without the optional form field gets unknown for lack of it, with the
+        // same provenance.
+        let (permit, _) = fill_laws("required: false");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        register_fill_permit(&mut service);
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output("fill_vergunning", "past_oppervlakte", params, "2025-01-01")
+            .unwrap();
+        let outcome = result.outputs.get("past_oppervlakte").unwrap();
+        assert_eq!(
+            outcome.missing_facts(),
+            &[MissingFact {
+                law: "fill_vergunning".to_string(),
+                name: "terras_oppervlakte".to_string(),
+                kind: MissingKind::NotPassed,
+            }]
         );
     }
 
@@ -3848,10 +3953,14 @@ articles:
     }
 
     #[test]
-    fn test_cross_law_call_takes_optional_parameter_from_law_data() {
+    fn test_cross_law_call_optional_parameter_taken_from_law_data() {
         // The permit law's form field was answered earlier and kept as data
-        // bound to that law. A caller that passes only kvk_nummer still gets
-        // the outcome for the application as it was made.
+        // bound to that law. That data is *not* consulted for a parameter the
+        // caller omits (RFC-036): a parameter is what the caller passes, and
+        // an omitted optional one is unknown for lack of exactly that
+        // parameter, so the decision process can ask for it. Filling it from
+        // the target's own data would answer a question the caller never
+        // asked, with a value the caller never saw.
         let (permit, tax) = fill_laws("required: false");
         let tax = tax.replace("heeft_vergunning", "past_oppervlakte");
         let mut service = LawExecutionService::new();
@@ -3882,10 +3991,14 @@ articles:
         let result = service
             .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
             .unwrap();
-        // 30 < 50, computed with the applicant's own answer.
+        let outcome = result.outputs.get("belastingplichtig").unwrap();
         assert_eq!(
-            result.outputs.get("belastingplichtig"),
-            Some(&Value::Bool(true))
+            outcome.missing_facts(),
+            &[MissingFact {
+                law: "fill_vergunning".to_string(),
+                name: "terras_oppervlakte".to_string(),
+                kind: MissingKind::NotPassed,
+            }]
         );
     }
 
@@ -3894,7 +4007,9 @@ articles:
         // The tax law passes the form field along, but its own register holds
         // no value for it (null). Null for an *optional* parameter is passed
         // through, so the permit law still runs and answers; only a null
-        // *required* parameter stops the call.
+        // *required* parameter stops the call. The permit law tests for the
+        // absence before it compares (RFC-036), so `past_oppervlakte` is a
+        // definite false, not an error.
         let (permit, tax) = fill_laws("required: false");
         let tax = tax
             .replace(
@@ -3924,7 +4039,7 @@ articles:
                 "fill_belasting",
                 "aanvraag",
                 "kvk_nummer",
-                vec![record],
+                vec![record.clone()],
                 10,
             )
             .unwrap();
@@ -3935,11 +4050,40 @@ articles:
             Value::String("85234567".to_string()),
         );
         let result = service
-            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .evaluate_law_output(
+                "fill_belasting",
+                "belastingplichtig",
+                params.clone(),
+                "2025-01-01",
+            )
             .unwrap();
         assert_eq!(
             result.outputs.get("belastingplichtig"),
             Some(&Value::Bool(true))
+        );
+
+        // The absent form field reached the permit law: its absence test
+        // answers "past niet", where an omitted parameter would be unknown.
+        let tax = tax.replace("heeft_vergunning", "past_oppervlakte");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+        service
+            .register_dict_source_for_law(
+                "fill_belasting",
+                "aanvraag",
+                "kvk_nummer",
+                vec![record],
+                10,
+            )
+            .unwrap();
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("belastingplichtig"),
+            Some(&Value::Bool(false))
         );
     }
 
@@ -3998,10 +4142,21 @@ articles:
             operation: EQUALS
             subject: $vergunning_status
             value: ACTIEF
+          # The form field may be absent (null): the law tests for that before
+          # it compares, as RFC-036 requires of an ordered comparison.
           - output: past_oppervlakte
-            operation: LESS_THAN
-            subject: $terras_oppervlakte
-            value: 50
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $terras_oppervlakte
+                    value: null
+                  then: false
+              default:
+                operation: LESS_THAN
+                subject: $terras_oppervlakte
+                value: 50
 "#
         );
         let tax = r#"

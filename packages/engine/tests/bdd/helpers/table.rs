@@ -38,6 +38,12 @@ pub fn rows_to_params(rows: &Rows, cell: CellFn) -> BTreeMap<String, Value> {
 /// dependency we bump, though, and the editor's `tableToRecords` leans on a
 /// different parser with a different fallback. The explicit check makes both
 /// sides fail identically and loudly if either parser ever loosens.
+///
+/// An empty cell means the record has no value for that column, so the key is
+/// left out of the record: the engine then resolves the input as *unknown*
+/// (nobody has the fact). The literal `null` in a cell is kept and becomes
+/// `Value::Null`: the register says there is none (RFC-036). The two are
+/// different statements, and a data table has to be able to make both.
 pub fn rows_to_records(rows: &Rows, cell: CellFn) -> Vec<BTreeMap<String, Value>> {
     if rows.len() < 2 {
         return Vec::new();
@@ -55,6 +61,7 @@ pub fn rows_to_records(rows: &Rows, cell: CellFn) -> Vec<BTreeMap<String, Value>
             headers
                 .iter()
                 .zip(row)
+                .filter(|(_, raw)| !raw.trim().is_empty())
                 .map(|(header, raw)| (header.clone(), cell(raw)))
                 .collect(),
         );

@@ -102,6 +102,55 @@ fn wasm_error(msg: &str) -> JsValue {
     JsValue::from_str(msg)
 }
 
+/// Parse a JavaScript array of record objects into engine records, dropping
+/// every property whose value is `undefined` first.
+///
+/// `serde-wasm-bindgen` deserializes `undefined` and `null` both as `None`,
+/// so a record `{ bsn: '1', huur: undefined }` would come out with `huur:
+/// Null`. Under RFC-036 that is a different statement: `null` says the
+/// register is authoritative that there is no rent (absence), a missing
+/// property says nobody has the value (unknown). Stripping `undefined` before
+/// deserializing keeps the second from silently turning into the first. An
+/// explicit `null` property is kept and becomes `Value::Null`.
+///
+/// This cannot be unit-tested natively: every `JsValue` operation aborts
+/// outside wasm32 and the crate has no `wasm-bindgen-test` setup, so the
+/// contract is documented here and pinned by the JS callers' tests instead.
+fn parse_records(records: JsValue) -> Result<Vec<BTreeMap<String, Value>>, JsValue> {
+    let records = strip_undefined_properties(records)?;
+    serde_wasm_bindgen::from_value(records)
+        .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))
+}
+
+/// Rebuild an array of plain objects without their `undefined`-valued
+/// properties (see [`parse_records`]). Anything that is not an array of
+/// objects is passed through untouched, so the deserializer reports the shape
+/// error the way it always did.
+fn strip_undefined_properties(records: JsValue) -> Result<JsValue, JsValue> {
+    if !js_sys::Array::is_array(&records) {
+        return Ok(records);
+    }
+    let stripped = js_sys::Array::new();
+    for record in js_sys::Array::from(&records).iter() {
+        if !record.is_object() || js_sys::Array::is_array(&record) {
+            stripped.push(&record);
+            continue;
+        }
+        let clean = js_sys::Object::new();
+        for entry in js_sys::Object::entries(&record.into()).iter() {
+            let pair = js_sys::Array::from(&entry);
+            let key = pair.get(0);
+            let value = pair.get(1);
+            if value.is_undefined() {
+                continue;
+            }
+            js_sys::Reflect::set(&clean, &key, &value)?;
+        }
+        stripped.push(&clean);
+    }
+    Ok(stripped.into())
+}
+
 /// Convert internal EngineError to user-friendly WASM error.
 fn engine_error_to_wasm(err: EngineError) -> JsValue {
     match err {
@@ -671,6 +720,10 @@ impl WasmEngine {
     /// * `key_field` - Field name used as record key (e.g., "bsn")
     /// * `records` - JavaScript array of objects, each representing a record
     ///
+    /// A property that is `undefined` is dropped from the record (the fact is
+    /// unknown); a property that is `null` is kept (the register says there is
+    /// none). See RFC-036.
+    ///
     /// # Example (JavaScript)
     /// ```javascript
     /// engine.registerDataSource('personal_data', 'bsn', [
@@ -684,8 +737,7 @@ impl WasmEngine {
         key_field: &str,
         records: JsValue,
     ) -> Result<(), JsValue> {
-        let parsed: Vec<BTreeMap<String, Value>> = serde_wasm_bindgen::from_value(records)
-            .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))?;
+        let parsed = parse_records(records)?;
 
         self.service
             .register_dict_source(name, key_field, parsed)
@@ -701,6 +753,11 @@ impl WasmEngine {
     /// `priority` orders sources for the same law (higher wins); omit it for
     /// the default of 10. Citizen corrections go in as a second, higher-priority
     /// source for the same law.
+    ///
+    /// A property that is `undefined` is dropped from the record (the fact is
+    /// unknown); a property that is `null` is kept (the register says there is
+    /// none: `partner_bsn: null` below is a person without a partner). See
+    /// RFC-036.
     ///
     /// # Example (JavaScript)
     /// ```javascript
@@ -720,8 +777,7 @@ impl WasmEngine {
         records: JsValue,
         priority: Option<i32>,
     ) -> Result<(), JsValue> {
-        let parsed: Vec<BTreeMap<String, Value>> = serde_wasm_bindgen::from_value(records)
-            .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))?;
+        let parsed = parse_records(records)?;
 
         self.service
             .register_dict_source_for_law(law_id, name, key_field, parsed, priority.unwrap_or(10))

@@ -163,6 +163,20 @@ steps:
     text: output "{output}" is null
     args: [{name: output, type: string}]
 
+  - id: assert_unknown
+    action: assert_unknown
+    keyword: then
+    tier: core
+    text: output "{output}" is unknown
+    args: [{name: output, type: string}]
+
+  - id: assert_unknown_for
+    action: assert_unknown_for
+    keyword: then
+    tier: core
+    text: output "{output}" is unknown for lack of "{name}"
+    args: [{name: output, type: string}, {name: name, type: string}]
+
   - id: assert_contains
     action: assert_contains
     keyword: then

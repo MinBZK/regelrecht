@@ -331,5 +331,7 @@ fn format_value_compact(value: &Value) -> String {
         Value::Array(arr) => format!("[{} items]", arr.len()),
         Value::Object(obj) => format!("{{{} keys}}", obj.len()),
         Value::Untranslatable { article, .. } => format!("UNTRANSLATABLE(art. {})", article),
+        // RFC-036: an unknown names the facts nobody supplied.
+        Value::Unknown(_) => value.to_string(),
     }
 }

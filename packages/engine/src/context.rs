@@ -35,10 +35,10 @@ use crate::config;
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::trace::TraceBuilder;
-use crate::types::{PathNodeType, ResolveType, Value};
+use crate::types::{MissingKind, PathNodeType, ResolveType, Value};
 use chrono::{Datelike, NaiveDate};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 /// Execution context for article evaluation.
@@ -76,6 +76,15 @@ pub struct RuleContext {
 
     /// Optional shared trace builder for execution tracing
     trace: Option<Rc<RefCell<TraceBuilder>>>,
+
+    /// `$id` of the law being executed; the provenance of an Unknown produced
+    /// here names it (RFC-036). Empty for a bare context.
+    law_id: Rc<str>,
+
+    /// Parameters the article declares with `required: false` that the caller
+    /// did not pass. A reference to one resolves to an Unknown for lack of that
+    /// parameter, not to a `VariableNotFound` (RFC-036).
+    unpassed_optional: Rc<BTreeSet<String>>,
 }
 
 impl RuleContext {
@@ -99,7 +108,21 @@ impl RuleContext {
             reference_date,
             reference_date_value,
             trace: None,
+            law_id: Rc::from(""),
+            unpassed_optional: Rc::new(BTreeSet::new()),
         })
+    }
+
+    /// Name the law this context executes and the optional parameters the
+    /// caller left out (RFC-036).
+    ///
+    /// Both feed the provenance of an Unknown: a reference to an unpassed
+    /// optional parameter resolves to `Unknown` for lack of `law_id.name`, so a
+    /// decision process can ask for exactly that fact. A required parameter is
+    /// never in this set; leaving it out stays the error it always was.
+    pub fn set_law_scope(&mut self, law_id: &str, unpassed_optional: BTreeSet<String>) {
+        self.law_id = Rc::from(law_id);
+        self.unpassed_optional = Rc::new(unpassed_optional);
     }
 
     /// Set definitions from an article's definitions section.
@@ -207,6 +230,8 @@ impl RuleContext {
             reference_date: self.reference_date,
             reference_date_value: self.reference_date_value.clone(),
             trace: self.trace.clone(), // Share the same trace builder
+            law_id: Rc::clone(&self.law_id),
+            unpassed_optional: Rc::clone(&self.unpassed_optional),
         }
     }
 
@@ -379,6 +404,23 @@ impl RuleContext {
             return Ok(value.clone());
         }
 
+        // 7. An optional parameter the caller did not pass (RFC-036). The
+        // article said it can do without, so the fact is unknown rather than
+        // the reference being an error; the Unknown names it, so whoever
+        // completes the case knows what to ask for. Top-level and cross-law
+        // calls are treated alike here.
+        if self.unpassed_optional.contains(path) {
+            self.trace_set_resolve_type(ResolveType::Parameter);
+            self.trace_set_message(format!(
+                "Parameter '{path}' is optional and was not passed: unknown"
+            ));
+            return Ok(Value::unknown(
+                self.law_id.as_ref(),
+                path,
+                MissingKind::NotPassed,
+            ));
+        }
+
         // Not found
         Err(EngineError::VariableNotFound(path.to_string()))
     }
@@ -481,12 +523,13 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
             .get(property_path)
             .cloned()
             .ok_or_else(|| EngineError::VariableNotFound(format!(".{}", property_path))),
-        // A property of nothing is nothing: an unresolved register record (no
-        // WIA decision, no partner) reads as null, and every field of it does
-        // too, so the law's own null checks can decide (RFC-036 null
-        // propagation). Failing here would fail the whole calculation for a
-        // person the record simply does not apply to.
+        // A property of an absent record is absent: the register says there is
+        // no WIA decision, no partner, so every field of it is "geen" too, and
+        // the law's own absence checks decide (RFC-036). Failing here would fail
+        // the whole calculation for a person the record does not apply to.
         Value::Null => Ok(Value::Null),
+        // A property of a record nobody has yet is unknown for the same facts.
+        Value::Unknown(_) => Ok(value.clone()),
         Value::Array(arr) => {
             // Support numeric indexing for arrays
             if let Ok(index) = property_path.parse::<usize>() {
@@ -1004,6 +1047,82 @@ mod tests {
             get_property(&Value::Object(obj), "partner.geboortedatum", 0).unwrap(),
             Value::Null
         );
+    }
+
+    #[test]
+    fn test_property_of_unknown_is_unknown() {
+        // A field of a record nobody has yet is unknown for the same facts;
+        // nested paths too (RFC-036).
+        let unknown = Value::unknown("testwet", "beschikking", MissingKind::NoData);
+        assert_eq!(get_property(&unknown, "status", 0).unwrap(), unknown);
+        assert_eq!(
+            get_property(&unknown, "adres.postcode", 0).unwrap(),
+            unknown
+        );
+        let mut obj = BTreeMap::new();
+        obj.insert("partner".to_string(), unknown.clone());
+        assert_eq!(
+            get_property(&Value::Object(obj), "partner.naam", 0).unwrap(),
+            unknown
+        );
+    }
+
+    #[test]
+    fn test_unpassed_optional_parameter_resolves_to_unknown() {
+        // The article declared `aanvraag_bedrag` with `required: false` and the
+        // caller left it out: a reference to it is an Unknown that names the
+        // law and the parameter, so a decision process can ask for it (RFC-036).
+        let (mut ctx, trace) = traced_context();
+        ctx.set_law_scope("testwet", BTreeSet::from(["aanvraag_bedrag".to_string()]));
+        trace.borrow_mut().push("root", PathNodeType::Action);
+
+        let value = ctx.resolve("aanvraag_bedrag").unwrap();
+        assert_eq!(
+            value.missing_facts(),
+            &[crate::types::MissingFact {
+                law: "testwet".to_string(),
+                name: "aanvraag_bedrag".to_string(),
+                kind: MissingKind::NotPassed,
+            }]
+        );
+        // A property of it is that same unknown.
+        assert_eq!(ctx.resolve("aanvraag_bedrag.bedrag").unwrap(), value);
+
+        let root = trace.borrow_mut().pop().expect("root node should pop");
+        let node = root
+            .children
+            .first()
+            .expect("resolving should record a node");
+        assert_eq!(node.resolve_type, Some(ResolveType::Parameter));
+        assert_eq!(
+            node.message.as_deref(),
+            Some("Parameter 'aanvraag_bedrag' is optional and was not passed: unknown")
+        );
+        assert_eq!(node.result.as_ref(), Some(&value));
+    }
+
+    #[test]
+    fn test_missing_required_parameter_stays_not_found() {
+        // Only the declared optional parameters resolve to unknown; anything
+        // else the article forgot to pass is the error it always was, so a
+        // misspelled key cannot quietly become an unknown outcome.
+        let mut ctx = make_context();
+        ctx.set_law_scope("testwet", BTreeSet::from(["aanvraag_bedrag".to_string()]));
+        assert!(matches!(
+            ctx.resolve("kvk_nummer"),
+            Err(EngineError::VariableNotFound(_))
+        ));
+        // A passed value always wins over the unpassed set.
+        assert_eq!(ctx.resolve("income").unwrap(), Value::Int(30000));
+    }
+
+    #[test]
+    fn test_child_context_inherits_law_scope() {
+        let mut ctx = make_context();
+        ctx.set_law_scope("testwet", BTreeSet::from(["aanvraag_bedrag".to_string()]));
+        let child = ctx.create_child();
+        let value = child.resolve("aanvraag_bedrag").unwrap();
+        assert_eq!(value.missing_facts()[0].law, "testwet");
     }
 
     #[test]

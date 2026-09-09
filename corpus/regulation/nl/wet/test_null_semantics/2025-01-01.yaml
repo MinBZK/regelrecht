@@ -2,27 +2,39 @@
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
 $id: test_null_semantics
-name: Testwet null-semantiek
+name: Testwet afwezig en onbekend
 regulatory_layer: WET
 bwb_id: BWBR9999910
 publication_date: '2025-01-01'
 valid_from: '2025-01-01'
 url: https://example.com/test_null_semantics
 
+# Synthetische wet voor de conformance-suite van RFC-036: twee soorten "niets".
+#
+# - null is afwezigheid: de registratie is gezaghebbend en zegt dat er niets is
+#   (geen huur, geen partner). Een wet mag daarop toetsen (EQUALS … null), maar
+#   er niet mee rekenen of erop beslissen.
+# - onbekend is een feit dat niemand (nog) heeft: geen bron heeft de input, of
+#   een optionele parameter is niet meegegeven. Onbekend plant zich door elke
+#   bewerking voort en benoemt welke feiten ontbreken.
+#
+# De artikelen zijn zo verdeeld dat elk artikel in zijn geheel uitvoerbaar is
+# voor de situatie die het toetst: de engine voert alle acties van een artikel
+# uit, dus een rekenende actie op een afwezige waarde laat het hele artikel
+# falen. Artikel 1 rekent en ordent; artikel 2 toetst alleen op afwezigheid;
+# artikel 3 beslist op een waarheidswaarde; artikel 4 gaat over parameters.
+
 articles:
   - number: '1'
     url: https://example.com/test_null_semantics/1
     text: >-
       De huur is hoog indien zij meer dan vijfhonderd bedraagt. De verhoogde
-      huur is de huur vermeerderd met honderd. De status is de status van de
-      beschikking. Het geboortejaar van de partner is het geboortejaar,
-      bedoeld in artikel 1 van de Testwet null-semantiek (bron), van de
-      partner. Of de aanvraag past wordt bepaald overeenkomstig dat artikel.
+      huur is de huur vermeerderd met honderd. De huurklasse is hoog indien de
+      huur hoog is en anders laag.
     machine_readable:
-      # Elke input kan in de registratie ontbreken (null). RFC-036 zegt wat de
-      # engine dan doet: vergelijken, rekenen en een veld lezen van niets
-      # levert niets op, en een wet aanroepen voor niemand (null als
-      # verplichte parameter) voert die wet niet uit.
+      # Rekenen en ordenen. Met een onbekende huur zijn deze uitkomsten
+      # onbekend (bij AND/OR beslist een definitieve operand); met een
+      # afwezige huur (null) faalt de uitvoering: "geen" is geen bedrag.
       execution:
         parameters:
           - name: bsn
@@ -35,46 +47,25 @@ articles:
           - name: partner_bsn
             type: string
             source: {}
-          - name: beschikking
-            type: object
-            source: {}
-          - name: partner_geboortejaar
-            type: number
-            source:
-              regulation: test_null_semantics_bron
-              output: geboortejaar
-              parameters:
-                bsn: $partner_bsn
-          - name: aanvraag_past
-            type: boolean
-            source:
-              regulation: test_null_semantics_bron
-              output: past_aanvraag
-              parameters:
-                bsn: $bsn
         output:
           - name: huur_hoog
             type: boolean
           - name: verhoogde_huur
             type: number
-          - name: status
+          - name: niet_hoog
+            type: boolean
+          - name: huurklasse
             type: string
-          - name: partner_geboortejaar
-            type: number
-          - name: aanvraag_past
-            type: boolean
-          - name: heeft_huur
-            type: boolean
           - name: hoog_en_bekend
             type: boolean
           - name: hoog_en_onwaar
             type: boolean
           - name: hoog_of_onbekend
             type: boolean
-          - name: niet_hoog
+          - name: hoog_of_waar
             type: boolean
-          - name: huurklasse
-            type: string
+          - name: huur_gelijk_aan_partner
+            type: boolean
         actions:
           - output: huur_hoog
             value:
@@ -86,20 +77,24 @@ articles:
             values:
               - $huur
               - 100
-          - output: status
-            value: $beschikking.status
-          - output: partner_geboortejaar
-            value: $partner_geboortejaar
-          - output: aanvraag_past
-            value: $aanvraag_past
-          - output: heeft_huur
+          - output: niet_hoog
             operation: NOT
             value:
-              operation: EQUALS
+              operation: GREATER_THAN
               subject: $huur
-              value: null
-          # Logica over een onbekende (RFC-036, regel 6): onbekend blijft
-          # onbekend, tenzij een operand de uitkomst al beslist.
+              value: 500
+          - output: huurklasse
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $huur
+                    value: 500
+                  then: hoog
+              default: laag
+          # Logica over een onbekende (Kleene): onbekend blijft onbekend,
+          # tenzij een operand de uitkomst al beslist.
           - output: hoog_en_bekend
             value:
               operation: AND
@@ -134,19 +129,256 @@ articles:
                     operation: EQUALS
                     subject: $bsn
                     value: $bsn
-          - output: niet_hoog
+          - output: hoog_of_waar
+            value:
+              operation: OR
+              conditions:
+                - operation: GREATER_THAN
+                  subject: $huur
+                  value: 500
+                - operation: EQUALS
+                  subject: $bsn
+                  value: $bsn
+          # Twee onbekende operanden: de uitkomst benoemt beide feiten.
+          - output: huur_gelijk_aan_partner
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: $partner_bsn
+
+  - number: '2'
+    url: https://example.com/test_null_semantics/2
+    text: >-
+      Van huur is geen sprake indien in de registratie geen huur is opgenomen.
+      De status is de status van de beschikking. Het geboortejaar van de
+      partner is het geboortejaar, bedoeld in artikel 1 van de Testwet
+      afwezig en onbekend (bron), van de partner.
+    machine_readable:
+      # Toetsen op afwezigheid. Deze acties zijn gedefinieerd op null: EQUALS
+      # is structureel, een veld van een afwezig record is afwezig, en een wet
+      # aanroepen voor niemand (null als verplichte parameter) voert die wet
+      # niet uit. Met een onbekende input zijn ze onbekend.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: huur
+            type: number
+            source: {}
+          - name: partner_bsn
+            type: string
+            source: {}
+          - name: beschikking
+            type: object
+            source: {}
+          - name: partner_geboortejaar
+            type: number
+            source:
+              regulation: test_null_semantics_bron
+              output: geboortejaar
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: huur_ontbreekt
+            type: boolean
+          - name: heeft_huur
+            type: boolean
+          - name: huur_hoog_veilig
+            type: boolean
+          - name: huur_in_lijst
+            type: boolean
+          - name: status
+            type: string
+          - name: partner_geboortejaar
+            type: number
+        actions:
+          - output: huur_ontbreekt
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null
+          - output: heeft_huur
             operation: NOT
             value:
-              operation: GREATER_THAN
+              operation: EQUALS
               subject: $huur
-              value: 500
-          - output: huurklasse
+              value: null
+          # Het idioom: eerst toetsen op afwezigheid, dan pas ordenen. Zo zegt
+          # de wet zelf wat "geen huur" voor de hoogte betekent.
+          - output: huur_hoog_veilig
             value:
               operation: IF
               cases:
                 - when:
-                    operation: GREATER_THAN
+                    operation: EQUALS
                     subject: $huur
-                    value: 500
-                  then: hoog
-              default: laag
+                    value: null
+                  then: false
+              default:
+                operation: GREATER_THAN
+                subject: $huur
+                value: 500
+          - output: huur_in_lijst
+            value:
+              operation: IN
+              subject: $huur
+              values:
+                - 650
+                - 700
+          - output: status
+            value: $beschikking.status
+          - output: partner_geboortejaar
+            value: $partner_geboortejaar
+
+  - number: '3'
+    url: https://example.com/test_null_semantics/3
+    text: >-
+      Een verzekerde die bekend is, is verzekerd en bekend. Wie niet verzekerd
+      is, is niet verzekerd. De verzekeringsklasse is ja voor een verzekerde
+      en anders nee.
+    machine_readable:
+      # Beslissen op een waarheidswaarde. Een onbekende waarheidswaarde geeft
+      # Kleene-logica; een afwezige (null) is geen oordeel en laat AND, OR, NOT
+      # en IF falen.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: verzekerd
+            type: boolean
+            source: {}
+        output:
+          - name: verzekerd_en_waar
+            type: boolean
+          - name: verzekerd_en_onwaar
+            type: boolean
+          - name: verzekerd_of_waar
+            type: boolean
+          - name: verzekerd_of_onwaar
+            type: boolean
+          - name: niet_verzekerd
+            type: boolean
+          - name: verzekeringsklasse
+            type: string
+        actions:
+          - output: verzekerd_en_waar
+            value:
+              operation: AND
+              conditions:
+                - $verzekerd
+                - operation: EQUALS
+                  subject: $bsn
+                  value: $bsn
+          - output: verzekerd_en_onwaar
+            value:
+              operation: AND
+              conditions:
+                - $verzekerd
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $bsn
+                    value: $bsn
+          - output: verzekerd_of_waar
+            value:
+              operation: OR
+              conditions:
+                - $verzekerd
+                - operation: EQUALS
+                  subject: $bsn
+                  value: $bsn
+          - output: verzekerd_of_onwaar
+            value:
+              operation: OR
+              conditions:
+                - $verzekerd
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $bsn
+                    value: $bsn
+          - output: niet_verzekerd
+            operation: NOT
+            value: $verzekerd
+          - output: verzekeringsklasse
+            value:
+              operation: IF
+              cases:
+                - when: $verzekerd
+                  then: ja
+              default: nee
+
+  - number: '4'
+    url: https://example.com/test_null_semantics/4
+    text: >-
+      Een aanvraag past indien het aangevraagde bedrag meer dan honderd
+      bedraagt. Of de aanvraag past wordt tevens bepaald overeenkomstig
+      artikel 1 van de Testwet afwezig en onbekend (bron).
+    machine_readable:
+      # Parameters. `aanvraag_bedrag` is optioneel: geeft de aanroeper het niet
+      # mee, dan is elke verwijzing ernaar onbekend bij gebrek aan die
+      # parameter, hier en in de bron waaraan het wordt doorgegeven. De bron
+      # wordt ook zonder dat bedrag aangeroepen; haar eigen optionele
+      # parameter is dan onbekend voor haar. Het bedrag uit de registratie
+      # gaat als optionele parameter door naar de bron zoals het is: afwezig
+      # (null) of onbekend, en de bron beslist daar zelf over.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: aanvraag_bedrag
+            type: number
+            required: false
+        input:
+          - name: bedrag
+            type: number
+            source: {}
+          - name: aanvraag_past
+            type: boolean
+            source:
+              regulation: test_null_semantics_bron
+              output: past_aanvraag
+              parameters:
+                bsn: $bsn
+          - name: aanvraag_past_met_bedrag
+            type: boolean
+            source:
+              regulation: test_null_semantics_bron
+              output: past_aanvraag
+              parameters:
+                bsn: $bsn
+                aanvraag_bedrag: $aanvraag_bedrag
+          - name: aanvraag_past_uit_register
+            type: boolean
+            source:
+              regulation: test_null_semantics_bron
+              output: past_aanvraag
+              parameters:
+                bsn: $bsn
+                aanvraag_bedrag: $bedrag
+        output:
+          - name: eigen_aanvraag_past
+            type: boolean
+          - name: aanvraag_past
+            type: boolean
+          - name: aanvraag_past_met_bedrag
+            type: boolean
+          - name: aanvraag_past_uit_register
+            type: boolean
+        actions:
+          - output: eigen_aanvraag_past
+            value:
+              operation: GREATER_THAN
+              subject: $aanvraag_bedrag
+              value: 100
+          - output: aanvraag_past
+            value: $aanvraag_past
+          - output: aanvraag_past_met_bedrag
+            value: $aanvraag_past_met_bedrag
+          - output: aanvraag_past_uit_register
+            value: $aanvraag_past_uit_register

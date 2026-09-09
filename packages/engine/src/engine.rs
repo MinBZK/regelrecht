@@ -26,7 +26,7 @@ use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 /// Provenance of an output value: how it was produced during execution.
@@ -95,6 +95,31 @@ pub struct ArticleEngine<'a> {
     /// Declared units for this article's symbols (RFC-023). Empty/all-unknown
     /// for un-annotated articles, which then skip unit checking entirely.
     symbols: crate::units::SymbolUnits,
+}
+
+/// The parameters `article` declares with `required: false` that `parameters`
+/// does not carry (RFC-036).
+///
+/// A reference to one of these resolves to an Unknown for lack of that
+/// parameter: the article said it can do without, so the caller leaving it out
+/// is not an error, but the fact is missing and the outcome has to say so. A
+/// required parameter is never in this set; a misspelled key in `parameters:`
+/// stays the `VariableNotFound` it always was.
+pub(crate) fn unpassed_optional_parameters(
+    article: &Article,
+    parameters: &BTreeMap<String, Value>,
+) -> BTreeSet<String> {
+    article
+        .get_execution_spec()
+        .and_then(|exec| exec.parameters.as_ref())
+        .map(|declared| {
+            declared
+                .iter()
+                .filter(|p| p.required == Some(false) && !parameters.contains_key(&p.name))
+                .map(|p| p.name.clone())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 impl<'a> ArticleEngine<'a> {
@@ -182,6 +207,10 @@ impl<'a> ArticleEngine<'a> {
 
         // Create execution context
         let mut context = RuleContext::new(parameters.clone(), calculation_date)?;
+        context.set_law_scope(
+            &self.law.id,
+            unpassed_optional_parameters(self.article, &parameters),
+        );
 
         // Attach trace builder if provided
         if let Some(ref tb) = trace {
@@ -578,6 +607,63 @@ articles:
               default: "minor"
 "#;
         ArticleBasedLaw::from_yaml_str(yaml).unwrap()
+    }
+
+    #[test]
+    fn test_unpassed_optional_parameters_lists_only_omitted_optional_ones() {
+        // RFC-036: an optional parameter the caller omits resolves to unknown,
+        // a required one it omits stays an error, and a passed one is a value.
+        let yaml = r#"
+$id: optioneel
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Test
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: aanvraag_bedrag
+            type: number
+            required: false
+          - name: toelichting
+            type: string
+            required: false
+          - name: zonder_vlag
+            type: string
+        output:
+          - name: past
+            type: boolean
+        actions:
+          - output: past
+            value:
+              operation: GREATER_THAN
+              subject: $aanvraag_bedrag
+              value: 100
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        let article = law.find_article_by_output("past").unwrap();
+        let mut params = BTreeMap::new();
+        params.insert("toelichting".to_string(), Value::String("ja".to_string()));
+
+        let unpassed = unpassed_optional_parameters(article, &params);
+        assert_eq!(unpassed, BTreeSet::from(["aanvraag_bedrag".to_string()]));
+
+        // Executing the article then yields an unknown that names the fact.
+        let engine = ArticleEngine::new(article, &law);
+        let result = engine.evaluate(params, "2025-01-01").unwrap();
+        let past = result.outputs.get("past").unwrap();
+        assert_eq!(
+            past.missing_facts(),
+            &[crate::types::MissingFact {
+                law: "optioneel".to_string(),
+                name: "aanvraag_bedrag".to_string(),
+                kind: crate::types::MissingKind::NotPassed,
+            }]
+        );
     }
 
     fn make_arithmetic_law() -> ArticleBasedLaw {

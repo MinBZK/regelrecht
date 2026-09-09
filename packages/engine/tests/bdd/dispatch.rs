@@ -161,6 +161,33 @@ impl RegelrechtWorld {
                 let actual = self.output_value(args[0].as_str());
                 assert_eq!(actual, Value::Null, "output {}", args[0].as_str());
             }
+            "assert_unknown" => {
+                let actual = self.output_value(args[0].as_str());
+                assert!(
+                    actual.is_unknown(),
+                    "output {} = {actual:?}, expected unknown",
+                    args[0].as_str()
+                );
+            }
+            "assert_unknown_for" => {
+                let actual = self.output_value(args[0].as_str());
+                let name = args[1].as_str();
+                assert!(
+                    actual.is_unknown(),
+                    "output {} = {actual:?}, expected unknown for lack of {name:?}",
+                    args[0].as_str()
+                );
+                let missing: Vec<&str> = actual
+                    .missing_facts()
+                    .iter()
+                    .map(|m| m.name.as_str())
+                    .collect();
+                assert!(
+                    missing.contains(&name),
+                    "output {} is unknown for lack of {missing:?}, not {name:?}",
+                    args[0].as_str()
+                );
+            }
             "assert_contains" => {
                 let actual = self.output_value(args[0].as_str());
                 let needle = args[1].as_str();

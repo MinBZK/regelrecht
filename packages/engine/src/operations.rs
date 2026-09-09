@@ -14,6 +14,24 @@
 //!
 //! **Engine-only (not in schema, accepted for backward compatibility):**
 //! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
+//!
+//! # Two kinds of nothing (RFC-036)
+//!
+//! Every operation checks its operands in one fixed order before it computes:
+//!
+//! 1. **Untranslatable** (RFC-012) taints the result;
+//! 2. **Unknown** (a fact nobody has) propagates, as the union of every
+//!    unknown operand's missing facts, so the outcome still names what is
+//!    missing;
+//! 3. **Null** (an absence the data is authoritative about) is a value: it
+//!    can be tested (`EQUALS … null`, `IS_NULL`, `IN`) but never calculated
+//!    with or decided on. Where a number, a date or a truth value is needed,
+//!    a null operand is an [`EngineError::AbsentOperand`]: the law has to say
+//!    what "geen" means before it counts it.
+//!
+//! The logical operations and `IF` are the one place a definite operand beats
+//! an unknown (Kleene): `AND` with a `false` is `false` whatever the unknown
+//! turns out to be, `OR` with a `true` is `true`.
 
 use crate::article::{ActionOperation, ActionValue, Case, CombineOp};
 use crate::context::RuleContext;
@@ -41,6 +59,53 @@ fn propagate_binary(a: &Value, b: &Value) -> Option<Value> {
     } else {
         None
     }
+}
+
+/// Render the missing facts of an Unknown for a trace message: `law.name, …`.
+fn describe_missing(unknown: &Value) -> String {
+    unknown
+        .missing_facts()
+        .iter()
+        .map(|m| format!("{}.{}", m.law, m.name))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// If any operand is Unknown, the operation is Unknown for the union of their
+/// missing facts (RFC-036), and the trace says so.
+///
+/// Called after the Untranslatable check and before the Null check, so the
+/// precedence "Untranslatable beats Unknown beats everything else" holds in
+/// every operation that uses it.
+fn propagate_unknown<'a, R: ValueResolver>(
+    resolver: &R,
+    op: &str,
+    evaluated: impl IntoIterator<Item = &'a Value>,
+) -> Option<Value> {
+    let unknown = Value::merge_unknown(evaluated)?;
+    resolver.trace_set_message(format!(
+        "{op} with an unknown operand: unknown (missing: {})",
+        describe_missing(&unknown)
+    ));
+    Some(unknown)
+}
+
+/// The error for a null operand where a value was needed (RFC-036).
+fn absent_operand(op: &str) -> EngineError {
+    EngineError::AbsentOperand {
+        operation: op.to_string(),
+    }
+}
+
+/// Refuse a null operand where the operation needs a number, date or truth
+/// value (RFC-036). Absence is a fact the law can test for; it is not an
+/// amount or a verdict, and treating it as one would decide something the
+/// legal text never said.
+fn reject_null<'a>(op: &str, evaluated: impl IntoIterator<Item = &'a Value>) -> Result<()> {
+    if evaluated.into_iter().any(Value::is_null) {
+        return Err(absent_operand(op));
+    }
+    Ok(())
 }
 
 /// Trait for resolving variable references ($var) during operation execution.
@@ -184,7 +249,10 @@ pub fn execute_operation<R: ValueResolver>(
                 // handler: which case matched, how many elements were seen.
                 // That says more than the value alone, so keep it instead of
                 // overwriting. FOREACH reports its own result through the
-                // combine, so its message stands on its own.
+                // combine, so its message stands on its own. An unknown result
+                // keeps the handler's message too: it says which operand was
+                // unknown and which facts are missing (RFC-036), which the
+                // value alone does not.
                 let existing_msg = resolver.trace_get_message();
                 let msg = match (op, existing_msg) {
                     (ActionOperation::If { .. }, Some(case_info)) => {
@@ -193,6 +261,7 @@ pub fn execute_operation<R: ValueResolver>(
                     (ActionOperation::Foreach { .. }, Some(summary)) => {
                         format!("{} = {}", summary, format_value_for_trace(value))
                     }
+                    (_, Some(why_unknown)) if value.is_unknown() => why_unknown,
                     _ => format!(
                         "Compute {}(...) = {}",
                         op_name,
@@ -231,6 +300,14 @@ fn format_value_for_trace(value: &Value) -> String {
         }
         Value::Object(_) => "{...}".to_string(),
         Value::Untranslatable { article, .. } => format!("UNTRANSLATABLE(art. {})", article),
+        Value::Unknown(missing) => format!(
+            "Unknown({})",
+            missing
+                .iter()
+                .map(|m| m.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -249,21 +326,31 @@ fn execute_operation_internal<R: ValueResolver>(
             execute_equality(subject, value, resolver, depth, true)
         }
         ActionOperation::GreaterThan { subject, value } => {
-            execute_ordered_comparison(subject, value, resolver, depth, |ord| {
+            execute_ordered_comparison(subject, value, resolver, depth, "GREATER_THAN", |ord| {
                 ord == Ordering::Greater
             })
         }
         ActionOperation::LessThan { subject, value } => {
-            execute_ordered_comparison(subject, value, resolver, depth, |ord| ord == Ordering::Less)
-        }
-        ActionOperation::GreaterThanOrEqual { subject, value } => {
-            execute_ordered_comparison(subject, value, resolver, depth, |ord| ord != Ordering::Less)
-        }
-        ActionOperation::LessThanOrEqual { subject, value } => {
-            execute_ordered_comparison(subject, value, resolver, depth, |ord| {
-                ord != Ordering::Greater
+            execute_ordered_comparison(subject, value, resolver, depth, "LESS_THAN", |ord| {
+                ord == Ordering::Less
             })
         }
+        ActionOperation::GreaterThanOrEqual { subject, value } => execute_ordered_comparison(
+            subject,
+            value,
+            resolver,
+            depth,
+            "GREATER_THAN_OR_EQUAL",
+            |ord| ord != Ordering::Less,
+        ),
+        ActionOperation::LessThanOrEqual { subject, value } => execute_ordered_comparison(
+            subject,
+            value,
+            resolver,
+            depth,
+            "LESS_THAN_OR_EQUAL",
+            |ord| ord != Ordering::Greater,
+        ),
 
         // Arithmetic
         ActionOperation::Add { values } => execute_add(values, resolver, depth),
@@ -433,6 +520,13 @@ fn execute_equality<R: ValueResolver>(
     if let Some(tainted) = propagate_binary(&subject_val, &value_val) {
         return Ok(tainted);
     }
+    // Whether an unknown value equals something cannot be said yet. Null, by
+    // contrast, is a value here: `EQUALS($huur, null)` is the absence test the
+    // corpus uses, and `values_equal` answers it structurally (RFC-036).
+    let op_name = if negate { "NOT_EQUALS" } else { "EQUALS" };
+    if let Some(unknown) = propagate_unknown(resolver, op_name, [&subject_val, &value_val]) {
+        return Ok(unknown);
+    }
 
     let mut equal = values_equal(&subject_val, &value_val);
 
@@ -485,6 +579,7 @@ fn execute_ordered_comparison<R: ValueResolver, F>(
     value: &ActionValue,
     resolver: &R,
     depth: usize,
+    op_name: &str,
     satisfies: F,
 ) -> Result<Value>
 where
@@ -497,13 +592,15 @@ where
         return Ok(tainted);
     }
 
-    // Comparing against nothing has no answer. A register that holds no value
-    // for this person (no rent, no partner income) makes the comparison
-    // unknown, not an error; AND, OR, NOT and IF carry the unknown onward
-    // (RFC-036 null semantics).
+    // An unknown operand (a fact nobody has yet) makes the comparison unknown;
+    // AND, OR, NOT and IF carry that onward. A null operand is different: "more
+    // than nothing" is not a question the law asked, so ordering an absence is
+    // an error the law has to resolve by testing for absence first (RFC-036).
+    if let Some(unknown) = propagate_unknown(resolver, op_name, [&subject_val, &value_val]) {
+        return Ok(unknown);
+    }
     if subject_val.is_null() || value_val.is_null() {
-        resolver.trace_set_message("comparison with a null operand: unknown".to_string());
-        return Ok(Value::Null);
+        return Err(absent_operand(op_name));
     }
 
     // Numbers first: the common case and the historical behavior.
@@ -557,19 +654,6 @@ fn is_numeric(val: &Value) -> bool {
 // Arithmetic Operations
 // =============================================================================
 
-/// Arithmetic over nothing is nothing: an operand that resolved to null (a
-/// register value this person does not have) makes the result unknown rather
-/// than a type error, in line with RFC-036 null semantics. The unknown is
-/// carried onward by AND, OR, NOT and IF; a failing calculation would tell
-/// the person nothing at all. The trace says why the result went unknown.
-fn propagate_null<R: ValueResolver>(resolver: &R, op: &str, evaluated: &[Value]) -> Option<Value> {
-    if evaluated.iter().any(Value::is_null) {
-        resolver.trace_set_message(format!("{op} with a null operand: unknown"));
-        return Some(Value::Null);
-    }
-    None
-}
-
 /// Execute ADD operation: sum numbers, concatenate arrays, or concatenate strings.
 ///
 /// The type of the first value determines the operation mode:
@@ -585,9 +669,10 @@ fn execute_add<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(resolver, "ADD", &evaluated) {
+    if let Some(unknown) = propagate_unknown(resolver, "ADD", &evaluated) {
         return Ok(unknown);
     }
+    reject_null("ADD", &evaluated)?;
     add_values(&evaluated)
 }
 
@@ -692,9 +777,10 @@ fn execute_subtract<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(resolver, "SUBTRACT", &evaluated) {
+    if let Some(unknown) = propagate_unknown(resolver, "SUBTRACT", &evaluated) {
         return Ok(unknown);
     }
+    reject_null("SUBTRACT", &evaluated)?;
 
     // SAFETY: values guaranteed non-empty by check above
     let Some((first, rest)) = evaluated.split_first() else {
@@ -732,9 +818,10 @@ fn execute_multiply<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(resolver, "MULTIPLY", &evaluated) {
+    if let Some(unknown) = propagate_unknown(resolver, "MULTIPLY", &evaluated) {
         return Ok(unknown);
     }
+    reject_null("MULTIPLY", &evaluated)?;
 
     let mut result = Decimal::ONE;
     let mut has_decimal = false;
@@ -773,9 +860,10 @@ fn execute_divide<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(resolver, "DIVIDE", &evaluated) {
+    if let Some(unknown) = propagate_unknown(resolver, "DIVIDE", &evaluated) {
         return Ok(unknown);
     }
+    reject_null("DIVIDE", &evaluated)?;
 
     // SAFETY: values guaranteed non-empty by check above
     let Some((first, rest)) = evaluated.split_first() else {
@@ -822,9 +910,10 @@ where
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(resolver, "MIN/MAX", &evaluated) {
+    if let Some(unknown) = propagate_unknown(resolver, "MIN/MAX", &evaluated) {
         return Ok(unknown);
     }
+    reject_null("MIN/MAX", &evaluated)?;
 
     let mut has_decimal = false;
     let nums: Vec<Decimal> = evaluated
@@ -886,6 +975,17 @@ fn execute_rounding<R: ValueResolver>(
     if evaluated.is_untranslatable() {
         return Ok(evaluated);
     }
+    let op_name = match mode {
+        RoundMode::Round => "ROUND",
+        RoundMode::Ceil => "CEIL",
+        RoundMode::Floor => "FLOOR",
+    };
+    // Rounding an unknown amount is unknown; rounding an absence is an error
+    // (RFC-036): "geen" is not an amount to round.
+    if let Some(unknown) = propagate_unknown(resolver, op_name, [&evaluated]) {
+        return Ok(unknown);
+    }
+    reject_null(op_name, [&evaluated])?;
     let operand = to_decimal(&evaluated)?;
     let rounded = round_decimal(operand, precision, mode)?;
     // Mirror the arithmetic ops: an integral result returns `Int`, otherwise `Decimal`.
@@ -930,10 +1030,16 @@ fn round_decimal(value: Decimal, precision: i64, mode: RoundMode) -> Result<Deci
 
 /// Execute AND operation: short-circuit evaluation, returns false if any condition is false.
 ///
-/// Three-valued (RFC-036): a definitive `false` decides; otherwise an
-/// untranslatable operand taints the result and a `null` operand (a register
-/// value this person does not have) makes it unknown, so a missing value can
-/// never come out as a confident "voldoet niet".
+/// Three-valued (RFC-036): a definitive `false` decides, whatever the other
+/// operands are; otherwise an untranslatable operand taints the result, and
+/// otherwise an unknown operand (a fact nobody has) makes it unknown, so a
+/// missing value can never come out as a confident "voldoet niet". A `null`
+/// operand is an error: an absence is not a verdict, and the law has to test
+/// for it (`EQUALS … null`) before it may count it as one.
+///
+/// The conditions are evaluated in order and a `false` stops the evaluation,
+/// which is what lets a law guard a calculation: `AND(NOT EQUALS $huur null,
+/// GREATER_THAN $huur 500)` never orders the absent rent.
 fn execute_and<R: ValueResolver>(
     conditions: &[ActionValue],
     resolver: &R,
@@ -942,11 +1048,14 @@ fn execute_and<R: ValueResolver>(
     let tracing = resolver.has_trace();
     let mut results: Option<Vec<Value>> = if tracing { Some(Vec::new()) } else { None };
     let mut taint: Option<Value> = None;
-    let mut unknown = false;
+    let mut unknowns: Vec<Value> = Vec::new();
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
         if val.is_null() {
-            unknown = true;
+            return Err(absent_operand("AND"));
+        }
+        if val.is_unknown() {
+            unknowns.push(val);
             continue;
         }
         // Definitive false wins over taint and unknown (AND commutativity)
@@ -966,9 +1075,12 @@ fn execute_and<R: ValueResolver>(
     if let Some(t) = taint {
         return Ok(t);
     }
-    if unknown {
-        resolver.trace_set_message("AND with a null operand and no false: unknown".to_string());
-        return Ok(Value::Null);
+    if let Some(unknown) = Value::merge_unknown(&unknowns) {
+        resolver.trace_set_message(format!(
+            "AND with an unknown operand and no false: unknown (missing: {})",
+            describe_missing(&unknown)
+        ));
+        return Ok(unknown);
     }
 
     if let Some(results) = results {
@@ -982,18 +1094,22 @@ fn execute_and<R: ValueResolver>(
 /// Execute OR operation: short-circuit evaluation, returns true if any condition is true.
 ///
 /// Three-valued (RFC-036): a definitive `true` decides; otherwise an
-/// untranslatable taints and a `null` operand makes the result unknown.
+/// untranslatable taints, otherwise an unknown operand makes the result
+/// unknown, and a `null` operand is an error (see [`execute_and`]).
 fn execute_or<R: ValueResolver>(
     conditions: &[ActionValue],
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
     let mut taint: Option<Value> = None;
-    let mut unknown = false;
+    let mut unknowns: Vec<Value> = Vec::new();
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
         if val.is_null() {
-            unknown = true;
+            return Err(absent_operand("OR"));
+        }
+        if val.is_unknown() {
+            unknowns.push(val);
             continue;
         }
         // Definitive true wins over taint and unknown (OR commutativity)
@@ -1009,9 +1125,12 @@ fn execute_or<R: ValueResolver>(
     if let Some(t) = taint {
         return Ok(t);
     }
-    if unknown {
-        resolver.trace_set_message("OR with a null operand and no true: unknown".to_string());
-        return Ok(Value::Null);
+    if let Some(unknown) = Value::merge_unknown(&unknowns) {
+        resolver.trace_set_message(format!(
+            "OR with an unknown operand and no true: unknown (missing: {})",
+            describe_missing(&unknown)
+        ));
+        return Ok(unknown);
     }
 
     Ok(Value::Bool(false))
@@ -1020,15 +1139,18 @@ fn execute_or<R: ValueResolver>(
 /// Execute NOT operation: logical negation.
 ///
 /// Takes a single `value` field (which should be a boolean-returning operation).
+/// The negation of unknown is unknown; the negation of an absence is an error
+/// (RFC-036).
 fn execute_not<R: ValueResolver>(value: &ActionValue, resolver: &R, depth: usize) -> Result<Value> {
     let val = evaluate_value(value, resolver, depth)?;
     if val.is_untranslatable() {
         return Ok(val);
     }
-    // The negation of unknown is unknown (RFC-036).
+    if let Some(unknown) = propagate_unknown(resolver, "NOT", [&val]) {
+        return Ok(unknown);
+    }
     if val.is_null() {
-        resolver.trace_set_message("NOT of a null operand: unknown".to_string());
-        return Ok(Value::Null);
+        return Err(absent_operand("NOT"));
     }
     Ok(Value::Bool(!val.to_bool()))
 }
@@ -1065,12 +1187,18 @@ fn execute_if<R: ValueResolver>(
             return Ok(condition_result);
         }
         // A case whose condition is unknown cannot be skipped in good faith:
-        // the branch might have applied. The whole IF is unknown (RFC-036).
-        if condition_result.is_null() {
+        // the branch might have applied. The whole IF is that unknown; neither
+        // this `then`, nor a later case, nor the default is taken in its place
+        // (RFC-036). An absent condition is an error: "geen" is not a verdict.
+        if condition_result.is_unknown() {
             resolver.trace_set_message(format!(
-                "case {i}: condition unknown, so the result is unknown"
+                "case {i}: condition unknown, so the result is unknown (missing: {})",
+                describe_missing(&condition_result)
             ));
-            return Ok(Value::Null);
+            return Ok(condition_result);
+        }
+        if condition_result.is_null() {
+            return Err(absent_operand("IF"));
         }
 
         if condition_result.to_bool() {
@@ -1116,6 +1244,10 @@ fn execute_if<R: ValueResolver>(
 /// Execute IS_NULL / NOT_NULL operation.
 ///
 /// When `negate` is true, returns true if the subject is *not* null (NOT_NULL).
+///
+/// Absence is what this tests for, so `null` answers (`true` / `false`). An
+/// unknown subject does not: whether the register holds a value is exactly the
+/// fact nobody has yet, so the check is unknown (RFC-036).
 fn execute_null_check<R: ValueResolver>(
     subject: &ActionValue,
     resolver: &R,
@@ -1124,6 +1256,14 @@ fn execute_null_check<R: ValueResolver>(
 ) -> Result<Value> {
     let subject_val = evaluate_value(subject, resolver, depth)?;
     if subject_val.is_untranslatable() {
+        return Ok(subject_val);
+    }
+    if subject_val.is_unknown() {
+        let op_name = if negate { "NOT_NULL" } else { "IS_NULL" };
+        resolver.trace_set_message(format!(
+            "{op_name} of unknown: unknown (missing: {})",
+            describe_missing(&subject_val)
+        ));
         return Ok(subject_val);
     }
     let is_null = subject_val.is_null();
@@ -1169,9 +1309,25 @@ fn execute_membership<R: ValueResolver>(
         )));
     };
 
-    let found = check_values
-        .iter()
-        .any(|val| values_equal(&subject_val, val));
+    // A definite match settles it whatever else is in the list (Kleene, as
+    // for OR). Without one, an unknown subject or an unknown element leaves
+    // the question open: the value might be the one that matches. Null is
+    // structural, like EQUALS: `IN(null, [null])` is true, `IN(null, [1])` is
+    // false (RFC-036). A tainted element never matches (RFC-012).
+    let found = !subject_val.is_unknown()
+        && check_values
+            .iter()
+            .any(|val| !val.is_unknown() && values_equal(&subject_val, val));
+    if !found {
+        let op_name = if negate { "NOT_IN" } else { "IN" };
+        if let Some(unknown) = propagate_unknown(
+            resolver,
+            op_name,
+            std::iter::once(&subject_val).chain(check_values.iter()),
+        ) {
+            return Ok(unknown);
+        }
+    }
     Ok(Value::Bool(if negate { !found } else { found }))
 }
 
@@ -1226,6 +1382,12 @@ pub fn execute_foreach(
     let collection_value = evaluate_value(collection, context, depth)?;
     if collection_value.is_untranslatable() {
         return Ok(collection_value);
+    }
+    // A collection nobody has yet cannot be iterated: its total is unknown for
+    // the same reason. A null collection is different and iterates nothing
+    // (RFC-016): the register says there are no members (RFC-036).
+    if let Some(unknown) = propagate_unknown(context, "FOREACH", [&collection_value]) {
+        return Ok(unknown);
     }
 
     // A non-array iterates once. Laws reach the engine with a data source that
@@ -1298,17 +1460,18 @@ pub fn execute_foreach(
                 }
                 // An untranslatable element taints the whole result. Combining
                 // the rest would produce a total that looks complete and is not
-                // (RFC-012). A null body value is not fatal here: the combine
-                // functions decide what an unknown element means per aggregation.
+                // (RFC-012). An unknown or null element is not fatal here: the
+                // combine functions decide what it means per aggregation
+                // (RFC-036), and without a combine it is simply an element.
                 if value.is_untranslatable() {
                     return Ok(value);
                 }
                 results.push(value);
             }
-            Ok(IterationOutcome::Unknown(value)) => {
+            Ok(IterationOutcome::Tainted(value)) => {
                 if tracing {
                     context.trace_set_result(value.clone());
-                    context.trace_set_message(format!("ITEM {index}: unknown, aborting"));
+                    context.trace_set_message(format!("ITEM {index}: untranslatable, aborting"));
                     context.trace_pop();
                 }
                 return Ok(value);
@@ -1347,10 +1510,11 @@ pub fn execute_foreach(
 enum IterationOutcome {
     /// The filter rejected this element.
     Skipped,
-    /// The body produced a value.
+    /// The body produced a value (possibly an unknown one, see
+    /// [`evaluate_iteration`]).
     Value(Value),
-    /// The filter could not be decided, so neither can the collection.
-    Unknown(Value),
+    /// The filter is untranslatable, so the whole collection is tainted.
+    Tainted(Value),
 }
 
 /// Run `filter` and `body` for one element, in its own child scope.
@@ -1363,13 +1527,20 @@ fn evaluate_iteration(
     if let Some(filter_expr) = filter {
         let verdict = evaluate_value(filter_expr, child, depth + 1)?;
         if verdict.is_untranslatable() {
-            return Ok(IterationOutcome::Unknown(verdict));
+            return Ok(IterationOutcome::Tainted(verdict));
         }
-        // A null filter means the engine cannot tell whether this element
-        // belongs in the collection, and therefore cannot tell what the total
-        // is. Silently excluding it would report a confident wrong answer.
+        // An unknown filter means the engine cannot tell whether this element
+        // belongs in the collection. Silently excluding it would report a
+        // confident wrong answer, so the element counts as an unknown element
+        // and the combine decides what that means: a sum is unknown, an OR
+        // with a definite `true` elsewhere is still true (RFC-036).
+        if verdict.is_unknown() {
+            return Ok(IterationOutcome::Value(verdict));
+        }
+        // An absent verdict is not a verdict: the law has to test for the
+        // absence before it may select on it.
         if verdict.is_null() {
-            return Ok(IterationOutcome::Unknown(Value::Null));
+            return Err(absent_operand("FOREACH filter"));
         }
         if !verdict.to_bool() {
             return Ok(IterationOutcome::Skipped);
@@ -1395,12 +1566,17 @@ fn is_valid_binding_name(name: &str) -> bool {
 
 /// Combine FOREACH results with ADD.
 ///
-/// An unknown element makes the total unknown. RFC-016 already says this for a
-/// filter that evaluates to null ("the engine cannot tell whether this element
-/// belongs in the collection, so it cannot tell what the total is"), and a body
-/// that produces null is the same situation one step later: the element is
-/// definitely in the collection and its contribution is not known. Summing the
-/// rest would report a confident number that is short by an unknown amount.
+/// An unknown element makes the total unknown, for the union of what the
+/// elements miss. RFC-016 already says this for a filter that cannot be
+/// decided ("the engine cannot tell whether this element belongs in the
+/// collection, so it cannot tell what the total is"), and a body that is
+/// unknown is the same situation one step later: the element is definitely in
+/// the collection and its contribution is not known. Summing the rest would
+/// report a confident number that is short by an unknown amount.
+///
+/// A null element is an error (RFC-036): an absence is not an amount, and a
+/// law that sums amounts some members do not have has to say what "geen"
+/// counts for (an `IF … EQUALS null` in the body) before the sum is legal.
 ///
 /// An empty collection is `0`, the additive identity, because nothing is
 /// missing there.
@@ -1408,75 +1584,79 @@ fn combine_add(results: &[Value]) -> Result<Value> {
     if results.is_empty() {
         return Ok(Value::Int(0));
     }
-    if results.iter().any(Value::is_null) {
-        return Ok(Value::Null);
+    if let Some(tainted) = find_untranslatable(results) {
+        return Ok(tainted);
     }
+    if let Some(unknown) = Value::merge_unknown(results) {
+        return Ok(unknown);
+    }
+    reject_null("FOREACH combine ADD", results)?;
     add_values(results)
 }
 
 /// Combine FOREACH results with OR.
 ///
 /// Mirrors `execute_or`: a definitive `true` wins over an unknown, because the
-/// answer is `true` whatever the unknown turns out to be. Otherwise any null
-/// makes the result unknown.
+/// answer is `true` whatever the unknown turns out to be. Otherwise any unknown
+/// element makes the result unknown; a null element is an error (RFC-036).
 fn combine_or(results: &[Value]) -> Result<Value> {
     if results.is_empty() {
         return Ok(Value::Bool(false));
     }
-    let mut has_null = false;
+    let mut unknowns: Vec<Value> = Vec::new();
     for v in results {
         if v.is_untranslatable() {
             return Ok(v.clone());
         }
         if v.is_null() {
-            has_null = true;
+            return Err(absent_operand("FOREACH combine OR"));
+        }
+        if v.is_unknown() {
+            unknowns.push(v.clone());
             continue;
         }
         if v.to_bool() {
             return Ok(Value::Bool(true));
         }
     }
-    Ok(if has_null {
-        Value::Null
-    } else {
-        Value::Bool(false)
-    })
+    Ok(Value::merge_unknown(&unknowns).unwrap_or(Value::Bool(false)))
 }
 
 /// Combine FOREACH results with AND.
 ///
 /// Mirrors `execute_and`: a definitive `false` wins over an unknown. An empty
 /// collection is `true` by vacuous truth, so a law that must not read "no
-/// items" as "all conditions met" has to check for emptiness itself.
+/// items" as "all conditions met" has to check for emptiness itself. A null
+/// element is an error (RFC-036).
 fn combine_and(results: &[Value]) -> Result<Value> {
     if results.is_empty() {
         return Ok(Value::Bool(true));
     }
-    let mut has_null = false;
+    let mut unknowns: Vec<Value> = Vec::new();
     for v in results {
         if v.is_untranslatable() {
             return Ok(v.clone());
         }
         if v.is_null() {
-            has_null = true;
+            return Err(absent_operand("FOREACH combine AND"));
+        }
+        if v.is_unknown() {
+            unknowns.push(v.clone());
             continue;
         }
         if !v.to_bool() {
             return Ok(Value::Bool(false));
         }
     }
-    Ok(if has_null {
-        Value::Null
-    } else {
-        Value::Bool(true)
-    })
+    Ok(Value::merge_unknown(&unknowns).unwrap_or(Value::Bool(true)))
 }
 
 /// Combine FOREACH results with MIN or MAX.
 ///
 /// Empty is `Null`: there is no lowest value of nothing, and the caller has to
-/// handle that. Comparison stays in `Decimal` so an all-integer collection
-/// returns `Int` without a detour through `f64`.
+/// handle that. An unknown element makes the result unknown; a null element
+/// is an error (RFC-036). Comparison stays in `Decimal` so an all-integer
+/// collection returns `Int` without a detour through `f64`.
 fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
     if results.is_empty() {
         return Ok(Value::Null);
@@ -1484,14 +1664,20 @@ fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
     if let Some(tainted) = find_untranslatable(results) {
         return Ok(tainted);
     }
+    if let Some(unknown) = Value::merge_unknown(results) {
+        return Ok(unknown);
+    }
+    let op_name = if is_min {
+        "FOREACH combine MIN"
+    } else {
+        "FOREACH combine MAX"
+    };
+    reject_null(op_name, results)?;
 
     let mut best: Option<Decimal> = None;
     let mut all_int = true;
 
     for v in results {
-        if v.is_null() {
-            continue;
-        }
         if !matches!(v, Value::Int(_)) {
             all_int = false;
         }
@@ -1531,6 +1717,10 @@ fn execute_age<R: ValueResolver>(
     if let Some(tainted) = propagate_binary(&dob_val, &ref_val) {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "AGE", [&dob_val, &ref_val]) {
+        return Ok(unknown);
+    }
+    reject_null("AGE", [&dob_val, &ref_val])?;
 
     let dob_date = parse_date(&dob_val)?;
     let ref_date_parsed = parse_date(&ref_val)?;
@@ -1560,14 +1750,37 @@ fn execute_date_add<R: ValueResolver>(
     depth: usize,
 ) -> Result<Value> {
     let date_val = evaluate_value(date, resolver, depth)?;
-    if date_val.is_untranslatable() {
-        return Ok(date_val);
+    let years_val = years
+        .map(|v| evaluate_value(v, resolver, depth))
+        .transpose()?;
+    let months_val = months
+        .map(|v| evaluate_value(v, resolver, depth))
+        .transpose()?;
+    let weeks_val = weeks
+        .map(|v| evaluate_value(v, resolver, depth))
+        .transpose()?;
+    let days_val = days
+        .map(|v| evaluate_value(v, resolver, depth))
+        .transpose()?;
+    // The date and every component given take part in the RFC-012/RFC-036
+    // checks alike: a shift by an unknown number of months is an unknown date.
+    let operands: Vec<&Value> = std::iter::once(&date_val)
+        .chain(years_val.iter())
+        .chain(months_val.iter())
+        .chain(weeks_val.iter())
+        .chain(days_val.iter())
+        .collect();
+    if let Some(tainted) = operands.iter().find(|v| v.is_untranslatable()) {
+        return Ok((*tainted).clone());
     }
+    if let Some(unknown) = propagate_unknown(resolver, "DATE_ADD", operands.iter().copied()) {
+        return Ok(unknown);
+    }
+    reject_null("DATE_ADD", operands.iter().copied())?;
     let mut result_date = parse_date(&date_val)?;
 
     // Years: add to year component, clamp day to last day of target month
-    if let Some(years) = years {
-        let years_val = evaluate_value(years, resolver, depth)?;
+    if let Some(years_val) = years_val {
         let years_i64 = years_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'years' must be a number".to_string())
         })?;
@@ -1591,8 +1804,7 @@ fn execute_date_add<R: ValueResolver>(
     }
 
     // Months: add to month component, clamp day to last day of target month
-    if let Some(months) = months {
-        let months_val = evaluate_value(months, resolver, depth)?;
+    if let Some(months_val) = months_val {
         let months_int = months_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'months' must be a number".to_string())
         })?;
@@ -1600,8 +1812,7 @@ fn execute_date_add<R: ValueResolver>(
     }
 
     // Weeks
-    if let Some(weeks) = weeks {
-        let weeks_val = evaluate_value(weeks, resolver, depth)?;
+    if let Some(weeks_val) = weeks_val {
         let weeks_int = weeks_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'weeks' must be a number".to_string())
         })?;
@@ -1615,8 +1826,7 @@ fn execute_date_add<R: ValueResolver>(
     }
 
     // Days
-    if let Some(days) = days {
-        let days_val = evaluate_value(days, resolver, depth)?;
+    if let Some(days_val) = days_val {
         let days_int = days_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'days' must be a number".to_string())
         })?;
@@ -1677,6 +1887,10 @@ fn execute_date_construct<R: ValueResolver>(
     {
         return Ok(tainted);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "DATE", [&year_val, &month_val, &day_val]) {
+        return Ok(unknown);
+    }
+    reject_null("DATE", [&year_val, &month_val, &day_val])?;
 
     let y_i64 = year_val
         .as_int()
@@ -1718,6 +1932,10 @@ fn execute_day_of_week<R: ValueResolver>(
     if val.is_untranslatable() {
         return Ok(val);
     }
+    if let Some(unknown) = propagate_unknown(resolver, "DAY_OF_WEEK", [&val]) {
+        return Ok(unknown);
+    }
+    reject_null("DAY_OF_WEEK", [&val])?;
     let parsed = parse_date(&val)?;
     Ok(Value::Int(parsed.weekday().num_days_from_monday() as i64))
 }
@@ -1753,16 +1971,21 @@ fn execute_date_diff<R: ValueResolver>(
     if let Some(tainted) = propagate_binary(&from_val, &to_val) {
         return Ok(tainted);
     }
-
-    let from_date = parse_date(&from_val)?;
-    let to_date = parse_date(&to_val)?;
-
     let unit_val = evaluate_value(unit, resolver, depth)?;
     // The unit participates in taint propagation like the date operands: an
     // Untranslatable unit flows through as a value (RFC-012), not as an error.
     if unit_val.is_untranslatable() {
         return Ok(unit_val);
     }
+    // Likewise for unknown and absent operands (RFC-036).
+    if let Some(unknown) = propagate_unknown(resolver, "DATE_DIFF", [&from_val, &to_val, &unit_val])
+    {
+        return Ok(unknown);
+    }
+    reject_null("DATE_DIFF", [&from_val, &to_val, &unit_val])?;
+
+    let from_date = parse_date(&from_val)?;
+    let to_date = parse_date(&to_val)?;
     let unit_str = match &unit_val {
         Value::String(s) => s.as_str(),
         _ => {
@@ -2039,6 +2262,20 @@ mod tests {
     /// Helper to create a variable reference
     fn var(name: &str) -> ActionValue {
         ActionValue::Literal(Value::String(format!("${}", name)))
+    }
+
+    /// An Unknown for one missing register fact of the test law (RFC-036).
+    fn unknown_fact(name: &str) -> Value {
+        Value::unknown("testwet", name, crate::types::MissingKind::NoData)
+    }
+
+    /// The names of the facts an Unknown misses, for assertions.
+    fn missing_names(value: &Value) -> Vec<&str> {
+        value
+            .missing_facts()
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect()
     }
 
     /// Helper to build a reference-date `{iso, year, month, day}` object Value,
@@ -3529,42 +3766,123 @@ mod tests {
         }
 
         #[test]
-        fn test_foreach_combine_and_or_short_circuit_past_null() {
-            // A definitive verdict beats an unknown, matching AND/OR themselves.
+        fn test_foreach_combine_and_or_short_circuit_past_unknown() {
+            // A definitive verdict beats an unknown, matching AND/OR themselves
+            // (RFC-036).
+            let unknown = unknown_fact("verzekerd");
             assert_eq!(
-                sum_of(vec![Value::Null, Value::Bool(true)], Some(CombineOp::Or)).unwrap(),
+                sum_of(
+                    vec![unknown.clone(), Value::Bool(true)],
+                    Some(CombineOp::Or)
+                )
+                .unwrap(),
                 Value::Bool(true)
             );
             assert_eq!(
-                sum_of(vec![Value::Null, Value::Bool(false)], Some(CombineOp::And)).unwrap(),
+                sum_of(
+                    vec![unknown.clone(), Value::Bool(false)],
+                    Some(CombineOp::And)
+                )
+                .unwrap(),
                 Value::Bool(false)
             );
-            // With no definitive verdict, the result is unknown.
-            assert_eq!(
-                sum_of(vec![Value::Null, Value::Bool(false)], Some(CombineOp::Or)).unwrap(),
-                Value::Null
-            );
-            assert_eq!(
-                sum_of(vec![Value::Null, Value::Bool(true)], Some(CombineOp::And)).unwrap(),
-                Value::Null
-            );
+            // With no definitive verdict, the result is that unknown.
+            let or = sum_of(
+                vec![unknown.clone(), Value::Bool(false)],
+                Some(CombineOp::Or),
+            )
+            .unwrap();
+            assert_eq!(or.missing_facts(), unknown.missing_facts());
+            let and = sum_of(
+                vec![unknown.clone(), Value::Bool(true)],
+                Some(CombineOp::And),
+            )
+            .unwrap();
+            assert_eq!(and.missing_facts(), unknown.missing_facts());
+        }
+
+        #[test]
+        fn test_foreach_combine_and_or_reject_an_absent_verdict() {
+            // An absence is not a verdict: the body has to test for it first.
+            for combine in [CombineOp::Or, CombineOp::And] {
+                let err = sum_of(vec![Value::Null, Value::Bool(true)], Some(combine)).unwrap_err();
+                assert!(
+                    matches!(&err, EngineError::AbsentOperand { operation } if operation.starts_with("FOREACH combine")),
+                    "got {err:?}"
+                );
+            }
         }
 
         #[test]
         fn test_foreach_combine_add_is_unknown_as_soon_as_one_element_is() {
-            // Not "skip the null and sum the rest": that reports a confident
-            // total that is short by an unknown amount.
-            assert_eq!(
-                sum_of(vec![Value::Int(5), Value::Null], Some(CombineOp::Add)).unwrap(),
-                Value::Null
-            );
-            assert_eq!(
-                sum_of(vec![Value::Null, Value::Null], Some(CombineOp::Add)).unwrap(),
-                Value::Null
-            );
+            // Not "skip the unknown and sum the rest": that reports a confident
+            // total that is short by an unknown amount. The result names what
+            // is missing, and names each fact once.
+            let huur = unknown_fact("huur");
+            let sum = sum_of(vec![Value::Int(5), huur.clone()], Some(CombineOp::Add)).unwrap();
+            assert_eq!(sum.missing_facts(), huur.missing_facts());
+            let both = sum_of(
+                vec![huur.clone(), unknown_fact("servicekosten"), huur.clone()],
+                Some(CombineOp::Add),
+            )
+            .unwrap();
+            let names: Vec<&str> = both
+                .missing_facts()
+                .iter()
+                .map(|m| m.name.as_str())
+                .collect();
+            assert_eq!(names, vec!["huur", "servicekosten"]);
             // Nothing is missing from an empty collection, so it stays the
             // additive identity.
             assert_eq!(sum_of(vec![], Some(CombineOp::Add)).unwrap(), Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_combine_add_min_max_reject_an_absent_element() {
+            // A null element is an absence, not an amount (RFC-036): summing it
+            // or ranking it is an error the law has to resolve (an IF on
+            // `EQUALS … null` in the body), never a silent skip or a null total.
+            for combine in [CombineOp::Add, CombineOp::Min, CombineOp::Max] {
+                let err = sum_of(vec![Value::Int(5), Value::Null], Some(combine)).unwrap_err();
+                assert!(
+                    matches!(&err, EngineError::AbsentOperand { operation } if operation.starts_with("FOREACH combine")),
+                    "got {err:?}"
+                );
+            }
+            // Without a combine the array is a value and may hold the absence.
+            assert_eq!(
+                sum_of(vec![Value::Int(5), Value::Null], None).unwrap(),
+                Value::Array(vec![Value::Int(5), Value::Null])
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_min_max_propagate_an_unknown_element() {
+            let huur = unknown_fact("huur");
+            for combine in [CombineOp::Min, CombineOp::Max] {
+                let result = sum_of(vec![Value::Int(5), huur.clone()], Some(combine)).unwrap();
+                assert_eq!(result.missing_facts(), huur.missing_facts());
+            }
+            // Unknown elements stay elements when there is no combine.
+            let listed = sum_of(vec![Value::Int(5), huur.clone()], None).unwrap();
+            assert_eq!(listed, Value::Array(vec![Value::Int(5), huur]));
+        }
+
+        #[test]
+        fn test_foreach_unknown_collection_is_unknown() {
+            // A collection nobody has yet cannot be iterated; a null collection
+            // (the register says there are no members) iterates nothing.
+            let huishoudens = unknown_fact("huishoudens");
+            let context = ctx(vec![("items", huishoudens.clone())]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let result = execute_operation(&op, &context, 0).unwrap();
+            assert_eq!(result.missing_facts(), huishoudens.missing_facts());
         }
 
         #[test]
@@ -3625,12 +3943,14 @@ mod tests {
         }
 
         #[test]
-        fn test_foreach_null_filter_is_unknown_not_skipped() {
+        fn test_foreach_unknown_filter_is_unknown_not_skipped() {
             // Excluding an element the engine cannot judge would report a
-            // confident wrong total. The whole result is unknown instead.
+            // confident wrong total. The element is an unknown element instead,
+            // and the sum is unknown for the facts the filter missed (RFC-036).
+            let onbekend = unknown_fact("verzekerd");
             let context = ctx(vec![
                 ("items", Value::Array(vec![Value::Int(1), Value::Int(2)])),
-                ("onbekend", Value::Null),
+                ("onbekend", onbekend.clone()),
             ]);
             let op = ActionOperation::Foreach {
                 collection: var("items"),
@@ -3639,7 +3959,57 @@ mod tests {
                 filter: Some(var("onbekend")),
                 combine: Some(CombineOp::Add),
             };
-            assert_eq!(execute_operation(&op, &context, 0).unwrap(), Value::Null);
+            let result = execute_operation(&op, &context, 0).unwrap();
+            assert_eq!(result.missing_facts(), onbekend.missing_facts());
+        }
+
+        #[test]
+        fn test_foreach_unknown_filter_loses_to_a_definite_true_under_or() {
+            // Kleene through the filter too: `OR` over [unknown-element, true]
+            // is true whatever the unknown element would have contributed.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![
+                    obj(vec![
+                        ("keur", unknown_fact("keur")),
+                        ("ja", Value::Bool(true)),
+                    ]),
+                    obj(vec![("keur", Value::Bool(true)), ("ja", Value::Bool(true))]),
+                ]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x.ja"),
+                filter: Some(var("x.keur")),
+                combine: Some(CombineOp::Or),
+            };
+            assert_eq!(
+                execute_operation(&op, &context, 0).unwrap(),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn test_foreach_absent_filter_verdict_is_an_error() {
+            // A null filter is not a verdict about the element: the law has to
+            // test for the absence before it selects on it (RFC-036).
+            let context = ctx(vec![
+                ("items", Value::Array(vec![Value::Int(1)])),
+                ("geen", Value::Null),
+            ]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(var("geen")),
+                combine: Some(CombineOp::Add),
+            };
+            let err = execute_operation(&op, &context, 0).unwrap_err();
+            assert!(
+                matches!(&err, EngineError::AbsentOperand { operation } if operation == "FOREACH filter"),
+                "got {err:?}"
+            );
         }
 
         #[test]
@@ -3738,25 +4108,28 @@ mod tests {
 
         #[test]
         fn test_foreach_add_propagates_an_unknown_element() {
-            // A body that cannot produce a value makes the total unknown. This
-            // is the same rule RFC-016 states for a null filter: the element is
-            // in the collection and its contribution is not known, so summing
-            // the rest would report a number that is short by an unknown amount.
-            assert_eq!(
-                sum_of(
-                    vec![Value::Int(10), Value::Null, Value::Int(20)],
-                    Some(CombineOp::Add)
-                )
-                .unwrap(),
-                Value::Null
-            );
+            // A body that cannot produce a value yet makes the total unknown.
+            // This is the same rule RFC-016 states for an undecidable filter:
+            // the element is in the collection and its contribution is not
+            // known, so summing the rest would report a number that is short by
+            // an unknown amount.
+            let bijdrage = unknown_fact("bijdrage");
+            let result = sum_of(
+                vec![Value::Int(10), bijdrage.clone(), Value::Int(20)],
+                Some(CombineOp::Add),
+            )
+            .unwrap();
+            assert_eq!(result.missing_facts(), bijdrage.missing_facts());
         }
 
         #[test]
-        fn test_foreach_nested_min_over_empty_does_not_vanish_from_the_sum() {
-            // An inner MIN/MAX over an empty collection is null, and an outer
-            // ADD must not quietly leave it out: the total would look complete
-            // while one member of the collection was never evaluated.
+        fn test_foreach_nested_min_over_empty_is_an_absence_the_sum_rejects() {
+            // An inner MIN/MAX over an empty collection is null: there is no
+            // highest value of nothing, and that is an absence, not an unknown.
+            // An outer ADD may neither leave it out (the total would look
+            // complete while one member was never counted) nor count it as an
+            // amount: the law has to say what an empty household contributes
+            // (RFC-036), so the sum is an error until it does.
             let context = ctx(vec![(
                 "huishoudens",
                 Value::Array(vec![
@@ -3778,7 +4151,11 @@ mod tests {
                 filter: None,
                 combine: Some(CombineOp::Add),
             };
-            assert_eq!(execute_operation(&outer, &context, 0).unwrap(), Value::Null);
+            let err = execute_operation(&outer, &context, 0).unwrap_err();
+            assert!(
+                matches!(&err, EngineError::AbsentOperand { operation } if operation == "FOREACH combine ADD"),
+                "got {err:?}"
+            );
         }
 
         #[test]
@@ -4604,81 +4981,82 @@ mod tests {
         }
 
         #[test]
-        fn test_comparison_and_arithmetic_with_null_are_unknown() {
-            // A register value this person does not have (null) makes the
-            // comparison and the sum unknown, not an error (RFC-007).
-            let resolver = TestResolver::new().with_var("leeg", Value::Null);
-            let gt = ActionOperation::GreaterThan {
-                subject: var("leeg"),
-                value: lit(10i64),
-            };
-            assert_eq!(execute_operation(&gt, &resolver, 0).unwrap(), Value::Null);
-            let add = ActionOperation::Add {
-                values: vec![lit(5i64), var("leeg")],
-            };
-            assert_eq!(execute_operation(&add, &resolver, 0).unwrap(), Value::Null);
-            let sub = ActionOperation::Subtract {
-                values: vec![var("leeg"), lit(5i64)],
-            };
-            assert_eq!(execute_operation(&sub, &resolver, 0).unwrap(), Value::Null);
+        fn test_ordered_comparison_with_an_absent_operand_is_an_error() {
+            // "More than nothing" is not a question the law asked: ordering an
+            // absence is an error until the law tests for it (RFC-036).
+            let resolver = TestResolver::new().with_var("geen", Value::Null);
+            for (op, name) in [
+                (
+                    ActionOperation::GreaterThan {
+                        subject: var("geen"),
+                        value: lit(10i64),
+                    },
+                    "GREATER_THAN",
+                ),
+                (
+                    ActionOperation::LessThan {
+                        subject: lit(10i64),
+                        value: var("geen"),
+                    },
+                    "LESS_THAN",
+                ),
+                (
+                    ActionOperation::GreaterThanOrEqual {
+                        subject: var("geen"),
+                        value: lit("2025-01-01"),
+                    },
+                    "GREATER_THAN_OR_EQUAL",
+                ),
+                (
+                    ActionOperation::LessThanOrEqual {
+                        subject: var("geen"),
+                        value: var("geen"),
+                    },
+                    "LESS_THAN_OR_EQUAL",
+                ),
+            ] {
+                let err = execute_operation(&op, &resolver, 0).unwrap_err();
+                assert!(
+                    matches!(&err, EngineError::AbsentOperand { operation } if operation == name),
+                    "{name}: got {err:?}"
+                );
+            }
         }
 
         #[test]
-        fn test_logic_with_null_is_three_valued() {
-            // A null operand makes AND/OR/NOT unknown unless a definitive
-            // operand decides; an IF whose case condition is unknown is unknown.
-            let resolver = TestResolver::new().with_var("leeg", Value::Null);
-            let run = |op: ActionOperation| execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(
-                run(ActionOperation::And {
-                    conditions: vec![lit(true), var("leeg")]
-                }),
-                Value::Null
-            );
-            assert_eq!(
-                run(ActionOperation::And {
-                    conditions: vec![lit(false), var("leeg")]
-                }),
-                Value::Bool(false)
-            );
-            assert_eq!(
-                run(ActionOperation::Or {
-                    conditions: vec![lit(false), var("leeg")]
-                }),
-                Value::Null
-            );
-            assert_eq!(
-                run(ActionOperation::Or {
-                    conditions: vec![var("leeg"), lit(true)]
-                }),
-                Value::Bool(true)
-            );
-            assert_eq!(
-                run(ActionOperation::Not { value: var("leeg") }),
-                Value::Null
-            );
-            let unknown_case = ActionOperation::If {
-                cases: vec![Case {
-                    when: var("leeg"),
-                    then: lit("ja"),
-                }],
-                default: Some(lit("nee")),
+        fn test_ordered_comparison_with_an_unknown_operand_is_unknown() {
+            // A fact nobody has yet cannot be ordered; the result carries the
+            // facts of both unknown operands, in order, once each (RFC-036).
+            let resolver = TestResolver::new()
+                .with_var("huur", unknown_fact("huur"))
+                .with_var("grens", unknown_fact("grens"));
+            let gt = ActionOperation::GreaterThan {
+                subject: var("huur"),
+                value: lit(10i64),
             };
-            assert_eq!(run(unknown_case), Value::Null);
-            let earlier_match = ActionOperation::If {
-                cases: vec![
-                    Case {
-                        when: lit(true),
-                        then: lit("eerst"),
-                    },
-                    Case {
-                        when: var("leeg"),
-                        then: lit("ja"),
-                    },
-                ],
-                default: Some(lit("nee")),
+            assert_eq!(
+                missing_names(&execute_operation(&gt, &resolver, 0).unwrap()),
+                vec!["huur"]
+            );
+            let lt = ActionOperation::LessThan {
+                subject: var("grens"),
+                value: var("huur"),
             };
-            assert_eq!(run(earlier_match), Value::String("eerst".to_string()));
+            assert_eq!(
+                missing_names(&execute_operation(&lt, &resolver, 0).unwrap()),
+                vec!["grens", "huur"]
+            );
+            // Untranslatable beats unknown.
+            let tainted = Value::Untranslatable {
+                article: "3".to_string(),
+                construct: "redelijk".to_string(),
+            };
+            let resolver = resolver.with_var("vaag", tainted.clone());
+            let mixed = ActionOperation::GreaterThan {
+                subject: var("huur"),
+                value: var("vaag"),
+            };
+            assert_eq!(execute_operation(&mixed, &resolver, 0).unwrap(), tainted);
         }
 
         #[test]
@@ -5275,6 +5653,456 @@ mod tests {
             assert_eq!(
                 execute_operation(&lt, &resolver, 0).unwrap(),
                 Value::Bool(false)
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Absent versus unknown (RFC-036)
+    // -------------------------------------------------------------------------
+
+    /// One test per row of the RFC-036 operation table, each with the Unknown
+    /// case and the Null case: an unknown operand propagates (as the union of
+    /// missing facts), an absent operand is a value that can be tested but not
+    /// calculated with or decided on.
+    mod absent_and_unknown {
+        use super::*;
+
+        fn resolver() -> TestResolver {
+            TestResolver::new()
+                .with_var("geen", Value::Null)
+                .with_var("huur", unknown_fact("huur"))
+                .with_var("partner", unknown_fact("partner_bsn"))
+                .with_var("vaag", taint())
+        }
+
+        fn taint() -> Value {
+            Value::Untranslatable {
+                article: "3".to_string(),
+                construct: "naar redelijkheid".to_string(),
+            }
+        }
+
+        fn absent(err: EngineError, op: &str) {
+            assert!(
+                matches!(&err, EngineError::AbsentOperand { operation } if operation == op),
+                "expected AbsentOperand for {op}, got {err:?}"
+            );
+        }
+
+        #[test]
+        fn equals_tests_absence_and_propagates_unknown() {
+            let r = resolver();
+            let run = |op: ActionOperation| execute_operation(&op, &r, 0);
+            // Null is a value here: this is the absence test the corpus uses.
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: var("geen"),
+                    value: lit(Value::Null),
+                })
+                .unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: var("geen"),
+                    value: lit(5i64),
+                })
+                .unwrap(),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                run(ActionOperation::NotEquals {
+                    subject: var("geen"),
+                    value: lit(Value::Null),
+                })
+                .unwrap(),
+                Value::Bool(false)
+            );
+            // Whether an unknown equals anything, null included, is unknown.
+            let unknown = run(ActionOperation::Equals {
+                subject: var("huur"),
+                value: lit(Value::Null),
+            })
+            .unwrap();
+            assert_eq!(missing_names(&unknown), vec!["huur"]);
+            let both = run(ActionOperation::NotEquals {
+                subject: var("huur"),
+                value: var("partner"),
+            })
+            .unwrap();
+            assert_eq!(missing_names(&both), vec!["huur", "partner_bsn"]);
+            // Untranslatable beats unknown.
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: var("huur"),
+                    value: var("vaag"),
+                })
+                .unwrap(),
+                taint()
+            );
+        }
+
+        #[test]
+        fn arithmetic_propagates_unknown_and_rejects_absence() {
+            let r = resolver();
+            let cases: Vec<(&str, fn(Vec<ActionValue>) -> ActionOperation)> = vec![
+                ("ADD", |values| ActionOperation::Add { values }),
+                ("SUBTRACT", |values| ActionOperation::Subtract { values }),
+                ("MULTIPLY", |values| ActionOperation::Multiply { values }),
+                ("DIVIDE", |values| ActionOperation::Divide { values }),
+                ("MIN/MAX", |values| ActionOperation::Min { values }),
+                ("MIN/MAX", |values| ActionOperation::Max { values }),
+            ];
+            for (name, build) in cases {
+                // Unknown: the union of the unknown operands' facts, once each.
+                let op = build(vec![lit(5i64), var("huur"), var("partner"), var("huur")]);
+                let result = execute_operation(&op, &r, 0).unwrap();
+                assert_eq!(
+                    missing_names(&result),
+                    vec!["huur", "partner_bsn"],
+                    "{name}"
+                );
+                // Untranslatable beats unknown.
+                let op = build(vec![var("huur"), var("vaag")]);
+                assert_eq!(execute_operation(&op, &r, 0).unwrap(), taint(), "{name}");
+                // Null: an absence is not an amount.
+                let op = build(vec![lit(5i64), var("geen")]);
+                absent(execute_operation(&op, &r, 0).unwrap_err(), name);
+            }
+        }
+
+        #[test]
+        fn rounding_propagates_unknown_and_rejects_absence() {
+            let r = resolver();
+            let cases: Vec<(&str, fn(ActionValue) -> ActionOperation)> = vec![
+                ("ROUND", |value| ActionOperation::Round {
+                    value,
+                    precision: 0,
+                }),
+                ("CEIL", |value| ActionOperation::Ceil {
+                    value,
+                    precision: 0,
+                }),
+                ("FLOOR", |value| ActionOperation::Floor {
+                    value,
+                    precision: 0,
+                }),
+            ];
+            for (name, build) in cases {
+                let result = execute_operation(&build(var("huur")), &r, 0).unwrap();
+                assert_eq!(missing_names(&result), vec!["huur"], "{name}");
+                absent(
+                    execute_operation(&build(var("geen")), &r, 0).unwrap_err(),
+                    name,
+                );
+            }
+        }
+
+        #[test]
+        fn and_is_kleene_over_unknown_and_rejects_absence() {
+            let r = resolver();
+            let run = |conditions: Vec<ActionValue>| {
+                execute_operation(&ActionOperation::And { conditions }, &r, 0)
+            };
+            // A definite false decides, whatever the unknown turns out to be.
+            assert_eq!(
+                run(vec![var("huur"), lit(false)]).unwrap(),
+                Value::Bool(false)
+            );
+            // Otherwise unknown, for every unknown operand.
+            assert_eq!(
+                missing_names(&run(vec![lit(true), var("huur"), var("partner")]).unwrap()),
+                vec!["huur", "partner_bsn"]
+            );
+            // Untranslatable beats unknown, a false beats both.
+            assert_eq!(run(vec![var("huur"), var("vaag")]).unwrap(), taint());
+            assert_eq!(
+                run(vec![var("vaag"), var("huur"), lit(false)]).unwrap(),
+                Value::Bool(false)
+            );
+            // An absence is not a verdict.
+            absent(run(vec![lit(true), var("geen")]).unwrap_err(), "AND");
+            // The guard idiom: a false earlier stops the evaluation, so the law
+            // can test for absence before it orders the absent value.
+            let guarded = vec![
+                ActionValue::Operation(Box::new(ActionOperation::NotEquals {
+                    subject: var("geen"),
+                    value: lit(Value::Null),
+                })),
+                ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                    subject: var("geen"),
+                    value: lit(500i64),
+                })),
+            ];
+            assert_eq!(run(guarded).unwrap(), Value::Bool(false));
+        }
+
+        #[test]
+        fn or_is_kleene_over_unknown_and_rejects_absence() {
+            let r = resolver();
+            let run = |conditions: Vec<ActionValue>| {
+                execute_operation(&ActionOperation::Or { conditions }, &r, 0)
+            };
+            assert_eq!(
+                run(vec![var("huur"), lit(true)]).unwrap(),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                missing_names(&run(vec![lit(false), var("partner"), var("huur")]).unwrap()),
+                vec!["partner_bsn", "huur"]
+            );
+            assert_eq!(run(vec![var("huur"), var("vaag")]).unwrap(), taint());
+            assert_eq!(
+                run(vec![var("vaag"), var("huur"), lit(true)]).unwrap(),
+                Value::Bool(true)
+            );
+            absent(run(vec![lit(false), var("geen")]).unwrap_err(), "OR");
+            // The guard idiom for OR: a true earlier stops the evaluation.
+            let guarded = vec![
+                ActionValue::Operation(Box::new(ActionOperation::Equals {
+                    subject: var("geen"),
+                    value: lit(Value::Null),
+                })),
+                ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                    subject: var("geen"),
+                    value: lit(500i64),
+                })),
+            ];
+            assert_eq!(run(guarded).unwrap(), Value::Bool(true));
+        }
+
+        #[test]
+        fn not_propagates_unknown_and_rejects_absence() {
+            let r = resolver();
+            let result =
+                execute_operation(&ActionOperation::Not { value: var("huur") }, &r, 0).unwrap();
+            assert_eq!(missing_names(&result), vec!["huur"]);
+            assert_eq!(
+                execute_operation(&ActionOperation::Not { value: var("vaag") }, &r, 0).unwrap(),
+                taint()
+            );
+            absent(
+                execute_operation(&ActionOperation::Not { value: var("geen") }, &r, 0).unwrap_err(),
+                "NOT",
+            );
+        }
+
+        #[test]
+        fn if_with_an_unknown_condition_is_unknown_and_evaluates_nothing_else() {
+            let r = resolver();
+            // The `then`, the later case and the default all reference a variable
+            // that does not exist: evaluating any of them would be an error, so
+            // the unknown result proves none of them was evaluated.
+            let op = ActionOperation::If {
+                cases: vec![
+                    Case {
+                        when: lit(false),
+                        then: var("bestaat_niet"),
+                    },
+                    Case {
+                        when: var("huur"),
+                        then: var("bestaat_niet"),
+                    },
+                    Case {
+                        when: var("bestaat_niet"),
+                        then: lit("later"),
+                    },
+                ],
+                default: Some(var("bestaat_niet")),
+            };
+            let result = execute_operation(&op, &r, 0).unwrap();
+            assert_eq!(missing_names(&result), vec!["huur"]);
+            // An earlier match still wins over a later unknown condition.
+            let earlier = ActionOperation::If {
+                cases: vec![
+                    Case {
+                        when: lit(true),
+                        then: lit("eerst"),
+                    },
+                    Case {
+                        when: var("huur"),
+                        then: lit("ja"),
+                    },
+                ],
+                default: Some(lit("nee")),
+            };
+            assert_eq!(
+                execute_operation(&earlier, &r, 0).unwrap(),
+                Value::String("eerst".to_string())
+            );
+            // An absent condition is an error, not a fall-through to the default.
+            let absent_case = ActionOperation::If {
+                cases: vec![Case {
+                    when: var("geen"),
+                    then: lit("ja"),
+                }],
+                default: Some(lit("nee")),
+            };
+            absent(execute_operation(&absent_case, &r, 0).unwrap_err(), "IF");
+        }
+
+        #[test]
+        fn null_checks_answer_on_absence_and_are_unknown_on_unknown() {
+            let r = resolver();
+            let is_null = |subject: ActionValue| {
+                execute_operation(&ActionOperation::IsNull { subject }, &r, 0).unwrap()
+            };
+            let not_null = |subject: ActionValue| {
+                execute_operation(&ActionOperation::NotNull { subject }, &r, 0).unwrap()
+            };
+            assert_eq!(is_null(var("geen")), Value::Bool(true));
+            assert_eq!(not_null(var("geen")), Value::Bool(false));
+            assert_eq!(is_null(lit(0i64)), Value::Bool(false));
+            // Whether the register holds a value is exactly the fact nobody has.
+            assert_eq!(missing_names(&is_null(var("huur"))), vec!["huur"]);
+            assert_eq!(missing_names(&not_null(var("huur"))), vec!["huur"]);
+            assert_eq!(is_null(var("vaag")), taint());
+        }
+
+        #[test]
+        fn membership_matches_definitely_or_stays_unknown() {
+            let r = resolver();
+            let is_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::In {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            let not_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::NotIn {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            // A definite element that matches settles it, unknown elements or not.
+            assert_eq!(
+                is_in(lit(2i64), vec![var("huur"), lit(2i64)]),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                not_in(lit(2i64), vec![var("huur"), lit(2i64)]),
+                Value::Bool(false)
+            );
+            // No definite match and an unknown in play: unknown, for those facts.
+            assert_eq!(
+                missing_names(&is_in(var("huur"), vec![lit(1i64), lit(2i64)])),
+                vec!["huur"]
+            );
+            assert_eq!(
+                missing_names(&not_in(lit(3i64), vec![lit(1i64), var("partner")])),
+                vec!["partner_bsn"]
+            );
+            // Two unknowns are not a match for each other.
+            assert_eq!(
+                missing_names(&is_in(var("huur"), vec![var("partner")])),
+                vec!["huur", "partner_bsn"]
+            );
+            // No unknown anywhere: a plain false / true.
+            assert_eq!(is_in(lit(3i64), vec![lit(1i64)]), Value::Bool(false));
+            assert_eq!(not_in(lit(3i64), vec![lit(1i64)]), Value::Bool(true));
+            // Null is structural, as for EQUALS.
+            assert_eq!(
+                is_in(var("geen"), vec![lit(Value::Null)]),
+                Value::Bool(true)
+            );
+            assert_eq!(is_in(var("geen"), vec![lit(1i64)]), Value::Bool(false));
+        }
+
+        #[test]
+        fn list_may_hold_unknown_and_absent_elements() {
+            let r = resolver();
+            let op = ActionOperation::List {
+                items: vec![lit(1i64), var("huur"), var("geen")],
+            };
+            assert_eq!(
+                execute_operation(&op, &r, 0).unwrap(),
+                Value::Array(vec![Value::Int(1), unknown_fact("huur"), Value::Null])
+            );
+        }
+
+        #[test]
+        fn date_operations_propagate_unknown_and_reject_absence() {
+            let r = resolver().with_var("datum", "2025-01-01");
+            let cases: Vec<(&str, fn(ActionValue) -> ActionOperation)> = vec![
+                ("AGE", |v| ActionOperation::Age {
+                    date_of_birth: v,
+                    reference_date: lit("2025-01-01"),
+                }),
+                ("DATE_ADD", |v| ActionOperation::DateAdd {
+                    date: v,
+                    years: None,
+                    months: None,
+                    weeks: None,
+                    days: None,
+                }),
+                ("DATE_ADD", |v| ActionOperation::DateAdd {
+                    date: lit("2025-01-01"),
+                    years: None,
+                    months: Some(v),
+                    weeks: None,
+                    days: None,
+                }),
+                ("DATE", |v| ActionOperation::Date {
+                    year: lit(2025i64),
+                    month: v,
+                    day: lit(1i64),
+                }),
+                ("DAY_OF_WEEK", |v| ActionOperation::DayOfWeek { date: v }),
+                ("DATE_DIFF", |v| ActionOperation::DateDiff {
+                    from: lit("2025-01-01"),
+                    to: v,
+                    unit: lit("days"),
+                }),
+                ("DATE_DIFF", |v| ActionOperation::DateDiff {
+                    from: lit("2025-01-01"),
+                    to: lit("2025-02-01"),
+                    unit: v,
+                }),
+            ];
+            for (name, build) in cases {
+                let result = execute_operation(&build(var("huur")), &r, 0).unwrap();
+                assert_eq!(missing_names(&result), vec!["huur"], "{name}");
+                absent(
+                    execute_operation(&build(var("geen")), &r, 0).unwrap_err(),
+                    name,
+                );
+            }
+        }
+
+        #[test]
+        fn the_trace_says_why_a_result_is_unknown() {
+            // The dispatcher normally overwrites a handler's message with
+            // "Compute OP(...) = value"; for an unknown result the handler's
+            // message, which names the missing facts, is what the reader needs.
+            let mut context = RuleContext::new(BTreeMap::new(), "2025-01-01").unwrap();
+            context.set_local("huur", unknown_fact("huur"));
+            let trace = std::rc::Rc::new(std::cell::RefCell::new(
+                crate::trace::TraceBuilder::new_untimed(),
+            ));
+            context.set_trace(std::rc::Rc::clone(&trace));
+            trace.borrow_mut().push("root", PathNodeType::Action);
+            let op = ActionOperation::Add {
+                values: vec![lit(100i64), var("huur")],
+            };
+            execute_operation(&op, &context, 0).unwrap();
+            let root = trace.borrow_mut().pop().unwrap();
+            let node = root.children.into_iter().next().unwrap();
+            assert_eq!(
+                node.message.as_deref(),
+                Some("ADD with an unknown operand: unknown (missing: testwet.huur)")
             );
         }
     }

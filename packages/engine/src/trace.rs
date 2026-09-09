@@ -573,7 +573,17 @@ fn format_value_compact(value: &Value) -> String {
         Value::Untranslatable { article, .. } => {
             format!("UNTRANSLATABLE(art. {})", article)
         }
+        Value::Unknown(missing) => format!("UNKNOWN({})", missing_names(missing)),
     }
+}
+
+/// The names of the facts an Unknown misses, comma-separated (RFC-036).
+fn missing_names(missing: &[crate::types::MissingFact]) -> String {
+    missing
+        .iter()
+        .map(|m| m.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Format a Value for box-drawing trace output.
@@ -614,6 +624,7 @@ fn format_value_display(value: &Value) -> String {
         Value::Untranslatable { article, construct } => {
             format!("UNTRANSLATABLE(art. {}: {})", article, construct)
         }
+        Value::Unknown(missing) => format!("Unknown({})", missing_names(missing)),
     }
 }
 

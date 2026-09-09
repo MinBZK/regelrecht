@@ -40,6 +40,28 @@ fn records_use_the_header_row() {
 }
 
 #[test]
+fn an_empty_cell_leaves_the_key_out_of_the_record() {
+    // RFC-036: an empty cell is "nobody has this fact" and the engine resolves
+    // the input as unknown; the literal `null` is "the register says none" and
+    // stays a Null value. A whitespace-only cell counts as empty.
+    let records = rows_to_records(
+        &rows(&[
+            &["bsn", "huur", "partner_bsn", "beschikking"],
+            &["1", "", "null", "   "],
+        ]),
+        convert_gherkin_value,
+    );
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].get("bsn"), Some(&Value::Int(1)));
+    assert!(!records[0].contains_key("huur"));
+    assert_eq!(records[0].get("partner_bsn"), Some(&Value::Null));
+    assert!(!records[0].contains_key("beschikking"));
+    // The cell converter itself is unchanged: on its own, "" is still Null.
+    assert_eq!(convert_gherkin_value(""), Value::Null);
+}
+
+#[test]
 #[should_panic(expected = "data table row 1 has 2 cells, header row has 3")]
 fn a_short_row_is_rejected_instead_of_dropping_a_column() {
     rows_to_records(

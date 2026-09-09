@@ -58,6 +58,17 @@ pub enum EngineError {
     #[error("Division by zero")]
     DivisionByZero,
 
+    /// A law used an absent value (null) where it needs a number, date or truth
+    /// value (RFC-036). A legal text never treats "geen" as an amount or a
+    /// verdict without saying so; the law has to test for absence first
+    /// (`EQUALS … null`). Unknown (a fact nobody has) is the other kind of
+    /// nothing and propagates instead of erroring.
+    #[error(
+        "{operation}: operand is null (absent); a law does not calculate with or decide on \
+         'geen' without saying so — test for absence first (EQUALS … null)"
+    )]
+    AbsentOperand { operation: String },
+
     /// Invalid URI format
     #[error("Invalid URI: {0}")]
     InvalidUri(String),
@@ -211,6 +222,15 @@ pub enum ExternalError {
     #[error("Division by zero")]
     DivisionByZero,
 
+    /// A law used an absent value (null) where it needs a number, date or truth
+    /// value (RFC-036). The operation name is safe to expose: it names a construct
+    /// in the law, not internal state.
+    #[error(
+        "{operation}: operand is null (absent); a law does not calculate with or decide on \
+         'geen' without saying so — test for absence first (EQUALS … null)"
+    )]
+    AbsentOperand { operation: String },
+
     /// Invalid URI format
     #[error("Invalid URI format")]
     InvalidUri,
@@ -306,6 +326,7 @@ impl From<EngineError> for ExternalError {
                 right,
             },
             EngineError::DivisionByZero => ExternalError::DivisionByZero,
+            EngineError::AbsentOperand { operation } => ExternalError::AbsentOperand { operation },
             EngineError::InvalidUri(_) => ExternalError::InvalidUri,
             EngineError::LawNotFound(id) => ExternalError::LawNotFound(id),
             // RFC-019 §3: the validity facts are public legal data, not internal
@@ -374,6 +395,22 @@ mod tests {
             err.to_string(),
             "Type mismatch: expected number, got string"
         );
+    }
+
+    #[test]
+    fn test_absent_operand_names_the_operation_and_the_remedy() {
+        let err = EngineError::AbsentOperand {
+            operation: "GREATER_THAN".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.starts_with("GREATER_THAN: operand is null (absent)"),
+            "{msg}"
+        );
+        assert!(msg.contains("EQUALS … null"), "{msg}");
+        // The operation name is part of the law, so the external error keeps it.
+        let external: ExternalError = err.into();
+        assert_eq!(external.to_string(), msg);
     }
 
     #[test]
