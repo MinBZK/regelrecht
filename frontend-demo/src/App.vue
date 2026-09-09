@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
 import { useDemo } from './store/demoStore.js';
@@ -14,15 +14,33 @@ const router = useRouter();
 const demo = useDemo();
 const { ready, loadError, profile, profileKey, corpus, state } = demo;
 
+// The design system derives its scroll mode (document vs. per-pane) from the
+// outermost split view once, at connect. Ours arrives later (the tab views are
+// lazy routes), so the app-view settles on "document scrolls" and the pane
+// headers stop sticking. Re-deriving after every route change puts it right;
+// it is a design-system timing gap, not something the demo should own.
+const appView = ref(null);
+function refreshScrollMode(attempt = 0) {
+  nextTick(() => {
+    const view = appView.value;
+    view?._evaluateScrollMode?.();
+    // The split view measures itself a frame or two after it upgrades; retry
+    // until the derived mode is in, then stop.
+    if (view && view._derivedMode !== 'nested' && attempt < 6) setTimeout(() => refreshScrollMode(attempt + 1), 100 * (attempt + 1));
+  });
+}
 onMounted(() => {
   demo.boot().catch(() => {});
+  refreshScrollMode();
 });
+router.afterEach(refreshScrollMode);
 
 const tabs = computed(() => [
   { name: 'presentatie', text: 'Presentatie', icon: 'display', to: '/' },
   { name: 'wetten', text: 'Wetten', icon: 'books', to: '/wetten' },
   { name: 'graaf', text: 'Graaf', icon: 'centralized-network', to: '/graaf' },
   { name: 'scenarios', text: "Scenario's", icon: 'checklist', to: '/scenarios' },
+  { name: 'simulatie', text: 'Simulatie', icon: 'chart-x-y-axis-line', to: '/simulatie' },
   { name: 'portaal', text: profile.value?.portal_tab_label ?? 'Burger.nl', icon: 'person', to: '/portaal' },
   { name: 'zaaksysteem', text: 'Zaaksysteem', icon: 'inbox', to: '/zaaksysteem' },
 ]);
@@ -72,7 +90,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
 </script>
 
 <template>
-  <nldd-app-view background="tinted">
+  <nldd-app-view ref="appView" background="tinted">
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" background="base">
         <nldd-toolbar size="md" label="Werkruimte">

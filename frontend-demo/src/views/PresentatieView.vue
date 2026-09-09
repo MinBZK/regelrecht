@@ -80,7 +80,7 @@ function emphasize(line) {
 
 <template>
   <nldd-page>
-    <nldd-full-bleed-section height="100%" padding-block="0">
+    <nldd-full-bleed-section height="100%" width="full" padding-block="0">
       <div class="slide-stage" @click="next">
         <div v-for="(slide, i) in slides" :key="i" v-show="i === current" class="slide">
           <template v-if="slide.kind === 'title'">
@@ -118,12 +118,12 @@ function emphasize(line) {
             </nldd-title>
           </template>
         </div>
+        <div class="slide-controls" @click.stop>
+          <nldd-icon-button size="sm" variant="neutral-transparent" icon="chevron-left" text="Vorige" :disabled="current === 0 || undefined" @click="prev"></nldd-icon-button>
+          <nldd-tag size="sm" :text="`${current + 1} / ${slides.length}`"></nldd-tag>
+          <nldd-icon-button size="sm" variant="neutral-transparent" :icon="current === slides.length - 1 ? 'arrow-right' : 'chevron-right'" :text="current === slides.length - 1 ? 'Naar de wetten' : 'Volgende'" @click="next"></nldd-icon-button>
+        </div>
       </div>
     </nldd-full-bleed-section>
-    <nldd-container slot="footer" padding="12" layout="row" horizontal-alignment="center" vertical-alignment="center" gap="12">
-      <nldd-icon-button size="sm" variant="neutral-transparent" icon="chevron-left" text="Vorige" :disabled="current === 0 || undefined" @click="prev"></nldd-icon-button>
-      <nldd-tag size="sm" :text="`${current + 1} / ${slides.length}`"></nldd-tag>
-      <nldd-icon-button size="sm" variant="neutral-transparent" :icon="current === slides.length - 1 ? 'arrow-right' : 'chevron-right'" :text="current === slides.length - 1 ? 'Naar de wetten' : 'Volgende'" @click="next"></nldd-icon-button>
-    </nldd-container>
   </nldd-page>
 </template>
