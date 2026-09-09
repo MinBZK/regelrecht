@@ -9,11 +9,50 @@ categorie: bar
 capability: basis
 capaciteit: juridisch specialist / PhD
 toelichting: >-
+  **Waarom dit werkpakket**\
+
+  Zolang de juridische status van interpretatieve keuzes in de specificatie
+  onbepaald blijft, ontstaan drie risico's die zich niet in het onderzoek maar
+  in de uitvoeringspraktijk manifesteren.
+
+
+  Ten eerste ontbreekt een aangewezen correctieroute wanneer een keuze
+  naderhand onjuist blijkt. Bij de WIA-uitkeringen constateerde de Algemene
+  Rekenkamer dat wettelijke regels onjuist waren geïmplementeerd in de gebruikte
+  ICT-toepassingen en dat een systeem niet was aangepast aan wetswijzigingen;
+  structurele samenwerking tussen uitvoeringsmedewerkers, juristen en
+  IT-professionals en een proces voor validatie van gemaakte keuzes bleken geen
+  zichtbaar onderdeel van het kwaliteitsmanagementsysteem (Lokin, _Digitaal
+  disciplineren anno 2026_, § 3).
+
+
+  Ten tweede is het niet waarschijnlijk dat juridische afdelingen van potentiële
+  deelnemende organisaties instemmen met het uitbesteden van hun
+  uitvoeringslogica aan een gedeelde specificatie zolang onduidelijk is wie
+  verantwoordelijk is wanneer die specificatie een fout bevat. De vraag is
+  daarmee ook een adoptievoorwaarde.
+
+
+  Ten derde bestaat het risico dat de aanpak het aantal interpretatieve keuzes
+  wel verkleint, maar de resterende keuzes concentreert in één specificatie
+  zonder dat daar een juridisch kanaal tegenover staat dat publicatie en
+  toetsing waarborgt. Het probleem van onzichtbare interpretatie verplaatst zich
+  dan van veel systemen naar één, in plaats van dat het wordt opgelost.
+
+
+  Het wetsvoorstel versterking waarborgfunctie Awb, waarin een specifieke
+  beleidsregelplicht voor digitale uitvoering een plek zou kunnen krijgen, ligt
+  op dit moment nog open (Lokin, _Digitaal disciplineren anno 2026_, § 5.3.1).
+  De uitkomst van dit werkpakket kan als input dienen voor die lopende
+  wetgevingsprocedure.
+
+
+  **De specificatie**\
+
   De specificatie lijkt op onderdelen op een beleidsregel maar wijkt daar ook op
   wezenlijke punten vanaf. Met name omdat het uitvoerbaar, samenstelbaar en via
   attestatie aan uitvoering gebonden is. (section 4.2, _Rules as Executed_, 12
   July 2026)
-
 
 
   **De juridische kwalificatie en rechtmatigheid van keuzes**\
