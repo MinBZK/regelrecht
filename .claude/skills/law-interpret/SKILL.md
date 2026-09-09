@@ -63,7 +63,7 @@ version. Read it from the `schema/latest` symlink rather than from this page, wh
 goes stale on every bump:
 
 ```bash
-readlink schema/latest        # e.g. v0.5.7
+readlink schema/latest        # e.g. v0.5.8
 ```
 
 If the file points to an older version (e.g. v0.3.2, v0.4.0, or v0.5.0), update it

@@ -4181,6 +4181,7 @@ dependencies = [
  "futures",
  "gherkin",
  "hex",
+ "js-sys",
  "jsonschema",
  "opentelemetry",
  "opentelemetry-otlp",
