@@ -60,7 +60,7 @@ case_seeds:
     result:
       komt_in_aanmerking_voor_geluidsontheffing: true
 profiles:
-  '100000001':
+  '999100001':
     name: Merijn van der Meer
     description: >-
       ZZP'er in de thuiszorg met laag inkomen, alleenstaande ouder met twee jonge kinderen
@@ -74,7 +74,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             geboortedatum: '1989-05-15'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -86,35 +86,35 @@ profiles:
             has_fixed_address: true
             household_size: 3
         relaties:
-          - bsn: '100000001'
+          - bsn: '999100001'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
             kinderen:
-              - bsn: '200000001'
+              - bsn: '999200001'
                 geboortedatum: '2020-01-01'
                 naam: Kind 1
-              - bsn: '200000002'
+              - bsn: '999200002'
                 geboortedatum: '2022-01-01'
                 naam: Kind 2
         verblijfplaats:
-          - bsn: '100000001'
+          - bsn: '999100001'
             straat: Meeuwenlaan
             huisnummer: '28'
             postcode: 1021HS
             woonplaats: Amsterdam
             type: WOONADRES
         children_data:
-          - bsn: '100000001'
+          - bsn: '999100001'
             kinderen:
               - geboortedatum: '2020-01-01'
-                kind_bsn: '200000001'
+                kind_bsn: '999200001'
               - geboortedatum: '2022-01-01'
                 zorgbehoefte: true
-                kind_bsn: '200000002'
+                kind_bsn: '999200002'
         gezag_relaties:
-          - bsn_gezagdrager: '100000001'
-            bsn_kind: '200000001'
+          - bsn_gezagdrager: '999100001'
+            bsn_kind: '999200001'
             naam_kind: Kind 1 van der Meer
             geboortedatum_kind: '2020-01-01'
             type_gezag: OUDERLIJK_GEZAG
@@ -122,8 +122,8 @@ profiles:
             datum_einde: null
             status: ACTIEF
             heeft_handlichting: false
-          - bsn_gezagdrager: '100000001'
-            bsn_kind: '200000002'
+          - bsn_gezagdrager: '999100001'
+            bsn_kind: '999200002'
             naam_kind: Kind 2 van der Meer
             geboortedatum_kind: '2022-01-01'
             type_gezag: OUDERLIJK_GEZAG
@@ -133,87 +133,87 @@ profiles:
             heeft_handlichting: false
       BELASTINGDIENST:
         box1:
-          - bsn: '100000001'
+          - bsn: '999100001'
             loon_uit_dienstbetrekking: 0
             uitkeringen_en_pensioenen: 0
             winst_uit_onderneming: 2500000
             resultaat_overige_werkzaamheden: 0
             eigen_woning: -85000
         box2:
-          - bsn: '100000001'
+          - bsn: '999100001'
             reguliere_voordelen: 0
             vervreemdingsvoordelen: 0
         box3:
-          - bsn: '100000001'
+          - bsn: '999100001'
             spaargeld: 500000
             beleggingen: 0
             onroerend_goed: 0
             schulden: 0
             buitenlands_inkomen: 0
         monthly_income:
-          - bsn: '100000001'
+          - bsn: '999100001'
             bedrag: 208333
         maandelijks_inkomen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             bedrag: 201250
         assets:
-          - bsn: '100000001'
+          - bsn: '999100001'
             bedrag: 500000
         bezittingen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             bedrag: 500000
         business_income:
-          - bsn: '100000001'
+          - bsn: '999100001'
             bedrag: 208333
         bedrijfsinkomen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             bedrag: 208333
         buitenlands_inkomen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             bedrag: 0
             land: GEEN
         aftrekposten:
-          - bsn: '100000001'
+          - bsn: '999100001'
             persoonsgebonden_aftrek: 320000
         belastingdienst_vermogen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             vermogen: 500000
       KVK:
         inschrijvingen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             kvk_nummer: '12345678'
             handelsnaam: Thuiszorg Van der Meer
             rechtsvorm: EENMANSZAAK
             status: ACTIEF
             activiteit: Thuiszorg
-          - bsn: '100000001'
+          - bsn: '999100001'
             kvk_nummer: '99001122'
             handelsnaam: Zorggroep Nederland VOF
             rechtsvorm: VOF
             status: ACTIEF
             activiteit: Zorgdiensten
-          - bsn: '100000001'
+          - bsn: '999100001'
             kvk_nummer: '88776655'
             handelsnaam: Healthcare Holdings BV
             rechtsvorm: BV
             status: ACTIEF
             activiteit: Holding
         functionarissen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             kvk_nummer: '12345678'
             handelsnaam: Thuiszorg Van der Meer
             rechtsvorm: EENMANSZAAK
             status: ACTIEF
             functie: EIGENAAR
             bevoegdheid: VOLLEDIG
-          - bsn: '100000001'
+          - bsn: '999100001'
             kvk_nummer: '99001122'
             handelsnaam: Zorggroep Nederland VOF
             rechtsvorm: VOF
             status: ACTIEF
             functie: VENNOOT
             bevoegdheid: BEPERKT
-          - bsn: '100000001'
+          - bsn: '999100001'
             kvk_nummer: '88776655'
             handelsnaam: Healthcare Holdings BV
             rechtsvorm: BV
@@ -221,73 +221,73 @@ profiles:
             functie: COMMISSARIS
             bevoegdheid: GEEN
         is_entrepreneur:
-          - bsn: '100000001'
+          - bsn: '999100001'
             waarde: true
       UWV:
         arbeidsverhoudingen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             dienstverband_type: GEEN
             verzekerd_ww: false
             verzekerd_wia: false
         uwv_toetsingsinkomen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             toetsingsinkomen: 2415000
         uwv_werkgegevens:
-          - bsn: '100000001'
+          - bsn: '999100001'
             gemiddeld_uren_per_week: 0.0
             huidige_uren_per_week: 0.0
             gewerkte_weken_36: 0
             arbeidsverleden_jaren: 0
             jaarloon: 0
         ziektewet:
-          - bsn: '100000001'
+          - bsn: '999100001'
             heeft_ziektewet_uitkering: false
         WIA:
-          - bsn: '100000001'
+          - bsn: '999100001'
             heeft_wia_uitkering: false
       RVZ:
         verzekeringen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             polis_status: ACTIEF
             verdrag_status: GEEN
             zorg_type: BASIS
       DUO:
         inschrijvingen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             onderwijssoort: GEEN
         studiefinanciering:
-          - bsn: '100000001'
+          - bsn: '999100001'
             ontvangt_studiefinanciering: false
         is_student:
-          - bsn: '100000001'
+          - bsn: '999100001'
             waarde: false
         receives_study_grant:
-          - bsn: '100000001'
+          - bsn: '999100001'
             waarde: false
       DJI:
         detenties:
-          - bsn: '100000001'
+          - bsn: '999100001'
             is_gedetineerd: false
         is_detainee:
-          - bsn: '100000001'
+          - bsn: '999100001'
             waarde: false
         detentie:
-          - bsn: '100000001'
+          - bsn: '999100001'
             is_gedetineerd: false
       GEMEENTE_AMSTERDAM:
         werk_en_re_integratie:
-          - bsn: '100000001'
+          - bsn: '999100001'
             arbeidsvermogen: VOLLEDIG
             re_integratie_traject: Ondernemerscoaching
       SVB:
         retirement_age:
-          - bsn: '100000001'
+          - bsn: '999100001'
             leeftijd: 68
         algemene_ouderdomswet_gegevens:
-          - bsn: '100000001'
+          - bsn: '999100001'
             pensioenleeftijd: 68
         algemene_kinderbijslagwet:
-          - ouder_bsn: '100000001'
+          - ouder_bsn: '999100001'
             aantal_kinderen: 2
             kinderen_leeftijden:
               - 5
@@ -295,18 +295,18 @@ profiles:
             ontvangt_kinderbijslag: true
       IND:
         verblijfsvergunningen:
-          - bsn: '100000001'
+          - bsn: '999100001'
             type: PERMANENT
             status: VERLEEND
         residence_permit_type:
-          - bsn: '100000001'
+          - bsn: '999100001'
             type: PERMANENT
         vreemdelingenwet:
-          - bsn: '100000001'
+          - bsn: '999100001'
             verblijfsvergunning_type: null
       SZW:
         bbz_aanvraag:
-          - bsn: '100000001'
+          - bsn: '999100001'
             type_zelfstandige: GEVESTIGD
             bedrijf_levensvatbaar: true
             jaren_ondernemerschap: 3
@@ -1220,7 +1220,7 @@ profiles:
         business_income:
           - bsn: '999991772'
             bedrag: 0
-  '100000002':
+  '999100002':
     name: Maria Rodriguez
     description: >-
       Alleenstaande moeder, parttime werkend in de horeca met onregelmatige uren, vraagt alleen
@@ -1233,7 +1233,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             geboortedatum: '1987-08-10'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -1245,32 +1245,32 @@ profiles:
             has_fixed_address: true
             household_size: 3
         relaties:
-          - bsn: '100000002'
+          - bsn: '999100002'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
             kinderen:
-              - bsn: '200000003'
+              - bsn: '999200003'
                 geboortedatum: '2014-05-15'
-              - bsn: '200000004'
+              - bsn: '999200004'
                 geboortedatum: '2017-03-22'
         verblijfplaats:
-          - bsn: '100000002'
+          - bsn: '999100002'
             straat: Javastraat
             huisnummer: '54'
             postcode: 1094HK
             woonplaats: Amsterdam
             type: WOONADRES
         children_data:
-          - bsn: '100000002'
+          - bsn: '999100002'
             kinderen:
               - geboortedatum: '2014-05-15'
-                kind_bsn: '200000003'
+                kind_bsn: '999200003'
               - geboortedatum: '2017-03-22'
-                kind_bsn: '200000004'
+                kind_bsn: '999200004'
         gezag_relaties:
-          - bsn_gezagdrager: '100000002'
-            bsn_kind: '200000003'
+          - bsn_gezagdrager: '999100002'
+            bsn_kind: '999200003'
             naam_kind: Kind Rodriguez 1
             geboortedatum_kind: '2014-05-15'
             type_gezag: OUDERLIJK_GEZAG
@@ -1278,8 +1278,8 @@ profiles:
             datum_einde: null
             status: ACTIEF
             heeft_handlichting: false
-          - bsn_gezagdrager: '100000002'
-            bsn_kind: '200000004'
+          - bsn_gezagdrager: '999100002'
+            bsn_kind: '999200004'
             naam_kind: Kind Rodriguez 2
             geboortedatum_kind: '2017-03-22'
             type_gezag: OUDERLIJK_GEZAG
@@ -1289,114 +1289,114 @@ profiles:
             heeft_handlichting: false
       BELASTINGDIENST:
         box1:
-          - bsn: '100000002'
+          - bsn: '999100002'
             loon_uit_dienstbetrekking: 1900000
             uitkeringen_en_pensioenen: 0
             winst_uit_onderneming: 0
             resultaat_overige_werkzaamheden: 0
             eigen_woning: 0
         box2:
-          - bsn: '100000002'
+          - bsn: '999100002'
             reguliere_voordelen: 0
             vervreemdingsvoordelen: 0
         box3:
-          - bsn: '100000002'
+          - bsn: '999100002'
             spaargeld: 230000
             beleggingen: 0
             onroerend_goed: 0
             schulden: 0
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             bedrag: 0
             land: GEEN
         aftrekposten:
-          - bsn: '100000002'
+          - bsn: '999100002'
             persoonsgebonden_aftrek: 120000
         monthly_income:
-          - bsn: '100000002'
+          - bsn: '999100002'
             bedrag: 158333
         maandelijks_inkomen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             bedrag: 158333
         assets:
-          - bsn: '100000002'
+          - bsn: '999100002'
             bedrag: 230000
         business_income:
-          - bsn: '100000002'
+          - bsn: '999100002'
             bedrag: 0
         bedrijfsinkomen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             bedrag: 0
         belastingdienst_vermogen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             vermogen: 230000
       UWV:
         arbeidsverhoudingen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             dienstverband_type: BEPAALDE_TIJD
             dienstverband_uren: 16
             verzekerd_ww: true
             verzekerd_wia: true
         uwv_toetsingsinkomen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             toetsingsinkomen: 1900000
         uwv_werkgegevens:
-          - bsn: '100000002'
+          - bsn: '999100002'
             gemiddeld_uren_per_week: 16.0
             huidige_uren_per_week: 16.0
             gewerkte_weken_36: 36
             arbeidsverleden_jaren: 6
             jaarloon: 1900000
         ziektewet:
-          - bsn: '100000002'
+          - bsn: '999100002'
             heeft_ziektewet_uitkering: false
         WIA:
-          - bsn: '100000002'
+          - bsn: '999100002'
             heeft_wia_uitkering: false
       RVZ:
         verzekeringen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             polis_status: ACTIEF
             verdrag_status: GEEN
             zorg_type: BASIS
       DUO:
         inschrijvingen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             onderwijssoort: GEEN
         studiefinanciering:
-          - bsn: '100000002'
+          - bsn: '999100002'
             ontvangt_studiefinanciering: false
         is_student:
-          - bsn: '100000002'
+          - bsn: '999100002'
             waarde: false
         receives_study_grant:
-          - bsn: '100000002'
+          - bsn: '999100002'
             waarde: false
       DJI:
         detenties:
-          - bsn: '100000002'
+          - bsn: '999100002'
             is_gedetineerd: false
         is_detainee:
-          - bsn: '100000002'
+          - bsn: '999100002'
             waarde: false
         detentie:
-          - bsn: '100000002'
+          - bsn: '999100002'
             is_gedetineerd: false
       GEMEENTE_AMSTERDAM:
         werk_en_re_integratie:
-          - bsn: '100000002'
+          - bsn: '999100002'
             arbeidsvermogen: VOLLEDIG
             re_integratie_traject: Werkstage
       SVB:
         retirement_age:
-          - bsn: '100000002'
+          - bsn: '999100002'
             leeftijd: 68
         algemene_ouderdomswet_gegevens:
-          - bsn: '100000002'
+          - bsn: '999100002'
             pensioenleeftijd: 68
         algemene_kinderbijslagwet:
-          - ouder_bsn: '100000002'
+          - ouder_bsn: '999100002'
             aantal_kinderen: 2
             kinderen_leeftijden:
               - 11
@@ -1404,23 +1404,23 @@ profiles:
             ontvangt_kinderbijslag: true
       IND:
         verblijfsvergunningen:
-          - bsn: '100000002'
+          - bsn: '999100002'
             type: PERMANENT
             status: VERLEEND
         residence_permit_type:
-          - bsn: '100000002'
+          - bsn: '999100002'
             type: PERMANENT
         vreemdelingenwet:
-          - bsn: '100000002'
+          - bsn: '999100002'
             verblijfsvergunning_type: null
       KVK:
         is_entrepreneur:
-          - bsn: '100000002'
+          - bsn: '999100002'
             waarde: false
         is_active_entrepreneur:
-          - bsn: '100000002'
+          - bsn: '999100002'
             waarde: false
-  '100000003':
+  '999100003':
     name: Omar Yilmaz
     description: >-
       ZZP'er in de bouwsector met sterk fluctuerend inkomen, moeite met administratie en lage
@@ -1434,7 +1434,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             geboortedatum: '1983-11-22'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -1446,28 +1446,28 @@ profiles:
             household_size: 3
             has_partner: true
         relaties:
-          - bsn: '100000003'
+          - bsn: '999100003'
             partnerschap_type: HUWELIJK
-            partner_bsn: '100000013'
+            partner_bsn: '999100013'
             has_partner: true
             kinderen:
-              - bsn: '200000005'
+              - bsn: '999200005'
                 geboortedatum: '2011-08-30'
         verblijfplaats:
-          - bsn: '100000003'
+          - bsn: '999100003'
             straat: Kinkerstraat
             huisnummer: '112'
             postcode: 1053ED
             woonplaats: Amsterdam
             type: WOONADRES
         children_data:
-          - bsn: '100000003'
+          - bsn: '999100003'
             kinderen:
               - geboortedatum: '2011-08-30'
-                kind_bsn: '200000005'
+                kind_bsn: '999200005'
         gezag_relaties:
-          - bsn_gezagdrager: '100000003'
-            bsn_kind: '200000005'
+          - bsn_gezagdrager: '999100003'
+            bsn_kind: '999200005'
             naam_kind: Elif Yilmaz
             geboortedatum_kind: '2011-08-30'
             type_gezag: GEZAMENLIJK_GEZAG
@@ -1477,68 +1477,68 @@ profiles:
             heeft_handlichting: false
       BELASTINGDIENST:
         box1:
-          - bsn: '100000003'
+          - bsn: '999100003'
             loon_uit_dienstbetrekking: 0
             uitkeringen_en_pensioenen: 0
             winst_uit_onderneming: 1250000
             resultaat_overige_werkzaamheden: 0
             eigen_woning: -95000
         box2:
-          - bsn: '100000003'
+          - bsn: '999100003'
             reguliere_voordelen: 0
             vervreemdingsvoordelen: 0
         box3:
-          - bsn: '100000003'
+          - bsn: '999100003'
             spaargeld: 120000
             beleggingen: 0
             onroerend_goed: 0
             schulden: 850000
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             bedrag: 0
             land: GEEN
         aftrekposten:
-          - bsn: '100000003'
+          - bsn: '999100003'
             persoonsgebonden_aftrek: 450000
         monthly_income:
-          - bsn: '100000003'
+          - bsn: '999100003'
             bedrag: 104167
         maandelijks_inkomen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             bedrag: 0
         assets:
-          - bsn: '100000003'
+          - bsn: '999100003'
             bedrag: 120000
         business_income:
-          - bsn: '100000003'
+          - bsn: '999100003'
             bedrag: 1250000
         bedrijfsinkomen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             bedrag: 1250000
         partner_income:
-          - bsn: '100000003'
+          - bsn: '999100003'
             bedrag: 350000
         partner_assets:
-          - bsn: '100000003'
+          - bsn: '999100003'
             bedrag: 95000
         belastingschulden:
-          - bsn: '100000003'
+          - bsn: '999100003'
             totaalbedrag: 850000
             betalingsregeling: LOPEND
         belastingdienst_vermogen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             vermogen: 120000
       KVK:
         inschrijvingen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             kvk_nummer: '87654321'
             handelsnaam: Yilmaz Bouw
             rechtsvorm: EENMANSZAAK
             status: ACTIEF
             activiteit: Bouwwerkzaamheden
         functionarissen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             kvk_nummer: '87654321'
             handelsnaam: Yilmaz Bouw
             rechtsvorm: EENMANSZAAK
@@ -1546,92 +1546,92 @@ profiles:
             functie: EIGENAAR
             bevoegdheid: VOLLEDIG
         is_entrepreneur:
-          - bsn: '100000003'
+          - bsn: '999100003'
             waarde: true
         is_active_entrepreneur:
-          - bsn: '100000003'
+          - bsn: '999100003'
             waarde: true
       UWV:
         arbeidsverhoudingen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             dienstverband_type: GEEN
             verzekerd_ww: false
             verzekerd_wia: false
         uwv_toetsingsinkomen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             toetsingsinkomen: 1600000
         uwv_werkgegevens:
-          - bsn: '100000003'
+          - bsn: '999100003'
             gemiddeld_uren_per_week: 0.0
             huidige_uren_per_week: 0.0
             gewerkte_weken_36: 0
             arbeidsverleden_jaren: 0
             jaarloon: 0
         ziektewet:
-          - bsn: '100000003'
+          - bsn: '999100003'
             heeft_ziektewet_uitkering: false
         WIA:
-          - bsn: '100000003'
+          - bsn: '999100003'
             heeft_wia_uitkering: false
       RVZ:
         verzekeringen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             polis_status: ACTIEF
             verdrag_status: GEEN
             zorg_type: BASIS
       DUO:
         inschrijvingen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             onderwijssoort: GEEN
         studiefinanciering:
-          - bsn: '100000003'
+          - bsn: '999100003'
             ontvangt_studiefinanciering: false
         is_student:
-          - bsn: '100000003'
+          - bsn: '999100003'
             waarde: false
         receives_study_grant:
-          - bsn: '100000003'
+          - bsn: '999100003'
             waarde: false
       DJI:
         detenties:
-          - bsn: '100000003'
+          - bsn: '999100003'
             is_gedetineerd: false
         is_detainee:
-          - bsn: '100000003'
+          - bsn: '999100003'
             waarde: false
         detentie:
-          - bsn: '100000003'
+          - bsn: '999100003'
             is_gedetineerd: false
       GEMEENTE_AMSTERDAM:
         werk_en_re_integratie:
-          - bsn: '100000003'
+          - bsn: '999100003'
             arbeidsvermogen: VOLLEDIG
             re_integratie_traject: Ondernemerscoaching
       SVB:
         retirement_age:
-          - bsn: '100000003'
+          - bsn: '999100003'
             leeftijd: 68
         algemene_ouderdomswet_gegevens:
-          - bsn: '100000003'
+          - bsn: '999100003'
             pensioenleeftijd: 68
         algemene_kinderbijslagwet:
-          - ouder_bsn: '100000003'
+          - ouder_bsn: '999100003'
             aantal_kinderen: 1
             kinderen_leeftijden:
               - 14
             ontvangt_kinderbijslag: true
       IND:
         verblijfsvergunningen:
-          - bsn: '100000003'
+          - bsn: '999100003'
             type: PERMANENT
             status: VERLEEND
         residence_permit_type:
-          - bsn: '100000003'
+          - bsn: '999100003'
             type: PERMANENT
         vreemdelingenwet:
-          - bsn: '100000003'
+          - bsn: '999100003'
             verblijfsvergunning_type: null
-  '100000004':
+  '999100004':
     name: Fatima el Hassan
     description: >-
       Bijstandsgerechtigde met gedeeltelijke arbeidsongeschiktheid, ontvangt alle toeslagen maar
@@ -1642,7 +1642,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '100000004'
+          - bsn: '999100004'
             geboortedatum: '1971-09-08'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -1654,12 +1654,12 @@ profiles:
             has_fixed_address: true
             household_size: 1
         relaties:
-          - bsn: '100000004'
+          - bsn: '999100004'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '100000004'
+          - bsn: '999100004'
             straat: Van der Pekstraat
             huisnummer: '87'
             postcode: 1031CN
@@ -1667,103 +1667,103 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box1:
-          - bsn: '100000004'
+          - bsn: '999100004'
             loon_uit_dienstbetrekking: 0
             uitkeringen_en_pensioenen: 1089000
             winst_uit_onderneming: 0
             resultaat_overige_werkzaamheden: 0
             eigen_woning: 0
         box2:
-          - bsn: '100000004'
+          - bsn: '999100004'
             reguliere_voordelen: 0
             vervreemdingsvoordelen: 0
         box3:
-          - bsn: '100000004'
+          - bsn: '999100004'
             spaargeld: 380000
             beleggingen: 0
             onroerend_goed: 0
             schulden: 0
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '100000004'
+          - bsn: '999100004'
             bedrag: 0
             land: GEEN
         aftrekposten:
-          - bsn: '100000004'
+          - bsn: '999100004'
             persoonsgebonden_aftrek: 0
         monthly_income:
-          - bsn: '100000004'
+          - bsn: '999100004'
             bedrag: 0
         assets:
-          - bsn: '100000004'
+          - bsn: '999100004'
             bedrag: 380000
         business_income:
-          - bsn: '100000004'
+          - bsn: '999100004'
             bedrag: 0
       UWV:
         arbeidsongeschiktheid:
-          - bsn: '100000004'
+          - bsn: '999100004'
             percentage: 40
             diagnose_categorie: BEWEGINGSAPPARAAT
             uitkering_type: GEEN
         arbeidsverhoudingen:
-          - bsn: '100000004'
+          - bsn: '999100004'
             dienstverband_type: GEEN
             verzekerd_ww: false
             verzekerd_wia: false
       GEMEENTE_AMSTERDAM:
         werk_en_re_integratie:
-          - bsn: '100000004'
+          - bsn: '999100004'
             arbeidsvermogen: MEDISCH_VOLLEDIG
             ontheffing_reden: Chronische ziekte
             ontheffing_einddatum: '2026-09-01'
             re_integratie_traject: Aangepast traject
       RVZ:
         verzekeringen:
-          - bsn: '100000004'
+          - bsn: '999100004'
             polis_status: ACTIEF
             verdrag_status: GEEN
             zorg_type: BASIS
       DUO:
         inschrijvingen:
-          - bsn: '100000004'
+          - bsn: '999100004'
             onderwijssoort: GEEN
         studiefinanciering:
-          - bsn: '100000004'
+          - bsn: '999100004'
             ontvangt_studiefinanciering: false
         is_student:
-          - bsn: '100000004'
+          - bsn: '999100004'
             waarde: false
         receives_study_grant:
-          - bsn: '100000004'
+          - bsn: '999100004'
             waarde: false
       DJI:
         detenties:
-          - bsn: '100000004'
+          - bsn: '999100004'
             is_gedetineerd: false
         is_detainee:
-          - bsn: '100000004'
+          - bsn: '999100004'
             waarde: false
       SVB:
         retirement_age:
-          - bsn: '100000004'
+          - bsn: '999100004'
             leeftijd: 68
       IND:
         verblijfsvergunningen:
-          - bsn: '100000004'
+          - bsn: '999100004'
             type: PERMANENT
             status: VERLEEND
         residence_permit_type:
-          - bsn: '100000004'
+          - bsn: '999100004'
             type: PERMANENT
       KVK:
         is_entrepreneur:
-          - bsn: '100000004'
+          - bsn: '999100004'
             waarde: false
         is_active_entrepreneur:
-          - bsn: '100000004'
+          - bsn: '999100004'
             waarde: false
-  '300000001':
+  '999300001':
     name: Sophie Jansen
     description: >-
       Recent werkloos geworden alleenstaande moeder, 1 kind, in aanmerking voor WW en
@@ -1776,7 +1776,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             geboortedatum: '1990-03-18'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -1788,28 +1788,28 @@ profiles:
             has_fixed_address: true
             household_size: 2
         relaties:
-          - bsn: '300000001'
+          - bsn: '999300001'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
             kinderen:
-              - bsn: '200000006'
+              - bsn: '999200006'
                 geboortedatum: '2018-06-12'
         verblijfplaats:
-          - bsn: '300000001'
+          - bsn: '999300001'
             straat: Dapperstraat
             huisnummer: '142'
             postcode: 1093BS
             woonplaats: Amsterdam
             type: WOONADRES
         children_data:
-          - bsn: '300000001'
+          - bsn: '999300001'
             kinderen:
               - geboortedatum: '2018-06-12'
-                kind_bsn: '200000006'
+                kind_bsn: '999200006'
         gezag_relaties:
-          - bsn_gezagdrager: '300000001'
-            bsn_kind: '200000006'
+          - bsn_gezagdrager: '999300001'
+            bsn_kind: '999200006'
             naam_kind: Kind van Sophie Jansen
             geboortedatum_kind: '2018-06-12'
             type_gezag: OUDERLIJK_GEZAG
@@ -1819,129 +1819,129 @@ profiles:
             heeft_handlichting: false
       BELASTINGDIENST:
         box1:
-          - bsn: '300000001'
+          - bsn: '999300001'
             loon_uit_dienstbetrekking: 3200000
             uitkeringen_en_pensioenen: 0
             winst_uit_onderneming: 0
             resultaat_overige_werkzaamheden: 0
             eigen_woning: 0
         box2:
-          - bsn: '300000001'
+          - bsn: '999300001'
             reguliere_voordelen: 0
             vervreemdingsvoordelen: 0
         box3:
-          - bsn: '300000001'
+          - bsn: '999300001'
             spaargeld: 320000
             beleggingen: 0
             onroerend_goed: 0
             schulden: 0
             buitenlands_inkomen: 0
         monthly_income:
-          - bsn: '300000001'
+          - bsn: '999300001'
             bedrag: 0
         maandelijks_inkomen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             bedrag: 0
         assets:
-          - bsn: '300000001'
+          - bsn: '999300001'
             bedrag: 320000
         business_income:
-          - bsn: '300000001'
+          - bsn: '999300001'
             bedrag: 0
         bedrijfsinkomen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             bedrag: 0
         buitenlands_inkomen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             bedrag: 0
             land: GEEN
         aftrekposten:
-          - bsn: '300000001'
+          - bsn: '999300001'
             persoonsgebonden_aftrek: 150000
         belastingdienst_vermogen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             vermogen: 320000
       UWV:
         arbeidsverhoudingen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             dienstverband_type: GEEN
             verzekerd_ww: true
             verzekerd_wia: true
         uwv_toetsingsinkomen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             toetsingsinkomen: 3200000
         uwv_werkgegevens:
-          - bsn: '300000001'
+          - bsn: '999300001'
             gemiddeld_uren_per_week: 32.0
             huidige_uren_per_week: 0.0
             gewerkte_weken_36: 36
             arbeidsverleden_jaren: 8
             jaarloon: 3200000
         ziektewet:
-          - bsn: '300000001'
+          - bsn: '999300001'
             heeft_ziektewet_uitkering: false
         WIA:
-          - bsn: '300000001'
+          - bsn: '999300001'
             heeft_wia_uitkering: false
       RVZ:
         verzekeringen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             polis_status: ACTIEF
             verdrag_status: GEEN
             zorg_type: BASIS
       DUO:
         inschrijvingen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             onderwijssoort: GEEN
         studiefinanciering:
-          - bsn: '300000001'
+          - bsn: '999300001'
             ontvangt_studiefinanciering: false
         is_student:
-          - bsn: '300000001'
+          - bsn: '999300001'
             waarde: false
         receives_study_grant:
-          - bsn: '300000001'
+          - bsn: '999300001'
             waarde: false
       DJI:
         detenties:
-          - bsn: '300000001'
+          - bsn: '999300001'
             is_gedetineerd: false
         is_detainee:
-          - bsn: '300000001'
+          - bsn: '999300001'
             waarde: false
         detentie:
-          - bsn: '300000001'
+          - bsn: '999300001'
             is_gedetineerd: false
       SVB:
         retirement_age:
-          - bsn: '300000001'
+          - bsn: '999300001'
             leeftijd: 68
         algemene_ouderdomswet_gegevens:
-          - bsn: '300000001'
+          - bsn: '999300001'
             pensioenleeftijd: 68
         algemene_kinderbijslagwet:
-          - ouder_bsn: '300000001'
+          - ouder_bsn: '999300001'
             aantal_kinderen: 1
             kinderen_leeftijden:
               - 7
             ontvangt_kinderbijslag: true
       IND:
         verblijfsvergunningen:
-          - bsn: '300000001'
+          - bsn: '999300001'
             type: PERMANENT
             status: VERLEEND
         residence_permit_type:
-          - bsn: '300000001'
+          - bsn: '999300001'
             type: PERMANENT
         vreemdelingenwet:
-          - bsn: '300000001'
+          - bsn: '999300001'
             verblijfsvergunning_type: null
       KVK:
         is_entrepreneur:
-          - bsn: '300000001'
+          - bsn: '999300001'
             waarde: false
         is_active_entrepreneur:
-          - bsn: '300000001'
+          - bsn: '999300001'
             waarde: false
   '999993653':
     name: Jan Jansen
@@ -2487,7 +2487,7 @@ profiles:
             partner_bsn: null
             has_partner: false
             kinderen:
-              - bsn: '200000007'
+              - bsn: '999200007'
                 geboortedatum: '2020-01-01'
         verblijfplaats:
           - bsn: '999993660'
@@ -2500,10 +2500,10 @@ profiles:
           - bsn: '999993660'
             kinderen:
               - geboortedatum: '2020-01-01'
-                kind_bsn: '200000007'
+                kind_bsn: '999200007'
         gezag_relaties:
           - bsn_gezagdrager: '999993660'
-            bsn_kind: '200000007'
+            bsn_kind: '999200007'
             naam_kind: Kind van Lisa de Jong
             geboortedatum_kind: '2020-01-01'
             type_gezag: OUDERLIJK_GEZAG
@@ -2543,7 +2543,7 @@ profiles:
             polis_status: ACTIEF
             verdrag_status: GEEN
             zorg_type: BASIS
-  '777777777':
+  '999777777':
     name: Fatima Al-Zahra
     description: >-
       Alleenstaande met laag inkomen en hoge huur, komt in aanmerking voor huurtoeslag
@@ -2553,7 +2553,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '777777777'
+          - bsn: '999777777'
             geboortedatum: '1991-04-15'
             verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
@@ -2565,12 +2565,12 @@ profiles:
             has_fixed_address: true
             household_size: 1
         relaties:
-          - bsn: '777777777'
+          - bsn: '999777777'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '777777777'
+          - bsn: '999777777'
             straat: Rooseveltlaan
             huisnummer: '42'
             postcode: 3527AK
@@ -2578,44 +2578,44 @@ profiles:
             type: WOONADRES
       RVZ:
         verzekeringen:
-          - bsn: '777777777'
+          - bsn: '999777777'
             polis_status: ACTIEF
             verdrag_status: GEEN
             zorg_type: BASIS
       BELASTINGDIENST:
         box1:
-          - bsn: '777777777'
+          - bsn: '999777777'
             loon_uit_dienstbetrekking: 1750000
             uitkeringen_en_pensioenen: 0
             winst_uit_onderneming: 0
             resultaat_overige_werkzaamheden: 25000
             eigen_woning: 0
         box2:
-          - bsn: '777777777'
+          - bsn: '999777777'
             reguliere_voordelen: 0
             vervreemdingsvoordelen: 0
         box3:
-          - bsn: '777777777'
+          - bsn: '999777777'
             spaargeld: 1200000
             beleggingen: 0
             onroerend_goed: 0
             schulden: 0
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '777777777'
+          - bsn: '999777777'
             bedrag: 0
             land: GEEN
         aftrekposten:
-          - bsn: '777777777'
+          - bsn: '999777777'
             persoonsgebonden_aftrek: 85000
       IND:
         verblijfsvergunningen:
-          - bsn: '777777777'
+          - bsn: '999777777'
             type: ONBEPAALDE_TIJD_REGULIER
             status: VERLEEND
             ingangsdatum: '2010-05-12'
             einddatum: null
-  '888888888':
+  '999888888':
     name: Sarah de Boer
     description: >-
       Alleenstaande ouder met kinderopvang, komt in aanmerking voor kinderopvangtoeslag
@@ -2627,7 +2627,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '888888888'
+          - bsn: '999888888'
             geboortedatum: '1990-05-15'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -2639,30 +2639,30 @@ profiles:
             has_fixed_address: true
             household_size: 3
         relaties:
-          - bsn: '888888888'
+          - bsn: '999888888'
             partnerschap_type: GEEN
             partner_bsn: null
             kinderen:
-              - bsn: '111111111'
-              - bsn: '222222222'
+              - bsn: '999111111'
+              - bsn: '999222222'
             has_partner: false
         verblijfplaats:
-          - bsn: '888888888'
+          - bsn: '999888888'
             straat: Keizersgracht
             huisnummer: '123'
             postcode: 1015CJ
             woonplaats: Amsterdam
             type: WOONADRES
         kinderen:
-          - kind_bsn: '111111111'
+          - kind_bsn: '999111111'
             geboortedatum: '2020-03-01'
             naam: Sem de Jong
-          - kind_bsn: '222222222'
+          - kind_bsn: '999222222'
             geboortedatum: '2022-07-15'
             naam: Emma de Jong
         gezag_relaties:
-          - bsn_gezagdrager: '888888888'
-            bsn_kind: '111111111'
+          - bsn_gezagdrager: '999888888'
+            bsn_kind: '999111111'
             naam_kind: Sem de Jong
             geboortedatum_kind: '2020-03-01'
             type_gezag: OUDERLIJK_GEZAG
@@ -2670,8 +2670,8 @@ profiles:
             datum_einde: null
             status: ACTIEF
             heeft_handlichting: false
-          - bsn_gezagdrager: '888888888'
-            bsn_kind: '222222222'
+          - bsn_gezagdrager: '999888888'
+            bsn_kind: '999222222'
             naam_kind: Emma de Jong
             geboortedatum_kind: '2022-07-15'
             type_gezag: OUDERLIJK_GEZAG
@@ -2681,35 +2681,35 @@ profiles:
             heeft_handlichting: false
       UWV:
         dienstverbanden:
-          - bsn: '888888888'
+          - bsn: '999888888'
             start_date: '2024-01-15'
             end_date: '2024-01-30'
             uren_per_week: 32
             worked_hours: 1664
         wet_structuur_uitvoeringsorganisatie_werk_en_inkomen:
-          - bsn: '888888888'
+          - bsn: '999888888'
             insured_years: 5
       BELASTINGDIENST:
         box1:
-          - bsn: '888888888'
+          - bsn: '999888888'
             loon_uit_dienstbetrekking: 3600000
             uitkeringen_en_pensioenen: 0
             winst_uit_onderneming: 0
             resultaat_overige_werkzaamheden: 0
             eigen_woning: 0
         box2:
-          - bsn: '888888888'
+          - bsn: '999888888'
             dividend: 0
             vervreemding_aandelen: 0
         box3:
-          - bsn: '888888888'
+          - bsn: '999888888'
             spaargeld: 800000
             beleggingen: 0
             onroerend_goed: 0
             schulden: 0
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '888888888'
+          - bsn: '999888888'
             bedrag: 0
             land: GEEN
   '999993872':
@@ -2911,9 +2911,9 @@ profiles:
           - bsn: '999992740'
             bedrag: 0
             land: GEEN
-  '200000001':
+  '999200001':
     name: Kind van Merijn van der Meer
-    description: Kind van Merijn van der Meer (BSN 100000001)
+    description: Kind van Merijn van der Meer (BSN 999100001)
     properties:
       - Minderjarig
     sources:
@@ -2922,7 +2922,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '200000001'
+          - bsn: '999200001'
             geboortedatum: '2020-01-01'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -2934,12 +2934,12 @@ profiles:
             has_fixed_address: true
             household_size: 1
         relaties:
-          - bsn: '200000001'
+          - bsn: '999200001'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '200000001'
+          - bsn: '999200001'
             straat: Meeuwenlaan
             huisnummer: '28'
             postcode: 1021HS
@@ -2947,15 +2947,15 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box3:
-          - bsn: '200000001'
+          - bsn: '999200001'
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '200000001'
+          - bsn: '999200001'
             bedrag: 0
             land: GEEN
-  '200000002':
+  '999200002':
     name: Kind van Merijn van der Meer
-    description: Kind van Merijn van der Meer (BSN 100000001)
+    description: Kind van Merijn van der Meer (BSN 999100001)
     properties:
       - Minderjarig
     sources:
@@ -2964,7 +2964,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '200000002'
+          - bsn: '999200002'
             geboortedatum: '2022-01-01'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -2977,12 +2977,12 @@ profiles:
             household_size: 1
             zorgbehoefte: true
         relaties:
-          - bsn: '200000002'
+          - bsn: '999200002'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '200000002'
+          - bsn: '999200002'
             straat: Meeuwenlaan
             huisnummer: '28'
             postcode: 1021HS
@@ -2990,15 +2990,15 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box3:
-          - bsn: '200000002'
+          - bsn: '999200002'
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '200000002'
+          - bsn: '999200002'
             bedrag: 0
             land: GEEN
-  '200000003':
+  '999200003':
     name: Kind van Maria Rodriguez
-    description: Kind van Maria Rodriguez (BSN 100000002)
+    description: Kind van Maria Rodriguez (BSN 999100002)
     properties:
       - Minderjarig
     sources:
@@ -3007,7 +3007,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '200000003'
+          - bsn: '999200003'
             geboortedatum: '2014-05-15'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -3019,12 +3019,12 @@ profiles:
             has_fixed_address: true
             household_size: 1
         relaties:
-          - bsn: '200000003'
+          - bsn: '999200003'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '200000003'
+          - bsn: '999200003'
             straat: Javastraat
             huisnummer: '54'
             postcode: 1094HK
@@ -3032,15 +3032,15 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box3:
-          - bsn: '200000003'
+          - bsn: '999200003'
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '200000003'
+          - bsn: '999200003'
             bedrag: 0
             land: GEEN
-  '200000004':
+  '999200004':
     name: Kind van Maria Rodriguez
-    description: Kind van Maria Rodriguez (BSN 100000002)
+    description: Kind van Maria Rodriguez (BSN 999100002)
     properties:
       - Minderjarig
     sources:
@@ -3049,7 +3049,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '200000004'
+          - bsn: '999200004'
             geboortedatum: '2017-03-22'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -3061,12 +3061,12 @@ profiles:
             has_fixed_address: true
             household_size: 1
         relaties:
-          - bsn: '200000004'
+          - bsn: '999200004'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '200000004'
+          - bsn: '999200004'
             straat: Javastraat
             huisnummer: '54'
             postcode: 1094HK
@@ -3074,15 +3074,15 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box3:
-          - bsn: '200000004'
+          - bsn: '999200004'
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '200000004'
+          - bsn: '999200004'
             bedrag: 0
             land: GEEN
-  '200000005':
+  '999200005':
     name: Kind van Omar Yilmaz
-    description: Kind van Omar Yilmaz (BSN 100000003)
+    description: Kind van Omar Yilmaz (BSN 999100003)
     properties:
       - Minderjarig
     sources:
@@ -3091,7 +3091,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '200000005'
+          - bsn: '999200005'
             geboortedatum: '2011-08-30'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -3103,12 +3103,12 @@ profiles:
             has_fixed_address: true
             household_size: 1
         relaties:
-          - bsn: '200000005'
+          - bsn: '999200005'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '200000005'
+          - bsn: '999200005'
             straat: Kinkerstraat
             huisnummer: '112'
             postcode: 1053ED
@@ -3116,15 +3116,15 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box3:
-          - bsn: '200000005'
+          - bsn: '999200005'
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '200000005'
+          - bsn: '999200005'
             bedrag: 0
             land: GEEN
-  '200000006':
+  '999200006':
     name: Kind van Sophie Jansen
-    description: Kind van Sophie Jansen (BSN 300000001)
+    description: Kind van Sophie Jansen (BSN 999300001)
     properties:
       - Minderjarig
     sources:
@@ -3133,7 +3133,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '200000006'
+          - bsn: '999200006'
             geboortedatum: '2018-06-12'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -3145,12 +3145,12 @@ profiles:
             has_fixed_address: true
             household_size: 1
         relaties:
-          - bsn: '200000006'
+          - bsn: '999200006'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '200000006'
+          - bsn: '999200006'
             straat: Dapperstraat
             huisnummer: '142'
             postcode: 1093BS
@@ -3158,13 +3158,13 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box3:
-          - bsn: '200000006'
+          - bsn: '999200006'
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '200000006'
+          - bsn: '999200006'
             bedrag: 0
             land: GEEN
-  '200000007':
+  '999200007':
     name: Kind van Lisa de Jong
     description: Kind van Lisa de Jong (BSN 999993660)
     properties:
@@ -3175,7 +3175,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '200000007'
+          - bsn: '999200007'
             geboortedatum: '2020-01-01'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -3187,12 +3187,12 @@ profiles:
             has_fixed_address: true
             household_size: 1
         relaties:
-          - bsn: '200000007'
+          - bsn: '999200007'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '200000007'
+          - bsn: '999200007'
             straat: Prinsengracht
             huisnummer: '42'
             postcode: 1015DX
@@ -3200,13 +3200,13 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box3:
-          - bsn: '200000007'
+          - bsn: '999200007'
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '200000007'
+          - bsn: '999200007'
             bedrag: 0
             land: GEEN
-  '400000001':
+  '999400001':
     name: Maria van den Berg
     description: >-
       Voogd van haar neefje Daan na overlijden van zijn ouders (Art. 1:295 BW)
@@ -3218,7 +3218,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400000001'
+          - bsn: '999400001'
             geboortedatum: '1972-09-14'
             verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
@@ -3230,20 +3230,20 @@ profiles:
             has_fixed_address: true
             household_size: 2
         relaties:
-          - bsn: '400000001'
+          - bsn: '999400001'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '400000001'
+          - bsn: '999400001'
             straat: Oudegracht
             huisnummer: '85'
             postcode: 3511AD
             woonplaats: Utrecht
             type: WOONADRES
         gezag_relaties:
-          - bsn_gezagdrager: '400000001'
-            bsn_kind: '400000002'
+          - bsn_gezagdrager: '999400001'
+            bsn_kind: '999400002'
             naam_kind: Daan van der Berg
             geboortedatum_kind: '2013-04-22'
             type_gezag: VOOGDIJ
@@ -3253,26 +3253,26 @@ profiles:
             heeft_handlichting: false
       BELASTINGDIENST:
         box1:
-          - bsn: '400000001'
+          - bsn: '999400001'
             loon_uit_dienstbetrekking: 4200000
             uitkeringen_en_pensioenen: 0
             winst_uit_onderneming: 0
             resultaat_overige_werkzaamheden: 0
             eigen_woning: 0
         box3:
-          - bsn: '400000001'
+          - bsn: '999400001'
             spaargeld: 2500000
             beleggingen: 0
             onroerend_goed: 0
             schulden: 0
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '400000001'
+          - bsn: '999400001'
             bedrag: 0
             land: GEEN
-  '400000002':
+  '999400002':
     name: Daan van der Berg
-    description: Minderjarige onder voogdij van tante Maria (BSN 400000001)
+    description: Minderjarige onder voogdij van tante Maria (BSN 999400001)
     properties:
       - Minderjarig
       - Onder voogdij
@@ -3282,7 +3282,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400000002'
+          - bsn: '999400002'
             geboortedatum: '2013-04-22'
             verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
@@ -3294,12 +3294,12 @@ profiles:
             has_fixed_address: true
             household_size: 2
         relaties:
-          - bsn: '400000002'
+          - bsn: '999400002'
             partnerschap_type: GEEN
             partner_bsn: null
             has_partner: false
         verblijfplaats:
-          - bsn: '400000002'
+          - bsn: '999400002'
             straat: Oudegracht
             huisnummer: '85'
             postcode: 3511AD
@@ -3307,10 +3307,10 @@ profiles:
             type: WOONADRES
       BELASTINGDIENST:
         box3:
-          - bsn: '400000002'
+          - bsn: '999400002'
             buitenlands_inkomen: 0
         buitenlands_inkomen:
-          - bsn: '400000002'
+          - bsn: '999400002'
             bedrag: 0
             land: GEEN
   '999993670':
@@ -3377,7 +3377,7 @@ profiles:
             polis_status: ACTIEF
             verdrag_status: GEEN
             zorg_type: BASIS
-  '400100001':
+  '999410001':
     name: Geert de Vries
     description: >-
       Professioneel curator, bewindvoerder en mentor voor meerdere cliënten
@@ -3391,7 +3391,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400100001'
+          - bsn: '999410001'
             geboortedatum: '1970-06-15'
             verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
@@ -3404,28 +3404,28 @@ profiles:
             household_size: 1
       RECHTSPRAAK:
         curatele_registraties:
-          - bsn_curator: '400100001'
-            bsn_curandus: '500000001'
+          - bsn_curator: '999410001'
+            bsn_curandus: '999500001'
             naam_curandus: Sophie van Dam
             datum_ingang: '2022-01-15'
             datum_einde: null
             status: ACTIEF
         bewind_registraties:
-          - bsn_bewindvoerder: '400100001'
-            bsn_rechthebbende: '500000002'
+          - bsn_bewindvoerder: '999410001'
+            bsn_rechthebbende: '999500002'
             naam_rechthebbende: Bart Willems
             bewind_type: VOLLEDIG_BEWIND
             datum_ingang: '2023-03-01'
             datum_einde: null
             status: ACTIEF
         mentorschap_registraties:
-          - bsn_mentor: '400100001'
-            bsn_betrokkene: '500000003'
+          - bsn_mentor: '999410001'
+            bsn_betrokkene: '999500003'
             naam_betrokkene: Willem Jansen
             datum_ingang: '2023-06-15'
             datum_einde: null
             status: ACTIEF
-  '500000001':
+  '999500001':
     name: Sophie van Dam
     description: Onder curatele gesteld wegens geestelijke stoornis
     properties:
@@ -3436,7 +3436,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '500000001'
+          - bsn: '999500001'
             geboortedatum: '1985-09-20'
             verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
@@ -3449,13 +3449,13 @@ profiles:
             household_size: 1
       RECHTSPRAAK:
         curatele_registraties:
-          - bsn_curator: '400100001'
-            bsn_curandus: '500000001'
+          - bsn_curator: '999410001'
+            bsn_curandus: '999500001'
             naam_curandus: Sophie van Dam
             datum_ingang: '2022-01-15'
             datum_einde: null
             status: ACTIEF
-  '500000002':
+  '999500002':
     name: Bart Willems
     description: Onder beschermingsbewind, blijft handelingsbekwaam
     properties:
@@ -3466,7 +3466,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '500000002'
+          - bsn: '999500002'
             geboortedatum: '1978-04-12'
             verblijfsadres: Amersfoort
             land_verblijf: NEDERLAND
@@ -3477,7 +3477,7 @@ profiles:
             residence_address: Langestraat 50, 3811NJ Amersfoort
             has_fixed_address: true
             household_size: 1
-  '500000003':
+  '999500003':
     name: Willem Jansen
     description: Onder mentorschap, blijft handelingsbekwaam
     properties:
@@ -3488,7 +3488,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '500000003'
+          - bsn: '999500003'
             geboortedatum: '1960-11-30'
             verblijfsadres: Zeist
             land_verblijf: NEDERLAND
@@ -3499,7 +3499,7 @@ profiles:
             residence_address: Verzorgingshuis Zeist, 3701AA Zeist
             has_fixed_address: true
             household_size: 1
-  '400100002':
+  '999410002':
     name: Anna van den Berg
     description: Gevolmachtigde met algemene volmacht voor haar moeder
     properties:
@@ -3510,7 +3510,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400100002'
+          - bsn: '999410002'
             geboortedatum: '1982-07-22'
             verblijfsadres: Den Haag
             land_verblijf: NEDERLAND
@@ -3523,15 +3523,15 @@ profiles:
             household_size: 2
       NOTARIAAT:
         volmacht_registraties:
-          - bsn_gevolmachtigde: '400100002'
-            bsn_volmachtgever: '500000004'
+          - bsn_gevolmachtigde: '999410002'
+            bsn_volmachtgever: '999500004'
             naam_volmachtgever: Elisabeth van den Berg-Smit
             volmacht_type: ALGEMENE_VOLMACHT
             datum_ingang: '2021-05-01'
             datum_einde: null
             status: ACTIEF
             is_herroepen: false
-  '500000004':
+  '999500004':
     name: Elisabeth van den Berg-Smit
     description: Heeft algemene volmacht gegeven aan haar dochter Anna
     properties:
@@ -3542,7 +3542,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '500000004'
+          - bsn: '999500004'
             geboortedatum: '1955-02-14'
             verblijfsadres: Den Haag
             land_verblijf: NEDERLAND
@@ -3553,7 +3553,7 @@ profiles:
             residence_address: Bejaardenhuis Scheveningen, 2586AA Den Haag
             has_fixed_address: true
             household_size: 1
-  '400100003':
+  '999410003':
     name: mr. Willem van Houten
     description: Notaris en executeur van nalatenschappen
     properties:
@@ -3564,7 +3564,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400100003'
+          - bsn: '999410003'
             geboortedatum: '1965-12-05'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -3577,15 +3577,15 @@ profiles:
             household_size: 2
       NOTARIAAT:
         executeur_registraties:
-          - bsn_executeur: '400100003'
-            bsn_erflater: '500000005'
+          - bsn_executeur: '999410003'
+            bsn_erflater: '999500005'
             naam_erflater: Karel Posthumus
             nalatenschap_id: NAL-2024-00123
             datum_overlijden: '2024-06-01'
             datum_aanvaarding: '2024-06-15'
             datum_einde: null
             status: ACTIEF
-  '400100004':
+  '999410004':
     name: mr. Karin Bakker
     description: Advocaat en faillissementscurator
     properties:
@@ -3596,7 +3596,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400100004'
+          - bsn: '999410004'
             geboortedatum: '1972-08-18'
             verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
@@ -3609,15 +3609,15 @@ profiles:
             household_size: 3
       RECHTSPRAAK:
         faillissement_registraties:
-          - bsn_curator: '400100004'
-            gefailleerde_id: '500000006'
+          - bsn_curator: '999410004'
+            gefailleerde_id: '999500006'
             gefailleerde_naam: Henk Visser
             gefailleerde_type: NATUURLIJK_PERSOON
             insolventie_nummer: F.10/24/123
             datum_uitspraak: '2024-03-15'
             datum_einde: null
             status: ACTIEF
-          - bsn_curator: '400100004'
+          - bsn_curator: '999410004'
             gefailleerde_id: '87654321'
             gefailleerde_naam: Failliete BV
             gefailleerde_type: RECHTSPERSOON
@@ -3625,7 +3625,7 @@ profiles:
             datum_uitspraak: '2024-05-20'
             datum_einde: null
             status: ACTIEF
-  '500000006':
+  '999500006':
     name: Henk Visser
     description: Failliet verklaard, boedel wordt beheerd door curator
     properties:
@@ -3636,7 +3636,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '500000006'
+          - bsn: '999500006'
             geboortedatum: '1980-01-25'
             verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
@@ -3647,7 +3647,7 @@ profiles:
             residence_address: Schiedamseweg 100, 3025AA Rotterdam
             has_fixed_address: true
             household_size: 1
-  '400100005':
+  '999410005':
     name: Frank Vermeer
     description: WSNP bewindvoerder voor personen in schuldsanering
     properties:
@@ -3658,7 +3658,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400100005'
+          - bsn: '999410005'
             geboortedatum: '1968-03-10'
             verblijfsadres: Eindhoven
             land_verblijf: NEDERLAND
@@ -3671,14 +3671,14 @@ profiles:
             household_size: 2
       RECHTSPRAAK:
         wsnp_registraties:
-          - bsn_bewindvoerder: '400100005'
-            bsn_saniet: '500000007'
+          - bsn_bewindvoerder: '999410005'
+            bsn_saniet: '999500007'
             naam_saniet: Sandra Meijer
             insolventie_nummer: R.18/23/789
             datum_uitspraak: '2023-09-01'
             datum_einde: null
             status: ACTIEF
-  '500000007':
+  '999500007':
     name: Sandra Meijer
     description: In WSNP schuldsanering
     properties:
@@ -3689,7 +3689,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '500000007'
+          - bsn: '999500007'
             geboortedatum: '1988-11-08'
             verblijfsadres: Eindhoven
             land_verblijf: NEDERLAND
@@ -3700,7 +3700,7 @@ profiles:
             residence_address: Woenselsestraat 75, 5623AA Eindhoven
             has_fixed_address: true
             household_size: 1
-  '400100006':
+  '999410006':
     name: Peter Groen
     description: Echtgenoot van wilsonbekwame patiënt, WGBO-vertegenwoordiger
     properties:
@@ -3711,7 +3711,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400100006'
+          - bsn: '999410006'
             geboortedatum: '1958-05-30'
             verblijfsadres: Groningen
             land_verblijf: NEDERLAND
@@ -3723,18 +3723,18 @@ profiles:
             has_fixed_address: true
             household_size: 2
         relaties:
-          - bsn: '400100006'
+          - bsn: '999410006'
             partnerschap_type: HUWELIJK
-            partner_bsn: '500000008'
+            partner_bsn: '999500008'
             has_partner: true
         wgbo_familie_relaties:
-          - bsn_familielid: '400100006'
-            bsn_patient: '500000008'
+          - bsn_familielid: '999410006'
+            bsn_patient: '999500008'
             naam_patient: Gerda Groen-van Dijk
             relatie_type: ECHTGENOOT
             is_wilsonbekwaam: true
             datum_wilsonbekwaamheid: '2024-01-10'
-  '500000008':
+  '999500008':
     name: Gerda Groen-van Dijk
     description: Wilsonbekwaam verklaard, onder curatele
     properties:
@@ -3746,7 +3746,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '500000008'
+          - bsn: '999500008'
             geboortedatum: '1960-08-22'
             verblijfsadres: Groningen
             land_verblijf: NEDERLAND
@@ -3758,19 +3758,19 @@ profiles:
             has_fixed_address: true
             household_size: 2
         relaties:
-          - bsn: '500000008'
+          - bsn: '999500008'
             partnerschap_type: HUWELIJK
-            partner_bsn: '400100006'
+            partner_bsn: '999410006'
             has_partner: true
       RECHTSPRAAK:
         curatele_registraties:
-          - bsn_curator: '400100006'
-            bsn_curandus: '500000008'
+          - bsn_curator: '999410006'
+            bsn_curandus: '999500008'
             naam_curandus: Gerda Groen-van Dijk
             datum_ingang: '2024-01-10'
             datum_einde: null
             status: ACTIEF
-  '400100007':
+  '999410007':
     name: Marieke van der Berg
     description: Was curator maar curatele is beëindigd
     properties:
@@ -3781,7 +3781,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '400100007'
+          - bsn: '999410007'
             geboortedatum: '1975-04-15'
             verblijfsadres: Maastricht
             land_verblijf: NEDERLAND
@@ -3794,13 +3794,13 @@ profiles:
             household_size: 1
       RECHTSPRAAK:
         curatele_registraties:
-          - bsn_curator: '400100007'
-            bsn_curandus: '500000009'
+          - bsn_curator: '999410007'
+            bsn_curandus: '999500009'
             naam_curandus: Jan de Boer
             datum_ingang: '2020-01-01'
             datum_einde: '2023-12-31'
             status: BEEINDIGD
-  '500000009':
+  '999500009':
     name: Jan de Boer
     description: Curatele is opgeheven, weer volledig handelingsbekwaam
     properties:
@@ -3811,7 +3811,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '500000009'
+          - bsn: '999500009'
             geboortedatum: '1990-07-20'
             verblijfsadres: Maastricht
             land_verblijf: NEDERLAND
@@ -3822,7 +3822,7 @@ profiles:
             residence_address: Wycker Brugstraat 5, 6221EA Maastricht
             has_fixed_address: true
             household_size: 1
-  '600000001':
+  '999600001':
     name: Marieke Bestuurder-NV
     description: Bestuurder van een beursgenoteerde NV
     properties:
@@ -3833,7 +3833,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '600000001'
+          - bsn: '999600001'
             geboortedatum: '1975-03-12'
             verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
@@ -3846,21 +3846,21 @@ profiles:
             household_size: 2
       KVK:
         inschrijvingen:
-          - bsn: '600000001'
+          - bsn: '999600001'
             kvk_nummer: '90000001'
             handelsnaam: Grote Holding NV
             rechtsvorm: NV
             status: ACTIEF
             activiteit: Holding en financiering
         functionarissen:
-          - bsn: '600000001'
+          - bsn: '999600001'
             kvk_nummer: '90000001'
             handelsnaam: Grote Holding NV
             rechtsvorm: NV
             status: ACTIEF
             functie: BESTUURDER
             bevoegdheid: VOLLEDIG
-  '600000002':
+  '999600002':
     name: Jan Stichtingsvoorzitter
     description: Voorzitter van een goededoelenstichting
     properties:
@@ -3871,7 +3871,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '600000002'
+          - bsn: '999600002'
             geboortedatum: '1968-08-20'
             verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
@@ -3884,21 +3884,21 @@ profiles:
             household_size: 3
       KVK:
         inschrijvingen:
-          - bsn: '600000002'
+          - bsn: '999600002'
             kvk_nummer: '90000003'
             handelsnaam: Stichting Goede Doelen
             rechtsvorm: STICHTING
             status: ACTIEF
             activiteit: Goede doelen en fondsenwerving
         functionarissen:
-          - bsn: '600000002'
+          - bsn: '999600002'
             kvk_nummer: '90000003'
             handelsnaam: Stichting Goede Doelen
             rechtsvorm: STICHTING
             status: ACTIEF
             functie: BESTUURDER
             bevoegdheid: VOLLEDIG
-  '600000003':
+  '999600003':
     name: Pieter Sportvoorzitter
     description: Voorzitter van een sportvereniging
     properties:
@@ -3909,7 +3909,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '600000003'
+          - bsn: '999600003'
             geboortedatum: '1980-05-15'
             verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
@@ -3922,21 +3922,21 @@ profiles:
             household_size: 4
       KVK:
         inschrijvingen:
-          - bsn: '600000003'
+          - bsn: '999600003'
             kvk_nummer: '90000005'
             handelsnaam: Sportvereniging De Hoop
             rechtsvorm: VERENIGING
             status: ACTIEF
             activiteit: Sport en recreatie
         functionarissen:
-          - bsn: '600000003'
+          - bsn: '999600003'
             kvk_nummer: '90000005'
             handelsnaam: Sportvereniging De Hoop
             rechtsvorm: VERENIGING
             status: ACTIEF
             functie: VOORZITTER
             bevoegdheid: VOLLEDIG
-  '600000004':
+  '999600004':
     name: Anna Boerencooperatie
     description: Bestuurder van een agrarische cooperatie
     properties:
@@ -3947,7 +3947,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '600000004'
+          - bsn: '999600004'
             geboortedatum: '1972-11-30'
             verblijfsadres: Groningen
             land_verblijf: NEDERLAND
@@ -3960,21 +3960,21 @@ profiles:
             household_size: 2
       KVK:
         inschrijvingen:
-          - bsn: '600000004'
+          - bsn: '999600004'
             kvk_nummer: '90000007'
             handelsnaam: Cooperatie Boeren U.A.
             rechtsvorm: COOPERATIE
             status: ACTIEF
             activiteit: Agrarische dienstverlening
         functionarissen:
-          - bsn: '600000004'
+          - bsn: '999600004'
             kvk_nummer: '90000007'
             handelsnaam: Cooperatie Boeren U.A.
             rechtsvorm: COOPERATIE
             status: ACTIEF
             functie: BESTUURDER
             bevoegdheid: VOLLEDIG
-  '600000005':
+  '999600005':
     name: Erik Advocaat-Maat
     description: Maat in een advocatenmaatschap
     properties:
@@ -3985,7 +3985,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '600000005'
+          - bsn: '999600005'
             geboortedatum: '1978-02-28'
             verblijfsadres: Den Haag
             land_verblijf: NEDERLAND
@@ -3998,21 +3998,21 @@ profiles:
             household_size: 3
       KVK:
         inschrijvingen:
-          - bsn: '600000005'
+          - bsn: '999600005'
             kvk_nummer: '90000008'
             handelsnaam: Advocatenmaatschap Recht
             rechtsvorm: MAATSCHAP
             status: ACTIEF
             activiteit: Juridische dienstverlening
         functionarissen:
-          - bsn: '600000005'
+          - bsn: '999600005'
             kvk_nummer: '90000008'
             handelsnaam: Advocatenmaatschap Recht
             rechtsvorm: MAATSCHAP
             status: ACTIEF
             functie: MAAT
             bevoegdheid: VOLLEDIG
-  '600000006':
+  '999600006':
     name: Lisa Beherend-CV
     description: Beherend vennoot van een commanditaire vennootschap
     properties:
@@ -4023,7 +4023,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '600000006'
+          - bsn: '999600006'
             geboortedatum: '1985-07-10'
             verblijfsadres: Eindhoven
             land_verblijf: NEDERLAND
@@ -4036,21 +4036,21 @@ profiles:
             household_size: 1
       KVK:
         inschrijvingen:
-          - bsn: '600000006'
+          - bsn: '999600006'
             kvk_nummer: '90000009'
             handelsnaam: Investeer CV
             rechtsvorm: COMMANDITAIRE_VENNOOTSCHAP
             status: ACTIEF
             activiteit: Investeringen en beleggingen
         functionarissen:
-          - bsn: '600000006'
+          - bsn: '999600006'
             kvk_nummer: '90000009'
             handelsnaam: Investeer CV
             rechtsvorm: COMMANDITAIRE_VENNOOTSCHAP
             status: ACTIEF
             functie: BEHEREND_VENNOOT
             bevoegdheid: VOLLEDIG
-  '600000007':
+  '999600007':
     name: Kees Stille-Vennoot
     description: >-
       Commanditair (stille) vennoot in een CV - heeft GEEN vertegenwoordigingsbevoegdheid
@@ -4061,7 +4061,7 @@ profiles:
       JenV: *id003
       RvIG:
         personen:
-          - bsn: '600000007'
+          - bsn: '999600007'
             geboortedatum: '1965-12-01'
             verblijfsadres: Maastricht
             land_verblijf: NEDERLAND
@@ -4074,14 +4074,14 @@ profiles:
             household_size: 2
       KVK:
         inschrijvingen:
-          - bsn: '600000007'
+          - bsn: '999600007'
             kvk_nummer: '90000010'
             handelsnaam: Kapitaal CV
             rechtsvorm: COMMANDITAIRE_VENNOOTSCHAP
             status: ACTIEF
             activiteit: Investeringen (stille vennoot)
         functionarissen:
-          - bsn: '600000007'
+          - bsn: '999600007'
             kvk_nummer: '90000010'
             handelsnaam: Kapitaal CV
             rechtsvorm: COMMANDITAIRE_VENNOOTSCHAP

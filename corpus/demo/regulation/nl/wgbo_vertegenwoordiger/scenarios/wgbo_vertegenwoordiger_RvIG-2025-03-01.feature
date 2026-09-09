@@ -11,12 +11,12 @@ Feature: WGBO Vertegenwoordiger (BW 7:465)
     Given parameter "bsn" is "400000006"
     And the following "RvIG" data with key "bsn" for law "wgbo_vertegenwoordiger":
       | bsn       | familie_relaties                                                                                                                                               |
-      | 400000006 | [{"bsn_patient":"500000008","naam_patient":"Gerda Groen-van Dijk","relatie_type":"ECHTGENOOT","is_wilsonbekwaam":true,"datum_wilsonbekwaamheid":"2024-01-10"}] |
-      | 500000008 | []                                                                                                                                                             |
+      | 400000006 | [{"bsn_patient":"999500008","naam_patient":"Gerda Groen-van Dijk","relatie_type":"ECHTGENOOT","is_wilsonbekwaam":true,"datum_wilsonbekwaamheid":"2024-01-10"}] |
+      | 999500008 | []                                                                                                                                                             |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties" of "wgbo_vertegenwoordiger"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_delegaties" is true
-    # POC: output "subject_ids" contains 500000008 (array membership not expressible in the canonical grammar)
+    # POC: output "subject_ids" contains 999500008 (array membership not expressible in the canonical grammar)
     # POC: output "subject_names" contains Gerda Groen-van Dijk (array membership not expressible in the canonical grammar)
     # POC: output "delegation_types" contains WGBO_VERTEGENWOORDIGER_PARTNER (array membership not expressible in the canonical grammar)
     # POC: output "subject_types" contains CITIZEN (array membership not expressible in the canonical grammar)
@@ -140,8 +140,8 @@ Feature: WGBO Vertegenwoordiger (BW 7:465)
     Given parameter "bsn" is "400000006"
     And the following "RvIG" data with key "bsn" for law "wgbo_vertegenwoordiger":
       | bsn       | familie_relaties                                                                                                                                               |
-      | 400000006 | [{"bsn_patient":"500000008","naam_patient":"Gerda Groen-van Dijk","relatie_type":"ECHTGENOOT","is_wilsonbekwaam":true,"datum_wilsonbekwaamheid":"2024-01-10"}] |
-      | 500000008 | []                                                                                                                                                             |
+      | 400000006 | [{"bsn_patient":"999500008","naam_patient":"Gerda Groen-van Dijk","relatie_type":"ECHTGENOOT","is_wilsonbekwaam":true,"datum_wilsonbekwaamheid":"2024-01-10"}] |
+      | 999500008 | []                                                                                                                                                             |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "wgbo_vertegenwoordiger"
     Then output "voldoet_aan_voorwaarden" is true
     # POC: output "valid_from_dates" contains 2024-01-10 (array membership not expressible in the canonical grammar)

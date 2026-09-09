@@ -24,8 +24,8 @@ Feature: Burgerlijk Wetboek Gezag - Delegation provider for minors
     Given the following "RvIG" data with key "bsn" for law "burgerlijk_wetboek_gezag":
       | bsn       | gezag_relaties                                                                                                                                                                                                |
       | 999993653 | []                                                                                                                                                                                                            |
-      | 111111111 | [{"bsn_kind":"222222222","naam_kind":"Kind Test","geboortedatum_kind":"2015-03-15","type_gezag":"OUDERLIJK_GEZAG","datum_ingang":"2015-03-15","datum_einde":"","status":"ACTIEF","heeft_handlichting":false}] |
-      | 222222222 | []                                                                                                                                                                                                            |
+      | 999111111 | [{"bsn_kind":"999222222","naam_kind":"Kind Test","geboortedatum_kind":"2015-03-15","type_gezag":"OUDERLIJK_GEZAG","datum_ingang":"2015-03-15","datum_einde":"","status":"ACTIEF","heeft_handlichting":false}] |
+      | 999222222 | []                                                                                                                                                                                                            |
     When I evaluate outputs "heeft_delegaties" of "burgerlijk_wetboek_gezag"
     Then output "heeft_delegaties" is false
 

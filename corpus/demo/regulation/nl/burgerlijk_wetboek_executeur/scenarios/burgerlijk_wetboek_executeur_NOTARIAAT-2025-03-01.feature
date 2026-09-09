@@ -11,8 +11,8 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
   Scenario: Executeur heeft actieve nalatenschap
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                                  |
-      | 400000003 | [{"bsn_erflater":"500000005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"","status":"ACTIEF"}] |
-      | 500000005 | []                                                                                                                                                                                                      |
+      | 400000003 | [{"bsn_erflater":"999500005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999500005 | []                                                                                                                                                                                                      |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_delegaties" is true
@@ -25,8 +25,8 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                                  |
       | 400000003 | []                                                                                                                                                                                                      |
-      | 999999999 | [{"bsn_erflater":"888888888","naam_erflater":"Andere Erflater","nalatenschap_id":"NAL-2024-99999","datum_overlijden":"2024-01-01","datum_aanvaarding":"2024-01-15","datum_einde":"","status":"ACTIEF"}] |
-      | 888888888 | []                                                                                                                                                                                                      |
+      | 999999999 | [{"bsn_erflater":"999888888","naam_erflater":"Andere Erflater","nalatenschap_id":"NAL-2024-99999","datum_overlijden":"2024-01-01","datum_aanvaarding":"2024-01-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999888888 | []                                                                                                                                                                                                      |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties, subject_ids" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_delegaties" is false
@@ -36,8 +36,8 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
   Scenario: Nalatenschap is afgewikkeld (status AFGEWIKKELD)
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                                                 |
-      | 400000003 | [{"bsn_erflater":"500000005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"2025-01-15","status":"AFGEWIKKELD"}] |
-      | 500000005 | []                                                                                                                                                                                                                     |
+      | 400000003 | [{"bsn_erflater":"999500005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"2025-01-15","status":"AFGEWIKKELD"}] |
+      | 999500005 | []                                                                                                                                                                                                                     |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties, subject_ids" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_delegaties" is false
@@ -47,8 +47,8 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
   Scenario: Executeur heeft benoeming afgewezen
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                           |
-      | 400000003 | [{"bsn_erflater":"500000005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"","datum_einde":"","status":"AFGEWEZEN"}] |
-      | 500000005 | []                                                                                                                                                                                               |
+      | 400000003 | [{"bsn_erflater":"999500005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"","datum_einde":"","status":"AFGEWEZEN"}] |
+      | 999500005 | []                                                                                                                                                                                               |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties, subject_ids" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_delegaties" is false
@@ -58,9 +58,9 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
   Scenario: Executeur met meerdere actieve nalatenschappen
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                                                                                                                                                                                                                                       |
-      | 400000003 | [{"bsn_erflater":"500000005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"","status":"ACTIEF"},{"bsn_erflater":"500000006","naam_erflater":"Marie de Vries","nalatenschap_id":"NAL-2024-00456","datum_overlijden":"2024-08-01","datum_aanvaarding":"2024-08-10","datum_einde":"","status":"ACTIEF"}] |
-      | 500000005 | []                                                                                                                                                                                                                                                                                                                                                                                                           |
-      | 500000006 | []                                                                                                                                                                                                                                                                                                                                                                                                           |
+      | 400000003 | [{"bsn_erflater":"999500005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"","status":"ACTIEF"},{"bsn_erflater":"999500006","naam_erflater":"Marie de Vries","nalatenschap_id":"NAL-2024-00456","datum_overlijden":"2024-08-01","datum_aanvaarding":"2024-08-10","datum_einde":"","status":"ACTIEF"}] |
+      | 999500005 | []                                                                                                                                                                                                                                                                                                                                                                                                           |
+      | 999500006 | []                                                                                                                                                                                                                                                                                                                                                                                                           |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_delegaties" is true
@@ -70,9 +70,9 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
   Scenario: Executeur met mix van actieve en afgewikkelde nalatenschappen
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                                                                                                                                                                                                                                                      |
-      | 400000003 | [{"bsn_erflater":"500000005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"","status":"ACTIEF"},{"bsn_erflater":"500000006","naam_erflater":"Marie de Vries","nalatenschap_id":"NAL-2023-00789","datum_overlijden":"2023-02-01","datum_aanvaarding":"2023-02-15","datum_einde":"2024-03-01","status":"AFGEWIKKELD"}] |
-      | 500000005 | []                                                                                                                                                                                                                                                                                                                                                                                                                          |
-      | 500000006 | []                                                                                                                                                                                                                                                                                                                                                                                                                          |
+      | 400000003 | [{"bsn_erflater":"999500005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"","status":"ACTIEF"},{"bsn_erflater":"999500006","naam_erflater":"Marie de Vries","nalatenschap_id":"NAL-2023-00789","datum_overlijden":"2023-02-01","datum_aanvaarding":"2023-02-15","datum_einde":"2024-03-01","status":"AFGEWIKKELD"}] |
+      | 999500005 | []                                                                                                                                                                                                                                                                                                                                                                                                                          |
+      | 999500006 | []                                                                                                                                                                                                                                                                                                                                                                                                                          |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_delegaties" is true
@@ -82,8 +82,8 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
   Scenario: Executeurschap met einddatum in de toekomst blijft actief
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                                            |
-      | 400000003 | [{"bsn_erflater":"500000005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"2026-06-15","status":"ACTIEF"}] |
-      | 500000005 | []                                                                                                                                                                                                                |
+      | 400000003 | [{"bsn_erflater":"999500005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"2026-06-15","status":"ACTIEF"}] |
+      | 999500005 | []                                                                                                                                                                                                                |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_delegaties" is true
@@ -92,8 +92,8 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
   Scenario: Executeurschap met einddatum in het verleden is niet meer actief
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                                            |
-      | 400000003 | [{"bsn_erflater":"500000005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"2025-01-01","status":"ACTIEF"}] |
-      | 500000005 | []                                                                                                                                                                                                                |
+      | 400000003 | [{"bsn_erflater":"999500005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"2025-01-01","status":"ACTIEF"}] |
+      | 999500005 | []                                                                                                                                                                                                                |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties, subject_ids" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_delegaties" is false
@@ -103,8 +103,8 @@ Feature: Burgerlijk Wetboek Executeur (BW 4:144-150)
   Scenario: Executeur heeft correct rechten voor nalatenschap beheer
     Given the following "NOTARIAAT" data with key "bsn" for law "burgerlijk_wetboek_executeur":
       | bsn       | executeur_registraties                                                                                                                                                                                  |
-      | 400000003 | [{"bsn_erflater":"500000005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"","status":"ACTIEF"}] |
-      | 500000005 | []                                                                                                                                                                                                      |
+      | 400000003 | [{"bsn_erflater":"999500005","naam_erflater":"Karel Posthumus","nalatenschap_id":"NAL-2024-00123","datum_overlijden":"2024-06-01","datum_aanvaarding":"2024-06-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999500005 | []                                                                                                                                                                                                      |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "burgerlijk_wetboek_executeur"
     Then output "voldoet_aan_voorwaarden" is true
     # POC: output "permissions" contains ['LEZEN', 'CLAIMS_INDIENEN', 'BESLUITEN_ONTVANGEN'] (array membership not expressible in the canonical grammar)

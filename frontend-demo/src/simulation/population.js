@@ -225,8 +225,8 @@ export function generateCitizens(userParams, referenceDate, templateRow = () => 
   let bsnCounter = 0;
   let childCounter = 0;
   const ids = {
-    bsn: () => `9991${String((bsnCounter += 1)).padStart(5, '0')}`,
-    childBsn: () => `9992${String((childCounter += 1)).padStart(5, '0')}`,
+    bsn: () => `9995${String((bsnCounter += 1)).padStart(5, '0')}`,
+    childBsn: () => `9996${String((childCounter += 1)).padStart(5, '0')}`,
   };
   const count = Math.max(1, Math.min(2000, Math.floor(Number(params.count) || 1)));
   const people = [];
@@ -430,7 +430,7 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
 
   for (let i = 1; i <= count; i += 1) {
     const kvk = `8${String(i).padStart(7, '0')}`;
-    const bsn = `9993${String(i).padStart(5, '0')}`;
+    const bsn = `9997${String(i).padStart(5, '0')}`;
     const horeca = rng.chance(params.horecaPct / 100);
     const type = horeca ? (rng.chance(0.15) ? 'slijtersbedrijf' : 'horecabedrijf') : 'overig';
     const food = horeca ? rng.chance(0.9) : rng.chance(params.foodPct / 100 / 3);

@@ -8,22 +8,22 @@ Feature: Anw - Nabestaandenuitkering
     Given the calculation date is "2026-07-01"
 
   Scenario: Nabestaande met kind onder 18 jaar zonder inkomen
-    Given parameter "bsn" is "300000001"
+    Given parameter "bsn" is "999300001"
     And the following "SVB" data with key "bsn" for law "algemene_nabestaandenwet":
       | bsn       | partner_verzekerd | overlijdensdatum_partner | ao_percentage | heeft_kinderen_onder_18 |
-      | 300000001 | true              | 2026-01-15               | 0             | true                    |
+      | 999300001 | true              | 2026-01-15               | 0             | true                    |
       | 300000101 | null              | null                     | 0             | null                    |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 300000001 | 1985-06-15    | null              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999300001 | 1985-06-15    | null              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
       | 300000101 | null          | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
-      | 300000001 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+      | 999300001 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
       | 300000101 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 300000001 | 20.5           |
+      | 999300001 | 20.5           |
       | 300000101 | 20.5           |
     When I evaluate outputs "voldoet_aan_voorwaarden, is_gerechtigd, bruto_uitkering, inkomenskorting, netto_uitkering" of "algemene_nabestaandenwet"
     Then output "voldoet_aan_voorwaarden" is true

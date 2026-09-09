@@ -23,7 +23,7 @@ Feature: Machtigingenwet - Delegation provider for KVK
     Given the following "KVK" data with key "bsn" for law "machtigingenwet":
       | bsn       | functionarissen                                                                                                                                                                                  |
       | 999993653 | []                                                                                                                                                                                               |
-      | 111111111 | [{"kvk_nummer":"00000000","functie":"EIGENAAR","bevoegdheid":"VOLLEDIG","handelsnaam":"Leeg","rechtsvorm":"EENMANSZAAK","status":"ACTIEF","datum_inschrijving":null,"datum_uitschrijving":null}] |
+      | 999111111 | [{"kvk_nummer":"00000000","functie":"EIGENAAR","bevoegdheid":"VOLLEDIG","handelsnaam":"Leeg","rechtsvorm":"EENMANSZAAK","status":"ACTIEF","datum_inschrijving":null,"datum_uitschrijving":null}] |
     When I evaluate outputs "heeft_delegaties" of "machtigingenwet"
     Then output "heeft_delegaties" is false
 

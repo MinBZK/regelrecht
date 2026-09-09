@@ -8,42 +8,42 @@ Feature: Berekening Kindgebonden Budget
     Given the calculation date is "2025-02-01"
 
   Scenario: Alleenstaande ouder met 1 kind krijgt basisbedrag + ALO-kop
-    Given parameter "bsn" is "200000001"
+    Given parameter "bsn" is "999200001"
     And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
       | bsn       | kinderen_data                                                                 |
-      | 200000001 | {"aantal_kinderen":1,"kinderen_leeftijden":[5],"ontvangt_kinderbijslag":true} |
+      | 999200001 | {"aantal_kinderen":1,"kinderen_leeftijden":[5],"ontvangt_kinderbijslag":true} |
     And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
       | bsn       | vermogensgegevens    |
-      | 200000001 | {"vermogen":5000000} |
+      | 999200001 | {"vermogen":5000000} |
     And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
       | bsn       | inkomensgegevens             |
-      | 200000001 | {"toetsingsinkomen":2500000} |
+      | 999200001 | {"toetsingsinkomen":2500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000001 | 1988-04-12    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200001 | 1988-04-12    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
     When I evaluate outputs "voldoet_aan_voorwaarden, alo_kop_bedrag, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "alo_kop_bedrag" equals 348000
     And output "kindgebonden_budget_jaar" equals 599100
 
   Scenario: Paar met 2 kinderen krijgt aangepast bedrag zonder ALO-kop
-    Given parameter "bsn" is "200000002"
+    Given parameter "bsn" is "999200002"
     And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
       | bsn       | kinderen_data                                                                    |
-      | 200000002 | {"aantal_kinderen":2,"kinderen_leeftijden":[7,10],"ontvangt_kinderbijslag":true} |
-      | 200000003 | null                                                                             |
+      | 999200002 | {"aantal_kinderen":2,"kinderen_leeftijden":[7,10],"ontvangt_kinderbijslag":true} |
+      | 999200003 | null                                                                             |
     And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
       | bsn       | vermogensgegevens    |
-      | 200000002 | {"vermogen":8000000} |
-      | 200000003 | {"vermogen":7000000} |
+      | 999200002 | {"vermogen":8000000} |
+      | 999200003 | {"vermogen":7000000} |
     And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
       | bsn       | inkomensgegevens             |
-      | 200000002 | {"toetsingsinkomen":3500000} |
-      | 200000003 | {"toetsingsinkomen":3000000} |
+      | 999200002 | {"toetsingsinkomen":3500000} |
+      | 999200003 | {"toetsingsinkomen":3000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000002 | 1985-09-22    | HUWELIJK          | 200000003   | []                | null           | []             | null          | null          | null  | []           | null                  |
-      | 200000003 | null          | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200002 | 1985-09-22    | HUWELIJK          | 999200003   | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200003 | null          | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
     When I evaluate outputs "voldoet_aan_voorwaarden, alo_kop_bedrag, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "alo_kop_bedrag" equals 0
@@ -51,73 +51,73 @@ Feature: Berekening Kindgebonden Budget
     And output "kindgebonden_budget_jaar" equals 392541
 
   Scenario: Alleenstaande met inkomen boven grens krijgt geen kindgebonden budget
-    Given parameter "bsn" is "200000004"
+    Given parameter "bsn" is "999200004"
     And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
       | bsn       | kinderen_data                                                                 |
-      | 200000004 | {"aantal_kinderen":1,"kinderen_leeftijden":[8],"ontvangt_kinderbijslag":true} |
+      | 999200004 | {"aantal_kinderen":1,"kinderen_leeftijden":[8],"ontvangt_kinderbijslag":true} |
     And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
       | bsn       | vermogensgegevens    |
-      | 200000004 | {"vermogen":5000000} |
+      | 999200004 | {"vermogen":5000000} |
     And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
       | bsn       | inkomensgegevens              |
-      | 200000004 | {"toetsingsinkomen":12000000} |
+      | 999200004 | {"toetsingsinkomen":12000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000004 | 1982-11-30    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200004 | 1982-11-30    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "kindgebonden_budget_jaar" equals 0
 
   Scenario: Alleenstaande met kind krijgt basisbedrag
-    Given parameter "bsn" is "200000005"
+    Given parameter "bsn" is "999200005"
     And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
       | bsn       | kinderen_data                                                                  |
-      | 200000005 | {"aantal_kinderen":1,"kinderen_leeftijden":[10],"ontvangt_kinderbijslag":true} |
+      | 999200005 | {"aantal_kinderen":1,"kinderen_leeftijden":[10],"ontvangt_kinderbijslag":true} |
     And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
       | bsn       | vermogensgegevens    |
-      | 200000005 | {"vermogen":3000000} |
+      | 999200005 | {"vermogen":3000000} |
     And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
       | bsn       | inkomensgegevens             |
-      | 200000005 | {"toetsingsinkomen":2200000} |
+      | 999200005 | {"toetsingsinkomen":2200000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000005 | 1990-01-15    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200005 | 1990-01-15    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "kindgebonden_budget_jaar" equals 599100
 
   Scenario: Alleenstaande met kind en hoger inkomen
-    Given parameter "bsn" is "200000006"
+    Given parameter "bsn" is "999200006"
     And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
       | bsn       | kinderen_data                                                                 |
-      | 200000006 | {"aantal_kinderen":1,"kinderen_leeftijden":[8],"ontvangt_kinderbijslag":true} |
+      | 999200006 | {"aantal_kinderen":1,"kinderen_leeftijden":[8],"ontvangt_kinderbijslag":true} |
     And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
       | bsn       | vermogensgegevens    |
-      | 200000006 | {"vermogen":4000000} |
+      | 999200006 | {"vermogen":4000000} |
     And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
       | bsn       | inkomensgegevens             |
-      | 200000006 | {"toetsingsinkomen":2400000} |
+      | 999200006 | {"toetsingsinkomen":2400000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000006 | 1987-06-20    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200006 | 1987-06-20    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "kindgebonden_budget_jaar" equals 599100
 
   Scenario: Geen kinderbijslag betekent geen kindgebonden budget
-    Given parameter "bsn" is "200000007"
+    Given parameter "bsn" is "999200007"
     And the following "SVB" data with key "bsn" for law "algemene_kinderbijslagwet":
       | bsn       | kinderen_data                                                                 |
-      | 200000007 | {"aantal_kinderen":0,"kinderen_leeftijden":[],"ontvangt_kinderbijslag":false} |
+      | 999200007 | {"aantal_kinderen":0,"kinderen_leeftijden":[],"ontvangt_kinderbijslag":false} |
     And the following "BELASTINGDIENST" data with key "bsn" for law "belastingdienst_vermogen":
       | bsn       | vermogensgegevens    |
-      | 200000007 | {"vermogen":2000000} |
+      | 999200007 | {"vermogen":2000000} |
     And the following "UWV" data with key "bsn" for law "uwv_toetsingsinkomen":
       | bsn       | inkomensgegevens             |
-      | 200000007 | {"toetsingsinkomen":2000000} |
+      | 999200007 | {"toetsingsinkomen":2000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000007 | 1995-03-08    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200007 | 1995-03-08    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is false
 

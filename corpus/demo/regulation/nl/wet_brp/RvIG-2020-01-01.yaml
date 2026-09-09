@@ -88,6 +88,11 @@ articles:
           - name: bsn
             type: string
             required: true
+          - name: referentiedatum
+            type: date
+            required: false
+            description: >-
+              Peildatum voor de leeftijd; zonder deze parameter geldt de rekendatum.
         input:
           - name: geboortedatum
             type: date
@@ -205,7 +210,17 @@ articles:
                       value: null
                   then:
                     operation: AGE
-                    reference_date: $referencedate
+                    reference_date:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $referentiedatum
+                              value: null
+                          then: $referentiedatum
+                      default: $referencedate
                     date_of_birth: $geboortedatum
               default: null
             legal_basis:

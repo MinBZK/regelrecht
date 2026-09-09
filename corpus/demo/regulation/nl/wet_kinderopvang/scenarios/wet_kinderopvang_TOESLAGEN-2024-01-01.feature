@@ -6,29 +6,29 @@ Feature: Berekening Kinderopvangtoeslag
 
   Background:
     Given the calculation date is "2025-01-15"
-    And parameter "bsn" is "888888888"
+    And parameter "bsn" is "999888888"
 
   Scenario: Alleenstaande ouder met jonge kinderen heeft recht op kinderopvangtoeslag
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens                         | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 888888888 | 1990-05-15    | GEEN              | null        | [{"bsn":"111111111"},{"bsn":"222222222"}] | Amsterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999888888 | 1990-05-15    | GEEN              | null        | [{"bsn":"999111111"},{"bsn":"999222222"}] | Amsterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
-      | 888888888 | 3600000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+      | 999888888 | 3600000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_kinderopvang":
       | bsn       | kinderopvang_kvk | aangegeven_uren | verwachte_partner_uren |
-      | 888888888 | null             | null            | 0                      |
+      | 999888888 | null             | null            | 0                      |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 888888888 | 0              |
+      | 999888888 | 0              |
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                                 | uitkeringsperiodes |
-      | 888888888 | [{"start_date":"2024-01-15","end_date":"2024-01-30"}] | []                 |
+      | 999888888 | [{"start_date":"2024-01-15","end_date":"2024-01-30"}] | []                 |
     # POC phase dropped: "wet_kinderopvang" was run only to establish that required data was missing (ontbreken er verplichte gegevens; is niet voldaan aan de voorwaarden)
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     Given the following parameters:
       | kinderopvang_kvk       | 12345678                                                                                                                                                                            |
-      | aangegeven_uren        | [{"kind_bsn":"111111111","uren_per_jaar":2000,"uurtarief":850,"soort_opvang":"DAGOPVANG"},{"kind_bsn":"222222222","uren_per_jaar":1500,"uurtarief":900,"soort_opvang":"DAGOPVANG"}] |
+      | aangegeven_uren        | [{"kind_bsn":"999111111","uren_per_jaar":2000,"uurtarief":850,"soort_opvang":"DAGOPVANG"},{"kind_bsn":"999222222","uren_per_jaar":1500,"uurtarief":900,"soort_opvang":"DAGOPVANG"}] |
       | verwachte_partner_uren | 0                                                                                                                                                                                   |
     When I evaluate outputs "is_gerechtigd, jaarbedrag" of "wet_kinderopvang"
     # POC: no required inputs missing (application-level check, not engine behaviour)
@@ -38,23 +38,23 @@ Feature: Berekening Kinderopvangtoeslag
   Scenario: Tweeverdieners met hoger inkomen ontvangen lagere toeslag
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens     | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 888888888 | 1985-03-10    | HUWELIJK          | 999999999   | [{"bsn":"333333333"}] | Utrecht        | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999888888 | 1985-03-10    | HUWELIJK          | 999999999   | [{"bsn":"333333333"}] | Utrecht        | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
       | 999999999 | null          | null              | null        | []                    | null           | []             | null          | null          | null  | []           | null                  |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
-      | 888888888 | 4500000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+      | 999888888 | 4500000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
       | 999999999 | 3800000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_kinderopvang":
       | bsn       | kinderopvang_kvk | aangegeven_uren | verwachte_partner_uren |
-      | 888888888 | null             | null            | 0                      |
+      | 999888888 | null             | null            | 0                      |
       | 999999999 | null             | null            | 0                      |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 888888888 | 0              |
+      | 999888888 | 0              |
       | 999999999 | 0              |
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                       | uitkeringsperiodes |
-      | 888888888 | [{"start_date":"2023-01-01","end_date":""}] | []                 |
+      | 999888888 | [{"start_date":"2023-01-01","end_date":""}] | []                 |
       | 999999999 | [{"start_date":"2023-01-01","end_date":""}] | []                 |
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     And the following parameters:
@@ -68,19 +68,19 @@ Feature: Berekening Kinderopvangtoeslag
   Scenario: Ouder met BSO en overschrijding van het maximale uurtarief
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens                         | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 888888888 | 1988-11-21    | GEEN              | null        | [{"bsn":"444444444"},{"bsn":"555555555"}] | Rotterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999888888 | 1988-11-21    | GEEN              | null        | [{"bsn":"444444444"},{"bsn":"555555555"}] | Rotterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
-      | 888888888 | 3200000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+      | 999888888 | 3200000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_kinderopvang":
       | bsn       | kinderopvang_kvk | aangegeven_uren | verwachte_partner_uren |
-      | 888888888 | null             | null            | 0                      |
+      | 999888888 | null             | null            | 0                      |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 888888888 | 0              |
+      | 999888888 | 0              |
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                       | uitkeringsperiodes |
-      | 888888888 | [{"start_date":"2023-03-01","end_date":""}] | []                 |
+      | 999888888 | [{"start_date":"2023-03-01","end_date":""}] | []                 |
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     And the following parameters:
       | kinderopvang_kvk       | 23456789                                                                                                                                                                                                                                        |
@@ -93,24 +93,24 @@ Feature: Berekening Kinderopvangtoeslag
   Scenario: Partner werkt minder dan vereiste uren, geen recht op toeslag
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens     | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 888888888 | 1990-07-05    | HUWELIJK          | 777777777   | [{"bsn":"666666666"}] | Den Haag       | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
-      | 777777777 | null          | null              | null        | []                    | null           | []             | null          | null          | null  | []           | null                  |
+      | 999888888 | 1990-07-05    | HUWELIJK          | 999777777   | [{"bsn":"666666666"}] | Den Haag       | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999777777 | null          | null              | null        | []                    | null           | []             | null          | null          | null  | []           | null                  |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
-      | 888888888 | 2900000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
-      | 777777777 | 1200000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+      | 999888888 | 2900000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+      | 999777777 | 1200000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_kinderopvang":
       | bsn       | kinderopvang_kvk | aangegeven_uren | verwachte_partner_uren |
-      | 888888888 | null             | null            | 0                      |
-      | 777777777 | null             | null            | 0                      |
+      | 999888888 | null             | null            | 0                      |
+      | 999777777 | null             | null            | 0                      |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 888888888 | 0              |
-      | 777777777 | 0              |
+      | 999888888 | 0              |
+      | 999777777 | 0              |
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                                 | uitkeringsperiodes |
-      | 888888888 | [{"start_date":"2022-09-01","end_date":""}]           | []                 |
-      | 777777777 | [{"start_date":"2023-01-01","end_date":"2023-01-15"}] | []                 |
+      | 999888888 | [{"start_date":"2022-09-01","end_date":""}]           | []                 |
+      | 999777777 | [{"start_date":"2023-01-01","end_date":"2023-01-15"}] | []                 |
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     And the following parameters:
       | kinderopvang_kvk       | 34567890                                                                                                                       |
@@ -122,23 +122,23 @@ Feature: Berekening Kinderopvangtoeslag
   Scenario: Gezin met meerdere soorten opvang
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens                         | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 888888888 | 1987-02-18    | HUWELIJK          | 888888880   | [{"bsn":"888888881"},{"bsn":"888888882"}] | Groningen      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999888888 | 1987-02-18    | HUWELIJK          | 888888880   | [{"bsn":"888888881"},{"bsn":"888888882"}] | Groningen      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
       | 888888880 | null          | null              | null        | []                                        | null           | []             | null          | null          | null  | []           | null                  |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
-      | 888888888 | 2800000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
+      | 999888888 | 2800000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
       | 888888880 | 2100000                   | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_kinderopvang":
       | bsn       | kinderopvang_kvk | aangegeven_uren | verwachte_partner_uren |
-      | 888888888 | null             | null            | 0                      |
+      | 999888888 | null             | null            | 0                      |
       | 888888880 | null             | null            | 0                      |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 888888888 | 0              |
+      | 999888888 | 0              |
       | 888888880 | 0              |
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                       | uitkeringsperiodes |
-      | 888888888 | [{"start_date":"2020-02-01","end_date":""}] | []                 |
+      | 999888888 | [{"start_date":"2020-02-01","end_date":""}] | []                 |
       | 888888880 | [{"start_date":"2020-02-01","end_date":""}] | []                 |
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     And the following parameters:
