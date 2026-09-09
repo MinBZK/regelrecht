@@ -195,6 +195,12 @@ slides:
       - We **beginnen met de wet**
       - Deze **machine-uitvoerbaar** maken
       - '**Openbaar** publiceren'
+  - kind: section
+    title: Demo RegelRecht
+    lines:
+      - Proof of concept
+      - Compleet verhaal, geen eindproduct
+      - We maken beleid door te doen
   - kind: demo
     overline: De wet
     title: De wet, machine-leesbaar

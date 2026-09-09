@@ -20,7 +20,7 @@ onActivated(startWhenReady);
 watch(ready, startWhenReady);
 
 function kindLabel(s) {
-  return s.kind === 'title' ? 'Titel' : s.kind === 'statement' ? 'Stelling' : s.kind === 'closing' ? 'Afsluiting' : 'Demo';
+  return s.kind === 'title' ? 'Titel' : s.kind === 'statement' ? 'Stelling' : s.kind === 'closing' ? 'Afsluiting' : s.kind === 'section' ? 'Kop' : 'Demo';
 }
 </script>
 

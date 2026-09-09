@@ -45,14 +45,12 @@ function saveName(e) {
           <template v-else-if="p.current.value.kind === 'statement'">
             <span v-if="p.current.value.overline" class="overline">{{ p.current.value.overline }}</span>
             <h1 class="title statement">
-              <template v-for="(line, j) in p.current.value.lines" :key="j">
-                <span v-html="emphasize(line)"></span><br v-if="j < p.current.value.lines.length - 1" />
-              </template>
+              <span v-for="(line, j) in p.current.value.lines" :key="j" class="statement-line" v-html="emphasize(line)"></span>
             </h1>
           </template>
 
-          <!-- Closing slide -->
-          <template v-else-if="p.current.value.kind === 'closing'">
+          <!-- Section or closing slide: a big title with a few plain lines -->
+          <template v-else-if="p.current.value.kind === 'closing' || p.current.value.kind === 'section'">
             <span v-if="p.current.value.overline" class="overline">{{ p.current.value.overline }}</span>
             <h1 class="title title-hero">{{ p.current.value.title }}</h1>
             <ul v-if="p.current.value.lines?.length" class="bullets bullets-plain">
@@ -121,7 +119,7 @@ function saveName(e) {
 }
 .deck.full {
   width: 100vw;
-  padding: 4rem clamp(3rem, 12vw, 14rem) 2rem;
+  padding: 4rem clamp(3rem, 9vw, 10rem) 2rem;
 }
 
 .content {
@@ -163,9 +161,15 @@ function saveName(e) {
   font-size: clamp(3.2rem, 7vw, 9rem);
 }
 .statement {
-  font-size: clamp(2.4rem, 4.8vw, 6.2rem);
-  line-height: 1.15;
+  font-size: clamp(2rem, 3.8vw, 5rem);
+  line-height: 1.2;
   font-weight: 400;
+}
+/* One authored line per block; a line that still has to wrap balances its
+ * halves instead of leaving one word behind. */
+.statement-line {
+  display: block;
+  text-wrap: balance;
 }
 .statement :deep(strong) {
   font-weight: 700;
