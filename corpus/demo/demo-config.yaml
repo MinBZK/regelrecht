@@ -142,17 +142,17 @@ dashboard_outputs:
   BELASTINGDIENST/wet_inkomstenbelasting: totale_belastingschuld
   TOESLAGEN/zorgtoeslagwet: hoogte_toeslag
   TOESLAGEN/wet_op_het_kindgebonden_budget: kindgebonden_budget_jaar
-  TOESLAGEN/wet_op_de_huurtoeslag: hoogte_huurtoeslag
-  TOESLAGEN/wet_kinderopvang: hoogte_toeslag
-  SVB/algemene_ouderdomswet: hoogte_aow
+  TOESLAGEN/wet_op_de_huurtoeslag: subsidiebedrag
+  TOESLAGEN/wet_kinderopvang: jaarbedrag
+  SVB/algemene_ouderdomswet: pensioenbedrag
   SVB/algemene_kinderbijslagwet: ontvangt_kinderbijslag
-  SVB/algemene_nabestaandenwet: hoogte_nabestaandenuitkering
-  SVB/participatiewet/aio: hoogte_aio
-  SZW/participatiewet/bijstand: hoogte_bijstand
+  SVB/algemene_nabestaandenwet: netto_uitkering
+  SVB/participatiewet/aio: aio_aanvulling
+  SZW/participatiewet/bijstand: basisbedrag
   SZW/besluit_bijstandverlening_zelfstandigen: algemene_bijstand_bedrag
   GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten: uitkeringsbedrag
   DUO/wet_studiefinanciering: studiefinanciering
-  UWV/werkloosheidswet: hoogte_ww_uitkering
+  UWV/werkloosheidswet: ww_uitkering_per_maand
   UWV/ziektewet: hoogte_ziekengeld
   UWV/wet_werk_en_inkomen_naar_arbeidsvermogen: hoogte_uitkering
   BELASTINGDIENST/zorgverzekeringswet/bijdrage: verschuldigde_bijdrage
@@ -170,6 +170,78 @@ dashboard_outputs:
 # sees the branch that matters (the POC's DEMO_COLLAPSE_CONFIG, trimmed to the
 # laws on the default tabs). Paths are dotted, arrays by index or by the value
 # of `output`/`name`.
+# Simulatie: what adds up to a citizen's disposable income per month (the
+# POC's "besteedbaar inkomen"). A law states its amount per month or per
+# year; the law itself does not declare that, so it is configured here. Taxes
+# are subtracted, benefits added, and only when the law's conditions are met.
+simulation:
+  disposable_income:
+    - law: wet_inkomstenbelasting
+      output: totale_belastingschuld
+      period: year
+      kind: tax
+      label: Inkomstenbelasting
+    - law: zorgverzekeringswet/bijdrage
+      output: verschuldigde_bijdrage
+      period: year
+      kind: tax
+      label: Bijdrage Zvw
+    - law: zorgtoeslagwet
+      output: hoogte_toeslag
+      period: year
+      kind: benefit
+      label: Zorgtoeslag
+    - law: wet_op_de_huurtoeslag
+      output: subsidiebedrag
+      period: month
+      kind: benefit
+      label: Huurtoeslag
+    - law: wet_op_het_kindgebonden_budget
+      output: kindgebonden_budget_jaar
+      period: year
+      kind: benefit
+      label: Kindgebonden budget
+    - law: wet_kinderopvang
+      output: jaarbedrag
+      period: year
+      kind: benefit
+      label: Kinderopvangtoeslag
+    - law: algemene_ouderdomswet
+      output: pensioenbedrag
+      period: month
+      kind: benefit
+      label: AOW
+    - law: algemene_nabestaandenwet
+      output: netto_uitkering
+      period: month
+      kind: benefit
+      label: Anw
+    - law: participatiewet/aio
+      output: aio_aanvulling
+      period: month
+      kind: benefit
+      label: AIO
+    - law: participatiewet/bijstand/amsterdam
+      output: uitkeringsbedrag
+      period: month
+      kind: benefit
+      label: Bijstand
+    - law: participatiewet/bijstand/amsterdam
+      output: woonkostentoeslag
+      period: month
+      kind: benefit
+      label: Woonkostentoeslag
+    - law: besluit_bijstandverlening_zelfstandigen
+      output: algemene_bijstand_bedrag
+      period: month
+      kind: benefit
+      label: Bbz
+    - law: werkloosheidswet
+      output: ww_uitkering_per_maand
+      period: month
+      kind: benefit
+      label: WW
+
 # What the Wetten tab shows unfolded per law, prepared for the story (the
 # POC's DEMO_COLLAPSE_CONFIG). A path opens itself and everything above it;
 # siblings stay folded, so the audience lands on the right lines instead of

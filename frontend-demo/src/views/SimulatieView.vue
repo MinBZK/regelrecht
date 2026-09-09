@@ -8,6 +8,7 @@ import { BUSINESS_DEFAULTS, CITIZEN_DEFAULTS } from '../simulation/population.js
 import { definitionKind, overridableDefinitions } from '../simulation/lawParameters.js';
 import { runSimulation, simulationLaws } from '../simulation/runner.js';
 import { BUSINESS_DIMENSIONS, CITIZEN_DIMENSIONS, breakdown, flattenResults, toCsv } from '../simulation/stats.js';
+import { disposableIncomeBreakdown, summariseDisposableIncome } from '../simulation/income.js';
 import { useDemo } from '../store/demoStore.js';
 
 // Simulatie: a synthetic population of citizens or businesses, every portal
@@ -243,6 +244,17 @@ function eligibleCount(result) {
   return Object.values(result.laws).filter((l) => l.ok && l.met !== false).length;
 }
 
+// ---- disposable income (citizens) --------------------------------------------------
+// The POC's closing figure: what a person keeps per month after taxes and
+// benefits, and after housing. Which outputs count is demo configuration.
+const incomeComponents = computed(() => (corpus.value?.config?.simulation?.disposable_income ?? []).filter((c) => corpus.value.latestById.has(c.law)));
+const disposable = computed(() => (activeRun.value?.kind === 'burgers' && incomeComponents.value.length ? summariseDisposableIncome(activeRun.value.results, incomeComponents.value) : null));
+const disposableRows = computed(() => (disposable.value ? disposableIncomeBreakdown(activeRun.value.results, incomeComponents.value, dimension.value.groupOf, dimension.value.order) : []));
+const componentRows = computed(() => (disposable.value ? disposable.value.components.filter((c) => c.withValue > 0) : []));
+function componentLabel(c) {
+  return c.component.label ?? corpus.value?.lawById(c.component.law)?.name ?? c.component.law;
+}
+
 // ---- comparison ---------------------------------------------------------------
 const comparable = computed(() => runs.value.filter((r) => r.kind === (runs.value.find((x) => x.id === activeTab.value)?.kind ?? runs.value[0]?.kind)));
 const comparisonLaws = computed(() => {
@@ -297,13 +309,13 @@ function exportJson() {
           <nldd-form-field label="Peildatum">
             <nldd-date-field :value="referenceDate" width="full" @change="referenceDate = $event.detail?.value || referenceDate"></nldd-date-field>
           </nldd-form-field>
-          <nldd-form-field label="Seed">
-            <nldd-number-field :value="params.seed" min="1" step="1" width="full" hide-spin-buttons @change="params.seed = numberFrom($event) ?? params.seed"></nldd-number-field>
-            <nldd-form-field-help-text>Dezelfde seed geeft dezelfde populatie.</nldd-form-field-help-text>
-          </nldd-form-field>
 
           <nldd-button width="full" variant="neutral-transparent" horizontal-alignment="left" :end-icon="open.populatie ? 'chevron-up' : 'chevron-down'" :text="kind === 'ondernemers' ? 'Samenstelling bedrijven' : 'Demografie'" :expanded="open.populatie || undefined" @click="open.populatie = !open.populatie"></nldd-button>
           <template v-if="open.populatie">
+            <nldd-form-field label="Seed">
+              <nldd-number-field size="sm" :value="params.seed" min="1" step="1" width="full" hide-spin-buttons @change="params.seed = numberFrom($event) ?? params.seed"></nldd-number-field>
+              <nldd-form-field-help-text>Dezelfde seed geeft dezelfde populatie.</nldd-form-field-help-text>
+            </nldd-form-field>
             <nldd-container v-for="group in knobs" :key="group.group" gap="8">
               <nldd-text-cell size="sm" color="secondary" :text="group.group"></nldd-text-cell>
               <nldd-form-field v-for="field in group.fields" :key="field.label" :label="field.label">
@@ -381,12 +393,42 @@ function exportJson() {
 
               <nldd-card accessible-label="Populatie">
                 <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" text="Populatie" :supporting-text="`Peildatum ${formatValue(activeRun.referenceDate)} · seed ${activeRun.params.seed} · ${(activeRun.durationMs / 1000).toFixed(1)} s`"></nldd-title-cell></nldd-container>
-                <nldd-list variant="simple" accessible-label="Kenmerken van de populatie">
-                  <nldd-list-item v-for="[label, value] in populationFacts" :key="label" size="sm">
-                    <nldd-text-cell size="sm" color="secondary" :text="label"></nldd-text-cell>
-                    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="value"></nldd-text-cell>
-                  </nldd-list-item>
-                </nldd-list>
+                <nldd-container padding-inline="12" padding-bottom="12">
+                  <nldd-list variant="simple" accessible-label="Kenmerken van de populatie">
+                    <nldd-list-item v-for="[label, value] in populationFacts" :key="label" size="sm">
+                      <nldd-text-cell size="sm" color="secondary" :text="label"></nldd-text-cell>
+                      <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="value"></nldd-text-cell>
+                    </nldd-list-item>
+                  </nldd-list>
+                </nldd-container>
+              </nldd-card>
+
+              <nldd-card v-if="disposable" background="tinted" accessible-label="Besteedbaar inkomen">
+                <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
+                  <nldd-icon name="euro-sign" size="24"></nldd-icon>
+                  <nldd-title-cell size="4" text="Besteedbaar inkomen" supporting-text="Wat een persoon per maand overhoudt: inkomen min belastingen, plus toeslagen en uitkeringen die de wetten toekennen"></nldd-title-cell>
+                </nldd-container>
+                <nldd-container padding-inline="12" padding-bottom="12" gap="12">
+                  <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="12">
+                    <nldd-list variant="box-base" accessible-label="Gemiddeld per maand"><nldd-list-item size="md"><nldd-title-cell size="3" overline="Gemiddeld per maand" :text="money(disposable.avgDisposable)"></nldd-title-cell></nldd-list-item></nldd-list>
+                    <nldd-list variant="box-base" accessible-label="Mediaan per maand"><nldd-list-item size="md"><nldd-title-cell size="3" overline="Mediaan per maand" :text="money(disposable.medianDisposable)"></nldd-title-cell></nldd-list-item></nldd-list>
+                    <nldd-list variant="box-base" accessible-label="Na woonkosten"><nldd-list-item size="md"><nldd-title-cell size="3" overline="Na woonkosten" :text="money(disposable.avgAfterHousing)" :supporting-text="`gemiddeld ${money(disposable.avgHousing)} huur of hypotheek`"></nldd-title-cell></nldd-list-item></nldd-list>
+                  </nldd-container>
+                  <nldd-list variant="box-base" accessible-label="Opbouw van het besteedbaar inkomen">
+                    <nldd-list-item size="sm">
+                      <nldd-text-cell size="sm" text="Inkomen" supporting-text="bruto, per maand"></nldd-text-cell>
+                      <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="money(disposable.avgIncome)"></nldd-text-cell>
+                    </nldd-list-item>
+                    <nldd-list-item v-for="c in componentRows" :key="`${c.component.law}#${c.component.output}`" size="sm">
+                      <nldd-text-cell size="sm" :text="componentLabel(c)" :supporting-text="`${c.withValue} van ${disposable.count} personen · ${humanize(c.component.output)}`"></nldd-text-cell>
+                      <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="c.component.kind === 'tax' ? 'critical' : 'success'" :text="`${c.component.kind === 'tax' ? '−' : '+'} ${money(c.avg)}`"></nldd-text-cell>
+                    </nldd-list-item>
+                    <nldd-list-item size="sm">
+                      <nldd-text-cell size="sm" text="**Besteedbaar**" supporting-text="gemiddeld per maand"></nldd-text-cell>
+                      <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="`**${money(disposable.avgDisposable)}**`"></nldd-text-cell>
+                    </nldd-list-item>
+                  </nldd-list>
+                </nldd-container>
               </nldd-card>
 
               <nldd-card accessible-label="Voldoet aan de voorwaarden">
@@ -421,11 +463,36 @@ function exportJson() {
               <nldd-segmented-control size="sm" width="fit-content" :value="dimension.id" @change="dimensionId = $event.detail?.value ?? dimensionId">
                 <nldd-segmented-control-item v-for="d in dimensions" :key="d.id" :value="d.id" :text="d.label"></nldd-segmented-control-item>
               </nldd-segmented-control>
+              <nldd-card v-if="disposable" background="tinted" accessible-label="Besteedbaar inkomen per groep">
+                <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
+                  <nldd-icon name="euro-sign" size="24"></nldd-icon>
+                  <nldd-title-cell size="5" text="Besteedbaar inkomen" :supporting-text="`per maand · naar ${dimension.label.toLowerCase()}`"></nldd-title-cell>
+                </nldd-container>
+                <nldd-container padding-inline="12" padding-bottom="12">
+                  <nldd-table columns="minmax(140px, 1fr) 90px 130px 130px 130px" accessible-label="Besteedbaar inkomen per groep">
+                    <nldd-table-row slot="header">
+                      <nldd-text-cell size="sm" :text="dimension.label"></nldd-text-cell>
+                      <nldd-text-cell size="sm" text="Personen" horizontal-alignment="right"></nldd-text-cell>
+                      <nldd-text-cell size="sm" text="Gemiddeld" horizontal-alignment="right"></nldd-text-cell>
+                      <nldd-text-cell size="sm" text="Mediaan" horizontal-alignment="right"></nldd-text-cell>
+                      <nldd-text-cell size="sm" text="Na woonkosten" horizontal-alignment="right"></nldd-text-cell>
+                    </nldd-table-row>
+                    <nldd-table-row v-for="row in disposableRows" :key="row.group">
+                      <nldd-text-cell size="sm" :text="humanize(row.group)"></nldd-text-cell>
+                      <nldd-text-cell size="sm" :text="num(row.count)" horizontal-alignment="right"></nldd-text-cell>
+                      <nldd-text-cell size="sm" :text="money(row.avgDisposable)" horizontal-alignment="right"></nldd-text-cell>
+                      <nldd-text-cell size="sm" :text="money(row.medianDisposable)" horizontal-alignment="right"></nldd-text-cell>
+                      <nldd-text-cell size="sm" :text="money(row.avgAfterHousing)" horizontal-alignment="right"></nldd-text-cell>
+                    </nldd-table-row>
+                  </nldd-table>
+                </nldd-container>
+              </nldd-card>
               <nldd-card v-for="law in lawRows" :key="law.id" :accessible-label="law.name">
                 <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
                   <OrgLogo :service="law.service" size="sm" />
                   <nldd-title-cell size="5" :text="law.name" :supporting-text="`${law.s.hasEligibility ? `${pct(law.s.eligiblePct)} voldoet` : 'berekend voor iedereen'} · naar ${dimension.label.toLowerCase()}`"></nldd-title-cell>
                 </nldd-container>
+                <nldd-container padding-inline="12" padding-bottom="12">
                 <nldd-table columns="minmax(140px, 1fr) 110px 90px 130px" :accessible-label="`${law.name} naar ${dimension.label}`">
                   <nldd-table-row slot="header">
                     <nldd-text-cell size="sm" :text="dimension.label"></nldd-text-cell>
@@ -440,6 +507,7 @@ function exportJson() {
                     <nldd-text-cell size="sm" :text="row.withAmount ? fmtAmount(activeRun, law.id, row.avgAmount) : '–'" horizontal-alignment="right"></nldd-text-cell>
                   </nldd-table-row>
                 </nldd-table>
+                </nldd-container>
               </nldd-card>
             </nldd-container>
           </nldd-simple-section>
@@ -447,6 +515,7 @@ function exportJson() {
           <nldd-simple-section v-else width="full">
             <nldd-card accessible-label="Populatie">
               <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" text="Populatie" :supporting-text="`${Math.min(activeRun.results.length, 200)} van ${activeRun.results.length} getoond · laatste kolom: regelingen waaraan wordt voldaan`"></nldd-title-cell></nldd-container>
+              <nldd-container padding-inline="12" padding-bottom="12">
               <nldd-table :columns="`repeat(${subjectColumns.length}, minmax(90px, 1fr)) 90px`" accessible-label="Gesimuleerde populatie">
                 <nldd-table-row slot="header">
                   <nldd-text-cell v-for="[key, label] in subjectColumns" :key="key" size="sm" :text="label"></nldd-text-cell>
@@ -457,6 +526,7 @@ function exportJson() {
                   <nldd-text-cell size="sm" :text="`${eligibleCount(r)} / ${Object.keys(r.laws).length}`" horizontal-alignment="right"></nldd-text-cell>
                 </nldd-table-row>
               </nldd-table>
+              </nldd-container>
             </nldd-card>
           </nldd-simple-section>
         </template>
