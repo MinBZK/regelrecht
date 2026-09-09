@@ -19,7 +19,8 @@ import { useDemo } from '../store/demoStore.js';
 
 // The dependency graph as the POC drew it: every selected law and its direct
 // neighbours as a box with its register sources, its inputs from other laws
-// and its outputs, an edge
+// and its outputs (the whole corpus is laid out, so switching to "Alles" adds
+// laws around the ones already in view without moving them), an edge
 // from each input to the output that supplies it, and on every item the value
 // the engine found for the active persona. The profile chooses the laws that
 // tell its story (`graph_laws`); the sidebar lets the presenter add or drop
@@ -145,7 +146,9 @@ const values = computed(() => {
 
 // ---- the graph ------------------------------------------------------------------
 const focus = ref(null);
-const graph = computed(() => buildGraph(shownLaws.value, values.value, focus.value));
+// Every law is laid out so the picture never shifts when "Alles" comes on;
+// only the neighbourhood of the selection is visible.
+const graph = computed(() => buildGraph(allLaws.value, values.value, focus.value, shownIds.value));
 
 function onNodeClick({ node }) {
   if (node.type === 'law') focus.value = focus.value === node.id ? null : node.id;
@@ -158,7 +161,7 @@ function onPaneClick() {
   focus.value = null;
 }
 function refit() {
-  setTimeout(() => fitView({ padding: 0.1 }), 50);
+  setTimeout(() => fitView({ padding: 0.1, nodes: [...shownIds.value] }), 50);
 }
 // vue-flow's fit-view-on-init runs before the nodes exist (the corpus arrives
 // async); refit whenever the set of laws changes.
@@ -210,7 +213,7 @@ function unique(laws) {
       <nldd-page sticky-header>
         <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
-            <nldd-toolbar-title slot="start" text="Afhankelijkheden" :supporting-text="`${shownLaws.length} wetten, ${graph.edges.length} verwijzingen · waarden voor ${profile?.name ?? 'de persona'}`" max-width="480px"></nldd-toolbar-title>
+            <nldd-toolbar-title slot="start" text="Afhankelijkheden" :supporting-text="`${shownLaws.length} wetten, ${graph.edges.filter((e) => !e.hidden).length} verwijzingen · waarden voor ${profile?.name ?? 'de persona'}`" max-width="480px"></nldd-toolbar-title>
             <nldd-toolbar-item slot="end">
               <nldd-button size="sm" variant="neutral-tinted" start-icon="binoculars" text="Passend maken" @click="refit"></nldd-button>
             </nldd-toolbar-item>

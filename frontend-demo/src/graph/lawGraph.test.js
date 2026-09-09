@@ -91,3 +91,18 @@ describe('colourIndex', () => {
     expect(idx('H')).toBe(0);
   });
 });
+
+describe('buildGraph with a visible set', () => {
+  it('keeps every law in place and only hides what is outside the set', () => {
+    const brp = law('brp', { outputs: ['leeftijd'] });
+    const zt = law('zt', { inputs: [['leeftijd', 'brp', 'leeftijd']], outputs: ['hoogte'] });
+    const ww = law('ww', { inputs: [['leeftijd', 'brp', 'leeftijd']], outputs: ['uitkering'] });
+    const all = buildGraph([brp, zt, ww]);
+    const some = buildGraph([brp, zt, ww], {}, null, new Set(['brp', 'zt']));
+    expect(some.nodes.find((n) => n.id === 'zt').position).toEqual(all.nodes.find((n) => n.id === 'zt').position);
+    expect(some.nodes.find((n) => n.id === 'ww').hidden).toBe(true);
+    expect(some.nodes.find((n) => n.id === 'zt').hidden).toBe(false);
+    expect(some.edges.find((e) => e.data.from === 'ww').hidden).toBe(true);
+    expect(some.edges.find((e) => e.data.from === 'zt').hidden).toBe(false);
+  });
+});

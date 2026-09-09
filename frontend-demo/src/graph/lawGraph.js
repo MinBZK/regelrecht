@@ -129,12 +129,15 @@ export function colourIndex(services) {
 }
 
 /**
- * Nodes and edges for vue-flow.
- * @param {object[]} laws          corpus law entries to draw
+ * Nodes and edges for vue-flow. Every law is laid out, so nothing shifts when
+ * the presenter shows more of them; a law outside `visible` is only hidden.
+ * @param {object[]} laws          corpus law entries (all of them)
  * @param {object} [values]        { outputs: {lawId: {name: text}}, sources: {lawId: {name: text}}, inputs: {lawId: {name: text}} }
  * @param {string|null} [focus]    law id whose edges stay bright
+ * @param {Set<string>|null} [visible]  law ids to show; null shows all
  */
-export function buildGraph(laws, values = {}, focus = null) {
+export function buildGraph(laws, values = {}, focus = null, visible = null) {
+  const shown = (id) => !visible || visible.has(id);
   const byId = new Map(laws.map((l) => [l.id, l]));
   const shapes = new Map(laws.map((l) => [l.id, lawShape(l)]));
   const sized = new Map();
@@ -147,7 +150,7 @@ export function buildGraph(laws, values = {}, focus = null) {
   const colour = colourIndex(laws.map((l) => l.service));
   const nodes = [];
   const edges = [];
-  const dimmed = (lawId) => !!focus && lawId !== focus && !edges.some((e) => (e.data.from === focus && e.data.to === lawId) || (e.data.to === focus && e.data.from === lawId));
+  const dimmed = (lawId) => !!focus && lawId !== focus && !edges.some((e) => !e.hidden && ((e.data.from === focus && e.data.to === lawId) || (e.data.to === focus && e.data.from === lawId)));
 
   // Edges first: the dimming of a law depends on them.
   for (const law of laws) {
@@ -156,6 +159,7 @@ export function buildGraph(laws, values = {}, focus = null) {
       if (!supplier || !shapes.get(supplier.id).outputs.some((o) => o.name === input.ref.output)) continue;
       const bright = !focus || law.id === focus || supplier.id === focus;
       edges.push({
+        hidden: !(shown(law.id) && shown(supplier.id)),
         id: `${itemId(law.id, 'in', input.name)}->${itemId(supplier.id, 'out', input.ref.output)}`,
         source: itemId(law.id, 'in', input.name),
         target: itemId(supplier.id, 'out', input.ref.output),
@@ -172,9 +176,11 @@ export function buildGraph(laws, values = {}, focus = null) {
     const shape = shapes.get(law.id);
     const { size } = sized.get(law.id);
     const dim = dimmed(law.id);
+    const hidden = !shown(law.id);
     nodes.push({
       id: law.id,
       type: 'law',
+      hidden,
       position: positions.get(law.id),
       style: { width: `${size.width}px`, height: `${size.height}px` },
       data: { law, selected: focus === law.id },
@@ -188,6 +194,7 @@ export function buildGraph(laws, values = {}, focus = null) {
       nodes.push({
         id: boxId,
         type: 'box',
+        hidden,
         parentNode: law.id,
         position: { x, y },
         style: { width: `${COL_W}px`, height: `${h}px` },
@@ -200,6 +207,7 @@ export function buildGraph(laws, values = {}, focus = null) {
         nodes.push({
           id: itemId(law.id, kind === 'sources' ? 'src' : kind === 'inputs' ? 'in' : 'out', item.name),
           type: 'item',
+          hidden,
           parentNode: boxId,
           position: { x: BOX_PAD, y: BOX_LABEL_H + BOX_PAD + i * (ITEM_H + ITEM_GAP) },
           style: { width: `${COL_W - BOX_PAD * 2}px`, height: `${ITEM_H}px` },
