@@ -149,4 +149,16 @@ exclude_re = [
     'engine/src/wasm\.rs.*WasmEngine::resolve_note\b',
     'engine/src/wasm\.rs.*WasmEngine::resolve_notes',
     'engine/src/wasm\.rs.*WasmEngine::register_data_source',
+
+    # RFC-036: parse_records, parse_parameters en strip_undefined_deep lopen
+    # met js_sys over een JsValue (Array::is_array, Object::entries,
+    # Reflect::set) om `undefined`-properties weg te laten voordat serde er
+    # `null` van maakt. Elke aanraking van een JsValue aborteert buiten wasm32,
+    # dus ook deze drie zijn native niet uit te voeren. Wat er daarna met een
+    # weggelaten sleutel gebeurt (onbekend, niet afwezig) wordt in service.rs
+    # en context.rs gemuteerd en gedood; het JS-contract ligt vast in de tests
+    # van de aanroepers (frontend-shared, frontend-demo).
+    'engine/src/wasm\.rs.*parse_records',
+    'engine/src/wasm\.rs.*parse_parameters',
+    'engine/src/wasm\.rs.*strip_undefined_deep',
 ]

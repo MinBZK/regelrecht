@@ -836,6 +836,28 @@ impl TraceBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{MissingFact, MissingKind};
+
+    fn missing(name: &str) -> MissingFact {
+        MissingFact {
+            law: "wet_x".to_string(),
+            name: name.to_string(),
+            kind: MissingKind::NoData,
+        }
+    }
+
+    #[test]
+    fn an_unknown_names_its_missing_facts_in_both_trace_forms() {
+        // RFC-036: the trace says which facts are missing, in order, and
+        // nothing else; a reader must be able to tell "unknown for lack of
+        // huur" from "unknown for lack of partner_bsn".
+        let one = Value::Unknown(vec![missing("huur")]);
+        let two = Value::Unknown(vec![missing("huur"), missing("partner_bsn")]);
+        assert_eq!(format_value_compact(&one), "UNKNOWN(huur)");
+        assert_eq!(format_value_compact(&two), "UNKNOWN(huur, partner_bsn)");
+        assert_eq!(format_value_display(&two), "UNKNOWN(huur, partner_bsn)");
+        assert_eq!(missing_names(&[]), "");
+    }
 
     #[test]
     fn test_path_node_creation() {

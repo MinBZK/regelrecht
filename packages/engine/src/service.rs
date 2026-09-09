@@ -4196,6 +4196,102 @@ articles:
 
     /// A permit law with a form parameter (`required` as given) and a tax law
     /// that asks it for "heeft_vergunning" with only the KVK number.
+    /// The permit article of `fill_laws`, for the parameter helpers.
+    fn fill_permit_article(form_param_required: &str) -> Article {
+        let (permit, _) = fill_laws(form_param_required);
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service
+            .get_law("fill_vergunning")
+            .unwrap()
+            .find_article_by_output("past_oppervlakte")
+            .unwrap()
+            .clone()
+    }
+
+    fn params(pairs: &[(&str, Value)]) -> BTreeMap<String, Value> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn required_parameter_not_passed_names_only_a_required_parameter_that_is_absent() {
+        // RFC-036: a forgotten required parameter keeps the register
+        // unasked. A parameter that is passed, whatever its value, and an
+        // optional one that is left out, do not trigger it.
+        let kvk = ("kvk_nummer", Value::String("85234567".to_string()));
+        let article = fill_permit_article("required: true");
+        assert_eq!(
+            required_parameter_not_passed(&article, &params(&[kvk.clone()])),
+            Some("terras_oppervlakte".to_string())
+        );
+        assert_eq!(
+            required_parameter_not_passed(
+                &article,
+                &params(&[kvk.clone(), ("terras_oppervlakte", Value::Null)])
+            ),
+            None
+        );
+        assert_eq!(
+            required_parameter_not_passed(&article, &BTreeMap::new()),
+            Some("kvk_nummer".to_string())
+        );
+        // `required` absent means required (schema v0.5.8); `required: false`
+        // means the caller may leave it out.
+        let implicit = fill_permit_article("");
+        assert_eq!(
+            required_parameter_not_passed(&implicit, &params(&[kvk.clone()])),
+            Some("terras_oppervlakte".to_string())
+        );
+        let optional = fill_permit_article("required: false");
+        assert_eq!(
+            required_parameter_not_passed(&optional, &params(&[kvk])),
+            None
+        );
+    }
+
+    #[test]
+    fn required_parameter_for_nobody_sees_null_and_unknown_but_not_an_optional_one() {
+        let kvk = ("kvk_nummer", Value::String("85234567".to_string()));
+        let article = fill_permit_article("required: true");
+        assert_eq!(
+            required_parameter_for_nobody(
+                &article,
+                &params(&[kvk.clone(), ("terras_oppervlakte", Value::Null)])
+            ),
+            Some(("terras_oppervlakte".to_string(), "null"))
+        );
+        let unknown = Value::unknown(
+            "fill_vergunning",
+            "terras_oppervlakte",
+            MissingKind::NotPassed,
+        );
+        assert_eq!(
+            required_parameter_for_nobody(
+                &article,
+                &params(&[kvk.clone(), ("terras_oppervlakte", unknown.clone())])
+            ),
+            Some(("terras_oppervlakte".to_string(), "unknown"))
+        );
+        assert_eq!(
+            required_parameter_for_nobody(
+                &article,
+                &params(&[kvk.clone(), ("terras_oppervlakte", Value::Int(12))])
+            ),
+            None
+        );
+        let optional = fill_permit_article("required: false");
+        assert_eq!(
+            required_parameter_for_nobody(
+                &optional,
+                &params(&[kvk, ("terras_oppervlakte", Value::Null)])
+            ),
+            None
+        );
+    }
+
     fn fill_laws(form_param_required: &str) -> (String, String) {
         let permit = format!(
             r#"
