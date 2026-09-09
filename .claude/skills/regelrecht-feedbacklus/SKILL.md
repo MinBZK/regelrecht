@@ -8,7 +8,8 @@ description: >
   mail of chat, wanneer een expert een artikelnummer noemt dat niet klopt met de
   gemodelleerde versie, wanneer een expert aangeeft een vraag niet te begrijpen, of
   wanneer niet meer te achterhalen is waarom iets anders is gebouwd dan gevraagd.
-  Dossier-agnostisch; `templates/` bevat kant-en-klare skeletten. Voor de producten
+  Waar feedback aan één vindplaats hangt is de editor-notitie (RFC-005/RFC-018) de
+  drager; de bestanden dragen de rest. Dossier-agnostisch; `templates/` bevat kant-en-klare skeletten. Voor de producten
   rond één sessie: zie regelrecht-audit-products.
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash, AskUserQuestion
 ---
@@ -36,13 +37,57 @@ Twee terugkerende gevallen waarom:
   over gaat.** Dat heeft drie mogelijke oorzaken — de expert vergiste zich, wij
   lazen het verkeerd, of het nummer is verschoven tussen hun versie en de onze — en
   ze vragen elk een ander antwoord. Zonder de letterlijke tekst zijn ze niet meer
-  uit elkaar te houden.
+  uit elkaar te houden. Binnen de editor speelt dit niet: zie
+  [de notitie als drager](#de-notitie-is-de-drager).
 - **De expert begrijpt onze vraag niet.** Dat is een signaal over onze
   formulering, niet over de wet. Het kost een hele ronde en levert geen inhoud op.
   Zie [de jargontabel](#terugkoppeling-zonder-modelleerjargon).
 
 In een gestructureerde notitie zien die twee er identiek uit: een bevinding die
 niet klopt. In de onbewerkte tekst zijn ze te scheiden.
+
+## De notitie is de drager
+
+Waar de feedback aan één vindplaats in de tekst hangt, hoort hij als **notitie**
+in de editor en niet in een markdown-bestand. RFC-005 en RFC-018 zijn allebei
+`Accepted` en `Implemented`; de editor kan notities ook aanmaken
+(`NoteCreator.vue`, tekstselectie → notitie), via
+`PUT /api/trajects/{ref}/corpus/laws/{law_id}/annotations`.
+
+Wat dat oplevert boven een bestand:
+
+| Eigenschap | Wat het voor de lus betekent |
+|---|---|
+| `TextQuoteSelector` op de tekst | De notitie volgt het fragment als het artikel hernummerd wordt. Artikelnummers zijn in de resolutie **niet gezaghebbend** (RFC-018 §4) — ze worden alleen als hint bewaard |
+| `creator` + gezagsniveau (gezaghebbend · adviserend · persoonlijk · gegenereerd) | Herkomst als veld, in plaats van een rol in proza |
+| `motivation: questioning` | "Hier zit een open interpretatiekwestie" — de vorm van vrijwel elke expertvraag |
+| `motivation: commenting` | Een opmerking zonder openstaande vraag |
+| Taak-schakelaar met open/afgerond | De primitief onder het actieregister, per notitie |
+
+### De valkuil: `visibility`
+
+Een notitie met `regelrecht:visibility: personal` gaat naar Postgres, gesleuteld
+op het account van de schrijver, **nooit naar git**. Elke andere waarde gaat naar
+de gedeelde sidecar-YAML op de branch van het traject en kan een PR opleveren.
+De GET voegt de persoonlijke notities van de aanroeper zichtbaar gemarkeerd toe,
+dus in de editor zien ze er hetzelfde uit.
+
+**Feedback van een expert hoort altijd gedeeld.** Staat hij op `personal`, dan is
+hij onzichtbaar voor iedereen behalve de schrijver, komt hij niet in het corpus en
+niet in een PR — precies het stille verlies waar deze skill tegen bestaat.
+Controleer dit voordat je een ronde afsluit.
+
+### Wat de bestanden blijven dragen
+
+- Feedback die per mail of chat binnenkomt, vóór iemand hem in de editor zet
+- Opmerkingen die niet aan één vindplaats hangen (scope, planning, aanpak)
+- De afwijkingstabel: gevraagd versus gebouwd, met reden
+- Het ronde-ritme zelf, en de terugkoppeling
+
+De poort die aftekenen tegenhoudt zolang er zwaarwegende notities open staan is
+nog niet gebouwd — RFC-034 staat op `Draft` / `Not implemented` en benoemt dat
+die poort alleen in een methodedocument bestaat. Tot die tijd is de
+**Openstaand**-tabel in het actieregister die poort.
 
 ## Beginnen op een nieuw dossier
 
@@ -125,9 +170,13 @@ gaat.
 ## De ronde
 
 1. **Vastleggen.** Feedback letterlijk in `ruwe-feedback.md`, met datum en
-   herkomst. Vóór alles.
-2. **Toetsen tegen het corpus.** Elk genoemd artikelnummer opzoeken in de
-   *gemodelleerde versie* — niet in de huidige wettekst, niet uit het hoofd.
+   herkomst. Vóór alles. Hangt een punt aan één vindplaats, zet het daarnaast als
+   gedeelde notitie op die tekst — `motivation: questioning` bij een openstaande
+   vraag, `commenting` bij een opmerking.
+2. **Toetsen tegen het corpus.** Alleen nodig voor feedback die buiten de editor
+   binnenkwam; een notitie op de tekst hangt al op de goede plek. Elk genoemd
+   artikelnummer opzoeken in de *gemodelleerde versie* — niet in de huidige
+   wettekst, niet uit het hoofd.
    ```bash
    python3 -c "
    import yaml,sys
@@ -143,7 +192,8 @@ gaat.
 3. **Verwerken.** Rondenotitie: per bevinding wat we aantroffen en wat er is
    gewijzigd, met verwijzing naar wet-YAML, scenario of commit.
 4. **Registreren.** Acties in `actieregister.md`, statussen bijwerken, ook die van
-   eerdere rondes.
+   eerdere rondes. Notities die een actie zijn: taak-schakelaar aan, open of
+   afgerond bijhouden.
 5. **Terugkoppelen.** Zonder jargon. Wat is er veranderd, wat blijft open, welke
    vraag ligt terug bij hen.
 6. **Afwijkingen vastleggen.** Alles waar we van de letterlijke vraag afweken, met
@@ -157,6 +207,7 @@ gaat.
 | Een fout artikelnummer stilzwijgend corrigeren | Niet meer te zien of de expert zich vergiste of wij verkeerd lazen |
 | Modelleerjargon in de terugkoppeling | Een onbegrepen vraag kost een ronde en levert niets op |
 | Per ronde een nieuw actielijstje | Acties uit ronde 1 verdwijnen ongemerkt |
+| Een expertnotitie persoonlijk opslaan | Onzichtbaar voor de rest, nooit in git; het stille verlies dat deze skill moet voorkomen |
 | `gedaan` zonder bewijsplaats | Bij navraag niet terug te vinden |
 | Alleen vastleggen wat is gebouwd | Waar we bewust van afweken leest later als een misverstand |
 | Het artikelnummer opzoeken in de huidige wettekst | De expert en het model kunnen op verschillende versies zitten |
@@ -164,6 +215,8 @@ gaat.
 ## Verificatie voordat je een ronde afsluit
 
 - [ ] Elk citaat staat letterlijk in `ruwe-feedback.md`, met datum en herkomst
+- [ ] Geen enkele expertnotitie staat op `regelrecht:visibility: personal` — die
+      komt niet in het corpus en niet in een PR
 - [ ] Elk genoemd artikelnummer is opgezocht in de gemodelleerde versie
 - [ ] Elke bevinding staat in de rondenotitie met wat er is gewijzigd
 - [ ] Elke actie staat in het actieregister; statussen van eerdere rondes bijgewerkt
