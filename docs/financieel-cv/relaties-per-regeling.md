@@ -327,9 +327,19 @@ voor deze casus.
 
 **De belangrijkste bevinding vooraf: het is geen harvest-probleem.** Alle wetten
 hieronder staan al als tekst in de corpus. Wat ontbreekt is `machine_readable`.
-Twee uitzonderingen: ministeriële regelingen en gemeentelijke verordeningen
-bestaan als categorie helemaal niet — `regulation/nl/` kent alleen `wet`,
-`amvb`, `beleidsregel` en één waterschapsverordening.
+
+Over de lagere regelgeving twee verschillende gevallen, en een eerdere versie
+van deze sectie gooide ze op één hoop:
+
+- **Ministeriële regelingen staan er wél**, maar onder `regulation/nl/wet/` met
+  `regulatory_layer: WET` — 868 slugs die met `regeling_` beginnen. Dat is een
+  harvester-fout, vastgelegd als issue #1240 in `MinBZK/regelrecht`, en niet
+  onschuldig: RFC-003 leest `regulatory_layer` voor lex-superior-prioriteit en
+  om te controleren of `delegation_type` bij de laag past. Een delegatieketen
+  uit dit corpus klopt dus niet.
+- **Gemeentelijke verordeningen staan er niet.** Geen enkele CVDR-bron voor een
+  gemeente; de enige die er is, is één waterschapsverordening. Dat de harvester
+  CVDR aankan is daarmee wel aangetoond.
 
 | # | Regeling | Status in de corpus | Waarom het knelt |
 |---|---|---|---|
@@ -337,12 +347,69 @@ bestaan als categorie helemaal niet — `regulation/nl/` kent alleen `wet`,
 | 2 | **Wet minimumloon en minimumvakantiebijslag** | 57 versies, **0 gemodelleerd** | De loonkostensubsidie rekent tegen het minimumloon: 41 verwijzingen in de Participatiewet alleen. Het bedrag komt nu als parameter binnen, dus de kern van de berekening leunt op een aangeleverd getal |
 | 3 | **Algemene wet bestuursrecht** | 177 versies, **0 gemodelleerd** | Zeventien artikelen declareren `BESCHIKKING` als hook-trigger. Er luistert niets. Zonder de Awb ontbreekt de hele procedurele laag: motivering (3:46), bezwaartermijn (6:7), bekendmaking (6:8) |
 | 4 | **Besluit loonkostensubsidie Participatiewet** | 3 versies, **0 gemodelleerd** | De open term `regels_doelgroep_lks_en_loonwaarde_amvb` bij Pwet 10e noemt dit besluit al bij naam in zijn default. Aansluiten via `implements` is klein werk met direct effect op de LKS |
-| 5 | **Ministeriële regeling werkgeverslasten** | **categorie bestaat niet** | Pwet 10c delegeert `werkgeverslastenvergoeding_eurocent` naar de minister. Wij weten nog niet wélke regeling dat is — actie 1.5, uitgezet bij UWV. Zolang dat open staat kan het LKS-bedrag afwijken, zowel de subsidie als het 70%-maximum |
-| 6 | **Gemeentelijke verordeningen** | **categorie bestaat niet** | Vier open terms delegeren naar de gemeenteraad (Pwet 8a drie, Pwet 10 één). Zonder verordening blijft de gemeentelijke route "de route bestaat", nooit een bedrag. Dat is scopevraag 2.7, geen modelleervraag |
+| 5 | **Ministeriële regeling werkgeverslasten** | onbekend wélke regeling; ministeriële regelingen staan als `WET` gelabeld (#1240) | Pwet 10c delegeert `werkgeverslastenvergoeding_eurocent` naar de minister. Wij weten nog niet wélke regeling dat is — actie 1.5, uitgezet bij UWV. Zolang dat open staat kan het LKS-bedrag afwijken, zowel de subsidie als het 70%-maximum |
+| 6 | **Gemeentelijke verordeningen** | **niet in de corpus** | Vier open terms delegeren naar de gemeenteraad (Pwet 8a drie, Pwet 10 één). Zonder verordening blijft de gemeentelijke route "de route bestaat", nooit een bedrag. Dat is scopevraag 2.7, geen modelleervraag |
 | 7 | **UWV-beleidsregel dispensatiepercentage** | `beleidsregel/` bestaat (35 stuks), deze niet | Wajong 2:20 delegeert het percentage van de loondispensatie naar UWV. Zonder die regel zegt het model dát er dispensatie is, niet hoeveel |
-| 8 | **Ministeriële regelingen proefplaatsing** | **categorie bestaat niet** | Drie open terms, één per wet (WW 76a, WIA 37, Wajong 2:24), over de uitvoering. Raakt de duur niet — die staat in de wet — dus lager in de lijst |
+| 8 | **Ministeriële regelingen proefplaatsing** | niet geharvest; laag-labeling zie #1240 | Drie open terms, één per wet (WW 76a, WIA 37, Wajong 2:24), over de uitvoering. Raakt de duur niet — die staat in de wet — dus lager in de lijst |
 | 9 | **AMvB persoonlijke ondersteuning** | Pwet 10e, nog niet vastgesteld | Drie van de vier open terms bij 10e wachten op een AMvB die er niet is. Zolang die er niet is verandert 10e niets aan de aanspraak van art. 10 lid 1 |
 | 10 | **Wet SUWI** | 60 versies, **0 gemodelleerd** | Alleen genoemd in Wfsv 38b lid 1 onderdeel g, voor een experimentbepaling. Raakt onze twee persona's niet |
+
+### In beeld
+
+De dikke pijlen zijn gaten in de keten: een wet wordt als feit aangeroepen
+terwijl er een regeling achter zit die dat feit hoort te bepalen. De stippellijnen
+zijn open terms die op een invuller wachten — daar ligt de aanhechting al klaar.
+
+```mermaid
+flowchart LR
+  classDef kern fill:#fff5f5,stroke:#c0392b,stroke-width:2px,color:#000;
+  classDef gat fill:#f7e2e0,stroke:#9b2c27,stroke-width:3px,color:#000;
+  classDef klaar fill:#f6e9d5,stroke:#8a5300,stroke-width:2px,color:#000;
+  classDef afwezig fill:#f5f5f5,stroke:#9b2c27,stroke-width:2px,stroke-dasharray: 5 4,color:#000;
+  classDef gedaan fill:#ddede3,stroke:#1f6141,stroke-width:2px,color:#000;
+
+  subgraph KERN["De zeven gemodelleerde regelingen"]
+    direction TB
+    FCV["<b>Financieel CV</b><br/>Ziektewet 29b &middot; Wtl 2.1 &middot; Pwet 10c/10d<br/>Wajong 2:20 &middot; Wet WIA 35 &middot; WW 76a<br/>+ kapstok Wfsv 38b"]:::kern
+  end
+
+  subgraph GAT["1&ndash;3 &nbsp;Gat in de keten &mdash; wet wordt als feit aangeroepen"]
+    direction TB
+    WSW["<b>Wet sociale werkvoorziening</b><br/>17 versies in de corpus<br/><i>0 gemodelleerd</i>"]:::gat
+    WML["<b>Wet minimumloon</b><br/>57 versies in de corpus<br/><i>0 gemodelleerd</i>"]:::gat
+    AWB["<b>Algemene wet bestuursrecht</b><br/>177 versies in de corpus<br/><i>0 gemodelleerd</i>"]:::gat
+  end
+
+  subgraph KLAAR["4&ndash;9 &nbsp;Aanhechting ligt klaar &mdash; open term wacht op invuller"]
+    direction TB
+    BLKS["<b>Besluit loonkostensubsidie Pwet</b><br/>3 versies in de corpus<br/><i>0 gemodelleerd</i>"]:::klaar
+    MRWGL["<b>Min. regeling werkgeverslasten</b><br/><i>welke regeling is onbekend</i><br/>staat uit bij UWV"]:::afwezig
+    VERORD["<b>Gemeentelijke verordeningen</b><br/><i>niet in de corpus</i><br/>geen CVDR-bron voor gemeenten"]:::afwezig
+    BRUWV["<b>UWV-beleidsregel</b><br/>dispensatiepercentage<br/><i>niet in de corpus</i>"]:::afwezig
+    MRPP["<b>Min. regelingen proefplaatsing</b><br/>drie stuks, uitvoering<br/><i>niet in de corpus</i>"]:::afwezig
+    AMVBPO["<b>AMvB persoonlijke ondersteuning</b><br/><i>nog niet vastgesteld</i>"]:::afwezig
+  end
+
+  subgraph OK["Al aangesloten"]
+    REINT["<b>Reïntegratiebesluit</b><br/>art. 1a &mdash; <code>implements</code><br/><i>de enige werkende koppeling</i>"]:::gedaan
+  end
+
+  WSW == "17 parameters in 6 wetten<br/>NRP &middot; LKS &middot; LDP &middot; JC/WPA" ==> FCV
+  WML == "41 verwijzingen in de Pwet<br/>bedrag komt als parameter binnen" ==> FCV
+  AWB == "17 artikelen roepen BESCHIKKING aan<br/>er luistert niets" ==> FCV
+
+  FCV -. "open term bij Pwet 10e<br/>default noemt dit besluit al" .-> BLKS
+  FCV -. "open term bij Pwet 10c<br/>raakt LKS-bedrag én 70%-max" .-> MRWGL
+  FCV -. "4 open terms<br/>Pwet 8a en 10 lid 1" .-> VERORD
+  FCV -. "open term bij Wajong 2:20<br/>hoeveel dispensatie" .-> BRUWV
+  FCV -. "3 open terms<br/>WW 76a, WIA 37, Wajong 2:24" .-> MRPP
+  FCV -. "3 open terms bij Pwet 10e" .-> AMVBPO
+
+  REINT == "vult 2 open terms<br/>WIA 35 + Wajong 2:22" ==> FCV
+```
+
+(Bron: `stelsel-ontbrekende-regelingen.mmd`. Er is nog geen PNG van; die kan in
+deze omgeving niet gerenderd worden.)
 
 ### Wat al wél is aangesloten
 
