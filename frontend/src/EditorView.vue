@@ -1449,7 +1449,8 @@ async function reloadEngineLaw(lawYaml, isReady) {
   try {
     await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
   } catch (e) {
-    console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+    // Plain first argument: the law id is user text, not a format string.
+    console.warn('Failed to load law into engine:', lawId.value, e);
   }
 }
 
