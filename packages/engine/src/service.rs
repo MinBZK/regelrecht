@@ -4946,6 +4946,94 @@ articles:
     }
 
     #[test]
+    fn test_ioc_unknown_implementation_output_does_not_take_the_default() {
+        // The default of an open term stands in for an absent deviation (no
+        // verordening, or one that says nothing for this case). It never
+        // stands in for a deviation nobody has yet: an implementation whose
+        // own register value is unknown leaves the term unknown, so the
+        // caller asks for the missing fact instead of silently applying the
+        // statutory value (RFC-036).
+        let bw = r#"
+$id: bw_afstand_u
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '42'
+    text: Afstand
+    machine_readable:
+      open_terms:
+        - id: gemeentelijke_afstand_cm
+          type: number
+          required: false
+          delegation_type: GEMEENTELIJKE_VERORDENING
+          default:
+            actions:
+              - output: gemeentelijke_afstand_cm
+                value: 200
+      execution:
+        parameters:
+          - name: gemeente_code
+            type: string
+            required: true
+        output:
+          - name: minimale_afstand_cm
+            type: number
+        actions:
+          - output: minimale_afstand_cm
+            value: $gemeentelijke_afstand_cm
+"#;
+        let apv = r#"
+$id: apv_afstand_u
+regulatory_layer: GEMEENTELIJKE_VERORDENING
+publication_date: '2025-01-01'
+gemeente_code: GM0363
+articles:
+  - number: '2.75'
+    text: Afstand uit het beleid
+    machine_readable:
+      implements:
+        - law: bw_afstand_u
+          article: '42'
+          open_term: gemeentelijke_afstand_cm
+      execution:
+        parameters:
+          - name: gemeente_code
+            type: string
+            required: true
+        input:
+          - name: afstand_uit_beleid
+            type: number
+            source: {}
+        output:
+          - name: gemeentelijke_afstand_cm
+            type: number
+        actions:
+          - output: gemeentelijke_afstand_cm
+            value: $afstand_uit_beleid
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(bw).unwrap();
+        service.load_law(apv).unwrap();
+        // No data source holds the policy distance: the implementation's
+        // output is unknown for lack of it.
+        let result = service
+            .evaluate_law_output_with_trace(
+                "bw_afstand_u",
+                "minimale_afstand_cm",
+                params(&[("gemeente_code", Value::String("GM0363".to_string()))]),
+                "2025-01-01",
+            )
+            .unwrap();
+        let outcome = result.outputs.get("minimale_afstand_cm").unwrap();
+        assert!(outcome.is_unknown(), "expected unknown, got {outcome:?}");
+        assert_eq!(outcome.missing_facts()[0].name, "afstand_uit_beleid");
+        assert!(!trace_resolves_by(
+            result.trace.as_ref().unwrap(),
+            &ResolveType::OpenTermSilent
+        ));
+    }
+
+    #[test]
     fn test_ioc_silent_implementation_falls_back_to_the_default() {
         // BW 5:42: the statutory distance applies "tenzij ingevolge een
         // verordening een kleinere afstand is toegelaten". The Amsterdam APV
