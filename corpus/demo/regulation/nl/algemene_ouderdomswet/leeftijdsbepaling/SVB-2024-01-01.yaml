@@ -272,3 +272,8 @@ articles:
                                     - $maanden_verhoging_per_jaar
                                     - 12
                             - 2
+                    # Artikel 7a lid 2 AOW: is de levensverwachting niet hoger dan de
+                    # referentiewaarde, dan is V negatief en wordt de verhoging op 0
+                    # gesteld. Zonder default was dit geval een afwezige waarde waarmee
+                    # de optelling niet kan rekenen (RFC-036).
+                    default: 0

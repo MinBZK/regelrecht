@@ -1,4 +1,5 @@
 # Converted from overig/machtigingenwet_KVK-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Machtigingenwet - Delegation provider for KVK
   Als ondernemer
   Wil ik namens mijn bedrijf kunnen handelen

@@ -54,6 +54,7 @@ articles:
               output: heeft_nederlandse_nationaliteit
               parameters:
                 bsn: $bsn
+                referentiedatum: $verkiezingsdatum
           - name: is_gedetineerd
             type: boolean
             source:

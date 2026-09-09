@@ -1,4 +1,5 @@
 # Converted from sociale_zekerheid/besluit_bijstandverlening_zelfstandigen_SZW-2025-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
   Als zelfstandige ondernemer
   Wil ik weten of ik recht heb op bijstand volgens de Bbz 2004
@@ -9,10 +10,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And parameter "bsn" is "999993653"
 
   Scenario: Gevestigde zelfstandige met levensvatbaar bedrijf krijgt bijstand
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                         |
       | 999993653 | {"type_zelfstandige":"GEVESTIGD","bedrijf_levensvatbaar":true,"jaren_ondernemerschap":5,"uren_per_week":40,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -21,15 +19,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 5000000   | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -53,10 +48,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And output "bedrijfskapitaal_type" equals "LENING_RENTE"
 
   Scenario: Gevestigde zelfstandige met te hoog vermogen krijgt geen bijstand
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                          |
       | 999993653 | {"type_zelfstandige":"GEVESTIGD","bedrijf_levensvatbaar":true,"jaren_ondernemerschap":10,"uren_per_week":50,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -65,15 +57,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 250000000 | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -93,10 +82,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     Then output "voldoet_aan_voorwaarden" is false
 
   Scenario: Gevestigde zelfstandige met niet-levensvatbaar bedrijf krijgt geen bijstand
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                          |
       | 999993653 | {"type_zelfstandige":"GEVESTIGD","bedrijf_levensvatbaar":false,"jaren_ondernemerschap":3,"uren_per_week":35,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -105,15 +91,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 1000000   | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -153,7 +136,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999993653 | 1990-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 500000    | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -197,7 +180,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999993653 | 1990-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | NEDERLANDS    | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 500000    | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -217,10 +200,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     Then output "voldoet_aan_voorwaarden" is false
 
   Scenario: Oudere zelfstandige (geboren voor 1960) met niet-levensvatbaar bedrijf krijgt onbeperkte bijstand
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                       |
       | 999993653 | {"type_zelfstandige":"OUDER","bedrijf_levensvatbaar":false,"jaren_ondernemerschap":25,"uren_per_week":30,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -229,15 +209,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1958-06-15    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1958-06-15    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 10000000  | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -261,10 +238,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And output "bedrijfskapitaal_type" equals "OM_NIET"
 
   Scenario: Oudere zelfstandige met te hoog vermogen krijgt geen bijstand
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                       |
       | 999993653 | {"type_zelfstandige":"OUDER","bedrijf_levensvatbaar":false,"jaren_ondernemerschap":30,"uren_per_week":25,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -273,15 +247,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1958-06-15    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1958-06-15    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 180000000 | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -301,10 +272,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     Then output "voldoet_aan_voorwaarden" is false
 
   Scenario: Oudere zelfstandige geboren na 1960 komt niet in aanmerking als oudere
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                       |
       | 999993653 | {"type_zelfstandige":"OUDER","bedrijf_levensvatbaar":false,"jaren_ondernemerschap":20,"uren_per_week":30,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -313,15 +281,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1965-03-20    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1965-03-20    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 5000000   | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -341,10 +306,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     Then output "voldoet_aan_voorwaarden" is false
 
   Scenario: Oudere zelfstandige met minder dan 10 jaar ondernemerschap komt niet in aanmerking
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                      |
       | 999993653 | {"type_zelfstandige":"OUDER","bedrijf_levensvatbaar":false,"jaren_ondernemerschap":8,"uren_per_week":35,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -353,15 +315,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1958-06-15    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1958-06-15    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 5000000   | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -381,10 +340,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     Then output "voldoet_aan_voorwaarden" is false
 
   Scenario: Beeindigende zelfstandige krijgt uitloopbijstand zonder bedrijfskapitaal
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                                    |
       | 999993653 | {"type_zelfstandige":"BEEINDIGEND","bedrijf_levensvatbaar":false,"jaren_ondernemerschap":7,"uren_per_week":25,"beeindigingsdatum":"2025-12-01"} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -393,15 +349,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1980-01-01    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1980-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 2000000   | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -425,10 +378,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And output "bedrijfskapitaal_type" equals "GEEN"
 
   Scenario: Persoon voldoet niet aan urencriterium (minder dan 24 uur per week)
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                         |
       | 999993653 | {"type_zelfstandige":"GEVESTIGD","bedrijf_levensvatbaar":true,"jaren_ondernemerschap":5,"uren_per_week":20,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -437,15 +387,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 500000    | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
@@ -465,10 +412,7 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     Then output "voldoet_aan_voorwaarden" is false
 
   Scenario: Persoon zonder actieve onderneming krijgt geen Bbz
-    Given the following "SVB" data with key "bsn" for law "algemene_ouderdomswet_gegevens":
-      | bsn       | pensioengegevens |
-      | 999993653 | null             |
-    And the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
+    Given the following "SZW" data with key "bsn" for law "besluit_bijstandverlening_zelfstandigen":
       | bsn       | bbz_aanvraag                                                                                                                         |
       | 999993653 | {"type_zelfstandige":"GEVESTIGD","bedrijf_levensvatbaar":true,"jaren_ondernemerschap":3,"uren_per_week":40,"beeindigingsdatum":null} |
     And the following "KVK" data with key "bsn" for law "handelsregisterwet":
@@ -477,15 +421,12 @@ Feature: Bepalen recht op bijstand voor zelfstandigen (Bbz 2004)
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
-    And the following "UWV" data with key "bsn" for law "uwv_werkgegevens":
-      | bsn       | werkgegevens |
-      | 999993653 | null         |
     And the following "IND" data with key "bsn" for law "vreemdelingenwet":
       | bsn       | vergunning_gegevens                                                                                  | eu_inschrijving |
       | 999993653 | {"type":"ONBEPAALDE_TIJD_REGULIER","status":"VERLEEND","ingangsdatum":"2015-01-01","einddatum":null} | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             | null          | null          | null  | []           | null                  |
+      | 999993653 | 1985-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 500000    | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |

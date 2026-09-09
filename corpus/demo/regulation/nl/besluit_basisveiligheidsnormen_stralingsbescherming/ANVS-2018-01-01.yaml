@@ -68,11 +68,19 @@ articles:
               min: 0
           - name: verwachte_dosis_huid
             type: number
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
             type_spec:
               precision: 2
               min: 0
           - name: dosis_buiten_locatie
             type: number
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
             type_spec:
               precision: 2
               min: 0

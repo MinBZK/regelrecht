@@ -1,4 +1,5 @@
 # Converted from bestuursrecht/algemene_wet_bestuursrecht_AWB-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: AWB Article 1:1 - Bestuursorgaan Definition
   Als burger of organisatie
   Wil ik weten of een bepaalde instantie een bestuursorgaan is

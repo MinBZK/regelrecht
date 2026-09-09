@@ -1,4 +1,5 @@
 # Converted from toeslagen/zorgtoeslagwet_TOESLAGEN-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Berekening Zorgtoeslag 2024
   Als burger
   Wil ik weten of ik recht heb op zorgtoeslag
@@ -14,7 +15,7 @@ Feature: Berekening Zorgtoeslag 2024
       | 999993653 | VRIJ   | GEEN            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2007-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | null          | null  | []           | null                  |
+      | 999993653 | 2007-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |
@@ -23,7 +24,7 @@ Feature: Berekening Zorgtoeslag 2024
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 999993653 | 0              |
+      | 999993653 | 20.4           |
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |
@@ -36,7 +37,7 @@ Feature: Berekening Zorgtoeslag 2024
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2005-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | null          | null  | []           | null                  |
+      | 999993653 | 2005-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |
@@ -45,7 +46,7 @@ Feature: Berekening Zorgtoeslag 2024
       | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 999993653 | 0              |
+      | 999993653 | 20.4           |
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |
@@ -58,7 +59,7 @@ Feature: Berekening Zorgtoeslag 2024
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1998-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | null          | null  | []           | null                  |
+      | 999993653 | 1998-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |
@@ -67,7 +68,7 @@ Feature: Berekening Zorgtoeslag 2024
       | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 10000     | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 999993653 | 0              |
+      | 999993653 | 20.4           |
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |
@@ -81,7 +82,7 @@ Feature: Berekening Zorgtoeslag 2024
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2004-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | null          | null  | []           | null                  |
+      | 999993653 | 2004-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |
@@ -90,7 +91,7 @@ Feature: Berekening Zorgtoeslag 2024
       | 999993653 | 15000                     | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 999993653 | 0              |
+      | 999993653 | 20.4           |
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |

@@ -267,13 +267,8 @@ profiles:
       DJI:
         detenties:
           - bsn: '999100001'
-            is_gedetineerd: false
-        is_detainee:
-          - bsn: '999100001'
-            waarde: false
-        detentie:
-          - bsn: '999100001'
-            is_gedetineerd: false
+            status: VRIJ
+            inrichting_type: GEEN
       GEMEENTE_AMSTERDAM:
         werk_en_re_integratie:
           - bsn: '999100001'
@@ -1376,13 +1371,8 @@ profiles:
       DJI:
         detenties:
           - bsn: '999100002'
-            is_gedetineerd: false
-        is_detainee:
-          - bsn: '999100002'
-            waarde: false
-        detentie:
-          - bsn: '999100002'
-            is_gedetineerd: false
+            status: VRIJ
+            inrichting_type: GEEN
       GEMEENTE_AMSTERDAM:
         werk_en_re_integratie:
           - bsn: '999100002'
@@ -1595,13 +1585,8 @@ profiles:
       DJI:
         detenties:
           - bsn: '999100003'
-            is_gedetineerd: false
-        is_detainee:
-          - bsn: '999100003'
-            waarde: false
-        detentie:
-          - bsn: '999100003'
-            is_gedetineerd: false
+            status: VRIJ
+            inrichting_type: GEEN
       GEMEENTE_AMSTERDAM:
         werk_en_re_integratie:
           - bsn: '999100003'
@@ -1740,10 +1725,8 @@ profiles:
       DJI:
         detenties:
           - bsn: '999100004'
-            is_gedetineerd: false
-        is_detainee:
-          - bsn: '999100004'
-            waarde: false
+            status: VRIJ
+            inrichting_type: GEEN
       SVB:
         retirement_age:
           - bsn: '999100004'
@@ -1905,13 +1888,8 @@ profiles:
       DJI:
         detenties:
           - bsn: '999300001'
-            is_gedetineerd: false
-        is_detainee:
-          - bsn: '999300001'
-            waarde: false
-        detentie:
-          - bsn: '999300001'
-            is_gedetineerd: false
+            status: VRIJ
+            inrichting_type: GEEN
       SVB:
         retirement_age:
           - bsn: '999300001'
@@ -4260,13 +4238,8 @@ profiles:
       DJI:
         detenties:
           - bsn: '999999990'
-            is_gedetineerd: false
-        is_detainee:
-          - bsn: '999999990'
-            waarde: false
-        detentie:
-          - bsn: '999999990'
-            is_gedetineerd: false
+            status: VRIJ
+            inrichting_type: GEEN
       IND:
         verblijfsvergunningen:
           - bsn: '999999990'

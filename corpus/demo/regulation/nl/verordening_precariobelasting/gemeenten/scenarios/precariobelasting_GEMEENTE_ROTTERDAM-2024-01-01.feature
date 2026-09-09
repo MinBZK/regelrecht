@@ -1,4 +1,5 @@
 # Converted from overig/precariobelasting_GEMEENTE_ROTTERDAM-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Bepalen precariobelasting voor terras op openbare grond Rotterdam
   Als horecaondernemer in Rotterdam
   Wil ik weten of en hoeveel precariobelasting ik verschuldigd ben
@@ -14,7 +15,7 @@ Feature: Bepalen precariobelasting voor terras op openbare grond Rotterdam
       | 85234567   | null         | null              | null            | null              | null                 | null                    | null                            | []         | null            | null                  | null                | null              | null                        | null      | null              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied | tarief_per_m2 |
-      | 85234567   | null                    | null                   | 25            |
+      | 85234567   | null                    |                        | 25            |
     And the following "KVK" data with key "kvk_nummer" for law "handelsregisterwet/bedrijfsgegevens":
       | kvk_nummer | organisatie_gegevens                                                                                                                                                     |
       | 85234567   | {"kvk_nummer":"85234567","rechtsvorm":"VOF","status":"Actief","aantal_werknemers":0,"datum_telling":null,"datum_aanvang":null,"vestigingsadres":"Witte de Withstraat 1"} |
@@ -43,7 +44,7 @@ Feature: Bepalen precariobelasting voor terras op openbare grond Rotterdam
       | 85234567   | null         | null              | null            | null              | null                 | null                    | null                            | []         | null            | null                  | null                | null              | null                        | null      | null              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied | tarief_per_m2 |
-      | 85234567   | null                    | null                   | 25            |
+      | 85234567   | null                    |                        | 25            |
     And the following "KVK" data with key "kvk_nummer" for law "handelsregisterwet/bedrijfsgegevens":
       | kvk_nummer | organisatie_gegevens                                                                                                                                                     |
       | 85234567   | {"kvk_nummer":"85234567","rechtsvorm":"VOF","status":"Actief","aantal_werknemers":0,"datum_telling":null,"datum_aanvang":null,"vestigingsadres":"Witte de Withstraat 1"} |
@@ -71,7 +72,7 @@ Feature: Bepalen precariobelasting voor terras op openbare grond Rotterdam
       | 85234567   | null         | null              | null            | null              | null                 | null                    | null                            | []         | null            | null                  | null                | null              | null                        | null      | null              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied | tarief_per_m2 |
-      | 85234567   | null                    | null                   | 25            |
+      | 85234567   | null                    |                        | 25            |
     And the following "KVK" data with key "kvk_nummer" for law "handelsregisterwet/bedrijfsgegevens":
       | kvk_nummer | organisatie_gegevens                                                                                                                                                     |
       | 85234567   | {"kvk_nummer":"85234567","rechtsvorm":"VOF","status":"Actief","aantal_werknemers":0,"datum_telling":null,"datum_aanvang":null,"vestigingsadres":"Witte de Withstraat 1"} |
@@ -99,7 +100,7 @@ Feature: Bepalen precariobelasting voor terras op openbare grond Rotterdam
       | 85234567   | null         | null              | null            | null              | null                 | null                    | null                            | []         | null            | null                  | null                | null              | null                        | null      | null              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied | tarief_per_m2 |
-      | 85234567   | null                    | null                   | 25            |
+      | 85234567   | null                    |                        | 25            |
     And the following "KVK" data with key "kvk_nummer" for law "handelsregisterwet/bedrijfsgegevens":
       | kvk_nummer | organisatie_gegevens                                                                                                                                                     |
       | 85234567   | {"kvk_nummer":"85234567","rechtsvorm":"VOF","status":"Actief","aantal_werknemers":0,"datum_telling":null,"datum_aanvang":null,"vestigingsadres":"Witte de Withstraat 1"} |
@@ -124,7 +125,7 @@ Feature: Bepalen precariobelasting voor terras op openbare grond Rotterdam
       | 85234567   | null         | null              | null            | null              | null                 | null                    | null                            | []         | null            | null                  | null                | null              | null                        | null      | null              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied | tarief_per_m2 |
-      | 85234567   | null                    | null                   | 25            |
+      | 85234567   | null                    |                        | 25            |
     And the following "KVK" data with key "kvk_nummer" for law "handelsregisterwet/bedrijfsgegevens":
       | kvk_nummer | organisatie_gegevens                                                                                                                                                     |
       | 85234567   | {"kvk_nummer":"85234567","rechtsvorm":"VOF","status":"Actief","aantal_werknemers":0,"datum_telling":null,"datum_aanvang":null,"vestigingsadres":"Witte de Withstraat 1"} |
@@ -149,7 +150,7 @@ Feature: Bepalen precariobelasting voor terras op openbare grond Rotterdam
       | 85234567   | null         | null              | null            | null              | null                 | null                    | null                            | []         | null            | null                  | null                | null              | null                        | null      | null              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied | tarief_per_m2 |
-      | 85234567   | null                    | null                   | 25            |
+      | 85234567   | null                    |                        | 25            |
     And the following "KVK" data with key "kvk_nummer" for law "handelsregisterwet/bedrijfsgegevens":
       | kvk_nummer | organisatie_gegevens                                                                                                                                                     |
       | 85234567   | {"kvk_nummer":"85234567","rechtsvorm":"VOF","status":"Actief","aantal_werknemers":0,"datum_telling":null,"datum_aanvang":null,"vestigingsadres":"Witte de Withstraat 1"} |

@@ -1,4 +1,5 @@
 # Converted from overig/wet_brp_laa_RvIG-2025-03-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Landelijke Aanpak Adreskwaliteit (LAA)
   Als RvIG
   Wil ik signalen genereren over mogelijk onjuiste adresregistraties

@@ -109,19 +109,39 @@ articles:
                     subject: $eu_inschrijving.type
                     value: $eu_types
                   then: EU
+                # Artikel 14 Vw 2000: een verblijfsvergunning voor bepaalde tijd geldt voor
+                # een periode met een ingangs- en einddatum. Ontbreekt een van beide in de
+                # registratie, dan is er geen tijdelijke vergunning vast te stellen; de
+                # datumvergelijking wordt alleen gemaakt als beide datums er zijn (RFC-036).
                 - when:
                     operation: AND
                     conditions:
                       - operation: IN
                         subject: $vergunning_gegevens.status
                         value: $valid_permit_statuses
-                      - operation: LESS_THAN_OR_EQUAL
-                        subject: $vergunning_gegevens.ingangsdatum
-                        value: $referencedate
-                      - operation: GREATER_THAN_OR_EQUAL
-                        subject: $vergunning_gegevens.einddatum
-                        value: $referencedate
-                  then: TIJDELIJK
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $vergunning_gegevens.ingangsdatum
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $vergunning_gegevens.einddatum
+                          value: null
+                  then:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: AND
+                          conditions:
+                            - operation: LESS_THAN_OR_EQUAL
+                              subject: $vergunning_gegevens.ingangsdatum
+                              value: $referencedate
+                            - operation: GREATER_THAN_OR_EQUAL
+                              subject: $vergunning_gegevens.einddatum
+                              value: $referencedate
+                        then: TIJDELIJK
             legal_basis:
               law: Vreemdelingenwet 2000
               bwb_id: BWBR0011823

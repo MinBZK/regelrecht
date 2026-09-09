@@ -9,6 +9,14 @@
  * data sources expect: one record per key value (a BSN, a KVK number), one
  * field per input name.
  *
+ * Nothing is filled in silently (RFC-036). A record carries a key only for a
+ * value the data actually states. What the register does not have is left out
+ * of the record, and the engine then treats the input as *unknown* and names
+ * it as a missing fact. What the register says is *absent* is an explicit
+ * `null`, and what it counts as zero is an explicit `0`. Which of the three a
+ * missing row means is the binding's `absent:` (see the header of
+ * bindings.yaml); this module never decides it from the input's type.
+ *
  * The same code runs in the browser (persona data from `profiles.yaml`) and
  * in the scenario converter (data tables from the POC feature files), so the
  * two can never disagree about what a binding means.
@@ -24,6 +32,10 @@
  * @property {string} [field]        column projected as the value
  * @property {string[]} [fields]     columns bundled into an object value
  * @property {{name: string, value: any}[]} [select_on]  row filter
+ * @property {'unknown'|null|number|boolean|string} [absent]  what no matching
+ *   row means: `'unknown'` (or no key) omits the value, anything else is
+ *   written as that literal (`null` = the register says there is none, `0` =
+ *   the register counts nothing)
  */
 
 /**
@@ -99,55 +111,100 @@ function sameValue(a, b) {
 }
 
 const UNRESOLVED = Symbol('unresolved');
+/** The value is not there: leave the key out of the record (the input is unknown). */
+const OMIT = Symbol('omit');
 
 /**
  * Resolve a `select_on` value against the parameters and the inputs
  * materialised so far. Returns UNRESOLVED when it names an input that has no
- * value yet (dependency order), so the caller can retry later.
+ * value yet (dependency order), so the caller can retry later; `null` when the
+ * input or parameter it names is absent (a lookup keyed on the partner's BSN
+ * when there is no partner); and `undefined` when nobody knows the value (a
+ * form field not answered, an input the sources left out).
  */
 function resolveCriterion(value, params, record, pending, ctx, shape) {
   if (typeof value !== 'string' || !value.startsWith('$')) return value;
   const path = value.slice(1);
   const head = path.split('.')[0];
-  if (head in params) return getPath(params, path);
-  if (head in record) return getPath(record, path);
+  if (head in params) return params[head] === null ? null : getPath(params, path);
+  if (head in record) return record[head] === null ? null : getPath(record, path);
   if (pending.has(head)) return UNRESOLVED;
   // A cross-law input of this law (`$vestigingsadres` from the KVK law): only
   // the engine knows its value. The caller may hand in a resolver for that;
   // without one there is nothing to select on.
   if (ctx?.resolveRef && shape) {
     const resolved = ctx.resolveRef(shape.id, head, params);
+    if (resolved === null) return null;
     if (resolved !== undefined) return getPath({ [head]: resolved }, path);
   }
   return undefined;
 }
 
-function rowMatches(row, selectOn, params, record, pending, ctx, shape) {
+/** A criterion whose own value is null: there is nobody to look up. */
+const INAPPLICABLE = Symbol('inapplicable');
+/** A criterion whose value nobody knows: the lookup cannot be made. */
+const UNKNOWN_SELECTOR = Symbol('unknown-selector');
+
+/**
+ * Resolve every `select_on` criterion once. Returns the resolved values, or
+ * UNRESOLVED (retry later), INAPPLICABLE (a criterion is null: the input is
+ * absent whatever `absent` says) or UNKNOWN_SELECTOR (a criterion has no value
+ * anywhere: the input is unknown whatever `absent` says). An operation as
+ * criterion value (one POC law used `IN`) is not supported and is skipped.
+ */
+function resolveSelector(selectOn, params, record, pending, ctx, shape) {
+  const wanted = [];
+  let unknown = false;
   for (const criterion of selectOn ?? []) {
-    if (typeof criterion.value === 'object' && criterion.value !== null) {
-      // An operation as filter value (one POC law used `IN`); not supported
-      // by the materialiser - treat as "no constraint".
-      continue;
-    }
-    const wanted = resolveCriterion(criterion.value, params, record, pending, ctx, shape);
-    if (wanted === UNRESOLVED) return UNRESOLVED;
-    if (!sameValue(row[criterion.name], wanted)) return false;
+    if (typeof criterion.value === 'object' && criterion.value !== null) continue;
+    const value = resolveCriterion(criterion.value, params, record, pending, ctx, shape);
+    if (value === UNRESOLVED) return UNRESOLVED;
+    if (value === null) return INAPPLICABLE;
+    if (value === undefined) unknown = true;
+    wanted.push([criterion.name, value]);
   }
-  return true;
+  return unknown ? UNKNOWN_SELECTOR : wanted;
 }
 
+function rowMatches(row, wanted) {
+  return wanted.every(([name, value]) => sameValue(row[name], value));
+}
+
+/**
+ * Project one matched row onto the binding.
+ *
+ * `field:` reads one column. A row that lacks the column follows the binding's
+ * `absent`, exactly like a missing row: the register has a row for this person
+ * but no such fact in it, and what that means (none, zero, or not recorded) is
+ * the register-level decision `absent` states; an explicit `null` in the row is
+ * kept as the absence the data states. `fields:` bundles columns into an object
+ * the law reads with `$x.column`; a listed column the row lacks is `null`
+ * inside the object, because a property cannot be unknown and a missing
+ * property is an author error in the engine (RFC-036). The row is the unit of
+ * existence there.
+ */
 function project(row, binding) {
   if (binding.fields) {
     const obj = {};
     for (const f of binding.fields) obj[f] = row[f] ?? null;
     return obj;
   }
-  if (binding.field) return row[binding.field] ?? null;
+  if (binding.field) return row[binding.field] === undefined ? absentValue(binding) : row[binding.field];
   return row;
+}
+
+/** What a missing row means for this binding: OMIT (unknown) or a literal. */
+function absentValue(binding) {
+  if (!('absent' in binding) || binding.absent === 'unknown' || binding.absent === undefined) return OMIT;
+  return binding.absent;
 }
 
 /**
  * Materialise one law for one key value.
+ *
+ * A key appears in the returned record only when the data states a value for
+ * it; an input the sources cannot supply is left out and the engine reports it
+ * as unknown. `sources` lists the owning service for every key present.
  *
  * @param {LawShape} shape
  * @param {Record<string, Binding>} lawBindings
@@ -161,6 +218,12 @@ export function materialiseRecord(shape, lawBindings, params, rowsFor, context =
   const record = {};
   const sources = {};
   const pending = new Set(Object.keys(lawBindings));
+  const set = (name, value, service) => {
+    pending.delete(name);
+    if (value === OMIT) return;
+    record[name] = value;
+    sources[name] = service;
+  };
 
   // Inputs may select on other inputs (`$partner_bsn`); iterate until every
   // binding has been resolved or nothing can be resolved any more.
@@ -170,65 +233,58 @@ export function materialiseRecord(shape, lawBindings, params, rowsFor, context =
     for (const name of [...pending]) {
       const binding = lawBindings[name];
       const type = shape.inputTypes[name] ?? 'string';
-      let value;
       if (binding.kind === 'claim') {
-        // Only a citizen can supply this; no register value exists.
-        value = null;
+        // Only the citizen can supply this; until then it is unknown.
+        set(name, OMIT, binding.service);
+        progressed = true;
       } else if (binding.kind === 'cases') {
-        const cases = context.cases ?? [];
-        const matched = [];
-        let blocked = false;
-        for (const c of cases) {
-          const m = rowMatches(c, binding.select_on, params, record, pending, context, shape);
-          if (m === UNRESOLVED) {
-            blocked = true;
-            break;
-          }
-          if (m) matched.push(c);
-        }
-        if (blocked) continue;
-        value = matched;
+        const wanted = resolveSelector(binding.select_on, params, record, pending, context, shape);
+        if (wanted === UNRESOLVED) continue;
+        // A case list keyed on nothing usable is simply empty.
+        const matched = Array.isArray(wanted) ? (context.cases ?? []).filter((c) => rowMatches(c, wanted)) : [];
+        set(name, matched, binding.service);
+        progressed = true;
       } else if (binding.kind === 'table') {
-        const rows = rowsFor(binding.service, binding.table);
-        const matched = [];
-        let blocked = false;
-        for (const row of rows) {
-          const m = rowMatches(row, binding.select_on, params, record, pending, context, shape);
-          if (m === UNRESOLVED) {
-            blocked = true;
-            break;
-          }
-          if (m) matched.push(row);
-        }
-        if (blocked) continue;
+        const wanted = resolveSelector(binding.select_on, params, record, pending, context, shape);
+        if (wanted === UNRESOLVED) continue;
+        const rows = Array.isArray(wanted) ? rowsFor(binding.service, binding.table) : [];
+        const matched = Array.isArray(wanted) ? rows.filter((row) => rowMatches(row, wanted)) : [];
+        let value;
         if (type === 'array') {
-          // Rows lacking the projected column contribute nothing to a list.
-          value = matched.map((row) => project(row, binding)).filter((v) => v !== null && v !== undefined);
-          // A single column that itself holds a list (e.g. `kinderen`) is the
-          // list, not a list of lists.
-          if (binding.field && value.length === 1 && Array.isArray(value[0])) value = value[0];
+          // The matching rows are the list; rows lacking the projected column
+          // contribute nothing to it. No rows is an empty list, not an absence;
+          // a lookup that cannot be made (unknown selector) has no list at all.
+          if (wanted === UNKNOWN_SELECTOR) {
+            value = OMIT;
+          } else {
+            value = matched.map((row) => project(row, binding)).filter((v) => v !== OMIT && v !== null);
+            // A single column that itself holds a list (e.g. `kinderen`) is the
+            // list, not a list of lists.
+            if (binding.field && value.length === 1 && Array.isArray(value[0])) value = value[0];
+          }
+        } else if (wanted === INAPPLICABLE) {
+          // Selected on an absent value: there is nobody to look up.
+          value = null;
+        } else if (wanted === UNKNOWN_SELECTOR) {
+          // Selected on a value nobody has: the lookup cannot be made.
+          value = OMIT;
         } else if (matched.length === 0) {
-          // No register row. A missing amount counts as zero, the way the POC's
-          // ADD skipped absent operands; anything else stays unknown (null) so
-          // the law's own null checks keep working.
-          value = type === 'amount' || type === 'number' ? 0 : null;
+          value = absentValue(binding);
         } else {
           value = project(matched[0], binding);
         }
+        set(name, value, binding.service);
+        progressed = true;
       } else {
-        // events / laws / reference_data: no register in the demo.
-        value = null;
+        // events / laws / reference_data: no register in the demo, so the
+        // value is unknown until a source supplies it.
+        set(name, OMIT, binding.service);
+        progressed = true;
       }
-      record[name] = value;
-      sources[name] = binding.service;
-      pending.delete(name);
-      progressed = true;
     }
   }
-  for (const name of pending) {
-    record[name] = null;
-    sources[name] = lawBindings[name].service;
-  }
+  // Bindings whose selector never resolved (a dependency the sources do not
+  // know) stay unknown: their key is left out.
   return { record, sources };
 }
 
@@ -262,11 +318,11 @@ export function materialiseAll(laws, bindings, rowsFor, keyValues, context = {})
       // Every binding is materialised under every key the law is keyed on. A
       // criterion that names a parameter other than this key (an application
       // form field like `$terras_locatie`) or a cross-law input has no value at
-      // materialisation time and matches no row, so the input reads as null;
-      // the engine's null propagation then leaves that branch unknown while the
-      // register-backed branches still compute. Registering the same inputs
-      // under a second key is harmless: a source whose key is absent from the
-      // call's parameters simply finds no record and the registry moves on.
+      // materialisation time and matches no row, so the input follows its
+      // `absent` (unknown, as a rule) while the register-backed inputs still
+      // get their values. Registering the same inputs under a second key is
+      // harmless: a source whose key is absent from the call's parameters
+      // simply finds no record and the registry moves on.
       const byService = new Map();
       for (const keyValue of values) {
         const params = { ...(context.paramsFor?.(keyField, keyValue, lawId) ?? {}), [keyField]: keyValue, referencedate: context.referencedate, year };
@@ -295,7 +351,7 @@ export function materialiseAll(laws, bindings, rowsFor, keyValues, context = {})
 export function tablesFromProfiles(profilesDoc) {
   const tables = new Map();
   const add = (service, table, rows) => {
-    const key = `${service} ${table}`;
+    const key = `${service} ${table}`;
     if (!tables.has(key)) tables.set(key, []);
     const list = tables.get(key);
     for (const row of rows ?? []) if (!list.includes(row)) list.push(row);
@@ -308,7 +364,7 @@ export function tablesFromProfiles(profilesDoc) {
       for (const [table, rows] of Object.entries(byTable ?? {})) add(service, table, rows);
     }
   }
-  return (service, table) => tables.get(`${service} ${table}`) ?? [];
+  return (service, table) => tables.get(`${service} ${table}`) ?? [];
 }
 
 /** Collect every distinct value of `column` across all tables of a rowsFor set. */

@@ -1,4 +1,5 @@
 # Converted from burgerlijk_wetboek/burgerlijk_wetboek_gezag_RvIG-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Burgerlijk Wetboek Gezag - Delegation provider for minors
   Als ouder of voogd
   Wil ik namens mijn minderjarige kind kunnen handelen

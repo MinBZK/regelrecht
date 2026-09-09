@@ -1,4 +1,5 @@
 # Converted from toeslagen/zorgtoeslagwet_TOESLAGEN-2025-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Berekening Zorgtoeslag 2025
   Als burger
   Wil ik weten of ik recht heb op zorgtoeslag
@@ -16,13 +17,13 @@ Feature: Berekening Zorgtoeslag 2025
       | 999993653 | VRIJ   | GEEN            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2007-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | null          | null  | []           | null                  |
+      | 999993653 | 2007-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 999993653 | 0              |
+      | 999993653 | 20.5           |
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |
@@ -35,13 +36,13 @@ Feature: Berekening Zorgtoeslag 2025
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2005-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | null          | null  | []           | null                  |
+      | 999993653 | 2005-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 999993653 | 0              |
+      | 999993653 | 20.5           |
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |
@@ -54,13 +55,13 @@ Feature: Berekening Zorgtoeslag 2025
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1998-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | null          | null  | []           | null                  |
+      | 999993653 | 1998-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 10000     | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 999993653 | 0              |
+      | 999993653 | 20.5           |
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |
@@ -74,13 +75,13 @@ Feature: Berekening Zorgtoeslag 2025
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2004-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     | null          | null  | []           | null                  |
+      | 999993653 | 2004-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "BELASTINGDIENST" data with key "bsn" for law "wet_inkomstenbelasting":
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | reguliere_voordelen | vervreemdingsvoordelen | spaargeld | beleggingen | onroerend_goed | schulden | persoonsgebonden_aftrek | partner_loon_uit_dienstbetrekking | partner_uitkeringen_en_pensioenen | partner_winst_uit_onderneming | partner_resultaat_overige_werkzaamheden | partner_eigen_woning | partner_reguliere_voordelen | partner_vervreemdingsvoordelen | partner_spaargeld | partner_beleggingen | partner_onroerend_goed | partner_schulden | partner_buitenlands_inkomen | buitenlands_inkomen |
       | 999993653 | 15000                     | 0                         | 0                     | 0                               | 0            | 0                   | 0                      | 0         | 0           | 0              | 0        | 0                       | 0                                 | 0                                 | 0                             | 0                                       | 0                    | 0                           | 0                              | 0                 | 0                   | 0                      | 0                | 0                           | 0                   |
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
-      | 999993653 | 0              |
+      | 999993653 | 20.5           |
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |

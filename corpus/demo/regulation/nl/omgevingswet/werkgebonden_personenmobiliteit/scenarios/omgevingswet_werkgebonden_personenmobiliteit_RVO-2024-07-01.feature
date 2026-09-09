@@ -1,4 +1,5 @@
 # Converted from overig/omgevingswet_werkgebonden_personenmobiliteit_RVO-2024-07-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: WPM Rapportageverplichting
   Als werkgever
   Wil ik weten of ik verplicht ben om te rapporteren over werkgebonden personenmobiliteit

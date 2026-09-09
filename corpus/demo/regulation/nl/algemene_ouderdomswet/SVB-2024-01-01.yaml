@@ -65,6 +65,7 @@ articles:
               output: geboortedatum
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: partner_geboortedatum
@@ -74,6 +75,7 @@ articles:
               output: partner_geboortedatum
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: leeftijd
@@ -87,6 +89,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: heeft_partner
@@ -96,6 +99,7 @@ articles:
               output: heeft_partner
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: partner_bsn
@@ -105,6 +109,7 @@ articles:
               output: partner_bsn
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: partner_leeftijd
             type: number
             type_spec:
@@ -116,6 +121,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $partner_bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: inkomen

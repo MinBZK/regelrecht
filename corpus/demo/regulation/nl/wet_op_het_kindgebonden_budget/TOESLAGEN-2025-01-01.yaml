@@ -114,6 +114,7 @@ articles:
               output: heeft_partner
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: partner_bsn
@@ -123,6 +124,7 @@ articles:
               output: partner_bsn
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: aantal_kinderen

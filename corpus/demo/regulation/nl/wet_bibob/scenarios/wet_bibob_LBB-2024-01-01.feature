@@ -1,4 +1,5 @@
 # Converted from bestuursrecht/wet_bibob_LBB-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Bibob-advies Landelijk Bureau Bibob
   Als bestuursorgaan
   Wil ik een Bibob-advies opvragen bij het LBB

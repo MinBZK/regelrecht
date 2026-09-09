@@ -1,4 +1,5 @@
 # Converted from burgerlijk_wetboek/burgerlijk_wetboek_curatele_RECHTSPRAAK-2025-03-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Burgerlijk Wetboek Curatele (BW 1:378-391)
   Als Rechtspraak
   Wil ik curatele-registraties beheren

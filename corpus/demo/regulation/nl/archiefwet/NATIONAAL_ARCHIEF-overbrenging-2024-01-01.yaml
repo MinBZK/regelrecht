@@ -39,8 +39,16 @@ articles:
             required: true
           - name: veelvuldig_gebruik
             type: boolean
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
           - name: opschortingsmachtiging
             type: boolean
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
         output:
           - name: moet_overgebracht_worden
             type: boolean

@@ -1,4 +1,5 @@
 # Converted from sociale_zekerheid/werkloosheidswet_UWV-2025-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Berekening Werkloosheidsuitkering (WW)
   Als werknemer
   Wil ik weten of ik recht heb op WW
@@ -23,7 +24,7 @@ Feature: Berekening Werkloosheidsuitkering (WW)
       | 999100001 | null                | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999100001 | 1985-05-15    | null              | null        | []                | null           | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999100001 | 1985-05-15    | null              | null        | []                |                | []             | NEDERLAND     | NEDERLANDS    | null  | []           |                       |
     And the following "UWV" data with key "bsn" for law "wet_werk_en_inkomen_naar_arbeidsvermogen":
       | bsn       | wia_uitkering_status |
       | 999100001 | null                 |
@@ -51,7 +52,7 @@ Feature: Berekening Werkloosheidsuitkering (WW)
       | 999100002 | null                | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999100002 | 1998-03-20    | null              | null        | []                | null           | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999100002 | 1998-03-20    | null              | null        | []                |                | []             | NEDERLAND     | NEDERLANDS    | null  | []           |                       |
     And the following "UWV" data with key "bsn" for law "wet_werk_en_inkomen_naar_arbeidsvermogen":
       | bsn       | wia_uitkering_status |
       | 999100002 | null                 |
@@ -77,7 +78,7 @@ Feature: Berekening Werkloosheidsuitkering (WW)
       | 999100003 | null                | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999100003 | 1955-08-10    | null              | null        | []                | null           | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999100003 | 1955-08-10    | null              | null        | []                |                | []             | NEDERLAND     | NEDERLANDS    | null  | []           |                       |
     And the following "UWV" data with key "bsn" for law "wet_werk_en_inkomen_naar_arbeidsvermogen":
       | bsn       | wia_uitkering_status |
       | 999100003 | null                 |
@@ -103,7 +104,7 @@ Feature: Berekening Werkloosheidsuitkering (WW)
       | 999100004 | null                | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999100004 | 1990-11-25    | null              | null        | []                | null           | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 999100004 | 1990-11-25    | null              | null        | []                |                | []             | NEDERLAND     | NEDERLANDS    | null  | []           |                       |
     And the following "UWV" data with key "bsn" for law "wet_werk_en_inkomen_naar_arbeidsvermogen":
       | bsn       | wia_uitkering_status |
       | 999100004 | null                 |
@@ -129,7 +130,7 @@ Feature: Berekening Werkloosheidsuitkering (WW)
       | 100000005 | null                | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 100000005 | 1980-02-14    | null              | null        | []                | null           | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 100000005 | 1980-02-14    | null              | null        | []                |                | []             | NEDERLAND     | NEDERLANDS    | null  | []           |                       |
     And the following "UWV" data with key "bsn" for law "wet_werk_en_inkomen_naar_arbeidsvermogen":
       | bsn       | wia_uitkering_status |
       | 100000005 | null                 |
@@ -157,7 +158,7 @@ Feature: Berekening Werkloosheidsuitkering (WW)
       | 100000006 | null                | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 100000006 | 1992-07-08    | null              | null        | []                | null           | []             | NEDERLAND     | NEDERLANDS    | null  | []           | null                  |
+      | 100000006 | 1992-07-08    | null              | null        | []                |                | []             | NEDERLAND     | NEDERLANDS    | null  | []           |                       |
     And the following "UWV" data with key "bsn" for law "wet_werk_en_inkomen_naar_arbeidsvermogen":
       | bsn       | wia_uitkering_status |
       | 100000006 | null                 |

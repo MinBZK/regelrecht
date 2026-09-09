@@ -1,4 +1,5 @@
 # Converted from toeslagen/wet_op_het_kindgebonden_budget_TOESLAGEN-2025-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Berekening Kindgebonden Budget
   Als ouder
   Wil ik weten of ik recht heb op kindgebonden budget
@@ -20,7 +21,7 @@ Feature: Berekening Kindgebonden Budget
       | 999200001 | {"toetsingsinkomen":2500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200001 | 1988-04-12    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200001 | 1988-04-12    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, alo_kop_bedrag, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "alo_kop_bedrag" equals 348000
@@ -42,8 +43,8 @@ Feature: Berekening Kindgebonden Budget
       | 999200003 | {"toetsingsinkomen":3000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200002 | 1985-09-22    | HUWELIJK          | 999200003   | []                | null           | []             | null          | null          | null  | []           | null                  |
-      | 999200003 | null          | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200002 | 1985-09-22    | HUWELIJK          | 999200003   | []                |                | []             |               |               | null  | []           |                       |
+      | 999200003 |               | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, alo_kop_bedrag, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "alo_kop_bedrag" equals 0
@@ -63,7 +64,7 @@ Feature: Berekening Kindgebonden Budget
       | 999200004 | {"toetsingsinkomen":12000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200004 | 1982-11-30    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200004 | 1982-11-30    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "kindgebonden_budget_jaar" equals 0
@@ -81,7 +82,7 @@ Feature: Berekening Kindgebonden Budget
       | 999200005 | {"toetsingsinkomen":2200000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200005 | 1990-01-15    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200005 | 1990-01-15    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "kindgebonden_budget_jaar" equals 599100
@@ -99,7 +100,7 @@ Feature: Berekening Kindgebonden Budget
       | 999200006 | {"toetsingsinkomen":2400000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200006 | 1987-06-20    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200006 | 1987-06-20    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "kindgebonden_budget_jaar" equals 599100
@@ -117,7 +118,7 @@ Feature: Berekening Kindgebonden Budget
       | 999200007 | {"toetsingsinkomen":2000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200007 | 1995-03-08    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999200007 | 1995-03-08    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is false
 
@@ -134,7 +135,7 @@ Feature: Berekening Kindgebonden Budget
       | 200000008 | {"toetsingsinkomen":2500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000008 | 1983-12-05    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 200000008 | 1983-12-05    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is false
 
@@ -151,7 +152,7 @@ Feature: Berekening Kindgebonden Budget
       | 200000009 | {"toetsingsinkomen":1500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000009 | 1991-08-18    | GEEN              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 200000009 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, alo_kop_bedrag, kindgebonden_budget_jaar" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is true
     And output "alo_kop_bedrag" equals 348000

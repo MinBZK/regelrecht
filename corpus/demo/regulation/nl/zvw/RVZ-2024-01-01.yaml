@@ -103,6 +103,7 @@ articles:
               output: land_van_verblijf
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: period
               period_type: continuous

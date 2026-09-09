@@ -1,4 +1,5 @@
 # Converted from bestuursrecht/wet_adviescollege_ict_toetsing_ACICT-2024-10-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Bepalen adviesplicht ICT-projecten
   Als verantwoordelijk ministerie of organisatie
   Wil ik weten of mijn ICT-project onder de adviesplicht valt

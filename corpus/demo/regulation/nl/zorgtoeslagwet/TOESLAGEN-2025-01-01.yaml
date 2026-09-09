@@ -76,6 +76,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: is_verzekerde
@@ -151,6 +152,7 @@ articles:
               output: heeft_partner
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: standaardpremie

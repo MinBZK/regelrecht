@@ -39,22 +39,35 @@ articles:
             required: true
           - name: documenttype
             type: string
-            required: true
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
           - name: op_selectielijst_vernietiging
             type: boolean
             required: true
           - name: bewaartermijn_jaren
             type: number
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
             type_spec:
               unit: years
               precision: 0
               min: 0
           - name: selectielijst_vastgesteld
             type: boolean
-            required: true
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
           - name: selectielijst_gepubliceerd
             type: boolean
-            required: true
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
         output:
           - name: mag_vernietigd_worden
             type: boolean

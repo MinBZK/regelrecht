@@ -1,4 +1,5 @@
 # Converted from burgerlijk_wetboek/burgerlijk_wetboek_beschermingsbewind_RECHTSPRAAK-2025-03-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Burgerlijk Wetboek Beschermingsbewind (BW 1:431-449)
   Als Rechtspraak
   Wil ik bewind-registraties beheren

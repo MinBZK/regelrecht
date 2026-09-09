@@ -62,6 +62,7 @@ articles:
               output: partner_bsn
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: partner_inkomen
             type: amount
             type_spec:
@@ -78,6 +79,7 @@ articles:
               output: kinderen_bsns
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: gewerkte_uren
             type: number
             source:

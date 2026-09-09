@@ -65,8 +65,16 @@ articles:
             type: date
           - name: beperking_type
             type: string
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
           - name: beperking_termijn_jaren
             type: number
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
             type_spec:
               unit: years
               precision: 0
@@ -74,6 +82,10 @@ articles:
               max: 75
           - name: ministerraad_besluit_staatsbelang
             type: boolean
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
         output:
           - name: is_openbaar
             type: boolean

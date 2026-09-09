@@ -88,6 +88,7 @@ articles:
               output: huishoudleden
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: kinderen
@@ -97,6 +98,7 @@ articles:
               output: kinderen
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: partner_bsn
@@ -106,6 +108,7 @@ articles:
               output: partner_bsn
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: partner_adres
@@ -115,6 +118,7 @@ articles:
               output: verblijfsadres
               parameters:
                 bsn: $partner_bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: leeftijd
@@ -124,6 +128,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: heeft_partner
@@ -133,6 +138,7 @@ articles:
               output: heeft_partner
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: huishoudgrootte
@@ -142,6 +148,7 @@ articles:
               output: huishoudgrootte
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: verblijfsadres
@@ -151,6 +158,7 @@ articles:
               output: verblijfsadres
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: inkomen

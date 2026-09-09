@@ -90,9 +90,12 @@ articles:
             required: true
           - name: referentiedatum
             type: date
-            required: false
+            required: true
             description: >-
-              Peildatum voor de leeftijd; zonder deze parameter geldt de rekendatum.
+              Peildatum waarop de leeftijd wordt bepaald. De aanroepende wet kiest die datum en
+              geeft haar altijd mee: de rekendatum ($referencedate) voor "op het moment van de
+              berekening", of een eigen datum zoals de verkiezingsdatum in de Kieswet. Een
+              weggelaten peildatum is geen "rekendatum" maar een fout van de aanroeper (RFC-036).
         input:
           - name: geboortedatum
             type: date
@@ -210,17 +213,9 @@ articles:
                       value: null
                   then:
                     operation: AGE
-                    reference_date:
-                      operation: IF
-                      cases:
-                        - when:
-                            operation: NOT
-                            value:
-                              operation: EQUALS
-                              subject: $referentiedatum
-                              value: null
-                          then: $referentiedatum
-                      default: $referencedate
+                    # De peildatum is een verplichte parameter; de aanroeper bepaalt haar
+                    # (RFC-036: geen stille terugval op de rekendatum).
+                    reference_date: $referentiedatum
                     date_of_birth: $geboortedatum
               default: null
             legal_basis:

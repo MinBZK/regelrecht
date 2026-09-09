@@ -22,8 +22,10 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
   laat de engine na elk antwoord opnieuw rekenen. Antwoorden worden claims (`selfDeclared`)
   op de wet, gesleuteld op de identiteit van die wet (`kvk_nummer` voor een bedrijfswet), en
   gelden ook als parameters bij het materialiseren, zodat een terraslocatie de juiste
-  registerrij vindt. Een wet die een andere wet kruiswet aanroept zonder die parameters
-  krijgt ze van de engine uit diezelfde antwoorden (RFC-036, regel 5).
+  registerrij vindt. Welke vraag aan de beurt is, zegt de uitkomst zelf: een onbekende
+  uitkomst draagt de ontbrekende feiten (RFC-036), en het portaal vraagt precies die,
+  in de volgorde waarin de engine ze tegenkwam. Een nog niet beantwoorde vraag wordt
+  niet als `null` meegegeven: `null` zou "er is geen" betekenen.
 - **Toestand** (profiel, aanvragen, correcties) in `src/store/demoStore.js`, bewaard in
   `localStorage`; "Demo resetten" in het menu wist het.
 - **Presentatie** (`src/presentation/`): de dia's uit `demo-config.yaml` (`slides:`) als
@@ -54,14 +56,38 @@ just dev-demo        # WASM bouwen + Vite op :7400
 just bdd-demo        # de demo-scenario's natively, met cargo
 ```
 
-## Ontbrekende registerwaarden
+## Afwezig en onbekend (RFC-036)
 
-De materialiser (`src/data/materialize.js`) vult een `amount`- of `number`-input
-waarvoor geen registerrij bestaat met `0`, niet met `null`. Dat is de
-POC-semantiek (een optelling sloeg ontbrekende operanden over) en het houdt de
-tegels rekenbaar voor persona's zonder loon, uitkering of vermogen. De keerzijde:
-een wet die `$inkomen == null` toetst ziet een nul, geen onbekende. Voor andere
-typen blijft een ontbrekende rij `null`, zodat de null-checks in de wetten werken.
+De engine kent twee soorten "niets". `null` is afwezigheid: het register is
+gezaghebbend en zegt dat er niets is (geen partner, geen huur, geen vergunning);
+de wet toetst dat met `EQUALS … null` en rekent er niet mee. Onbekend is een
+feit dat bestaat maar dat niemand heeft aangeleverd; de engine geeft dan een
+onbekende uitkomst die benoemt welke feiten ontbreken en waarom (`no_data`: een
+registerinput zonder waarde; `not_passed`: een optionele parameter die de
+aanroeper wegliet). Niets wordt stilzwijgend ingevuld.
+
+De materialiser (`src/data/materialize.js`) schrijft daarom alleen wat de data
+zegt. Wat een ontbrekende registerrij betekent, staat per binding in
+`corpus/demo/bindings.yaml` onder `absent:` (zie de kop van dat bestand):
+`unknown` laat de sleutel weg (de engine meldt de input als ontbrekend feit),
+`null` schrijft een afwezigheid, `0` een telling van niets (de Belastingdienst
+kent geen loon: het loon is 0). Een `kind: claim`-input bestaat pas als de
+burger hem opgeeft en wordt tot die tijd weggelaten. Een opzoeking op een
+afwezige sleutel (het inkomen van een partner die er niet is) is `null`, wat
+`absent` ook zegt: er is niemand om op te zoeken. Records bevatten nooit
+`undefined`; de WASM-grens zou dat als `null` lezen.
+
+In de weergave heet `null` "geen" en een onbekende waarde "onbekend", met waar
+ruimte is "ontbreekt: …" (`src/data/format.js`). Een onbekend
+`voldoet_aan_voorwaarden` is nooit een ja: de tegel zegt "Nog niet te bepalen",
+een aanvraag met een onbekende uitkomst gaat naar de behandelaar, en in de
+simulatie telt zo'n uitkomst apart ("onbekend") en maakt hij het besteedbaar
+inkomen van die burger onbekend in plaats van 0.
+
+De scenario's onder `corpus/demo/regulation/**/scenarios/` volgen dezelfde
+regel: een lege cel is een weggelaten sleutel (onbekend), het woord `null` is
+een afwezigheid. `corpus/demo/tools/apply_absent_semantics.mjs` heeft de
+gegenereerde tabellen daarop herschreven; zie `corpus/demo/tools/CONVERSION_NOTES.md`.
 
 ## Eigen CSS bovenop het design system
 

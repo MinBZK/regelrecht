@@ -1,4 +1,5 @@
 # Converted from overig/alcoholwet_GEMEENTE_ROTTERDAM-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
   Als horecaondernemer in Rotterdam
   Wil ik weten of ik een Alcoholwetvergunning kan krijgen
@@ -26,7 +27,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1999-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 1999-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_recht_op_vergunning" is true
@@ -50,7 +51,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 2003-06-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 2003-06-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_recht_op_vergunning" is true
@@ -74,7 +75,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is true
     And output "heeft_recht_op_vergunning" is true
@@ -98,7 +99,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 2004-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 2004-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_recht_op_vergunning" is false
@@ -122,7 +123,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 2006-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 2006-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_recht_op_vergunning" is false
@@ -146,7 +147,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1985-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 1985-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_recht_op_vergunning" is false
@@ -170,7 +171,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_recht_op_vergunning" is false
@@ -194,7 +195,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_recht_op_vergunning" is false
@@ -218,7 +219,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1980-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 1980-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_recht_op_vergunning" is false
@@ -242,7 +243,7 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                | null           | []             | null          | null          | null  | []           | null                  |
+      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
     Then output "voldoet_aan_voorwaarden" is false
     And output "heeft_recht_op_vergunning" is false

@@ -1,4 +1,5 @@
 # Converted from overig/warenwet_haccp_NVWA-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Bepalen HACCP-voedselveiligheidsverplichting
   Als horecaondernemer
   Wil ik weten of de HACCP-verplichting op mijn bedrijf van toepassing is

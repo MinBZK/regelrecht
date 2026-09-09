@@ -93,6 +93,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: pensioenleeftijd
@@ -113,6 +114,7 @@ articles:
               output: heeft_nederlandse_nationaliteit
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: verblijfsvergunning_type
             type: string
             source:
@@ -127,6 +129,7 @@ articles:
               output: woont_in_nederland
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: gemiddeld_arbeidsuren_per_week
             type: number
             type_spec:

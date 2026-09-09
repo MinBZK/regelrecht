@@ -93,6 +93,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: heeft_vast_adres
             type: boolean
             source:
@@ -100,6 +101,7 @@ articles:
               output: heeft_vast_adres
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: postadres
             type: string
             source:
@@ -107,6 +109,7 @@ articles:
               output: postadres
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: is_ondernemer
             type: boolean
             source:

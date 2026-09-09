@@ -61,6 +61,10 @@ articles:
             type: boolean
           - name: technologie_beschrijving
             type: string
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            required: false
           - name: verwachte_dosis_jaar
             type: number
           - name: verwachte_dosis_huid

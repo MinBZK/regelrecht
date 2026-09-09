@@ -61,6 +61,7 @@ articles:
               output: woonsituatie
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: period
               period_type: month
@@ -99,6 +100,7 @@ articles:
               output: partner_bsn
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: partner_woonsituatie
@@ -108,6 +110,7 @@ articles:
               output: woonsituatie
               parameters:
                 bsn: $partner_bsn
+                referentiedatum: $referencedate
             temporal:
               type: period
               period_type: month
@@ -171,99 +174,113 @@ articles:
         actions:
           - output: studiefinanciering
             value:
-              operation: ADD
-              values:
-                - operation: IF
-                  cases:
-                    - when:
-                        operation: EQUALS
-                        subject: $onderwijstype
-                        value: WO
-                      then:
-                        operation: IF
+              # Artikel 2.1 WSF 2000: alleen wie is ingeschreven voor een opleiding (onderwijstype
+              # bekend) heeft recht op studiefinanciering. Zonder inschrijving is het bedrag 0; de
+              # keuze per onderwijstype hieronder kent dan geen geval en zou een afwezige waarde
+              # opleveren waarmee niet gerekend kan worden (RFC-036).
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $onderwijstype
+                      value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: IF
                         cases:
                           - when:
                               operation: EQUALS
-                              subject: $woonsituatie
-                              value: UIT
-                            then: $basisbeurs_wo_uit
-                        default: $basisbeurs_wo_thuis
-                    - when:
-                        operation: EQUALS
-                        subject: $onderwijstype
-                        value: HBO
-                      then:
-                        operation: IF
-                        cases:
+                              subject: $onderwijstype
+                              value: WO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_wo_uit
+                              default: $basisbeurs_wo_thuis
                           - when:
                               operation: EQUALS
-                              subject: $woonsituatie
-                              value: UIT
-                            then: $basisbeurs_hbo_uit
-                        default: $basisbeurs_hbo_thuis
-                    - when:
-                        operation: EQUALS
-                        subject: $onderwijstype
-                        value: MBO
-                      then:
-                        operation: IF
-                        cases:
+                              subject: $onderwijstype
+                              value: HBO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_hbo_uit
+                              default: $basisbeurs_hbo_thuis
                           - when:
                               operation: EQUALS
-                              subject: $woonsituatie
-                              value: UIT
-                            then: $basisbeurs_mbo_uit
-                        default: $basisbeurs_mbo_thuis
-                - operation: IF
-                  cases:
-                    - when:
-                        operation: LESS_THAN
-                        subject:
-                          operation: ADD
-                          values:
-                            - $ouder1_inkomen
-                            - $ouder2_inkomen
-                        value: $inkomen_grens_geen_beurs
-                      then:
-                        operation: MULTIPLY
-                        values:
-                          - operation: IF
-                            cases:
-                              - when:
-                                  operation: EQUALS
-                                  subject: $onderwijstype
-                                  value: WO
-                                then: $max_aanvullende_beurs_wo
-                              - when:
-                                  operation: EQUALS
-                                  subject: $onderwijstype
-                                  value: HBO
-                                then: $max_aanvullende_beurs_hbo
-                              - when:
-                                  operation: EQUALS
-                                  subject: $onderwijstype
-                                  value: MBO
-                                then: $max_aanvullende_beurs_mbo
-                          - operation: SUBTRACT
-                            values:
-                              - 1
-                              - operation: DIVIDE
+                              subject: $onderwijstype
+                              value: MBO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_mbo_uit
+                              default: $basisbeurs_mbo_thuis
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: LESS_THAN
+                              subject:
+                                operation: ADD
                                 values:
-                                  - operation: SUBTRACT
-                                    values:
-                                      - operation: ADD
-                                        values:
-                                          - $ouder1_inkomen
-                                          - $ouder2_inkomen
-                                      - $inkomensdrempel_basis
-                                      - operation: MULTIPLY
-                                        values:
-                                          - $aantal_studerend_gezin
-                                          - $verhoging_drempel_per_kind
-                                  - operation: SUBTRACT
-                                    values:
-                                      - $inkomen_grens_geen_beurs
-                                      - $inkomensdrempel_basis
+                                  - $ouder1_inkomen
+                                  - $ouder2_inkomen
+                              value: $inkomen_grens_geen_beurs
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $onderwijstype
+                                        value: WO
+                                      then: $max_aanvullende_beurs_wo
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $onderwijstype
+                                        value: HBO
+                                      then: $max_aanvullende_beurs_hbo
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $onderwijstype
+                                        value: MBO
+                                      then: $max_aanvullende_beurs_mbo
+                                - operation: SUBTRACT
+                                  values:
+                                    - 1
+                                    - operation: DIVIDE
+                                      values:
+                                        - operation: SUBTRACT
+                                          values:
+                                            - operation: ADD
+                                              values:
+                                                - $ouder1_inkomen
+                                                - $ouder2_inkomen
+                                            - $inkomensdrempel_basis
+                                            - operation: MULTIPLY
+                                              values:
+                                                - $aantal_studerend_gezin
+                                                - $verhoging_drempel_per_kind
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $inkomen_grens_geen_beurs
+                                            - $inkomensdrempel_basis
+              default: 0
             legal_basis:
               law: Wet studiefinanciering 2000
               bwb_id: BWBR0011453
@@ -276,99 +293,111 @@ articles:
                 aanvullende beurs.
           - output: partner_studiefinanciering
             value:
-              operation: ADD
-              values:
-                - operation: IF
-                  cases:
-                    - when:
-                        operation: EQUALS
-                        subject: $partner_onderwijstype
-                        value: WO
-                      then:
-                        operation: IF
+              # Artikel 2.1 WSF 2000, voor de partner: geen inschrijving, geen studiefinanciering (0).
+              # Zie de toelichting bij studiefinanciering (RFC-036).
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $partner_onderwijstype
+                      value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: IF
                         cases:
                           - when:
                               operation: EQUALS
-                              subject: $partner_woonsituatie
-                              value: UIT
-                            then: $basisbeurs_wo_uit
-                        default: $basisbeurs_wo_thuis
-                    - when:
-                        operation: EQUALS
-                        subject: $partner_onderwijstype
-                        value: HBO
-                      then:
-                        operation: IF
-                        cases:
+                              subject: $partner_onderwijstype
+                              value: WO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_wo_uit
+                              default: $basisbeurs_wo_thuis
                           - when:
                               operation: EQUALS
-                              subject: $partner_woonsituatie
-                              value: UIT
-                            then: $basisbeurs_hbo_uit
-                        default: $basisbeurs_hbo_thuis
-                    - when:
-                        operation: EQUALS
-                        subject: $partner_onderwijstype
-                        value: MBO
-                      then:
-                        operation: IF
-                        cases:
+                              subject: $partner_onderwijstype
+                              value: HBO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_hbo_uit
+                              default: $basisbeurs_hbo_thuis
                           - when:
                               operation: EQUALS
-                              subject: $partner_woonsituatie
-                              value: UIT
-                            then: $basisbeurs_mbo_uit
-                        default: $basisbeurs_mbo_thuis
-                - operation: IF
-                  cases:
-                    - when:
-                        operation: LESS_THAN
-                        subject:
-                          operation: ADD
-                          values:
-                            - $partner_ouder1_inkomen
-                            - $partner_ouder2_inkomen
-                        value: $inkomen_grens_geen_beurs
-                      then:
-                        operation: MULTIPLY
-                        values:
-                          - operation: IF
-                            cases:
-                              - when:
-                                  operation: EQUALS
-                                  subject: $partner_onderwijstype
-                                  value: WO
-                                then: $max_aanvullende_beurs_wo
-                              - when:
-                                  operation: EQUALS
-                                  subject: $partner_onderwijstype
-                                  value: HBO
-                                then: $max_aanvullende_beurs_hbo
-                              - when:
-                                  operation: EQUALS
-                                  subject: $partner_onderwijstype
-                                  value: MBO
-                                then: $max_aanvullende_beurs_mbo
-                          - operation: SUBTRACT
-                            values:
-                              - 1
-                              - operation: DIVIDE
+                              subject: $partner_onderwijstype
+                              value: MBO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_mbo_uit
+                              default: $basisbeurs_mbo_thuis
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: LESS_THAN
+                              subject:
+                                operation: ADD
                                 values:
-                                  - operation: SUBTRACT
-                                    values:
-                                      - operation: ADD
-                                        values:
-                                          - $partner_ouder1_inkomen
-                                          - $partner_ouder2_inkomen
-                                      - $inkomensdrempel_basis
-                                      - operation: MULTIPLY
-                                        values:
-                                          - $partner_aantal_studerend_gezin
-                                          - $verhoging_drempel_per_kind
-                                  - operation: SUBTRACT
-                                    values:
-                                      - $inkomen_grens_geen_beurs
-                                      - $inkomensdrempel_basis
+                                  - $partner_ouder1_inkomen
+                                  - $partner_ouder2_inkomen
+                              value: $inkomen_grens_geen_beurs
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $partner_onderwijstype
+                                        value: WO
+                                      then: $max_aanvullende_beurs_wo
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $partner_onderwijstype
+                                        value: HBO
+                                      then: $max_aanvullende_beurs_hbo
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $partner_onderwijstype
+                                        value: MBO
+                                      then: $max_aanvullende_beurs_mbo
+                                - operation: SUBTRACT
+                                  values:
+                                    - 1
+                                    - operation: DIVIDE
+                                      values:
+                                        - operation: SUBTRACT
+                                          values:
+                                            - operation: ADD
+                                              values:
+                                                - $partner_ouder1_inkomen
+                                                - $partner_ouder2_inkomen
+                                            - $inkomensdrempel_basis
+                                            - operation: MULTIPLY
+                                              values:
+                                                - $partner_aantal_studerend_gezin
+                                                - $verhoging_drempel_per_kind
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $inkomen_grens_geen_beurs
+                                            - $inkomensdrempel_basis
+              default: 0
             legal_basis:
               law: Wet studiefinanciering 2000
               bwb_id: BWBR0011453

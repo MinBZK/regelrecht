@@ -1,4 +1,5 @@
 # Converted from belastingen/zorgverzekeringswet_BELASTINGDIENST-2024-01-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Berekening Werkgeversbijdrage Zorgverzekeringswet 2024
   Als werkgever
   Wil ik weten hoeveel werkgeversbijdrage Zvw ik moet afdragen

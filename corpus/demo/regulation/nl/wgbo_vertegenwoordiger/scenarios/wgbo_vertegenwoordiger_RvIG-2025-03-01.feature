@@ -1,4 +1,5 @@
 # Converted from overig/wgbo_vertegenwoordiger_RvIG-2025-03-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: WGBO Vertegenwoordiger (BW 7:465)
   Als RvIG
   Wil ik medische vertegenwoordigingsrelaties bepalen

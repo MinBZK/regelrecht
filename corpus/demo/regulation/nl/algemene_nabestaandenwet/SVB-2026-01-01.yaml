@@ -67,6 +67,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: geboortedatum
@@ -76,6 +77,7 @@ articles:
               output: geboortedatum
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: pensioenleeftijd

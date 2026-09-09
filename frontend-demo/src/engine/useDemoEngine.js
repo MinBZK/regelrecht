@@ -201,12 +201,18 @@ export function registerPersonaData(engine, corpus, referenceDate, cases = [], c
  * Register approved citizen corrections as a higher-priority scoped source per
  * law, replacing the previous set.
  *
+ * A record never carries `undefined`: the WASM boundary would read it as an
+ * absence (`null`), turning "not supplied" into "there is none" (RFC-036). A
+ * claim without a value is simply not in the record, so the input stays
+ * unknown.
+ *
  * @param {Array<{lawId: string, keyField: string, keyValue: string, input: string, newValue: any}>} claims
  */
 export function registerClaims(engine, claims) {
   engine.removeDataSource(CLAIMS_SOURCE);
   const grouped = new Map();
   for (const claim of claims) {
+    if (claim.newValue === undefined) continue;
     const key = JSON.stringify([claim.lawId, claim.keyField]);
     if (!grouped.has(key)) grouped.set(key, new Map());
     const records = grouped.get(key);

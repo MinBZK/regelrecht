@@ -1,4 +1,5 @@
 # Converted from overig/archiefwet_NATIONAAL_ARCHIEF-2024-06-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Archiefwet 1995 - Beheer en openbaarheid van archiefbescheiden
   Als archivaris
   Wil ik weten of archiefbescheiden overgebracht, openbaar of vernietigd moeten worden

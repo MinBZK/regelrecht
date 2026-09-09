@@ -63,6 +63,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: geboortedatum
             type: date
             source:
@@ -70,6 +71,7 @@ articles:
               output: geboortedatum
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: pensioenleeftijd
@@ -87,6 +89,7 @@ articles:
               output: heeft_nederlandse_nationaliteit
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: verblijfsvergunning_type
             type: string
             source:
@@ -101,6 +104,7 @@ articles:
               output: verblijfsadres
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: inkomen
             type: amount
             type_spec:
@@ -141,6 +145,7 @@ articles:
               output: heeft_partner
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: partner_bsn
             type: string
             source:
@@ -148,6 +153,7 @@ articles:
               output: partner_bsn
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: partner_inkomen
             type: amount
             type_spec:
@@ -177,6 +183,7 @@ articles:
               output: huishoudgrootte
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: is_student
             type: boolean
             source:

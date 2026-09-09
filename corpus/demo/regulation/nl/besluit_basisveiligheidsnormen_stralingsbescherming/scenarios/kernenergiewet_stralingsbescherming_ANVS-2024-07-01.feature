@@ -1,4 +1,5 @@
 # Converted from kernenergiewet/kernenergiewet_stralingsbescherming_ANVS-2024-07-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Besluit basisveiligheidsnormen stralingsbescherming
   Als nucleaire operator
   Wil ik weten of mijn verwachte stralingsdosis binnen de wettelijke limieten blijft

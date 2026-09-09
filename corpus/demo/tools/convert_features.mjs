@@ -293,12 +293,25 @@ function renderTable(rows, indent) {
   return rows.map((row) => `${indent}| ${row.map((c, i) => c.padEnd(widths[i])).join(' | ')} |`);
 }
 
+/**
+ * A string for a quoted Gherkin capture (`"{x}"`). Neither runner unescapes:
+ * the step patterns capture `"([^"]*)"` and hand the text over as is, so a
+ * quote or a backslash inside the value cannot be written at all. Rather than
+ * emit an escape that would be read literally, refuse such a value; it has to
+ * go in a data-table cell (or the value has to change). No POC value needed
+ * this so far.
+ */
+function quoted(value) {
+  if (/["\\]/.test(value)) throw new Error(`value ${JSON.stringify(value)} contains a quote or backslash and cannot be a quoted Gherkin capture`);
+  return value;
+}
+
 /** A parameter value as a single `parameter "x" is ...` step, or null when it needs a table cell. */
 function parameterStep(name, value) {
   if (typeof value === 'number') return `parameter "${name}" is ${value}`;
   if (value === null) return `parameter "${name}" is "null"`;
   if (typeof value === 'boolean') return `parameter "${name}" is "${value}"`;
-  if (typeof value === 'string') return `parameter "${name}" is "${value.replace(/"/g, '\\"')}"`;
+  if (typeof value === 'string') return `parameter "${name}" is "${quoted(value)}"`;
   return null;
 }
 
@@ -682,25 +695,24 @@ function accessedProperties(law, name) {
 }
 
 /**
- * Two POC readings the engine does not share, applied to a materialised record:
- * - a numeric input with no value was None, and the POC's ADD skipped None
- *   operands; the engine raises on null, so it becomes 0 (the same rule the
- *   materialiser applies when no row matches at all);
- * - a register row was a dict, and `row.get(kolom)` on a column the table did
- *   not have gave None; the engine raises on a missing key, so every property
- *   the law reads on an object input is present, null when the row lacks it.
- *   A property the law passes straight through to a number/amount output (the
- *   `*_gegevens` register laws) gets the same 0 as a numeric input would.
+ * One POC reading the engine does not share, applied to a materialised record:
+ * a register row was a dict, and `row.get(kolom)` on a column the table did
+ * not have gave None; the engine treats a missing property as an author error,
+ * so every property the law reads on an object input is present, null when
+ * the row lacks it (the row exists, the field is empty).
+ *
+ * The POC's other reading, a numeric input without a value counting as 0, is
+ * no longer applied: what a missing register row means is the binding's
+ * `absent:` in bindings.yaml, and the materialiser writes exactly that
+ * (RFC-036). An input the data does not state is left out of the record and
+ * rendered as an empty cell, which the runner reads as "unknown".
  */
 function applyPocValueSemantics(record, law, shape) {
   for (const [name, value] of Object.entries(record)) {
     const type = shape.inputTypes[name];
-    if (value === null && (type === 'amount' || type === 'number')) record[name] = 0;
     if (type === 'object' && value && typeof value === 'object' && !Array.isArray(value)) {
       for (const prop of accessedProperties(law, name)) {
         if (!(prop in value)) value[prop] = null;
-        const outputType = law.outputs.get(prop);
-        if (value[prop] === null && (outputType === 'amount' || outputType === 'number')) value[prop] = 0;
       }
     }
   }
@@ -764,7 +776,10 @@ function dataSourceLines(sources, reachable, given, indent) {
     for (const r of s.records) for (const f of Object.keys(r)) if (f !== s.keyField && !fields.includes(f)) fields.push(f);
     if (fields.length === 0 || s.records.length === 0) continue;
     lines.push(given(`the following "${s.service}" data with key "${s.keyField}" for law "${s.law}":`));
-    const rows = [[s.keyField, ...fields], ...s.records.map((r) => [formatCell(r[s.keyField]), ...fields.map((f) => formatCell(pocMaterialisedValue(r[f])))])];
+    // A key the materialiser left out of a record (the data states nothing) is
+    // an empty cell: the runner omits it and the input is unknown (RFC-036).
+    const cell = (r, f) => (f in r ? formatCell(pocMaterialisedValue(r[f])) : '');
+    const rows = [[s.keyField, ...fields], ...s.records.map((r) => [formatCell(r[s.keyField]), ...fields.map((f) => cell(r, f))])];
     lines.push(...renderTable(rows, indent));
   }
   return lines;
@@ -800,7 +815,7 @@ function assertionLine(item) {
     case 'equals':
       if (typeof item.value === 'number') return `output "${item.output}" equals ${item.value}`;
       if (typeof item.value === 'object') return `output "${item.output}" equals "${JSON.stringify(item.value)}"`;
-      return `output "${item.output}" equals "${String(item.value).replace(/"/g, '\\"')}"`;
+      return `output "${item.output}" equals "${quoted(String(item.value))}"`;
     default: throw new Error(`unhandled assertion op ${item.op}`);
   }
 }

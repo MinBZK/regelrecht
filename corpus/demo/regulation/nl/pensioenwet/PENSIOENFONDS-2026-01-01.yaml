@@ -302,6 +302,7 @@ articles:
               output: geboortedatum
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: leeftijd
@@ -315,6 +316,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
             temporal:
               type: point_in_time
           - name: pensioenkapitaal
@@ -367,14 +369,26 @@ articles:
         actions:
           - output: voldoet_aan_voorwaarden
             value:
-              operation: AND
-              conditions:
-                - subject: $leeftijd
-                  operation: GREATER_THAN_OR_EQUAL
-                  value: $pensioen_leeftijd_fonds
-                - subject: $pensioenkapitaal
-                  operation: GREATER_THAN
-                  value: 0
+              # Artikel 1 Pensioenwet (deelnemer): wie bij het fonds geen deelnemersregistratie
+              # heeft, heeft er geen pensioenaanspraak. Het register is daarvoor gezaghebbend,
+              # dus zonder rij zijn regeling, kapitaal en fondsleeftijd afwezig (null) en wordt
+              # er niet mee gerekend (RFC-036).
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $type_regeling
+                    value: null
+                  then: false
+              default:
+                operation: AND
+                conditions:
+                  - subject: $leeftijd
+                    operation: GREATER_THAN_OR_EQUAL
+                    value: $pensioen_leeftijd_fonds
+                  - subject: $pensioenkapitaal
+                    operation: GREATER_THAN
+                    value: 0
           - output: is_gepensioneerd
             value: true
             legal_basis:
@@ -414,6 +428,14 @@ articles:
             value:
               operation: IF
               cases:
+                # Geen deelnemersregistratie (artikel 1 Pensioenwet): geen ouderdomspensioen,
+                # dus een uitkering van 0. Zonder dit geval viel de berekening terug op een
+                # vermenigvuldiging met een afwezig kapitaal (RFC-036).
+                - when:
+                    operation: EQUALS
+                    subject: $type_regeling
+                    value: null
+                  then: 0
                 - when:
                     operation: EQUALS
                     subject: $type_regeling

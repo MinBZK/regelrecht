@@ -12,7 +12,7 @@
  * and the page stays responsive.
  */
 import { collectKeyValues, lawShape, materialiseAll } from '../data/materialize.js';
-import { fieldSpec, isAmountSpec } from '../data/format.js';
+import { fieldSpec, isAmountSpec, verdictOf } from '../data/format.js';
 import { evaluateLaw } from '../engine/useDemoEngine.js';
 import { applyOverrides, effectiveOverrides } from './lawParameters.js';
 import { generateBusinesses, generateCitizens, rowsForTables, templatesFromProfiles } from './population.js';
@@ -67,7 +67,9 @@ function primaryOutputName(corpus, law) {
 export function reduceOutcome(law, primaryName, evaluation) {
   if (!evaluation.ok) return { ok: false, met: null, amount: null, amountName: null, error: evaluation.error };
   const outputs = evaluation.outputs ?? {};
-  const met = 'voldoet_aan_voorwaarden' in outputs ? outputs.voldoet_aan_voorwaarden !== false && outputs.voldoet_aan_voorwaarden !== null : null;
+  // true/false when the law decided, 'unknown' when it could not for lack of
+  // facts (RFC-036), null when the law has no verdict output.
+  const met = verdictOf(outputs);
   // The amount shown for a law: its configured primary output, or else the
   // first monetary output. A count or a rate is not an amount to average.
   let name = primaryName && outputs[primaryName] !== undefined ? primaryName : null;
@@ -174,9 +176,12 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
     const sources = materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, resolveRef, paramsFor });
     engine.clearDataSources();
     register(sources);
-    // Form answers (`kind: claim` inputs) as a higher-priority source.
+    // Form answers (`kind: claim` inputs) as a higher-priority source. A claim
+    // without a value is left out of the record: `undefined` would cross the
+    // WASM boundary as null and turn "not supplied" into "none" (RFC-036).
     const grouped = new Map();
     for (const c of population.claims) {
+      if (c.value === undefined) continue;
       const key = JSON.stringify([c.lawId, c.keyField]);
       if (!grouped.has(key)) grouped.set(key, new Map());
       const records = grouped.get(key);
@@ -197,11 +202,14 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
       const outcome = { subject, laws: {} };
       for (const law of laws) {
         const declared = lawShape(law.doc).parameters;
+        // Only what the population states is passed. A form parameter the
+        // generator did not answer is left out, so the engine reports it as
+        // unknown (not passed) instead of receiving a null it would read as
+        // "none" (RFC-036).
         const callParams = {};
         for (const p of declared) {
-          if (p === 'bsn') callParams.bsn = subject.bsn ?? form.bsn ?? null;
-          else if (p === 'kvk_nummer') callParams.kvk_nummer = subject.kvk_nummer ?? null;
-          else callParams[p] = form[p] ?? null;
+          const value = p === 'bsn' ? subject.bsn ?? form.bsn : p === 'kvk_nummer' ? subject.kvk_nummer : form[p];
+          if (value !== undefined) callParams[p] = value;
         }
         outcome.laws[law.id] = reduceOutcome(law, primaries.get(law.id), evaluateLaw(engine, law, callParams, referenceDate));
       }

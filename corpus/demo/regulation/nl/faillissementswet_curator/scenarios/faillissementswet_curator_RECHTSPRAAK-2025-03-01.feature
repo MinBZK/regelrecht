@@ -1,4 +1,5 @@
 # Converted from overig/faillissementswet_curator_RECHTSPRAAK-2025-03-01.feature by corpus/demo/tools/convert_features.mjs
+# Absence semantics applied by corpus/demo/tools/apply_absent_semantics.mjs (RFC-036)
 Feature: Faillissementswet Curator (Fw Art. 64-71)
   Als Rechtspraak
   Wil ik faillissement-registraties beheren

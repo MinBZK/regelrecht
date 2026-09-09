@@ -70,6 +70,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: geboortedatum
             type: date
             source:
@@ -77,6 +78,7 @@ articles:
               output: geboortedatum
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: pensioenleeftijd
             type: number
             source:
@@ -92,6 +94,7 @@ articles:
               output: heeft_partner
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: partner_bsn
             type: string
             source:
@@ -99,6 +102,7 @@ articles:
               output: partner_bsn
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: heeft_kinderen_onder_12
             type: boolean
             source:
@@ -106,6 +110,7 @@ articles:
               output: heeft_kinderen_onder_12
               parameters:
                 bsn: $bsn
+                referentiedatum: $referencedate
           - name: loon_uit_dienstbetrekking
             type: amount
             source: {}
