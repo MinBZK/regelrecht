@@ -120,7 +120,6 @@ body {
   font-family: var(--primitives-font-family-monospace, monospace);
   font-size: 0.875rem;
   line-height: 1.6;
-  white-space: pre-wrap;
 }
 
 .gherkin .kw {
@@ -128,29 +127,16 @@ body {
   font-weight: 600;
 }
 
+/* Engine errors keep their line breaks. pre-wrap stays off the block itself:
+ * it inherits into the shadow DOM of the nldd-table under a step and would turn
+ * the template whitespace there into blank lines. */
 .gherkin .str {
   color: var(--primitives-color-groen-700, #276e2c);
+  white-space: pre-wrap;
 }
 
 .gherkin .num {
   color: var(--primitives-color-oranje-700, #a04a00);
-}
-
-.gherkin .table-wrap {
-  overflow-x: auto;
-  margin: 0.25rem 0 0.5rem 2rem;
-}
-
-.gherkin table {
-  border-collapse: collapse;
-}
-
-.gherkin td,
-.gherkin th {
-  border: 1px solid var(--primitives-color-neutral-300, #ccc);
-  padding: 0.1rem 0.5rem;
-  text-align: left;
-  font-weight: normal;
 }
 
 .gherkin .step {

@@ -73,7 +73,7 @@ design system geen component heeft:
 | `src/presentation/*` (deck, scoped CSS en `presentation.css`) | De presentatie: een Rijkshuisstijl-blauw dek (donkerblauw #154273, RijksoverheidSerif voor titels, RijksSans voor tekst) dat voluit staat bij intro en afsluiting en als linker rail de demo rechts aanstuurt (`html.rr-presenting body { padding-left }`, puls `.rr-present-pulse`). Naar het voorbeeld van Begane Grond. Het design system heeft geen presentatiecomponent; de serif-fonts staan in `public/fonts` (Rijkshuisstijl-licentie). |
 | `.org-logo` | Organisatielogo in een blokje met padding (40px/24px). `nldd-avatar` snijdt een afbeelding bij (`object-fit: cover`), wat een woordmerk afsnijdt; `nldd-image` vult altijd de volle breedte. Organisaties zonder logo krijgen wél een `nldd-avatar` met initialen. |
 | `.yaml-tree*` | Opvouwbare YAML-boom met kruiswet-links; `nldd-code-viewer` highlight wel YAML maar vouwt niet en kent geen links. |
-| `.gherkin*` | Gherkin-weergave met slaag/faal-markering per stap en tabellen; de viewer kent Gherkin als taal maar geen stapstatus. |
+| `.gherkin*` | Gherkin-weergave met slaag/faal-markering per stap (de datatabellen zijn `nldd-table`); de viewer kent Gherkin als taal maar geen stapstatus. |
 | `.trace` | Monospace box-drawing-trace. |
 | `.graph-canvas`, `.graph-law*`, `.graph-box*`, `.graph-item*`, `.graph-dim` | vue-flow heeft een expliciete hoogte nodig; de knopen tekenen het POC-beeld (wet als kader met vakken voor bronnen, invoer en uitvoer, met de waarde voor de persona) en dimmen wat buiten de selectie valt. Een graafcanvas bestaat niet in het design system (zelfde uitzondering als de editor). |
 

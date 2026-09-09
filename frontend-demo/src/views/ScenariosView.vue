@@ -29,7 +29,6 @@ const runs = reactive({}); // scenario index -> { status, steps: [{status, error
 // wall of steps. Each card opens on its own; a failed run opens itself so the
 // failing step is in view.
 const open = reactive({}); // scenario index -> boolean
-const backgroundOpen = ref(false);
 const runningAll = ref(false);
 const anyRunning = computed(() => runningAll.value || Object.values(runs).some((r) => r.status === 'running'));
 const query = ref('');
@@ -39,6 +38,16 @@ const filtered = computed(() => {
   const list = q ? features.value.filter((f) => `${f.title} ${f.law_path}`.toLowerCase().includes(q)) : features.value;
   return [...list].sort((a, b) => a.title.localeCompare(b.title));
 });
+
+// One track per column of the Gherkin table, sized to its content, plus a
+// trailing filler track: the rows span every track, so the filler carries the
+// row dividers to the edge of the box while the cells stay compact. The table
+// is its own horizontal scroll container, so a wide table scrolls instead of
+// squeezing or overflowing the card.
+function dataTableColumns(table) {
+  const width = Math.max(...table.map((row) => row.length));
+  return `repeat(${width}, max-content) 1fr`;
+}
 
 function lawFor(feature) {
   return corpus.value?.laws.find((l) => l.law_path === feature.law_path) ?? null;
@@ -50,7 +59,6 @@ async function select(path, { replaceRoute = false } = {}) {
   splitView.value?.hidePrimarySidebarSheet?.();
   Object.keys(runs).forEach((k) => delete runs[k]);
   Object.keys(open).forEach((k) => delete open[k]);
-  backgroundOpen.value = false;
   loadError.value = null;
   try {
     const res = await fetch(path);
@@ -286,9 +294,6 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               <nldd-button size="sm" variant="neutral-tinted" start-icon="checklist" text="Scenario's" :supporting-text="`${features.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-title v-if="parsed" slot="start" :text="parsed.feature" :supporting-text="fileName"></nldd-toolbar-title>
-            <nldd-toolbar-item slot="end" v-if="summary.pass + summary.fail > 0">
-              <nldd-tag :color="summary.fail ? 'critical' : 'success'" :text="`${summary.pass} geslaagd${summary.fail ? `, ${summary.fail} mislukt` : ''}`"></nldd-tag>
-            </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="parsed">
               <nldd-segmented-control size="sm" width="fit-content" :value="showText ? 'text' : 'steps'" @change="showText = $event.detail?.value === 'text'">
                 <nldd-segmented-control-item value="steps" text="Scenario's"></nldd-segmented-control-item>
@@ -321,9 +326,14 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             <nldd-container padding="12" layout="row" gap="12" vertical-alignment="center">
               <nldd-icon-cell icon="checklist" color="secondary"></nldd-icon-cell>
               <nldd-title-cell size="5" :text="parsed.feature" :overline="FEATURE_KEYWORDS_NL.Feature" :supporting-text="parsed.background?.length ? `${FEATURE_KEYWORDS_NL.Background}: ${parsed.background.length} ${parsed.background.length === 1 ? 'stap' : 'stappen'}` : undefined"></nldd-title-cell>
-              <nldd-icon-button v-if="parsed.background?.length" size="sm" variant="neutral-transparent" :icon="backgroundOpen ? 'chevron-up' : 'chevron-down'" :text="backgroundOpen ? 'Achtergrond verbergen' : 'Achtergrond tonen'" :expanded="backgroundOpen || undefined" @click="backgroundOpen = !backgroundOpen"></nldd-icon-button>
+              <!-- The run summary sits with the feature, next to its title, as the result
+                   tag does on each scenario card. In the toolbar it stood between 32px
+                   controls; no tag or badge size reaches that height. -->
+              <nldd-tag v-if="summary.pass + summary.fail > 0" :color="summary.fail ? 'critical' : 'success'" :text="`${summary.pass} geslaagd${summary.fail ? `, ${summary.fail} mislukt` : ''}`"></nldd-tag>
             </nldd-container>
-            <nldd-container v-if="backgroundOpen && parsed.background?.length" padding-inline="16" padding-bottom="12">
+            <!-- The background is the shared premise of every scenario below, so it
+                 stays in view; only the scenario cards collapse. -->
+            <nldd-container v-if="parsed.background?.length" padding-inline="16" padding-bottom="12">
               <div class="gherkin">
                 <div><span class="kw">{{ FEATURE_KEYWORDS_NL.Background }}:</span></div>
                 <div v-for="(step, i) in parsed.background" :key="`bg-${i}`" class="step">
@@ -336,23 +346,28 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
               <nldd-icon-cell :icon="statusIcon(index)" :color="statusColor(index)"></nldd-icon-cell>
               <nldd-title-cell size="5" :text="scenario.name" :supporting-text="scenario.tags.join(' ') || undefined"></nldd-title-cell>
-              <nldd-tag v-if="resultTag(index)" size="sm" :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag>
-              <nldd-button size="sm" variant="secondary" start-icon="play" text="Uitvoeren" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="run(index)"></nldd-button>
-              <nldd-button v-if="runs[index]?.traceText" size="sm" variant="neutral-tinted" start-icon="list" text="Trace" @click="activeTrace = index"></nldd-button>
-              <nldd-icon-button size="sm" variant="neutral-transparent" :icon="open[index] ? 'chevron-up' : 'chevron-down'" :text="open[index] ? 'Stappen verbergen' : 'Stappen tonen'" :expanded="open[index] || undefined" @click="open[index] = !open[index]"></nldd-icon-button>
+              <!-- One height across the action row: an md tag and xs buttons are both
+                   24px; no tag size matches an sm button. -->
+              <nldd-tag v-if="resultTag(index)" :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag>
+              <nldd-button size="xs" variant="secondary" start-icon="play" text="Uitvoeren" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="run(index)"></nldd-button>
+              <nldd-button v-if="runs[index]?.traceText" size="xs" variant="neutral-tinted" start-icon="list" text="Trace" @click="activeTrace = index"></nldd-button>
+              <nldd-icon-button size="xs" variant="neutral-transparent" :icon="open[index] ? 'chevron-up' : 'chevron-down'" :text="open[index] ? 'Stappen verbergen' : 'Stappen tonen'" :expanded="open[index] || undefined" @click="open[index] = !open[index]"></nldd-icon-button>
             </nldd-container>
             <nldd-container v-if="open[index]" padding-inline="16" padding-bottom="12" gap="12">
               <nldd-banner v-if="runs[index]?.error && !runs[index]?.steps?.length" variant="critical" text="Uitvoering mislukt" :supporting-text="runs[index].error"></nldd-banner>
               <div class="gherkin">
                 <div v-for="(step, si) in scenario.steps" :key="si" :class="['step', stepClass(index, (parsed.background?.length ?? 0) + si)]">
                   <span class="kw">{{ renderStepNl(step).keyword }}</span> {{ renderStepNl(step).text }}
-                  <div v-if="step.dataTable" class="table-wrap"><table>
-                    <tr v-for="(row, ri) in step.dataTable.slice(0, 6)" :key="ri">
-                      <component :is="ri === 0 ? 'th' : 'td'" v-for="(cell, ci) in row.slice(0, 8)" :key="ci">{{ cell }}</component>
-                      <td v-if="row.length > 8">… {{ row.length - 8 }} meer</td>
-                    </tr>
-                    <tr v-if="step.dataTable.length > 6"><td :colspan="Math.min(step.dataTable[0].length, 9)">… {{ step.dataTable.length - 6 }} rijen meer</td></tr>
-                  </table></div>
+                  <nldd-container v-if="step.dataTable" padding-block="4">
+                    <nldd-table :columns="dataTableColumns(step.dataTable)" :accessible-label="`Tabel bij ${renderStepNl(step).text}`">
+                      <nldd-table-row slot="header">
+                        <nldd-text-cell v-for="(cell, ci) in step.dataTable[0]" :key="ci" size="sm" :text="cell"></nldd-text-cell>
+                      </nldd-table-row>
+                      <nldd-table-row v-for="(row, ri) in step.dataTable.slice(1)" :key="ri">
+                        <nldd-text-cell v-for="(cell, ci) in row" :key="ci" size="sm" :text="cell"></nldd-text-cell>
+                      </nldd-table-row>
+                    </nldd-table>
+                  </nldd-container>
                   <div v-if="runs[index]?.steps?.[(parsed.background?.length ?? 0) + si]?.error" class="str">✗ {{ runs[index].steps[(parsed.background?.length ?? 0) + si].error }}</div>
                 </div>
               </div>
