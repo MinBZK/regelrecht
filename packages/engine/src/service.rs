@@ -3886,6 +3886,60 @@ articles:
         );
     }
 
+    #[test]
+    fn test_cross_law_call_passes_null_optional_parameter_through() {
+        // The tax law passes the form field along, but its own register holds
+        // no value for it (null). Null for an *optional* parameter is passed
+        // through, so the permit law still runs and answers; only a null
+        // *required* parameter stops the call.
+        let (permit, tax) = fill_laws("required: false");
+        let tax = tax
+            .replace(
+                "        input:\n          - name: heeft_vergunning",
+                "        input:\n          - name: onbekende_oppervlakte\n            type: number\n            source: {}\n          - name: heeft_vergunning",
+            )
+            .replace(
+                "                kvk_nummer: $kvk_nummer",
+                "                kvk_nummer: $kvk_nummer\n                terras_oppervlakte: $onbekende_oppervlakte",
+            );
+        assert!(
+            tax.contains("terras_oppervlakte: $onbekende_oppervlakte"),
+            "test law not rewritten"
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+        let mut record = BTreeMap::new();
+        record.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        record.insert("onbekende_oppervlakte".to_string(), Value::Null);
+        service
+            .register_dict_source_for_law(
+                "fill_belasting",
+                "aanvraag",
+                "kvk_nummer",
+                vec![record],
+                10,
+            )
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("belastingplichtig"),
+            Some(&Value::Bool(true))
+        );
+    }
+
     fn register_fill_permit(service: &mut LawExecutionService) {
         let mut record = BTreeMap::new();
         record.insert(

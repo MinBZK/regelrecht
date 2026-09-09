@@ -860,6 +860,27 @@ articles:
     }
 
     #[test]
+    fn test_wasm_engine_remove_data_source_reports_whether_it_existed() {
+        let mut engine = WasmEngine::new();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("1".to_string()));
+        record.insert("inkomen".to_string(), Value::Int(100));
+        engine
+            .service
+            .register_dict_source("bron", "bsn", vec![record])
+            .unwrap();
+        assert!(
+            engine.remove_data_source("bron"),
+            "a registered source is removed"
+        );
+        assert!(
+            !engine.remove_data_source("bron"),
+            "removing it again reports that nothing was there"
+        );
+        assert!(!engine.remove_data_source("onbekend"));
+    }
+
+    #[test]
     fn test_wasm_engine_unload_law() {
         let mut engine = WasmEngine::new();
         load_law(&mut engine, MINIMAL_LAW_YAML);

@@ -871,6 +871,51 @@ mod tests {
         );
     }
 
+    /// A source that leaves `law_scope` to the trait: it must stay unscoped.
+    struct Unscoped;
+    impl DataSource for Unscoped {
+        fn name(&self) -> &str {
+            "unscoped"
+        }
+        fn priority(&self) -> i32 {
+            1
+        }
+        fn source_type(&self) -> &str {
+            "test"
+        }
+        fn has_field(&self, field: &str) -> bool {
+            field == "x"
+        }
+        fn get(&self, field: &str, _criteria: &BTreeMap<String, Value>) -> Option<Value> {
+            (field == "x").then_some(Value::Int(1))
+        }
+        fn fields(&self) -> Vec<&str> {
+            vec!["x"]
+        }
+    }
+
+    #[test]
+    fn test_default_law_scope_is_none_and_answers_every_law() {
+        assert_eq!(Unscoped.law_scope(), None);
+        let mut registry = DataSourceRegistry::new();
+        registry.add_source(Box::new(Unscoped));
+        let criteria = BTreeMap::new();
+        assert_eq!(
+            registry
+                .resolve_for_law("x", &criteria, Some("any_law"))
+                .map(|m| m.value),
+            Some(Value::Int(1))
+        );
+        assert_eq!(
+            registry.resolve("x", &criteria).map(|m| m.value),
+            Some(Value::Int(1))
+        );
+        // A dict source without a scope also stays unscoped; with one, it reports it.
+        let plain = DictDataSource::from_records("plain", 10, "bsn", vec![]).unwrap();
+        assert_eq!(plain.law_scope(), None);
+        assert_eq!(plain.with_law_scope("wet_a").law_scope(), Some("wet_a"));
+    }
+
     #[test]
     fn test_scoped_source_answers_only_for_its_law() {
         let mut registry = DataSourceRegistry::new();
