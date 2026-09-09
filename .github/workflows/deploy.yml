@@ -315,7 +315,7 @@ jobs:
 
       - name: Deploy to ZAD (Preview)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@b844c76eba3502b40a19be868cdf0586e322f4b8  # v4.1.0
+        uses: RijksICTGilde/zad-actions/deploy@272713bbf86e8516ab436804c8fef4a534a971ee  # v4.1.1
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -450,7 +450,7 @@ jobs:
       # de bestaande config en moeten daar niet door een deploy verschuiven.
       - name: Deploy to ZAD (Production)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@b844c76eba3502b40a19be868cdf0586e322f4b8  # v4.1.0
+        uses: RijksICTGilde/zad-actions/deploy@272713bbf86e8516ab436804c8fef4a534a971ee  # v4.1.1
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -507,7 +507,7 @@ jobs:
 
     steps:
       - name: Cleanup ZAD deployment and container images
-        uses: RijksICTGilde/zad-actions/cleanup@b844c76eba3502b40a19be868cdf0586e322f4b8  # v4.1.0
+        uses: RijksICTGilde/zad-actions/cleanup@272713bbf86e8516ab436804c8fef4a534a971ee  # v4.1.1
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
