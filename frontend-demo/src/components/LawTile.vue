@@ -118,7 +118,7 @@ const statusTag = computed(() => {
 
 <template>
   <nldd-card :accessible-label="law.name">
-    <nldd-container slot="header" padding="16" layout="row" gap="12" vertical-alignment="center">
+    <nldd-container slot="header" padding="16" layout="row" gap="12" vertical-alignment="top">
       <OrgLogo :service="law.service" />
       <nldd-title-cell size="5" :text="law.name" :supporting-text="corpus.services[law.service]?.name ?? law.service"></nldd-title-cell>
       <nldd-tag v-if="statusTag" :color="statusTag.color" :text="statusTag.text" :icon="statusTag.icon" size="sm"></nldd-tag>

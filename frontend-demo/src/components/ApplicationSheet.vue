@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
-import OrgLogo from './OrgLogo.vue';
+import DataLineage from './DataLineage.vue';
 import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
@@ -19,7 +19,9 @@ const props = defineProps({
   /** The tile's latest evaluation of this law (re-evaluated as data changes). */
   evaluation: { type: Object, default: null },
 });
-const emit = defineEmits(['close']);
+// `edit-value` carries `{ node, law }`, the shape LawTile emits, so the portal
+// opens the same correction sheet for a value corrected from inside the application.
+const emit = defineEmits(['close', 'edit-value']);
 const demo = useDemo();
 const { corpus, profile, personaParams, claimFor, findCase, dataVersion } = demo;
 
@@ -59,16 +61,13 @@ const outcomeRows = computed(() => {
   rows.sort(([a], [b]) => (a === primaryName.value ? -1 : b === primaryName.value ? 1 : 0));
   return rows.slice(0, 6);
 });
-const usedValues = computed(() => {
+// The same tree the tile shows under "Gebruikte gegevens": register values,
+// and under each law that computed a value the values that law used in turn.
+const lineage = computed(() => {
   if (!props.evaluation?.trace || !props.law) return [];
-  return leafValues(lineageFromTrace(props.evaluation.trace, props.law.id, evaluationParamsFor(personaParams(), asked.value)));
+  return lineageFromTrace(props.evaluation.trace, props.law.id, evaluationParamsFor(personaParams(), asked.value));
 });
-function lawName(id) {
-  return corpus.value?.lawById(id)?.name ?? id;
-}
-function valueSpec(node) {
-  return fieldSpec(corpus.value?.lawById(node.law)?.doc, node.name);
-}
+const usedCount = computed(() => leafValues(lineage.value).length);
 
 watch(
   () => props.open,
@@ -267,18 +266,12 @@ const claimedPrimary = computed(() => {
 
               <nldd-title size="5">
                 <h3>Gegevens waarop de berekening rust</h3>
-                <span slot="subtitle">{{ usedValues.length }} gegevens uit registers en uw eigen opgave</span>
+                <span slot="subtitle">{{ usedCount }} gegevens uit registers en uw eigen opgave</span>
               </nldd-title>
-              <nldd-list variant="box-tinted" accessible-label="Gebruikte gegevens">
-                <nldd-list-item v-for="node in usedValues" :key="`${node.law}|${node.name}`" size="sm">
-                  <nldd-cell v-if="node.service"><OrgLogo :service="node.service" size="sm" /></nldd-cell>
-                  <nldd-icon-cell v-else icon="edit" size="16" color="accent"></nldd-icon-cell>
-                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                  <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="node.service ? corpus.services[node.service]?.name ?? node.service : 'door u opgegeven'"></nldd-text-cell>
-                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(node.value, valueSpec(node))"></nldd-text-cell>
-                </nldd-list-item>
+              <nldd-list type="tree" variant="box-tinted" accessible-label="Gebruikte gegevens">
+                <DataLineage :nodes="lineage" @edit="emit('edit-value', { node: $event, law })" />
               </nldd-list>
-              <nldd-rich-text spacing="tight"><p><small>Klopt een gegeven niet? Sluit dit venster en corrigeer het onder "Gebruikte gegevens" op de tegel; een behandelaar beoordeelt de correctie.</small></p></nldd-rich-text>
+              <nldd-rich-text spacing="tight"><p><small>Klik op een gegeven om het te corrigeren; een behandelaar beoordeelt de correctie.</small></p></nldd-rich-text>
 
               <template v-if="requirementsMet">
                 <nldd-checkbox-field label="Ik verklaar dat de door mij opgegeven gegevens juist en volledig zijn." :checked="declared || undefined" @change="declared = !!($event.detail?.checked ?? $event.target?.checked)"></nldd-checkbox-field>

@@ -488,7 +488,7 @@ function exportJson() {
                 </nldd-container>
               </nldd-card>
               <nldd-card v-for="law in lawRows" :key="law.id" :accessible-label="law.name">
-                <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
+                <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="top">
                   <OrgLogo :service="law.service" size="sm" />
                   <nldd-title-cell size="5" :text="law.name" :supporting-text="`${law.s.hasEligibility ? `${pct(law.s.eligiblePct)} voldoet` : 'berekend voor iedereen'} · naar ${dimension.label.toLowerCase()}`"></nldd-title-cell>
                 </nldd-container>
