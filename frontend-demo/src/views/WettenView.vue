@@ -15,6 +15,9 @@ import { serviceInfo } from '../data/loadCorpus.js';
 const route = useRoute();
 const router = useRouter();
 const { corpus, profile } = useDemo();
+// The law list is a sheet (primary-sidebar-as-sheet): closed by default so the
+// law itself has the room, opened from the toolbar.
+const splitView = ref(null);
 
 // The laws walked through in this tab, in order; the back button in the
 // header retraces them (zorgtoeslag → BRP → penitentiaire beginselenwet).
@@ -59,6 +62,7 @@ function openLaw(lawId, { replaceRoute = false } = {}) {
   if (!lawIds.value.has(lawId)) return;
   if (trail.at(-1) !== lawId) trail.push(lawId);
   activeId.value = lawId;
+  splitView.value?.hidePrimarySidebarSheet?.();
   expandState.paths = expandedFor(corpus.value.lawById(lawId));
   expandState.all = null;
   expandState.version += 1;
@@ -132,7 +136,7 @@ const referencedBy = computed(() => {
 </script>
 
 <template>
-  <nldd-navigation-split-view sidebar-accessible-label="Wetten" inspector-accessible-label="Verwijzingen">
+  <nldd-navigation-split-view ref="splitView" primary-sidebar-as-sheet primary-sidebar-accessible-label="Wetten" inspector-accessible-label="Verwijzingen">
     <nldd-split-view-pane slot="sidebar" has-content background="tinted">
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12" gap="8">
@@ -165,9 +169,12 @@ const referencedBy = computed(() => {
 
     <nldd-split-view-pane slot="main" has-content>
       <nldd-page sticky-header>
-        <nldd-container slot="header" padding="0">
-          <nldd-container v-if="activeLaw" padding="8">
-            <nldd-toolbar size="sm">
+        <nldd-container slot="header" padding="8">
+          <nldd-toolbar size="sm">
+            <nldd-toolbar-item slot="start">
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="books" text="Wetten" :supporting-text="`${sidebarLaws.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+            </nldd-toolbar-item>
+            <template v-if="activeLaw">
               <nldd-toolbar-item slot="start" v-if="trail.length > 1">
                 <nldd-icon-button size="sm" variant="neutral-transparent" icon="chevron-left" :text="`Terug naar ${tabInfo(trail.at(-2))?.name ?? 'vorige wet'}`" @click="goBack"></nldd-icon-button>
               </nldd-toolbar-item>
@@ -188,12 +195,14 @@ const referencedBy = computed(() => {
               <nldd-toolbar-item slot="end">
                 <nldd-button size="sm" variant="neutral-tinted" end-icon="external-link" text="wetten.overheid.nl" :href="activeLaw.doc.url" target="_blank"></nldd-button>
               </nldd-toolbar-item>
-            </nldd-toolbar>
-          </nldd-container>
+            </template>
+          </nldd-toolbar>
         </nldd-container>
 
         <nldd-simple-section v-if="!activeLaw" height="60vh">
-          <nldd-inline-dialog icon="books" text="Kies een wet" supporting-text="Kies links een regeling om de machine-leesbare wet te bekijken."></nldd-inline-dialog>
+          <nldd-inline-dialog icon="books" text="Kies een wet" supporting-text="Open de lijst met wetten om de machine-leesbare wet te bekijken.">
+            <nldd-button slot="actions" variant="primary" size="sm" text="Wetten" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+          </nldd-inline-dialog>
         </nldd-simple-section>
         <nldd-simple-section v-else width="full">
           <nldd-code-viewer v-if="showRaw" language="yaml" wrap>{{ activeLaw.text }}</nldd-code-viewer>

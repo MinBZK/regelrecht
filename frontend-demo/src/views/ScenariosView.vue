@@ -18,6 +18,8 @@ const demo = useDemo();
 const { corpus, profile, engine } = demo;
 
 const features = computed(() => corpus.value?.scenarios ?? []);
+// The list of test files is a sheet, closed until asked for.
+const splitView = ref(null);
 const selectedPath = ref(null);
 const parsed = ref(null);
 const rawText = ref('');
@@ -38,6 +40,7 @@ function lawFor(feature) {
 async function select(path, { replaceRoute = false } = {}) {
   if (!path) return;
   selectedPath.value = path;
+  splitView.value?.hidePrimarySidebarSheet?.();
   Object.keys(runs).forEach((k) => delete runs[k]);
   loadError.value = null;
   try {
@@ -186,7 +189,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
 </script>
 
 <template>
-  <nldd-navigation-split-view sidebar-accessible-label="Scenario's">
+  <nldd-navigation-split-view ref="splitView" primary-sidebar-as-sheet primary-sidebar-accessible-label="Scenario's">
     <nldd-split-view-pane slot="sidebar" has-content background="tinted">
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12" gap="8">
@@ -205,22 +208,25 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
 
     <nldd-split-view-pane slot="main" has-content>
       <nldd-page sticky-header>
-        <nldd-container slot="header" padding="8" v-if="parsed">
+        <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
-            <nldd-toolbar-title slot="start" :text="parsed.feature" :supporting-text="fileName"></nldd-toolbar-title>
+            <nldd-toolbar-item slot="start">
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="checklist" text="Scenario's" :supporting-text="`${features.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+            </nldd-toolbar-item>
+            <nldd-toolbar-title v-if="parsed" slot="start" :text="parsed.feature" :supporting-text="fileName"></nldd-toolbar-title>
             <nldd-toolbar-item slot="end" v-if="summary.pass + summary.fail > 0">
               <nldd-tag :color="summary.fail ? 'critical' : 'success'" :text="`${summary.pass} geslaagd${summary.fail ? `, ${summary.fail} mislukt` : ''}`"></nldd-tag>
             </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
+            <nldd-toolbar-item slot="end" v-if="parsed">
               <nldd-segmented-control size="sm" width="fit-content" :value="showText ? 'text' : 'steps'" @change="showText = $event.detail?.value === 'text'">
                 <nldd-segmented-control-item value="steps" text="Scenario's"></nldd-segmented-control-item>
                 <nldd-segmented-control-item value="text" text="Bestand"></nldd-segmented-control-item>
               </nldd-segmented-control>
             </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end">
+            <nldd-toolbar-item slot="end" v-if="parsed">
               <nldd-button size="sm" variant="primary" start-icon="play" text="Alles uitvoeren" @click="runAll"></nldd-button>
             </nldd-toolbar-item>
-            <nldd-toolbar-item slot="end" v-if="selectedLaw">
+            <nldd-toolbar-item slot="end" v-if="parsed && selectedLaw">
               <nldd-button size="sm" variant="neutral-tinted" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(selectedLaw.id)}`)"></nldd-button>
             </nldd-toolbar-item>
           </nldd-toolbar>
@@ -230,7 +236,9 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
           <nldd-banner variant="critical" text="Kon het scenario niet laden" :supporting-text="String(loadError)"></nldd-banner>
         </nldd-simple-section>
         <nldd-simple-section v-else-if="!parsed" height="60vh">
-          <nldd-inline-dialog icon="checklist" text="Kies een scenario" supporting-text="Kies links een testbestand."></nldd-inline-dialog>
+          <nldd-inline-dialog icon="checklist" text="Kies een scenario" supporting-text="Open de lijst met testbestanden.">
+            <nldd-button slot="actions" variant="primary" size="sm" text="Scenario's" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+          </nldd-inline-dialog>
         </nldd-simple-section>
         <nldd-simple-section v-else-if="showText" width="full">
           <nldd-code-viewer language="gherkin" wrap>{{ rawText }}</nldd-code-viewer>
