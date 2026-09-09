@@ -434,18 +434,25 @@ it was pulling nullability into every consumer. Each site carries a comment:
 - `wet_brp`: the BRP has a birth date for every registered person (art. 2.7
   lid 1 onder a Wet BRP); a person the BRP does not know is unknown, not
   absent (`absent: unknown`). `leeftijd` is `AGE` without the POC's null
-  guard, `voldoet_aan_voorwaarden` is `true`. Before this, `leeftijd` was
-  nullable and with it the `leeftijd` input of 15 laws and, through
-  `geboortedatum`, the `pensioenleeftijd` of 8.
+  guard. Before this, `leeftijd` was nullable and with it the `leeftijd` input
+  of 15 laws and, through `geboortedatum`, the `pensioenleeftijd` of 8.
 - `algemene_ouderdomswet/leeftijdsbepaling`: `geboortedatum` is a required,
-  never absent parameter; `voldoet_aan_voorwaarden` is `true`.
+  never absent parameter.
 - `burgerlijk_wetboek_minderjarigheid`: `persoonsgegevens` is the BRP row,
-  unknown for a person the BRP does not know; `voldoet_aan_voorwaarden` is
-  `true`. The property tests (`$persoonsgegevens.heeft_handlichting`) stay.
+  unknown for a person the BRP does not know. The property tests
+  (`$persoonsgegevens.heeft_handlichting`) stay.
 - `wet_brp/laa`, `wet_brp/terugmelding/*` (3), `wet_bag`: the `adres`
   parameter is required and never null (a caller without a BRP address skips
-  the call, a top-level null is refused at the boundary); each
-  `voldoet_aan_voorwaarden` is `true`.
+  the call, a top-level null is refused at the boundary).
+
+In all seven of these laws the POC's `voldoet_aan_voorwaarden` was that dead
+presence test and nothing else; none of them takes a decision about the person
+(a register answers a question, LAA and terugmelding decide `genereer_signaal`
+and `heeft_gerede_twijfel_adres`). A constant `true` would have said "voldoet"
+for a person the register does not know, whose every other output is unknown.
+The output is gone; nothing read it (no cross-law source, no dashboard output,
+the demo treats a law without it as "computed for all"), and the nine
+`voldoet_aan_voorwaarden is true` assertions in the LAA scenarios went with it.
 
 ### The RFC-024 rounding guard is gone
 
@@ -462,7 +469,17 @@ Where the checker found a real gap, the law got the guard or default the legal
 text supports, with a comment citing the article. The type checker establishes
 presence only for the variable an absence test names, so a guard on a
 correlated variable (`heeft_partner`, `partner_bsn`) does not cover the
-partner's income; those sites now test the variables they calculate with.
+partner's income, which is a separate nullable input (null exactly when there
+is no partner: the null-key rule of the bindings). A rule is narrowed, never a
+law bent (RFC-037): the guard stays on the fact the article names, and a field
+that can be absent gets, where the text says an absent component counts as
+nothing (an income nobody has, an asset nobody owns), a per-field fallback
+`IF EQUALS $x null THEN 0 ELSE $x` on that field. An `AND` of presence tests
+that zeroes the whole box or denies the whole verdict when one field is absent
+encodes a rule the article does not contain, and is not used. Where the article
+itself requires the field (the partner's age for "jonger dan", art. 8 AOW; the
+exploitant's age, art. 2:28 lid 3 APV; the fund's pension age, art. 18 lid 4 Pw)
+its presence is tested and the comment says so.
 
 - `algemene_kinderbijslagwet`: `ontvangt_kinderbijslag`, `aantal_kinderen`,
   `kinderen_leeftijden` are false, 0 and `[]` without an SVB record (art. 7
@@ -470,33 +487,39 @@ partner's income; those sites now test the variables they calculate with.
   could not calculate with them.
 - `wet_studiefinanciering`: the per-onderwijstype choices and the aanvullende
   beurs have `default: 0` (art. 2.1 jo. 3.1 and 3.9 WSF 2000); nested in ADD
-  and MULTIPLY an `IF` without default is N3. The partner's aanvullende beurs
-  tests the partner's parental incomes and family count.
+  and MULTIPLY an `IF` without default is N3. In the partner's aanvullende
+  beurs a parental income that is not there (one parent) and an absent count
+  of studying siblings count 0 (art. 3.9 WSF 2000), per field.
 - `wet_op_het_kindgebonden_budget`, `zorgtoeslagwet` (both versions): the
   partner/no-partner `IF` under `ROUND` had two boolean cases and no default;
-  it is now `heeft_partner true -> B, default A`. KGB also tests
-  `partner_vermogen` and `partner_toetsingsinkomen` next to `heeft_partner`.
+  it is now `heeft_partner true -> B, default A`. In KGB an absent
+  `partner_vermogen` or `partner_toetsingsinkomen` counts 0 inside the sum
+  (art. 7 Awir), under the `heeft_partner` guard.
 - `besluit_bijstandverlening_zelfstandigen`: `NOT(EQUALS $bbz_aanvraag null)`
   opens the conditions (art. 2 lid 1 jo. 35 Bbz 2004); they read properties of
   the application record, absent for anyone who did not apply.
-- `wet_inkomstenbelasting` (both versions): the partner boxes and
-  `gezamenlijk_vermogen` test the twelve partner amounts next to
-  `partner_bsn` (art. 2.17 Wet IB 2001); `partner_buitenlands_inkomen` counts
-  0 when absent.
-- `wet_kinderopvang`: the partner's income is tested itself instead of
-  `partner_bsn` (art. 1.7 Wko jo. art. 7 Awir); the partner's worked hours are
-  tested before the comparison (art. 1.6 Wko).
-- `participatiewet/bijstand`: `partner_bezittingen` and `partner_inkomen` are
-  tested next to `heeft_partner` (art. 32 and 34 Pw).
+- `wet_inkomstenbelasting`: the partner boxes and `gezamenlijk_vermogen` keep
+  the single guard `NOT(EQUALS $partner_bsn null)` (art. 2.17 Wet IB 2001);
+  inside it every partner amount counts 0 when absent, per field, and so does
+  `partner_buitenlands_inkomen` in both `partner_inkomen` outputs.
+- `wet_kinderopvang`: the partner's income counts 0 when absent (art. 1.7 Wko
+  jo. art. 7 Awir); the partner's worked hours are tested before the comparison
+  (art. 1.6 lid 3 Wko requires them).
+- `participatiewet/bijstand`: under `heeft_partner`, `partner_bezittingen` and
+  `partner_inkomen` count 0 when absent (art. 32 and 34 Pw).
 - `algemene_ouderdomswet`: the partner's age and AOW age are tested before the
-  toeslag comparison (art. 8 AOW).
-- `pensioenwet`: the first case names every fund input (`type_regeling`,
-  `pensioenkapitaal`, `pensioenjaren`, `pensioengevend_loon`, `franchise`,
-  `pensioen_leeftijd_fonds`) in one `OR` of absence tests (art. 1 Pw), so the
-  calculation per regeling only sees present values.
+  toeslag comparison; art. 8 AOW ("jonger dan de pensioengerechtigde
+  leeftijd") requires both.
+- `pensioenwet`: `type_regeling` null is the deelnemer test (art. 1 Pw) for
+  both the verdict and the uitkering; the fund's pension age is required by
+  the verdict itself (art. 18 lid 4 Pw) and tested; kapitaal, jaren, loon and
+  franchise count 0 when absent, each only in the regeling that uses it, so a
+  participant in an uitkeringsovereenkomst without kapitaal stays a
+  participant.
 - `algemene_plaatselijke_verordening/exploitatievergunning`:
   `leeftijd_exploitant` is tested before the age conditions (art. 2:28 lid 3
-  APV Rotterdam); without a registered owner there is no age.
+  APV Rotterdam requires the exploitant's age); without a registered owner
+  there is no age.
 - `algemene_plaatselijke_verordening/terrassen`: `beschikbare_oppervlakte`,
   `max_sluitingstijd_doordeweeks` and `max_sluitingstijd_weekend` are tested
   before use (art. 2:28 jo. 2:30b APV Rotterdam: without a KVK registration
@@ -514,7 +537,12 @@ carry only the declaration.
 
 - `algemene_plaatselijke_verordening/terrassen`: `gewenste_sluitingstijd_*`
   were declared `string` and compared with the policy's number; the scenarios
-  pass 23 and 24. Now `number`.
+  pass 23 and 24. Now `number`, on one scale with the policy's
+  `max_sluitingstijd_*`: hours from the start of the exploitatiedag, 24 is
+  midnight, 25 is 01:00, 26 is 02:00 (the POC's `1` for 01:00 sorted below
+  every evening hour, so 01:00 passed a 23:00 policy). The persona data
+  already used 25 and 26; a scenario requests 01:00 against a 23:00 policy and
+  is refused.
 - `awb/bezwaar`, `awb/beroep`: the count of "Objected" events summed the
   booleans of an `EQUALS` in `FOREACH combine ADD`; now `filter:` plus
   `body: 1` (RFC-016).

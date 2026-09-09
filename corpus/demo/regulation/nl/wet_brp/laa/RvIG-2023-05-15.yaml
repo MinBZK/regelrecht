@@ -77,8 +77,6 @@ articles:
             type: number
             source: {}
         output:
-          - name: voldoet_aan_voorwaarden
-            type: boolean
           - name: genereer_signaal
             type: boolean
           - name: signaal_type
@@ -94,12 +92,11 @@ articles:
               unit: months
               precision: 0
         actions:
-          - output: voldoet_aan_voorwaarden
-            # Het adres is een verplichte, nooit afwezige parameter: een aanroeper zonder
-            # BRP-adres slaat deze wet over (RFC-007/RFC-036) en een afwezig adres op het
-            # hoogste niveau wordt aan de grens geweigerd. De POC-toets op een None-adres kon
-            # dus nooit onwaar zijn; art. 2.34 e.v. Wet BRP (terugmelding en adresonderzoek gaan over een opgegeven adres).
-            value: true
+          # Geen voldoet_aan_voorwaarden: het oordeel van deze regeling is genereer_signaal
+          # (art. 2.34 e.v. Wet BRP: adresonderzoek bij gerede twijfel over een opgegeven adres).
+          # De POC-toets "adres aanwezig" kon nooit onwaar zijn: het adres is een verplichte
+          # parameter, een aanroeper zonder BRP-adres slaat deze wet over en een afwezig adres op
+          # het hoogste niveau wordt aan de grens geweigerd (RFC-007/RFC-036).
           - output: genereer_signaal
             value:
               operation: OR

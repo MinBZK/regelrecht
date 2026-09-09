@@ -408,6 +408,8 @@ algemene_plaatselijke_verordening/terrassen:
     # terrassenbeleid: policy table without a row for this area/season; the limit is unknown, not 0
     absent: unknown
   max_sluitingstijd_doordeweeks:
+    # Sluitingstijden staan op één schaal met de gewenste tijden in de wet: uren geteld vanaf het
+    # begin van de exploitatiedag, 24 is middernacht, 25 is 01:00, 26 is 02:00.
     table: terrassenbeleid
     field: max_sluitingstijd_doordeweeks
     select_on:

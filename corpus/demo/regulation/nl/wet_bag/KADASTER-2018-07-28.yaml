@@ -81,8 +81,6 @@ articles:
             nullable: true
             source: {}
         output:
-          - name: voldoet_aan_voorwaarden
-            type: boolean
           - name: gebruiksdoel
             type: string
             nullable: true
@@ -98,12 +96,11 @@ articles:
           - name: is_woonfunctie
             type: boolean
         actions:
-          - output: voldoet_aan_voorwaarden
-            # Het adres is een verplichte, nooit afwezige parameter: een aanroeper zonder
-            # BRP-adres slaat deze wet over (RFC-007/RFC-036) en een afwezig adres op het
-            # hoogste niveau wordt aan de grens geweigerd. De POC-toets op een None-adres kon
-            # dus nooit onwaar zijn; art. 2 Wet bag (de registratie wordt bevraagd op een opgegeven adres).
-            value: true
+          # Geen voldoet_aan_voorwaarden: de Wet bag beslist niets, de registratie wordt bevraagd op
+          # een opgegeven adres (art. 2 Wet bag). De POC-toets "adres aanwezig" kon nooit onwaar
+          # zijn: het adres is een verplichte parameter, een aanroeper zonder BRP-adres slaat deze
+          # wet over en een afwezig adres op het hoogste niveau wordt aan de grens geweigerd
+          # (RFC-007/RFC-036).
           - output: gebruiksdoel
             value: $verblijfsobject.gebruiksdoel
             legal_basis:

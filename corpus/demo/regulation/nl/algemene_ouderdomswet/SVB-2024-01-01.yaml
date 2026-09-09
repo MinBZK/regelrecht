@@ -285,8 +285,9 @@ articles:
           - output: pensioenbedrag
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             # Art. 8 AOW: de toeslag geldt voor de pensioengerechtigde met een partner die jonger is dan
-            # de AOW-leeftijd. Zonder in de BRP geregistreerde partner zijn de leeftijd en AOW-leeftijd van
-            # de partner afwezig en is er geen toeslag (RFC-036).
+            # de pensioengerechtigde leeftijd. De leeftijd van de partner en zijn AOW-leeftijd zijn
+            # gegevens die het artikel zelf vereist ("jonger dan"); zijn ze er niet, dan is niet
+            # vastgesteld dat de partner jonger is en is er geen toeslag (RFC-036).
             value:
               operation: ROUND
               precision: 0

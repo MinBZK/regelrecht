@@ -309,8 +309,10 @@ articles:
                 aanvullende beurs.
           - output: partner_studiefinanciering
             # Art. 3.9 WSF 2000: de aanvullende beurs hangt af van het inkomen van de ouders en het aantal
-            # studerende kinderen. Voor de partner komen die uit het DUO-register op het partner-BSN en zijn
-            # ze afwezig zonder partner; de toets noemt ze voor de berekening (RFC-036).
+            # studerende kinderen in het gezin. Een ouderinkomen dat er niet is (één ouder, geen rij bij
+            # de Belastingdienst) telt voor 0, net als een gezin zonder andere studerende kinderen;
+            # zonder partner is er geen partner op te zoeken en geldt de inschrijvingsvoorwaarde hieronder
+            # (RFC-036).
             value:
               # Artikel 2.1 WSF 2000, voor de partner: geen inschrijving, geen studiefinanciering (0).
               # Zie de toelichting bij studiefinanciering (RFC-036).
@@ -370,30 +372,27 @@ articles:
                       - operation: IF
                         cases:
                           - when:
-                              operation: AND
-                              conditions:
-                                - operation: NOT
-                                  value:
-                                    operation: EQUALS
-                                    subject: $partner_ouder1_inkomen
-                                    value: null
-                                - operation: NOT
-                                  value:
-                                    operation: EQUALS
-                                    subject: $partner_ouder2_inkomen
-                                    value: null
-                                - operation: NOT
-                                  value:
-                                    operation: EQUALS
-                                    subject: $partner_aantal_studerend_gezin
-                                    value: null
-                                - operation: LESS_THAN
-                                  subject:
-                                    operation: ADD
-                                    values:
-                                      - $partner_ouder1_inkomen
-                                      - $partner_ouder2_inkomen
-                                  value: $inkomen_grens_geen_beurs
+                              operation: LESS_THAN
+                              subject:
+                                operation: ADD
+                                values:
+                                  - operation: IF
+                                    cases:
+                                      - when:
+                                          operation: EQUALS
+                                          subject: $partner_ouder1_inkomen
+                                          value: null
+                                        then: 0
+                                    default: $partner_ouder1_inkomen
+                                  - operation: IF
+                                    cases:
+                                      - when:
+                                          operation: EQUALS
+                                          subject: $partner_ouder2_inkomen
+                                          value: null
+                                        then: 0
+                                    default: $partner_ouder2_inkomen
+                              value: $inkomen_grens_geen_beurs
                             then:
                               operation: MULTIPLY
                               values:
@@ -424,12 +423,33 @@ articles:
                                           values:
                                             - operation: ADD
                                               values:
-                                                - $partner_ouder1_inkomen
-                                                - $partner_ouder2_inkomen
+                                                - operation: IF
+                                                  cases:
+                                                    - when:
+                                                        operation: EQUALS
+                                                        subject: $partner_ouder1_inkomen
+                                                        value: null
+                                                      then: 0
+                                                  default: $partner_ouder1_inkomen
+                                                - operation: IF
+                                                  cases:
+                                                    - when:
+                                                        operation: EQUALS
+                                                        subject: $partner_ouder2_inkomen
+                                                        value: null
+                                                      then: 0
+                                                  default: $partner_ouder2_inkomen
                                             - $inkomensdrempel_basis
                                             - operation: MULTIPLY
                                               values:
-                                                - $partner_aantal_studerend_gezin
+                                                - operation: IF
+                                                  cases:
+                                                    - when:
+                                                        operation: EQUALS
+                                                        subject: $partner_aantal_studerend_gezin
+                                                        value: null
+                                                      then: 0
+                                                  default: $partner_aantal_studerend_gezin
                                                 - $verhoging_drempel_per_kind
                                         - operation: SUBTRACT
                                           values:

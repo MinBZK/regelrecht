@@ -46,8 +46,6 @@ articles:
             type: object
             source: {}
         output:
-          - name: voldoet_aan_voorwaarden
-            type: boolean
           - name: is_minderjarig
             type: boolean
           - name: leeftijd
@@ -75,12 +73,10 @@ articles:
           - name: valid_until_dates
             type: array
         actions:
-          - output: voldoet_aan_voorwaarden
-            # De persoonsgegevens zijn de BRP-rij van de persoon; kent de BRP de persoon
-            # niet, dan zijn ze onbekend, niet afwezig (RFC-036, binding `absent: unknown`).
-            # De POC-toets op een None-rij kon dus nooit onwaar zijn. Art. 1:233 BW kent
-            # aan iedere natuurlijke persoon een leeftijdsstatus toe.
-            value: true
+          # Geen voldoet_aan_voorwaarden: art. 1:233 BW kent aan iedere natuurlijke persoon een
+          # leeftijdsstatus toe en stelt geen voorwaarde. De POC-toets "persoonsgegevens aanwezig"
+          # kon nooit onwaar zijn: de BRP-rij is voor een onbekende persoon onbekend, niet afwezig
+          # (RFC-036, binding `absent: unknown`), en dan zijn alle uitvoeren onbekend.
           - output: leeftijd
             value:
               operation: AGE

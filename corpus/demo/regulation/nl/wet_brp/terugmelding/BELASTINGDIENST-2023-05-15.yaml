@@ -60,20 +60,17 @@ articles:
             nullable: true
             source: {}
         output:
-          - name: voldoet_aan_voorwaarden
-            type: boolean
           - name: heeft_gerede_twijfel_adres
             type: boolean
           - name: twijfel_reden
             type: string
             nullable: true
         actions:
-          - output: voldoet_aan_voorwaarden
-            # Het adres is een verplichte, nooit afwezige parameter: een aanroeper zonder
-            # BRP-adres slaat deze wet over (RFC-007/RFC-036) en een afwezig adres op het
-            # hoogste niveau wordt aan de grens geweigerd. De POC-toets op een None-adres kon
-            # dus nooit onwaar zijn; art. 2.34 Wet BRP (een terugmelding betreft een opgegeven adres).
-            value: true
+          # Geen voldoet_aan_voorwaarden: het oordeel van deze regeling is heeft_gerede_twijfel_adres
+          # (art. 2.34 Wet BRP: een terugmelding betreft een opgegeven adres). De POC-toets "adres
+          # aanwezig" kon nooit onwaar zijn: het adres is een verplichte parameter, een aanroeper
+          # zonder BRP-adres slaat deze wet over en een afwezig adres op het hoogste niveau wordt
+          # aan de grens geweigerd (RFC-007/RFC-036).
           - output: heeft_gerede_twijfel_adres
         # POC: de adressen werden als dicts vergeleken met alleen de kolommen die het
         # register had (postcode, huisnummer); het gematerialiseerde object draagt ook

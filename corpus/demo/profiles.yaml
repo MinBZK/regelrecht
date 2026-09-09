@@ -4369,6 +4369,7 @@ profiles:
             seizoen: jaarrond
             gebied: Rotterdam West
             max_oppervlakte: 20.0
+            # 01:00 en 02:00 op de schaal van de wet (24 is middernacht, 25 is 01:00)
             max_sluitingstijd_doordeweeks: 25
             max_sluitingstijd_weekend: 26
             seizoensregels: jaarrond toegestaan

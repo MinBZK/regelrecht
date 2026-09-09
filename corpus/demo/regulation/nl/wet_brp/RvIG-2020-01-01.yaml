@@ -135,8 +135,6 @@ articles:
             type: array
             source: {}
         output:
-          - name: voldoet_aan_voorwaarden
-            type: boolean
           - name: leeftijd
             type: number
             type_spec:
@@ -188,12 +186,11 @@ articles:
           - name: heeft_kinderen_onder_12
             type: boolean
         actions:
-          - output: voldoet_aan_voorwaarden
-            # De BRP kent geen persoon zonder geboortedatum (art. 2.7 lid 1 onder a Wet BRP:
-            # de geboortedatum is een algemeen gegeven van iedere ingeschrevene). Een persoon
-            # die de BRP niet kent is onbekend, geen afwezigheid (RFC-036); de toets op een
-            # afwezige geboortedatum kon dus nooit waar zijn en is weg.
-            value: true
+          # Geen voldoet_aan_voorwaarden: de Wet BRP beslist niets over de persoon, zij levert
+          # gegevens (art. 1.7 Wet BRP). De POC-toets "geboortedatum aanwezig" kon nooit onwaar
+          # zijn (art. 2.7 lid 1 onder a Wet BRP: iedere ingeschrevene heeft een geboortedatum) en
+          # een persoon die de BRP niet kent is onbekend, geen afwezigheid (RFC-036): voor hem zijn
+          # alle uitvoeren onbekend, en dat zegt meer dan een oordeel dat altijd waar is.
           - output: geboortedatum
             value: $geboortedatum
           - output: partner_geboortedatum

@@ -113,8 +113,6 @@ articles:
             temporal:
               type: point_in_time
         output:
-          - name: voldoet_aan_voorwaarden
-            type: boolean
           - name: pensioenleeftijd
             type: number
             type_spec:
@@ -122,12 +120,10 @@ articles:
               precision: 2
               min: 65
         actions:
-          - output: voldoet_aan_voorwaarden
-            # De geboortedatum is een verplichte, nooit afwezige parameter: zonder
-            # geboortedatum wordt de wet niet uitgevoerd (RFC-036), dus de POC-toets op
-            # een None-geboortedatum kon nooit onwaar zijn. De AOW-leeftijd is voor iedere
-            # geborene bepaald (art. 7a lid 1 AOW).
-            value: true
+          # Geen voldoet_aan_voorwaarden: art. 7a lid 1 AOW bepaalt de pensioengerechtigde
+          # leeftijd voor iedere geborene en kent geen voorwaarde. De POC-toets "geboortedatum
+          # aanwezig" kon nooit onwaar zijn: de geboortedatum is een verplichte parameter en
+          # zonder haar wordt de wet niet uitgevoerd (RFC-036).
           - output: pensioenleeftijd
             value:
               operation: ADD

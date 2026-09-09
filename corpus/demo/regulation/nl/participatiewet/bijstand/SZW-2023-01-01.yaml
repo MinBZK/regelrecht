@@ -231,11 +231,9 @@ articles:
           - output: voldoet_aan_voorwaarden
             # Art. 11 lid 2 en 3 Pw: een vreemdeling is gelijkgesteld naar zijn verblijfsvergunning; zonder
             # vastgesteld vergunningtype geldt alleen de nationaliteit. Art. 32 en 34 Pw: inkomen en
-            # vermogen van de partner tellen mee als er een partner is; de toets dat het partnerinkomen
-            # en -vermogen er zijn is de vorm waarin de typering de partnervoorwaarde vraagt (RFC-036).
-            # Art. 32 en 34 Pw: inkomen en vermogen van de partner tellen mee als er een partner is; de
-            # toets dat het partnerinkomen en -vermogen er zijn is de vorm waarin de typering de
-            # partnervoorwaarde vraagt (RFC-036).
+            # vermogen van de partner tellen mee als er een partner is; een inkomen of vermogen dat de
+            # partner niet heeft (geen registerrij) telt voor 0. Het register levert de partnergegevens
+            # alleen als er een partner is (RFC-036).
             value:
               operation: AND
               conditions:
@@ -272,23 +270,23 @@ articles:
                 - operation: IF
                   cases:
                     - when:
-                        operation: AND
-                        conditions:
-                          - subject: $heeft_partner
-                            operation: EQUALS
-                            value: true
-                          - operation: NOT
-                            value:
-                              operation: EQUALS
-                              subject: $partner_bezittingen
-                              value: null
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
                       then:
                         operation: LESS_THAN
                         subject:
                           operation: ADD
                           values:
                             - $bezittingen
-                            - $partner_bezittingen
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_bezittingen
+                                    value: null
+                                  then: 0
+                              default: $partner_bezittingen
                         value: $vermogensgrens_partner
                   default:
                     operation: LESS_THAN
@@ -297,16 +295,9 @@ articles:
                 - operation: IF
                   cases:
                     - when:
-                        operation: AND
-                        conditions:
-                          - subject: $heeft_partner
-                            operation: EQUALS
-                            value: true
-                          - operation: NOT
-                            value:
-                              operation: EQUALS
-                              subject: $partner_inkomen
-                              value: null
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
                       then:
                         operation: LESS_THAN
                         subject:
@@ -314,7 +305,14 @@ articles:
                           values:
                             - $inkomen
                             - $bedrijfsinkomen
-                            - $partner_inkomen
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_inkomen
+                                    value: null
+                                  then: 0
+                              default: $partner_inkomen
                         value: $basisbedrag_partners_21_plus
                   default:
                     operation: LESS_THAN

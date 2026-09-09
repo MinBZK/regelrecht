@@ -128,8 +128,11 @@ articles:
                 17: 17:00
                 18: 18:00
           - name: gewenste_sluitingstijd_doordeweeks
-            # Een uur (23, 24), vergeleken met het getal uit het terrassenbeleid; de POC declareerde
-            # een string (RFC-037, T1).
+            # Sluitingstijd als uur geteld vanaf het begin van de exploitatiedag, zodat de tijden op
+            # één schaal geordend zijn: 24 is middernacht, 25 is 01:00. Het terrassenbeleid
+            # (max_sluitingstijd_*) gebruikt dezelfde schaal; alleen zo is "later dan toegestaan" een
+            # getalsvergelijking. De POC declareerde een string en een 1 voor 01:00, die kleiner is
+            # dan elke avondtijd (RFC-037, T1).
             type: number
             required: false
             type_spec:
@@ -146,7 +149,7 @@ articles:
                 - 22
                 - 23
                 - 24
-                - 1
+                - 25
               enum_labels:
                 13: 13:00
                 14: 14:00
@@ -160,10 +163,9 @@ articles:
                 22: 22:00
                 23: 23:00
                 24: 00:00
-                1: 01:00 (maximum)
+                25: 01:00 (maximum)
           - name: gewenste_sluitingstijd_weekend
-            # Een uur (23, 24), vergeleken met het getal uit het terrassenbeleid; de POC declareerde
-            # een string (RFC-037, T1).
+            # Dezelfde schaal als doordeweeks: 24 is middernacht, 25 is 01:00, 26 is 02:00.
             type: number
             required: false
             type_spec:
@@ -180,8 +182,8 @@ articles:
                 - 22
                 - 23
                 - 24
-                - 1
-                - 2
+                - 25
+                - 26
               enum_labels:
                 13: 13:00
                 14: 14:00
@@ -195,8 +197,8 @@ articles:
                 22: 22:00
                 23: 23:00
                 24: 00:00
-                1: 01:00
-                2: 02:00 (maximum)
+                25: 01:00
+                26: 02:00 (maximum)
         input:
           - name: heeft_exploitatievergunning
             type: boolean
@@ -294,10 +296,6 @@ articles:
             nullable: true
         actions:
           - output: voldoet_aan_voorwaarden
-            # Art. 2:28 jo. 2:30b APV Rotterdam: de terrasvergunning geldt voor een inrichting op een
-            # vestigingsadres. Zonder inschrijving in het handelsregister is er geen adres en dus geen
-            # BAG-gebruiksdoel, geen BGT-terraslocatie en geen terrassenbeleidsgebied op te zoeken; aan de
-            # voorwaarden is dan niet voldaan (RFC-036).
             # Art. 2:28 jo. 2:30b APV Rotterdam: de terrasvergunning geldt voor een inrichting op een
             # vestigingsadres. Zonder inschrijving in het handelsregister is er geen adres en dus geen
             # BGT-terraslocatie en geen terrassenbeleidsgebied op te zoeken; de oppervlakte en de

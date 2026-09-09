@@ -27,9 +27,8 @@ Feature: Landelijke Aanpak Adreskwaliteit (LAA)
       | 999993653 | null          | null                |
     And the following parameters:
       | adres | {"postcode":"1234AB","huisnummer":"10"} |
-    When I evaluate outputs "voldoet_aan_voorwaarden, genereer_signaal, signaal_type, reactietermijn_weken, onderzoekstermijn_maanden" of "wet_brp/laa"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "genereer_signaal" is true
+    When I evaluate outputs "genereer_signaal, signaal_type, reactietermijn_weken, onderzoekstermijn_maanden" of "wet_brp/laa"
+    Then output "genereer_signaal" is true
     And output "signaal_type" equals "MELDING"
     And output "reactietermijn_weken" equals 4
     And output "onderzoekstermijn_maanden" equals 6
@@ -53,9 +52,8 @@ Feature: Landelijke Aanpak Adreskwaliteit (LAA)
       | 999993654 | null          | null                |
     And the following parameters:
       | adres | {"postcode":"5678CD","huisnummer":"25"} |
-    When I evaluate outputs "voldoet_aan_voorwaarden, genereer_signaal, signaal_type" of "wet_brp/laa"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "genereer_signaal" is true
+    When I evaluate outputs "genereer_signaal, signaal_type" of "wet_brp/laa"
+    Then output "genereer_signaal" is true
     And output "signaal_type" equals "MELDING"
 
   Scenario: CJIB meldt twijfel over adres - genereert signaal type MELDING
@@ -77,9 +75,8 @@ Feature: Landelijke Aanpak Adreskwaliteit (LAA)
       | 999993655 | null          | null                |
     And the following parameters:
       | adres | {"postcode":"9012EF","huisnummer":"42"} |
-    When I evaluate outputs "voldoet_aan_voorwaarden, genereer_signaal, signaal_type" of "wet_brp/laa"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "genereer_signaal" is true
+    When I evaluate outputs "genereer_signaal, signaal_type" of "wet_brp/laa"
+    Then output "genereer_signaal" is true
     And output "signaal_type" equals "MELDING"
 
   Scenario: Profiel "Overbewoning" - hoog aantal bewoners op adres zonder woonfunctie
@@ -101,9 +98,8 @@ Feature: Landelijke Aanpak Adreskwaliteit (LAA)
       | 999993657 | {"postcode":"3456GH","huisnummer":"100","straat":null,"woonplaats":null} | null                |
     And the following parameters:
       | adres | {"postcode":"3456GH","huisnummer":"100"} |
-    When I evaluate outputs "voldoet_aan_voorwaarden, genereer_signaal, signaal_type, reactietermijn_weken, onderzoekstermijn_maanden" of "wet_brp/laa"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "genereer_signaal" is true
+    When I evaluate outputs "genereer_signaal, signaal_type, reactietermijn_weken, onderzoekstermijn_maanden" of "wet_brp/laa"
+    Then output "genereer_signaal" is true
     And output "signaal_type" equals "PROFIEL"
     And output "reactietermijn_weken" equals 4
     And output "onderzoekstermijn_maanden" equals 6
@@ -127,9 +123,8 @@ Feature: Landelijke Aanpak Adreskwaliteit (LAA)
       | 999993658 | {"postcode":"7890IJ","huisnummer":"15","straat":null,"woonplaats":null} | null                |
     And the following parameters:
       | adres | {"postcode":"7890IJ","huisnummer":"15"} |
-    When I evaluate outputs "voldoet_aan_voorwaarden, genereer_signaal" of "wet_brp/laa"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "genereer_signaal" is false
+    When I evaluate outputs "genereer_signaal" of "wet_brp/laa"
+    Then output "genereer_signaal" is false
 
   Scenario: Hoog aantal bewoners maar met woonfunctie - geen signaal
     Given parameter "bsn" is "999993659"
@@ -150,9 +145,8 @@ Feature: Landelijke Aanpak Adreskwaliteit (LAA)
       | 999993659 | {"postcode":"2345KL","huisnummer":"200","straat":null,"woonplaats":null} | null                |
     And the following parameters:
       | adres | {"postcode":"2345KL","huisnummer":"200"} |
-    When I evaluate outputs "voldoet_aan_voorwaarden, genereer_signaal" of "wet_brp/laa"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "genereer_signaal" is false
+    When I evaluate outputs "genereer_signaal" of "wet_brp/laa"
+    Then output "genereer_signaal" is false
 
   Scenario: Adres zonder woonfunctie maar met laag aantal bewoners - geen signaal
     Given parameter "bsn" is "999993660"
@@ -173,9 +167,8 @@ Feature: Landelijke Aanpak Adreskwaliteit (LAA)
       | 999993660 | {"postcode":"6789MN","huisnummer":"50","straat":null,"woonplaats":null} | null                |
     And the following parameters:
       | adres | {"postcode":"6789MN","huisnummer":"50"} |
-    When I evaluate outputs "voldoet_aan_voorwaarden, genereer_signaal" of "wet_brp/laa"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "genereer_signaal" is false
+    When I evaluate outputs "genereer_signaal" of "wet_brp/laa"
+    Then output "genereer_signaal" is false
 
   Scenario: Combinatie van melding en profiel - signaal type blijft MELDING
     Given parameter "bsn" is "999993656"
@@ -196,7 +189,6 @@ Feature: Landelijke Aanpak Adreskwaliteit (LAA)
       | 999993656 | null          | null                |
     And the following parameters:
       | adres | {"postcode":"4567OP","huisnummer":"75"} |
-    When I evaluate outputs "voldoet_aan_voorwaarden, genereer_signaal, signaal_type" of "wet_brp/laa"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "genereer_signaal" is true
+    When I evaluate outputs "genereer_signaal, signaal_type" of "wet_brp/laa"
+    Then output "genereer_signaal" is true
     And output "signaal_type" equals "MELDING"

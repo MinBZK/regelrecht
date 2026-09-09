@@ -230,8 +230,8 @@ articles:
         actions:
           - output: voldoet_aan_voorwaarden
             # Art. 1 lid 2 Wkb jo. art. 7 lid 3 Awir: met partner geldt de vermogensgrens voor partners over
-            # het gezamenlijke vermogen. Het partnervermogen is afwezig zonder partner; de toets noemt het
-            # naast de partnervoorwaarde (RFC-036).
+            # het gezamenlijke vermogen. Een vermogen dat de partner niet heeft (geen box 3-rij) telt
+            # voor 0; het register levert het partnervermogen alleen als er een partner is (RFC-036).
             value:
               operation: AND
               conditions:
@@ -244,23 +244,23 @@ articles:
                 - operation: IF
                   cases:
                     - when:
-                        operation: AND
-                        conditions:
-                          - subject: $heeft_partner
-                            operation: EQUALS
-                            value: true
-                          - operation: NOT
-                            value:
-                              operation: EQUALS
-                              subject: $partner_vermogen
-                              value: null
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
                       then:
                         operation: LESS_THAN
                         subject:
                           operation: ADD
                           values:
                             - $vermogen
-                            - $partner_vermogen
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_vermogen
+                                    value: null
+                                  then: 0
+                              default: $partner_vermogen
                         value: $vermogensgrens_partner
                   default:
                     operation: LESS_THAN
@@ -341,21 +341,16 @@ articles:
               precision: 0
               # Met partner het partnerbedrag, anders het bedrag voor een alleenstaande. Als twee
               # gevallen (partner ja/nee) zonder default geschreven zou de afronding op een mogelijk
-              # afwezige waarde werken (RFC-036); een boolean laat geen derde geval over.
+              # afwezige waarde werken (RFC-036); een boolean laat geen derde geval over. Art. 2 lid 1
+              # Wkb jo. art. 7 Awir: het toetsingsinkomen van de partner telt mee; een inkomen dat de
+              # partner niet heeft telt voor 0.
               value:
                 operation: IF
                 cases:
                   - when:
-                      operation: AND
-                      conditions:
-                        - operation: EQUALS
-                          subject: $heeft_partner
-                          value: true
-                        - operation: NOT
-                          value:
-                            operation: EQUALS
-                            subject: $partner_toetsingsinkomen
-                            value: null
+                      operation: EQUALS
+                      subject: $heeft_partner
+                      value: true
                     then:
                       operation: MAX
                       values:
@@ -376,7 +371,14 @@ articles:
                                       operation: ADD
                                       values:
                                         - $toetsingsinkomen
-                                        - $partner_toetsingsinkomen
+                                        - operation: IF
+                                          cases:
+                                            - when:
+                                                operation: EQUALS
+                                                subject: $partner_toetsingsinkomen
+                                                value: null
+                                              then: 0
+                                          default: $partner_toetsingsinkomen
                                     value:
                                       operation: ADD
                                       values:
@@ -390,7 +392,14 @@ articles:
                                           - operation: ADD
                                             values:
                                               - $toetsingsinkomen
-                                              - $partner_toetsingsinkomen
+                                              - operation: IF
+                                                cases:
+                                                  - when:
+                                                      operation: EQUALS
+                                                      subject: $partner_toetsingsinkomen
+                                                      value: null
+                                                    then: 0
+                                                default: $partner_toetsingsinkomen
                                           - operation: ADD
                                             values:
                                               - $drempelinkomen_partner

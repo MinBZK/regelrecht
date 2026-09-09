@@ -50,14 +50,34 @@ async function initEngine() {
   return initPromise;
 }
 
+/**
+ * Laws the engine refused to load: `{id, path, message}` per law version. The
+ * loader type-checks every law (RFC-037), so a refused law is a law with a
+ * finding, and it is simply not there for the portal, the graph and the
+ * scenario runner. That must be visible, not a line in the console: the views
+ * show these in a banner and the scenario runner names the refusal instead of
+ * "law not found".
+ */
+export const loadFailures = ref([]);
+
 function loadLaws(engine, corpus) {
+  const failures = [];
   for (const law of corpus.laws) {
     try {
       engine.loadLaw(law.text);
     } catch (e) {
+      const message = typeof e === 'string' ? e : e?.error ?? e?.message ?? JSON.stringify(e);
       console.warn(`Wet ${law.id} (${law.path}) kon niet geladen worden:`, e);
+      failures.push({ id: law.id, path: law.path, message: String(message) });
     }
   }
+  // Both engines load the same corpus; the second run says nothing new.
+  if (failures.length || loadFailures.value.length === 0) loadFailures.value = failures;
+}
+
+/** The load failure of a law by id, or null when the engine holds it. */
+export function loadFailureFor(lawId) {
+  return loadFailures.value.find((f) => f.id === lawId) ?? null;
 }
 
 /** Load every law version of the corpus into the engine (idempotent). */
@@ -252,5 +272,5 @@ export function evaluateLaw(engine, lawEntry, params, referenceDate, outputs = n
 }
 
 export function useDemoEngine() {
-  return { initEngine, prepareEngine, prepareScenarioEngine, registerPersonaData, registerClaims, evaluateLaw, engineReady, engineError };
+  return { initEngine, prepareEngine, prepareScenarioEngine, registerPersonaData, registerClaims, evaluateLaw, engineReady, engineError, loadFailures, loadFailureFor };
 }

@@ -4,6 +4,7 @@ import LawTile from '../components/LawTile.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
 import ApplicationSheet from '../components/ApplicationSheet.vue';
 import { fieldSpec, numericImpact } from '../data/format.js';
+import { loadFailures } from '../engine/useDemoEngine.js';
 import { useDemo } from '../store/demoStore.js';
 
 // The citizen's (or entrepreneur's) portal: every regeling the persona can
@@ -53,6 +54,11 @@ function onApply({ law }) {
 
 const pendingClaims = computed(() => state.claims.filter((c) => c.bsn === profile.value?.bsn && c.status === 'PENDING'));
 const properties = computed(() => persona.value?.properties ?? []);
+
+// A law the engine refused to load (a type-check finding, RFC-037) is missing
+// from every tile that depends on it. The refusal is shown here, not buried in
+// the console, with the engine's own message per law.
+const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} (${f.path}): ${f.message}`).join(' — '));
 </script>
 
 <template>
@@ -76,6 +82,12 @@ const properties = computed(() => persona.value?.properties ?? []);
         </nldd-container>
       </nldd-title>
       <nldd-rich-text v-if="persona?.description" spacing="tight"><p><em>{{ persona.description }}</em></p></nldd-rich-text>
+      <nldd-banner
+        v-if="loadFailures.length"
+        variant="critical"
+        :text="`${loadFailures.length === 1 ? 'Eén wet is' : `${loadFailures.length} wetten zijn`} niet geladen`"
+        :supporting-text="`De engine weigerde: ${loadFailureText}. Regelingen die hiervan afhangen kunnen geen uitkomst geven.`"
+      ></nldd-banner>
       <nldd-banner
         v-if="pendingClaims.length"
         variant="accent"

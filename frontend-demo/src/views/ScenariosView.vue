@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { parseFeature, dispatch, quotedValue, bareValue, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
 import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.js';
 import { serviceInfo } from '../data/loadCorpus.js';
-import { prepareScenarioEngine } from '../engine/useDemoEngine.js';
+import { loadFailureFor, loadFailures, prepareScenarioEngine } from '../engine/useDemoEngine.js';
 import { useDemo } from '../store/demoStore.js';
 
 // The scenario runner: every law's acceptance scenarios (Gherkin, canonical
@@ -91,6 +91,9 @@ watch(
 
 const selectedFeature = computed(() => features.value.find((f) => f.path === selectedPath.value) ?? null);
 const selectedLaw = computed(() => (selectedFeature.value ? lawFor(selectedFeature.value) : null));
+// The engine refused the law these scenarios are about (a type-check finding,
+// RFC-037): every run would fail with "law not found", which hides the cause.
+const selectedLoadFailure = computed(() => (selectedLaw.value ? loadFailureFor(selectedLaw.value.id) : null));
 
 const showText = ref(false);
 
@@ -130,6 +133,13 @@ async function run(index) {
     return;
   }
   lap('engine', t);
+  const refused = selectedLoadFailure.value;
+  if (refused) {
+    state.error = `Wet ${refused.id} (${refused.path}) is niet geladen; de engine weigerde: ${refused.message}`;
+    state.status = 'fail';
+    open[index] = true;
+    return;
+  }
   t = performance.now();
   e.clearDataSources();
   lap('clearDataSources', t);
@@ -309,6 +319,13 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
           </nldd-toolbar>
         </nldd-container>
 
+        <nldd-simple-section v-if="loadFailures.length" width="full">
+          <nldd-banner
+            variant="critical"
+            :text="selectedLoadFailure ? `Wet ${selectedLoadFailure.id} is niet geladen` : `${loadFailures.length === 1 ? 'Eén wet is' : `${loadFailures.length} wetten zijn`} niet geladen`"
+            :supporting-text="`De engine weigerde: ${loadFailures.map((f) => `${f.id} (${f.path}): ${f.message}`).join(' — ')}`"
+          ></nldd-banner>
+        </nldd-simple-section>
         <nldd-simple-section v-if="loadError" width="full">
           <nldd-banner variant="critical" text="Kon het scenario niet laden" :supporting-text="String(loadError)"></nldd-banner>
         </nldd-simple-section>
