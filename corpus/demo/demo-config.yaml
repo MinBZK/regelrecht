@@ -15,6 +15,8 @@ profiles:
     kvk: null
     default_law: {law_path: zorgtoeslagwet, service: TOESLAGEN}
     default_feature: zorgtoeslagwet
+    # Graaf: the laws that tell this persona's story (detentie -> verzekerd -> zorgtoeslag)
+    graph_laws: [penitentiaire_beginselenwet, zvw, zorgtoeslagwet]
     zaaksysteem_service: TOESLAGEN
     portal_tab_label: Burger.nl
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
@@ -54,6 +56,16 @@ profiles:
       law_path: verordening_precariobelasting/gemeenten
       service: GEMEENTE_ROTTERDAM
     default_feature: verordening_precariobelasting
+    # Graaf: the horeca chain in Rotterdam
+    graph_laws:
+      - alcoholwet/vergunning/rotterdam
+      - alcoholwet/vergunning
+      - algemene_plaatselijke_verordening/terrassen
+      - verordening_precariobelasting
+      - algemene_plaatselijke_verordening/exploitatievergunning
+      - wet_bag
+      - handelsregisterwet
+      - handelsregisterwet/bedrijfsgegevens
     zaaksysteem_service: GEMEENTE_ROTTERDAM
     portal_tab_label: Overheid.nl
     portal_heading: Welke regelingen passen bij mijn bedrijf?
@@ -158,15 +170,46 @@ dashboard_outputs:
 # sees the branch that matters (the POC's DEMO_COLLAPSE_CONFIG, trimmed to the
 # laws on the default tabs). Paths are dotted, arrays by index or by the value
 # of `output`/`name`.
+# What the Wetten tab shows unfolded per law, prepared for the story (the
+# POC's DEMO_COLLAPSE_CONFIG). A path opens itself and everything above it;
+# siblings stay folded, so the audience lands on the right lines instead of
+# scrolling. `*` matches any article number; list items are addressed by their
+# `name`/`output` or, without one, by their index.
 expanded_paths:
   zorgtoeslagwet:
+    # the insured-status input and where it comes from
+    - articles.*.machine_readable.execution.input.is_verzekerde.source
+    - articles.*.machine_readable.execution.output
+    # the two requirements: age and insured
+    - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.0
+    - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.1
+    # the calculation for a partner: joint income against the threshold
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.when
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.then.cases.0.when.subject.values
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.default.value.cases.1.then.default.values.1.values.0.values.1.values.0.values
+  zvw:
+    - articles.*.machine_readable.execution.input.is_gedetineerd.source
+    - articles.*.machine_readable.execution.output
+    - articles.*.machine_readable.execution.actions.is_verzekerde.value.conditions.0.conditions
+    - articles.*.machine_readable.execution.actions.is_verzekerde.value.conditions.1.value
+  penitentiaire_beginselenwet:
     - articles.*.machine_readable.execution.input
     - articles.*.machine_readable.execution.output
-    - articles.*.machine_readable.execution.actions.hoogte_toeslag
+    - articles.*.machine_readable.execution.actions.is_gedetineerd.value.conditions.0.values
+    - articles.*.machine_readable.execution.actions.is_gedetineerd.value.conditions.1.values
   verordening_precariobelasting:
     - articles.*.machine_readable.execution.input
     - articles.*.machine_readable.execution.output
     - articles.*.machine_readable.execution.actions
+  alcoholwet/vergunning/rotterdam:
+    - articles.*.machine_readable.execution.output
+  alcoholwet/vergunning:
+    - articles.*.machine_readable.execution.output
+  algemene_plaatselijke_verordening/terrassen:
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+  algemene_plaatselijke_verordening/exploitatievergunning:
+    - articles.*.machine_readable.execution.output
 
 # The presentation slides (Presentatie tab). A slide without `route` covers the
 # screen (title, statement, closing); a slide with `route` puts the deck on the
@@ -214,11 +257,11 @@ slides:
   - kind: demo
     overline: Samenhang
     title: Wetten hangen samen
-    lead: De zorgtoeslag leunt op de inkomstenbelasting, die op de basisregistratie personen.
+    lead: Of iemand verzekerd is, hangt af van detentie; of iemand zorgtoeslag krijgt, hangt af van verzekerd zijn.
     bullets:
-      - Elke pijl is een echte verwijzing uit de wet.
+      - 'Per wet: welke gegevens uit registers, welke uit andere wetten, wat eruit komt.'
+      - Elke lijn is een echte verwijzing uit de wet, met de waarde voor deze persoon erbij.
       - Wijzigt een wet, dan zie je meteen wie dat raakt.
-      - Klik een knoop aan en zie wat hij gebruikt en wie hem gebruikt.
     route: /graaf
   - kind: demo
     overline: Toetsen

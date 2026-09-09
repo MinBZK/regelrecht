@@ -69,7 +69,7 @@ design system geen component heeft:
 | `.yaml-tree*` | Opvouwbare YAML-boom met kruiswet-links; `nldd-code-viewer` highlight wel YAML maar vouwt niet en kent geen links. |
 | `.gherkin*` | Gherkin-weergave met slaag/faal-markering per stap en tabellen; de viewer kent Gherkin als taal maar geen stapstatus. |
 | `.trace` | Monospace box-drawing-trace. |
-| `.graph-canvas`, `.graph-node*`, `.graph-dim` | vue-flow heeft een expliciete hoogte nodig; knopen en dimmen van niet-geselecteerde knopen. Een graafcanvas bestaat niet in het design system (zelfde uitzondering als de editor). |
+| `.graph-canvas`, `.graph-law*`, `.graph-box*`, `.graph-item*`, `.graph-dim` | vue-flow heeft een expliciete hoogte nodig; de knopen tekenen het POC-beeld (wet als kader met vakken voor bronnen, invoer en uitvoer, met de waarde voor de persona) en dimmen wat buiten de selectie valt. Een graafcanvas bestaat niet in het design system (zelfde uitzondering als de editor). |
 
 Eén afwijking buiten CSS: `App.vue` roept na elke routewissel `_evaluateScrollMode()` van
 `nldd-app-view` aan. Het design system leidt bij het koppelen af of het document of elk

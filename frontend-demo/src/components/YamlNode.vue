@@ -10,7 +10,7 @@ const props = defineProps({
   value: { default: null },
   path: { type: String, default: '' },
   depth: { type: Number, default: 0 },
-  /** Set of dotted paths that start expanded; '*' matches any segment. */
+  /** Dotted paths that start expanded (with their ancestors); '*' matches any segment. */
   expanded: { type: Object, default: () => ({ paths: [], version: 0, all: null }) },
   lawIds: { type: Object, default: () => new Set() },
   parentKey: { type: String, default: '' },
@@ -36,7 +36,9 @@ function initiallyOpen() {
   // the operations inside actions stay folded unless a configured path says so.
   if (/^articles(\.[^.]+)?$/.test(props.path)) return true;
   if (/^articles\.[^.]+\.machine_readable(\.execution)?$/.test(props.path)) return true;
-  return props.expanded.paths.some((pattern) => pathMatches(pattern, props.path) || pathMatches(props.path, pattern));
+  // A configured path opens itself and every node above it; what lies beside
+  // or below it stays folded, so the prepared view lands on the right lines.
+  return props.expanded.paths.some((pattern) => pathMatches(props.path, pattern));
 }
 
 const open = ref(initiallyOpen());
@@ -50,7 +52,7 @@ const entries = computed(() => {
   return [];
 });
 
-/** Label used in the child path: arrays of actions/inputs get their name. */
+/** Label used in the child path: items of a list get their name/output. */
 function scalarHint(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return undefined;
   // Only a scalar names a node; an execution block's `output` is a list.
@@ -58,7 +60,9 @@ function scalarHint(obj) {
 }
 
 function childPath(key, child) {
-  const hint = scalarHint(child);
+  // Only a list item takes its name as label; a mapping key stays the key, so
+  // `source: {output: x}` is addressed as `.source`, not `.x`.
+  const hint = isList.value ? scalarHint(child) : undefined;
   const label = hint !== undefined ? String(hint) : String(key);
   return props.path ? `${props.path}.${label}` : label;
 }
