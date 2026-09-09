@@ -90,6 +90,25 @@ fn propagate_unknown<'a, R: ValueResolver>(
     Some(unknown)
 }
 
+/// The structural counterpart of [`propagate_unknown`]: an Unknown counts
+/// wherever it sits inside an operand (RFC-036). `EQUALS`, `NOT_EQUALS`, `IN`
+/// and `NOT_IN` compare arrays and objects element by element, so
+/// `[unknown] == [1]` is as undecidable as `unknown == 1`, and `PartialEq`
+/// (which equates two Unknowns for the test harnesses) must never be reached
+/// with an Unknown at any depth.
+fn propagate_unknown_deep<'a, R: ValueResolver>(
+    resolver: &R,
+    op: &str,
+    evaluated: impl IntoIterator<Item = &'a Value>,
+) -> Option<Value> {
+    let unknown = Value::merge_unknown_deep(evaluated)?;
+    resolver.trace_set_message(format!(
+        "{op} with an unknown in an operand: unknown (missing: {})",
+        describe_missing(&unknown)
+    ));
+    Some(unknown)
+}
+
 /// The error for a null operand where a value was needed (RFC-036).
 fn absent_operand(op: &str) -> EngineError {
     EngineError::AbsentOperand {
@@ -301,7 +320,7 @@ fn format_value_for_trace(value: &Value) -> String {
         Value::Object(_) => "{...}".to_string(),
         Value::Untranslatable { article, .. } => format!("UNTRANSLATABLE(art. {})", article),
         Value::Unknown(missing) => format!(
-            "Unknown({})",
+            "UNKNOWN({})",
             missing
                 .iter()
                 .map(|m| m.name.as_str())
@@ -520,11 +539,14 @@ fn execute_equality<R: ValueResolver>(
     if let Some(tainted) = propagate_binary(&subject_val, &value_val) {
         return Ok(tainted);
     }
-    // Whether an unknown value equals something cannot be said yet. Null, by
-    // contrast, is a value here: `EQUALS($huur, null)` is the absence test the
-    // corpus uses, and `values_equal` answers it structurally (RFC-036).
+    // Whether an unknown value equals something cannot be said yet, and that
+    // holds for an unknown inside a list or a record as much as for a bare
+    // one: the comparison below is structural and would otherwise equate two
+    // Unknowns. Null, by contrast, is a value here: `EQUALS($huur, null)` is
+    // the absence test the corpus uses, and `values_equal` answers it
+    // structurally (RFC-036).
     let op_name = if negate { "NOT_EQUALS" } else { "EQUALS" };
-    if let Some(unknown) = propagate_unknown(resolver, op_name, [&subject_val, &value_val]) {
+    if let Some(unknown) = propagate_unknown_deep(resolver, op_name, [&subject_val, &value_val]) {
         return Ok(unknown);
     }
 
@@ -1310,17 +1332,24 @@ fn execute_membership<R: ValueResolver>(
     };
 
     // A definite match settles it whatever else is in the list (Kleene, as
-    // for OR). Without one, an unknown subject or an unknown element leaves
-    // the question open: the value might be the one that matches. Null is
-    // structural, like EQUALS: `IN(null, [null])` is true, `IN(null, [1])` is
-    // false (RFC-036). A tainted element never matches (RFC-012).
-    let found = !subject_val.is_unknown()
-        && check_values
-            .iter()
-            .any(|val| !val.is_unknown() && values_equal(&subject_val, val));
+    // for OR). A match is definite only when neither the subject nor the
+    // element has an Unknown anywhere inside: `[unknown]` might be `[650]`,
+    // but nobody can say so yet. Without a definite match, the precedence of
+    // RFC-012 over RFC-036 holds per element: a tainted element could have
+    // been the match, so the result is that taint; otherwise an unknown
+    // subject or an unknown (inside an) element leaves the question open.
+    // Null is structural, like EQUALS: `IN(null, [null])` is true,
+    // `IN(null, [1])` is false (RFC-036).
+    let found = !subject_val.contains_unknown()
+        && check_values.iter().any(|val| {
+            !val.contains_unknown() && !val.is_untranslatable() && values_equal(&subject_val, val)
+        });
     if !found {
+        if let Some(tainted) = find_untranslatable(&check_values) {
+            return Ok(tainted);
+        }
         let op_name = if negate { "NOT_IN" } else { "IN" };
-        if let Some(unknown) = propagate_unknown(
+        if let Some(unknown) = propagate_unknown_deep(
             resolver,
             op_name,
             std::iter::once(&subject_val).chain(check_values.iter()),
@@ -6019,6 +6048,208 @@ mod tests {
                 Value::Bool(true)
             );
             assert_eq!(is_in(var("geen"), vec![lit(1i64)]), Value::Bool(false));
+        }
+
+        /// `LIST [item]` as an operand.
+        fn list(item: ActionValue) -> ActionValue {
+            ActionValue::Operation(Box::new(ActionOperation::List { items: vec![item] }))
+        }
+
+        #[test]
+        fn an_unknown_inside_a_container_propagates_through_equality() {
+            // Review probe P1: two LISTs whose only element is unknown compared
+            // equal, because the structural comparison fell through to
+            // `PartialEq`, which equates two Unknowns. An Unknown at any depth
+            // makes the comparison unknown, for the union of the facts.
+            let mut dossier = BTreeMap::new();
+            dossier.insert("status".to_string(), unknown_fact("beschikking"));
+            dossier.insert("nummer".to_string(), Value::Int(7));
+            let r = resolver().with_var("dossier", Value::Object(dossier));
+            let run = |op: ActionOperation| execute_operation(&op, &r, 0).unwrap();
+
+            let equal = run(ActionOperation::Equals {
+                subject: list(var("huur")),
+                value: list(var("partner")),
+            });
+            assert_eq!(missing_names(&equal), vec!["huur", "partner_bsn"]);
+            let not_equal = run(ActionOperation::NotEquals {
+                subject: list(var("huur")),
+                value: list(var("partner")),
+            });
+            assert_eq!(missing_names(&not_equal), vec!["huur", "partner_bsn"]);
+            // One side definite, the other with an unknown inside: still unknown.
+            let mixed = run(ActionOperation::Equals {
+                subject: list(lit(650i64)),
+                value: list(var("huur")),
+            });
+            assert_eq!(missing_names(&mixed), vec!["huur"]);
+            // A record with an unknown field, compared with itself.
+            let record = run(ActionOperation::Equals {
+                subject: var("dossier"),
+                value: var("dossier"),
+            });
+            assert_eq!(missing_names(&record), vec!["beschikking"]);
+            // Two levels deep.
+            let nested = run(ActionOperation::Equals {
+                subject: list(list(var("huur"))),
+                value: list(list(lit(1i64))),
+            });
+            assert_eq!(missing_names(&nested), vec!["huur"]);
+            // Containers without an unknown compare structurally as before;
+            // an absence inside a container is a value like any other.
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: list(lit(1i64)),
+                    value: list(lit(1i64)),
+                }),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                run(ActionOperation::Equals {
+                    subject: list(var("geen")),
+                    value: list(lit(Value::Null)),
+                }),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn membership_looks_inside_the_subject_and_the_elements() {
+            // Review probe P1: `IN` with a LIST subject against a list of LISTs
+            // matched structurally on two Unknowns.
+            let r = resolver();
+            let is_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::In {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            let not_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::NotIn {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            assert_eq!(
+                missing_names(&is_in(list(var("huur")), vec![list(var("partner"))])),
+                vec!["huur", "partner_bsn"]
+            );
+            assert_eq!(
+                missing_names(&not_in(list(var("huur")), vec![list(var("partner"))])),
+                vec!["huur", "partner_bsn"]
+            );
+            // A subject with an unknown inside can never match definitely.
+            assert_eq!(
+                missing_names(&is_in(list(var("huur")), vec![list(lit(1i64))])),
+                vec!["huur"]
+            );
+            // An element with an unknown inside is not a definite match either,
+            // but another element that is definite still decides.
+            assert_eq!(
+                missing_names(&is_in(list(lit(1i64)), vec![list(var("huur"))])),
+                vec!["huur"]
+            );
+            assert_eq!(
+                is_in(list(lit(1i64)), vec![list(var("huur")), list(lit(1i64))]),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                not_in(list(lit(1i64)), vec![list(var("huur")), list(lit(1i64))]),
+                Value::Bool(false)
+            );
+        }
+
+        #[test]
+        fn membership_taint_in_an_element_beats_unknown_and_false() {
+            // Untranslatable beats unknown per element too: an untranslatable
+            // element could have been the match, so without a definite match
+            // the result is that taint, not a confident false and not unknown.
+            let r = resolver();
+            let is_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::In {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            let not_in = |subject: ActionValue, values: Vec<ActionValue>| {
+                execute_operation(
+                    &ActionOperation::NotIn {
+                        subject,
+                        value: None,
+                        values: Some(values),
+                    },
+                    &r,
+                    0,
+                )
+                .unwrap()
+            };
+            assert_eq!(is_in(lit(3i64), vec![lit(1i64), var("vaag")]), taint());
+            assert_eq!(not_in(lit(3i64), vec![var("vaag")]), taint());
+            assert_eq!(is_in(var("huur"), vec![var("vaag"), lit(1i64)]), taint());
+            // A definite match still wins over a tainted element.
+            assert_eq!(
+                is_in(var("geen"), vec![var("vaag"), lit(Value::Null)]),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                is_in(lit(2i64), vec![var("vaag"), var("huur"), lit(2i64)]),
+                Value::Bool(true)
+            );
+        }
+
+        #[test]
+        fn foreach_arrays_with_unknown_elements_compare_as_unknown() {
+            // Review probe P1: FOREACH without `combine` yields an array that may
+            // hold unknown elements; comparing two such arrays is unknown.
+            let mut params = BTreeMap::new();
+            params.insert("items".to_string(), Value::Array(vec![Value::Int(1)]));
+            params.insert("a".to_string(), unknown_fact("a"));
+            params.insert("b".to_string(), unknown_fact("b"));
+            let context = RuleContext::new(params, "2025-01-01").expect("valid date");
+            let each = |body: ActionValue| {
+                ActionValue::Operation(Box::new(ActionOperation::Foreach {
+                    collection: var("items"),
+                    as_name: "x".to_string(),
+                    body,
+                    filter: None,
+                    combine: None,
+                }))
+            };
+            let op = ActionOperation::Equals {
+                subject: each(var("a")),
+                value: each(var("b")),
+            };
+            let result = execute_operation(&op, &context, 0).unwrap();
+            assert_eq!(missing_names(&result), vec!["a", "b"]);
+            // The arrays themselves are still arrays, unknown elements and all.
+            let listed = execute_operation(
+                &ActionOperation::List {
+                    items: vec![each(var("a"))],
+                },
+                &context,
+                0,
+            )
+            .unwrap();
+            assert!(listed.contains_unknown());
+            assert!(!listed.is_unknown());
         }
 
         #[test]

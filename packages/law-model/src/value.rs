@@ -249,12 +249,14 @@ impl<'de> Visitor<'de> for ValueVisitor {
             };
             return Ok(Value::Untranslatable { article, construct });
         }
-        // Check if this is a serialized Unknown (RFC-036)
+        // Check if this is a serialized Unknown (RFC-036). A marker without a
+        // usable `missing` list is a plain object, exactly as in
+        // `From<serde_json::Value>`: the two readers must agree, and `From`
+        // cannot fail. Only a well-formed sentinel becomes an Unknown.
         if obj.get(UNKNOWN_KEY) == Some(&Value::Bool(true)) {
-            return match obj.get(MISSING_KEY).and_then(missing_facts_from_value) {
-                Some(missing) => Ok(Value::Unknown(missing)),
-                None => Err(de::Error::missing_field(MISSING_KEY)),
-            };
+            if let Some(missing) = obj.get(MISSING_KEY).and_then(missing_facts_from_value) {
+                return Ok(Value::Unknown(missing));
+            }
         }
         Ok(Value::Object(obj))
     }
@@ -274,6 +276,11 @@ impl PartialEq for Value {
             (Value::Untranslatable { .. }, Value::Untranslatable { .. }) => true,
             // Two Unknowns are equal whatever facts they miss (RFC-036): both
             // say "not decidable", and the provenance is diagnostics, not identity.
+            // This rule exists for the test harnesses (`is unknown` compares an
+            // output against an Unknown) and never decides a law: every engine
+            // operation checks `contains_unknown` on its operands first and
+            // propagates, so no comparison in a law reaches this arm with an
+            // Unknown at any depth.
             (Value::Unknown(_), Value::Unknown(_)) => true,
             _ => false,
         }
@@ -308,6 +315,32 @@ impl Value {
         }
     }
 
+    /// Whether an Unknown sits anywhere inside this value: the value itself,
+    /// an element of an array, a field of an object, at any depth (RFC-036).
+    ///
+    /// A `LIST` or a `FOREACH` without `combine` may hold Unknown elements,
+    /// and a structural comparison of such a container has to propagate them
+    /// instead of comparing them as equal.
+    pub fn contains_unknown(&self) -> bool {
+        match self {
+            Value::Unknown(_) => true,
+            Value::Array(items) => items.iter().any(Value::contains_unknown),
+            Value::Object(fields) => fields.values().any(Value::contains_unknown),
+            _ => false,
+        }
+    }
+
+    /// Collect the missing facts of every Unknown nested anywhere in this
+    /// value, in order of appearance, into `into` (see [`Self::contains_unknown`]).
+    fn collect_missing_facts(&self, into: &mut Vec<MissingFact>) {
+        match self {
+            Value::Unknown(missing) => into.extend(missing.iter().cloned()),
+            Value::Array(items) => items.iter().for_each(|v| v.collect_missing_facts(into)),
+            Value::Object(fields) => fields.values().for_each(|v| v.collect_missing_facts(into)),
+            _ => {}
+        }
+    }
+
     /// The union of the missing facts of every Unknown among `values`, as one
     /// Unknown; `None` when none of them is Unknown (RFC-036).
     ///
@@ -319,6 +352,22 @@ impl Value {
             .into_iter()
             .flat_map(|v| v.missing_facts().iter().cloned())
             .collect();
+        if facts.is_empty() {
+            return None;
+        }
+        Some(Value::Unknown(dedup_facts(facts)))
+    }
+
+    /// Like [`Self::merge_unknown`], but an Unknown counts wherever it sits
+    /// inside a value: `[unknown] == [1]` cannot be decided any more than
+    /// `unknown == 1` can (RFC-036). Used by the structural operations
+    /// (`EQUALS`, `NOT_EQUALS`, `IN`, `NOT_IN`), which compare containers
+    /// element by element.
+    pub fn merge_unknown_deep<'a>(values: impl IntoIterator<Item = &'a Value>) -> Option<Value> {
+        let mut facts = Vec::new();
+        for value in values {
+            value.collect_missing_facts(&mut facts);
+        }
         if facts.is_empty() {
             return None;
         }
@@ -1155,20 +1204,72 @@ mod tests {
     #[test]
     fn test_unknown_marker_without_facts_is_not_an_unknown() {
         // An Unknown without provenance would be "null" under another name,
-        // which is exactly what RFC-036 rules out.
-        let empty = serde_json::json!({"__unknown": true, "missing": []});
-        assert!(serde_json::from_value::<Value>(empty.clone()).is_err());
-        assert!(matches!(Value::from(empty), Value::Object(_)));
+        // which is exactly what RFC-036 rules out. Both readers, serde
+        // `Deserialize` and `From<serde_json::Value>`, keep such a sentinel
+        // as the plain object it is; neither fails and neither invents facts.
+        let cases = [
+            serde_json::json!({"__unknown": true, "missing": []}),
+            serde_json::json!({"__unknown": true}),
+            serde_json::json!({
+                "__unknown": true,
+                "missing": [{"law": "w", "name": "x", "kind": "lost"}],
+            }),
+            serde_json::json!({"__unknown": true, "missing": "huur"}),
+        ];
+        for malformed in cases {
+            let deserialized: Value = serde_json::from_value(malformed.clone())
+                .expect("a malformed sentinel deserializes as an object");
+            let converted = Value::from(malformed.clone());
+            assert!(matches!(deserialized, Value::Object(_)), "{malformed}");
+            assert_eq!(deserialized, converted, "{malformed}");
+            // The object keeps its marker key, so nothing is silently dropped.
+            assert_eq!(
+                deserialized.as_object().and_then(|o| o.get("__unknown")),
+                Some(&Value::Bool(true))
+            );
+        }
+    }
 
-        let absent = serde_json::json!({"__unknown": true});
-        assert!(serde_json::from_value::<Value>(absent.clone()).is_err());
-        assert!(matches!(Value::from(absent), Value::Object(_)));
+    #[test]
+    fn test_contains_unknown_looks_inside_containers() {
+        let huur = Value::unknown("wet_huur", "huur", MissingKind::NoData);
+        assert!(huur.contains_unknown());
+        assert!(!Value::Int(1).contains_unknown());
+        assert!(!Value::Null.contains_unknown());
+        assert!(Value::Array(vec![Value::Int(1), huur.clone()]).contains_unknown());
+        let mut record = BTreeMap::new();
+        record.insert("status".to_string(), Value::String("ACTIEF".to_string()));
+        record.insert(
+            "bedragen".to_string(),
+            Value::Array(vec![Value::Array(vec![huur.clone()])]),
+        );
+        assert!(Value::Object(record).contains_unknown());
+        assert!(!Value::Array(vec![Value::Array(vec![Value::Null])]).contains_unknown());
+    }
 
-        let malformed = serde_json::json!({
-            "__unknown": true,
-            "missing": [{"law": "w", "name": "x", "kind": "lost"}],
-        });
-        assert!(serde_json::from_value::<Value>(malformed).is_err());
+    #[test]
+    fn test_merge_unknown_deep_unites_nested_facts() {
+        let huur = Value::unknown("wet_huur", "huur", MissingKind::NoData);
+        let partner = Value::unknown("wet_huur", "partner_bsn", MissingKind::NoData);
+        let mut record = BTreeMap::new();
+        record.insert("partner".to_string(), partner.clone());
+        let left = Value::Array(vec![Value::Int(1), huur.clone()]);
+        let right = Value::Object(record);
+        let merged = Value::merge_unknown_deep([&left, &right, &huur]).unwrap();
+        assert_eq!(
+            merged.missing_facts(),
+            &[
+                missing("wet_huur", "huur", MissingKind::NoData),
+                missing("wet_huur", "partner_bsn", MissingKind::NoData),
+            ]
+        );
+        // The shallow merge does not see them; the deep one is what the
+        // structural operations must use.
+        assert_eq!(Value::merge_unknown([&left, &right]), None);
+        assert_eq!(
+            Value::merge_unknown_deep([&Value::Array(vec![Value::Int(1)]), &Value::Null]),
+            None
+        );
     }
 
     #[test]

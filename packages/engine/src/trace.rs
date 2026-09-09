@@ -344,11 +344,20 @@ impl PathNode {
                 self.render_single_children(lines, cols, has_result);
                 if let Some(ref result) = self.result {
                     let pfx = Self::prefix(cols);
-                    if result.to_bool() {
-                        lines.push(format!("{}└──Requirement met", pfx));
-                    } else {
-                        lines.push(format!("{}└──Requirement NOT met", pfx));
-                    }
+                    // A requirement that could not be decided is neither met
+                    // nor not met: an unknown names the facts it lacks and an
+                    // untranslatable names the construct (RFC-036, RFC-012).
+                    let verdict = match result {
+                        Value::Unknown(missing) => {
+                            format!("Requirement unknown (missing: {})", missing_names(missing))
+                        }
+                        Value::Untranslatable { article, .. } => {
+                            format!("Requirement untranslatable (art. {})", article)
+                        }
+                        _ if result.to_bool() => "Requirement met".to_string(),
+                        _ => "Requirement NOT met".to_string(),
+                    };
+                    lines.push(format!("{}└──{}", pfx, verdict));
                 }
                 cols.pop();
             }
@@ -624,7 +633,7 @@ fn format_value_display(value: &Value) -> String {
         Value::Untranslatable { article, construct } => {
             format!("UNTRANSLATABLE(art. {}: {})", article, construct)
         }
-        Value::Unknown(missing) => format!("Unknown({})", missing_names(missing)),
+        Value::Unknown(missing) => format!("UNKNOWN({})", missing_names(missing)),
     }
 }
 

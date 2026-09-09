@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: test_null_semantics
 name: Testwet afwezig en onbekend
 regulatory_layer: WET
@@ -30,11 +30,14 @@ articles:
     text: >-
       De huur is hoog indien zij meer dan vijfhonderd bedraagt. De verhoogde
       huur is de huur vermeerderd met honderd. De huurklasse is hoog indien de
-      huur hoog is en anders laag.
+      huur hoog is en anders laag. De huur en het burgerservicenummer van de
+      partner worden als opsomming vergeleken.
     machine_readable:
       # Rekenen en ordenen. Met een onbekende huur zijn deze uitkomsten
       # onbekend (bij AND/OR beslist een definitieve operand); met een
       # afwezige huur (null) faalt de uitvoering: "geen" is geen bedrag.
+      # De laatste drie uitkomsten vergelijken lijsten en verzamelingen waar
+      # een onbekende in kan zitten: ook dan is de vergelijking onbekend.
       execution:
         parameters:
           - name: bsn
@@ -65,6 +68,12 @@ articles:
           - name: hoog_of_waar
             type: boolean
           - name: huur_gelijk_aan_partner
+            type: boolean
+          - name: lijsten_gelijk
+            type: boolean
+          - name: lijst_in_lijsten
+            type: boolean
+          - name: verzamelingen_gelijk
             type: boolean
         actions:
           - output: huur_hoog
@@ -145,6 +154,53 @@ articles:
               operation: EQUALS
               subject: $huur
               value: $partner_bsn
+          # Een onbekende in een lijst: twee lijsten met elk een onbekende
+          # zijn niet gelijk maar onbekend, en een lijst met een onbekende zit
+          # niet stellig in een lijst van lijsten.
+          - output: lijsten_gelijk
+            value:
+              operation: EQUALS
+              subject:
+                operation: LIST
+                items:
+                  - $huur
+              value:
+                operation: LIST
+                items:
+                  - $partner_bsn
+          - output: lijst_in_lijsten
+            value:
+              operation: IN
+              subject:
+                operation: LIST
+                items:
+                  - $huur
+              values:
+                - operation: LIST
+                  items:
+                    - $partner_bsn
+          # Een FOREACH zonder combine levert een verzameling waarin een
+          # onbekende kan zitten; twee zulke verzamelingen vergelijken is
+          # onbekend.
+          - output: verzamelingen_gelijk
+            value:
+              operation: EQUALS
+              subject:
+                operation: FOREACH
+                collection:
+                  operation: LIST
+                  items:
+                    - 1
+                as: x
+                body: $huur
+              value:
+                operation: FOREACH
+                collection:
+                  operation: LIST
+                  items:
+                    - 1
+                as: x
+                body: $partner_bsn
 
   - number: '2'
     url: https://example.com/test_null_semantics/2

@@ -20,10 +20,16 @@ pub type CellFn = fn(&str) -> Value;
 pub type Rows = Vec<Vec<String>>;
 
 /// Parse a two-column key/value parameter table.
+///
+/// An empty value cell means the parameter is not passed at all, the same
+/// rule as for a data-table cell (RFC-036): the engine then treats an optional
+/// parameter as unknown for lack of it and a required one as the caller's
+/// omission. The word `null` passes an absence. So the empty cell means one
+/// thing in every table, and the JS runner (`set_parameters_table`) agrees.
 pub fn rows_to_params(rows: &Rows, cell: CellFn) -> BTreeMap<String, Value> {
     let mut params = BTreeMap::new();
     for row in rows {
-        if row.len() >= 2 {
+        if row.len() >= 2 && !row[1].trim().is_empty() {
             params.insert(row[0].trim().to_string(), cell(&row[1]));
         }
     }

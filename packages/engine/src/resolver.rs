@@ -155,6 +155,10 @@ impl RuleResolver {
         let law_id = law.id.clone();
         let valid_from = law.valid_from.clone();
 
+        // RFC-036: an unknown is produced by resolution, never written by a
+        // law. Refuse a document that carries the serialized sentinel.
+        crate::load_check::reject_unknown_literals(&law)?;
+
         // RFC-019: valid_to is static version-selection metadata. An unparseable
         // value (e.g. the format-valid but calendar-invalid '2023-02-30') would
         // silently skip the expiry check in select_in and keep an ended law in

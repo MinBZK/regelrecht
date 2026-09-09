@@ -103,7 +103,7 @@ fn wasm_error(msg: &str) -> JsValue {
 }
 
 /// Parse a JavaScript array of record objects into engine records, dropping
-/// every property whose value is `undefined` first.
+/// every property whose value is `undefined` first, at any depth.
 ///
 /// `serde-wasm-bindgen` deserializes `undefined` and `null` both as `None`,
 /// so a record `{ bsn: '1', huur: undefined }` would come out with `huur:
@@ -111,44 +111,63 @@ fn wasm_error(msg: &str) -> JsValue {
 /// register is authoritative that there is no rent (absence), a missing
 /// property says nobody has the value (unknown). Stripping `undefined` before
 /// deserializing keeps the second from silently turning into the first. An
-/// explicit `null` property is kept and becomes `Value::Null`.
+/// explicit `null` property is kept and becomes `Value::Null`. The same holds
+/// inside a nested record (`beschikking: { status: undefined }`) and inside
+/// arrays of records, so the walk is recursive.
 ///
 /// This cannot be unit-tested natively: every `JsValue` operation aborts
 /// outside wasm32 and the crate has no `wasm-bindgen-test` setup, so the
 /// contract is documented here and pinned by the JS callers' tests instead.
 fn parse_records(records: JsValue) -> Result<Vec<BTreeMap<String, Value>>, JsValue> {
-    let records = strip_undefined_properties(records)?;
+    let records = strip_undefined_deep(records)?;
     serde_wasm_bindgen::from_value(records)
         .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))
 }
 
-/// Rebuild an array of plain objects without their `undefined`-valued
-/// properties (see [`parse_records`]). Anything that is not an array of
-/// objects is passed through untouched, so the deserializer reports the shape
-/// error the way it always did.
-fn strip_undefined_properties(records: JsValue) -> Result<JsValue, JsValue> {
-    if !js_sys::Array::is_array(&records) {
-        return Ok(records);
+/// Parse the JavaScript parameters object of an `execute*` call, dropping
+/// every `undefined`-valued property first, at any depth (see
+/// [`parse_records`] for why).
+///
+/// A parameter that is `undefined` is a parameter the caller did not pass:
+/// an optional one then resolves to unknown for lack of it, a required one is
+/// the caller's error, exactly as when the key is absent. Deserialized as
+/// `null` it would instead count as passed and state an absence the caller
+/// never made, which an operation downstream then rejects (`AbsentOperand`)
+/// or a cross-law call turns into "there is nobody".
+fn parse_parameters(parameters: JsValue) -> Result<BTreeMap<String, Value>, JsValue> {
+    let parameters = strip_undefined_deep(parameters)?;
+    serde_wasm_bindgen::from_value(parameters)
+        .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))
+}
+
+/// Rebuild a JavaScript value without its `undefined`-valued object
+/// properties, recursively through arrays and plain objects. An `undefined`
+/// array *element* is kept (it is a position, not a property, and the
+/// deserializer reports it as it always did). Anything that is not an array
+/// or a plain object is passed through untouched, so a shape error is still
+/// reported by the deserializer.
+fn strip_undefined_deep(value: JsValue) -> Result<JsValue, JsValue> {
+    if js_sys::Array::is_array(&value) {
+        let stripped = js_sys::Array::new();
+        for element in js_sys::Array::from(&value).iter() {
+            stripped.push(&strip_undefined_deep(element)?);
+        }
+        return Ok(stripped.into());
     }
-    let stripped = js_sys::Array::new();
-    for record in js_sys::Array::from(&records).iter() {
-        if !record.is_object() || js_sys::Array::is_array(&record) {
-            stripped.push(&record);
+    if !value.is_object() {
+        return Ok(value);
+    }
+    let clean = js_sys::Object::new();
+    for entry in js_sys::Object::entries(&value.into()).iter() {
+        let pair = js_sys::Array::from(&entry);
+        let key = pair.get(0);
+        let property = pair.get(1);
+        if property.is_undefined() {
             continue;
         }
-        let clean = js_sys::Object::new();
-        for entry in js_sys::Object::entries(&record.into()).iter() {
-            let pair = js_sys::Array::from(&entry);
-            let key = pair.get(0);
-            let value = pair.get(1);
-            if value.is_undefined() {
-                continue;
-            }
-            js_sys::Reflect::set(&clean, &key, &value)?;
-        }
-        stripped.push(&clean);
+        js_sys::Reflect::set(&clean, &key, &strip_undefined_deep(property)?)?;
     }
-    Ok(stripped.into())
+    Ok(clean.into())
 }
 
 /// Convert internal EngineError to user-friendly WASM error.
@@ -285,8 +304,7 @@ impl WasmEngine {
         parameters: JsValue,
         calculation_date: &str,
     ) -> Result<JsValue, JsValue> {
-        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
-            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+        let params = parse_parameters(parameters)?;
 
         let result = self
             .service
@@ -331,8 +349,7 @@ impl WasmEngine {
         parameters: JsValue,
         calculation_date: &str,
     ) -> Result<JsValue, JsValue> {
-        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
-            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+        let params = parse_parameters(parameters)?;
 
         // Use untimed trace builder to avoid Instant::now() JS FFI calls
         // that cause RefCell aliasing panics in wasm-bindgen.
@@ -418,8 +435,7 @@ impl WasmEngine {
         let names: Vec<String> = serde_wasm_bindgen::from_value(output_names)
             .map_err(|e| wasm_error(&format!("Failed to parse output_names: {}", e)))?;
         let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
-            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+        let params = parse_parameters(parameters)?;
 
         let result = self
             .service
@@ -459,8 +475,7 @@ impl WasmEngine {
         let names: Vec<String> = serde_wasm_bindgen::from_value(output_names)
             .map_err(|e| wasm_error(&format!("Failed to parse output_names: {}", e)))?;
         let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
-            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+        let params = parse_parameters(parameters)?;
 
         match self.service.evaluate_law_with_trace_builder(
             law_id,

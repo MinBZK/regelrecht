@@ -110,9 +110,21 @@ pub enum EngineError {
     #[error("Circular reference detected: {0}")]
     CircularReference(String),
 
-    /// Required parameter missing
-    #[error("Required parameter missing: {0}")]
-    MissingParameter(String),
+    /// A required parameter of the law being evaluated was passed as `null`
+    /// or as an unknown (RFC-036). At the top level that is the caller's
+    /// error: the lookup key names nobody, so no register can be asked and
+    /// no unknown fact can be named. Across laws the same situation is not
+    /// an error but a skip (the target is not run; the input is that `null`
+    /// or unknown), so this is raised at depth 0 only.
+    #[error(
+        "required parameter '{name}' of {law_id} is {value}: a law cannot be evaluated for nobody"
+    )]
+    MissingParameter {
+        law_id: String,
+        name: String,
+        /// `null` or `unknown`: how the caller left the parameter empty.
+        value: String,
+    },
 
     /// Arithmetic overflow when converting f64 to i64
     #[error("Arithmetic overflow: {0}")]
@@ -350,7 +362,7 @@ impl From<EngineError> for ExternalError {
             EngineError::ArticleNotFound { .. } => ExternalError::ArticleNotFound,
             EngineError::OutputNotFound { output, .. } => ExternalError::OutputNotFound(output),
             EngineError::CircularReference(_) => ExternalError::CircularReference,
-            EngineError::MissingParameter(name) => ExternalError::MissingParameter(name),
+            EngineError::MissingParameter { name, .. } => ExternalError::MissingParameter(name),
             EngineError::ArithmeticOverflow(_) => ExternalError::ArithmeticOverflow,
             EngineError::MaxDepthExceeded(_) => ExternalError::MaxDepthExceeded,
             EngineError::ResolutionError(_) => ExternalError::ResolutionError,

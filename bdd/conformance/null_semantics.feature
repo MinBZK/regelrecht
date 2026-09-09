@@ -36,7 +36,7 @@ Feature: Absent and unknown values — RFC-036
     Given the following "register" data with key "bsn" for law "test_null_semantics":
       | bsn       | huur | partner_bsn | beschikking          | verzekerd | bedrag |
       | 999993653 | 650  | 999993641   | {"status": "ACTIEF"} | true      | 250    |
-    When I evaluate outputs "huur_hoog, verhoogde_huur, niet_hoog, huurklasse, hoog_en_bekend, hoog_en_onwaar, hoog_of_onbekend, hoog_of_waar, huur_gelijk_aan_partner" of "test_null_semantics"
+    When I evaluate outputs "huur_hoog, verhoogde_huur, niet_hoog, huurklasse, hoog_en_bekend, hoog_en_onwaar, hoog_of_onbekend, hoog_of_waar, huur_gelijk_aan_partner, lijsten_gelijk, lijst_in_lijsten, verzamelingen_gelijk" of "test_null_semantics"
     Then the execution succeeds
     Then output "huur_hoog" is true
     Then output "verhoogde_huur" equals 750
@@ -47,6 +47,9 @@ Feature: Absent and unknown values — RFC-036
     Then output "hoog_of_onbekend" is true
     Then output "hoog_of_waar" is true
     Then output "huur_gelijk_aan_partner" is false
+    Then output "lijsten_gelijk" is false
+    Then output "lijst_in_lijsten" is false
+    Then output "verzamelingen_gelijk" is false
     When I evaluate outputs "huur_ontbreekt, heeft_huur, huur_hoog_veilig, huur_in_lijst, status, partner_geboortejaar" of "test_null_semantics"
     Then the execution succeeds
     Then output "huur_ontbreekt" is false
@@ -174,6 +177,13 @@ Feature: Absent and unknown values — RFC-036
     # An IF whose condition is unknown does not fall through to its default:
     # the branch might have applied.
     Then output "huurklasse" is unknown for lack of "huur"
+    # An unknown inside a list or a collection is not compared away: the
+    # list holding it might be the equal one, or the member of the list.
+    When I evaluate outputs "lijsten_gelijk, lijst_in_lijsten, verzamelingen_gelijk" of "test_null_semantics"
+    Then the execution succeeds
+    Then output "lijsten_gelijk" is unknown for lack of "huur"
+    Then output "lijst_in_lijsten" is unknown for lack of "huur"
+    Then output "verzamelingen_gelijk" is unknown for lack of "huur"
     # Even the absence test cannot answer: whether the register holds a rent is
     # exactly the fact nobody has.
     When I evaluate outputs "huur_ontbreekt, heeft_huur, huur_hoog_veilig, status" of "test_null_semantics"
@@ -227,6 +237,21 @@ Feature: Absent and unknown values — RFC-036
     Then output "huur_gelijk_aan_partner" is unknown for lack of "huur"
     Then output "huur_gelijk_aan_partner" is unknown for lack of "partner_bsn"
 
+  Scenario: Two lists that each hold an unknown are not equal but unknown
+    Given the following "register" data with key "bsn" for law "test_null_semantics":
+      | bsn       | huur | partner_bsn |
+      | 999993653 |      |             |
+    # Structurally the two lists look alike. That likeness is not a fact about
+    # the rent or the partner; the comparison is unknown for both.
+    When I evaluate outputs "lijsten_gelijk, lijst_in_lijsten, verzamelingen_gelijk" of "test_null_semantics"
+    Then the execution succeeds
+    Then output "lijsten_gelijk" is unknown for lack of "huur"
+    Then output "lijsten_gelijk" is unknown for lack of "partner_bsn"
+    Then output "lijst_in_lijsten" is unknown for lack of "huur"
+    Then output "lijst_in_lijsten" is unknown for lack of "partner_bsn"
+    Then output "verzamelingen_gelijk" is unknown for lack of "huur"
+    Then output "verzamelingen_gelijk" is unknown for lack of "partner_bsn"
+
   Scenario: A row without the person is unknown for every input, not absent
     # No row at all for this bsn: nobody has any of the facts. That is not the
     # same as a row saying null.
@@ -279,3 +304,39 @@ Feature: Absent and unknown values — RFC-036
     # `parameters:` can never quietly become an unknown outcome.
     When I evaluate outputs "geboortejaar" of "test_null_semantics_strikt"
     Then the execution fails
+
+  Scenario: A required parameter passed as null at the top level is the caller's error
+    Given parameter "bsn" is "null"
+    Given the following "register" data with key "bsn" for law "test_null_semantics":
+      | bsn       | huur |
+      | 999993653 | 650  |
+    # The register was asked about nobody. That is not "unknown for lack of
+    # huur" (nobody has the fact) and not an absence to decide on: the caller
+    # forgot whom the law is about. Across laws the same situation is a skip
+    # (see "A null required parameter does not run the other law").
+    When I evaluate "huur_hoog" of "test_null_semantics"
+    Then the execution fails
+    Then the execution fails with "cannot be evaluated for nobody"
+    Then the execution fails with "bsn"
+
+  # ---------------------------------------------------------------------------
+  # 7. The empty cell means one thing in every table
+  # ---------------------------------------------------------------------------
+
+  Scenario: An empty cell in a parameter table leaves the parameter out
+    Given the following parameters:
+      | bsn             | 999993653 |
+      | aanvraag_bedrag |           |
+    # Not passed, so the optional parameter is unknown for lack of it, exactly
+    # as when the row is not there at all.
+    When I evaluate "past_aanvraag" of "test_null_semantics_bron"
+    Then the execution succeeds
+    Then output "past_aanvraag" is unknown for lack of "aanvraag_bedrag"
+
+  Scenario: The word null in a parameter passes an absence
+    Given parameter "aanvraag_bedrag" is "null"
+    # An absence is a value; ordering it is the error the author has to
+    # resolve in the law.
+    When I evaluate "past_aanvraag" of "test_null_semantics_bron"
+    Then the execution fails
+    Then the execution fails with "operand is null"
