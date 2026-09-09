@@ -83,17 +83,17 @@ impl parser::Parser<Vec<PathBuf>> for ExplicitPaths {
 
 /// Which bucket(s) the run covers, read from `BDD_BUCKET`.
 ///
-/// `Demo` is a third bucket next to A and B: the demo corpus
-/// (`corpus/demo/regulation/**/scenarios`), run against the demo laws. It is
-/// never part of `all`, because the demo laws are a separate law set that the
-/// world has to load instead of the fixture corpus (`just bdd-demo` sets
-/// `REGULATION_PATH` accordingly).
+/// Bucket A (`corpus`) runs the scenarios that live next to the laws of a
+/// corpus: `<corpus>/**/scenarios/*.feature`, where `<corpus>` is
+/// `REGULATION_PATH` when set and `corpus/regulation` otherwise. The engine
+/// loads its laws from the same variable, so the scenarios and the laws they
+/// test always come from one corpus (`just bdd-demo` points both at
+/// `corpus/demo/regulation`).
 #[derive(Clone, Copy, PartialEq)]
 enum Bucket {
     All,
     Corpus,
     Conformance,
-    Demo,
 }
 
 impl Bucket {
@@ -102,8 +102,7 @@ impl Bucket {
             Ok("") | Err(_) | Ok("all") => Self::All,
             Ok("corpus") | Ok("a") => Self::Corpus,
             Ok("conformance") | Ok("b") => Self::Conformance,
-            Ok("demo") => Self::Demo,
-            Ok(other) => panic!("BDD_BUCKET={other}: expected all, corpus, conformance or demo"),
+            Ok(other) => panic!("BDD_BUCKET={other}: expected all, corpus or conformance"),
         }
     }
 
@@ -115,17 +114,21 @@ impl Bucket {
         matches!(self, Self::All | Self::Conformance)
     }
 
-    fn covers_demo(self) -> bool {
-        matches!(self, Self::Demo)
-    }
-
     fn label(self) -> &'static str {
         match self {
-            Self::All => "corpus/regulation/**/scenarios or bdd/conformance",
-            Self::Corpus => "corpus/regulation/**/scenarios",
+            Self::All => "<corpus>/**/scenarios or bdd/conformance",
+            Self::Corpus => "<corpus>/**/scenarios",
             Self::Conformance => "bdd/conformance",
-            Self::Demo => "corpus/demo/regulation/**/scenarios",
         }
+    }
+}
+
+/// The corpus whose scenarios bucket A runs: `REGULATION_PATH` when set (the
+/// same variable the engine loads its laws from), else the fixture corpus.
+fn corpus_root(root: &Path) -> PathBuf {
+    match std::env::var("REGULATION_PATH") {
+        Ok(p) if !p.trim().is_empty() => PathBuf::from(p),
+        _ => root.join("corpus/regulation"),
     }
 }
 
@@ -136,24 +139,7 @@ fn collect_feature_paths(root: &Path, bucket: Bucket) -> Vec<PathBuf> {
     let mut features: Vec<PathBuf> = Vec::new();
 
     if bucket.covers_corpus() {
-        for entry in WalkDir::new(root.join("corpus/regulation"))
-            .into_iter()
-            .flatten()
-        {
-            let p = entry.path();
-            let is_feature = p.extension().map(|e| e == "feature").unwrap_or(false);
-            let under_scenarios = p.components().any(|c| c.as_os_str() == "scenarios");
-            if is_feature && under_scenarios {
-                features.push(p.to_path_buf());
-            }
-        }
-    }
-
-    if bucket.covers_demo() {
-        for entry in WalkDir::new(root.join("corpus/demo/regulation"))
-            .into_iter()
-            .flatten()
-        {
+        for entry in WalkDir::new(corpus_root(root)).into_iter().flatten() {
             let p = entry.path();
             let is_feature = p.extension().map(|e| e == "feature").unwrap_or(false);
             let under_scenarios = p.components().any(|c| c.as_os_str() == "scenarios");

@@ -499,10 +499,12 @@ jobs:
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture
 
-  # De demo-bucket: de 80 gemigreerde POC-wetten onder corpus/demo met hun
-  # scenario's en persona-data. Anders dan bucket A hangt deze aan niets buiten
-  # de repo en zijn de gegevens synthetisch, dus rood hier is een echte fout
-  # (een wet, een binding of de engine) en geen oordeel van een mens.
+  # Bucket A over het demo-corpus: de 80 gemigreerde POC-wetten onder
+  # corpus/demo met hun scenario's en persona-data (REGULATION_PATH wijst wetten
+  # én scenario's daarheen). Anders dan bucket A over corpus/regulation hangt
+  # dit aan niets buiten de repo en zijn de gegevens synthetisch, dus rood hier
+  # is een echte fout (een wet, een binding of de engine) en geen oordeel van
+  # een mens.
   bdd-demo:
     name: BDD demo
     needs: changes
@@ -546,7 +548,7 @@ jobs:
       - name: Run demo bucket
         working-directory: packages/engine
         env:
-          BDD_BUCKET: demo
+          BDD_BUCKET: corpus
           REGULATION_PATH: ${{ github.workspace }}/corpus/demo/regulation
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture

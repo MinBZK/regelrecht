@@ -37,7 +37,7 @@ This table is the single source of truth for which schema version introduced whi
 | v0.3.0 | Typed operation definitions (arithmetic, logical, comparison, conditional, switch) with semantic operands and `legal_basis`, replacing the single untyped operation | [RFC-004](/rfcs/rfc-004) |
 | v0.2.0 | Initial public schema: `regulatory_layer`, `competent_authority`, `execution.produces`, cross-law references (`source`) | [RFC-001](/rfcs/rfc-001), [RFC-002](/rfcs/rfc-002) |
 
-Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own.
+Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own. Null semantics ([RFC-036](/rfcs/rfc-036)) adds none either: it gives `required: false` on an execution parameter (v0.2.0) its meaning on the cross-law path and changes how the engine evaluates existing constructs over a missing value, so it is an engine version, not a schema version.
 
 The annotation schema (`annotation-schema.json`) versions independently of the law schema: it is republished only when it changes. It was introduced at `schema/v0.5.2/` and last republished at `schema/v0.5.3/`, which is the version the validators embed.
 

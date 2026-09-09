@@ -192,9 +192,9 @@ test-db:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
-# Run the demo-corpus scenarios (corpus/demo) against the demo laws
+# Bucket A over the demo corpus: REGULATION_PATH points laws and scenarios at corpus/demo
 bdd-demo:
-    cd packages/engine && {{ci_flags}} BDD_BUCKET=demo REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+    cd packages/engine && {{ci_flags}} BDD_BUCKET=corpus REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
 
 # Run the demo frontend locally (WASM engine + demo corpus, no backend) on :7400
 dev-demo: wasm-build
