@@ -318,7 +318,54 @@ demo-branch, waar de Awb wél gemodelleerd was.
 
 ---
 
-## 4. Samenvattend
+## 4. Wat er nog nodig is om de keten compleet te maken
+
+Zestien open terms in dit dossier wijzen naar een regeling die de uitkomst
+invult, en één daarvan is aangesloten. Daarnaast staat een aantal wetten alleen
+als parameter in het model. Hieronder wat er nodig is, op volgorde van gewicht
+voor deze casus.
+
+**De belangrijkste bevinding vooraf: het is geen harvest-probleem.** Alle wetten
+hieronder staan al als tekst in de corpus. Wat ontbreekt is `machine_readable`.
+Twee uitzonderingen: ministeriële regelingen en gemeentelijke verordeningen
+bestaan als categorie helemaal niet — `regulation/nl/` kent alleen `wet`,
+`amvb`, `beleidsregel` en één waterschapsverordening.
+
+| # | Regeling | Status in de corpus | Waarom het knelt |
+|---|---|---|---|
+| 1 | **Wet sociale werkvoorziening** | 17 versies, **0 gemodelleerd** | Wordt in zes van de zeven wetten als parameter afgevangen — 17 parameters in totaal (`is_wsw_werknemer`, `is_wsw_geindiceerd_of_oude_indicatie`, `is_wsw_of_beschut_werk_dienstbetrekking`). Wie die invult bepaalt de uitkomst van NRP lid 2, LKS, LDP én JC/WPA, en niets controleert het |
+| 2 | **Wet minimumloon en minimumvakantiebijslag** | 57 versies, **0 gemodelleerd** | De loonkostensubsidie rekent tegen het minimumloon: 41 verwijzingen in de Participatiewet alleen. Het bedrag komt nu als parameter binnen, dus de kern van de berekening leunt op een aangeleverd getal |
+| 3 | **Algemene wet bestuursrecht** | 177 versies, **0 gemodelleerd** | Zeventien artikelen declareren `BESCHIKKING` als hook-trigger. Er luistert niets. Zonder de Awb ontbreekt de hele procedurele laag: motivering (3:46), bezwaartermijn (6:7), bekendmaking (6:8) |
+| 4 | **Besluit loonkostensubsidie Participatiewet** | 3 versies, **0 gemodelleerd** | De open term `regels_doelgroep_lks_en_loonwaarde_amvb` bij Pwet 10e noemt dit besluit al bij naam in zijn default. Aansluiten via `implements` is klein werk met direct effect op de LKS |
+| 5 | **Ministeriële regeling werkgeverslasten** | **categorie bestaat niet** | Pwet 10c delegeert `werkgeverslastenvergoeding_eurocent` naar de minister. Wij weten nog niet wélke regeling dat is — actie 1.5, uitgezet bij UWV. Zolang dat open staat kan het LKS-bedrag afwijken, zowel de subsidie als het 70%-maximum |
+| 6 | **Gemeentelijke verordeningen** | **categorie bestaat niet** | Vier open terms delegeren naar de gemeenteraad (Pwet 8a drie, Pwet 10 één). Zonder verordening blijft de gemeentelijke route "de route bestaat", nooit een bedrag. Dat is scopevraag 2.7, geen modelleervraag |
+| 7 | **UWV-beleidsregel dispensatiepercentage** | `beleidsregel/` bestaat (35 stuks), deze niet | Wajong 2:20 delegeert het percentage van de loondispensatie naar UWV. Zonder die regel zegt het model dát er dispensatie is, niet hoeveel |
+| 8 | **Ministeriële regelingen proefplaatsing** | **categorie bestaat niet** | Drie open terms, één per wet (WW 76a, WIA 37, Wajong 2:24), over de uitvoering. Raakt de duur niet — die staat in de wet — dus lager in de lijst |
+| 9 | **AMvB persoonlijke ondersteuning** | Pwet 10e, nog niet vastgesteld | Drie van de vier open terms bij 10e wachten op een AMvB die er niet is. Zolang die er niet is verandert 10e niets aan de aanspraak van art. 10 lid 1 |
+| 10 | **Wet SUWI** | 60 versies, **0 gemodelleerd** | Alleen genoemd in Wfsv 38b lid 1 onderdeel g, voor een experimentbepaling. Raakt onze twee persona's niet |
+
+### Wat al wél is aangesloten
+
+Het **Reïntegratiebesluit** (`amvb/reintegratiebesluit`, art. 1a) vult met
+`implements` twee open terms: `nadere_regels_voorzieningen_artikel_35` bij de
+Wet WIA en `nadere_regels_voorzieningen_artikel_2_22` bij de Wajong. Dat is de
+enige werkende IoC-koppeling in het dossier, en meteen het model voor de rest.
+
+### Wat dit betekent voor de volgorde
+
+Nummer 1 tot en met 3 zijn geen invulling van een open term maar een gat in de
+keten: de wet wordt aangeroepen als feit terwijl er een regeling achter zit die
+het feit zou moeten bepalen. Dat is een ander soort werk dan 4 tot en met 9,
+waar de aanhechting al klaarligt en alleen de invuller ontbreekt.
+
+Het **Dagloonbesluit werknemersverzekeringen** staat er ook (4 versies, niet
+gemodelleerd). Het valt buiten deze lijst omdat de no-riskpolis alleen het
+*recht* modelleert en niet de hoogte van het ziekengeld; zodra die hoogte in
+scope komt, schuift het besluit naar boven.
+
+---
+
+## 5. Samenvattend
 
 Markeringen zijn hier per artikel geteld en opgeteld over de artikelen die de
 regeling beslaat.
