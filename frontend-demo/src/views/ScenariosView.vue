@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { parseFeature, dispatch, quotedValue, bareValue, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
 import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.js';
@@ -169,6 +169,12 @@ const summary = computed(() => {
 
 const activeTrace = ref(null); // scenario index whose trace is shown
 const traceScenario = computed(() => (activeTrace.value === null ? null : runs[activeTrace.value] ?? null));
+const traceSheet = ref(null);
+watch(activeTrace, async (index) => {
+  if (index === null) return traceSheet.value?.hide?.();
+  await nextTick();
+  traceSheet.value?.show?.();
+});
 
 function stepClass(index, stepIndex) {
   const r = runs[index];
@@ -180,7 +186,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
 </script>
 
 <template>
-  <nldd-navigation-split-view sidebar-accessible-label="Scenario's" inspector-accessible-label="Uitvoering">
+  <nldd-navigation-split-view sidebar-accessible-label="Scenario's">
     <nldd-split-view-pane slot="sidebar" has-content background="tinted">
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12" gap="8">
@@ -230,6 +236,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
           <nldd-code-viewer language="gherkin" wrap>{{ rawText }}</nldd-code-viewer>
         </nldd-simple-section>
         <nldd-simple-section v-else width="full">
+          <nldd-container gap="16">
           <nldd-box>
             <nldd-container padding="16">
               <div class="gherkin">
@@ -244,7 +251,6 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               </div>
             </nldd-container>
           </nldd-box>
-          <nldd-spacer size="16"></nldd-spacer>
           <nldd-card v-for="(scenario, index) in parsed.scenarios" :key="index" :accessible-label="scenario.name">
             <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
               <nldd-icon-cell
@@ -271,26 +277,31 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               </div>
             </nldd-container>
           </nldd-card>
+          </nldd-container>
         </nldd-simple-section>
       </nldd-page>
     </nldd-split-view-pane>
 
-    <nldd-split-view-pane v-if="traceScenario" slot="inspector" has-content>
-      <nldd-page>
-        <nldd-container slot="header" padding="12">
-          <nldd-top-title-bar text="Uitvoering door de engine" :supporting-text="parsed?.scenarios[activeTrace]?.name" dismiss-text="Sluiten" @dismiss="activeTrace = null"></nldd-top-title-bar>
-        </nldd-container>
-        <nldd-container padding="12" gap="12">
-          <nldd-banner v-if="traceScenario.error" variant="critical" text="Uitvoering mislukt" :supporting-text="traceScenario.error"></nldd-banner>
-          <nldd-list v-if="traceScenario.outputs" variant="box-tinted" accessible-label="Uitkomsten">
-            <nldd-list-item v-for="(v, k) in traceScenario.outputs" :key="k" size="sm">
-              <nldd-text-cell size="sm" :text="String(k)"></nldd-text-cell>
-              <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="JSON.stringify(v)"></nldd-text-cell>
-            </nldd-list-item>
-          </nldd-list>
-          <nldd-code-viewer variant="box-tinted" no-copy>{{ traceScenario.traceText }}</nldd-code-viewer>
-        </nldd-container>
-      </nldd-page>
-    </nldd-split-view-pane>
+    <!-- The engine's trace is wide; a 320px inspector column cuts every line,
+         so it opens in a broad sheet, as the tile's "Berekening" does. -->
+    <Teleport to="body">
+      <nldd-sheet ref="traceSheet" placement="right" width="760px" accessible-label="Uitvoering door de engine" @close="activeTrace = null">
+        <nldd-page v-if="traceScenario">
+          <nldd-container slot="header" padding="12">
+            <nldd-top-title-bar text="Uitvoering door de engine" :supporting-text="parsed?.scenarios[activeTrace]?.name" dismiss-text="Sluiten" @dismiss="activeTrace = null"></nldd-top-title-bar>
+          </nldd-container>
+          <nldd-container padding="16" gap="16">
+            <nldd-banner v-if="traceScenario.error" variant="critical" text="Uitvoering mislukt" :supporting-text="traceScenario.error"></nldd-banner>
+            <nldd-list v-if="traceScenario.outputs" variant="box-tinted" accessible-label="Uitkomsten">
+              <nldd-list-item v-for="(v, k) in traceScenario.outputs" :key="k" size="sm">
+                <nldd-text-cell size="sm" :text="String(k)"></nldd-text-cell>
+                <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="JSON.stringify(v)"></nldd-text-cell>
+              </nldd-list-item>
+            </nldd-list>
+            <nldd-code-viewer variant="box-tinted" no-copy>{{ traceScenario.traceText }}</nldd-code-viewer>
+          </nldd-container>
+        </nldd-page>
+      </nldd-sheet>
+    </Teleport>
   </nldd-navigation-split-view>
 </template>
