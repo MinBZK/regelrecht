@@ -106,3 +106,14 @@ describe('buildGraph with a visible set', () => {
     expect(some.edges.find((e) => e.data.from === 'zt').hidden).toBe(false);
   });
 });
+
+describe('edge direction classes', () => {
+  it('marks what the focused law reads as outgoing and who reads it as incoming', () => {
+    const brp = law('brp', { outputs: ['leeftijd'] });
+    const zvw = law('zvw', { inputs: [['leeftijd', 'brp', 'leeftijd']], outputs: ['verzekerd'] });
+    const zt = law('zt', { inputs: [['verzekerd', 'zvw', 'verzekerd']], outputs: ['hoogte'] });
+    const { edges } = buildGraph([brp, zvw, zt], {}, 'zvw');
+    expect(edges.find((e) => e.data.from === 'zvw').class).toBe('graph-edge--out');
+    expect(edges.find((e) => e.data.to === 'zvw').class).toBe('graph-edge--in');
+  });
+});

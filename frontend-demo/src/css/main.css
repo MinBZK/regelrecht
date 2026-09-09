@@ -376,6 +376,18 @@ body {
   color: light-dark(var(--primitives-color-mintgroen-800), var(--primitives-color-mintgroen-200));
 }
 
+/* Focused law: the lines it reads along (outgoing) and the lines others read
+ * from it (incoming), coloured apart as in the POC. */
+.graph-canvas .vue-flow__edge.graph-edge--out .vue-flow__edge-path {
+  stroke: var(--primitives-color-groen-600, #39870c);
+  stroke-width: 2.5;
+}
+
+.graph-canvas .vue-flow__edge.graph-edge--in .vue-flow__edge-path {
+  stroke: var(--primitives-color-robijnrood-600, #ca005d);
+  stroke-width: 2.5;
+}
+
 .graph-canvas .vue-flow__node.graph-dim {
   opacity: 0.25;
 }

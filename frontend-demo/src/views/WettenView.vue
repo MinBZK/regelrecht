@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import YamlNode from '../components/YamlNode.vue';
 import OrgLogo from '../components/OrgLogo.vue';
+import LawGroupTree from '../components/LawGroupTree.vue';
 import { useDemo } from '../store/demoStore.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 
@@ -144,25 +145,7 @@ const referencedBy = computed(() => {
           <nldd-search-field placeholder="Zoek een wet" size="sm" :value="query" @input="query = $event.detail?.value ?? $event.target.value"></nldd-search-field>
         </nldd-container>
         <nldd-container padding-inline="8" padding-bottom="16">
-          <template v-for="group in groups" :key="group.service">
-          <nldd-spacer size="12"></nldd-spacer>
-          <nldd-container layout="row" gap="8" vertical-alignment="center" padding-inline="8" padding-block="4">
-            <OrgLogo :service="group.service" size="sm" />
-            <nldd-text-cell size="sm" color="secondary" :text="group.info.name"></nldd-text-cell>
-          </nldd-container>
-          <nldd-list type="navigation" :accessible-label="group.info.name">
-            <nldd-list-item
-              v-for="law in group.laws"
-              :key="law.id"
-              size="sm"
-              button
-              :selected="law.id === activeId || undefined"
-              @click="openLaw(law.id)"
-            >
-              <nldd-text-cell size="sm" :text="law.name" :supporting-text="law.law_path"></nldd-text-cell>
-            </nldd-list-item>
-          </nldd-list>
-          </template>
+          <LawGroupTree :groups="groups" mode="pick" :active-id="activeId" @pick="openLaw" />
         </nldd-container>
       </nldd-page>
     </nldd-split-view-pane>
@@ -230,26 +213,30 @@ const referencedBy = computed(() => {
               <nldd-text-cell overline="Uitgevoerd door" :text="serviceInfo(corpus, activeLaw.service).name"></nldd-text-cell>
             </nldd-list-item>
           </nldd-list>
-          <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Gebruikt gegevens uit"></nldd-text-cell></nldd-container>
-<nldd-list variant="box-base" accessible-label="Gebruikt gegevens uit">
-            <nldd-list-item v-if="references.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
-            <nldd-list-item v-for="ref in references" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
-              <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-text-cell size="sm" :text="ref.name" :supporting-text="ref.id"></nldd-text-cell>
-              <nldd-icon-cell icon="chevron-right" size="16"></nldd-icon-cell>
-            </nldd-list-item>
-          </nldd-list>
-          <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Wordt gebruikt door"></nldd-text-cell></nldd-container>
-<nldd-list variant="box-base" accessible-label="Wordt gebruikt door">
-            <nldd-list-item v-if="referencedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
-            <nldd-list-item v-for="ref in referencedBy" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
-              <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-text-cell size="sm" :text="ref.name" :supporting-text="ref.id"></nldd-text-cell>
-              <nldd-icon-cell icon="chevron-right" size="16"></nldd-icon-cell>
-            </nldd-list-item>
-          </nldd-list>
+          <nldd-container gap="4">
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Gebruikt gegevens uit</nldd-text></nldd-container>
+            <nldd-list variant="box-base" accessible-label="Gebruikt gegevens uit">
+              <nldd-list-item v-if="references.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
+              <nldd-list-item v-for="ref in references" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
+                <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-text-cell size="sm" :text="ref.name" :supporting-text="ref.id"></nldd-text-cell>
+                <nldd-icon-cell icon="chevron-right" size="16"></nldd-icon-cell>
+              </nldd-list-item>
+            </nldd-list>
+          </nldd-container>
+          <nldd-container gap="4">
+            <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Wordt gebruikt door</nldd-text></nldd-container>
+            <nldd-list variant="box-base" accessible-label="Wordt gebruikt door">
+              <nldd-list-item v-if="referencedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
+              <nldd-list-item v-for="ref in referencedBy" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
+                <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-text-cell size="sm" :text="ref.name" :supporting-text="ref.id"></nldd-text-cell>
+                <nldd-icon-cell icon="chevron-right" size="16"></nldd-icon-cell>
+              </nldd-list-item>
+            </nldd-list>
+          </nldd-container>
         </nldd-container>
       </nldd-page>
     </nldd-split-view-pane>

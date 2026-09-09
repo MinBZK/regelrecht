@@ -158,8 +158,11 @@ export function buildGraph(laws, values = {}, focus = null, visible = null) {
       const supplier = byId.get(input.ref.regulation);
       if (!supplier || !shapes.get(supplier.id).outputs.some((o) => o.name === input.ref.output)) continue;
       const bright = !focus || law.id === focus || supplier.id === focus;
+      // With a law in focus: what it reads (outgoing) and who reads it (incoming) in their own colour, as the POC did.
+      const direction = !focus ? '' : law.id === focus ? 'graph-edge--out' : supplier.id === focus ? 'graph-edge--in' : '';
       edges.push({
         hidden: !(shown(law.id) && shown(supplier.id)),
+        class: direction,
         id: `${itemId(law.id, 'in', input.name)}->${itemId(supplier.id, 'out', input.ref.output)}`,
         source: itemId(law.id, 'in', input.name),
         target: itemId(supplier.id, 'out', input.ref.output),
