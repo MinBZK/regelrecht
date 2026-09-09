@@ -89,3 +89,97 @@ describe('DataSourceTable typed cells', () => {
     expect(w.emitted('update:modelValue').at(-1)[0][0].verdragsinschrijving).toBe('');
   });
 });
+
+// RFC-036 / schema v0.5.8: `null` is a value of a field only where the law
+// declares it `nullable: true`. The column carries that declaration; a
+// column without one (collection elements, a column the law never names)
+// makes no claim and behaves as before.
+describe('DataSourceTable nullability', () => {
+  const nullableFields = [
+    { name: 'verdragsinschrijving', type: 'boolean', unit: null, nullable: true },
+    { name: 'land_verblijf', type: 'string', unit: null, nullable: true },
+  ];
+  const strictFields = [
+    { name: 'verdragsinschrijving', type: 'boolean', unit: null, nullable: false },
+    { name: 'land_verblijf', type: 'string', unit: null, nullable: false },
+  ];
+  const mountWith = (fields, rows) =>
+    mount(DataSourceTable, {
+      props: { title: 'box', keyField: 'bsn', fields, modelValue: rows, defaultExpanded: true, drilledIn: true },
+    });
+  const optionValues = (w) => w.findAll('option').map((o) => o.attributes('value'));
+  const errorTexts = (w) => w.findAll('nldd-form-field-error-text').map((e) => e.text());
+
+  it('offers the null option in a boolean column only when the field is nullable', () => {
+    const nullable = mountWith(nullableFields, [{ _id: 1, bsn: '1', verdragsinschrijving: 'true', land_verblijf: 'NL' }]);
+    expect(optionValues(nullable)).toEqual(['true', 'false', 'null', '']);
+    const strict = mountWith(strictFields, [{ _id: 1, bsn: '1', verdragsinschrijving: 'true', land_verblijf: 'NL' }]);
+    expect(optionValues(strict)).toEqual(['true', 'false', '']); // (leeg) stays
+    expect(errorTexts(strict)).toEqual([]);
+  });
+
+  it('accepts a typed null into a nullable text column', async () => {
+    const w = mountWith(nullableFields, [{ _id: 1, bsn: '1', verdragsinschrijving: 'true', land_verblijf: 'NL' }]);
+    spiFor(w, 'land_verblijf').vm.$emit('update', 'null');
+    await w.vm.$nextTick();
+    expect(w.emitted('update:modelValue').at(-1)[0][0].land_verblijf).toBe('null');
+    expect(spiFor(w, 'land_verblijf').props('invalid')).toBe(false);
+    expect(errorTexts(w)).toEqual([]);
+  });
+
+  it('refuses a typed null in a non-nullable text column: blank in the record, field invalid with the message', async () => {
+    const w = mountWith(strictFields, [{ _id: 1, bsn: '1', verdragsinschrijving: 'true', land_verblijf: 'NL' }]);
+    spiFor(w, 'land_verblijf').vm.$emit('update', 'null');
+    await w.vm.$nextTick();
+    expect(w.emitted('update:modelValue').at(-1)[0][0].land_verblijf).toBe('');
+    await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
+    const field = spiFor(w, 'land_verblijf');
+    expect(field.props('invalid')).toBe(true);
+    expect(field.props('errorMessageIds')).toBeTruthy();
+    expect(errorTexts(w)).toEqual(['Dit gegeven kan niet afwezig zijn (niet nullable)']);
+    expect(w.find('nldd-form-field-error-text').attributes('id')).toBe(field.props('errorMessageIds'));
+
+    // Typing on clears the refusal.
+    field.vm.$emit('update', 'nul');
+    await w.vm.$nextTick();
+    expect(w.emitted('update:modelValue').at(-1)[0][0].land_verblijf).toBe('nul');
+    await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
+    expect(spiFor(w, 'land_verblijf').props('invalid')).toBe(false);
+    expect(errorTexts(w)).toEqual([]);
+  });
+
+  it('still accepts null in a column without a known declaration', async () => {
+    const w = mountWith([{ name: 'land_verblijf', type: 'string', unit: null }], [{ _id: 1, bsn: '1', land_verblijf: 'NL' }]);
+    spiFor(w, 'land_verblijf').vm.$emit('update', 'null');
+    await w.vm.$nextTick();
+    expect(w.emitted('update:modelValue').at(-1)[0][0].land_verblijf).toBe('null');
+    expect(errorTexts(w)).toEqual([]);
+  });
+
+  it('marks a null already in a non-nullable column as invalid but keeps the value', () => {
+    // A null read from the feature file, or a column re-typed as non-nullable
+    // once the law's declaration arrived: shown, flagged, not altered.
+    const w = mountWith(strictFields, [{ _id: 1, bsn: '1', verdragsinschrijving: 'null', land_verblijf: 'null' }]);
+    const field = spiFor(w, 'land_verblijf');
+    expect(field.props('value')).toBe('null');
+    expect(field.props('invalid')).toBe(true);
+    // The boolean dropdown keeps the null option while the cell holds one, so
+    // the state is visible, and marks the dropdown invalid.
+    expect(optionValues(w)).toEqual(['true', 'false', 'null', '']);
+    expect(w.find('select').element.value).toBe('null');
+    expect(w.find('nldd-dropdown').attributes('invalid')).toBeDefined();
+    expect(errorTexts(w)).toHaveLength(2);
+    expect(w.emitted('update:modelValue')).toBeUndefined();
+  });
+
+  it('drops the invalid mark once the boolean cell is set to a value', async () => {
+    const w = mountWith(strictFields, [{ _id: 1, bsn: '1', verdragsinschrijving: 'null', land_verblijf: 'NL' }]);
+    const select = w.find('select');
+    select.element.value = 'false';
+    await select.trigger('change');
+    await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
+    expect(optionValues(w)).toEqual(['true', 'false', '']);
+    expect(w.find('nldd-dropdown').attributes('invalid')).toBeUndefined();
+    expect(errorTexts(w)).toEqual([]);
+  });
+});

@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, useId } from 'vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
+import { NOT_NULLABLE_MESSAGE, nullAllowed, isNullText } from '../utils/nullability.js';
 
 let nextRowId = 0;
 
@@ -47,9 +48,13 @@ function addRow() {
 }
 
 function removeRow(index) {
+  const rk = rowKey(rows.value[index], index);
   const updated = [...rows.value];
   updated.splice(index, 1);
   rows.value = updated;
+  for (const key of [...rejectedNull.value]) {
+    if (key.startsWith(`${rk}:`)) rejectedNull.value.delete(key);
+  }
 }
 
 function updateCell(rowIndex, fieldName, value) {
@@ -81,9 +86,15 @@ function defaultForType(type) {
 // column type - a number field cannot show it. Clearing a field stores a
 // blank; stating an absence is done by typing `null` in a text column or
 // picking it in a boolean column.
-function isNullCell(v) {
-  return v === null || v === 'null';
-}
+//
+// Whether an absence may be stated at all is the column's `nullable` (the
+// field's declaration in the law, schema v0.5.8). Three states: `true` (the
+// law allows null), `false` (the law declares the field as never absent, the
+// engine rejects a null there), `undefined` (no declaration known - the
+// element fields of a collection, or a source column the law never names).
+// Only `false` restricts: an unknown declaration makes no claim, the same
+// rule the engine's type checker follows (see utils/nullability.js).
+const isNullCell = isNullText;
 function cellDisplay(v) {
   if (isNullCell(v)) return 'null';
   return v === undefined ? '' : v;
@@ -91,14 +102,51 @@ function cellDisplay(v) {
 function cellType(col, v) {
   return isNullCell(v) ? 'string' : col.type;
 }
-function cellStore(rowIndex, fieldName, v) {
-  updateCell(rowIndex, fieldName, v == null ? '' : v);
+
+// Cells whose `null` was refused, keyed `<row key>:<column>`. The refusal
+// stores a blank (the record says "no value stated", the honest fallback
+// for a statement the law does not allow) and marks the cell invalid until
+// the author types something else; the field itself keeps showing what was
+// typed, so the message points at the text it is about.
+const rejectedNull = ref(new Set());
+const errorIdPrefix = useId();
+
+function rowKey(row, rowIndex) {
+  return row?._id ?? rowIndex;
+}
+function cellKey(row, rowIndex, col) {
+  return `${rowKey(row, rowIndex)}:${col.name}`;
+}
+function cellErrorId(row, rowIndex, col) {
+  return `${errorIdPrefix}-${cellKey(row, rowIndex, col)}`;
+}
+function cellStore(rowIndex, col, v) {
+  const key = cellKey(rows.value[rowIndex], rowIndex, col);
+  if (isNullCell(v) && !nullAllowed(col)) {
+    rejectedNull.value.add(key);
+    updateCell(rowIndex, col.name, '');
+    return;
+  }
+  rejectedNull.value.delete(key);
+  updateCell(rowIndex, col.name, v == null ? '' : v);
+}
+// A cell is invalid when its `null` was just refused, or when it already
+// holds a `null` (read from the feature file, or the column was re-typed as
+// non-nullable after the law's declaration arrived) that the law does not
+// allow. The stored value stays: it came from the file, a human decides.
+function cellInvalid(row, rowIndex, col) {
+  return rejectedNull.value.has(cellKey(row, rowIndex, col))
+    || (isNullCell(row[col.name]) && !nullAllowed(col));
 }
 // The boolean dropdown: `null` is the stated absence, the empty option a
-// blank cell.
+// blank cell. The `null` option is offered only where the law allows it, and
+// kept while the cell holds one so the invalid state has something to show.
 function booleanCellValue(v) {
   if (isNullCell(v)) return 'null';
   return v === undefined ? '' : String(v);
+}
+function offersNullOption(row, col) {
+  return nullAllowed(col) || isNullCell(row[col.name]);
 }
 
 // All columns: key field + declared fields (deduplicated)
@@ -162,18 +210,23 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
             </template>
             <nldd-cell v-else-if="col.type === 'boolean'" width="full" min-width="120px">
-              <nldd-dropdown size="md">
+              <nldd-dropdown size="md" :invalid="cellInvalid(row, ri, col) || undefined">
                 <select
                   :aria-label="col.name"
                   :value="booleanCellValue(row[col.name])"
+                  :aria-invalid="cellInvalid(row, ri, col) || undefined"
+                  :aria-describedby="cellInvalid(row, ri, col) ? cellErrorId(row, ri, col) : undefined"
                   @change="updateCell(ri, col.name, $event.target.value)"
                 >
                   <option value="true">true</option>
                   <option value="false">false</option>
-                  <option value="null">null</option>
+                  <option v-if="offersNullOption(row, col)" value="null">null</option>
                   <option value="">(leeg)</option>
                 </select>
               </nldd-dropdown>
+              <nldd-form-field-error-text v-if="cellInvalid(row, ri, col)" :id="cellErrorId(row, ri, col)" invalid>
+                {{ NOT_NULLABLE_MESSAGE }}
+              </nldd-form-field-error-text>
             </nldd-cell>
             <nldd-cell v-else width="full" min-width="120px">
               <ScenarioParameterInput
@@ -181,8 +234,13 @@ const showBody = computed(() => props.drilledIn || expanded.value);
                 :unit="col.unit"
                 :name="col.name"
                 :value="cellDisplay(row[col.name])"
-                @update="cellStore(ri, col.name, $event)"
+                :invalid="cellInvalid(row, ri, col)"
+                :error-message-ids="cellErrorId(row, ri, col)"
+                @update="cellStore(ri, col, $event)"
               />
+              <nldd-form-field-error-text v-if="cellInvalid(row, ri, col)" :id="cellErrorId(row, ri, col)" invalid>
+                {{ NOT_NULLABLE_MESSAGE }}
+              </nldd-form-field-error-text>
             </nldd-cell>
           </nldd-list-item>
 

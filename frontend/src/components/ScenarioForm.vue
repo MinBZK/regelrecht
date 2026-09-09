@@ -3,6 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { quotedValue, tableCellValue } from '../gherkin/actions.js';
 import { isCollectionValue, collectionColumns, formCollectionToState } from '../gherkin/formMapper.js';
 import { formatValue, formatMissing, normalizeForCompare, matchStatus as _matchStatus, humanize, expectationsFromAssertions } from '../utils/outputFormat.js';
+import { NOT_NULLABLE_MESSAGE, nullAllowed, isNullText } from '../utils/nullability.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
 
@@ -19,24 +20,26 @@ const props = defineProps({
   lawId: { type: String, required: true },
   /** Article mapping: { outputToArticle, inputToArticle, paramToArticle } */
   articleMap: { type: Object, default: null },
-  /** Datatype mapping from buildTypeMap(): name -> { type, unit } */
+  /** Datatype mapping from buildTypeMap(): name -> { type, unit, nullable } */
   typeMap: { type: Object, default: null },
-  /** External data-source field types from buildExternalFieldTypeMap(): name -> { type, unit } */
+  /** External data-source field types from buildExternalFieldTypeMap(): name -> { type, unit, nullable } */
   externalFieldTypeMap: { type: Object, default: null },
 });
 
 // Resolve a parameter's declared datatype/unit; default to a plain text field
 // for params not found in the map (background-only params, articles without
-// machine_readable).
+// machine_readable). Such a parameter has no `nullable` either: no
+// declaration, no claim (utils/nullability.js).
 function paramMeta(name) {
   return props.typeMap?.get(name) ?? { type: 'string', unit: null };
 }
 
-// Resolve an external data-source column's datatype/unit from the dependency
-// graph; default to a plain text field for columns not found in the map.
+// Resolve an external data-source column's datatype/unit/nullability from the
+// dependency graph; default to a plain text field, nullability unknown, for
+// columns not found in the map.
 function typeField(name) {
   const meta = props.externalFieldTypeMap?.get(name);
-  return { name, type: meta?.type ?? 'string', unit: meta?.unit ?? null };
+  return { name, type: meta?.type ?? 'string', unit: meta?.unit ?? null, nullable: meta?.nullable };
 }
 
 const emit = defineEmits(['show-details', 'executed', 'change', 'drill-change']);
@@ -53,6 +56,37 @@ const scalarParams = () => (props.setup.parameters || []).filter((p) => !isColle
 const parameterValues = ref(
   Object.fromEntries(scalarParams().map((p) => [p.name, p.value ?? ''])),
 );
+
+// A stated absence (`null`) is a value of a parameter only where the law
+// declares it nullable (RFC-036). Typing `null` into a parameter the law
+// declares as never absent is refused: a blank is stored (the parameter is
+// then left out of the run, unknown) and the field is marked invalid, with
+// the message, until the author types something else. The field itself
+// keeps showing what was typed, so the message points at the text it is
+// about. A `null` that is already there (read from the feature file) is
+// marked the same way but kept: it came from the file, a human decides.
+const rejectedNullParams = ref(new Set());
+const paramErrorIdPrefix = useId();
+
+function paramNullAllowed(name) {
+  return nullAllowed(paramMeta(name));
+}
+function updateParameter(name, value) {
+  if (isNullText(value) && !paramNullAllowed(name)) {
+    rejectedNullParams.value.add(name);
+    parameterValues.value = { ...parameterValues.value, [name]: '' };
+  } else {
+    rejectedNullParams.value.delete(name);
+    parameterValues.value = { ...parameterValues.value, [name]: value };
+  }
+  emit('change');
+}
+function paramNullInvalid(name, value) {
+  return rejectedNullParams.value.has(name) || (isNullText(value) && !paramNullAllowed(name));
+}
+function paramErrorId(name) {
+  return `${paramErrorIdPrefix}-${name}`;
+}
 
 // Convert collection parameters to DataSourceTable format. A collection has
 // no key field; the element fields are not typed by the law (an `array`
@@ -154,6 +188,7 @@ function discardEdits() {
   parameterValues.value = Object.fromEntries(
     scalarParams().map((p) => [p.name, p.value ?? '']),
   );
+  rejectedNullParams.value.clear();
   collections.value = initCollections();
   dataSources.value = initDataSources();
   selectedSource.value = null;
@@ -414,9 +449,13 @@ const dateErrorId = useId();
               :unit="paramMeta(name).unit"
               :name="name"
               :value="value"
-              :invalid="!!error && (value === '' || value == null)"
-              @update="parameterValues = { ...parameterValues, [name]: $event }; emit('change')"
+              :invalid="(!!error && (value === '' || value == null)) || paramNullInvalid(name, value)"
+              :error-message-ids="paramNullInvalid(name, value) ? paramErrorId(name) : undefined"
+              @update="updateParameter(name, $event)"
             />
+            <nldd-form-field-error-text v-if="paramNullInvalid(name, value)" :id="paramErrorId(name)" invalid>
+              {{ NOT_NULLABLE_MESSAGE }}
+            </nldd-form-field-error-text>
           </nldd-cell>
         </nldd-list-item>
         <!-- Collection parameters: a row per collection, drill in one level

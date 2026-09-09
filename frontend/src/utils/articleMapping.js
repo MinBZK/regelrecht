@@ -28,21 +28,38 @@ export function buildArticleMap(articles) {
 }
 
 /**
+ * The form-relevant part of a field declaration (parameter or input): its
+ * datatype, the unit of an amount, and whether `null` is one of its values
+ * (`nullable`, schema v0.5.8, RFC-036). `nullable` is a boolean with schema
+ * default false, so a declaration without the key is a field that is never
+ * absent; the form then offers a value or a blank cell, not `null`.
+ */
+function fieldMeta(field) {
+  return {
+    type: field.type,
+    unit: field.type_spec?.unit ?? null,
+    nullable: field.nullable === true,
+  };
+}
+
+/**
  * Builds a name -> datatype map for scenario parameter inputs, so each input
  * can render the control matching its declared type (boolean -> switch,
  * amount -> currency field, etc.). Merges execution.input and
  * execution.parameters; parameter types win on name collision since a
  * scenario `Given parameter` targets an execution parameter most directly.
- * Captures `type_spec.unit` so the amount branch can convert eurocents<->euros.
+ * Captures `type_spec.unit` so the amount branch can convert eurocents<->euros,
+ * and `nullable` so the form only accepts a stated absence where the law
+ * allows one.
  *
  * @param {Array} articles - Articles array from useLaw()
- * @returns {Map<string, { type: string, unit: (string|null) }>}
+ * @returns {Map<string, { type: string, unit: (string|null), nullable: boolean }>}
  */
 export function buildTypeMap(articles) {
   const typeMap = new Map();
   const add = (field) => {
     if (field?.name && field.type) {
-      typeMap.set(field.name, { type: field.type, unit: field.type_spec?.unit ?? null });
+      typeMap.set(field.name, fieldMeta(field));
     }
   };
 
@@ -90,7 +107,7 @@ export function buildOutputTypeMap(articles) {
  * Last doc wins on a name collision. Drives typed cells in DataSourceTable.
  *
  * @param {Array<{articles?: Array}>} lawDocs - parsed law documents
- * @returns {Map<string, { type: string, unit: (string|null) }>}
+ * @returns {Map<string, { type: string, unit: (string|null), nullable: boolean }>}
  */
 export function buildExternalFieldTypeMap(lawDocs) {
   const map = new Map();
@@ -105,7 +122,7 @@ export function buildExternalFieldTypeMap(lawDocs) {
         // misclassified as external. (versionsCache YAML is not schema-checked.)
         const isExternal = src && typeof src === 'object' && Object.keys(src).length === 0;
         if (isExternal && f.name && f.type) {
-          map.set(f.name, { type: f.type, unit: f.type_spec?.unit ?? null });
+          map.set(f.name, fieldMeta(f));
         }
       }
     }

@@ -1459,11 +1459,21 @@ const currentLawYaml = computed(() => {
 // edits, article switches, traject switches - debounce.
 let engineLoadDebounce = null;
 
+// The engine's verdict on the current YAML, shown to the author as a
+// page-wide banner. `loadLaw` rejects a law that fails its type check
+// (RFC-037, e.g. "article 2: 'huur' is not nullable ...") the same way it
+// rejects an unparseable one, and it has already dropped the previous copy
+// by then, so every scenario would otherwise fail with "Law not found"
+// without saying why. The WASM binding throws a plain string.
+const engineLoadError = ref(null);
+
 async function reloadEngineLaw(lawYaml, isReady) {
   if (!isReady || !lawYaml) return;
   try {
     await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
+    engineLoadError.value = null;
   } catch (e) {
+    engineLoadError.value = typeof e === 'string' ? e : (e?.message || String(e));
     // Plain first argument: the law id is user text, not a format string.
     console.warn('Failed to load law into engine:', lawId.value, e);
   }
@@ -2625,6 +2635,17 @@ async function handleActionSave() {
               :text="enrichFeedback.text"
               dismissible
               @dismiss="dismissEnrichFeedback"
+            ></nldd-banner>
+          </nldd-container>
+
+          <!-- The engine refused the current YAML (parse or type-check error,
+               RFC-037). Same page-wide pattern as the feedback above; not
+               dismissible, it clears when a reload succeeds. -->
+          <nldd-container v-if="engineLoadError" padding="8">
+            <nldd-banner
+              variant="critical"
+              text="De engine kan deze wet niet laden"
+              :supporting-text="engineLoadError"
             ></nldd-banner>
           </nldd-container>
 
