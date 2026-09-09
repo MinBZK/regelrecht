@@ -244,44 +244,19 @@ articles:
                 - subject: $leeftijd
                   operation: GREATER_THAN_OR_EQUAL
                   value: $minimum_leeftijd
+                # Vereenvoudiging in de demo: artikel 7 rekent ook het inkomen van
+                # medebewoners en van kinderen (boven de vrijstelling) mee. De
+                # BRP-gegevens van kinderen en medebewoners in de demo bevatten geen
+                # inkomen; een FOREACH over die records zou binnen het lichaam op
+                # `$inkomen` van de aanvrager zelf terugvallen en het inkomen per kind
+                # dubbel tellen. Tot een inkomensbron per huisgenoot bestaat, telt
+                # alleen het inkomen van de aanvrager en de partner.
                 - operation: LESS_THAN
                   subject:
                     operation: ADD
                     values:
                       - $inkomen
                       - $partner_inkomen
-                      - operation: FOREACH
-                        collection: $huishoudleden
-                        combine: ADD
-                        body:
-                          operation: IF
-                          cases:
-                            - when:
-                                operation: GREATER_THAN_OR_EQUAL
-                                subject: $leeftijd
-                                value: 21
-                              then: $inkomen
-                          default:
-                            operation: SUBTRACT
-                            values:
-                              - $inkomen
-                              - $kind_vrijstelling
-                      - operation: FOREACH
-                        collection: $kinderen
-                        combine: ADD
-                        body:
-                          operation: IF
-                          cases:
-                            - when:
-                                operation: LESS_THAN
-                                subject: $leeftijd
-                                value: $leeftijdsgrens_kind_inkomen
-                              then:
-                                operation: SUBTRACT
-                                values:
-                                  - $inkomen
-                                  - $kind_vrijstelling
-                          default: $inkomen
                   value:
                     operation: IF
                     cases:
@@ -524,12 +499,3 @@ articles:
               juriconnect: jci1.3:c:BWBR0008659&artikel=21&z=2025-01-01&g=2025-01-01
               explanation: >-
                 De hoogte van de huurtoeslag wordt berekend volgens de formule in artikel 21
-      untranslatables:
-        - construct: >-
-            iteratie over variabel aantal huishoudleden en kinderen voor inkomenstoets
-          reason: >-
-            FOREACH niet beschikbaar in v0.5.1 schema; het aantal huishoudleden en kinderen is
-            dynamisch en kan niet vooraf worden uitgerold
-          suggestion: >-
-            Voeg FOREACH toe aan het schema of beperk het aantal huishoudleden tot een vast maximum
-          accepted: true
