@@ -2192,17 +2192,34 @@ impl LawExecutionService {
         }
 
         // An optional parameter the target declares but the caller does not
-        // pass is unknown to this call, not an error: a permit law asked for
-        // its "current permit" output by a tax law does not get the application
-        // form fields the tax law never had. Those read as null, and the
-        // target's unrelated actions resolve to unknown instead of failing the
-        // output that was asked for. A required parameter is never filled in:
-        // leaving it out stays the error it always was, so a misspelled key in
-        // `parameters:` cannot silently turn into an unknown outcome.
+        // pass is looked up in the target's own data first: an answer the
+        // applicant gave the permit law earlier (the terrace size on the
+        // application form) is kept as data bound to that law, and a tax law
+        // asking for the "current permit" gets the permit as it was applied
+        // for. Without such data the parameter is unknown to this call, not an
+        // error: those read as null, and the target's unrelated actions resolve
+        // to unknown instead of failing the output that was asked for. A
+        // required parameter is never filled in: leaving it out stays the error
+        // it always was, so a misspelled key in `parameters:` cannot silently
+        // turn into an unknown outcome.
         for (name, required) in &declared {
-            if !required && !target_params.contains_key(name) {
-                target_params.insert(name.clone(), Value::Null);
+            if *required || target_params.contains_key(name) {
+                continue;
             }
+            let value = self
+                .data_registry
+                .resolve_for_law(name, &target_params, Some(regulation))
+                .map(|found| {
+                    tracing::debug!(
+                        parameter = %name,
+                        law = %regulation,
+                        source = %found.source_name,
+                        "optional parameter taken from the law's data"
+                    );
+                    found.value
+                })
+                .unwrap_or(Value::Null);
+            target_params.insert(name.clone(), value);
         }
 
         // Enter cross-law resolution scope
@@ -3824,6 +3841,48 @@ articles:
         assert!(
             matches!(result, Err(EngineError::VariableNotFound(_))),
             "expected VariableNotFound, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_cross_law_call_takes_optional_parameter_from_law_data() {
+        // The permit law's form field was answered earlier and kept as data
+        // bound to that law. A caller that passes only kvk_nummer still gets
+        // the outcome for the application as it was made.
+        let (permit, tax) = fill_laws("required: false");
+        let tax = tax.replace("heeft_vergunning", "past_oppervlakte");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+        let mut answers = BTreeMap::new();
+        answers.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        answers.insert("terras_oppervlakte".to_string(), Value::Int(30));
+        service
+            .register_dict_source_for_law(
+                "fill_vergunning",
+                "aanvraag",
+                "kvk_nummer",
+                vec![answers],
+                100,
+            )
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        // 30 < 50, computed with the applicant's own answer.
+        assert_eq!(
+            result.outputs.get("belastingplichtig"),
+            Some(&Value::Bool(true))
         );
     }
 

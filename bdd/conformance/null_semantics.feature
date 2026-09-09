@@ -71,6 +71,19 @@ Feature: Null semantics — RFC-036
     Then the execution succeeds
     Then output "aanvraag_past" is null
 
+  Scenario: An optional parameter the caller does not pass is taken from the law's own data
+    Given the following "register" data with key "bsn" for law "test_null_semantics":
+      | bsn       | huur | partner_bsn | beschikking |
+      | 999993653 | 650  | null        | null        |
+    # The applicant answered the bron's form field earlier; it is kept as data
+    # bound to the bron, so a caller passing only bsn computes with it.
+    Given the following "aanvraag" data with key "bsn" for law "test_null_semantics_bron":
+      | bsn       | aanvraag_bedrag |
+      | 999993653 | 250             |
+    When I evaluate outputs "aanvraag_past" of "test_null_semantics"
+    Then the execution succeeds
+    Then output "aanvraag_past" is true
+
   Scenario: A required parameter the caller does not pass is still an error
     When I evaluate outputs "geboortejaar" of "test_null_semantics_strikt"
     Then the execution fails
