@@ -19,6 +19,11 @@ eigenlijke werk gebeurt in de twee skills waarnaar het routeert.
   casuïstiek vindbaar (persona's/assen) en norm-ketens leesbaar/geassert (keten-checkpoints
   + golden-traces). Wordt door beide werk-skills gebruikt bij het schrijven van scenario's
   en het reviewen van traces.
+- **`regelrecht-verantwoording`** — tweede gedeelde laag (ook geen fase): de vorm waarin
+  een interpretatiebeslissing telt — wat, door wie, op welke grond, met welk alternatief,
+  wie erover moet spreken en vóór wanneer. Pak hem zodra een verrijking een open term
+  invult of tussen twee lezingen kiest, in welke fase dan ook. Zonder die vastlegging
+  verdwijnt de keuze, en kan de poort bij een mijlpaal niets toetsen.
 
 De volledige flow, het gate-criterium en de handoff-lus staan in `references/routing.md`
 (de canonieke bron; beide werk-skills verwijzen hierheen). Voor het inwerken van nieuwe
