@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { formatOutputValue, formatOutputValueParts, formatValue } from './outputFormat.js';
+import {
+  formatOutputValue,
+  formatOutputValueParts,
+  formatValue,
+  formatMissing,
+  matchStatus,
+  expectationsFromAssertions,
+} from './outputFormat.js';
+
+const unknownFor = (...facts) => ({
+  __unknown: true,
+  missing: facts.map(([name, law]) => ({ law, name, kind: 'no_data' })),
+});
 
 // Intl renders the euro sign followed by a non-breaking space; matching on the
 // digits keeps the assertions readable and independent of that whitespace.
@@ -34,7 +46,7 @@ describe('formatOutputValueParts', () => {
   it('never currency-formats a non-numeric value', () => {
     expect(formatOutputValueParts('150000', 'eurocent').supportingText).toBe('');
     expect(formatOutputValueParts(true, 'eurocent')).toEqual({ text: 'ja', supportingText: '' });
-    expect(formatOutputValueParts(null, 'eurocent')).toEqual({ text: 'null', supportingText: '' });
+    expect(formatOutputValueParts(null, 'eurocent')).toEqual({ text: 'geen', supportingText: '' });
   });
 });
 
@@ -58,7 +70,111 @@ describe('formatValue', () => {
 
   it('keeps scalars as they were', () => {
     expect(formatValue(true)).toBe('ja');
-    expect(formatValue(null)).toBe('null');
     expect(formatValue(42)).toBe('42');
+  });
+
+  // RFC-036: the user never reads the token `null` or the raw unknown object.
+  it('renders absence as geen and an unknown outcome as onbekend', () => {
+    expect(formatValue(null)).toBe('geen');
+    expect(formatValue(undefined)).toBe('geen');
+    expect(formatValue(unknownFor(['huur', 'wet_x']))).toBe('onbekend');
+    expect(formatValue({ __unknown: true, missing: [] })).toBe('onbekend');
+  });
+
+  it('still renders an ordinary object as JSON', () => {
+    expect(formatValue({ __unknown: false })).toBe('{"__unknown":false}');
+    expect(formatValue({ missing: [] })).toBe('{"missing":[]}');
+  });
+});
+
+describe('unknown outcomes (RFC-036)', () => {
+  it('lists the missing facts as supporting text, comma-separated, with their law', () => {
+    expect(formatOutputValueParts(unknownFor(['huur', 'wet_x'], ['partner_bsn', 'wet_y']), 'eurocent')).toEqual({
+      text: 'onbekend',
+      supportingText: 'ontbreekt: huur (wet_x), partner_bsn (wet_y)',
+    });
+  });
+
+  it('names a fact without a law by name alone', () => {
+    expect(formatMissing({ __unknown: true, missing: [{ name: 'huur' }] })).toBe('ontbreekt: huur');
+    expect(formatMissing({ __unknown: true, missing: [] })).toBe('');
+    expect(formatMissing(null)).toBe('');
+    expect(formatMissing(42)).toBe('');
+  });
+
+  it('formats the one-line form with the missing facts in parentheses', () => {
+    expect(formatOutputValue(unknownFor(['huur', 'wet_x']), 'eurocent')).toBe('onbekend (ontbreekt: huur (wet_x))');
+    expect(formatOutputValue({ __unknown: true, missing: [] }, null)).toBe('onbekend');
+    expect(formatOutputValue(null, 'eurocent')).toBe('geen');
+  });
+});
+
+describe('expectationsFromAssertions', () => {
+  it('keeps values as strings and skips assertions without an output', () => {
+    expect(expectationsFromAssertions([
+      { assertionType: 'succeeds', outputName: null, value: null },
+      { assertionType: 'boolean', outputName: 'recht', value: true },
+      { assertionType: 'equals', outputName: 'bedrag', value: 1500 },
+      { assertionType: 'equalsString', outputName: 'code', value: 'A' },
+    ])).toEqual({ recht: 'true', bedrag: '1500', code: 'A' });
+  });
+
+  it('turns is-null into a null expectation and the unknown forms into the unknown shape', () => {
+    expect(expectationsFromAssertions([
+      { assertionType: 'null', outputName: 'partner', value: null },
+      { assertionType: 'unknown', outputName: 'huur', value: null },
+      { assertionType: 'unknownFor', outputName: 'toeslag', value: 'inkomen' },
+    ])).toEqual({
+      partner: null,
+      huur: { __unknown: true, missing: [] },
+      toeslag: { __unknown: true, missing: [{ name: 'inkomen' }] },
+    });
+  });
+
+  it('accepts a missing list', () => {
+    expect(expectationsFromAssertions(undefined)).toEqual({});
+  });
+});
+
+describe('matchStatus', () => {
+  it('is neutral for an output without an expectation', () => {
+    expect(matchStatus('x', 5, {})).toBe('neutral');
+    expect(matchStatus('x', 5, { x: undefined })).toBe('neutral');
+  });
+
+  it('compares ordinary values after typing the expectation', () => {
+    expect(matchStatus('x', 5, { x: '5' })).toBe('passed');
+    expect(matchStatus('x', true, { x: 'true' })).toBe('passed');
+    expect(matchStatus('x', 0.1 + 0.2, { x: '0.3' })).toBe('passed');
+    expect(matchStatus('x', 6, { x: '5' })).toBe('failed');
+  });
+
+  it('makes is-null a real check: only an absent value passes', () => {
+    expect(matchStatus('x', null, { x: null })).toBe('passed');
+    expect(matchStatus('x', 0, { x: null })).toBe('failed');
+    expect(matchStatus('x', '', { x: null })).toBe('failed');
+    expect(matchStatus('x', undefined, { x: null })).toBe('failed');
+    expect(matchStatus('x', unknownFor(['huur', 'w']), { x: null })).toBe('failed');
+  });
+
+  it('passes an unknown expectation on any unknown outcome', () => {
+    const exp = { x: { __unknown: true, missing: [] } };
+    expect(matchStatus('x', unknownFor(['huur', 'w']), exp)).toBe('passed');
+    expect(matchStatus('x', null, exp)).toBe('failed');
+    expect(matchStatus('x', 5, exp)).toBe('failed');
+    expect(matchStatus('x', undefined, exp)).toBe('failed');
+  });
+
+  it('passes unknown-for only when the named fact is among the missing ones', () => {
+    const exp = { x: { __unknown: true, missing: [{ name: 'huur' }] } };
+    expect(matchStatus('x', unknownFor(['huur', 'w']), exp)).toBe('passed');
+    expect(matchStatus('x', unknownFor(['inkomen', 'w'], ['huur', 'w']), exp)).toBe('passed');
+    expect(matchStatus('x', unknownFor(['inkomen', 'w']), exp)).toBe('failed');
+    expect(matchStatus('x', null, exp)).toBe('failed');
+  });
+
+  it('never lets an unknown outcome satisfy a value expectation', () => {
+    expect(matchStatus('x', unknownFor(['huur', 'w']), { x: '5' })).toBe('failed');
+    expect(matchStatus('x', unknownFor(['huur', 'w']), { x: 'true' })).toBe('failed');
   });
 });

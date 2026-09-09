@@ -2,7 +2,7 @@
 import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { quotedValue, tableCellValue } from '../gherkin/actions.js';
 import { isCollectionValue, collectionColumns, formCollectionToState } from '../gherkin/formMapper.js';
-import { formatValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
+import { formatValue, formatMissing, normalizeForCompare, matchStatus as _matchStatus, humanize, expectationsFromAssertions } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
 
@@ -124,14 +124,8 @@ watch([selectedSource, selectedCollection], ([src, coll]) => {
   else emit('drill-change', null);
 });
 
-// Expectations from scenario assertions
-const expectations = ref(
-  Object.fromEntries(
-    (props.scenario.assertions || [])
-      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
-      .map((a) => [a.outputName, String(a.value)]),
-  ),
-);
+// Expectations from scenario assertions (null and unknown included, RFC-036)
+const expectations = ref(expectationsFromAssertions(props.scenario.assertions));
 
 // Output selection: default to outputs referenced in execution + assertions
 const initOutputs = () => {
@@ -164,11 +158,7 @@ function discardEdits() {
   dataSources.value = initDataSources();
   selectedSource.value = null;
   selectedCollection.value = null;
-  expectations.value = Object.fromEntries(
-    (props.scenario.assertions || [])
-      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
-      .map((a) => [a.outputName, String(a.value)]),
-  );
+  expectations.value = expectationsFromAssertions(props.scenario.assertions);
   selectedOutputs.value = initOutputs();
   // Wiping the local result is safe even on a cancel-with-edits: the
   // builder keeps the last run in its scenarioResults map, and
@@ -218,10 +208,13 @@ function execute() {
     // Register data sources
     for (const ds of dataSources.value) {
       if (ds.rows.length === 0) continue;
+      // A blank cell is left out of the record, the same rule the runner
+      // applies to the saved table (RFC-036): the engine then reports the
+      // input as unknown instead of reading an empty string.
       const typedRows = ds.rows.map((row) => {
         const typed = {};
         for (const [k, v] of Object.entries(row)) {
-          if (k === '_id') continue;
+          if (k === '_id' || v === '' || v === undefined) continue;
           typed[k] = typeof v === 'string' ? tableCellValue(v) : v;
         }
         return typed;
@@ -370,6 +363,7 @@ const dateErrorId = useId();
               size="md"
               horizontal-alignment="right"
               :text="humanize(formatValue(normalizeForCompare(exp)))"
+              :supporting-text="formatMissing(exp) || undefined"
             ></nldd-text-cell>
           </nldd-list-item>
           <nldd-list-item size="md">

@@ -1,10 +1,23 @@
 /**
  * Shared output formatting and comparison utilities used by
- * ScenarioForm and ExecutionTraceView.
+ * ScenarioForm, ScenarioBuilder, ExecutionTraceView and the graph trace panes.
  */
 
+import { isUnknown, missingFacts } from '@regelrecht/frontend-shared';
+
+/**
+ * The two kinds of "nothing" the engine produces (RFC-036) each get a Dutch
+ * word, so the user never reads the JSON token `null` or the raw
+ * `{__unknown: …}` object:
+ * - `null` is absence, a value the register vouches for ("no partner"): `geen`;
+ * - Unknown is a fact nobody supplied: `onbekend`, with the missing facts as
+ *   supporting text (see formatOutputValueParts).
+ * An `undefined` output (the engine produced nothing under that name) reads
+ * as absence too; there is nothing else to say about it.
+ */
 export function formatValue(value) {
-  if (value === null || value === undefined) return 'null';
+  if (value === null || value === undefined) return 'geen';
+  if (isUnknown(value)) return 'onbekend';
   if (typeof value === 'boolean') return value ? 'ja' : 'nee';
   // A collection (RFC-016) or a record reaches the trace as an array or an
   // object; String() would render every element as "[object Object]".
@@ -46,16 +59,32 @@ function euroText(value, unit) {
   return '';
 }
 
+/**
+ * `ontbreekt: huur (wet_x), partner_bsn (wet_y)` for an Unknown value, '' for
+ * anything else. A fact without a law (an expectation from a scenario names
+ * only the input) is listed by name alone.
+ */
+export function formatMissing(value) {
+  const facts = missingFacts(value);
+  if (facts.length === 0) return '';
+  return `ontbreekt: ${facts.map((f) => (f.law ? `${f.name} (${f.law})` : f.name)).join(', ')}`;
+}
+
+function supportingText(value, unit) {
+  return isUnknown(value) ? formatMissing(value) : euroText(value, unit);
+}
+
 export function formatOutputValue(value, unit) {
   const raw = formatValue(value);
-  const euros = euroText(value, unit);
-  return euros ? `${raw} (${euros})` : raw;
+  const extra = supportingText(value, unit);
+  return extra ? `${raw} (${extra})` : raw;
 }
 
 /** Returns `{ text, supportingText }` for output rendering. For monetary
- *  outputs the euro-formatted value becomes supporting text. */
+ *  outputs the euro-formatted value becomes supporting text; for an unknown
+ *  outcome the facts that are missing do. */
 export function formatOutputValueParts(value, unit) {
-  return { text: formatValue(value), supportingText: euroText(value, unit) };
+  return { text: formatValue(value), supportingText: supportingText(value, unit) };
 }
 
 export function normalizeForCompare(value) {
@@ -66,10 +95,55 @@ export function normalizeForCompare(value) {
   return value;
 }
 
+/**
+ * The `{ outputName: expected }` map the result views compare against, built
+ * from a scenario's assertions (formMapper shape). Values follow the engine's
+ * own vocabulary so one comparison serves both: a string for an ordinary
+ * value (typed again by normalizeForCompare), `null` for `is null`, and the
+ * Unknown shape for `is unknown` / `is unknown for lack of "x"`, the latter
+ * with the wanted fact under `missing` (RFC-036). Assertions without an
+ * output (succeeds/fails) have nothing to compare and are left out; a later
+ * assertion on the same output wins.
+ */
+export function expectationsFromAssertions(assertions) {
+  const out = {};
+  for (const a of assertions || []) {
+    if (!a.outputName) continue;
+    switch (a.assertionType) {
+      case 'null':
+        out[a.outputName] = null;
+        break;
+      case 'unknown':
+        out[a.outputName] = { __unknown: true, missing: [] };
+        break;
+      case 'unknownFor':
+        out[a.outputName] = { __unknown: true, missing: [{ name: a.value }] };
+        break;
+      default:
+        if (a.value !== null && a.value !== undefined) out[a.outputName] = String(a.value);
+    }
+  }
+  return out;
+}
+
+/**
+ * 'passed' | 'failed' | 'neutral' for one output against the expectations
+ * map. `is null` is a real check: it passes only on an absent value. An
+ * unknown expectation passes on any unknown outcome, and when it names a
+ * fact, only if that fact is among the ones missing. An unknown outcome
+ * never satisfies a value or null expectation.
+ */
 export function matchStatus(outputName, actualValue, expectations) {
   if (!(outputName in expectations)) return 'neutral';
   const expected = expectations[outputName];
-  if (expected === null || expected === undefined) return 'neutral';
+  if (expected === undefined) return 'neutral';
+  if (isUnknown(expected)) {
+    if (!isUnknown(actualValue)) return 'failed';
+    const actualNames = missingFacts(actualValue).map((f) => f.name);
+    return missingFacts(expected).every((f) => actualNames.includes(f.name)) ? 'passed' : 'failed';
+  }
+  if (isUnknown(actualValue)) return 'failed';
+  if (expected === null) return actualValue === null ? 'passed' : 'failed';
   const actual = normalizeForCompare(actualValue);
   const exp = normalizeForCompare(expected);
   if (actual === exp) return 'passed';

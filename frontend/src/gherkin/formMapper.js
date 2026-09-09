@@ -90,6 +90,11 @@ function extractFragment(entry, match, step) {
         : { type: 'assertion', assertionType: 'equalsString', outputName: match[1], value: match[2] };
     case 'assert_null':
       return { type: 'assertion', assertionType: 'null', outputName: match[1] };
+    // Unknown (RFC-036): the second form names the fact that must be missing.
+    case 'assert_unknown':
+      return { type: 'assertion', assertionType: 'unknown', outputName: match[1] };
+    case 'assert_unknown_for':
+      return { type: 'assertion', assertionType: 'unknownFor', outputName: match[1], value: match[2] };
     case 'assert_contains':
       return { type: 'assertion', assertionType: 'contains', outputName: match[1], value: match[2] };
     default:
@@ -110,17 +115,20 @@ function tableToParams(dataTable) {
 }
 
 // A `Given parameter "x" is the collection:` table has a header row and one
-// row per element (mirror of Rust `rows_to_records`): every element becomes
-// an object keyed by the column names, cells typed by content. Lenient on a
-// short row - a missing cell reads as null - so one ragged row does not
-// take the whole feature down in the editor.
+// row per element (mirror of Rust `rows_to_records` and the runner's
+// `tableToRecords`): every element becomes an object keyed by the column
+// names, cells typed by content. An empty cell leaves the key out of the
+// record (RFC-036: no value stated), the literal `null` is an absence the
+// author stated. Lenient on a short row - a missing cell counts as empty -
+// so one ragged row does not take the whole feature down in the editor.
 function tableToCollection(dataTable) {
   if (!dataTable || dataTable.length === 0) return { columns: [], records: [] };
   const columns = dataTable[0].map((h) => h.trim());
   const records = dataTable.slice(1).map((row) => {
     const record = {};
     columns.forEach((h, i) => {
-      record[h] = i < row.length ? tableCellValue(row[i]) : null;
+      if (i >= row.length || row[i].trim() === '') return;
+      record[h] = tableCellValue(row[i]);
     });
     return record;
   });
@@ -133,12 +141,15 @@ export function isCollectionValue(value) {
 }
 
 /**
- * Type one cell of a collection as edited in the form: an empty or absent
- * cell is null (what formatCell writes and the runner reads back), a string
- * is typed by content, anything else is already typed.
+ * Type one cell of a collection as edited in the form. A blank or absent
+ * cell is `undefined`: the record gets no such key, formatCell writes an
+ * empty cell and the runner reads that back as "no value" (RFC-036). A
+ * `null` (or the text `null`) is an absence the author stated and stays
+ * null. Any other string is typed by content; anything else is already typed.
  */
 export function collectionCell(v) {
-  if (v === undefined || v === null || v === '') return null;
+  if (v === undefined || v === '') return undefined;
+  if (v === null) return null;
   return typeof v === 'string' ? tableCellValue(v) : v;
 }
 
@@ -314,7 +325,8 @@ export function formCollectionToState(coll) {
   const records = (coll.rows || []).map((row) => {
     const record = {};
     for (const c of columns) {
-      record[c] = collectionCell(row[c]);
+      const v = collectionCell(row[c]);
+      if (v !== undefined) record[c] = v;
     }
     return record;
   });
@@ -470,8 +482,12 @@ export function syncEditedValues(formState, scenarioIndex, values) {
 
 // --- Reverse: Form State → Gherkin text ---
 
+// A blank cell stays blank ("no value stated", RFC-036); only a `null` the
+// author stated is written as the word. Data-source rows carry the cell text
+// as read, so the word `null` in one of them passes through String() intact.
 function formatCell(value) {
-  if (value === null || value === undefined || value === '') return 'null';
+  if (value === undefined || value === '') return '';
+  if (value === null) return 'null';
   return String(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
 
@@ -612,6 +628,10 @@ function formatAssertion(assertion) {
       return ['assert_equals_string', TPL.assert_equals_string([assertion.outputName, assertion.value])];
     case 'null':
       return ['assert_null', TPL.assert_null([assertion.outputName])];
+    case 'unknown':
+      return ['assert_unknown', TPL.assert_unknown([assertion.outputName])];
+    case 'unknownFor':
+      return ['assert_unknown_for', TPL.assert_unknown_for([assertion.outputName, assertion.value])];
     case 'contains':
       return ['assert_contains', TPL.assert_contains([assertion.outputName, assertion.value])];
     default:

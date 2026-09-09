@@ -486,3 +486,61 @@ Feature: Round trip
     expect(params).toEqual({ bsn: 999993653, is_verzekerde: true, gemeente: 'GM0384' });
   });
 });
+
+describe('unknown assertions (RFC-036)', () => {
+  const feature = `
+Feature: Unknown
+
+  Scenario: Missing rent
+    Given the calculation date is "2025-01-01"
+    When I evaluate "toeslag" of "wet"
+    Then output "toeslag" is unknown
+    Then output "recht" is unknown for lack of "huur"
+`;
+
+  it('extracts both forms', () => {
+    const form = mapFeatureToForm(parseFeature(feature));
+    expect(form.scenarios[0].unmatchedSteps).toEqual([]);
+    expect(form.scenarios[0].assertions).toEqual([
+      { assertionType: 'unknown', outputName: 'toeslag', value: null },
+      { assertionType: 'unknownFor', outputName: 'recht', value: 'huur' },
+    ]);
+  });
+
+  it('writes both forms back out unchanged', () => {
+    const text = formStateToGherkin(mapFeatureToForm(parseFeature(feature)));
+    expect(text).toContain('    Then output "toeslag" is unknown\n');
+    expect(text).toContain('    Then output "recht" is unknown for lack of "huur"\n');
+  });
+});
+
+describe('data-source blank cells (RFC-036)', () => {
+  const text =
+    'Feature: Blank\n' +
+    '\n' +
+    '  Scenario: No rent known\n' +
+    '    Given the following "huurgegevens" data with key "bsn":\n' +
+    '      | bsn | huur | partner_bsn |\n' +
+    '      | 1 |  | null |\n' +
+    '    When I evaluate "x" of "law"\n';
+
+  it('keeps a blank cell blank and the word null as it is through a round trip', () => {
+    const form = mapFeatureToForm(parseFeature(text));
+    expect(form.scenarios[0].setup.dataSources[0].rows).toEqual([['1', '', 'null']]);
+    expect(formStateToGherkin(form)).toBe(text);
+  });
+
+  it('writes a cell the form cleared as blank, not as null', () => {
+    const form = mapFeatureToForm(parseFeature(text));
+    syncEditedValues(form, 0, {
+      parameterValues: {},
+      dataSources: [{
+        sourceName: 'huurgegevens',
+        keyField: 'bsn',
+        fields: [{ name: 'huur', type: 'amount' }, { name: 'partner_bsn', type: 'string' }],
+        rows: [{ _id: 1, bsn: '1', huur: '', partner_bsn: '' }],
+      }],
+    });
+    expect(formStateToGherkin(form)).toContain('      | 1 |  |  |\n');
+  });
+});

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { valuesEqual, primitiveEqual, quotedValue, tableCellValue, dispatch } from './actions.js';
+import { valuesEqual, primitiveEqual, quotedValue, tableCellValue, tableToRecords, dispatch } from './actions.js';
+
+const unknownFor = (...names) => ({
+  __unknown: true,
+  missing: names.map((name) => ({ law: 'test_wet', name, kind: 'no_data' })),
+});
 
 // Mirrors packages/engine/tests/bdd/helpers/value_conversion.rs
 // (`values_equal_with_tolerance`) plus law-model's `PartialEq for Value`:
@@ -73,6 +78,61 @@ describe('valuesEqual', () => {
   it('keeps the old name as an alias', () => {
     expect(primitiveEqual).toBe(valuesEqual);
   });
+
+  // Mirrors law-model's PartialEq: two Unknowns are equal whatever they list
+  // as missing, and an Unknown equals nothing else (RFC-036).
+  it('equates two unknown values regardless of provenance', () => {
+    expect(valuesEqual(unknownFor('huur'), unknownFor('partner_bsn'))).toBe(true);
+    expect(valuesEqual(unknownFor('huur'), unknownFor('huur', 'partner_bsn'))).toBe(true);
+    expect(valuesEqual({ __unknown: true, missing: [] }, unknownFor('huur'))).toBe(true);
+  });
+
+  it('never equates an unknown value with null or a plain object', () => {
+    expect(valuesEqual(unknownFor('huur'), null)).toBe(false);
+    expect(valuesEqual(null, unknownFor('huur'))).toBe(false);
+    expect(valuesEqual(unknownFor('huur'), undefined)).toBe(false);
+    expect(valuesEqual(unknownFor('huur'), { missing: [] })).toBe(false);
+    expect(valuesEqual({ __unknown: false, missing: [] }, unknownFor('huur'))).toBe(false);
+    expect(valuesEqual(unknownFor('huur'), 0)).toBe(false);
+    expect(valuesEqual(unknownFor('huur'), [])).toBe(false);
+  });
+
+  it('applies the unknown rule inside arrays and objects too', () => {
+    expect(valuesEqual([unknownFor('a')], [unknownFor('b')])).toBe(true);
+    expect(valuesEqual({ x: unknownFor('a') }, { x: null })).toBe(false);
+  });
+});
+
+// Mirrors packages/engine/tests/bdd/helpers/table.rs (`rows_to_records`).
+describe('tableToRecords', () => {
+  it('omits the key for an empty cell and keeps a literal null (RFC-036)', () => {
+    const records = tableToRecords([
+      ['bsn', 'huur', 'partner_bsn'],
+      ['1', '', 'null'],
+      ['2', '500', '  '],
+    ]);
+    expect(records).toEqual([
+      { bsn: 1, partner_bsn: null },
+      { bsn: 2, huur: 500 },
+    ]);
+    expect(Object.hasOwn(records[0], 'huur')).toBe(false);
+    expect(Object.hasOwn(records[1], 'partner_bsn')).toBe(false);
+  });
+
+  it('keeps every cell with content, typed by content', () => {
+    expect(tableToRecords([['a', 'b'], ['x', 'true']])).toEqual([{ a: 'x', b: true }]);
+  });
+
+  it('returns no records for a header-only or missing table', () => {
+    expect(tableToRecords([['a']])).toEqual([]);
+    expect(tableToRecords(null)).toEqual([]);
+  });
+
+  it('rejects a row whose width differs from the header', () => {
+    expect(() => tableToRecords([['a', 'b'], ['1']])).toThrow(
+      'data table row 1 has 1 cells, header row has 2',
+    );
+  });
 });
 
 describe('quoted and table-cell values', () => {
@@ -129,5 +189,79 @@ describe('assert_equals through dispatch', () => {
     await expect(run(ctxWith({ kinderen: '3' }), 3)).rejects.toThrow(
       'Expected output "kinderen" to equal 3, got: "3"',
     );
+  });
+});
+
+describe('assert_unknown and assert_unknown_for through dispatch', () => {
+  const ctxWith = (outputs) => ({ result: { outputs }, executed: true, error: null });
+  const run = (ctx, action, args) =>
+    dispatch(ctx, null, action, args, null, { loadDependency: async () => {} });
+
+  it('assert_unknown passes on an unknown output whatever is missing', async () => {
+    await expect(run(ctxWith({ x: unknownFor('huur') }), 'assert_unknown', ['x'])).resolves.toBeUndefined();
+    await expect(run(ctxWith({ x: { __unknown: true, missing: [] } }), 'assert_unknown', ['x'])).resolves.toBeUndefined();
+  });
+
+  it('assert_unknown fails on null, a value or a missing output, showing the actual value', async () => {
+    await expect(run(ctxWith({ x: null }), 'assert_unknown', ['x'])).rejects.toThrow(
+      'Expected output "x" to be unknown, got: null',
+    );
+    await expect(run(ctxWith({ x: 500 }), 'assert_unknown', ['x'])).rejects.toThrow(
+      'Expected output "x" to be unknown, got: 500',
+    );
+    await expect(run(ctxWith({ x: { missing: [] } }), 'assert_unknown', ['x'])).rejects.toThrow(
+      'Expected output "x" to be unknown, got: {"missing":[]}',
+    );
+    await expect(run(ctxWith({}), 'assert_unknown', ['x'])).rejects.toThrow(
+      'Expected output "x" to be unknown, got: undefined',
+    );
+  });
+
+  it('assert_unknown_for passes when one of the missing facts has the name', async () => {
+    await expect(
+      run(ctxWith({ x: unknownFor('huur', 'partner_bsn') }), 'assert_unknown_for', ['x', 'partner_bsn']),
+    ).resolves.toBeUndefined();
+  });
+
+  it('assert_unknown_for names the facts that are missing when the wanted one is not', async () => {
+    await expect(
+      run(ctxWith({ x: unknownFor('huur', 'partner_bsn') }), 'assert_unknown_for', ['x', 'inkomen']),
+    ).rejects.toThrow(
+      'Expected output "x" to be unknown for lack of "inkomen", but it is unknown for lack of: huur (test_wet), partner_bsn (test_wet)',
+    );
+  });
+
+  it('assert_unknown_for fails on a value that is not unknown at all', async () => {
+    await expect(run(ctxWith({ x: null }), 'assert_unknown_for', ['x', 'huur'])).rejects.toThrow(
+      'Expected output "x" to be unknown, got: null',
+    );
+  });
+
+  it('assert_null and assert_equals reject an unknown output', async () => {
+    await expect(run(ctxWith({ x: unknownFor('huur') }), 'assert_null', ['x'])).rejects.toThrow(
+      'Expected output "x" to equal null, got: {"__unknown":true,"missing":[{"law":"test_wet","name":"huur","kind":"no_data"}]}',
+    );
+    await expect(run(ctxWith({ x: unknownFor('huur') }), 'assert_equals', ['x', 500])).rejects.toThrow(
+      'Expected output "x" to equal 500',
+    );
+  });
+
+  it('assert_unknown reports a failed or missing execution like the other asserts', async () => {
+    await expect(
+      run({ result: null, executed: true, error: new Error('boom') }, 'assert_unknown', ['x']),
+    ).rejects.toThrow('No outputs available (execution failed)');
+  });
+});
+
+describe('set_data_source through dispatch', () => {
+  it('registers records without a key for an empty cell', async () => {
+    const calls = [];
+    const engine = { registerDataSource: (...a) => calls.push(a) };
+    await dispatch({}, engine, 'set_data_source', ['huurgegevens', 'bsn'], [
+      ['bsn', 'huur'],
+      ['1', ''],
+      ['2', 'null'],
+    ], { loadDependency: async () => {} });
+    expect(calls).toEqual([['huurgegevens', 'bsn', [{ bsn: 1 }, { bsn: 2, huur: null }]]]);
   });
 });

@@ -15,6 +15,7 @@
  */
 
 import { VALUE_TYPING } from './grammar.generated.js';
+import { isUnknown, missingFacts } from '../values.js';
 
 /**
  * Parse a string value to a typed value, mirroring Rust value_conversion.rs.
@@ -89,11 +90,24 @@ export function tableCellValue(raw) {
 /**
  * Parse a data table into record objects using the header row.
  *
+ * An empty cell (after trimming) means the record has no value for that
+ * column, so the key is left out of the record altogether (RFC-036): a data
+ * source that lacks the field makes the input Unknown, with the field named
+ * as the missing fact. The literal `null` in a cell stays `null`, an absence
+ * the data states. `tableCellValue('')` on its own is not changed.
+ *
+ * The same rule applies to every header-row table, collection parameters
+ * (`set_parameter_collection`) included, because the Rust mirror
+ * (`rows_to_records`) is one function for both. An element with an omitted
+ * key behaves like any object without that property; an author who means
+ * "this element has no such value" writes `null`. A parameter table
+ * (`set_parameters_table`) has no header row and does not pass through here.
+ *
  * A row that does not match the header row is rejected rather than filled with
  * undefined: today the Gherkin parser already rejects a varying cell count, but
- * that guarantee lives in a dependency we bump, and the Rust mirror
- * (`rows_to_records`) leans on a different parser. The explicit check keeps
- * both sides failing the same way if either parser ever loosens.
+ * that guarantee lives in a dependency we bump, and the Rust mirror leans on a
+ * different parser. The explicit check keeps both sides failing the same way
+ * if either parser ever loosens.
  */
 export function tableToRecords(dataTable) {
   if (!dataTable || dataTable.length < 2) return [];
@@ -106,6 +120,7 @@ export function tableToRecords(dataTable) {
     }
     const record = {};
     headers.forEach((h, i) => {
+      if (row[i].trim() === '') return;
       record[h] = tableCellValue(row[i]);
     });
     return record;
@@ -126,6 +141,9 @@ export function getOutput(ctx, name) {
  * - numbers: equal within 1e-9 (the engine keeps exact decimals, the JS side
  *   sees f64, so literal-parsing noise must not fail a scenario);
  * - null only equals null (a missing output is `undefined`, not null);
+ * - an Unknown value (RFC-036) equals any other Unknown value, whatever
+ *   facts each lists as missing, and nothing else — not null, not an
+ *   ordinary object;
  * - a number never equals its string form, a boolean never equals anything
  *   but the same boolean;
  * - arrays: same length, elements equal in order;
@@ -142,6 +160,7 @@ export function valuesEqual(a, b) {
   if (typeof a !== typeof b) return false;
   if (typeof a === 'number') return Math.abs(a - b) < 1e-9;
   if (typeof a !== 'object') return false;
+  if (isUnknown(a) || isUnknown(b)) return isUnknown(a) && isUnknown(b);
 
   const aIsArray = Array.isArray(a);
   if (aIsArray !== Array.isArray(b)) return false;
@@ -166,6 +185,19 @@ function assertOutput(ctx, name, expected) {
       `Expected output "${name}" to equal ${JSON.stringify(expected)}, got: ${JSON.stringify(actual)}`,
     );
   }
+}
+
+/** `name (law)` per missing fact, for error messages. */
+function describeMissing(value) {
+  return missingFacts(value).map((f) => `${f.name} (${f.law})`).join(', ');
+}
+
+function assertUnknown(ctx, name) {
+  const actual = getOutput(ctx, name);
+  if (!isUnknown(actual)) {
+    throw new Error(`Expected output "${name}" to be unknown, got: ${JSON.stringify(actual)}`);
+  }
+  return actual;
 }
 
 function tierUnsupported(tier) {
@@ -298,6 +330,25 @@ export async function dispatch(ctx, engine, action, args, table, { loadDependenc
     case 'assert_null':
       assertOutput(ctx, args[0], null);
       break;
+
+    // Unknown (RFC-036): the output is the `{__unknown: true, missing: [...]}`
+    // value, whatever it lists as missing.
+    case 'assert_unknown':
+      assertUnknown(ctx, args[0]);
+      break;
+
+    // ... and one of the facts it lists as missing has this name.
+    case 'assert_unknown_for': {
+      const name = args[0];
+      const fact = args[1];
+      const actual = assertUnknown(ctx, name);
+      if (!missingFacts(actual).some((f) => f.name === fact)) {
+        throw new Error(
+          `Expected output "${name}" to be unknown for lack of "${fact}", but it is unknown for lack of: ${describeMissing(actual)}`,
+        );
+      }
+      break;
+    }
 
     case 'assert_contains': {
       const name = args[0];

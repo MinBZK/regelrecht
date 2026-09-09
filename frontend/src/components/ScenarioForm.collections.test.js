@@ -79,14 +79,17 @@ describe('ScenarioForm collection parameters', () => {
     expect(params.medebewoners).toEqual([{ leeftijd: 25 }, { leeftijd: 19 }]);
   });
 
-  it('passes an untouched new cell as null, the value the saved table carries', async () => {
+  // RFC-036: a blank cell is no value stated; the record has no such key, the
+  // same as the runner reads back from the saved table.
+  it('leaves an untouched new cell out of the record, as the saved table does', async () => {
     const engine = fakeEngine();
     const w = mountForm(engine);
     await w.find('[data-testid="coll-row-0"]').trigger('click');
     w.findComponent(DataSourceTable).vm.$emit('update:modelValue', [{ _id: 7, leeftijd: '' }]);
     await w.vm.$nextTick();
     w.vm.execute();
-    expect(engine.executeWithTrace.mock.calls.at(-1)[2].medebewoners).toEqual([{ leeftijd: null }]);
+    expect(engine.executeWithTrace.mock.calls.at(-1)[2].medebewoners).toEqual([{}]);
+    expect(Object.hasOwn(engine.executeWithTrace.mock.calls.at(-1)[2].medebewoners[0], 'leeftijd')).toBe(false);
   });
 
   it('passes an emptied collection as an empty array, not as a missing input', async () => {

@@ -35,7 +35,9 @@ const TEMPLATES = {
   assert_boolean_false: (a) => `is ${q(a[0])} onwaar`,
   assert_equals_number: (a) => `is ${q(a[0])} gelijk aan ${a[1]}`,
   assert_equals_string: (a) => `is ${q(a[0])} gelijk aan ${q(a[1])}`,
-  assert_null: (a) => `is ${q(a[0])} leeg`,
+  assert_null: (a) => `is ${q(a[0])} afwezig`,
+  assert_unknown: (a) => `is ${q(a[0])} onbekend`,
+  assert_unknown_for: (a) => `is ${q(a[0])} onbekend bij gebrek aan ${q(a[1])}`,
   assert_contains: (a) => `bevat ${q(a[0])} ${q(a[1])}`,
   assert_exact_outputs: (a) => `bevat de uitkomst precies ${q(a[0])}`,
 };

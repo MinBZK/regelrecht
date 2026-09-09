@@ -72,14 +72,33 @@ function defaultForType(type) {
   }
 }
 
-// Null contract for data-source cells: null / undefined / the gherkin string
-// "null" all mean "not provided" and display as empty; clearing stores null.
-// (Mirrors steps.js `'null' -> null` and formMapper `null/'' -> 'null'`.)
+// Cell contract (RFC-036). A cell holds what the table says: blank means "no
+// value stated" (the runner leaves the field out, the engine reports the
+// input as unknown), the word `null` is an absence the author stated. The
+// two must stay apart in the form, so a blank shows as blank and a null (a
+// JS null from a typed collection record, or the text `null` from a
+// data-source row) shows as the word `null`, in a text control whatever the
+// column type - a number field cannot show it. Clearing a field stores a
+// blank; stating an absence is done by typing `null` in a text column or
+// picking it in a boolean column.
+function isNullCell(v) {
+  return v === null || v === 'null';
+}
 function cellDisplay(v) {
-  return v == null || v === 'null' ? '' : v;
+  if (isNullCell(v)) return 'null';
+  return v === undefined ? '' : v;
+}
+function cellType(col, v) {
+  return isNullCell(v) ? 'string' : col.type;
 }
 function cellStore(rowIndex, fieldName, v) {
-  updateCell(rowIndex, fieldName, v === '' || v == null ? null : v);
+  updateCell(rowIndex, fieldName, v == null ? '' : v);
+}
+// The boolean dropdown: `null` is the stated absence, the empty option a
+// blank cell.
+function booleanCellValue(v) {
+  if (isNullCell(v)) return 'null';
+  return v === undefined ? '' : String(v);
 }
 
 // All columns: key field + declared fields (deduplicated)
@@ -146,18 +165,19 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               <nldd-dropdown size="md">
                 <select
                   :aria-label="col.name"
-                  :value="String(row[col.name] || 'null')"
+                  :value="booleanCellValue(row[col.name])"
                   @change="updateCell(ri, col.name, $event.target.value)"
                 >
                   <option value="true">true</option>
                   <option value="false">false</option>
                   <option value="null">null</option>
+                  <option value="">(leeg)</option>
                 </select>
               </nldd-dropdown>
             </nldd-cell>
             <nldd-cell v-else width="full" min-width="120px">
               <ScenarioParameterInput
-                :type="col.type"
+                :type="cellType(col, row[col.name])"
                 :unit="col.unit"
                 :name="col.name"
                 :value="cellDisplay(row[col.name])"

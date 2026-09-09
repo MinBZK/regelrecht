@@ -13,6 +13,8 @@ export {
   tableCellValue,
   tableToRecords,
   getOutput,
+  valuesEqual,
   primitiveEqual,
 } from './actions.js';
+export { isUnknown, missingFacts } from '../values.js';
 export { ExecutionContext } from './context.js';
