@@ -202,6 +202,25 @@ het document oplevert.
 | De `implements` aanpassen omdat dat het kleinste diff is | Als de doelwet inconsistent nummert, verplaats je het defect alleen |
 | Concluderen dat de suite groen is, dus de koppelingen kloppen | Precies de blinde vlek die deze skill bestaat om te dekken |
 
+## De helft hiervan hoort een lint te zijn
+
+Deze skill dekt twee dingen die niet dezelfde behandeling verdienen.
+
+**DOOD is mechanisch en altijd fout.** Er bestaat geen geval waarin een
+`implements` die niet resolvet correct is. Zoiets hoort niet in een skill die
+iemand moet aanroepen, maar in `just validate` of de conformance-suite, waar CI
+het pakt op de commit die het introduceert. `koppeling-audit.py` geeft daarvoor al
+exitcode 1; wat ontbreekt is de aansluiting. Zolang die er niet is, is dit
+handwerk — en handwerk dat je vergeet is geen controle.
+
+**ONBEANTWOORD vraagt oordeel en moet handwerk blijven.** Elk corpus heeft
+tientallen open terms zonder invuller en legal_characters zonder hook, en de
+meeste daarvan zijn legitiem. Als lint zou dat alleen ruis geven, en ruis leert
+mensen de uitvoer wegklikken — inclusief de dode koppelingen ertussen.
+
+Dat onderscheid is precies waarom de classificatie in deze skill drie waarden
+heeft en geen twee.
+
 ## Verificatie voordat je een audit oplevert
 
 - [ ] Peildatum expliciet genoemd, en het aantal geladen wetten staat in het rapport

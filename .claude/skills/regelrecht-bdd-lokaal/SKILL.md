@@ -25,6 +25,12 @@ terwijl het harnasfouten zijn.
 Vier van de vijf valkuilen hieronder produceren tientallen rode scenario's die er
 uitzien als een fout in de YAML.
 
+> **Vier secties in deze skill beschrijven een fixbaar defect, geen kennis.** Ze
+> zijn gemarkeerd met ⚠︎ en staan opgesomd in
+> [Wat hiervan hoort te verdwijnen](#wat-hiervan-hoort-te-verdwijnen). Kom je er een
+> tegen, overweeg dan de fix in plaats van de omweg — zolang de omweg beschreven
+> staat, is de pijn weg die anders tot de fix had geleid.
+
 ## Snelle diagnose
 
 | Melding | Oorzaak | Zie |
@@ -97,6 +103,8 @@ ls "$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bi
 
 ## De wettencap
 
+⚠︎ *Fixbaar defect — zie [Wat hiervan hoort te verdwijnen](#wat-hiervan-hoort-te-verdwijnen), punt 1.*
+
 De engine weigert boven de **100 geladen wetten** met `Maximum law count exceeded`
 (`packages/engine/src/resolver.rs`), en **elke versie telt afzonderlijk mee**.
 Het volledige corpus (± 22.000 YAML's) laadt dus maar deels; alles wat na de cap
@@ -141,12 +149,16 @@ verklaring van een onverwacht rode run.
 
 ### De nl-laag is verplicht
 
+⚠︎ *Fixbaar defect — punt 3.*
+
 `REGULATION_PATH` moet wijzen op een map die een `nl/`-**submap** bevat, niet op de
 `nl/`-map zelf. Wijs je hem één niveau te diep, dan falen *álle* scenario's op
 `Regulation directory not found: <pad>/nl`. Dat leest als tientallen
 modelleerfouten en is er nul.
 
 ### Versieschaduw
+
+⚠︎ *Fixbaar defect — punt 2.*
 
 De output- en hook-index worden gebouwd uit de **nieuwste** versie van een wet.
 Een nieuwere versie zonder `machine_readable` overschaduwt daarmee een oudere die
@@ -159,6 +171,8 @@ BESCHIKKING output` om — met een melding over een ontbrekende output, niet ove
 versie. Meng daarom geen twee corpora in één map; kies er één per run.
 
 ## Twee bronnen: wetten en features
+
+⚠︎ *Fixbaar defect — punt 4.*
 
 De runner haalt zijn twee dingen uit twee verschillende plekken:
 
@@ -267,3 +281,20 @@ falen niet — ze verdwijnen.
 | Twee corpora in één map mengen | De nieuwste versie wint de output- en hook-index; scenario's vallen om op een ontbrekende output |
 | Uitvoer door `tail` pipen | Exitcode gaat verloren; rood wordt als groen gemeld |
 | `corpus/regulation` niet teruggezet | Een symlink of een lege map belandt in een commit |
+
+## Wat hiervan hoort te verdwijnen
+
+Vier van de secties hierboven beschrijven geen kennis maar een defect: de code
+laat een symptoom zien dat naar de verkeerde plek wijst, en deze skill vertaalt
+dat terug. Zodra de fix landt, vervalt de sectie — schrap hem dan ook, want een
+omweg die blijft staan wordt nagevolgd.
+
+| # | Sectie | Wat er werkelijk mis is | Fix |
+|---|---|---|---|
+| 1 | [De wettencap](#de-wettencap) | `tests/bdd/helpers/regulation_loader.rs:44` logt elke mislukte `load_law` als `tracing::warn!` en gaat door. De cap-fout (`src/resolver.rs:189`) is duidelijk, maar komt nooit in beeld; de run valt tientallen scenario's later om op `Law not found`. | Overgeslagen bestanden tellen en falen, of één samenvattende regel printen |
+| 2 | [Versieschaduw](#versieschaduw) | `src/resolver.rs:728-731` bouwt output-, implements-, hook-, override- en procedure-index uit `versions.first()` — de nieuwste versie — terwijl de evaluatie de versie kiest die geldt op de rekendatum. | Indexeren per geldende versie, of de index op datum bevragen |
+| 3 | [De nl-laag is verplicht](#de-nl-laag-is-verplicht) | `tests/bdd/world.rs:75` panic't bij een onbereikbare map, en cucumber bouwt een `World` per scenario. Eén padfout levert daardoor evenveel panics als er scenario's zijn. | Pad één keer valideren vóór de run, met één melding |
+| 4 | [Twee bronnen](#twee-bronnen-wetten-en-features) | `tests/bdd/main.rs:126` zoekt features onder `<repo>/corpus/regulation`, terwijl de wetten uit `REGULATION_PATH` komen. Daardoor is het omsymlinken van een tracked map nodig. | Bucket A zijn features onder `REGULATION_PATH` laten zoeken, of een aparte `FEATURE_PATH` |
+
+De toolchain-secties zijn een ander verhaal: geen mold, geen systeem-`cc` en het
+rust-lld-pad liggen buiten deze repo. Die blijven staan.
