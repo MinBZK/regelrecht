@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import CorrectionRows from '../components/CorrectionRows.vue';
 import DataLineage from '../components/DataLineage.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
 import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
@@ -83,11 +84,6 @@ const lineage = computed(() => {
 /** The lineage value node the caseworker is correcting; null = sheet closed. */
 const editing = ref(null);
 
-function formatSize(bytes) {
-  if (!Number.isFinite(bytes)) return '';
-  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} kB`;
-}
-
 function outputRows(c) {
   const law = lawOf(c);
   const claimed = c.claimedResult ?? {};
@@ -129,9 +125,6 @@ function laneTag(c) {
 function claimLawName(cl) {
   return corpus.value?.lawById(cl.lawId)?.name ?? cl.lawId;
 }
-function claimSpec(cl) {
-  return fieldSpec(corpus.value?.lawById(cl.lawId)?.doc, cl.input);
-}
 </script>
 
 <template>
@@ -161,8 +154,12 @@ function claimSpec(cl) {
                 </nldd-container>
                 <nldd-list v-for="c in lane.items" :key="c.id" variant="box-base" :accessible-label="c.lawName">
                   <nldd-list-item size="md" button :selected="selected?.id === c.id || undefined" @click="open(c)">
-                    <nldd-text-cell :text="c.lawName" :supporting-text="`${personaName(c.bsn)} · ${formatDateTime(c.submittedAt)}`"></nldd-text-cell>
-                    <nldd-cell><nldd-tag size="sm" :color="laneTag(c).color" :text="laneTag(c).text"></nldd-tag></nldd-cell>
+                    <!-- The status tag sits in the overline, not in an end cell: a lane is narrow
+                         and an end cell never shrinks, so beside the tag the title would break
+                         per letter. In the overline the title keeps the whole card width. -->
+                    <nldd-text-cell :text="c.lawName" :supporting-text="`${personaName(c.bsn)} · ${formatDateTime(c.submittedAt)}`">
+                      <nldd-tag slot="overline" size="sm" :color="laneTag(c).color" :text="laneTag(c).text"></nldd-tag>
+                    </nldd-text-cell>
                   </nldd-list-item>
                 </nldd-list>
               </nldd-container>
@@ -188,20 +185,7 @@ function claimSpec(cl) {
           <nldd-container gap="4">
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Correcties van burgers ter beoordeling</nldd-text></nldd-container>
             <nldd-list variant="box-tinted" accessible-label="Correcties ter beoordeling">
-              <nldd-list-item v-for="cl in serviceClaims" :key="cl.id" size="md">
-                <nldd-text-cell :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`" :supporting-text="`${personaName(cl.bsn)} · ${claimLawName(cl)} · ${cl.reason}`"></nldd-text-cell>
-                <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" :text="`Hardheidsclausule: ${cl.hardship.clause}`"></nldd-tag></nldd-cell>
-                <nldd-cell v-if="cl.evidence">
-                  <nldd-button v-if="cl.evidence.dataUrl" size="sm" variant="neutral-transparent" start-icon="file" :text="cl.evidence.name" :href="cl.evidence.dataUrl" target="_blank" rel="noopener"></nldd-button>
-                  <nldd-tag v-else size="sm" color="neutral" icon="file" :text="`${cl.evidence.name} (${formatSize(cl.evidence.size)})`"></nldd-tag>
-                </nldd-cell>
-                <nldd-cell>
-                  <nldd-button-group orientation="horizontal" size="sm">
-                    <nldd-button size="sm" variant="primary" text="Goedkeuren" @click="demo.decideClaim(cl.id, true)"></nldd-button>
-                    <nldd-button size="sm" variant="secondary" text="Afwijzen" @click="demo.decideClaim(cl.id, false)"></nldd-button>
-                  </nldd-button-group>
-                </nldd-cell>
-              </nldd-list-item>
+              <CorrectionRows :claims="serviceClaims" :origin="(cl) => `${personaName(cl.bsn)} · ${claimLawName(cl)}`" />
             </nldd-list>
           </nldd-container>
         </nldd-simple-section>
@@ -246,29 +230,7 @@ function claimSpec(cl) {
 
           <nldd-container v-if="caseClaims.length" padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Correcties"></nldd-text-cell></nldd-container>
           <nldd-list v-if="caseClaims.length" variant="box-tinted" accessible-label="Correcties">
-            <nldd-list-item v-for="cl in caseClaims" :key="cl.id" size="sm">
-              <nldd-text-cell size="sm" :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`">
-                <span slot="supporting-text">
-                  {{ cl.reason }}
-                  <template v-if="cl.hardship?.clause"><br />Beroep op hardheidsclausule: {{ cl.hardship.clause }}</template>
-                </span>
-              </nldd-text-cell>
-              <!-- The inspector is narrow: the clause itself is in the supporting text above. -->
-              <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" text="Hardheidsclausule"></nldd-tag></nldd-cell>
-              <nldd-cell v-if="cl.evidence">
-                <nldd-button v-if="cl.evidence.dataUrl" size="sm" variant="neutral-transparent" start-icon="file" :text="cl.evidence.name" :href="cl.evidence.dataUrl" target="_blank" rel="noopener"></nldd-button>
-                <nldd-tag v-else size="sm" color="neutral" icon="file" :text="`${cl.evidence.name} (${formatSize(cl.evidence.size)})`"></nldd-tag>
-              </nldd-cell>
-              <!-- A caseworker's correction is approved by definition: one tag says both. -->
-              <nldd-cell v-if="cl.claimant === 'BEHANDELAAR'"><nldd-tag size="sm" color="success" text="Door behandelaar"></nldd-tag></nldd-cell>
-              <nldd-cell v-else>
-                <nldd-tag v-if="cl.status !== 'PENDING'" size="sm" :color="cl.status === 'APPROVED' ? 'success' : 'critical'" :text="cl.status === 'APPROVED' ? 'Goedgekeurd' : 'Afgewezen'"></nldd-tag>
-                <nldd-button-group v-else orientation="horizontal" size="sm">
-                  <nldd-button size="sm" variant="primary" text="Goedkeuren" @click="demo.decideClaim(cl.id, true)"></nldd-button>
-                  <nldd-button size="sm" variant="secondary" text="Afwijzen" @click="demo.decideClaim(cl.id, false)"></nldd-button>
-                </nldd-button-group>
-              </nldd-cell>
-            </nldd-list-item>
+            <CorrectionRows :claims="caseClaims" />
           </nldd-list>
 
           <template v-if="selected.status !== 'DECIDED' && !selected.objection">

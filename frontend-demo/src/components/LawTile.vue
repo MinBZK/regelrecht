@@ -183,7 +183,11 @@ const statusTag = computed(() => {
       </template>
     </nldd-container>
 
-    <nldd-container slot="footer" padding="16" layout="row" gap="8" vertical-alignment="center">
+    <!-- wrap, not row: in a narrow tile (three-column grid) a whole button moves to a
+         second line, right-aligned with the other secondary actions, instead of a
+         button breaking its label. The buttons stay direct children: a nested
+         container has size containment and so no intrinsic width in a flex line. -->
+    <nldd-container slot="footer" padding="16" layout="wrap" gap="8" vertical-alignment="center" horizontal-alignment="right">
       <nldd-button v-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Mijn aanvraag" @click="apply"></nldd-button>
       <nldd-button v-else-if="evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Gegevens aanvullen" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
