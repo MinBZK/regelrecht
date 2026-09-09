@@ -107,6 +107,29 @@ pub enum SimulatorError {
         regulation: String,
     },
 
+    /// Een lexostatus publiceert een uitkomst die haar regeling niet kent.
+    ///
+    /// Wat een cel publiceert is een belofte aan de consument; een naam die
+    /// geen enkele geladen versie van de regeling oplevert, kan die belofte
+    /// niet waarmaken. Dat blijkt bij het optuigen, net als bij
+    /// [`SimulatorError::ForeignRegulation`], en niet pas bij de eerste vraag.
+    #[error(
+        "cel '{cell}': lexostatus '{lexostatus}' publiceert uitkomst '{output}', \
+         maar regeling '{regulation}' kent die niet (wel: {known})"
+    )]
+    UnknownOutput {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// De lexostatus met de onbekende uitkomst.
+        lexostatus: String,
+        /// De regeling waarover gereduceerd wordt.
+        regulation: String,
+        /// De uitkomstnaam die niet bestaat.
+        output: String,
+        /// Komma-gescheiden lijst van uitkomsten die de regeling wél kent.
+        known: String,
+    },
+
     /// Geen regelingmap met deze naam in het corpus.
     #[error("regeling '{regulation}' niet gevonden onder {root}")]
     RegulationNotFound {

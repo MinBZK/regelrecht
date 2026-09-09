@@ -32,6 +32,13 @@ cells:
 
       # Feiten die van buiten binnenkwamen en die de cel als eigen feit heeft
       # vastgelegd: verzekeringsstatus, inkomen en vermogen.
+      #
+      # `wet_op_de_zorgtoeslag` noemt deze drie als input met een
+      # `source.regulation` naar een andere regeling. Deze stroom overschaduwt
+      # die verwijzingen bewust: een kroniekstroom is een databron en wint op
+      # tier 1 van de resolutievolgorde (RFC-022 §4.2), dus de cross-law-vraag
+      # komt niet aan bod. Dat is hier de bedoeling — het zijn binnengekomen
+      # feiten — maar het gebeurt stil.
       - stream: intake
         key: bsn
         events:
@@ -52,6 +59,11 @@ cells:
         inputs:
           - name: bsn
             type: string
+        outputs:
+          # Wat de cel onder deze naam publiceert. De engine berekent onderweg
+          # meer; wat hier niet staat, verlaat de cel niet.
+          - heeft_recht_op_zorgtoeslag
+          - hoogte_zorgtoeslag
         reduction:
           regulation: wet_op_de_zorgtoeslag
           output: heeft_recht_op_zorgtoeslag

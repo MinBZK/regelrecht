@@ -10,7 +10,7 @@ use crate::cell::chronicle::ChronicleStream;
 use crate::error::{Result, SimulatorError};
 use regelrecht_engine::Value;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Alles wat nodig is om één cel op te tuigen.
 #[derive(Debug, Clone, Deserialize)]
@@ -40,6 +40,14 @@ pub struct LexostatusDefinition {
     /// De gedocumenteerde parameters. Een vraag die hiervan afwijkt, faalt.
     #[serde(default)]
     pub inputs: Vec<LexostatusInput>,
+    /// De gedocumenteerde uitkomsten: wat de cel onder deze naam publiceert.
+    ///
+    /// Wat hier niet staat, komt niet in het antwoord, ook al berekende de
+    /// engine het onderweg. Leeg of afwezig betekent: alleen
+    /// [`Reduction::output`]. Die uitkomst hoort er altijd bij — ze *is* de
+    /// lexostatus — dus deze lijst breidt uit, ze perkt niet in.
+    #[serde(default)]
+    pub outputs: Vec<String>,
     /// Hoe de cel over haar eigen feiten reduceert.
     pub reduction: Reduction,
 }
@@ -101,10 +109,10 @@ pub struct Reduction {
     pub regulation: String,
     /// De uitkomst van die regeling die de reductie moet opleveren.
     ///
-    /// Dit stuurt de evaluatie aan; het begrenst het antwoord niet. Een
-    /// lexostatus is een rechtstoestand, en de engine levert alle uitkomsten die
-    /// ze onderweg naar deze berekende. Een scenario mag daar dus ook op
-    /// controleren.
+    /// Dit stuurt de evaluatie aan. Wat het antwoord draagt, bepaalt
+    /// [`LexostatusDefinition::outputs`]: de engine levert ook de uitkomsten
+    /// die causaal met deze meekomen, en die zijn daarmee nog niet
+    /// gepubliceerd.
     pub output: String,
     /// De parameters voor de regeling. Een waarde `$naam` verwijst naar een
     /// gedocumenteerde parameter van de lexostatus; elke andere waarde is een
@@ -114,18 +122,73 @@ pub struct Reduction {
 }
 
 impl LexostatusDefinition {
+    /// De uitkomsten die deze lexostatus publiceert.
+    ///
+    /// Altijd [`Reduction::output`], plus wat [`Self::outputs`] noemt. Een
+    /// consument krijgt precies deze namen te zien.
+    pub fn published_outputs(&self) -> BTreeSet<&str> {
+        std::iter::once(self.reduction.output.as_str())
+            .chain(self.outputs.iter().map(String::as_str))
+            .collect()
+    }
+
+    /// Laat van het antwoord van de engine alleen de gepubliceerde uitkomsten
+    /// over.
+    ///
+    /// De engine levert bij een gevraagde uitkomst ook de uitkomsten die
+    /// causaal met haar meekomen. Die zijn berekend, niet gepubliceerd, en
+    /// horen dus niet in het antwoord van de cel.
+    pub(crate) fn project(&self, outputs: BTreeMap<String, Value>) -> BTreeMap<String, Value> {
+        let published = self.published_outputs();
+        outputs
+            .into_iter()
+            .filter(|(name, _)| published.contains(name.as_str()))
+            .collect()
+    }
+
     /// Controleer de definitie tegen de cel waarin ze staat.
     ///
-    /// Twee dingen moeten kloppen voordat een consument er ooit bij kan: de
-    /// reductie mag alleen een eigen regeling van de cel raken, en elke
-    /// `$`-verwijzing moet een gedocumenteerde parameter zijn.
-    pub(crate) fn validate(&self, cell: &str, own_laws: &[String]) -> Result<()> {
+    /// Drie dingen moeten kloppen voordat een consument er ooit bij kan: de
+    /// reductie mag alleen een eigen regeling van de cel raken, elke
+    /// gepubliceerde uitkomst moet een uitkomst zijn die die regeling kent, en
+    /// elke `$`-verwijzing moet een gedocumenteerde parameter zijn.
+    ///
+    /// `known_outputs` bevat per regeling de uitkomstnamen van álle geladen
+    /// versies. Een definitie afkeuren om een naam die alleen in de nieuwste
+    /// versie ontbreekt, zou een scenario over een ouder moment onterecht
+    /// blokkeren.
+    pub(crate) fn validate(
+        &self,
+        cell: &str,
+        own_laws: &[String],
+        known_outputs: &BTreeMap<String, BTreeSet<String>>,
+    ) -> Result<()> {
         if !own_laws.contains(&self.reduction.regulation) {
             return Err(SimulatorError::ForeignRegulation {
                 cell: cell.to_string(),
                 lexostatus: self.name.clone(),
                 regulation: self.reduction.regulation.clone(),
             });
+        }
+
+        let known = known_outputs
+            .get(&self.reduction.regulation)
+            .cloned()
+            .unwrap_or_default();
+        for published in self.published_outputs() {
+            if !known.contains(published) {
+                return Err(SimulatorError::UnknownOutput {
+                    cell: cell.to_string(),
+                    lexostatus: self.name.clone(),
+                    regulation: self.reduction.regulation.clone(),
+                    output: published.to_string(),
+                    known: known
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                });
+            }
         }
 
         for reference in self

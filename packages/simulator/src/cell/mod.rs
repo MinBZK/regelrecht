@@ -18,7 +18,7 @@ use crate::error::{Result, SimulatorError};
 use chrono::NaiveDate;
 use regelrecht_engine::{LawExecutionService, Value};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// Het antwoord van een cel: de rechtstoestand vanuit een gevraagd perspectief,
@@ -33,9 +33,9 @@ pub struct Lexostatus {
     pub op_moment: NaiveDate,
     /// De waarden die de reductie opleverde.
     ///
-    /// Niet alleen de uitkomst die de definitie noemt: een lexostatus is een
-    /// rechtstoestand, dus alles wat de engine onderweg naar die uitkomst
-    /// berekende hoort erbij.
+    /// Uitsluitend de uitkomsten die de definitie publiceert. De engine levert
+    /// bij een gevraagde uitkomst ook wat er causaal mee meekomt; berekend is
+    /// niet gepubliceerd, dus dat blijft binnen de cel.
     pub values: BTreeMap<String, Value>,
 }
 
@@ -73,9 +73,11 @@ impl Cell {
             }
         }
 
+        let known_outputs = outputs_per_regulation(&service);
+
         let mut published: BTreeMap<String, LexostatusDefinition> = BTreeMap::new();
         for definition in &config.lexostatus_definitions {
-            definition.validate(&config.id, &config.laws)?;
+            definition.validate(&config.id, &config.laws, &known_outputs)?;
             if published
                 .insert(definition.name.clone(), definition.clone())
                 .is_some()
@@ -101,6 +103,10 @@ impl Cell {
     /// gepubliceerde naam en levert de gedocumenteerde parameters; hoe er
     /// gereduceerd wordt, bepaalt de cel. Een onbekende naam is een nette fout
     /// die opsomt wat de cel wél publiceert.
+    ///
+    /// Het antwoord draagt uitsluitend de uitkomsten die de definitie
+    /// publiceert. Gedocumenteerd geldt dus aan beide kanten: de vraag mag
+    /// alleen wat de definitie noemt, en het antwoord geeft niet meer dan dat.
     ///
     /// `op_moment` is het moment waarop gevraagd wordt: feiten die pas later in
     /// deze cel zijn vastgelegd, bestaan voor dit antwoord niet.
@@ -143,9 +149,31 @@ impl Cell {
             cell: self.id.clone(),
             name: definition.name.clone(),
             op_moment,
-            values: result.outputs,
+            values: definition.project(result.outputs),
         })
     }
+}
+
+/// De uitkomstnamen per regeling, over alle geladen versies heen.
+///
+/// De engine indexeert uitkomsten alleen voor de nieuwste geladen versie,
+/// terwijl een cel elke versie laadt en een vraag over een ouder moment op een
+/// oudere versie landt. Voor de vraag "kent deze regeling deze uitkomst?" telt
+/// daarom elke versie mee.
+fn outputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTreeSet<String>> {
+    let mut per_regulation: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for law in service.resolver().all_law_versions() {
+        let known = per_regulation.entry(law.id.clone()).or_default();
+        for article in &law.articles {
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            for output in execution.output.iter().flatten() {
+                known.insert(output.name.clone());
+            }
+        }
+    }
+    per_regulation
 }
 
 #[cfg(test)]
@@ -229,6 +257,96 @@ lexostatus_definitions:
         assert!(
             matches!(err, SimulatorError::ParameterType { .. }),
             "verwachtte ParameterType, kreeg {err}"
+        );
+    }
+
+    /// Een cel over de zorgtoeslag, met alle feiten die die wet nodig heeft.
+    ///
+    /// `published` wordt letterlijk in de definitie geplakt, zodat elke test
+    /// alleen het `outputs`-blok varieert.
+    fn zorgtoeslag(published: &str) -> CellConfig {
+        config(&format!(
+            r"
+id: toeslagen
+laws:
+  - wet_op_de_zorgtoeslag
+  - algemene_wet_inkomensafhankelijke_regelingen
+  - regeling_standaardpremie
+chronicles:
+  - stream: intake
+    key: bsn
+    events:
+      - op_moment: 2024-11-15
+        fields:
+          bsn: '999993653'
+          partnerschap_type: GEEN
+          is_verzekerde: true
+          verzamelinkomen: 79547
+          buitenlands_inkomen: 0
+          vermogen: 0
+lexostatus_definitions:
+  - name: zorgtoeslag_rechtstoestand
+{published}
+    inputs:
+      - name: bsn
+        type: string
+    reduction:
+      regulation: wet_op_de_zorgtoeslag
+      output: heeft_recht_op_zorgtoeslag
+      parameters:
+        bsn: $bsn
+"
+        ))
+    }
+
+    #[test]
+    fn een_niet_gepubliceerde_uitkomst_blijft_binnen_de_cel() {
+        let cell = Cell::from_config(&zorgtoeslag(""), &regulation_root())
+            .unwrap_or_else(|e| panic!("cel moet op te tuigen zijn: {e}"));
+        let answer = cell
+            .reduce("zorgtoeslag_rechtstoestand", &bsn(), moment())
+            .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
+
+        assert_eq!(
+            answer.values.get("heeft_recht_op_zorgtoeslag"),
+            Some(&Value::Bool(true)),
+            "de gepubliceerde uitkomst hoort in het antwoord"
+        );
+        assert!(
+            !answer.values.contains_key("hoogte_zorgtoeslag"),
+            "de engine berekent de hoogte mee, maar de cel publiceert haar niet; kreeg {:?}",
+            answer.values
+        );
+    }
+
+    #[test]
+    fn een_gepubliceerde_uitkomst_komt_er_wel_bij() {
+        let cell = Cell::from_config(
+            &zorgtoeslag("    outputs:\n      - hoogte_zorgtoeslag"),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("cel moet op te tuigen zijn: {e}"));
+        let answer = cell
+            .reduce("zorgtoeslag_rechtstoestand", &bsn(), moment())
+            .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
+
+        assert!(
+            answer.values.contains_key("hoogte_zorgtoeslag"),
+            "een uitkomst die in `outputs` staat hoort in het antwoord; kreeg {:?}",
+            answer.values
+        );
+    }
+
+    #[test]
+    fn een_uitkomst_die_de_regeling_niet_kent_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &zorgtoeslag("    outputs:\n      - hoogte_huurtoeslag"),
+            &regulation_root(),
+        )
+        .expect_err("een uitkomst die de regeling niet kent hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownOutput { .. }),
+            "verwachtte UnknownOutput, kreeg {err}"
         );
     }
 
