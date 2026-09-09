@@ -436,6 +436,10 @@
             "date"
           ]
         },
+        "nullable": {
+          "type": "boolean",
+          "description": "Whether `null` (absence: the register or the law says there is none) is a legitimate value of this field. Defaults to false: a non-nullable input may never receive null from a data source or another law, a non-nullable output may never evaluate to null, and a non-nullable parameter may never be passed null. Unknown (a value nobody has) is not governed by this flag. RFC-036."
+        },
         "type_spec": {
           "type": "object",
           "description": "Additional type specifications for numeric and temporal values",

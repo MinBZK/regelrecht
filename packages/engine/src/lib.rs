@@ -42,6 +42,7 @@ pub mod resolver;
 pub mod schema;
 pub mod service;
 pub mod trace;
+pub mod typecheck;
 pub mod types;
 pub mod units;
 pub mod uri;

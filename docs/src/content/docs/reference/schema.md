@@ -23,7 +23,7 @@ This table is the single source of truth for which schema version introduced whi
 
 | Version | Introduces | RFC |
 |---------|-----------|-----|
-| v0.5.8 | No new construct. Corrects the description of `required` on execution parameters: it defaults to `true`, and an omitted `required: false` parameter is an unknown value, not an error | [RFC-036](/rfcs/rfc-036) |
+| v0.5.8 | `nullable` on parameters, inputs and outputs: whether `null` (absence) is a legitimate value of the field; defaults to `false`, and the validator and the engine hold a law to it. Also corrects the description of `required` on execution parameters: it defaults to `true`, and an omitted `required: false` parameter is an unknown value, not an error | [RFC-036](/rfcs/rfc-036) |
 | v0.5.7 | `FOREACH` operation (iteration over a variable-length collection) | [RFC-016](/rfcs/rfc-016) |
 | v0.5.6 | Quantity `unit` labels (`euro`, `ratio`, `percentage`) and structured `definitions` constants carrying `type`/`type_spec` | [RFC-023](/rfcs/rfc-023) |
 | v0.5.5 | `ROUND`, `CEIL`, `FLOOR` rounding operations (explicit statutory rounding) | [RFC-024](/rfcs/rfc-024) |
@@ -38,7 +38,7 @@ This table is the single source of truth for which schema version introduced whi
 | v0.3.0 | Typed operation definitions (arithmetic, logical, comparison, conditional, switch) with semantic operands and `legal_basis`, replacing the single untyped operation | [RFC-004](/rfcs/rfc-004) |
 | v0.2.0 | Initial public schema: `regulatory_layer`, `competent_authority`, `execution.produces`, cross-law references (`source`) | [RFC-001](/rfcs/rfc-001), [RFC-002](/rfcs/rfc-002) |
 
-Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own. Absent and unknown values ([RFC-036](/rfcs/rfc-036)) add no construct either: the RFC fixes what the engine does with existing constructs over a missing value, and v0.5.8 only corrects the wording of `required`, whose text said "defaults to false" while the engine has always read an absent flag as required.
+Multi-organization execution ([RFC-009](/rfcs/rfc-009)) reuses `competent_authority` (v0.2.0) and adds no schema construct of its own. Absent and unknown values ([RFC-036](/rfcs/rfc-036)) add one construct, the `nullable` flag of v0.5.8, and otherwise fix what the engine does with existing constructs over a missing value; v0.5.8 also corrects the wording of `required`, whose text said "defaults to false" while the engine has always read an absent flag as required.
 
 The annotation schema (`annotation-schema.json`) versions independently of the law schema: it is republished only when it changes. It was introduced at `schema/v0.5.2/` and last republished at `schema/v0.5.3/`, which is the version the validators embed.
 

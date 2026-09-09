@@ -49,6 +49,10 @@ articles:
         output:
           - name: gemeentelijke_afstand_cm
             type: number
+            # Art. 2.75 noemt alleen bomen in het centrum (lid 1) en heggen (lid 2).
+            # Voor andere beplanting zwijgt de APV: de waarde is dan afwezig en
+            # BW 5:42 lid 2 valt terug op de wettelijke afstand (RFC-036).
+            nullable: true
             description: Gemeentelijke afstand tot erfgrens in centimeters
 
         actions:

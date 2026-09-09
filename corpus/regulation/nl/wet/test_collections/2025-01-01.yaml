@@ -37,10 +37,14 @@ articles:
             type: number
           - name: totaal_alle_bijdragen
             type: number
+          # Er is geen hoogste of laagste van niets: over een lege verzameling
+          # zijn deze uitkomsten afwezig (RFC-036), en dat verklaren ze.
           - name: hoogste_bijdrage
             type: number
+            nullable: true
           - name: laagste_bijdrage
             type: number
+            nullable: true
           - name: iedereen_draagt_bij
             type: boolean
           - name: iemand_draagt_bij

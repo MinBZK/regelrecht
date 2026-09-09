@@ -1,0 +1,46 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_nullable_bron
+name: Testwet afwezigheid als eigenschap van het type (bron)
+regulatory_layer: WET
+bwb_id: BWBR9999913
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_nullable_bron
+
+articles:
+  - number: '1'
+    url: https://example.com/test_nullable_bron/1
+    text: >-
+      Het geboortejaar is het in de registratie opgenomen geboortejaar. Een
+      aanvraag past indien het aangevraagde bedrag meer dan honderd bedraagt.
+    machine_readable:
+      # `aanvraag_bedrag` mag de aanroeper weglaten (onbekend), maar niet als
+      # null meegeven: de bron verklaart het bedrag niet nullable, en rekent
+      # ermee zonder afwezigheidstoets.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: aanvraag_bedrag
+            type: number
+            required: false
+        input:
+          - name: geboortejaar
+            type: number
+            source: {}
+        output:
+          - name: geboortejaar
+            type: number
+          - name: past_aanvraag
+            type: boolean
+        actions:
+          - output: geboortejaar
+            value: $geboortejaar
+          - output: past_aanvraag
+            value:
+              operation: GREATER_THAN
+              subject: $aanvraag_bedrag
+              value: 100

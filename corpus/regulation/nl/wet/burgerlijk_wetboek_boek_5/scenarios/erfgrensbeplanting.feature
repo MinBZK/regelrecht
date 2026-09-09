@@ -21,9 +21,10 @@ Feature: Erfgrensbeplanting via BW 5:42
     When I evaluate "minimale_afstand_m" of "burgerlijk_wetboek_boek_5"
     Then output "minimale_afstand_m" equals 1
 
-  Scenario: Boom buiten Amsterdam centrum - APV zwijgt, BW default via null fallthrough
+  Scenario: Boom buiten Amsterdam centrum - APV zwijgt, de default van de open term geldt
     # Amsterdam APV zegt niets over bomen buiten postcodegebied 1011-1018
-    # open_term gemeentelijke_afstand_cm = null → BW default (200cm) via null-check
+    # De APV levert voor deze boom geen afstand (afwezig): geen afwijking
+    # toegelaten, dus de default van de open term (lid 2: 200 cm) geldt.
     Given the following parameters:
       | gemeente_code   | GM0363 |
       | type_beplanting | boom   |
@@ -46,9 +47,9 @@ Feature: Erfgrensbeplanting via BW 5:42
 
   # === Gemeente zonder eigen verordening: defaults uit rijkswet ===
 
-  Scenario: Boom in gemeente zonder verordening - open_term null, BW default via null fallthrough
-    # GM9999 heeft geen verordening, dus gemeentelijke_afstand_cm = null
-    # BW null-check valt door naar wettelijke_afstand_cm = 200
+  Scenario: Boom in gemeente zonder verordening - de default van de open term geldt
+    # GM9999 heeft geen verordening: geen implementatie van de open term, dus
+    # de default van lid 2 (200 cm).
     Given the following parameters:
       | gemeente_code   | GM9999 |
       | type_beplanting | boom   |

@@ -341,6 +341,28 @@ impl<'a> ArticleEngine<'a> {
                 context.trace_set_result(value.clone());
             }
 
+            // An absence is a value only where the law declared it one. An
+            // output that is not nullable and still came out `null` (an IF
+            // with no matching case and no default, a MIN/MAX over nothing, a
+            // null input passed through) is the law saying nothing where it
+            // claimed to always say something (RFC-036).
+            if value.is_null()
+                && self
+                    .article
+                    .find_output(output_name)
+                    .is_some_and(|output| !output.is_nullable())
+            {
+                let err = EngineError::NullOutput {
+                    law_id: self.law.id.clone(),
+                    output: output_name.clone(),
+                };
+                if tracing_active {
+                    context.trace_set_message(format!("Action failed: {}", err));
+                    context.trace_pop();
+                }
+                return Err(err);
+            }
+
             tracing::debug!("Output {} = {}", output_name, value);
             context.set_output(output_name, value.clone());
 
@@ -387,168 +409,14 @@ impl<'a> ArticleEngine<'a> {
 
     /// Convert an Action to an ActionOperation for execution.
     ///
-    /// This is needed because actions can have operations specified inline
-    /// rather than as nested ActionValue::Operation.
-    ///
-    /// Only comparison, arithmetic, aggregate, and logical operations are supported
-    /// at the action level because the `Action` struct only has `subject`, `value`,
-    /// `values`, and `conditions` fields. IF, date operations, and LIST must be
-    /// nested inside `value` as an `ActionValue::Operation`.
+    /// See [`action_to_operation`]; kept as a method so the call site reads
+    /// as before.
     fn action_to_operation(
         &self,
         action: &Action,
         operation: &crate::types::Operation,
     ) -> Result<ActionOperation> {
-        use crate::types::Operation;
-
-        let require_subject = |op: &Operation| {
-            action.subject.clone().ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'subject' at action level",
-                    op.name()
-                ))
-            })
-        };
-        let require_value = |op: &Operation| {
-            action.value.clone().ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'value' at action level",
-                    op.name()
-                ))
-            })
-        };
-        let require_values = |op: &Operation| {
-            action.values.clone().ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'values' at action level",
-                    op.name()
-                ))
-            })
-        };
-        let require_conditions = |op: &Operation| {
-            action.conditions.clone().ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'conditions' at action level",
-                    op.name()
-                ))
-            })
-        };
-        let require_precision = |op: &Operation| {
-            action.precision.ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'precision' at action level",
-                    op.name()
-                ))
-            })
-        };
-
-        match operation {
-            // Comparison operations (subject + value)
-            Operation::Equals => Ok(ActionOperation::Equals {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::NotEquals => Ok(ActionOperation::NotEquals {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::GreaterThan => Ok(ActionOperation::GreaterThan {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::LessThan => Ok(ActionOperation::LessThan {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::GreaterThanOrEqual => Ok(ActionOperation::GreaterThanOrEqual {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::LessThanOrEqual => Ok(ActionOperation::LessThanOrEqual {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-
-            // Arithmetic operations (values)
-            Operation::Add => Ok(ActionOperation::Add {
-                values: require_values(operation)?,
-            }),
-            Operation::Subtract => Ok(ActionOperation::Subtract {
-                values: require_values(operation)?,
-            }),
-            Operation::Multiply => Ok(ActionOperation::Multiply {
-                values: require_values(operation)?,
-            }),
-            Operation::Divide => Ok(ActionOperation::Divide {
-                values: require_values(operation)?,
-            }),
-
-            // Aggregate operations (values)
-            Operation::Max => Ok(ActionOperation::Max {
-                values: require_values(operation)?,
-            }),
-            Operation::Min => Ok(ActionOperation::Min {
-                values: require_values(operation)?,
-            }),
-
-            // Rounding operations (unary value + precision; RFC-024)
-            Operation::Round => Ok(ActionOperation::Round {
-                value: require_value(operation)?,
-                precision: require_precision(operation)?,
-            }),
-            Operation::Ceil => Ok(ActionOperation::Ceil {
-                value: require_value(operation)?,
-                precision: require_precision(operation)?,
-            }),
-            Operation::Floor => Ok(ActionOperation::Floor {
-                value: require_value(operation)?,
-                precision: require_precision(operation)?,
-            }),
-
-            // Logical operations
-            Operation::And => Ok(ActionOperation::And {
-                conditions: require_conditions(operation)?,
-            }),
-            Operation::Or => Ok(ActionOperation::Or {
-                conditions: require_conditions(operation)?,
-            }),
-            Operation::Not => Ok(ActionOperation::Not {
-                value: require_value(operation)?,
-            }),
-
-            // Null check operations (subject only)
-            Operation::IsNull => Ok(ActionOperation::IsNull {
-                subject: require_subject(operation)?,
-            }),
-            Operation::NotNull => Ok(ActionOperation::NotNull {
-                subject: require_subject(operation)?,
-            }),
-
-            // Collection: IN/NOT_IN (subject + value/values)
-            Operation::In => Ok(ActionOperation::In {
-                subject: require_subject(operation)?,
-                value: action.value.clone(),
-                values: action.values.clone(),
-            }),
-            Operation::NotIn => Ok(ActionOperation::NotIn {
-                subject: require_subject(operation)?,
-                value: action.value.clone(),
-                values: action.values.clone(),
-            }),
-
-            // Operations not supported at action level
-            Operation::If
-            | Operation::List
-            | Operation::ForEach
-            | Operation::Age
-            | Operation::DateAdd
-            | Operation::Date
-            | Operation::DayOfWeek
-            | Operation::DateDiff => Err(EngineError::InvalidOperation(format!(
-                "{} must be nested inside 'value', not used directly at action level",
-                operation.name()
-            ))),
-        }
+        action_to_operation(action, operation)
     }
 
     /// Get actions from the article's execution spec.
@@ -557,6 +425,170 @@ impl<'a> ArticleEngine<'a> {
             .get_execution_spec()
             .and_then(|exec| exec.actions.as_deref())
             .unwrap_or(&[])
+    }
+}
+
+/// Convert an inline action (`operation:` next to `subject`/`value`/
+/// `values`/`conditions`) to the nested [`ActionOperation`] form the
+/// evaluator and the static type check both work on.
+///
+/// This is needed because actions can have operations specified inline
+/// rather than as nested `ActionValue::Operation`.
+///
+/// Only comparison, arithmetic, aggregate, and logical operations are supported
+/// at the action level because the `Action` struct only has `subject`, `value`,
+/// `values`, and `conditions` fields. IF, date operations, and LIST must be
+/// nested inside `value` as an `ActionValue::Operation`.
+pub(crate) fn action_to_operation(
+    action: &Action,
+    operation: &crate::types::Operation,
+) -> Result<ActionOperation> {
+    use crate::types::Operation;
+
+    let require_subject = |op: &Operation| {
+        action.subject.clone().ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{} requires 'subject' at action level",
+                op.name()
+            ))
+        })
+    };
+    let require_value = |op: &Operation| {
+        action.value.clone().ok_or_else(|| {
+            EngineError::InvalidOperation(format!("{} requires 'value' at action level", op.name()))
+        })
+    };
+    let require_values = |op: &Operation| {
+        action.values.clone().ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{} requires 'values' at action level",
+                op.name()
+            ))
+        })
+    };
+    let require_conditions = |op: &Operation| {
+        action.conditions.clone().ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{} requires 'conditions' at action level",
+                op.name()
+            ))
+        })
+    };
+    let require_precision = |op: &Operation| {
+        action.precision.ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{} requires 'precision' at action level",
+                op.name()
+            ))
+        })
+    };
+
+    match operation {
+        // Comparison operations (subject + value)
+        Operation::Equals => Ok(ActionOperation::Equals {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::NotEquals => Ok(ActionOperation::NotEquals {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::GreaterThan => Ok(ActionOperation::GreaterThan {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::LessThan => Ok(ActionOperation::LessThan {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::GreaterThanOrEqual => Ok(ActionOperation::GreaterThanOrEqual {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::LessThanOrEqual => Ok(ActionOperation::LessThanOrEqual {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+
+        // Arithmetic operations (values)
+        Operation::Add => Ok(ActionOperation::Add {
+            values: require_values(operation)?,
+        }),
+        Operation::Subtract => Ok(ActionOperation::Subtract {
+            values: require_values(operation)?,
+        }),
+        Operation::Multiply => Ok(ActionOperation::Multiply {
+            values: require_values(operation)?,
+        }),
+        Operation::Divide => Ok(ActionOperation::Divide {
+            values: require_values(operation)?,
+        }),
+
+        // Aggregate operations (values)
+        Operation::Max => Ok(ActionOperation::Max {
+            values: require_values(operation)?,
+        }),
+        Operation::Min => Ok(ActionOperation::Min {
+            values: require_values(operation)?,
+        }),
+
+        // Rounding operations (unary value + precision; RFC-024)
+        Operation::Round => Ok(ActionOperation::Round {
+            value: require_value(operation)?,
+            precision: require_precision(operation)?,
+        }),
+        Operation::Ceil => Ok(ActionOperation::Ceil {
+            value: require_value(operation)?,
+            precision: require_precision(operation)?,
+        }),
+        Operation::Floor => Ok(ActionOperation::Floor {
+            value: require_value(operation)?,
+            precision: require_precision(operation)?,
+        }),
+
+        // Logical operations
+        Operation::And => Ok(ActionOperation::And {
+            conditions: require_conditions(operation)?,
+        }),
+        Operation::Or => Ok(ActionOperation::Or {
+            conditions: require_conditions(operation)?,
+        }),
+        Operation::Not => Ok(ActionOperation::Not {
+            value: require_value(operation)?,
+        }),
+
+        // Null check operations (subject only)
+        Operation::IsNull => Ok(ActionOperation::IsNull {
+            subject: require_subject(operation)?,
+        }),
+        Operation::NotNull => Ok(ActionOperation::NotNull {
+            subject: require_subject(operation)?,
+        }),
+
+        // Collection: IN/NOT_IN (subject + value/values)
+        Operation::In => Ok(ActionOperation::In {
+            subject: require_subject(operation)?,
+            value: action.value.clone(),
+            values: action.values.clone(),
+        }),
+        Operation::NotIn => Ok(ActionOperation::NotIn {
+            subject: require_subject(operation)?,
+            value: action.value.clone(),
+            values: action.values.clone(),
+        }),
+
+        // Operations not supported at action level
+        Operation::If
+        | Operation::List
+        | Operation::ForEach
+        | Operation::Age
+        | Operation::DateAdd
+        | Operation::Date
+        | Operation::DayOfWeek
+        | Operation::DateDiff => Err(EngineError::InvalidOperation(format!(
+            "{} must be nested inside 'value', not used directly at action level",
+            operation.name()
+        ))),
     }
 }
 

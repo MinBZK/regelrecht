@@ -125,6 +125,11 @@ impl RuleContext {
         self.unpassed_optional = Rc::new(unpassed_optional);
     }
 
+    /// `$id` of the law this context executes (empty for a bare context).
+    pub fn law_id(&self) -> &str {
+        &self.law_id
+    }
+
     /// Set definitions from an article's definitions section.
     ///
     /// Processes the Definition enum to extract actual values.

@@ -159,6 +159,24 @@ impl RuleResolver {
         // law. Refuse a document that carries the serialized sentinel.
         crate::load_check::reject_unknown_literals(&law)?;
 
+        // RFC-036/RFC-037: hold the law to its own declarations before it can
+        // run, so the editor sees the same findings as `just validate`. The
+        // cross-law rule (N5) is checked against the laws already loaded; a
+        // referenced law that arrives later is not re-checked against this one.
+        let findings = crate::typecheck::check_law(&law, &|id| self.get_law(id));
+        if !findings.is_empty() {
+            let listed = findings
+                .iter()
+                .map(|finding| format!("  {finding}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(EngineError::LoadError(format!(
+                "law '{law_id}' fails the type check ({} finding{}):\n{listed}",
+                findings.len(),
+                if findings.len() == 1 { "" } else { "s" }
+            )));
+        }
+
         // RFC-019: valid_to is static version-selection metadata. An unparseable
         // value (e.g. the format-valid but calendar-invalid '2023-02-30') would
         // silently skip the expiry check in select_in and keep an ended law in
@@ -1380,6 +1398,65 @@ articles:
             100,
         ));
         assert!(matches!(result, Err(EngineError::LoadError(_))));
+    }
+
+    #[test]
+    fn test_resolver_rejects_a_law_that_fails_the_type_check() {
+        // The loader runs the static type check (RFC-036/RFC-037), so a law
+        // the validator refuses cannot be loaded into the editor either. The
+        // error lists every finding.
+        let mut resolver = RuleResolver::new();
+        let law = r#"
+$id: getypeerd
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        input:
+          - name: huur
+            type: amount
+            source: {}
+        output:
+          - name: geen_huur
+            type: boolean
+          - name: klasse
+            type: string
+        actions:
+          - output: geen_huur
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null
+          - output: klasse
+            value:
+              operation: IF
+              cases:
+                - when: true
+                  then: 5
+"#;
+        let err = resolver.load_from_yaml(law).unwrap_err();
+        let message = err.to_string();
+        assert!(matches!(err, EngineError::LoadError(_)), "{err:?}");
+        assert!(
+            message.contains("fails the type check (2 findings)"),
+            "{message}"
+        );
+        assert!(message.contains("[N1]"), "{message}");
+        assert!(message.contains("[T4]"), "{message}");
+        assert!(!resolver.has_law("getypeerd"));
+
+        // Declared as the law behaves, it loads.
+        let fixed = law
+            .replace(
+                "type: amount\n",
+                "type: amount\n            nullable: true\n",
+            )
+            .replace("then: 5", "then: vijf");
+        resolver.load_from_yaml(&fixed).unwrap();
+        assert!(resolver.has_law("getypeerd"));
     }
 
     #[test]

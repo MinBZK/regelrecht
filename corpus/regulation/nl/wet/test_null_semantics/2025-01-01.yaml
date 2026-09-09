@@ -22,7 +22,9 @@ url: https://example.com/test_null_semantics
 # voor de situatie die het toetst: de engine voert alle acties van een artikel
 # uit, dus een rekenende actie op een afwezige waarde laat het hele artikel
 # falen. Artikel 1 rekent en ordent; artikel 2 toetst alleen op afwezigheid;
-# artikel 3 beslist op een waarheidswaarde; artikel 4 gaat over parameters.
+# artikel 3 beslist op een waarheidswaarde; artikel 4 gaat over parameters;
+# artikel 5 rekent en beslist op velden van een record, waarvan het type niets
+# zegt, zodat een afwezig veld daar de bewerking zelf laat falen.
 
 articles:
   - number: '1'
@@ -30,12 +32,14 @@ articles:
     text: >-
       De huur is hoog indien zij meer dan vijfhonderd bedraagt. De verhoogde
       huur is de huur vermeerderd met honderd. De huurklasse is hoog indien de
-      huur hoog is en anders laag. De huur en het burgerservicenummer van de
-      partner worden als opsomming vergeleken.
+      huur hoog is en anders laag. De huur wordt vergeleken met de huur van de
+      partner; de huur en het burgerservicenummer van de partner worden als
+      opsomming vergeleken.
     machine_readable:
       # Rekenen en ordenen. Met een onbekende huur zijn deze uitkomsten
-      # onbekend (bij AND/OR beslist een definitieve operand); met een
-      # afwezige huur (null) faalt de uitvoering: "geen" is geen bedrag.
+      # onbekend (bij AND/OR beslist een definitieve operand). De inputs zijn
+      # niet nullable: een null-cel in het register is hier een datafout die
+      # aan de grens wordt geweigerd, nog voor er gerekend wordt.
       # De laatste drie uitkomsten vergelijken lijsten en verzamelingen waar
       # een onbekende in kan zitten: ook dan is de vergelijking onbekend.
       execution:
@@ -45,6 +49,9 @@ articles:
             required: true
         input:
           - name: huur
+            type: number
+            source: {}
+          - name: partner_huur
             type: number
             source: {}
           - name: partner_bsn
@@ -153,7 +160,7 @@ articles:
             value:
               operation: EQUALS
               subject: $huur
-              value: $partner_bsn
+              value: $partner_huur
           # Een onbekende in een lijst: twee lijsten met elk een onbekende
           # zijn niet gelijk maar onbekend, en een lijst met een onbekende zit
           # niet stellig in een lijst van lijsten.
@@ -213,7 +220,11 @@ articles:
       # Toetsen op afwezigheid. Deze acties zijn gedefinieerd op null: EQUALS
       # is structureel, een veld van een afwezig record is afwezig, en een wet
       # aanroepen voor niemand (null als verplichte parameter) voert die wet
-      # niet uit. Met een onbekende input zijn ze onbekend.
+      # niet uit. Met een onbekende input zijn ze onbekend. De inputs die hier
+      # op afwezigheid worden getoetst, of die afwezig zijn als de partner er
+      # niet is, verklaren dat met `nullable: true`; artikel 1 rekent met
+      # dezelfde registerwaarden en verklaart ze niet nullable, zodat een
+      # null-cel daar aan de grens wordt geweigerd.
       execution:
         parameters:
           - name: bsn
@@ -222,15 +233,19 @@ articles:
         input:
           - name: huur
             type: number
+            nullable: true
             source: {}
           - name: partner_bsn
             type: string
+            nullable: true
             source: {}
           - name: beschikking
             type: object
+            nullable: true
             source: {}
           - name: partner_geboortejaar
             type: number
+            nullable: true
             source:
               regulation: test_null_semantics_bron
               output: geboortejaar
@@ -247,8 +262,10 @@ articles:
             type: boolean
           - name: status
             type: string
+            nullable: true
           - name: partner_geboortejaar
             type: number
+            nullable: true
         actions:
           - output: huur_ontbreekt
             value:
@@ -296,8 +313,8 @@ articles:
       en anders nee.
     machine_readable:
       # Beslissen op een waarheidswaarde. Een onbekende waarheidswaarde geeft
-      # Kleene-logica; een afwezige (null) is geen oordeel en laat AND, OR, NOT
-      # en IF falen.
+      # Kleene-logica; een afwezige (null) past niet bij de declaratie en wordt
+      # aan de grens geweigerd.
       execution:
         parameters:
           - name: bsn
@@ -380,8 +397,10 @@ articles:
       # parameter, hier en in de bron waaraan het wordt doorgegeven. De bron
       # wordt ook zonder dat bedrag aangeroepen; haar eigen optionele
       # parameter is dan onbekend voor haar. Het bedrag uit de registratie
-      # gaat als optionele parameter door naar de bron zoals het is: afwezig
-      # (null) of onbekend, en de bron beslist daar zelf over.
+      # (nullable: het register kan geen bedrag hebben) gaat als optionele
+      # parameter door naar de bron zoals het is: afwezig (null) of onbekend.
+      # Een afwezig bedrag wordt bij de aanroep geweigerd, omdat de bron haar
+      # parameter niet nullable heeft verklaard.
       execution:
         parameters:
           - name: bsn
@@ -393,6 +412,7 @@ articles:
         input:
           - name: bedrag
             type: number
+            nullable: true
             source: {}
           - name: aanvraag_past
             type: boolean
@@ -438,3 +458,55 @@ articles:
             value: $aanvraag_past_met_bedrag
           - output: aanvraag_past_uit_register
             value: $aanvraag_past_uit_register
+
+  - number: '5'
+    url: https://example.com/test_null_semantics/5
+    text: >-
+      Het bedrag van de beschikking is hoog indien het meer dan honderd
+      bedraagt. Het verhoogde bedrag is het bedrag vermeerderd met honderd. Wie
+      niet actief is volgens de beschikking, is inactief; de beschikkingsklasse
+      is actief voor een actieve beschikking en anders inactief.
+    machine_readable:
+      # Velden van een record. Objecten zijn ongetypeerd, dus de typecontrole
+      # kan van `$beschikking.bedrag` niet zeggen of het afwezig kan zijn; is
+      # het veld in de data null, dan faalt de bewerking zelf: "geen" is geen
+      # bedrag en geen oordeel (RFC-036). Dit artikel pint die regels.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: beschikking
+            type: object
+            source: {}
+        output:
+          - name: bedrag_hoog
+            type: boolean
+          - name: verhoogd_bedrag
+            type: number
+          - name: inactief
+            type: boolean
+          - name: beschikkingsklasse
+            type: string
+        actions:
+          - output: bedrag_hoog
+            value:
+              operation: GREATER_THAN
+              subject: $beschikking.bedrag
+              value: 100
+          - output: verhoogd_bedrag
+            operation: ADD
+            values:
+              - $beschikking.bedrag
+              - 100
+          - output: inactief
+            operation: NOT
+            value: $beschikking.actief
+          - output: beschikkingsklasse
+            value:
+              operation: IF
+              cases:
+                - when: $beschikking.actief
+                  then: actief
+              default: inactief

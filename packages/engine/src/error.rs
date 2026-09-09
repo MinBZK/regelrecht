@@ -69,6 +69,36 @@ pub enum EngineError {
     )]
     AbsentOperand { operation: String },
 
+    /// A `null` reached a parameter or input the law declares as never absent
+    /// (RFC-036). The declaration (`nullable`, default false) is the law's
+    /// claim that "geen" is not a value this field can take; a register, a
+    /// caller or another law that delivers `null` anyway contradicts that
+    /// claim, and the contradiction is reported at the boundary where it
+    /// arises rather than three operations later as an `AbsentOperand`.
+    /// `origin` names where the null came from: `source <name>`,
+    /// `<law>.<output>`, `skipped call to <law>`, `parameter from <law>` or
+    /// `lookup keyed on null`.
+    #[error(
+        "{origin} delivered null for '{field}' of {law_id}, which the law declares as never \
+         absent; declare the field nullable if absence is a legitimate value (RFC-036)"
+    )]
+    NullForNonNullable {
+        law_id: String,
+        field: String,
+        origin: String,
+    },
+
+    /// An output the law declares as never absent evaluated to `null`
+    /// (RFC-036): an `IF` without a matching case and without `default`, a
+    /// `MIN`/`MAX` over an empty collection, a `null` input passed through.
+    /// The law either has to say what the value is in that case (a default)
+    /// or declare that the output may be absent.
+    #[error(
+        "output '{output}' of {law_id} evaluated to null (absent) but is not declared nullable; \
+         add a default or declare the output nullable (RFC-036)"
+    )]
+    NullOutput { law_id: String, output: String },
+
     /// Invalid URI format
     #[error("Invalid URI: {0}")]
     InvalidUri(String),
@@ -110,14 +140,17 @@ pub enum EngineError {
     #[error("Circular reference detected: {0}")]
     CircularReference(String),
 
-    /// A required parameter of the law being evaluated was passed as `null`
-    /// or as an unknown (RFC-036). At the top level that is the caller's
+    /// A parameter of the law being evaluated was passed as `null` although
+    /// the law does not declare it nullable, or a required parameter was
+    /// passed as an unknown (RFC-036). At the top level that is the caller's
     /// error: the lookup key names nobody, so no register can be asked and
-    /// no unknown fact can be named. Across laws the same situation is not
-    /// an error but a skip (the target is not run; the input is that `null`
-    /// or unknown), so this is raised at depth 0 only.
+    /// no unknown fact can be named, and a parameter that is not nullable
+    /// never takes `null`. Across laws a `null` required parameter is not an
+    /// error but a skip (the target is not run; the input is that `null` or
+    /// unknown), so this is raised at depth 0 only.
     #[error(
-        "required parameter '{name}' of {law_id} is {value}: a law cannot be evaluated for nobody"
+        "parameter '{name}' of {law_id} is {value}: a law cannot be evaluated for nobody, and a \
+         parameter that is not declared nullable never takes null"
     )]
     MissingParameter {
         law_id: String,
@@ -243,6 +276,25 @@ pub enum ExternalError {
     )]
     AbsentOperand { operation: String },
 
+    /// A `null` reached a field the law declares as never absent (RFC-036).
+    /// Law id, field and origin name constructs in the law, not internal state.
+    #[error(
+        "{origin} delivered null for '{field}' of {law_id}, which the law declares as never \
+         absent; declare the field nullable if absence is a legitimate value (RFC-036)"
+    )]
+    NullForNonNullable {
+        law_id: String,
+        field: String,
+        origin: String,
+    },
+
+    /// An output the law declares as never absent evaluated to `null` (RFC-036).
+    #[error(
+        "output '{output}' of {law_id} evaluated to null (absent) but is not declared nullable; \
+         add a default or declare the output nullable (RFC-036)"
+    )]
+    NullOutput { law_id: String, output: String },
+
     /// Invalid URI format
     #[error("Invalid URI format")]
     InvalidUri,
@@ -339,6 +391,18 @@ impl From<EngineError> for ExternalError {
             },
             EngineError::DivisionByZero => ExternalError::DivisionByZero,
             EngineError::AbsentOperand { operation } => ExternalError::AbsentOperand { operation },
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => ExternalError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            },
+            EngineError::NullOutput { law_id, output } => {
+                ExternalError::NullOutput { law_id, output }
+            }
             EngineError::InvalidUri(_) => ExternalError::InvalidUri,
             EngineError::LawNotFound(id) => ExternalError::LawNotFound(id),
             // RFC-019 §3: the validity facts are public legal data, not internal
@@ -421,6 +485,43 @@ mod tests {
         );
         assert!(msg.contains("EQUALS … null"), "{msg}");
         // The operation name is part of the law, so the external error keeps it.
+        let external: ExternalError = err.into();
+        assert_eq!(external.to_string(), msg);
+    }
+
+    #[test]
+    fn test_null_for_non_nullable_names_origin_field_law_and_remedy() {
+        let err = EngineError::NullForNonNullable {
+            law_id: "wet_op_de_huurtoeslag".to_string(),
+            field: "huur".to_string(),
+            origin: "source huurregister".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.starts_with(
+                "source huurregister delivered null for 'huur' of wet_op_de_huurtoeslag"
+            ),
+            "{msg}"
+        );
+        assert!(msg.contains("declares as never absent"), "{msg}");
+        assert!(msg.contains("declare the field nullable"), "{msg}");
+        let external: ExternalError = err.into();
+        assert_eq!(external.to_string(), msg);
+    }
+
+    #[test]
+    fn test_null_output_names_output_law_and_remedy() {
+        let err = EngineError::NullOutput {
+            law_id: "wet_op_de_huurtoeslag".to_string(),
+            output: "huurklasse".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.starts_with("output 'huurklasse' of wet_op_de_huurtoeslag evaluated to null"),
+            "{msg}"
+        );
+        assert!(msg.contains("not declared nullable"), "{msg}");
+        assert!(msg.contains("add a default"), "{msg}");
         let external: ExternalError = err.into();
         assert_eq!(external.to_string(), msg);
     }

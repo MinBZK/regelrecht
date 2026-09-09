@@ -1,8 +1,34 @@
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use regelrecht_engine::article::{ArticleBasedLaw, LawLoad};
 use regelrecht_engine::schema::{detect_version, load_schemas, validation_errors};
+
+/// A file that parsed, kept for the whole run so the type check can consult
+/// the other laws of the set (rule N5).
+struct Parsed {
+    path: PathBuf,
+    law: ArticleBasedLaw,
+}
+
+/// The version of each law the type check consults for cross-law rules: the
+/// one with the latest `valid_from`, as the engine would select for a date
+/// after every version. A law given twice with the same `valid_from` keeps
+/// the first.
+fn latest_by_id(parsed: &[Parsed]) -> HashMap<&str, &ArticleBasedLaw> {
+    let mut latest: HashMap<&str, &ArticleBasedLaw> = HashMap::new();
+    for entry in parsed {
+        let law = &entry.law;
+        match latest.get(law.id.as_str()) {
+            Some(existing) if existing.valid_from >= law.valid_from => {}
+            _ => {
+                latest.insert(law.id.as_str(), law);
+            }
+        }
+    }
+    latest
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -21,18 +47,29 @@ fn main() {
     };
     let mut failed = false;
 
+    // Step 1: serde deserialization check (catches type/structure errors).
+    // Every file is parsed before any is checked, so the type check can hold
+    // a law against the laws it references when those are in the same set.
+    let mut parsed: Vec<Parsed> = Vec::new();
     for arg in &args {
         let path = Path::new(arg);
-
-        // Step 1: serde deserialization check (catches type/structure errors)
-        let law = match ArticleBasedLaw::from_yaml_file(path) {
-            Ok(l) => l,
+        match ArticleBasedLaw::from_yaml_file(path) {
+            Ok(law) => parsed.push(Parsed {
+                path: path.to_path_buf(),
+                law,
+            }),
             Err(e) => {
                 eprintln!("FAIL: {}: serde: {e}", path.display());
                 failed = true;
-                continue;
             }
-        };
+        }
+    }
+    let latest = latest_by_id(&parsed);
+    let lookup = |id: &str| latest.get(id).copied();
+
+    for entry in &parsed {
+        let path = entry.path.as_path();
+        let law = &entry.law;
 
         // Step 2: JSON Schema validation
         let content = match std::fs::read_to_string(path) {
@@ -99,7 +136,7 @@ fn main() {
         if !schema_ok {
             continue;
         }
-        for finding in regelrecht_engine::units::check_law(&law) {
+        for finding in regelrecht_engine::units::check_law(law) {
             let kind = if finding.is_error { "FAIL" } else { "WARN" };
             eprintln!(
                 "{kind}: {}: units: article {} output '{}': {}",
@@ -111,6 +148,21 @@ fn main() {
             if finding.is_error {
                 failed = true;
             }
+        }
+
+        // Step 4: static type check (RFC-036 nullability, RFC-037 typing).
+        // Every finding is a FAIL: a rule that fires on a correct law is a bug
+        // in the rule, and the corpus is kept typed by this gate.
+        for finding in regelrecht_engine::typecheck::check_law(law, &lookup) {
+            eprintln!(
+                "FAIL: {}: typecheck: article {} {}: [{}] {}",
+                path.display(),
+                finding.article,
+                finding.location,
+                finding.rule,
+                finding.message
+            );
+            failed = true;
         }
     }
 

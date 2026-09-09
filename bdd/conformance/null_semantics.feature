@@ -14,7 +14,8 @@ Feature: Absent and unknown values — RFC-036
   unknown; article 1 calculates, article 2 tests for absence, article 3 decides
   on a truth value, article 4 passes parameters on), test_null_semantics_bron
   (called cross-law; declares an optional form parameter) and
-  test_null_semantics_strikt (forgets a required parameter).
+  test_null_semantics_strikt (forgets a required parameter). Article 5 of
+  test_null_semantics calculates and decides on the fields of a record.
 
   Background:
     Given the calculation date is "2025-01-01"
@@ -34,8 +35,8 @@ Feature: Absent and unknown values — RFC-036
   Scenario: Every value present computes as before
     Given parameter "aanvraag_bedrag" is 250
     Given the following "register" data with key "bsn" for law "test_null_semantics":
-      | bsn       | huur | partner_bsn | beschikking          | verzekerd | bedrag |
-      | 999993653 | 650  | 999993641   | {"status": "ACTIEF"} | true      | 250    |
+      | bsn       | huur | partner_huur | partner_bsn | beschikking          | verzekerd | bedrag |
+      | 999993653 | 650  | 700          | 999993641   | {"status": "ACTIEF"} | true      | 250    |
     When I evaluate outputs "huur_hoog, verhoogde_huur, niet_hoog, huurklasse, hoog_en_bekend, hoog_en_onwaar, hoog_of_onbekend, hoog_of_waar, huur_gelijk_aan_partner, lijsten_gelijk, lijst_in_lijsten, verzamelingen_gelijk" of "test_null_semantics"
     Then the execution succeeds
     Then output "huur_hoog" is true
@@ -113,52 +114,78 @@ Feature: Absent and unknown values — RFC-036
   # 3. Calculating or deciding on an absence is an error
   # ---------------------------------------------------------------------------
 
-  Scenario: Ordering an absent value fails
+  Scenario: An absent value the law declared never absent is refused before it is calculated with
     Given the following "register" data with key "bsn" for law "test_null_semantics":
       | bsn       | huur | partner_bsn | beschikking |
       | 999993653 | null | 999993641   | null        |
-    # "More than nothing" is not a question the law asked. The law has to test
-    # for absence first (EQUALS … null), as article 2 does.
+    # Article 1 orders and adds the rent and did not declare it nullable. The
+    # register's null contradicts that declaration, and the contradiction is a
+    # data error at the boundary (see nullable.feature), not a calculation
+    # that happens to fail.
     When I evaluate "huur_hoog" of "test_null_semantics"
     Then the execution fails
-    Then the execution fails with "operand is null"
-    Then the execution fails with "EQUALS"
+    Then the execution fails with "declares as never absent"
+    Then the execution fails with "huur"
 
-  Scenario: Calculating with an absent value fails
-    Given the following "register" data with key "bsn" for law "test_null_semantics":
-      | bsn       | huur | partner_bsn | beschikking |
-      | 999993653 | null | 999993641   | null        |
-    When I evaluate "verhoogde_huur" of "test_null_semantics"
-    Then the execution fails
-    Then the execution fails with "operand is null"
-
-  Scenario: Deciding on an absent truth value fails
+  Scenario: An absent truth value the law declared never absent is refused before it is decided on
     Given the following "register" data with key "bsn" for law "test_null_semantics":
       | bsn       | verzekerd |
       | 999993653 | null      |
-    # AND, OR, NOT and IF all need a verdict; an absence is not one. Each output
-    # below is produced by the same article, so any of them fails the article.
     When I evaluate "verzekerd_en_waar" of "test_null_semantics"
     Then the execution fails
+    Then the execution fails with "declares as never absent"
+    Then the execution fails with "verzekerd"
+
+  Scenario: Ordering or calculating with an absent record field fails
+    Given the following "register" data with key "bsn" for law "test_null_semantics":
+      | bsn       | beschikking                        |
+      | 999993653 | {"bedrag": null, "actief": true}   |
+    # A record is untyped, so no declaration can refuse the null field at the
+    # boundary; the operation itself does. "More than nothing" is not a
+    # question the law asked: it has to test for absence first (EQUALS … null).
+    When I evaluate "bedrag_hoog" of "test_null_semantics"
+    Then the execution fails
     Then the execution fails with "operand is null"
-    When I evaluate "verzekerd_of_onwaar" of "test_null_semantics"
+    Then the execution fails with "GREATER_THAN"
+    Then the execution fails with "EQUALS"
+
+  Scenario: Deciding on an absent record field fails
+    Given the following "register" data with key "bsn" for law "test_null_semantics":
+      | bsn       | beschikking                        |
+      | 999993653 | {"bedrag": 250, "actief": null}    |
+    # NOT and IF need a verdict; an absence is not one. Both outputs are
+    # produced by the same article, so either fails the article.
+    When I evaluate "inactief" of "test_null_semantics"
     Then the execution fails
-    When I evaluate "niet_verzekerd" of "test_null_semantics"
-    Then the execution fails
-    When I evaluate "verzekeringsklasse" of "test_null_semantics"
+    Then the execution fails with "operand is null"
+    Then the execution fails with "NOT"
+    When I evaluate "beschikkingsklasse" of "test_null_semantics"
     Then the execution fails
 
-  Scenario: A null optional parameter is passed through and the other law decides
+  Scenario: Present record fields compute as before
+    Given the following "register" data with key "bsn" for law "test_null_semantics":
+      | bsn       | beschikking                        |
+      | 999993653 | {"bedrag": 250, "actief": true}    |
+    When I evaluate outputs "bedrag_hoog, verhoogd_bedrag, inactief, beschikkingsklasse" of "test_null_semantics"
+    Then the execution succeeds
+    Then output "bedrag_hoog" is true
+    Then output "verhoogd_bedrag" equals 350
+    Then output "inactief" is false
+    Then output "beschikkingsklasse" equals "actief"
+
+  Scenario: A null optional parameter is passed through and the other law's declaration decides
     Given the following "register" data with key "bsn" for law "test_null_semantics":
       | bsn       | bedrag |
       | 999993653 | null   |
-    # Article 4 hands the register's `bedrag` to the bron as its optional
-    # `aanvraag_bedrag`. Null for an optional parameter does not stop the call:
-    # the bron runs, and its comparison fails there, because the bron never
-    # said what "geen bedrag" is worth. The caller does not hide that.
+    # Article 4 hands the register's `bedrag` (nullable: the register may hold
+    # no amount) to the bron as its optional `aanvraag_bedrag`. Null for an
+    # optional parameter does not stop the call, but the bron never declared
+    # that "geen bedrag" is a value that parameter takes, so the absence is
+    # refused at the call instead of failing inside the bron's comparison.
     When I evaluate "aanvraag_past_uit_register" of "test_null_semantics"
     Then the execution fails
-    Then the execution fails with "operand is null"
+    Then the execution fails with "declares as never absent"
+    Then the execution fails with "aanvraag_bedrag"
 
   # ---------------------------------------------------------------------------
   # 4. An empty cell is unknown: the fact exists, nobody has it
@@ -230,12 +257,12 @@ Feature: Absent and unknown values — RFC-036
 
   Scenario: Two unknown operands name both missing facts
     Given the following "register" data with key "bsn" for law "test_null_semantics":
-      | bsn       | huur | partner_bsn |
-      | 999993653 |      |             |
+      | bsn       | huur | partner_huur |
+      | 999993653 |      |              |
     When I evaluate outputs "huur_gelijk_aan_partner" of "test_null_semantics"
     Then the execution succeeds
     Then output "huur_gelijk_aan_partner" is unknown for lack of "huur"
-    Then output "huur_gelijk_aan_partner" is unknown for lack of "partner_bsn"
+    Then output "huur_gelijk_aan_partner" is unknown for lack of "partner_huur"
 
   Scenario: Two lists that each hold an unknown are not equal but unknown
     Given the following "register" data with key "bsn" for law "test_null_semantics":
@@ -335,8 +362,9 @@ Feature: Absent and unknown values — RFC-036
 
   Scenario: The word null in a parameter passes an absence
     Given parameter "aanvraag_bedrag" is "null"
-    # An absence is a value; ordering it is the error the author has to
-    # resolve in the law.
+    # An absence is a value, and the bron's declaration says its amount is
+    # never absent: the caller's null is refused before anything is ordered.
     When I evaluate "past_aanvraag" of "test_null_semantics_bron"
     Then the execution fails
-    Then the execution fails with "operand is null"
+    Then the execution fails with "not declared nullable"
+    Then the execution fails with "aanvraag_bedrag"

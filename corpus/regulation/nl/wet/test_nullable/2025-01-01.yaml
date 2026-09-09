@@ -1,0 +1,229 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_nullable
+name: Testwet afwezigheid als eigenschap van het type
+regulatory_layer: WET
+bwb_id: BWBR9999912
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_nullable
+
+# Synthetische wet voor de conformance-suite van RFC-036, deel "afwezigheid
+# is gedeclareerd": elke parameter, input en output zegt met `nullable` of
+# "geen" een waarde is die hij kan aannemen. De engine houdt de wet daaraan
+# op de grens: een register dat null levert voor een veld dat nooit afwezig
+# is, is een datafout; een output die null oplevert terwijl hij dat niet mag,
+# is een fout van de wet. Onbekend (een feit dat niemand heeft) valt buiten
+# de vlag en plant zich voort zoals altijd.
+#
+# Artikel 1 leest een nullable en een niet-nullable huur uit het register;
+# artikel 2 geeft een nullable registerwaarde door aan twee outputs; artikel 3
+# haalt het geboortejaar van de partner bij de bron; artikel 4 heeft een
+# nullable parameter; artikel 5 geeft een nullable bedrag door als optionele
+# parameter van de bron.
+
+articles:
+  - number: '1'
+    url: https://example.com/test_nullable/1
+    text: >-
+      Van huur is geen sprake indien in de registratie geen huur is opgenomen.
+      De huurgrens is de huur uit de huurgrensregistratie vermeerderd met
+      honderd.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          # Het huurregister is gezaghebbend over "geen huur": null is een
+          # waarde die deze input kan aannemen, en de wet toetst erop.
+          - name: huur
+            type: number
+            nullable: true
+            source: {}
+          # De huurgrens is er voor iedereen: null uit het register is hier
+          # geen waarde maar een fout in de data.
+          - name: huurgrens
+            type: number
+            source: {}
+        output:
+          - name: heeft_huur
+            type: boolean
+          - name: huurgrens_plus
+            type: number
+        actions:
+          - output: heeft_huur
+            operation: NOT
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null
+          - output: huurgrens_plus
+            operation: ADD
+            values:
+              - $huurgrens
+              - 100
+
+  - number: '2'
+    url: https://example.com/test_nullable/2
+    text: >-
+      De toeslag is de in de registratie opgenomen toeslag. De toeslagklasse
+      is gewoon indien de toeslag zeshonderdvijftig bedraagt.
+    machine_readable:
+      # Een nullable registerwaarde mag ongewijzigd naar een output; of die
+      # output afwezig mag zijn beslist zijn eigen declaratie. De klasse is een
+      # IF zonder default en dus afwezig als geen geval past.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: toeslag
+            type: number
+            nullable: true
+            source: {}
+        output:
+          - name: toeslagklasse
+            type: string
+            nullable: true
+          - name: toeslag_strikt
+            type: number
+        actions:
+          - output: toeslagklasse
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $toeslag
+                    value: 650
+                  then: gewoon
+          - output: toeslag_strikt
+            value: $toeslag
+
+  - number: '3'
+    url: https://example.com/test_nullable/3
+    text: >-
+      Het geboortejaar van de partner is het geboortejaar, bedoeld in artikel
+      1 van de Testwet afwezigheid als eigenschap van het type (bron), van de
+      partner.
+    machine_readable:
+      # Geen partner (null) betekent dat de bron niet wordt aangeroepen en de
+      # input afwezig is. `partner_geboortejaar` verklaart dat; de strikte
+      # variant niet, en wordt bij een afwezige partner op de grens geweigerd.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {}
+          - name: partner_geboortejaar
+            type: number
+            nullable: true
+            source:
+              regulation: test_nullable_bron
+              output: geboortejaar
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: partner_geboortejaar
+            type: number
+            nullable: true
+        actions:
+          - output: partner_geboortejaar
+            value: $partner_geboortejaar
+
+  - number: 3a
+    url: https://example.com/test_nullable/3a
+    text: >-
+      Het geboortejaar van de partner, bedoeld in artikel 3, wordt in dit
+      artikel als altijd aanwezig behandeld.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            source: {}
+          - name: partner_geboortejaar_strikt
+            type: number
+            source:
+              regulation: test_nullable_bron
+              output: geboortejaar
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: partner_geboortejaar_strikt
+            type: number
+        actions:
+          - output: partner_geboortejaar_strikt
+            value: $partner_geboortejaar_strikt
+
+  - number: '4'
+    url: https://example.com/test_nullable/4
+    text: >-
+      Een aanvrager zonder toeslagpartner is alleenstaand.
+    machine_readable:
+      # De parameter mag null zijn: de aanroeper zegt daarmee dat er geen
+      # toeslagpartner is, en de wet beslist daarop.
+      execution:
+        parameters:
+          - name: toeslagpartner
+            type: string
+            required: true
+            nullable: true
+        output:
+          - name: alleenstaand
+            type: boolean
+        actions:
+          - output: alleenstaand
+            value:
+              operation: EQUALS
+              subject: $toeslagpartner
+              value: null
+
+  - number: '5'
+    url: https://example.com/test_nullable/5
+    text: >-
+      Of de aanvraag past wordt bepaald overeenkomstig artikel 1 van de
+      Testwet afwezigheid als eigenschap van het type (bron), met het in de
+      registratie opgenomen bedrag.
+    machine_readable:
+      # Het bedrag mag in het register ontbreken (null) en gaat zo door als
+      # optionele parameter van de bron; de bron heeft die parameter niet
+      # nullable verklaard, dus een afwezig bedrag wordt bij de aanroep
+      # geweigerd.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: bedrag
+            type: number
+            nullable: true
+            source: {}
+          - name: aanvraag_past
+            type: boolean
+            source:
+              regulation: test_nullable_bron
+              output: past_aanvraag
+              parameters:
+                bsn: $bsn
+                aanvraag_bedrag: $bedrag
+        output:
+          - name: aanvraag_past
+            type: boolean
+        actions:
+          - output: aanvraag_past
+            value: $aanvraag_past

@@ -98,11 +98,17 @@ articles:
               output: verlaging_percentage_lid_5
 
         output:
+          # Art. 9 lid 1 kent drie categorieën (a, b, c) naast "geen gedraging".
+          # Voor een gedragscategorie buiten 0 tot en met 3 stelt de verordening
+          # geen verlaging en geen duur vast: die waarden zijn dan afwezig, niet
+          # nul (RFC-036).
           - name: verlaging_percentage
             type: number
+            nullable: true
             description: Verlagingspercentage conform art. 9 lid 1
           - name: duur_maanden
             type: number
+            nullable: true
             description: Aantal maanden dat de verlaging duurt
         actions:
           - output: verlaging_percentage
