@@ -53,6 +53,10 @@ body {
   font-family: var(--primitives-font-family-monospace, monospace);
   font-size: 0.875rem;
   line-height: 1.5;
+  /* A long token (the $schema URL, a juriconnect id) must wrap inside the box
+   * instead of running out of it. */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .yaml-tree .yaml-node {

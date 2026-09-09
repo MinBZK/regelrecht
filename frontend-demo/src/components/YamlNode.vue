@@ -63,7 +63,9 @@ function childPath(key, child) {
   // Only a list item takes its name as label; a mapping key stays the key, so
   // `source: {output: x}` is addressed as `.source`, not `.x`.
   const hint = isList.value ? scalarHint(child) : undefined;
-  const label = hint !== undefined ? String(hint) : String(key);
+  // Paths are dot-separated, so a dot inside a label (article "2.34") would
+  // split it into two segments and no default or configured path would match.
+  const label = (hint !== undefined ? String(hint) : String(key)).replaceAll('.', '_');
   return props.path ? `${props.path}.${label}` : label;
 }
 
