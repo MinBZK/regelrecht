@@ -16,9 +16,20 @@ const { corpus, profile, state, dataVersion } = demo;
 const service = ref(null);
 watch(() => profile.value?.zaaksysteem_service, (s) => { if (s && !service.value) service.value = s; }, { immediate: true });
 
+// Every organisation that executes a law in the demo has a case system; the
+// presenter can step into any of them. The profile picks the one to start in.
 const services = computed(() => {
-  const set = new Set([profile.value?.zaaksysteem_service, ...state.cases.map((c) => c.service)].filter(Boolean));
-  return [...set];
+  if (!corpus.value) return [];
+  const set = new Set([...corpus.value.latestById.values()].map((l) => l.service).filter(Boolean));
+  return [...set].sort((a, b) => (corpus.value.services[a]?.name ?? a).localeCompare(corpus.value.services[b]?.name ?? b));
+});
+/** The regelingen this organisation executes, with the number of cases per regeling. */
+const orgLaws = computed(() => {
+  if (!corpus.value || !service.value) return [];
+  return [...corpus.value.latestById.values()]
+    .filter((l) => l.service === service.value)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((law) => ({ law, count: state.cases.filter((c) => c.lawId === law.id).length }));
 });
 
 const cases = computed(() => state.cases.filter((c) => c.service === service.value));
@@ -104,15 +115,16 @@ function claimSpec(cl) {
       <nldd-page sticky-header>
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar text="Zaaksysteem" :supporting-text="corpus.services[service]?.name ?? service ?? ''">
-            <nldd-segmented-control v-if="services.length > 1" slot="toolbar" size="sm" width="fit-content" :value="service" @change="service = $event.detail?.value">
-              <nldd-segmented-control-item v-for="s in services" :key="s" :value="s" :text="corpus.services[s]?.name ?? s"></nldd-segmented-control-item>
-            </nldd-segmented-control>
+            <nldd-dropdown slot="toolbar" size="sm" accessible-label="Organisatie">
+              <select :value="service" @change="service = $event.target.value">
+                <option v-for="s in services" :key="s" :value="s">{{ corpus.services[s]?.name ?? s }}</option>
+              </select>
+            </nldd-dropdown>
           </nldd-top-title-bar>
         </nldd-container>
 
         <nldd-simple-section width="full">
-          <nldd-inline-dialog v-if="cases.length === 0 && serviceClaims.length === 0" icon="inbox" text="Geen zaken" supporting-text="Zodra een burger op het portaal een aanvraag indient, verschijnt die hier."></nldd-inline-dialog>
-          <nldd-container v-else layout="grid" column-count="3" sm-column-count="1" gap="16">
+          <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="16">
             <nldd-box v-for="lane in lanes" :key="lane.key" background="tinted">
               <nldd-container padding="12" gap="8">
                 <nldd-container layout="row" gap="8" vertical-alignment="center" padding-inline="4">
@@ -131,6 +143,18 @@ function claimSpec(cl) {
               </nldd-container>
             </nldd-box>
           </nldd-container>
+        </nldd-simple-section>
+
+        <nldd-simple-section width="full" padding-top="0">
+          <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" :text="`Regelingen die ${corpus.services[service]?.name ?? service} uitvoert`"></nldd-text-cell></nldd-container>
+          <nldd-list variant="box-tinted" accessible-label="Regelingen van deze organisatie">
+            <nldd-list-item v-if="orgLaws.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen regelingen in het demo-corpus"></nldd-text-cell></nldd-list-item>
+            <nldd-list-item v-for="{ law, count } in orgLaws" :key="law.id" size="sm" button @click="router.push(`/wetten/${encodeURIComponent(law.id)}`)">
+              <nldd-text-cell size="sm" :text="law.name" :supporting-text="law.discoverable === 'BUSINESS' ? 'voor ondernemers' : law.discoverable === 'CITIZEN' ? 'voor burgers' : 'levert gegevens aan andere wetten'"></nldd-text-cell>
+              <nldd-cell><nldd-tag size="sm" :color="count ? 'accent' : 'neutral'" :text="count === 1 ? '1 zaak' : `${count} zaken`"></nldd-tag></nldd-cell>
+              <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+            </nldd-list-item>
+          </nldd-list>
         </nldd-simple-section>
 
         <nldd-simple-section v-if="serviceClaims.length" width="full" padding-top="0">
