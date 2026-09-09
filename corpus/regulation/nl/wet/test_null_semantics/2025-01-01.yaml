@@ -65,6 +65,16 @@ articles:
             type: boolean
           - name: heeft_huur
             type: boolean
+          - name: hoog_en_bekend
+            type: boolean
+          - name: hoog_en_onwaar
+            type: boolean
+          - name: hoog_of_onbekend
+            type: boolean
+          - name: niet_hoog
+            type: boolean
+          - name: huurklasse
+            type: string
         actions:
           - output: huur_hoog
             value:
@@ -88,3 +98,55 @@ articles:
               operation: EQUALS
               subject: $huur
               value: null
+          # Logica over een onbekende (RFC-036, regel 6): onbekend blijft
+          # onbekend, tenzij een operand de uitkomst al beslist.
+          - output: hoog_en_bekend
+            value:
+              operation: AND
+              conditions:
+                - operation: GREATER_THAN
+                  subject: $huur
+                  value: 500
+                - operation: EQUALS
+                  subject: $bsn
+                  value: $bsn
+          - output: hoog_en_onwaar
+            value:
+              operation: AND
+              conditions:
+                - operation: GREATER_THAN
+                  subject: $huur
+                  value: 500
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $bsn
+                    value: $bsn
+          - output: hoog_of_onbekend
+            value:
+              operation: OR
+              conditions:
+                - operation: GREATER_THAN
+                  subject: $huur
+                  value: 500
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $bsn
+                    value: $bsn
+          - output: niet_hoog
+            operation: NOT
+            value:
+              operation: GREATER_THAN
+              subject: $huur
+              value: 500
+          - output: huurklasse
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $huur
+                    value: 500
+                  then: hoog
+              default: laag

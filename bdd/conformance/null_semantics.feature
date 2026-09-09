@@ -25,13 +25,16 @@ Feature: Null semantics — RFC-036
     Given the following "register" data with key "bsn" for law "test_null_semantics":
       | bsn       | huur | partner_bsn | beschikking          |
       | 999993653 | 650  | 999993641   | {"status": "ACTIEF"} |
-    When I evaluate outputs "huur_hoog, verhoogde_huur, status, partner_geboortejaar, heeft_huur" of "test_null_semantics"
+    When I evaluate outputs "huur_hoog, verhoogde_huur, status, partner_geboortejaar, heeft_huur, hoog_en_bekend, niet_hoog, huurklasse" of "test_null_semantics"
     Then the execution succeeds
     Then output "huur_hoog" is true
     Then output "verhoogde_huur" equals 750
     Then output "status" equals "ACTIEF"
     Then output "partner_geboortejaar" equals 1980
     Then output "heeft_huur" is true
+    Then output "hoog_en_bekend" is true
+    Then output "niet_hoog" is false
+    Then output "huurklasse" equals "hoog"
 
   Scenario: Comparing and calculating with null is null
     Given the following "register" data with key "bsn" for law "test_null_semantics":
@@ -44,6 +47,21 @@ Feature: Null semantics — RFC-036
     # EQUALS against null is the one comparison that answers: the law's own
     # null check still works.
     Then output "heeft_huur" is false
+
+  Scenario: Logic over an unknown stays unknown unless an operand decides
+    Given the following "register" data with key "bsn" for law "test_null_semantics":
+      | bsn       | huur | partner_bsn | beschikking |
+      | 999993653 | null | null        | null        |
+    When I evaluate outputs "hoog_en_bekend, hoog_en_onwaar, hoog_of_onbekend, niet_hoog, huurklasse" of "test_null_semantics"
+    Then the execution succeeds
+    # AND with an unknown and a true: unknown. With a false: false, whatever the unknown was.
+    Then output "hoog_en_bekend" is null
+    Then output "hoog_en_onwaar" is false
+    # OR with an unknown and a false: unknown.
+    Then output "hoog_of_onbekend" is null
+    Then output "niet_hoog" is null
+    # An IF whose condition is unknown does not fall through to its default.
+    Then output "huurklasse" is null
 
   Scenario: A field of a null record is null
     Given the following "register" data with key "bsn" for law "test_null_semantics":

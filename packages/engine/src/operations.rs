@@ -499,9 +499,10 @@ where
 
     // Comparing against nothing has no answer. A register that holds no value
     // for this person (no rent, no partner income) makes the comparison
-    // unknown, not an error; AND/OR and IF already know what to do with an
-    // unknown (RFC-036 null semantics).
+    // unknown, not an error; AND, OR, NOT and IF carry the unknown onward
+    // (RFC-036 null semantics).
     if subject_val.is_null() || value_val.is_null() {
+        resolver.trace_set_message("comparison with a null operand: unknown".to_string());
         return Ok(Value::Null);
     }
 
@@ -558,11 +559,15 @@ fn is_numeric(val: &Value) -> bool {
 
 /// Arithmetic over nothing is nothing: an operand that resolved to null (a
 /// register value this person does not have) makes the result unknown rather
-/// than a type error, in line with RFC-036 null semantics. AND/OR/IF know
-/// what to do with an unknown; a failing calculation would tell the person
-/// nothing at all.
-fn propagate_null(evaluated: &[Value]) -> Option<Value> {
-    evaluated.iter().any(Value::is_null).then_some(Value::Null)
+/// than a type error, in line with RFC-036 null semantics. The unknown is
+/// carried onward by AND, OR, NOT and IF; a failing calculation would tell
+/// the person nothing at all. The trace says why the result went unknown.
+fn propagate_null<R: ValueResolver>(resolver: &R, op: &str, evaluated: &[Value]) -> Option<Value> {
+    if evaluated.iter().any(Value::is_null) {
+        resolver.trace_set_message(format!("{op} with a null operand: unknown"));
+        return Some(Value::Null);
+    }
+    None
 }
 
 /// Execute ADD operation: sum numbers, concatenate arrays, or concatenate strings.
@@ -580,7 +585,7 @@ fn execute_add<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(&evaluated) {
+    if let Some(unknown) = propagate_null(resolver, "ADD", &evaluated) {
         return Ok(unknown);
     }
     add_values(&evaluated)
@@ -687,7 +692,7 @@ fn execute_subtract<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(&evaluated) {
+    if let Some(unknown) = propagate_null(resolver, "SUBTRACT", &evaluated) {
         return Ok(unknown);
     }
 
@@ -727,7 +732,7 @@ fn execute_multiply<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(&evaluated) {
+    if let Some(unknown) = propagate_null(resolver, "MULTIPLY", &evaluated) {
         return Ok(unknown);
     }
 
@@ -768,7 +773,7 @@ fn execute_divide<R: ValueResolver>(
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(&evaluated) {
+    if let Some(unknown) = propagate_null(resolver, "DIVIDE", &evaluated) {
         return Ok(unknown);
     }
 
@@ -817,7 +822,7 @@ where
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
     }
-    if let Some(unknown) = propagate_null(&evaluated) {
+    if let Some(unknown) = propagate_null(resolver, "MIN/MAX", &evaluated) {
         return Ok(unknown);
     }
 
@@ -924,6 +929,11 @@ fn round_decimal(value: Decimal, precision: i64, mode: RoundMode) -> Result<Deci
 // =============================================================================
 
 /// Execute AND operation: short-circuit evaluation, returns false if any condition is false.
+///
+/// Three-valued (RFC-036): a definitive `false` decides; otherwise an
+/// untranslatable operand taints the result and a `null` operand (a register
+/// value this person does not have) makes it unknown, so a missing value can
+/// never come out as a confident "voldoet niet".
 fn execute_and<R: ValueResolver>(
     conditions: &[ActionValue],
     resolver: &R,
@@ -932,9 +942,14 @@ fn execute_and<R: ValueResolver>(
     let tracing = resolver.has_trace();
     let mut results: Option<Vec<Value>> = if tracing { Some(Vec::new()) } else { None };
     let mut taint: Option<Value> = None;
+    let mut unknown = false;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        // Definitive false wins over taint (AND commutativity)
+        if val.is_null() {
+            unknown = true;
+            continue;
+        }
+        // Definitive false wins over taint and unknown (AND commutativity)
         if !val.to_bool() && !val.is_untranslatable() {
             return Ok(Value::Bool(false));
         }
@@ -951,6 +966,10 @@ fn execute_and<R: ValueResolver>(
     if let Some(t) = taint {
         return Ok(t);
     }
+    if unknown {
+        resolver.trace_set_message("AND with a null operand and no false: unknown".to_string());
+        return Ok(Value::Null);
+    }
 
     if let Some(results) = results {
         let result_strs: Vec<String> = results.iter().map(format_value_for_trace).collect();
@@ -961,15 +980,23 @@ fn execute_and<R: ValueResolver>(
 }
 
 /// Execute OR operation: short-circuit evaluation, returns true if any condition is true.
+///
+/// Three-valued (RFC-036): a definitive `true` decides; otherwise an
+/// untranslatable taints and a `null` operand makes the result unknown.
 fn execute_or<R: ValueResolver>(
     conditions: &[ActionValue],
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
     let mut taint: Option<Value> = None;
+    let mut unknown = false;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        // Definitive true wins over taint (OR commutativity)
+        if val.is_null() {
+            unknown = true;
+            continue;
+        }
+        // Definitive true wins over taint and unknown (OR commutativity)
         if val.to_bool() {
             return Ok(Value::Bool(true));
         }
@@ -982,6 +1009,10 @@ fn execute_or<R: ValueResolver>(
     if let Some(t) = taint {
         return Ok(t);
     }
+    if unknown {
+        resolver.trace_set_message("OR with a null operand and no true: unknown".to_string());
+        return Ok(Value::Null);
+    }
 
     Ok(Value::Bool(false))
 }
@@ -993,6 +1024,11 @@ fn execute_not<R: ValueResolver>(value: &ActionValue, resolver: &R, depth: usize
     let val = evaluate_value(value, resolver, depth)?;
     if val.is_untranslatable() {
         return Ok(val);
+    }
+    // The negation of unknown is unknown (RFC-036).
+    if val.is_null() {
+        resolver.trace_set_message("NOT of a null operand: unknown".to_string());
+        return Ok(Value::Null);
     }
     Ok(Value::Bool(!val.to_bool()))
 }
@@ -1027,6 +1063,14 @@ fn execute_if<R: ValueResolver>(
 
         if condition_result.is_untranslatable() {
             return Ok(condition_result);
+        }
+        // A case whose condition is unknown cannot be skipped in good faith:
+        // the branch might have applied. The whole IF is unknown (RFC-036).
+        if condition_result.is_null() {
+            resolver.trace_set_message(format!(
+                "case {i}: condition unknown, so the result is unknown"
+            ));
+            return Ok(Value::Null);
         }
 
         if condition_result.to_bool() {
@@ -4577,6 +4621,64 @@ mod tests {
                 values: vec![var("leeg"), lit(5i64)],
             };
             assert_eq!(execute_operation(&sub, &resolver, 0).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn test_logic_with_null_is_three_valued() {
+            // A null operand makes AND/OR/NOT unknown unless a definitive
+            // operand decides; an IF whose case condition is unknown is unknown.
+            let resolver = TestResolver::new().with_var("leeg", Value::Null);
+            let run = |op: ActionOperation| execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(
+                run(ActionOperation::And {
+                    conditions: vec![lit(true), var("leeg")]
+                }),
+                Value::Null
+            );
+            assert_eq!(
+                run(ActionOperation::And {
+                    conditions: vec![lit(false), var("leeg")]
+                }),
+                Value::Bool(false)
+            );
+            assert_eq!(
+                run(ActionOperation::Or {
+                    conditions: vec![lit(false), var("leeg")]
+                }),
+                Value::Null
+            );
+            assert_eq!(
+                run(ActionOperation::Or {
+                    conditions: vec![var("leeg"), lit(true)]
+                }),
+                Value::Bool(true)
+            );
+            assert_eq!(
+                run(ActionOperation::Not { value: var("leeg") }),
+                Value::Null
+            );
+            let unknown_case = ActionOperation::If {
+                cases: vec![Case {
+                    when: var("leeg"),
+                    then: lit("ja"),
+                }],
+                default: Some(lit("nee")),
+            };
+            assert_eq!(run(unknown_case), Value::Null);
+            let earlier_match = ActionOperation::If {
+                cases: vec![
+                    Case {
+                        when: lit(true),
+                        then: lit("eerst"),
+                    },
+                    Case {
+                        when: var("leeg"),
+                        then: lit("ja"),
+                    },
+                ],
+                default: Some(lit("nee")),
+            };
+            assert_eq!(run(earlier_match), Value::String("eerst".to_string()));
         }
 
         #[test]

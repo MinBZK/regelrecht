@@ -2148,6 +2148,9 @@ impl LawExecutionService {
         // The target's declared parameters and whether each is required. A
         // parameter is required unless it says `required: false`; the flag is
         // what makes the two rules below safe (RFC-036 null semantics).
+        // Only a law the engine knows can be skipped for nobody; a call to a
+        // law that is not loaded keeps its LawNotFound error further down.
+        let law_known = self.get_law(regulation).is_some();
         let declared: Vec<(String, bool)> = self
             .get_law(regulation)
             .and_then(|law| law.find_article_by_output(output))
@@ -2181,7 +2184,7 @@ impl LawExecutionService {
         // knows how to do without.
         if let Some((name, _)) = target_params
             .iter()
-            .find(|(name, v)| v.is_null() && is_required(name))
+            .find(|(name, v)| law_known && v.is_null() && is_required(name))
         {
             res_ctx.trace_set_message(format!(
                 "Parameter '{}' is null, so {} is not executed; input resolves to null",

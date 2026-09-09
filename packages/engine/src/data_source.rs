@@ -312,12 +312,13 @@ impl DataSourceRegistry {
 
     /// Add a data source to the registry.
     ///
-    /// Sources are automatically sorted by priority (highest first).
+    /// Sources are sorted by priority (highest first); at equal priority a
+    /// source bound to a law goes before an unscoped one, so the more specific
+    /// source wins for its law regardless of registration order.
     pub fn add_source(&mut self, source: Box<dyn DataSource>) {
         self.sources.push(source);
-        // Sort by priority descending
         self.sources
-            .sort_by_key(|b| std::cmp::Reverse(b.priority()));
+            .sort_by_key(|b| (std::cmp::Reverse(b.priority()), b.law_scope().is_none()));
     }
 
     /// Remove a data source by name.
@@ -366,8 +367,8 @@ impl DataSourceRegistry {
     ///
     /// Unscoped sources always take part. A source bound to a law (see
     /// [`DataSource::law_scope`]) takes part only when that law is the one
-    /// being resolved. Priority order is unchanged: a scoped and an unscoped
-    /// source compete on priority alone once both are eligible.
+    /// being resolved. Priority decides between eligible sources; at equal
+    /// priority the one bound to this law wins over an unscoped one.
     pub fn resolve_for_law(
         &self,
         field: &str,
@@ -940,6 +941,32 @@ mod tests {
             .is_none());
         // Nor does an unscoped lookup.
         assert!(registry.resolve("inkomen", &criteria).is_none());
+
+        // At equal priority the source bound to the law wins, whichever was
+        // registered first.
+        let mut generic_record = BTreeMap::new();
+        generic_record.insert("bsn".to_string(), Value::String("123".to_string()));
+        generic_record.insert("inkomen".to_string(), Value::Int(5));
+        let mut tie = DataSourceRegistry::new();
+        tie.add_source(Box::new(
+            DictDataSource::from_records("generic", 10, "bsn", vec![generic_record.clone()])
+                .unwrap(),
+        ));
+        tie.add_source(Box::new(
+            DictDataSource::from_records("bound", 10, "bsn", vec![record.clone()])
+                .unwrap()
+                .with_law_scope("wet_a"),
+        ));
+        assert_eq!(
+            tie.resolve_for_law("inkomen", &criteria, Some("wet_a"))
+                .map(|m| m.source_name),
+            Some("bound".to_string())
+        );
+        assert_eq!(
+            tie.resolve_for_law("inkomen", &criteria, Some("wet_b"))
+                .map(|m| m.source_name),
+            Some("generic".to_string())
+        );
 
         // An unscoped source answers for every law, at the same priority rules.
         let open = DictDataSource::from_records("open", 5, "bsn", vec![record]).unwrap();
