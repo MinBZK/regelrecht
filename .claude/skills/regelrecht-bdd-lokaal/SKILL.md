@@ -183,8 +183,8 @@ De runner haalt zijn twee dingen uit twee verschillende plekken:
 | Features | `<repo>/bdd/conformance/*.feature` | B (engine conformance) |
 
 `corpus/regulation` is in deze checkout **geen symlink** maar het eigen kleine
-testcorpus van de repo (25 YAML's, 5 features). Om een corpus uit een andere repo
-te draaien moet je die map tijdelijk vervangen door een symlink naar het
+testcorpus van de repo (27 YAML's, 6 features op deze commit). Om een corpus uit
+een andere repo te draaien moet je die map tijdelijk vervangen door een symlink naar het
 mini-corpus **en daarna terugzetten**. `corpus/` is tracked.
 
 **Draai dan alleen bucket A**, met `BDD_BUCKET=corpus` (`all` is de default,
