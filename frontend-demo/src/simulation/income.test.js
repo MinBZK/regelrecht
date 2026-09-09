@@ -25,6 +25,26 @@ describe('monthlyValue', () => {
   });
 });
 
+describe('monthlyValue with unknowns', () => {
+  const unknown = { __unknown: true, missing: [{ law: 'zt', name: 'spaargeld', kind: 'no_data' }] };
+  const undecided = result({ inkomen: 24000, huurder: false }, { ib: { ok: true, met: null, outputs: { belasting: 240000 } }, zt: { ok: true, met: 'unknown', outputs: { toeslag: unknown } }, ht: { ok: false, met: null, outputs: null } });
+
+  it('is null, not 0, for an unknown verdict, an unknown amount or a failed evaluation', () => {
+    expect(monthlyValue(undecided, components[1])).toBeNull();
+    expect(monthlyValue(undecided, components[2])).toBeNull();
+    expect(monthlyValue(undecided, components[0])).toBe(200);
+  });
+
+  it('makes the aggregate unknown and leaves the subject out of the averages', () => {
+    const d = disposableIncomeOf(undecided, components);
+    expect(d).toMatchObject({ income: 2000, taxes: null, benefits: null, disposable: null, afterHousing: null, unknown: true });
+    const s = summariseDisposableIncome([renter, undecided], components);
+    expect(s.undecided).toBe(1);
+    expect(s.avgDisposable).toBe(2200);
+    expect(s.components.find((c) => c.component.law === 'zt')).toMatchObject({ withValue: 1, unknown: 1 });
+  });
+});
+
 describe('disposableIncomeOf', () => {
   it('is income minus taxes plus benefits, per month, and again after housing', () => {
     const d = disposableIncomeOf(renter, components);

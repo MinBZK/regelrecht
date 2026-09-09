@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { fieldSpec, formatDate, formatValue, humanize, isAmountSpec, numericImpact } from './format.js';
+import { fieldSpec, formatDate, formatMissing, formatValue, humanize, isAmountSpec, numericImpact, verdictOf } from './format.js';
+
+const UNKNOWN = { __unknown: true, missing: [{ law: 'zorgtoeslagwet', name: 'huurprijs', kind: 'no_data' }, { law: 'wet_inkomstenbelasting', name: 'spaargeld', kind: 'no_data' }] };
 
 const DOC = {
   articles: [
@@ -31,8 +33,10 @@ describe('formatValue', () => {
     expect(formatValue(3610, { type: 'number', type_spec: { unit: 'eurocent' } })).toBe('€\u00a036,10');
   });
 
-  it('renders units, booleans and unknowns in Dutch', () => {
-    expect(formatValue(null)).toBe('onbekend');
+  it('renders units, booleans, absence and unknowns in Dutch', () => {
+    // null is an absence the data states; the engine's Unknown is a fact nobody has.
+    expect(formatValue(null)).toBe('geen');
+    expect(formatValue(UNKNOWN)).toBe('onbekend');
     expect(formatValue(undefined)).toBe('onbekend');
     expect(formatValue(true)).toBe('Ja');
     expect(formatValue(false)).toBe('Nee');
@@ -47,6 +51,24 @@ describe('formatValue', () => {
     expect(formatValue(['a', 'b'])).toBe('a, b');
     expect(formatValue([{ x: 1 }])).toBe('1 item');
     expect(formatValue({ straat: 'Kade', nummer: 1, plaats: null })).toBe('Kade 1');
+  });
+});
+
+describe('formatMissing / verdictOf', () => {
+  it('names the missing facts, with the law when it is another one', () => {
+    expect(formatMissing(UNKNOWN, { ownLaw: 'zorgtoeslagwet', lawName: (id) => (id === 'wet_inkomstenbelasting' ? 'Wet IB' : id) })).toBe('ontbreekt: huurprijs, spaargeld (Wet IB)');
+    expect(formatMissing(UNKNOWN)).toBe('ontbreekt: huurprijs (zorgtoeslagwet), spaargeld (wet_inkomstenbelasting)');
+    expect(formatMissing(null)).toBe('');
+    expect(formatMissing(42)).toBe('');
+  });
+
+  it('reads the verdict without ever taking an unknown for a yes', () => {
+    expect(verdictOf({ voldoet_aan_voorwaarden: true })).toBe(true);
+    expect(verdictOf({ voldoet_aan_voorwaarden: false })).toBe(false);
+    expect(verdictOf({ voldoet_aan_voorwaarden: UNKNOWN })).toBe('unknown');
+    expect(verdictOf({ voldoet_aan_voorwaarden: null })).toBe(false);
+    expect(verdictOf({ bedrag: 1 })).toBeNull();
+    expect(verdictOf(null)).toBeNull();
   });
 });
 

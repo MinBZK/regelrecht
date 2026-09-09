@@ -8,7 +8,8 @@
 /**
  * @typedef {object} LawResult
  * @property {boolean} ok        the engine produced outputs
- * @property {boolean|null} met  voldoet_aan_voorwaarden (null when the law has no such output)
+ * @property {boolean|'unknown'|null} met  voldoet_aan_voorwaarden: true/false when the law
+ *   decided, 'unknown' when facts were missing (RFC-036), null when the law has no such output
  * @property {number|null} amount  primary output in euro (or its raw number), null when absent
  * @property {string|null} error
  */
@@ -32,7 +33,10 @@ export function median(values) {
 export function summariseLaw(results, lawId) {
   const rows = results.map((r) => r.laws[lawId]).filter(Boolean);
   const evaluated = rows.filter((r) => r.ok);
-  const eligible = evaluated.filter((r) => r.met !== false);
+  // An unknown verdict is neither eligible nor ineligible: the law could not
+  // decide for lack of facts. It is counted apart, never as a yes.
+  const undecided = evaluated.filter((r) => r.met === 'unknown');
+  const eligible = evaluated.filter((r) => r.met === true || r.met === null);
   const amounts = eligible.map((r) => r.amount).filter((v) => typeof v === 'number');
   return {
     // A law without `voldoet_aan_voorwaarden` (a tax, a registration) has no
@@ -41,6 +45,7 @@ export function summariseLaw(results, lawId) {
     total: rows.length,
     evaluated: evaluated.length,
     errors: rows.length - evaluated.length,
+    undecided: undecided.length,
     eligible: eligible.length,
     eligiblePct: evaluated.length ? (eligible.length / evaluated.length) * 100 : 0,
     avgAmount: mean(amounts),
@@ -123,7 +128,7 @@ export function flattenResults(results, lawIds) {
     for (const id of lawIds) {
       const l = r.laws[id];
       const short = id.replaceAll('/', '_');
-      row[`${short}__voldoet`] = l ? (l.ok ? l.met !== false : null) : null;
+      row[`${short}__voldoet`] = l ? (l.ok ? (l.met === 'unknown' ? 'onbekend' : l.met !== false) : null) : null;
       row[`${short}__bedrag`] = l?.amount ?? null;
       if (l && !l.ok) row[`${short}__fout`] = l.error;
     }

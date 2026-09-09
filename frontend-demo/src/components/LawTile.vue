@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import OrgLogo from './OrgLogo.vue';
 import DataLineage from './DataLineage.vue';
-import { fieldSpec, formatValue, humanize } from '../data/format.js';
+import { fieldSpec, formatMissing, formatValue, humanize, isUnknown, verdictOf } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
 import { useDemo } from '../store/demoStore.js';
@@ -39,11 +39,18 @@ const outputs = computed(() => {
   const o = evaluation.value?.ok ? evaluation.value.outputs : {};
   return Object.entries(o).filter(([k]) => k !== 'voldoet_aan_voorwaarden');
 });
-const requirementsMet = computed(() => {
+// true/false when the law decided; 'unknown' when it could not for lack of
+// facts (RFC-036), which is never shown as a yes; a law without a verdict
+// output (a tax, a registration) is computed for everyone.
+const verdict = computed(() => {
   if (!evaluation.value?.ok) return null;
-  const v = evaluation.value.outputs?.voldoet_aan_voorwaarden;
-  return v === undefined ? true : !!v;
+  const v = verdictOf(evaluation.value.outputs);
+  return v === null ? true : v;
 });
+const requirementsMet = computed(() => verdict.value === true);
+const lawName = (id) => corpus.value?.lawById(id)?.name ?? id;
+// What the verdict lacks, when it is unknown.
+const verdictMissing = computed(() => (verdict.value === 'unknown' ? formatMissing(evaluation.value.outputs.voldoet_aan_voorwaarden, { ownLaw: props.law.id, lawName }) : ''));
 const primary = computed(() => {
   if (!evaluation.value?.ok) return null;
   const name = primaryOutputName.value && evaluation.value.outputs[primaryOutputName.value] !== undefined
@@ -71,7 +78,7 @@ const askedInputs = computed(() => {
   return corpus.value ? askedInputsFor(corpus.value, props.law, demo.claimFor) : [];
 });
 // What the engine ran into that only the citizen can answer (just in time).
-const missingInputs = computed(() => nextQuestions(askedInputs.value, evaluation.value, props.law.id, evaluationParams()));
+const missingInputs = computed(() => nextQuestions(askedInputs.value, evaluation.value, props.law.id));
 function evaluationParams() {
   return evaluationParamsFor(personaParams(), askedInputs.value);
 }
@@ -93,7 +100,7 @@ const produces = computed(() => {
   }
   return null;
 });
-const canApply = computed(() => evaluation.value?.ok && requirementsMet.value && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
+const canApply = computed(() => evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
 
 // The application stays in the portal (a sheet); the case system is the
 // caseworker's world.
@@ -135,7 +142,8 @@ const statusTag = computed(() => {
         <nldd-inline-dialog variant="alert" text="Kon deze regeling niet berekenen" :supporting-text="evaluation.error"></nldd-inline-dialog>
       </template>
       <template v-else>
-        <nldd-list variant="box-tinted" accessible-label="Uitkomst">
+        <nldd-inline-dialog v-if="verdict === 'unknown'" icon="info" text="Nog niet te bepalen" :supporting-text="`De wet kan met de bekende gegevens geen uitkomst geven; ${verdictMissing}.`"></nldd-inline-dialog>
+        <nldd-list v-else variant="box-tinted" accessible-label="Uitkomst">
           <nldd-list-item size="md">
             <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -143,7 +151,7 @@ const statusTag = computed(() => {
               size="4"
               :overline="requirementsMet ? 'U voldoet aan de voorwaarden' : 'U voldoet niet aan de voorwaarden'"
               :text="requirementsMet ? (primary ? formatValue(primary.value, primary.spec) : 'Ja') : 'Niet van toepassing'"
-              :supporting-text="requirementsMet && primary ? humanize(primary.name) : ''"
+              :supporting-text="requirementsMet && primary ? (isUnknown(primary.value) ? `${humanize(primary.name)} · ${formatMissing(primary.value, { ownLaw: law.id, lawName })}` : humanize(primary.name)) : ''"
             ></nldd-title-cell>
           </nldd-list-item>
         </nldd-list>
@@ -151,7 +159,7 @@ const statusTag = computed(() => {
         <nldd-list v-if="secondary.length" variant="simple" accessible-label="Overige uitkomsten">
           <nldd-list-item v-for="[name, value] in secondary" :key="name" size="sm">
             <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="humanize(name)"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :color="isUnknown(value) ? 'secondary' : 'default'" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
 

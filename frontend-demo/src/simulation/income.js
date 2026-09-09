@@ -5,6 +5,7 @@
  * month or per year, is configuration (`simulation.disposable_income` in
  * demo-config.yaml): the laws themselves do not declare a period.
  */
+import { isUnknown } from '../data/format.js';
 import { mean, median } from './stats.js';
 
 /**
@@ -16,11 +17,21 @@ import { mean, median } from './stats.js';
  * @property {string} [label]   how to name it; defaults to the law name
  */
 
-/** Monthly euro value of one output for one result, or 0 when absent. */
+/**
+ * Monthly euro value of one output for one result. 0 when the law says the
+ * person does not qualify, the amount is absent, or the law was not part of
+ * the run (switched off on purpose); `null` when the value is unknown (the
+ * law could not decide, the amount is unknown, or the evaluation failed): an
+ * unknown component makes the aggregate unknown, it is never counted as 0
+ * (RFC-036).
+ */
 export function monthlyValue(result, component) {
   const law = result.laws?.[component.law];
-  if (!law?.ok || law.met === false) return 0;
+  if (!law) return 0;
+  if (!law.ok || law.met === 'unknown') return null;
+  if (law.met === false) return 0;
   const raw = law.outputs?.[component.output];
+  if (isUnknown(raw)) return null;
   if (typeof raw !== 'number') return 0;
   const euro = raw / 100;
   return component.period === 'year' ? euro / 12 : euro;
@@ -40,16 +51,28 @@ export function disposableIncomeOf(result, components) {
   const income = (result.subject.inkomen ?? 0) / 12;
   let taxes = 0;
   let benefits = 0;
+  let unknown = false;
   const parts = {};
   for (const c of components) {
     const v = monthlyValue(result, c);
     parts[`${c.law}#${c.output}`] = v;
-    if (c.kind === 'tax') taxes += v;
+    if (v === null) unknown = true;
+    else if (c.kind === 'tax') taxes += v;
     else benefits += v;
   }
-  const disposable = income - taxes + benefits;
+  // One unknown component and the sums that include it are unknown too.
+  const disposable = unknown ? null : income - taxes + benefits;
   const housing = housingCosts(result.subject);
-  return { income, taxes, benefits, parts, disposable, afterHousing: disposable - housing, housing };
+  return {
+    income,
+    taxes: unknown ? null : taxes,
+    benefits: unknown ? null : benefits,
+    parts,
+    disposable,
+    afterHousing: disposable === null ? null : disposable - housing,
+    housing,
+    unknown,
+  };
 }
 
 /**
@@ -60,6 +83,8 @@ export function summariseDisposableIncome(results, components) {
   const rows = results.map((r) => disposableIncomeOf(r, components));
   return {
     count: rows.length,
+    // Subjects whose disposable income is unknown; they are left out of the averages.
+    undecided: rows.filter((r) => r.unknown).length,
     avgIncome: mean(rows.map((r) => r.income)),
     avgTaxes: mean(rows.map((r) => r.taxes)),
     avgBenefits: mean(rows.map((r) => r.benefits)),
@@ -70,7 +95,7 @@ export function summariseDisposableIncome(results, components) {
     components: components.map((component) => {
       const key = `${component.law}#${component.output}`;
       const values = rows.map((r) => r.parts[key]);
-      return { component, avg: mean(values), withValue: values.filter((v) => v !== 0).length };
+      return { component, avg: mean(values), withValue: values.filter((v) => typeof v === 'number' && v !== 0).length, unknown: values.filter((v) => v === null).length };
     }),
   };
 }

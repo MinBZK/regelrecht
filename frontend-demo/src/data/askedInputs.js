@@ -4,9 +4,15 @@
  * declares beyond the persona's identity (an application form: terrace size,
  * whether food is served). Both are answered the same way, as a self-declared
  * value that becomes a claim on the law; until answered they are unknown.
+ *
+ * Which question comes next is what the engine says is missing (RFC-036): an
+ * unknown outcome carries the facts nobody supplied, each with the law that
+ * needed it and why it is missing (`no_data`: a register input without a
+ * value; `not_passed`: an optional parameter the caller left out). The
+ * portal asks for exactly those, in the order the engine reached them.
  */
+import { missingFacts } from '@regelrecht/frontend-shared';
 import { fieldSpec } from './format.js';
-import { leafValues, lineageFromTrace } from './lineage.js';
 
 const IDENTITY = new Set(['bsn', 'kvk_nummer']);
 
@@ -14,27 +20,34 @@ const IDENTITY = new Set(['bsn', 'kvk_nummer']);
  * @param {object} corpus
  * @param {object} law            LawEntry
  * @param {(lawId: string, input: string) => object|null} claimFor
- * @returns {Array<{name: string, spec: object|null, claim: object|null, isParameter: boolean}>}
+ * @returns {Array<{name: string, spec: object|null, claim: object|null, isParameter: boolean, required: boolean}>}
  */
 export function askedInputsFor(corpus, law, claimFor) {
   const out = [];
   const bindings = corpus?.bindings?.[law.id] ?? {};
   for (const [name, b] of Object.entries(bindings)) {
-    if (b.kind === 'claim') out.push({ name, spec: fieldSpec(law.doc, name), claim: claimFor(law.id, name), isParameter: false });
+    if (b.kind === 'claim') out.push({ name, spec: fieldSpec(law.doc, name), claim: claimFor(law.id, name), isParameter: false, required: false });
   }
   for (const article of law.doc?.articles ?? []) {
     for (const p of article.machine_readable?.execution?.parameters ?? []) {
       if (IDENTITY.has(p.name) || out.some((o) => o.name === p.name)) continue;
-      out.push({ name: p.name, spec: p, claim: claimFor(law.id, p.name), isParameter: true });
+      // `required` defaults to true (schema v0.5.8): a required parameter the
+      // caller omits is an error, not an unknown, so it has to be asked first.
+      out.push({ name: p.name, spec: p, claim: claimFor(law.id, p.name), isParameter: true, required: p.required !== false });
     }
   }
   return out;
 }
 
-/** The parameters for an evaluation: the identity plus every answered form parameter (unanswered ones as null). */
+/**
+ * The parameters for an evaluation: the identity plus every answered form
+ * parameter. An unanswered parameter is left out, not passed as null: null
+ * would tell the law "there is none", while the truth is that nobody has said
+ * yet (the engine then reports it as not passed).
+ */
 export function evaluationParamsFor(personaParams, asked) {
   const params = { ...personaParams };
-  for (const a of asked) if (a.isParameter) params[a.name] = a.claim ? a.claim.newValue : null;
+  for (const a of asked) if (a.isParameter && a.claim) params[a.name] = a.claim.newValue;
   return params;
 }
 
@@ -88,19 +101,34 @@ export function claimKeyFor(law, params) {
 }
 
 /**
- * The questions to ask now, just in time: the unanswered inputs the engine
- * actually reached in the last evaluation (in the order it reached them) and
- * the unanswered form parameters. An input the calculation never touched is
- * not asked. The engine re-runs after every answer, so the next question is
- * whatever it runs into next.
+ * The facts this law's outcome says are missing, in the order the engine
+ * reached them, de-duplicated: `{ law, name, kind }` per fact.
  */
-export function nextQuestions(asked, evaluation, lawId, params) {
+export function missingFactsOf(evaluation) {
+  const out = [];
+  for (const value of Object.values(evaluation?.outputs ?? {})) {
+    for (const fact of missingFacts(value)) {
+      if (!out.some((f) => f.law === fact.law && f.name === fact.name && f.kind === fact.kind)) out.push(fact);
+    }
+  }
+  return out;
+}
+
+/**
+ * The questions to ask now, just in time: the unanswered inputs and form
+ * parameters the outcome names as missing for this law, in the order the
+ * engine reached them. A register input is asked when the outcome misses it
+ * as `no_data` and the citizen is the one who can supply it (a `kind: claim`
+ * binding); a form parameter when the outcome misses it as `not_passed`. A
+ * required parameter is asked before anything else: without it the engine
+ * cannot run at all, so no outcome could name it.
+ */
+export function nextQuestions(asked, evaluation, lawId) {
   const unanswered = asked.filter((a) => !a.claim);
   if (!unanswered.length) return [];
-  const reached = evaluation?.trace
-    ? leafValues(lineageFromTrace(evaluation.trace, lawId, params)).filter((n) => n.law === lawId && n.value === null).map((n) => n.name)
-    : [];
-  const inputs = unanswered.filter((a) => !a.isParameter && reached.includes(a.name)).sort((a, b) => reached.indexOf(a.name) - reached.indexOf(b.name));
-  const parameters = unanswered.filter((a) => a.isParameter);
-  return [...inputs, ...parameters];
+  const required = unanswered.filter((a) => a.isParameter && a.required);
+  const missing = missingFactsOf(evaluation).filter((f) => f.law === lawId);
+  const reached = unanswered.filter((a) => missing.some((f) => f.name === a.name && f.kind === (a.isParameter ? 'not_passed' : 'no_data')));
+  reached.sort((a, b) => missing.findIndex((f) => f.name === a.name) - missing.findIndex((f) => f.name === b.name));
+  return [...required, ...reached.filter((a) => !required.includes(a))];
 }

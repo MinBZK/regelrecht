@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import DataLineage from './DataLineage.vue';
-import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
+import { fieldSpec, formatDateTime, formatMissing, formatValue, humanize, verdictOf } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
 import { useDemo } from '../store/demoStore.js';
@@ -40,7 +40,7 @@ const asked = computed(() => {
 });
 // Just in time, as the POC did it: the engine runs with what it has, and the
 // next question is the first thing it ran into that only the citizen knows.
-const missing = computed(() => (props.law ? nextQuestions(asked.value, props.evaluation, props.law.id, evaluationParamsFor(personaParams(), asked.value)) : []));
+const missing = computed(() => (props.law ? nextQuestions(asked.value, props.evaluation, props.law.id) : []));
 const question = computed(() => missing.value[0] ?? null);
 const answered = ref(0);
 const currentCase = computed(() => {
@@ -49,11 +49,17 @@ const currentCase = computed(() => {
 });
 const doc = computed(() => props.law?.doc);
 
-const requirementsMet = computed(() => {
+// true/false when the law decided, 'unknown' when it could not for lack of
+// facts (RFC-036): then there is nothing to submit yet. A law without a
+// verdict output is computed for everyone.
+const verdict = computed(() => {
   if (!props.evaluation?.ok) return null;
-  const v = props.evaluation.outputs?.voldoet_aan_voorwaarden;
-  return v === undefined ? true : !!v;
+  const v = verdictOf(props.evaluation.outputs);
+  return v === null ? true : v;
 });
+const requirementsMet = computed(() => verdict.value === true);
+const lawName = (id) => corpus.value?.lawById(id)?.name ?? id;
+const verdictMissing = computed(() => (verdict.value === 'unknown' ? formatMissing(props.evaluation.outputs.voldoet_aan_voorwaarden, { ownLaw: props.law?.id, lawName }) : ''));
 const primaryName = computed(() => corpus.value?.config?.dashboard_outputs?.[`${props.law?.service}/${props.law?.law_path}`] ?? null);
 const outcomeRows = computed(() => {
   const o = props.evaluation?.ok ? props.evaluation.outputs : {};
@@ -140,7 +146,7 @@ watch([missing, step], ([m, st]) => {
 });
 
 // ---- step 2/3: check and submit --------------------------------------------------
-const canSubmit = computed(() => props.evaluation?.ok && requirementsMet.value && declared.value && missing.value.length === 0);
+const canSubmit = computed(() => props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
 function submitApplication() {
   const c = demo.submitCase(props.law, props.evaluation, evaluationParamsFor(personaParams(), asked.value));
   if (c) {
@@ -265,7 +271,8 @@ function claimStatus(cl) {
               <nldd-rich-text spacing="tight"><p>De regeling wordt met uw gegevens berekend…</p></nldd-rich-text>
             </template>
             <template v-else>
-              <nldd-list variant="box-tinted" accessible-label="Uitkomst">
+              <nldd-banner v-if="verdict === 'unknown'" variant="info" text="De wet kan nog geen uitkomst geven" :supporting-text="`Er ${verdictMissing}. Zonder deze gegevens kan de aanvraag niet worden beoordeeld.`"></nldd-banner>
+              <nldd-list v-else variant="box-tinted" accessible-label="Uitkomst">
                 <nldd-list-item size="md">
                   <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
                   <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -294,7 +301,7 @@ function claimStatus(cl) {
                   <nldd-button variant="primary" start-icon="paper-plane" text="Aanvraag indienen" :disabled="!canSubmit || undefined" @click="submitApplication"></nldd-button>
                 </nldd-form-actions>
               </template>
-              <nldd-banner v-else variant="warning" text="U voldoet niet aan de voorwaarden" supporting-text="U kunt wel aanvragen, maar de wet wijst de aanvraag af. Controleer eerst of alle gegevens kloppen."></nldd-banner>
+              <nldd-banner v-else-if="verdict === false" variant="warning" text="U voldoet niet aan de voorwaarden" supporting-text="U kunt wel aanvragen, maar de wet wijst de aanvraag af. Controleer eerst of alle gegevens kloppen."></nldd-banner>
             </template>
           </template>
 

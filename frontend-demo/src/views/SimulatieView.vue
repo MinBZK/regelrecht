@@ -194,8 +194,9 @@ function outcomeLine(run, law) {
   const s = law.s;
   const head = s.hasEligibility ? `${s.eligible} van ${s.evaluated} voldoet` : `${s.evaluated} berekend`;
   const amount = s.withAmount ? ` · gemiddeld ${fmtAmount(run, law.id, s.avgAmount)}` : '';
+  const undecided = s.undecided ? ` · ${s.undecided} onbekend` : '';
   const errors = s.errors ? ` · ${s.errors} niet berekend` : '';
-  return head + amount + errors;
+  return head + amount + undecided + errors;
 }
 const amountChart = computed(() => {
   const rows = lawRows.value.filter((l) => l.s.withAmount > 0 && amountIsMoney(activeRun.value, l.id));
@@ -241,7 +242,7 @@ function subjectCell(subject, key) {
   return formatValue(v);
 }
 function eligibleCount(result) {
-  return Object.values(result.laws).filter((l) => l.ok && l.met !== false).length;
+  return Object.values(result.laws).filter((l) => l.ok && (l.met === true || l.met === null)).length;
 }
 
 // ---- disposable income (citizens) --------------------------------------------------

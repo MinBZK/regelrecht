@@ -16,6 +16,7 @@ import {
   registerClaims,
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
+import { verdictOf } from '../data/format.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
 
@@ -219,8 +220,12 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
   const pendingClaims = state.claims.filter(
     (c) => c.bsn === bsn && c.status === 'PENDING' && c.tileLawId === lawEntry.id,
   );
-  const requirementsMet = evaluation.outputs?.voldoet_aan_voorwaarden !== false;
-  const needsReview = state.manualReview || pendingClaims.length > 0;
+  // An unknown verdict (facts missing, RFC-036) is not a yes: the application
+  // goes to a caseworker, who completes it (Awb art. 4:5) or decides.
+  const verdict = verdictOf(evaluation.outputs);
+  const undecided = verdict === 'unknown';
+  const requirementsMet = verdict === null || verdict === true;
+  const needsReview = state.manualReview || pendingClaims.length > 0 || undecided;
   const c = {
     id: newId('zaak'),
     bsn,
@@ -241,7 +246,7 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
     events: [
       { at: nowIso(), type: 'SUBMITTED', text: 'Aanvraag ingediend door de burger.' },
       needsReview
-        ? { at: nowIso(), type: 'IN_REVIEW', text: pendingClaims.length ? 'Handmatige beoordeling: de burger heeft gegevens gewijzigd.' : 'Handmatige beoordeling (steekproef).' }
+        ? { at: nowIso(), type: 'IN_REVIEW', text: pendingClaims.length ? 'Handmatige beoordeling: de burger heeft gegevens gewijzigd.' : undecided ? 'Handmatige beoordeling: de wet kan nog geen uitkomst geven, er ontbreken gegevens.' : 'Handmatige beoordeling (steekproef).' }
         : { at: nowIso(), type: 'DECIDED', text: requirementsMet ? 'Automatisch toegekend.' : 'Automatisch afgewezen.' },
     ],
   };

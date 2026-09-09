@@ -25,6 +25,13 @@ describe('summariseLaw', () => {
     expect(s.eligiblePct).toBeCloseTo(66.67, 1);
   });
 
+  it('counts an unknown verdict apart, never as eligible', () => {
+    const s = summariseLaw([...results, { subject: { id: '5' }, laws: { a: { ok: true, met: 'unknown', amount: null } } }], 'a');
+    expect(s).toMatchObject({ evaluated: 4, eligible: 2, undecided: 1, withAmount: 2 });
+    expect(s.eligiblePct).toBe(50);
+    expect(flattenResults([{ subject: { id: '5' }, laws: { a: { ok: true, met: 'unknown', amount: null } } }], ['a'])[0]).toMatchObject({ a__voldoet: 'onbekend', a__bedrag: null });
+  });
+
   it('treats a law without voldoet_aan_voorwaarden as met', () => {
     const s = summariseLaw([{ subject: {}, laws: { b: { ok: true, met: null, amount: 5 } } }], 'b');
     expect(s.eligible).toBe(1);

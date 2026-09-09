@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive } from 'vue';
 import OrgLogo from './OrgLogo.vue';
-import { fieldSpec, formatValue, humanize } from '../data/format.js';
+import { fieldSpec, formatMissing, formatValue, humanize, isUnknown } from '../data/format.js';
 import { useDemo } from '../store/demoStore.js';
 
 // The rows of the "Gebruikte gegevens" tree of one tile: every register value
@@ -36,6 +36,20 @@ function pending(node) {
   return c && c.status === 'PENDING' ? c : null;
 }
 
+/**
+ * The second line under a value: who corrected it, or, for an unknown value,
+ * what is missing (RFC-036). A value that is only missing itself is simply
+ * "Nog niet bekend"; an unknown that misses other facts names them.
+ */
+function supportingText(node) {
+  if (node.corrected) return 'Gecorrigeerd door u';
+  if (isUnknown(node.value)) {
+    const missing = formatMissing(node.value, { ownLaw: node.law, lawName });
+    return missing === `ontbreekt: ${humanize(node.name).toLowerCase()}` ? 'Nog niet bekend' : missing;
+  }
+  return node.service ? undefined : 'Nog niet bekend';
+}
+
 const open = reactive({});
 function keyOf(node) {
   return `${node.law}#${node.name}`;
@@ -50,8 +64,8 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-icon-cell v-else-if="node.corrected" icon="edit" size="16" color="accent"></nldd-icon-cell>
     <nldd-icon-cell v-else icon="question-mark-circle" size="16" color="secondary"></nldd-icon-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-    <nldd-text-cell size="sm" min-width="120px" :text="humanize(node.name)" :supporting-text="node.corrected ? 'Gecorrigeerd door u' : node.service ? undefined : 'Nog niet bekend'"></nldd-text-cell>
-    <nldd-text-cell size="sm" width="fit-content" max-width="55%" horizontal-alignment="right" :color="pending(node) ? 'warning' : node.value === null ? 'secondary' : 'default'">
+    <nldd-text-cell size="sm" min-width="120px" :text="humanize(node.name)" :supporting-text="supportingText(node)"></nldd-text-cell>
+    <nldd-text-cell size="sm" width="fit-content" max-width="55%" horizontal-alignment="right" :color="pending(node) ? 'warning' : isUnknown(node.value) ? 'secondary' : 'default'">
       <template v-if="pending(node)">
         <s>{{ formatValue(node.value, specFor(node)) }}</s> → {{ formatValue(pending(node).newValue, specFor(node)) }}
       </template>
@@ -72,8 +86,8 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-spacer-cell v-for="i in depth" :key="i" size="20"></nldd-spacer-cell>
     <nldd-cell v-if="lawService(node.law)"><OrgLogo :service="lawService(node.law)" size="sm" /></nldd-cell>
     <nldd-spacer-cell v-if="lawService(node.law)" size="8"></nldd-spacer-cell>
-    <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="`berekend door ${lawName(node.law)}`"></nldd-text-cell>
-    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(node.value, specFor(node))"></nldd-text-cell>
+    <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="isUnknown(node.value) ? `berekend door ${lawName(node.law)} · ${formatMissing(node.value, { ownLaw: node.law, lawName })}` : `berekend door ${lawName(node.law)}`"></nldd-text-cell>
+    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="isUnknown(node.value) ? 'secondary' : 'default'" :text="formatValue(node.value, specFor(node))"></nldd-text-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-icon-cell disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
     <DataLineage v-if="node.children?.length" :nodes="node.children" :depth="depth + 1" nested @edit="emit('edit', $event)" />
