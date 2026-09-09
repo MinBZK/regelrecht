@@ -161,6 +161,13 @@ repos:
         pass_filenames: false
         files: ^(script/(report-advisories(\.test)?|audit-advisories)\.sh|\.github/workflows/security-advisories\.yml)$
 
+      - id: cross-law-toestand-tests
+        name: De cross-law-poort leest de toestand die geldt
+        entry: script/cross-law-integriteit.test.sh
+        language: system
+        pass_filenames: false
+        files: ^script/cross-law-integriteit(\.test)?\.(py|sh)$
+
       - id: skills-no-casus
         name: Skills blijven dossier-agnostisch (geen casus-inhoud)
         entry: script/check-skills-no-casus.sh
