@@ -46,11 +46,21 @@ function fieldMeta(field) {
  * Builds a name -> datatype map for scenario parameter inputs, so each input
  * can render the control matching its declared type (boolean -> switch,
  * amount -> currency field, etc.). Merges execution.input and
- * execution.parameters; parameter types win on name collision since a
- * scenario `Given parameter` targets an execution parameter most directly.
- * Captures `type_spec.unit` so the amount branch can convert eurocents<->euros,
- * and `nullable` so the form only accepts a stated absence where the law
- * allows one.
+ * execution.parameters. Captures `type_spec.unit` so the amount branch can
+ * convert eurocents<->euros, and `nullable` so the form only accepts a
+ * stated absence where the law allows one.
+ *
+ * Precedence on a name collision: the parameter's declaration wins, for the
+ * whole of the meta (type, unit and nullable alike). This map serves the
+ * parameter rows of the scenario form (`Given parameter "x" is ...`), and
+ * the engine checks a top-level parameter against the *parameter's*
+ * declaration (`required_parameter_for_nobody` in service.rs): a `null` is
+ * accepted or refused by the parameter's `nullable`, whatever a same-named
+ * input says. So a nullable input shadowed by a non-nullable parameter has
+ * `null` refused here, on purpose, because the engine refuses it too. The
+ * columns of a data-source table are the other way round: they feed inputs,
+ * and `buildExternalFieldTypeMap` reads inputs only, untouched by any
+ * same-named parameter.
  *
  * @param {Array} articles - Articles array from useLaw()
  * @returns {Map<string, { type: string, unit: (string|null), nullable: boolean }>}
@@ -105,6 +115,10 @@ export function buildOutputTypeMap(articles) {
  * Spans a set of law docs (the current law + its loaded dependencies), because
  * data-source fields are declared by the leaf laws, not the law under test.
  * Last doc wins on a name collision. Drives typed cells in DataSourceTable.
+ * Parameters play no part: a table column feeds an input, and the engine
+ * checks the value against the input's declaration, so a same-named
+ * parameter (nullable or not) leaves the column's meta alone. The parameter
+ * rows of the form have the opposite rule, see `buildTypeMap`.
  *
  * @param {Array<{articles?: Array}>} lawDocs - parsed law documents
  * @returns {Map<string, { type: string, unit: (string|null), nullable: boolean }>}

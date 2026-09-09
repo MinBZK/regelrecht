@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils';
 import { describe, it, expect } from 'vitest';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
+import AbsenceToggle from './AbsenceToggle.vue';
 
 const fields = [
   { name: 'verdragsinschrijving', type: 'boolean', unit: null },
@@ -41,10 +42,15 @@ describe('DataSourceTable typed cells', () => {
     const w = mountTable([
       { _id: 1, bsn: '1', verdragsinschrijving: 'null', spaargeld: 'null', geboortedatum: null, land_verblijf: 'null' },
     ]);
+    // The column keeps its type; ScenarioParameterInput renders the null in
+    // a text field regardless of it.
     expect(spiFor(w, 'spaargeld').props('value')).toBe('null');
-    expect(spiFor(w, 'spaargeld').props('type')).toBe('string');
+    expect(spiFor(w, 'spaargeld').props('type')).toBe('amount');
+    expect(spiFor(w, 'spaargeld').find('nldd-text-field').attributes('value')).toBe('null');
+    expect(spiFor(w, 'spaargeld').find('nldd-number-field').exists()).toBe(false);
     expect(spiFor(w, 'geboortedatum').props('value')).toBe('null'); // a JS null from a typed record
-    expect(spiFor(w, 'geboortedatum').props('type')).toBe('string');
+    expect(spiFor(w, 'geboortedatum').find('nldd-text-field').attributes('value')).toBe('null');
+    expect(spiFor(w, 'geboortedatum').find('nldd-text-field').attributes('type')).toBeUndefined();
     expect(spiFor(w, 'land_verblijf').props('value')).toBe('null');
     expect(w.find('select').element.value).toBe('null');
   });
@@ -170,6 +176,94 @@ describe('DataSourceTable nullability', () => {
     expect(w.find('nldd-dropdown').attributes('invalid')).toBeDefined();
     expect(errorTexts(w)).toHaveLength(2);
     expect(w.emitted('update:modelValue')).toBeUndefined();
+  });
+
+  // The "afwezig" checkbox (AbsenceToggle) is the explicit way to state an
+  // absence in a cell whose control cannot hold the word `null` (number,
+  // amount, date, boolean). Offered only where the law declares the column
+  // nullable; a non-nullable or undeclared column gets no control.
+  describe('the afwezig toggle', () => {
+    const typedNullable = [
+      { name: 'verdragsinschrijving', type: 'boolean', unit: null, nullable: true },
+      { name: 'spaargeld', type: 'amount', unit: 'eurocent', nullable: true },
+      { name: 'leeftijd', type: 'number', unit: null, nullable: true },
+      { name: 'geboortedatum', type: 'date', unit: null, nullable: true },
+      { name: 'inkomen', type: 'amount', unit: 'eurocent', nullable: false },
+      { name: 'land_verblijf', type: 'string', unit: null },
+    ];
+    const row = { _id: 1, bsn: '1', verdragsinschrijving: 'true', spaargeld: '79547', leeftijd: '40', geboortedatum: '2005-01-01', inkomen: '100', land_verblijf: 'NL' };
+    const toggleFor = (w, name) => w.findAllComponents(AbsenceToggle).find((t) => t.attributes('data-testid') === `absent-${name}`);
+    const check = (t, checked) => t.find('nldd-checkbox-field').element.dispatchEvent(new CustomEvent('change', { detail: { checked } }));
+    const lastRow = (w) => w.emitted('update:modelValue').at(-1)[0][0];
+
+    it('is offered for every nullable column whatever its type, and for no other', () => {
+      const w = mountWith(typedNullable, [row]);
+      for (const name of ['verdragsinschrijving', 'spaargeld', 'leeftijd', 'geboortedatum']) {
+        expect(toggleFor(w, name), name).toBeDefined();
+        expect(toggleFor(w, name).props('value')).toBe(row[name]);
+      }
+      expect(toggleFor(w, 'inkomen')).toBeUndefined(); // nullable: false
+      expect(toggleFor(w, 'land_verblijf')).toBeUndefined(); // no declaration
+      expect(toggleFor(w, 'bsn')).toBeUndefined(); // key column
+    });
+
+    it('is not offered in a read-only table', () => {
+      const w = mount(DataSourceTable, {
+        props: { title: 'box', keyField: 'bsn', fields: typedNullable, modelValue: [row], defaultExpanded: true, drilledIn: true, readonly: true },
+      });
+      expect(w.findAllComponents(AbsenceToggle)).toHaveLength(0);
+    });
+
+    it('checking it stores the word null in a number cell, which then shows null as text', async () => {
+      const w = mountWith(typedNullable, [row]);
+      check(toggleFor(w, 'spaargeld'), true);
+      await w.vm.$nextTick();
+      expect(lastRow(w).spaargeld).toBe('null');
+      expect(lastRow(w).leeftijd).toBe('40'); // the other cells are untouched
+      await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
+      const field = spiFor(w, 'spaargeld');
+      expect(field.props('value')).toBe('null');
+      expect(field.find('nldd-text-field').attributes('value')).toBe('null');
+      expect(field.props('invalid')).toBe(false);
+      expect(toggleFor(w, 'spaargeld').find('nldd-checkbox-field').attributes('checked')).toBeDefined();
+      expect(errorTexts(w)).toEqual([]);
+    });
+
+    it('unchecking it stores a blank (unknown), not the old value', async () => {
+      const w = mountWith(typedNullable, [{ ...row, leeftijd: 'null' }]);
+      expect(toggleFor(w, 'leeftijd').find('nldd-checkbox-field').attributes('checked')).toBeDefined();
+      check(toggleFor(w, 'leeftijd'), false);
+      await w.vm.$nextTick();
+      expect(lastRow(w).leeftijd).toBe('');
+      await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
+      expect(spiFor(w, 'leeftijd').find('nldd-number-field').exists()).toBe(true);
+      expect(toggleFor(w, 'leeftijd').find('nldd-checkbox-field').attributes('checked')).toBeUndefined();
+    });
+
+    it('works on a boolean column too, in step with the dropdown', async () => {
+      const w = mountWith(typedNullable, [row]);
+      check(toggleFor(w, 'verdragsinschrijving'), true);
+      await w.vm.$nextTick();
+      expect(lastRow(w).verdragsinschrijving).toBe('null');
+      await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
+      expect(w.find('select').element.value).toBe('null');
+      // And the dropdown's own null option keeps the checkbox in step.
+      const select = w.find('select');
+      select.element.value = 'false';
+      await select.trigger('change');
+      await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
+      expect(toggleFor(w, 'verdragsinschrijving').find('nldd-checkbox-field').attributes('checked')).toBeUndefined();
+    });
+
+    it('typing over the null text clears the toggle', async () => {
+      const w = mountWith(typedNullable, [{ ...row, geboortedatum: 'null' }]);
+      spiFor(w, 'geboortedatum').vm.$emit('update', '2005-01-01');
+      await w.vm.$nextTick();
+      expect(lastRow(w).geboortedatum).toBe('2005-01-01');
+      await w.setProps({ modelValue: w.emitted('update:modelValue').at(-1)[0] });
+      expect(toggleFor(w, 'geboortedatum').find('nldd-checkbox-field').attributes('checked')).toBeUndefined();
+      expect(spiFor(w, 'geboortedatum').find('nldd-text-field').attributes('type')).toBe('date');
+    });
   });
 
   it('drops the invalid mark once the boolean cell is set to a value', async () => {

@@ -6,6 +6,7 @@ import { formatValue, formatMissing, normalizeForCompare, matchStatus as _matchS
 import { NOT_NULLABLE_MESSAGE, nullAllowed, isNullText } from '../utils/nullability.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
+import AbsenceToggle from './AbsenceToggle.vue';
 
 const props = defineProps({
   /** Scenario object from mapFeatureToForm() */
@@ -70,6 +71,15 @@ const paramErrorIdPrefix = useId();
 
 function paramNullAllowed(name) {
   return nullAllowed(paramMeta(name));
+}
+// The "afwezig" checkbox (AbsenceToggle) is the explicit way to state an
+// absence, offered where the law declares the parameter `nullable: true`,
+// whatever its type: a number field cannot hold the word `null` and a switch
+// cannot show it. Not offered on `false` (refused anyway) nor on an unknown
+// declaration (a text field, where typing `null` already works; a control
+// there would read as a claim the form cannot make).
+function paramOffersAbsenceToggle(name) {
+  return paramMeta(name).nullable === true;
 }
 function updateParameter(name, value) {
   if (isNullText(value) && !paramNullAllowed(name)) {
@@ -457,6 +467,16 @@ const dateErrorId = useId();
               {{ NOT_NULLABLE_MESSAGE }}
             </nldd-form-field-error-text>
           </nldd-cell>
+          <template v-if="paramOffersAbsenceToggle(name)">
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-cell width="fit-content">
+              <AbsenceToggle
+                :value="value"
+                :data-testid="`absent-${name}`"
+                @update="updateParameter(name, $event)"
+              />
+            </nldd-cell>
+          </template>
         </nldd-list-item>
         <!-- Collection parameters: a row per collection, drill in one level
              deeper to edit the elements, the same way a data source works. -->

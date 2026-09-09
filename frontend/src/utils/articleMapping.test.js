@@ -72,6 +72,48 @@ describe('buildTypeMap', () => {
     expect(map.get('leeftijd').nullable).toBe(false);
   });
 
+  // Precedence on a name collision is the parameter's, for nullable as much
+  // as for type: a parameter row of the form is checked by the engine against
+  // the parameter's declaration (`required_parameter_for_nobody`), whatever
+  // a same-named input says. Both directions, so neither is an accident of
+  // pass order.
+  describe('nullable on a parameter/input name collision', () => {
+    const colliding = (input, parameter) => [
+      { number: '1', machine_readable: { execution: { input: [input] } } },
+      { number: '2', machine_readable: { execution: { parameters: [parameter] } } },
+    ];
+
+    it('a non-nullable parameter shadows a nullable input: null is refused for the parameter row', () => {
+      const map = buildTypeMap(colliding(
+        { name: 'partner_bsn', type: 'string', nullable: true, source: {} },
+        { name: 'partner_bsn', type: 'string' },
+      ));
+      expect(map.get('partner_bsn')).toEqual({ type: 'string', unit: null, nullable: false });
+    });
+
+    it('a nullable parameter shadows a non-nullable input: null is accepted for the parameter row', () => {
+      const map = buildTypeMap(colliding(
+        { name: 'partner_bsn', type: 'string', source: {} },
+        { name: 'partner_bsn', type: 'string', nullable: true },
+      ));
+      expect(map.get('partner_bsn')).toEqual({ type: 'string', unit: null, nullable: true });
+    });
+
+    it('the parameter wins regardless of article order', () => {
+      const [inputArticle, paramArticle] = colliding(
+        { name: 'x', type: 'amount', type_spec: { unit: 'eurocent' }, nullable: true, source: {} },
+        { name: 'x', type: 'number' },
+      );
+      expect(buildTypeMap([paramArticle, inputArticle]).get('x')).toEqual({ type: 'number', unit: null, nullable: false });
+      expect(buildTypeMap([inputArticle, paramArticle]).get('x')).toEqual({ type: 'number', unit: null, nullable: false });
+    });
+
+    it('an input with no same-named parameter keeps its own declaration', () => {
+      const map = buildTypeMap([{ number: '1', machine_readable: { execution: { input: [{ name: 'huur', type: 'amount', nullable: true, source: {} }] } } }]);
+      expect(map.get('huur').nullable).toBe(true);
+    });
+  });
+
   it('ignores articles without machine_readable and returns a Map', () => {
     const map = buildTypeMap([{ number: '1' }, {}]);
     expect(map).toBeInstanceOf(Map);
@@ -103,6 +145,25 @@ describe('buildExternalFieldTypeMap', () => {
     ])]);
     expect(m.get('huur').nullable).toBe(true);
     expect(m.get('spaargeld').nullable).toBe(false);
+  });
+
+  // The other side of the precedence in buildTypeMap: a table column feeds an
+  // input, and the engine checks it against the input's declaration, so a
+  // same-named parameter, nullable or not, leaves the column's meta alone.
+  it('is untouched by a same-named parameter, in either direction of nullability', () => {
+    const withParam = (input, parameter) => ({
+      articles: [{ machine_readable: { execution: { input: [input], parameters: [parameter] } } }],
+    });
+    const shadowedNullable = buildExternalFieldTypeMap([withParam(
+      { name: 'partner_bsn', type: 'string', nullable: true, source: {} },
+      { name: 'partner_bsn', type: 'number' },
+    )]);
+    expect(shadowedNullable.get('partner_bsn')).toEqual({ type: 'string', unit: null, nullable: true });
+    const shadowedStrict = buildExternalFieldTypeMap([withParam(
+      { name: 'partner_bsn', type: 'string', source: {} },
+      { name: 'partner_bsn', type: 'string', nullable: true },
+    )]);
+    expect(shadowedStrict.get('partner_bsn')).toEqual({ type: 'string', unit: null, nullable: false });
   });
 
   it('excludes cross-law (source.regulation) and internal (source.output) inputs', () => {

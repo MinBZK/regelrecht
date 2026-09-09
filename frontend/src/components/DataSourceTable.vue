@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, useId } from 'vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
+import AbsenceToggle from './AbsenceToggle.vue';
 import { NOT_NULLABLE_MESSAGE, nullAllowed, isNullText } from '../utils/nullability.js';
 
 let nextRowId = 0;
@@ -82,10 +83,12 @@ function defaultForType(type) {
 // input as unknown), the word `null` is an absence the author stated. The
 // two must stay apart in the form, so a blank shows as blank and a null (a
 // JS null from a typed collection record, or the text `null` from a
-// data-source row) shows as the word `null`, in a text control whatever the
-// column type - a number field cannot show it. Clearing a field stores a
-// blank; stating an absence is done by typing `null` in a text column or
-// picking it in a boolean column.
+// data-source row) shows as the word `null`; ScenarioParameterInput renders
+// that in a text control whatever the column type. Clearing a field stores
+// a blank. Stating an absence is done with the "afwezig" checkbox
+// (AbsenceToggle) next to the field, which every column declared nullable
+// gets whatever its type, or by typing `null` in a text column or picking
+// it in a boolean column.
 //
 // Whether an absence may be stated at all is the column's `nullable` (the
 // field's declaration in the law, schema v0.5.8). Three states: `true` (the
@@ -93,14 +96,17 @@ function defaultForType(type) {
 // engine rejects a null there), `undefined` (no declaration known - the
 // element fields of a collection, or a source column the law never names).
 // Only `false` restricts: an unknown declaration makes no claim, the same
-// rule the engine's type checker follows (see utils/nullability.js).
+// rule the engine's type checker follows (see utils/nullability.js). The
+// checkbox is offered only on `true`: an unknown column is a text column,
+// where typing `null` already works, and offering a control the law does
+// not vouch for would read as a claim the form cannot make.
 const isNullCell = isNullText;
 function cellDisplay(v) {
   if (isNullCell(v)) return 'null';
   return v === undefined ? '' : v;
 }
-function cellType(col, v) {
-  return isNullCell(v) ? 'string' : col.type;
+function offersAbsenceToggle(col) {
+  return col.nullable === true;
 }
 
 // Cells whose `null` was refused, keyed `<row key>:<column>`. The refusal
@@ -230,7 +236,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
             </nldd-cell>
             <nldd-cell v-else width="full" min-width="120px">
               <ScenarioParameterInput
-                :type="cellType(col, row[col.name])"
+                :type="col.type"
                 :unit="col.unit"
                 :name="col.name"
                 :value="cellDisplay(row[col.name])"
@@ -242,6 +248,18 @@ const showBody = computed(() => props.drilledIn || expanded.value);
                 {{ NOT_NULLABLE_MESSAGE }}
               </nldd-form-field-error-text>
             </nldd-cell>
+            <!-- The explicit way to state an absence, for every nullable
+                 column whatever its type (a number field cannot hold null). -->
+            <template v-if="!readonly && offersAbsenceToggle(col)">
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell width="fit-content">
+                <AbsenceToggle
+                  :value="row[col.name]"
+                  :data-testid="`absent-${col.name}`"
+                  @update="cellStore(ri, col, $event)"
+                />
+              </nldd-cell>
+            </template>
           </nldd-list-item>
 
           <nldd-list-item v-if="!readonly" size="md">

@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import ScenarioForm from './ScenarioForm.vue';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
+import AbsenceToggle from './AbsenceToggle.vue';
 import { NOT_NULLABLE_MESSAGE } from '../utils/nullability.js';
 
 // RFC-036 / schema v0.5.8: a scenario parameter takes the word `null` (a
@@ -22,6 +23,9 @@ const setupWith = (parameters) => ({
 const typeMap = new Map([
   ['huur', { type: 'string', unit: null, nullable: true }],
   ['inkomen', { type: 'string', unit: null, nullable: false }],
+  ['spaargeld', { type: 'amount', unit: 'eurocent', nullable: true }],
+  ['leeftijd', { type: 'number', unit: null, nullable: false }],
+  ['heeft_partner', { type: 'boolean', unit: null, nullable: true }],
 ]);
 
 const mountForm = (parameters, externalFieldTypeMap = null) =>
@@ -88,6 +92,88 @@ describe('ScenarioForm parameter nullability', () => {
     await w.vm.$nextTick();
     expect(values(w).inkomen).toBe('500');
     expect(errorTexts(w)).toEqual([]);
+  });
+
+  // The "afwezig" checkbox (AbsenceToggle) is the explicit way to state an
+  // absence for a parameter whose control cannot hold the word `null`
+  // (number, amount, date, boolean). Offered only where the law declares the
+  // parameter nullable.
+  describe('the afwezig toggle', () => {
+    const toggleFor = (w, name) => w.findAllComponents(AbsenceToggle).find((t) => t.attributes('data-testid') === `absent-${name}`);
+    const check = (t, checked) => t.find('nldd-checkbox-field').element.dispatchEvent(new CustomEvent('change', { detail: { checked } }));
+
+    it('is offered for a nullable parameter of any type, not for a non-nullable or undeclared one', () => {
+      const w = mountForm([
+        { name: 'huur', value: '500' },
+        { name: 'spaargeld', value: '1500' },
+        { name: 'heeft_partner', value: 'true' },
+        { name: 'inkomen', value: '500' },
+        { name: 'leeftijd', value: '40' },
+        { name: 'onbekend', value: 'x' },
+      ]);
+      expect(toggleFor(w, 'huur')).toBeDefined();
+      expect(toggleFor(w, 'spaargeld')).toBeDefined();
+      expect(toggleFor(w, 'heeft_partner')).toBeDefined();
+      expect(toggleFor(w, 'inkomen')).toBeUndefined(); // nullable: false
+      expect(toggleFor(w, 'leeftijd')).toBeUndefined(); // nullable: false
+      expect(toggleFor(w, 'onbekend')).toBeUndefined(); // no declaration
+      expect(toggleFor(w, 'Datum')).toBeUndefined(); // the calculation date is never absent
+    });
+
+    it('checking it stores null for an amount parameter, which then shows null as text', async () => {
+      const w = mountForm([{ name: 'spaargeld', value: '1500' }]);
+      expect(inputFor(w, 'spaargeld').find('nldd-number-field').exists()).toBe(true);
+      check(toggleFor(w, 'spaargeld'), true);
+      await w.vm.$nextTick();
+      expect(values(w).spaargeld).toBe('null');
+      const field = inputFor(w, 'spaargeld');
+      expect(field.find('nldd-text-field').attributes('value')).toBe('null');
+      expect(field.props('invalid')).toBe(false);
+      expect(toggleFor(w, 'spaargeld').find('nldd-checkbox-field').attributes('checked')).toBeDefined();
+      expect(errorTexts(w)).toEqual([]);
+      expect(w.emitted('change')).toHaveLength(1);
+    });
+
+    it('checking it on a boolean parameter replaces the switch with the word null', async () => {
+      const w = mountForm([{ name: 'heeft_partner', value: 'true' }]);
+      expect(inputFor(w, 'heeft_partner').find('nldd-switch-field').exists()).toBe(true);
+      check(toggleFor(w, 'heeft_partner'), true);
+      await w.vm.$nextTick();
+      expect(values(w).heeft_partner).toBe('null');
+      expect(inputFor(w, 'heeft_partner').find('nldd-switch-field').exists()).toBe(false);
+      expect(inputFor(w, 'heeft_partner').find('nldd-text-field').attributes('value')).toBe('null');
+    });
+
+    it('unchecking it stores a blank (unknown) and brings the typed control back', async () => {
+      const w = mountForm([{ name: 'spaargeld', value: 'null' }]);
+      expect(toggleFor(w, 'spaargeld').find('nldd-checkbox-field').attributes('checked')).toBeDefined();
+      check(toggleFor(w, 'spaargeld'), false);
+      await w.vm.$nextTick();
+      expect(values(w).spaargeld).toBe('');
+      expect(inputFor(w, 'spaargeld').find('nldd-number-field').exists()).toBe(true);
+      expect(toggleFor(w, 'spaargeld').find('nldd-checkbox-field').attributes('checked')).toBeUndefined();
+    });
+
+    it('a null read from the file for a number parameter shows as the word null, not NaN', () => {
+      const w = mountForm([{ name: 'leeftijd', value: 'null' }]);
+      const field = inputFor(w, 'leeftijd');
+      expect(field.find('nldd-number-field').exists()).toBe(false);
+      expect(field.find('nldd-text-field').attributes('value')).toBe('null');
+      // Non-nullable: flagged, kept, and no toggle to offer.
+      expect(field.props('invalid')).toBe(true);
+      expect(errorTexts(w)).toEqual([NOT_NULLABLE_MESSAGE]);
+      expect(toggleFor(w, 'leeftijd')).toBeUndefined();
+    });
+
+    it('leaves the null out of the run only when unchecked, and passes it when checked', async () => {
+      const w = mountForm([{ name: 'spaargeld', value: '1500' }]);
+      check(toggleFor(w, 'spaargeld'), true);
+      await w.vm.$nextTick();
+      expect(values(w)).toEqual({ spaargeld: 'null' });
+      check(toggleFor(w, 'spaargeld'), false);
+      await w.vm.$nextTick();
+      expect(values(w)).toEqual({ spaargeld: '' });
+    });
   });
 
   it('passes each data-source column its declared nullability, unknown when the law never names it', async () => {
