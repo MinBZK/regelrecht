@@ -241,7 +241,10 @@ function claimStatus(cl) {
                   </select>
                 </nldd-dropdown>
                 <nldd-date-field v-else-if="kindOf(question) === 'date'" :value="answers[question.name] ?? ''" width="full" @change="setAnswer(question, $event)"></nldd-date-field>
-                <nldd-number-field v-else-if="kindOf(question) === 'amount' || kindOf(question) === 'number'" :value="answers[question.name] ?? ''" :step="kindOf(question) === 'amount' ? '0.01' : '1'" width="full" hide-spin-buttons :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)" @change="setAnswer(question, $event)" @keydown.enter="submitAnswer"></nldd-number-field>
+                <!-- An unanswered amount is empty, not 0: nldd-number-field has no empty state (it starts at 0 and
+                     an emptied field falls back to the last value), so the question is a text field with a numeric
+                     keyboard; parseAnswer reads the Dutch notation. -->
+                <nldd-text-field v-else-if="kindOf(question) === 'amount' || kindOf(question) === 'number'" :value="answers[question.name] ?? ''" width="full" :keyboard="kindOf(question) === 'amount' ? 'decimal' : 'numeric'" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)" @keydown.enter="submitAnswer"></nldd-text-field>
                 <nldd-text-field v-else :value="answers[question.name] ?? ''" width="full" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)" @keydown.enter="submitAnswer"></nldd-text-field>
                 <nldd-form-field-help-text v-if="question.spec?.description">{{ question.spec.description }}</nldd-form-field-help-text>
               </nldd-form-field>
