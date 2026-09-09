@@ -106,6 +106,11 @@ export function useTaskReview() {
   const partCount = computed(() => openParts.value.length);
 
   async function loadReview(taskId) {
+    // Elke load begint schoon. Niet elke wissel van taak gaat langs `reset()`:
+    // via de takenlijst springt `?task=` rechtstreeks van de ene taak naar de
+    // andere, en dan zou de foutmelding van de vorige taak boven de nieuwe
+    // blijven hangen.
+    loadError.value = null;
     try {
       const detail = await fetchTask(taskId);
       if (detail.task_type !== 'job_review' || detail.status !== 'open') {
@@ -201,9 +206,7 @@ export function useTaskReview() {
       .filter(Boolean);
     const result = await applyEnrichment(key, decisions, etag);
     clearVerdicts(key);
-    reviewTask.value = null;
-    proposedContent.value = null;
-    jobParts.value = [];
+    reset();
     return result;
   }
 
@@ -214,17 +217,21 @@ export function useTaskReview() {
    */
   async function approveAfterSave() {
     if (reviewTask.value) await resolveTask(reviewTask.value.id, 'approved');
-    resetReview();
+    reset();
   }
 
   async function reject() {
     if (reviewTask.value) await resolveTask(reviewTask.value.id, 'rejected');
-    resetReview();
+    reset();
   }
 
-  function resetReview() {
+  // Terug naar "geen review". Ook `loadError` gaat mee: een foutmelding van de
+  // vorige taak hoort niet boven de volgende (of boven een artikel waar
+  // helemaal geen taak op staat) te blijven hangen.
+  function reset() {
     reviewTask.value = null;
     proposedContent.value = null;
+    loadError.value = null;
     jobParts.value = [];
   }
 
@@ -242,5 +249,6 @@ export function useTaskReview() {
     processEnrichment,
     approveAfterSave,
     reject,
+    reset,
   };
 }
