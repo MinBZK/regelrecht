@@ -815,6 +815,76 @@ articles:
     }
 
     #[test]
+    fn test_an_undeclared_output_that_evaluates_to_null_is_not_an_error() {
+        // The null-output rule (RFC-036) holds a declared output to its
+        // promise. An action whose output is not in the `output:` list made
+        // no promise, so its null passes; only a declared non-nullable output
+        // is refused.
+        let yaml = r#"
+$id: ongedeclareerd
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        parameters:
+          - name: n
+            type: number
+            required: true
+        output:
+          - name: klasse
+            type: string
+        actions:
+          - output: tussenstap
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $n
+                    value: 5
+                  then: hoog
+          - output: klasse
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $tussenstap
+                    value: hoog
+                  then: hoog
+              default: laag
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+        let mut params = BTreeMap::new();
+        params.insert("n".to_string(), Value::Int(1));
+        let result = engine.evaluate(params, "2025-01-01").unwrap();
+        assert_eq!(
+            result.outputs.get("klasse"),
+            Some(&Value::String("laag".to_string()))
+        );
+        // Declared, the same null is refused.
+        let declared = yaml.replace(
+            "          - name: klasse\n",
+            "          - name: tussenstap\n            type: string\n          - name: klasse\n",
+        );
+        let law = ArticleBasedLaw::from_yaml_str(&declared).unwrap();
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+        let mut params = BTreeMap::new();
+        params.insert("n".to_string(), Value::Int(1));
+        let err = engine.evaluate(params, "2025-01-01").unwrap_err();
+        assert!(
+            matches!(&err, crate::error::EngineError::NullOutput { output, .. } if output == "tussenstap"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
     fn test_evaluate_with_definitions() {
         let law = make_simple_law();
         let article = law.find_article_by_number("1").unwrap();

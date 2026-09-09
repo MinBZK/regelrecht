@@ -44,3 +44,29 @@ articles:
               operation: GREATER_THAN
               subject: $aanvraag_bedrag
               value: 100
+
+  - number: '2'
+    url: https://example.com/test_nullable_bron/2
+    text: >-
+      Iemand is degene die met een burgerservicenummer is aangeduid; zonder
+      burgerservicenummer is er niemand.
+    machine_readable:
+      # De parameter is verplicht en nullable: de aanroeper moet zeggen over
+      # wie het gaat, en "niemand" is een antwoord. Een aanroepende wet die
+      # null doorgeeft slaat deze bron dus niet over; de bron beslist zelf.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            nullable: true
+        output:
+          - name: is_iemand
+            type: boolean
+        actions:
+          - output: is_iemand
+            operation: NOT
+            value:
+              operation: EQUALS
+              subject: $bsn
+              value: null

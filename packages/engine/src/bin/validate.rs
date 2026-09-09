@@ -170,3 +170,32 @@ fn main() {
         process::exit(1);
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    fn parsed(id: &str, valid_from: &str, marker: &str) -> Parsed {
+        let yaml = format!(
+            "$id: {id}\nregulatory_layer: WET\npublication_date: '2025-01-01'\nvalid_from: '{valid_from}'\nname: {marker}\narticles: []\n"
+        );
+        Parsed {
+            path: PathBuf::from(format!("{id}-{marker}.yaml")),
+            law: ArticleBasedLaw::from_yaml_str(&yaml).unwrap(),
+        }
+    }
+
+    #[test]
+    fn latest_by_id_selects_the_latest_valid_from_and_keeps_the_first_on_a_tie() {
+        let set = vec![
+            parsed("wet", "2024-01-01", "oud"),
+            parsed("wet", "2025-01-01", "eerste"),
+            parsed("wet", "2025-01-01", "tweede"),
+            parsed("andere", "2023-01-01", "enige"),
+        ];
+        let latest = latest_by_id(&set);
+        assert_eq!(latest["wet"].name.as_deref(), Some("eerste"));
+        assert_eq!(latest["andere"].name.as_deref(), Some("enige"));
+    }
+}

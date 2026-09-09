@@ -18,10 +18,11 @@ url: https://example.com/test_nullable
 # de vlag en plant zich voort zoals altijd.
 #
 # Artikel 1 leest een nullable en een niet-nullable huur uit het register;
-# artikel 2 geeft een nullable registerwaarde door aan twee outputs; artikel 3
-# haalt het geboortejaar van de partner bij de bron; artikel 4 heeft een
-# nullable parameter; artikel 5 geeft een nullable bedrag door als optionele
-# parameter van de bron.
+# artikel 2 geeft een nullable registerwaarde door aan een nullable output en
+# neemt de hoogste van een lijst; artikel 3 haalt het geboortejaar van de
+# partner bij de bron; artikel 4 heeft een nullable parameter; artikel 5 geeft
+# een nullable bedrag door als optionele parameter van de bron; artikel 6 geeft
+# een afwezige partner door aan een parameter die de bron nullable verklaart.
 
 articles:
   - number: '1'
@@ -70,11 +71,16 @@ articles:
     url: https://example.com/test_nullable/2
     text: >-
       De toeslag is de in de registratie opgenomen toeslag. De toeslagklasse
-      is gewoon indien de toeslag zeshonderdvijftig bedraagt.
+      is gewoon indien de toeslag zeshonderdvijftig bedraagt. De hoogste
+      toeslag is de hoogste van de in de registratie opgenomen toeslagen.
     machine_readable:
-      # Een nullable registerwaarde mag ongewijzigd naar een output; of die
-      # output afwezig mag zijn beslist zijn eigen declaratie. De klasse is een
-      # IF zonder default en dus afwezig als geen geval past.
+      # De klasse is een IF zonder default en dus afwezig als geen geval past;
+      # de output verklaart dat. De hoogste van een lege lijst is ook afwezig,
+      # maar dat kan de typechecker niet zien (RFC-037: MIN/MAX over een
+      # verzameling doen geen uitspraak); de output belooft een waarde, en de
+      # engine weigert de afwezigheid bij het draaien. Een nullable
+      # registerwaarde rechtstreeks aan een niet-nullable output toekennen
+      # (`value: $toeslag`) weigert de typechecker al (N4).
       execution:
         parameters:
           - name: bsn
@@ -85,11 +91,14 @@ articles:
             type: number
             nullable: true
             source: {}
+          - name: toeslagen
+            type: array
+            source: {}
         output:
           - name: toeslagklasse
             type: string
             nullable: true
-          - name: toeslag_strikt
+          - name: hoogste_toeslag
             type: number
         actions:
           - output: toeslagklasse
@@ -101,8 +110,13 @@ articles:
                     subject: $toeslag
                     value: 650
                   then: gewoon
-          - output: toeslag_strikt
-            value: $toeslag
+          - output: hoogste_toeslag
+            value:
+              operation: FOREACH
+              collection: $toeslagen
+              as: t
+              body: $t
+              combine: MAX
 
   - number: '3'
     url: https://example.com/test_nullable/3
@@ -227,3 +241,36 @@ articles:
         actions:
           - output: aanvraag_past
             value: $aanvraag_past
+
+  - number: '6'
+    url: https://example.com/test_nullable/6
+    text: >-
+      Of de partner iemand is, wordt bepaald overeenkomstig artikel 2 van de
+      Testwet afwezigheid als eigenschap van het type (bron).
+    machine_readable:
+      # De bron verklaart haar parameter nullable: zij kan over niemand
+      # beslissen. Een afwezige partner wordt daarom doorgegeven en niet
+      # overgeslagen, en de bron beslist. De input is dus nooit afwezig.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {}
+          - name: partner_is_iemand
+            type: boolean
+            source:
+              regulation: test_nullable_bron
+              output: is_iemand
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: partner_is_iemand
+            type: boolean
+        actions:
+          - output: partner_is_iemand
+            value: $partner_is_iemand

@@ -31,13 +31,21 @@
 //! - **N3** An `IF` without `default` yields `null` when no case matches, so
 //!   it is allowed only as the value of a nullable output.
 //! - **N4** A value that may be absent enters arithmetic, ordering, logic, an
-//!   `IF` condition, a date operation or a `FOREACH` collection only on a path
-//!   where the law has established it is present. `EQUALS` and `IN` are not
-//!   in that list: they are structural on an absence (RFC-036), so an absent
-//!   subject is a defined `false` there, not an error.
+//!   `IF` condition or a date operation, or is assigned to an output that is
+//!   never absent, only on a path where the law has established it is
+//!   present. `EQUALS` and `IN` are not in that list: they are structural on
+//!   an absence (RFC-036), so an absent subject is a defined `false` there,
+//!   not an error. Nor is a `FOREACH` collection: a `null` collection
+//!   iterates nothing (RFC-036). A path establishes presence through an
+//!   absence test in a condition, through a boolean output that is such a
+//!   test (`heeft_partner = NOT(EQUALS $partner null)`, referenced as
+//!   `$heeft_partner`), and through a `FOREACH` filter for its body; a present
+//!   field implies a present record.
 //! - **N5** An input that takes another output must be nullable when that
 //!   output is, and when the call that fetches it is skipped for a required
-//!   parameter that may be null.
+//!   parameter that may be null and that the target does not declare
+//!   nullable. An article that implements a required open term without a
+//!   default may not declare its output for the term nullable.
 //! - **T1** Arithmetic and ordering operands are numbers (or amounts); `ADD`
 //!   also concatenates strings and arrays, ordering also compares dates.
 //! - **T2** Logical operands and `IF` conditions are booleans.
@@ -256,10 +264,46 @@ struct Facts {
 impl Facts {
     fn with(&self, other: &Facts) -> Facts {
         let mut merged = self.clone();
-        merged.present.extend(other.present.iter().cloned());
-        merged.absent.extend(other.absent.iter().cloned());
+        merged.extend(other);
         merged
     }
+
+    fn extend(&mut self, other: &Facts) {
+        self.present.extend(other.present.iter().cloned());
+        self.absent.extend(other.absent.iter().cloned());
+    }
+
+    fn is_empty(&self) -> bool {
+        self.present.is_empty() && self.absent.is_empty()
+    }
+
+    /// A field that is present sits on a record that is present: `x.y`
+    /// present marks `x` present too (RFC-036: a field of no record is no
+    /// record). The converse does not hold, so `mark_absent` marks only the
+    /// path itself.
+    fn mark_present(&mut self, path: &str) {
+        for (index, character) in path.char_indices() {
+            if character == '.' {
+                self.present.insert(path[..index].to_string());
+            }
+        }
+        self.present.insert(path.to_string());
+    }
+
+    fn mark_absent(&mut self, path: &str) {
+        self.absent.insert(path.to_string());
+    }
+}
+
+/// What a boolean output tells about other variables, learned from the
+/// action that computes it: `heeft_x = NOT(EQUALS $x null)` establishes `x`
+/// present where `$heeft_x` holds and absent where it fails. This is the
+/// corpus idiom for an absence test (`heeft_partner`), and a condition that
+/// references such an output inherits its facts.
+#[derive(Debug, Clone, Default)]
+struct Derived {
+    when_true: Facts,
+    when_false: Facts,
 }
 
 /// Where an expression sits, for the rules that depend on it.
@@ -268,13 +312,23 @@ struct Slot {
     /// The expression is (a branch of) the value of a nullable output, so a
     /// literal `null` and an `IF` without `default` are allowed (N2, N3).
     absence_allowed: bool,
+    /// The expression is (a branch of) the value of an output that is never
+    /// absent: a reference that may be absent on this path is an N4 there,
+    /// since the assignment would break the output's promise at run time.
+    assigned: bool,
 }
 
 const ABSENCE_ALLOWED: Slot = Slot {
     absence_allowed: true,
+    assigned: false,
 };
 const OPERAND: Slot = Slot {
     absence_allowed: false,
+    assigned: false,
+};
+const STRICT_OUTPUT: Slot = Slot {
+    absence_allowed: false,
+    assigned: true,
 };
 
 fn is_reference(s: &str) -> bool {
@@ -316,6 +370,14 @@ struct ArticleChecker<'l, 'f> {
     /// Names bound by an enclosing `FOREACH`; they shadow the declarations
     /// and the checker claims nothing about them.
     bound: Vec<String>,
+    /// Outputs computed by an earlier action of this article that are an
+    /// absence test in disguise, with what they establish.
+    derived: BTreeMap<String, Derived>,
+    /// Outputs an earlier action of this article assigned; a second
+    /// assignment makes the derived facts ambiguous and drops them.
+    assigned: BTreeSet<String>,
+    /// The output the current action assigns, if it declares one.
+    output: Option<String>,
     location: String,
     findings: &'f mut Vec<Finding>,
 }
@@ -333,24 +395,43 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
             lookup,
             symbols: environment(article),
             bound: Vec::new(),
+            derived: BTreeMap::new(),
+            assigned: BTreeSet::new(),
+            output: None,
             location: String::new(),
             findings,
         }
     }
 
+    /// Record a finding, unless the same finding is already there: one
+    /// operand used twice in one operation is one mistake.
     fn report(&mut self, rule: Rule, message: String) {
-        self.findings.push(Finding {
+        let finding = Finding {
             law_id: self.law.id.clone(),
             article: self.article.number.clone(),
             location: self.location.clone(),
             rule,
             message,
-        });
+        };
+        if !self.findings.contains(&finding) {
+            self.findings.push(finding);
+        }
+    }
+
+    /// The law a reference to `law_id` means: this law for its own id, else
+    /// what `lookup` knows.
+    fn law_named(&self, law_id: &str) -> Option<&'l ArticleBasedLaw> {
+        if law_id == self.law.id {
+            Some(self.law)
+        } else {
+            (self.lookup)(law_id)
+        }
     }
 
     fn check_article(&mut self) {
         self.check_definitions();
         self.check_input_sources();
+        self.check_implements();
         let Some(actions) = self
             .article
             .get_execution_spec()
@@ -363,7 +444,49 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
                 Some(output) => format!("output '{output}'"),
                 None => format!("action {}", index + 1),
             };
+            self.output = action.output.clone();
             self.check_action(action);
+        }
+    }
+
+    /// N5 for delegation (RFC-036): an article that implements a required
+    /// open term without a default promises the delegating law a value. The
+    /// engine takes the implementation's output as the term's value, and the
+    /// delegating law reads the term as never absent, so the output may not
+    /// be declared nullable. A term with a default is filled by the default
+    /// when the implementation is silent, and an optional term without one is
+    /// nullable itself; neither needs this.
+    fn check_implements(&mut self) {
+        let Some(implements) = self.article.get_implements() else {
+            return;
+        };
+        for declaration in implements {
+            let Some(output) = self.article.find_output(&declaration.open_term) else {
+                continue;
+            };
+            if !output.is_nullable() {
+                continue;
+            }
+            let Some(term) = self
+                .law_named(&declaration.law)
+                .and_then(|law| law.find_article_by_number(&declaration.article))
+                .and_then(|article| article.get_open_terms())
+                .and_then(|terms| terms.iter().find(|t| t.id == declaration.open_term))
+            else {
+                continue;
+            };
+            if term.required && !term_has_default(term) {
+                self.location = format!("output '{}'", output.name);
+                self.report(
+                    Rule::N5,
+                    format!(
+                        "'{}' implements the required term '{}' of {} article {}, which has no \
+                         default, and may be null; produce a value for every case or give the \
+                         term a default",
+                        output.name, term.id, declaration.law, declaration.article
+                    ),
+                );
+            }
         }
     }
 
@@ -400,7 +523,7 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
             }
             let (target_law, output_name) = match (&source.regulation, &source.output) {
                 (Some(regulation), output) => {
-                    let Some(law) = (self.lookup)(regulation) else {
+                    let Some(law) = self.law_named(regulation) else {
                         continue;
                     };
                     (law, output.as_deref().unwrap_or(&input.name))
@@ -430,9 +553,14 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
     }
 
     /// The skip rule (RFC-036): a cross-law call whose required parameter is
-    /// `null` is not made, and the input is `null`. So a nullable variable
-    /// passed for a required parameter of the target makes the input
-    /// nullable, whatever the target's output says.
+    /// `null` is not made, and the input is `null`, unless the target
+    /// declares that parameter nullable (it then said it can decide on
+    /// nobody, and it is run). So a nullable variable passed for a required,
+    /// non-nullable parameter of the target makes the input nullable,
+    /// whatever the target's output says. A property path `$rec.bsn` is null
+    /// when its record is (RFC-036), so the record's nullability counts for
+    /// it; whether the field itself may be null on a present record is not
+    /// known here.
     fn check_skip_on_null_parameter(
         &mut self,
         source: &Source,
@@ -446,32 +574,34 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
         if source.regulation.is_none() {
             return;
         }
-        let mut nullable_keys: Vec<(&String, &str)> = Vec::new();
+        let mut nullable_keys: Vec<(&String, &str, &str)> = Vec::new();
         for (name, argument) in parameters {
             if !is_reference(argument) {
                 continue;
             }
             let (path, root) = reference_path(argument);
-            if path != root {
-                continue;
-            }
             let Some(symbol) = self.symbols.get(root) else {
                 continue;
             };
-            let required = target_article
-                .find_parameter(name)
-                .is_none_or(|p| p.required != Some(false));
-            if symbol.nullable && required {
-                nullable_keys.push((name, root));
+            let parameter = target_article.find_parameter(name);
+            let required = parameter.is_none_or(|p| p.required != Some(false));
+            let nullable = parameter.is_some_and(|p| p.is_nullable());
+            if symbol.nullable && required && !nullable {
+                nullable_keys.push((name, path, root));
             }
         }
-        for (name, root) in nullable_keys {
+        for (name, path, root) in nullable_keys {
+            let argument = if path == root {
+                String::new()
+            } else {
+                format!(" (and so is '{path}')")
+            };
             self.report(
                 Rule::N5,
                 format!(
-                    "'{input_name}' is null when '{root}' is null, because {target_id} is then \
-                     not called (its parameter '{name}' is required); declare '{input_name}' \
-                     nullable or make '{root}' non-nullable"
+                    "'{input_name}' is null when '{root}' is null{argument}, because {target_id} \
+                     is then not called (its parameter '{name}' is required and not nullable); \
+                     declare '{input_name}' nullable or make '{root}' non-nullable"
                 ),
             );
         }
@@ -483,10 +613,13 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
             .as_deref()
             .and_then(|name| self.article.find_output(name));
         let declared_ty = output.map(|o| Ty::of(o.output_type));
-        let slot = if output.is_some_and(|o| o.is_nullable()) {
-            ABSENCE_ALLOWED
-        } else {
-            OPERAND
+        // An undeclared output makes no promise about absence, so it is
+        // checked as an operand: no literal null, no IF without default, but
+        // no assignment rule either.
+        let slot = match output {
+            Some(o) if o.is_nullable() => ABSENCE_ALLOWED,
+            Some(_) => STRICT_OUTPUT,
+            None => OPERAND,
         };
         let facts = Facts::default();
 
@@ -523,6 +656,19 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
         // assignment to the output as well (T4).
         if let (Some(declared), ActionValue::Operation(op)) = (declared_ty, &expression) {
             self.check_branch_literals(op, declared);
+        }
+        // What this output tells a later action that decides on it.
+        if let Some(name) = &action.output {
+            let mut derived = Derived::default();
+            self.facts_when_true(&expression, &mut derived.when_true);
+            self.facts_when_false(&expression, &mut derived.when_false);
+            let first_assignment = self.assigned.insert(name.clone());
+            if first_assignment && !(derived.when_true.is_empty() && derived.when_false.is_empty())
+            {
+                self.derived.insert(name.clone(), derived);
+            } else {
+                self.derived.remove(name);
+            }
         }
     }
 
@@ -573,9 +719,42 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
                     describe: "the literal null".to_string(),
                 }
             }
-            ActionValue::Literal(Value::String(s)) if is_reference(s) => self.reference(s, facts),
+            ActionValue::Literal(Value::String(s)) if is_reference(s) => {
+                let info = self.reference(s, facts);
+                if slot.assigned {
+                    self.check_assignment(&info);
+                }
+                info
+            }
             ActionValue::Literal(value) => Info::present(Ty::of_literal(value), "the literal"),
             ActionValue::Operation(op) => self.check_operation(op, facts, slot),
+        }
+    }
+
+    /// N4 on assignment: a reference that may be absent on this path, written
+    /// as (a branch of) the value of an output that is never absent, would
+    /// make that output `null` at run time (`NullOutput`, RFC-036). The
+    /// checker refuses it where it is written.
+    fn check_assignment(&mut self, info: &Info) {
+        let output = self.output.clone().unwrap_or_default();
+        match info.nullness {
+            Nullness::MayBeAbsent => self.report(
+                Rule::N4,
+                format!(
+                    "{} may be absent and is assigned to '{output}', which is never absent; \
+                     test for absence first (EQUALS … null) or declare '{output}' nullable",
+                    info.describe
+                ),
+            ),
+            Nullness::Absent => self.report(
+                Rule::N4,
+                format!(
+                    "{} is absent on this path (the enclosing condition tested it with \
+                     EQUALS … null) and is assigned to '{output}', which is never absent",
+                    info.describe
+                ),
+            ),
+            Nullness::Present | Nullness::Unknown => {}
         }
     }
 
@@ -758,7 +937,7 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
             }
             ActionOperation::IsNull { subject } | ActionOperation::NotNull { subject } => {
                 let info = self.check_expr(subject, facts, OPERAND);
-                self.absence_test(&info, name);
+                self.absence_test(&info, subject, facts, name);
                 Info::present(Some(Ty::Boolean), &format!("the {name}"))
             }
             ActionOperation::And { conditions } | ActionOperation::Or { conditions } => {
@@ -774,9 +953,9 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
                     // idiom work, and the checker follows the same order.
                     let mut learned = Facts::default();
                     if is_and {
-                        facts_when_true(condition, &mut learned);
+                        self.facts_when_true(condition, &mut learned);
                     } else {
-                        facts_when_false(condition, &mut learned);
+                        self.facts_when_false(condition, &mut learned);
                     }
                     path = path.with(&learned);
                 }
@@ -802,13 +981,15 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
             } => {
                 // Membership is structural: `IN(null, [650])` is a definite
                 // false (RFC-036), the same way `EQUALS` decides on an absence.
-                // The subject therefore need not be established present.
+                // The subject therefore need not be established present, and
+                // a `null` among the `values` is an element of a list, a
+                // membership test for absence (N2).
                 self.check_expr(subject, facts, OPERAND);
                 if let Some(value) = value {
                     self.check_expr(value, facts, OPERAND);
                 }
                 for item in values.iter().flatten() {
-                    self.check_expr(item, facts, OPERAND);
+                    self.check_expr(item, facts, ABSENCE_ALLOWED);
                 }
                 Info::present(Some(Ty::Boolean), &format!("the {name}"))
             }
@@ -828,18 +1009,24 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
                 filter,
                 combine,
             } => {
-                self.operand(collection, facts, name);
+                // A null collection iterates nothing (RFC-036), so the
+                // collection need not be established present.
+                self.check_expr(collection, facts, OPERAND);
                 self.bound.push(as_name.clone());
+                // The body runs only for the elements the filter lets
+                // through, so what the filter established holds in the body.
+                let mut body_facts = facts.clone();
                 if let Some(filter) = filter {
                     let info = self.operand(filter, facts, "FOREACH filter");
                     self.require_boolean(&info, "FOREACH filter");
+                    self.facts_when_true(filter, &mut body_facts);
                 }
                 // Without `combine` the FOREACH builds an array, and its
                 // elements may be absences like the items of a LIST; with a
                 // combine the body is calculated with or decided on.
                 let body_info = match combine {
-                    None => self.check_expr(body, facts, ABSENCE_ALLOWED),
-                    Some(_) => self.operand(body, facts, "FOREACH body"),
+                    None => self.check_expr(body, &body_facts, ABSENCE_ALLOWED),
+                    Some(_) => self.operand(body, &body_facts, "FOREACH body"),
                 };
                 self.bound.pop();
                 match combine {
@@ -968,7 +1155,7 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
                     subject
                 };
                 let info = self.check_expr(other, facts, OPERAND);
-                self.absence_test(&info, name);
+                self.absence_test(&info, other, facts, name);
             }
             (false, false) => {
                 let left = self.check_expr(subject, facts, OPERAND);
@@ -993,18 +1180,30 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
 
     /// N1: the subject of an absence test must be something that can be
     /// absent. A field the law declares never absent, a literal, or an
-    /// operation that always yields a value cannot be.
-    fn absence_test(&mut self, info: &Info, name: &str) {
-        if info.nullness == Nullness::Present {
-            self.report(
-                Rule::N1,
-                format!(
-                    "{} is not nullable, so comparing it with null in {name} cannot be true; \
-                     declare `nullable: true` or remove the test",
-                    info.describe
-                ),
-            );
+    /// operation that always yields a value cannot be. A nullable field that
+    /// an enclosing condition already established present cannot be either,
+    /// but there the test is redundant rather than wrong, and the message
+    /// says so.
+    fn absence_test(&mut self, info: &Info, subject: &ActionValue, facts: &Facts, name: &str) {
+        if info.nullness != Nullness::Present {
+            return;
         }
+        let guarded = reference_of(subject).is_some_and(|path| facts.present.contains(path));
+        let message = if guarded {
+            format!(
+                "{} is already established present on this path (an enclosing condition tested \
+                 it with EQUALS … null), so comparing it with null in {name} cannot be true; \
+                 the test is redundant",
+                info.describe
+            )
+        } else {
+            format!(
+                "{} is not nullable, so comparing it with null in {name} cannot be true; \
+                 declare `nullable: true` or remove the test",
+                info.describe
+            )
+        };
+        self.report(Rule::N1, message);
     }
 
     /// `IF` (N3, N4 flow, T2). Each `when` is checked with what the earlier
@@ -1023,10 +1222,10 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
             let info = self.operand(&case.when, &path, "IF condition");
             self.require_boolean(&info, "IF");
             let mut holds = Facts::default();
-            facts_when_true(&case.when, &mut holds);
+            self.facts_when_true(&case.when, &mut holds);
             branches.push(self.check_expr(&case.then, &path.with(&holds), slot));
             let mut fails = Facts::default();
-            facts_when_false(&case.when, &mut fails);
+            self.facts_when_false(&case.when, &mut fails);
             path = path.with(&fails);
         }
         let exhaustive = cases.last().is_some_and(|case| is_true_literal(&case.when));
@@ -1074,6 +1273,97 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
             describe,
         }
     }
+
+    /// The facts a boolean output computed earlier in this article carries,
+    /// when a condition references it as `$name`. A `FOREACH` binding of the
+    /// same name shadows the output.
+    fn derived_facts(&self, condition: &ActionValue) -> Option<&Derived> {
+        let path = reference_of(condition)?;
+        if path.contains('.') || self.bound.iter().any(|b| b == path) {
+            return None;
+        }
+        self.derived.get(path)
+    }
+
+    /// The variables a condition establishes as present or absent when it
+    /// holds.
+    fn facts_when_true(&self, condition: &ActionValue, out: &mut Facts) {
+        let ActionValue::Operation(op) = condition else {
+            if let Some(derived) = self.derived_facts(condition) {
+                out.extend(&derived.when_true);
+            }
+            return;
+        };
+        match op.as_ref() {
+            ActionOperation::Equals { subject, value } => {
+                if let Some(path) = null_tested(subject, value) {
+                    out.mark_absent(path);
+                }
+            }
+            ActionOperation::NotEquals { subject, value } => {
+                if let Some(path) = null_tested(subject, value) {
+                    out.mark_present(path);
+                }
+            }
+            ActionOperation::IsNull { subject } => {
+                if let Some(path) = reference_of(subject) {
+                    out.mark_absent(path);
+                }
+            }
+            ActionOperation::NotNull { subject } => {
+                if let Some(path) = reference_of(subject) {
+                    out.mark_present(path);
+                }
+            }
+            ActionOperation::Not { value } => self.facts_when_false(value, out),
+            ActionOperation::And { conditions } => {
+                for condition in conditions {
+                    self.facts_when_true(condition, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The variables a condition establishes as present or absent when it
+    /// fails.
+    fn facts_when_false(&self, condition: &ActionValue, out: &mut Facts) {
+        let ActionValue::Operation(op) = condition else {
+            if let Some(derived) = self.derived_facts(condition) {
+                out.extend(&derived.when_false);
+            }
+            return;
+        };
+        match op.as_ref() {
+            ActionOperation::Equals { subject, value } => {
+                if let Some(path) = null_tested(subject, value) {
+                    out.mark_present(path);
+                }
+            }
+            ActionOperation::NotEquals { subject, value } => {
+                if let Some(path) = null_tested(subject, value) {
+                    out.mark_absent(path);
+                }
+            }
+            ActionOperation::IsNull { subject } => {
+                if let Some(path) = reference_of(subject) {
+                    out.mark_present(path);
+                }
+            }
+            ActionOperation::NotNull { subject } => {
+                if let Some(path) = reference_of(subject) {
+                    out.mark_absent(path);
+                }
+            }
+            ActionOperation::Not { value } => self.facts_when_true(value, out),
+            ActionOperation::Or { conditions } => {
+                for condition in conditions {
+                    self.facts_when_false(condition, out);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Whether an expression is a literal in the sense of T4: a bare literal
@@ -1082,76 +1372,13 @@ fn is_literal_shaped(expr: &ActionValue) -> bool {
     matches!(expr, ActionValue::Literal(value) if Ty::of_literal(value).is_some())
 }
 
-/// The variables a condition establishes as present or absent when it holds.
-fn facts_when_true(condition: &ActionValue, out: &mut Facts) {
-    let ActionValue::Operation(op) = condition else {
-        return;
-    };
-    match op.as_ref() {
-        ActionOperation::Equals { subject, value } => {
-            if let Some(path) = null_tested(subject, value) {
-                out.absent.insert(path.to_string());
-            }
-        }
-        ActionOperation::NotEquals { subject, value } => {
-            if let Some(path) = null_tested(subject, value) {
-                out.present.insert(path.to_string());
-            }
-        }
-        ActionOperation::IsNull { subject } => {
-            if let Some(path) = reference_of(subject) {
-                out.absent.insert(path.to_string());
-            }
-        }
-        ActionOperation::NotNull { subject } => {
-            if let Some(path) = reference_of(subject) {
-                out.present.insert(path.to_string());
-            }
-        }
-        ActionOperation::Not { value } => facts_when_false(value, out),
-        ActionOperation::And { conditions } => {
-            for condition in conditions {
-                facts_when_true(condition, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// The variables a condition establishes as present or absent when it fails.
-fn facts_when_false(condition: &ActionValue, out: &mut Facts) {
-    let ActionValue::Operation(op) = condition else {
-        return;
-    };
-    match op.as_ref() {
-        ActionOperation::Equals { subject, value } => {
-            if let Some(path) = null_tested(subject, value) {
-                out.present.insert(path.to_string());
-            }
-        }
-        ActionOperation::NotEquals { subject, value } => {
-            if let Some(path) = null_tested(subject, value) {
-                out.absent.insert(path.to_string());
-            }
-        }
-        ActionOperation::IsNull { subject } => {
-            if let Some(path) = reference_of(subject) {
-                out.present.insert(path.to_string());
-            }
-        }
-        ActionOperation::NotNull { subject } => {
-            if let Some(path) = reference_of(subject) {
-                out.absent.insert(path.to_string());
-            }
-        }
-        ActionOperation::Not { value } => facts_when_true(value, out),
-        ActionOperation::Or { conditions } => {
-            for condition in conditions {
-                facts_when_false(condition, out);
-            }
-        }
-        _ => {}
-    }
+/// Whether an open term carries a default the engine can run. `default: {}`
+/// or `default: {actions: []}` resolves to `null` ("using empty default"),
+/// and counts as no default here.
+fn term_has_default(term: &crate::article::OpenTerm) -> bool {
+    term.default
+        .as_ref()
+        .is_some_and(|d| d.actions.as_ref().is_some_and(|a| !a.is_empty()))
 }
 
 /// The reference an `EQUALS`/`NOT_EQUALS` tests against a literal `null`.
@@ -1213,14 +1440,10 @@ fn environment(article: &Article) -> BTreeMap<String, Symbol> {
     }
     if let Some(terms) = article.get_open_terms() {
         for term in terms {
-            let has_default = term
-                .default
-                .as_ref()
-                .is_some_and(|d| d.actions.as_ref().is_some_and(|a| !a.is_empty()));
             declare(
                 &term.id,
                 Some(Ty::of(term.term_type)),
-                !term.required && !has_default,
+                !term.required && !term_has_default(term),
             );
         }
     }
@@ -1472,20 +1695,15 @@ articles:
         assert_eq!(rules(&findings), vec![Rule::N2], "{findings:#?}");
         assert!(findings[0].message.contains("definition 'GRENS' is null"));
         assert_eq!(findings[0].location, "definition 'GRENS'");
-        // As a member of IN's list a null is an operand too.
-        let in_list = operand.replace(
-            "operation: ADD\n    values:\n      - $huur\n      - null",
-            "operation: IN\n    subject: $huur\n    values:\n      - 650\n      - null",
-        );
-        assert_only(&in_list, Rule::N2, "literal null");
     }
 
     #[test]
     fn n2_null_inside_a_container_literal_is_a_value() {
         // An array holding an absence is a value (RFC-036 compares containers
-        // element by element): a LIST item or the body of a FOREACH without
-        // combine may be null, whatever the output declares. With a combine
-        // the body is calculated with, and the null is an operand.
+        // element by element): a LIST item, a member of IN's list or the body
+        // of a FOREACH without combine may be null, whatever the output
+        // declares. With a combine the body is calculated with, and the null
+        // is an operand.
         let base = r#"
 input:
   - name: kinderen
@@ -1500,6 +1718,14 @@ actions:
         assert_clean(&format!(
             "{base}    value:\n      operation: LIST\n      items:\n        - null\n        - 1\n"
         ));
+        // `IN $x [null, 650]` is a membership test for absence.
+        assert_clean(
+            &format!(
+                "{base}    operation: IN\n    subject: $huur\n    values:\n      - 650\n      - null\n"
+            )
+            .replace("name: kinderen\n    type: array", "name: huur\n    type: amount\n    nullable: true")
+            .replace("type: array\nactions", "type: boolean\nactions"),
+        );
         assert_clean(&format!(
             "{base}    value:\n      operation: FOREACH\n      collection: $kinderen\n      as: k\n      body: null\n"
         ));
@@ -1612,7 +1838,6 @@ actions:
             ("AND", "    operation: AND\n    conditions:\n      - true\n      - $huur\n"),
             ("ROUND", "    operation: ROUND\n    value: $huur\n    precision: 0\n"),
             ("IF condition", "    value:\n      operation: IF\n      cases:\n        - when: $huur\n          then: 1\n      default: 2\n"),
-            ("FOREACH", "    value:\n      operation: FOREACH\n      collection: $huur\n      as: x\n      body: 1\n      combine: ADD\n"),
             ("AGE", "    value:\n      operation: AGE\n      date_of_birth: $huur\n      reference_date: $referencedate\n"),
         ] {
             let yaml = n4_law(&format!("  - output: uitkomst\n{body}"));
@@ -1622,6 +1847,282 @@ actions:
                 "{op}: {findings:#?}"
             );
         }
+        // A FOREACH over a nullable collection is not in the list: a null
+        // collection iterates nothing (RFC-036).
+        assert_clean(&n4_law(
+            "  - output: uitkomst\n    value:\n      operation: FOREACH\n      collection: $partner\n      as: x\n      body: 1\n      combine: ADD\n",
+        ));
+    }
+
+    #[test]
+    fn n4_assigning_a_nullable_value_to_a_non_nullable_output_is_an_error() {
+        // The bare pass-through `value: $huur` would make `uitkomst` null at
+        // run time (NullOutput); the checker refuses it where it is written.
+        let finding = assert_only(
+            &n4_law("  - output: uitkomst\n    value: $huur\n"),
+            Rule::N4,
+            "'huur' may be absent and is assigned to 'uitkomst', which is never absent",
+        );
+        assert_eq!(finding.location, "output 'uitkomst'");
+        // The same through a branch of the output's IF, guarded or not.
+        let branch = |when: &str| {
+            n4_law(&format!(
+                "  - output: uitkomst\n    value:\n      operation: IF\n      cases:\n        - when:\n{when}          then: $huur\n      default: 0\n"
+            ))
+        };
+        assert_only(
+            &branch("            operation: GREATER_THAN\n            subject: 1\n            value: 0\n"),
+            Rule::N4,
+            "is assigned to 'uitkomst'",
+        );
+        assert_clean(&branch(
+            "            operation: NOT\n            value:\n              operation: EQUALS\n              subject: $huur\n              value: null\n",
+        ));
+        assert_only(
+            &branch("            operation: EQUALS\n            subject: $huur\n            value: null\n"),
+            Rule::N4,
+            "'huur' is absent on this path",
+        );
+        // To a nullable output the pass-through is fine, and a property of a
+        // record makes no claim.
+        assert_clean(&n4_law("  - output: uitkomst\n    value: $huur\n").replace(
+            "type: amount\nactions",
+            "type: amount\n    nullable: true\nactions",
+        ));
+        assert_clean(&n4_law(
+            "  - output: uitkomst\n    value:\n      operation: IF\n      cases:\n        - when:\n            operation: NOT\n            value:\n              operation: EQUALS\n              subject: $partner\n              value: null\n          then: $partner.inkomen\n      default: 0\n",
+        ));
+    }
+
+    #[test]
+    fn n4_flow_e_a_boolean_output_that_is_an_absence_test_carries_its_facts() {
+        // The corpus idiom: `heeft_huur = NOT(EQUALS $huur null)`, then a
+        // decision on `$heeft_huur`. The output carries the fact into every
+        // condition that references it, also negated and inside AND.
+        let idiom = |decision: &str| {
+            n4_law(&format!(
+                r#"  - output: heeft_huur
+    operation: NOT
+    value:
+      operation: EQUALS
+      subject: $huur
+      value: null
+  - output: uitkomst
+    value:
+{decision}"#
+            ))
+            .replace(
+                "output:\n  - name: uitkomst",
+                "output:\n  - name: heeft_huur\n    type: boolean\n  - name: uitkomst",
+            )
+        };
+        assert_clean(&idiom(
+            "      operation: IF\n      cases:\n        - when: $heeft_huur\n          then:\n            operation: ADD\n            values:\n              - $huur\n              - 100\n      default: 0\n",
+        ));
+        assert_clean(&idiom(
+            "      operation: IF\n      cases:\n        - when:\n            operation: NOT\n            value: $heeft_huur\n          then: 0\n      default:\n        operation: ADD\n        values:\n          - $huur\n          - 100\n",
+        ));
+        assert_clean(&idiom(
+            "      operation: IF\n      cases:\n        - when:\n            operation: AND\n            conditions:\n              - $heeft_huur\n              - operation: GREATER_THAN\n                subject: $huur\n                value: 500\n          then: $huur\n      default: 0\n",
+        ));
+        // Where the output says "absent", the variable is absent.
+        assert_only(
+            &idiom(
+                "      operation: IF\n      cases:\n        - when: $heeft_huur\n          then: 0\n      default:\n        operation: ADD\n        values:\n          - $huur\n          - 100\n",
+            ),
+            Rule::N4,
+            "'huur' is absent on this path",
+        );
+        // A boolean output that is not an absence test carries nothing, and
+        // an output assigned twice is ambiguous and carries nothing either.
+        assert_only(
+            &idiom(
+                "      operation: IF\n      cases:\n        - when: $heeft_huur\n          then:\n            operation: ADD\n            values:\n              - $huur\n              - 100\n      default: 0\n",
+            )
+            .replace(
+                "    operation: NOT\n    value:\n      operation: EQUALS\n      subject: $huur\n      value: null\n",
+                "    operation: EQUALS\n    subject: $huur\n    value: 650\n",
+            ),
+            Rule::N4,
+            "'huur' may be absent and is used in ADD",
+        );
+        assert_only(
+            &idiom(
+                "      operation: IF\n      cases:\n        - when: $heeft_huur\n          then:\n            operation: ADD\n            values:\n              - $huur\n              - 100\n      default: 0\n",
+            )
+            .replace(
+                "  - output: uitkomst\n",
+                "  - output: heeft_huur\n    value: true\n  - output: uitkomst\n",
+            ),
+            Rule::N4,
+            "'huur' may be absent and is used in ADD",
+        );
+    }
+
+    #[test]
+    fn n4_flow_f_a_foreach_filter_guards_its_body() {
+        // The body runs only for the elements the filter let through, so a
+        // guard on an outer variable in the filter holds in the body.
+        let law = n4_law(
+            r#"  - output: uitkomst
+    value:
+      operation: FOREACH
+      collection: $kinderen
+      as: kind
+      filter:
+        operation: NOT
+        value:
+          operation: EQUALS
+          subject: $huur
+          value: null
+      body:
+        operation: ADD
+        values:
+          - $huur
+          - $kind.bedrag
+      combine: ADD
+"#,
+        )
+        .replace(
+            "  - name: partner\n",
+            "  - name: kinderen\n    type: array\n    source: {}\n  - name: partner\n",
+        );
+        assert_clean(&law);
+        // Without the filter the body is unguarded.
+        let unguarded = law.replace(
+            "      filter:\n        operation: NOT\n        value:\n          operation: EQUALS\n          subject: $huur\n          value: null\n",
+            "",
+        );
+        assert!(unguarded != law);
+        assert_only(
+            &unguarded,
+            Rule::N4,
+            "'huur' may be absent and is used in ADD",
+        );
+    }
+
+    #[test]
+    fn n4_flow_g_a_present_field_implies_a_present_record() {
+        // A field of no record is no record (RFC-036), so a guard on
+        // `$partner.a` establishes `partner`, and thereby `partner.b`.
+        assert_clean(&n4_law(
+            r#"  - output: uitkomst
+    value:
+      operation: IF
+      cases:
+        - when:
+            operation: NOT
+            value:
+              operation: EQUALS
+              subject: $partner.inkomen
+              value: null
+          then:
+            operation: ADD
+            values:
+              - $partner.vermogen
+              - 100
+      default: 0
+"#,
+        ));
+        // The converse does not hold: an absent field says nothing about the
+        // record, and the record's other field may still be absent.
+        assert_only(
+            &n4_law(
+                r#"  - output: uitkomst
+    value:
+      operation: IF
+      cases:
+        - when:
+            operation: EQUALS
+            subject: $partner.inkomen
+            value: null
+          then:
+            operation: ADD
+            values:
+              - $partner.vermogen
+              - 100
+      default: 0
+"#,
+            ),
+            Rule::N4,
+            "'partner.vermogen' may be absent",
+        );
+        // And a field of a record established absent is absent.
+        assert_only(
+            &n4_law(
+                r#"  - output: uitkomst
+    value:
+      operation: IF
+      cases:
+        - when:
+            operation: EQUALS
+            subject: $partner
+            value: null
+          then:
+            operation: ADD
+            values:
+              - $partner.vermogen
+              - 100
+      default: 0
+"#,
+            ),
+            Rule::N4,
+            "'partner.vermogen' is absent on this path",
+        );
+    }
+
+    #[test]
+    fn n1_a_redundant_test_inside_its_own_guard_says_so() {
+        let finding = assert_only(
+            &n4_law(
+                r#"  - output: uitkomst
+    value:
+      operation: IF
+      cases:
+        - when:
+            operation: NOT
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null
+          then:
+            operation: IF
+            cases:
+              - when:
+                  operation: EQUALS
+                  subject: $huur
+                  value: null
+                then: 1
+            default: 2
+      default: 0
+"#,
+            ),
+            Rule::N1,
+            "'huur' is already established present on this path",
+        );
+        assert!(finding.message.contains("the test is redundant"));
+    }
+
+    #[test]
+    fn identical_findings_are_reported_once() {
+        let findings = check(
+            r#"
+input:
+  - name: naam
+    type: string
+    source: {}
+output:
+  - name: x
+    type: number
+actions:
+  - output: x
+    operation: MULTIPLY
+    values:
+      - $naam
+      - $naam
+"#,
+        );
+        assert_eq!(rules(&findings), vec![Rule::T1], "{findings:#?}");
     }
 
     #[test]
@@ -1776,10 +2277,11 @@ actions:
     #[test]
     fn n4_passing_a_nullable_value_on_is_fine() {
         // Into EQUALS or IN on either side (both are structural on an
-        // absence), as a cross-law parameter, or straight through as an output
-        // value.
-        assert_clean(&n4_law(
-            r#"  - output: uitkomst
+        // absence), as a cross-law parameter, or straight through to a
+        // nullable output.
+        assert_clean(
+            &n4_law(
+                r#"  - output: uitkomst
     value:
       operation: IF
       cases:
@@ -1803,7 +2305,12 @@ actions:
           then: 3
       default: $huur
 "#,
-        ));
+            )
+            .replace(
+                "type: amount\nactions",
+                "type: amount\n    nullable: true\nactions",
+            ),
+        );
     }
 
     // -- N5 -----------------------------------------------------------------
@@ -1927,6 +2434,395 @@ actions:
         );
         let lookup = |id: &str| (id == "bron").then_some(&optional_bron);
         assert!(check_law(&afnemer, &lookup).is_empty());
+        // A required parameter the target declares nullable is not skipped
+        // on: the target said it can decide on nobody, and is run.
+        let nullable_bron = law(
+            "bron",
+            r#"
+parameters:
+  - name: bsn
+    type: string
+    required: true
+    nullable: true
+output:
+  - name: geboortejaar
+    type: number
+actions:
+  - output: geboortejaar
+    value: 1980
+"#,
+        );
+        let lookup = |id: &str| (id == "bron").then_some(&nullable_bron);
+        assert!(check_law(&afnemer, &lookup).is_empty());
+        // A parameter the target does not declare at all is required.
+        let undeclared_bron = law(
+            "bron",
+            r#"
+output:
+  - name: geboortejaar
+    type: number
+actions:
+  - output: geboortejaar
+    value: 1980
+"#,
+        );
+        let lookup = |id: &str| (id == "bron").then_some(&undeclared_bron);
+        assert_eq!(rules(&check_law(&afnemer, &lookup)), vec![Rule::N5]);
+    }
+
+    #[test]
+    fn n5_a_property_path_argument_is_null_when_its_record_is() {
+        let bron = law(
+            "bron",
+            r#"
+parameters:
+  - name: bsn
+    type: string
+    required: true
+output:
+  - name: geboortejaar
+    type: number
+actions:
+  - output: geboortejaar
+    value: 1980
+"#,
+        );
+        let afnemer = law(
+            "afnemer",
+            r#"
+input:
+  - name: partner
+    type: object
+    nullable: true
+    source: {}
+  - name: partner_geboortejaar
+    type: number
+    source:
+      regulation: bron
+      output: geboortejaar
+      parameters:
+        bsn: $partner.bsn
+output:
+  - name: x
+    type: number
+actions:
+  - output: x
+    value: 1
+"#,
+        );
+        let lookup = |id: &str| (id == "bron").then_some(&bron);
+        let findings = check_law(&afnemer, &lookup);
+        assert_eq!(rules(&findings), vec![Rule::N5], "{findings:#?}");
+        assert!(
+            findings[0].message.contains(
+                "'partner_geboortejaar' is null when 'partner' is null (and so is 'partner.bsn')"
+            ),
+            "{}",
+            findings[0].message
+        );
+        // A field of a record that is never absent: no claim about the field.
+        let strict = law(
+            "afnemer",
+            r#"
+input:
+  - name: partner
+    type: object
+    source: {}
+  - name: partner_geboortejaar
+    type: number
+    source:
+      regulation: bron
+      output: geboortejaar
+      parameters:
+        bsn: $partner.bsn
+output:
+  - name: x
+    type: number
+actions:
+  - output: x
+    value: 1
+"#,
+        );
+        assert!(check_law(&strict, &lookup).is_empty());
+    }
+
+    #[test]
+    fn n5_an_implementation_of_a_required_term_without_default_may_not_be_nullable() {
+        let delegating = |term: &str| {
+            ArticleBasedLaw::from_yaml_str(&format!(
+                r#"
+$id: wet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: t
+    machine_readable:
+      open_terms:
+        - id: premie
+          type: number
+{term}
+      execution:
+        output:
+          - name: premie
+            type: number
+        actions:
+          - output: premie
+            value: $premie
+"#
+            ))
+            .unwrap()
+        };
+        let implementing = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: regeling
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      implements:
+        - law: wet
+          article: '4'
+          open_term: premie
+      execution:
+        parameters:
+          - name: soort
+            type: string
+            required: true
+        output:
+          - name: premie
+            type: number
+            nullable: true
+        actions:
+          - output: premie
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $soort
+                    value: basis
+                  then: 1928
+"#,
+        )
+        .unwrap();
+        // Required, no default: the implementation's null would be the term's
+        // value, and the delegating law reads the term as never absent.
+        let required = delegating("          required: true");
+        let lookup = |id: &str| (id == "wet").then_some(&required);
+        let findings = check_law(&implementing, &lookup);
+        assert_eq!(rules(&findings), vec![Rule::N5], "{findings:#?}");
+        assert_eq!(findings[0].location, "output 'premie'");
+        assert!(
+            findings[0]
+                .message
+                .contains("'premie' implements the required term 'premie' of wet article 4"),
+            "{}",
+            findings[0].message
+        );
+        // With a default the silent implementation falls back to it; an
+        // optional term without default is nullable itself; the delegating
+        // law not in view: silent.
+        let with_default = delegating(
+            "          required: true\n          default:\n            actions:\n              - output: premie\n                value: 100",
+        );
+        let lookup = |id: &str| (id == "wet").then_some(&with_default);
+        assert!(check_law(&implementing, &lookup).is_empty());
+        let optional = delegating("          required: false");
+        let lookup = |id: &str| (id == "wet").then_some(&optional);
+        assert!(check_law(&implementing, &lookup).is_empty());
+        assert!(check_law_alone(&implementing).is_empty());
+    }
+
+    // -- mutation exposure ------------------------------------------------------
+
+    #[test]
+    fn referencedate_fields_are_typed() {
+        let base = r#"
+input:
+  - name: aantal
+    type: number
+    source: {}
+output:
+  - name: x
+    type: boolean
+actions:
+  - output: x
+"#;
+        // `.year`, `.month`, `.day` are numbers: they add up and compare with
+        // a number.
+        assert_clean(
+            &format!("{base}    operation: ADD\n    values:\n      - $referencedate.year\n      - $referencedate.month\n      - $referencedate.day\n      - $aantal\n")
+                .replace("type: boolean\nactions", "type: number\nactions"),
+        );
+        assert_only(
+            &format!(
+                "{base}    operation: EQUALS\n    subject: $referencedate.year\n    value: aap\n"
+            ),
+            Rule::T3,
+            "compares 'referencedate.year' (number) with the literal (string)",
+        );
+        // `.iso` is a string, and orders like a date.
+        assert_only(
+            &format!("{base}    operation: GREATER_THAN\n    subject: $referencedate.iso\n    value: 2025\n"),
+            Rule::T1,
+            "orders 'referencedate.iso' (string) against the literal (number)",
+        );
+        assert_clean(&format!(
+            "{base}    operation: GREATER_THAN\n    subject: $referencedate.iso\n    value: '2025-01-01'\n"
+        ));
+        // An unknown field of the reference date: no claim.
+        assert_clean(&format!(
+            "{base}    operation: EQUALS\n    subject: $referencedate.week\n    value: aap\n"
+        ));
+    }
+
+    #[test]
+    fn an_if_whose_branches_disagree_on_type_makes_no_claim() {
+        let base = r#"
+input:
+  - name: aantal
+    type: number
+    source: {}
+output:
+  - name: x
+    type: number
+actions:
+  - output: x
+    operation: ADD
+    values:
+      - 1
+      - operation: IF
+        cases:
+          - when:
+              operation: GREATER_THAN
+              subject: $aantal
+              value: 5
+            then: aap
+        default: DEFAULT
+"#;
+        // Agreeing branches type the IF: two strings into ADD with a number
+        // is T1.
+        assert_only(
+            &base.replace("default: DEFAULT", "default: noot"),
+            Rule::T1,
+            "combines a number with the IF (string)",
+        );
+        // Disagreeing branches: the IF has no type, so no claim.
+        assert_clean(&base.replace("default: DEFAULT", "default: 2"));
+    }
+
+    #[test]
+    fn only_a_final_when_true_makes_an_if_exhaustive() {
+        assert_only(
+            &N3_LAW.replace(
+                "      cases:\n        - when:\n            operation: GREATER_THAN\n            subject: $huur\n            value: 500\n          then: hoog\n",
+                "      cases:\n        - when: true\n          then: laag\n        - when:\n            operation: GREATER_THAN\n            subject: $huur\n            value: 500\n          then: hoog\n",
+            ),
+            Rule::N3,
+            "may yield null",
+        );
+    }
+
+    #[test]
+    fn a_number_joining_an_amount_is_an_amount() {
+        let base = r#"
+input:
+  - name: aantal
+    type: number
+    source: {}
+  - name: bedrag
+    type: amount
+    source: {}
+output:
+  - name: x
+    type: boolean
+actions:
+  - output: x
+    operation: EQUALS
+    subject:
+      operation: ADD
+      values:
+        - $aantal
+        - $bedrag
+    value: aap
+"#;
+        assert_only(
+            base,
+            Rule::T3,
+            "compares the ADD (amount) with the literal (string)",
+        );
+        // Two numbers stay a number.
+        assert_only(
+            &base.replace("        - $bedrag\n", "        - $aantal\n"),
+            Rule::T3,
+            "compares the ADD (number)",
+        );
+    }
+
+    #[test]
+    fn an_open_term_with_an_empty_default_has_no_default() {
+        // `default: {}` resolves to null in the engine ("using empty default"),
+        // so the optional term is nullable and may be tested for absence.
+        for default in [
+            "          default: {}",
+            "          default:\n            actions: []",
+        ] {
+            let yaml = format!(
+                r#"
+$id: bw
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '42'
+    text: t
+    machine_readable:
+      open_terms:
+        - id: afstand
+          type: number
+          required: false
+{default}
+      execution:
+        output:
+          - name: geen_afstand
+            type: boolean
+        actions:
+          - output: geen_afstand
+            value:
+              operation: EQUALS
+              subject: $afstand
+              value: null
+"#
+            );
+            let law = ArticleBasedLaw::from_yaml_str(&yaml).unwrap();
+            assert!(check_law_alone(&law).is_empty(), "{default}");
+        }
+    }
+
+    #[test]
+    fn a_date_and_a_string_are_compatible_in_either_order() {
+        let base = r#"
+input:
+  - name: datum
+    type: date
+    source: {}
+output:
+  - name: x
+    type: boolean
+actions:
+  - output: x
+"#;
+        assert_clean(&format!(
+            "{base}    operation: EQUALS\n    subject: '2025-01-01'\n    value: $datum\n"
+        ));
+        assert_clean(&format!(
+            "{base}    operation: EQUALS\n    subject: $datum\n    value: '2025-01-01'\n"
+        ));
+        assert_clean(&format!(
+            "{base}    operation: GREATER_THAN\n    subject: '2025-01-01'\n    value: $datum\n"
+        ));
     }
 
     #[test]

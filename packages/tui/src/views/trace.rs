@@ -309,6 +309,7 @@ fn resolve_label(rt: &ResolveType) -> &'static str {
         ResolveType::ResolvedInput => "res_input",
         ResolveType::DataSource => "data",
         ResolveType::OpenTerm => "open_term",
+        ResolveType::OpenTermSilent => "open_term_silent",
         ResolveType::Hook => "hook",
         ResolveType::Override => "override",
     }
