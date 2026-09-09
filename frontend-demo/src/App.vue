@@ -1,8 +1,10 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
 import { useDemo } from './store/demoStore.js';
+import PresentationDeck from './presentation/PresentationDeck.vue';
+import { usePresentation } from './presentation/usePresentation.js';
 
 // The workspace shell: one bar with the tab bar and the presenter menu, and
 // the active tab below it. Every tab is a route; <keep-alive> keeps the tabs
@@ -34,6 +36,21 @@ onMounted(() => {
   refreshScrollMode();
 });
 router.afterEach(refreshScrollMode);
+
+// The presentation deck drives the tabs; it needs the router, the store (to
+// switch persona) and the slides from the demo config once that has loaded.
+const presentation = usePresentation();
+presentation.init({ router, demo });
+watch(corpus, (c) => presentation.init({ slides: c?.config?.slides ?? [] }), { immediate: true });
+function onGlobalKey(e) {
+  if (e.key === 'P' && e.shiftKey && !e.target?.closest?.('input, textarea, select, [contenteditable]')) {
+    e.preventDefault();
+    if (presentation.active.value) presentation.stop();
+    else presentation.start(presentation.index.value);
+  }
+}
+onMounted(() => window.addEventListener('keydown', onGlobalKey));
+onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
 
 const tabs = computed(() => [
   { name: 'presentatie', text: 'Presentatie', icon: 'display', to: '/' },
@@ -91,14 +108,12 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
 
 <template>
   <nldd-app-view ref="appView" background="tinted">
+    <PresentationDeck />
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" background="base">
         <nldd-toolbar size="md" label="Werkruimte">
           <nldd-toolbar-item slot="start">
-            <img src="/favicon.svg" alt="" width="28" height="28" style="display:block" />
-          </nldd-toolbar-item>
-          <nldd-toolbar-item slot="start">
-            <nldd-tab-bar size="md" navigation accessible-label="Demo-onderdelen">
+            <nldd-tab-bar size="md" navigation accessible-label="Demo-onderdelen" :compact="presentation.active.value || undefined">
               <nldd-tab-bar-item
                 v-for="tab in tabs"
                 :key="tab.name"
@@ -114,7 +129,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
             <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="`${openCases} te beoordelen`" @click="router.push('/zaaksysteem')"></nldd-button>
           </nldd-toolbar-item>
-          <nldd-toolbar-item slot="end" v-if="profile">
+          <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting">
             <nldd-tag color="accent" :text="`Profiel: ${profile.name}`" icon="person"></nldd-tag>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end">

@@ -26,6 +26,9 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
   krijgt ze van de engine uit diezelfde antwoorden (RFC-036, regel 5).
 - **Toestand** (profiel, aanvragen, correcties) in `src/store/demoStore.js`, bewaard in
   `localStorage`; "Demo resetten" in het menu wist het.
+- **Presentatie** (`src/presentation/`): de dia's uit `demo-config.yaml` (`slides:`) als
+  overlay; een dia met `route` opent dat tabblad, wisselt zo nodig van persona (`profile`)
+  en wijst een deel van het scherm aan (`highlight`). Shift+P opent het dek overal.
 - **Scenario's** draaien met de gedeelde Gherkin-runner uit
   `@regelrecht/frontend-shared/gherkin` (canonieke grammar); `src/data/gherkinNl.js`
   geeft de stappen in het Nederlands weer.
@@ -61,7 +64,7 @@ design system geen component heeft:
 
 | Selector | Waarom |
 |---|---|
-| `.slide-stage`, `.slide`, `.slide-controls` | Dia-podium: gecentreerde stapel, `zoom: 1.5` zodat de typografie van `nldd-title` leesbaar is vanaf de achterste rij, en het Rijkshuisstijl-blauwe verloop van de POC (hard-coded, een merkkleur volgt het kleurschema niet). `color-scheme: dark` op het podium laat de design-system-componenten erin hun donkere variant kiezen, dus lichte tekst zonder eigen styling. Er is geen presentatiecomponent. |
+| `src/presentation/*` (deck, scoped CSS en `presentation.css`) | De presentatie: een Rijkshuisstijl-blauw dek (donkerblauw #154273, RijksoverheidSerif voor titels, RijksSans voor tekst) dat voluit staat bij intro en afsluiting en als linker rail de demo rechts aanstuurt (`html.rr-presenting body { padding-left }`, puls `.rr-present-pulse`). Naar het voorbeeld van Begane Grond. Het design system heeft geen presentatiecomponent; de serif-fonts staan in `public/fonts` (Rijkshuisstijl-licentie). |
 | `.org-logo` | Vaste 40px/24px box voor organisatielogo's; `nldd-image` vult altijd de volle breedte. |
 | `.yaml-tree*` | Opvouwbare YAML-boom met kruiswet-links; `nldd-code-viewer` highlight wel YAML maar vouwt niet en kent geen links. |
 | `.gherkin*` | Gherkin-weergave met slaag/faal-markering per stap en tabellen; de viewer kent Gherkin als taal maar geen stapstatus. |

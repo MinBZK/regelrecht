@@ -11,7 +11,7 @@ profiles:
   merijn:
     name: Merijn
     type: burger
-    bsn: '100000001'
+    bsn: '999100001'
     kvk: null
     default_law: {law_path: zorgtoeslagwet, service: TOESLAGEN}
     default_feature: zorgtoeslagwet
@@ -138,7 +138,7 @@ dashboard_outputs:
   SVB/participatiewet/aio: hoogte_aio
   SZW/participatiewet/bijstand: hoogte_bijstand
   SZW/besluit_bijstandverlening_zelfstandigen: algemene_bijstand_bedrag
-  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten: hoogte_bijstand
+  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten: uitkeringsbedrag
   DUO/wet_studiefinanciering: studiefinanciering
   UWV/werkloosheidswet: hoogte_ww_uitkering
   UWV/ziektewet: hoogte_ziekengeld
@@ -168,7 +168,10 @@ expanded_paths:
     - articles.*.machine_readable.execution.output
     - articles.*.machine_readable.execution.actions
 
-# The presentation slides (Presentatie tab).
+# The presentation slides (Presentatie tab). A slide without `route` covers the
+# screen (title, statement, closing); a slide with `route` puts the deck on the
+# left and opens that tab, optionally switching the persona (`profile`) and
+# pulsing a part of the screen (`highlight`, a CSS selector). `**text**` is bold.
 slides:
   - kind: title
     title: RegelRecht
@@ -193,9 +196,89 @@ slides:
       - We **beginnen met de wet**
       - Deze **machine-uitvoerbaar** maken
       - '**Openbaar** publiceren'
-  - kind: statement
+  - kind: demo
+    overline: De wet
+    title: De wet, machine-leesbaar
+    lead: De wettekst en de uitvoerbare regel staan naast elkaar, per artikel.
+    bullets:
+      - 'Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.'
+      - Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.
+      - Dezelfde YAML draait in de editor, in dit portaal en in de simulatie.
+    route: /wetten
+    highlight: .yaml-tree
+  - kind: demo
+    overline: Samenhang
+    title: Wetten hangen samen
+    lead: De zorgtoeslag leunt op de inkomstenbelasting, die op de basisregistratie personen.
+    bullets:
+      - Elke pijl is een echte verwijzing uit de wet.
+      - Wijzigt een wet, dan zie je meteen wie dat raakt.
+      - Klik een knoop aan en zie wat hij gebruikt en wie hem gebruikt.
+    route: /graaf
+  - kind: demo
+    overline: Toetsen
+    title: De wet getoetst, in gewone taal
+    lead: Scenario's beschrijven een persoon en wat de wet voor die persoon moet opleveren.
+    bullets:
+      - Gegeven een 17-jarige, dan geen zorgtoeslag. Gegeven een alleenstaande met laag inkomen, dan wel.
+      - Dezelfde scenario's draaien hier in de browser en in de bouwstraat.
+      - Wie de wet wijzigt, ziet welk scenario omvalt.
+    route: /scenarios
+  - kind: demo
+    overline: Beleid
+    title: Wat doet het met vijftigduizend mensen?
+    lead: Een gegenereerde bevolking door alle regelingen, met de echte wetten.
+    bullets:
+      - Wie voldoet aan de voorwaarden, voor hoeveel, uitgesplitst naar leeftijd, inkomen, huishouden.
+      - Draai aan een drempel in de wet en zie het verschil, voor de wet ingaat.
+      - 'Ook voor ondernemers: vergunningen, meldplichten, precario.'
+    route: /simulatie
+  - kind: demo
+    overline: De burger
+    title: Eén burger, Merijn
+    lead: ZZP'er in de thuiszorg, alleenstaande ouder met twee jonge kinderen.
+    bullets:
+      - Alles waar hij recht op heeft, live berekend door de wet zelf.
+      - Elk gegeven is herleidbaar naar het register dat het leverde.
+      - Klopt een gegeven niet? Hij corrigeert het, een behandelaar beoordeelt.
+    route: /portaal
+    profile: merijn
+    highlight: nldd-card
+  - kind: demo
+    overline: Aanvragen
+    title: Alleen vragen wat de overheid niet weet
+    lead: De wet rekent met wat er al is en vraagt pas iets als ze vastloopt.
+    bullets:
+      - De huurtoeslag kent de huur niet. Dat is de enige vraag, op dat moment.
+      - Na elk antwoord rekent de wet opnieuw.
+      - Controleren, verklaren, indienen. Zonder formulier van tien pagina's.
+    route: /portaal
+    highlight: nldd-button[text="Gegevens aanvullen"]
+  - kind: demo
+    overline: De behandelaar
+    title: Hetzelfde recht, andere kant van de balie
+    lead: De aanvraag komt binnen met de berekening die de burger zag.
+    bullets:
+      - De engine rekent het opnieuw na met de geregistreerde gegevens.
+      - Correcties van de burger staan klaar ter beoordeling.
+      - Toekennen of afwijzen, met motivering; bezwaar komt via het portaal terug.
+    route: /zaaksysteem
+  - kind: demo
+    overline: De ondernemer
+    title: Een ondernemer, Claudia
+    lead: Eigenaar van koffiezaak Noon in Rotterdam-West, met een terras.
+    bullets:
+      - 'Dezelfde engine, andere wetten: APV, Alcoholwet, Warenwet, precario.'
+      - De terrasvergunning vraagt om locatie en oppervlakte; de precariobelasting rekent er meteen mee.
+      - Gemeente, NVWA en RVO in één overzicht, zonder dat zij iets aan elkaar hoeven te vragen.
+    route: /portaal
+    profile: claudia
+  - kind: closing
     overline: Demo RegelRecht
+    title: Proof of concept
     lines:
-      - Proof of concept
-      - Compleet verhaal, geen eindproduct
-      - We maken beleid door te doen
+      - Compleet verhaal, **geen eindproduct**
+      - We maken beleid **door te doen**
+    link:
+      href: https://regelrecht.rijks.app
+      label: regelrecht.rijks.app

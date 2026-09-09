@@ -1,5 +1,6 @@
 import '@nldd/design-system';
 import '@nldd/design-system/styles';
+import './src/presentation/presentation.css';
 import { createApp } from 'vue';
 import { useColorScheme } from '@regelrecht/frontend-shared';
 import App from './src/App.vue';

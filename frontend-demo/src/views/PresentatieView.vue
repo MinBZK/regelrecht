@@ -1,129 +1,49 @@
 <script setup>
-import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onActivated, onMounted, watch } from 'vue';
+import { usePresentation } from '../presentation/usePresentation.js';
 import { useDemo } from '../store/demoStore.js';
 
-// The opening deck: a handful of statement slides driven by the keyboard.
-// Arrow right / space / page down advance; on the last slide the next press
-// hands over to the Wetten tab, the scripted start of the live demo.
+// The Presentatie tab starts the deck. The deck itself is an overlay
+// (PresentationDeck.vue, mounted by App.vue) that covers the screen for the
+// intro and then sits on the left while it opens the other tabs. This page is
+// what remains when the deck is closed on this route: a way to start again.
 
-const router = useRouter();
-const { corpus, state } = useDemo();
+const p = usePresentation();
+const { ready, corpus } = useDemo();
 const slides = computed(() => corpus.value?.config?.slides ?? []);
-const current = ref(0);
 
-const today = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+function startWhenReady() {
+  if (ready.value && !p.active.value && slides.value.length) p.start(0);
+}
+onMounted(startWhenReady);
+onActivated(startWhenReady);
+watch(ready, startWhenReady);
 
-function next() {
-  if (current.value < slides.value.length - 1) current.value += 1;
-  else router.push('/wetten');
-}
-function prev() {
-  if (current.value > 0) current.value -= 1;
-}
-
-function onKey(e) {
-  if (e.target?.closest?.('input, textarea, [contenteditable]')) return;
-  switch (e.key) {
-    case 'ArrowRight':
-    case ' ':
-    case 'PageDown':
-      e.preventDefault();
-      next();
-      break;
-    case 'ArrowLeft':
-    case 'PageUp':
-      e.preventDefault();
-      prev();
-      break;
-    case 'Home':
-      current.value = 0;
-      break;
-    case 'End':
-      current.value = slides.value.length - 1;
-      break;
-    default:
-  }
-}
-
-let listening = false;
-function listen() {
-  if (!listening) {
-    window.addEventListener('keydown', onKey);
-    listening = true;
-  }
-}
-function unlisten() {
-  if (listening) {
-    window.removeEventListener('keydown', onKey);
-    listening = false;
-  }
-}
-onMounted(listen);
-onActivated(listen);
-onDeactivated(unlisten);
-onUnmounted(unlisten);
-
-// Presenter name on the title slide, editable in place and remembered.
-const editingName = ref(false);
-function saveName(e) {
-  state.presenterName = e.target?.value ?? '';
-  editingName.value = false;
-}
-
-/** `**bold**` markup in a statement line → HTML with <strong>. */
-function emphasize(line) {
-  const escaped = line.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-  return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+function kindLabel(s) {
+  return s.kind === 'title' ? 'Titel' : s.kind === 'statement' ? 'Stelling' : s.kind === 'closing' ? 'Afsluiting' : 'Demo';
 }
 </script>
 
 <template>
   <nldd-page>
-    <nldd-full-bleed-section height="100%" width="full" padding-block="0">
-      <div class="slide-stage" @click="next">
-        <div v-for="(slide, i) in slides" :key="i" v-show="i === current" class="slide">
-          <template v-if="slide.kind === 'title'">
-            <nldd-title size="1">
-              <span slot="overline">{{ today }}</span>
-              <h1>{{ slide.title }}</h1>
-              <span slot="subtitle">{{ slide.subtitle }}</span>
-            </nldd-title>
-            <nldd-spacer size="32"></nldd-spacer>
-            <nldd-rich-text centered>
-              <p v-if="!editingName" @dblclick.stop="editingName = true" title="Dubbelklik om te wijzigen">
-                {{ state.presenterName || 'Presentator' }}
-              </p>
-              <p v-else>
-                <nldd-text-field
-                  :value="state.presenterName"
-                  placeholder="Naam presentator"
-                  accessible-label="Naam presentator"
-                  @click.stop
-                  @change="saveName"
-                  @keydown.enter="saveName"
-                ></nldd-text-field>
-              </p>
-              <p><small>{{ slide.footer }}</small></p>
-            </nldd-rich-text>
-          </template>
-          <template v-else>
-            <nldd-title size="2">
-              <span slot="overline">{{ slide.overline }}</span>
-              <h2>
-                <template v-for="(line, j) in slide.lines" :key="j">
-                  <span v-html="emphasize(line)"></span><br v-if="j < slide.lines.length - 1" />
-                </template>
-              </h2>
-            </nldd-title>
-          </template>
-        </div>
-        <div class="slide-controls" @click.stop>
-          <nldd-icon-button size="sm" variant="neutral-transparent" icon="chevron-left" text="Vorige" :disabled="current === 0 || undefined" @click="prev"></nldd-icon-button>
-          <nldd-tag size="sm" :text="`${current + 1} / ${slides.length}`"></nldd-tag>
-          <nldd-icon-button size="sm" variant="neutral-transparent" :icon="current === slides.length - 1 ? 'arrow-right' : 'chevron-right'" :text="current === slides.length - 1 ? 'Naar de wetten' : 'Volgende'" @click="next"></nldd-icon-button>
-        </div>
-      </div>
-    </nldd-full-bleed-section>
+    <nldd-simple-section width="720px">
+      <nldd-title slot="header" size="2">
+        <span slot="overline">Presentatie</span>
+        <h1>RegelRecht, van wet naar digitale werking</h1>
+        <span slot="subtitle">De dia's vertellen het verhaal en openen onderweg zelf het juiste tabblad.</span>
+        <nldd-container slot="actions" layout="row" gap="8">
+          <nldd-button variant="primary" start-icon="play" text="Start de presentatie" :disabled="!ready || undefined" @click="p.start(0)"></nldd-button>
+        </nldd-container>
+      </nldd-title>
+      <nldd-rich-text spacing="tight">
+        <p>Pijltjes of spatie bladeren, <kbd>Esc</kbd> sluit de dia's en laat de demo staan, <kbd>f</kbd> zet het scherm vol. Buiten dit tabblad opent <kbd>Shift</kbd>+<kbd>P</kbd> de dia's bij de huidige plek in het verhaal.</p>
+      </nldd-rich-text>
+      <nldd-list variant="box" accessible-label="Dia's">
+        <nldd-list-item v-for="(s, i) in slides" :key="i" size="sm" button @click="p.start(i)">
+          <nldd-text-cell size="sm" color="secondary" width="fit-content" min-width="32px" :text="String(i + 1)"></nldd-text-cell>
+          <nldd-text-cell size="sm" :text="s.title ?? s.lines?.[0]?.replaceAll('**', '') ?? ''" :supporting-text="s.route ? `${kindLabel(s)} · ${s.route}` : kindLabel(s)"></nldd-text-cell>
+        </nldd-list-item>
+      </nldd-list>
+    </nldd-simple-section>
   </nldd-page>
 </template>

@@ -16,7 +16,7 @@ De demo laat in één werkruimte zien wat RegelRecht doet: de machine-leesbare w
 
 De werkruimte heeft zeven tabbladen, in de volgorde van een presentatie:
 
-1. **Presentatie**: de openingsdia's; op de laatste dia gaat de pijl naar rechts door naar de wetten.
+1. **Presentatie**: het dek in Rijkshuisstijl-blauw. De intro staat voluit; daarna staat het dek links als rail en opent elke dia zelf het tabblad waar het over gaat, wisselt van persona en wijst aan wat de presentator bedoelt. De dia's zijn inhoud (`demo-config.yaml`), geen code. Esc sluit het dek en laat de demo staan; Shift+P opent het overal.
 2. **Wetten**: alle demo-wetten, gegroepeerd per uitvoerende organisatie, als opvouwbare YAML-boom. Elke `source.regulation` is een link die de verwezen wet in een nieuw wettabblad opent.
 3. **Graaf**: de afhankelijkheden tussen de wetten, per profiel of voor het hele corpus.
 4. **Scenario's**: de Gherkin-scenario's per wet, in het Nederlands weergegeven. "Uitvoeren" draait een scenario in de browser tegen de engine en toont de volledige uitvoeringstrace.

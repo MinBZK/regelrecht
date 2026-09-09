@@ -1,0 +1,80 @@
+/*
+ * Presentation mode, global rules (the deck itself is a component).
+ *
+ * While presenting, the deck is a fixed rail on the left (40vw) and the app is
+ * pushed to the right; on an intro or closing slide the deck covers the whole
+ * screen. The design system has no presentation component, so this is custom
+ * CSS on purpose (see frontend-demo/README.md, "Eigen CSS").
+ */
+
+/* Rijkshuisstijl serif for the slide titles. RijksSans comes with the design
+ * system; the serif does not. Licensed for use by the Rijksoverheid. */
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebregular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebbold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebitalic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+html.rr-presenting body {
+  padding-left: 36vw;
+  transition: padding-left 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+html.rr-presenting.rr-presenting-full body {
+  padding-left: 0;
+}
+
+/* While the deck names the persona, the profile tag in the bar is noise. */
+html.rr-presenting .rr-hide-presenting {
+  display: none;
+}
+
+/* The part of the demo the presenter points at: a swelling Rijksblauw ring. */
+.rr-present-pulse {
+  animation: rr-present-pulse 1.4s ease-in-out;
+}
+@keyframes rr-present-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(21, 66, 115, 0);
+    outline: 2px solid rgba(21, 66, 115, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(21, 66, 115, 0.4);
+    outline: 2px solid rgba(21, 66, 115, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(21, 66, 115, 0);
+    outline: 2px solid rgba(21, 66, 115, 0);
+  }
+}
+
+@media (max-width: 1024px) {
+  html.rr-presenting body {
+    padding-left: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.rr-presenting body {
+    transition: none;
+  }
+  .rr-present-pulse {
+    animation: none;
+    outline: 2px solid rgba(21, 66, 115, 0.9);
+    outline-offset: 2px;
+  }
+}

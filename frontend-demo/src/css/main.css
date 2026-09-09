@@ -15,38 +15,6 @@ body {
   height: 100%;
 }
 
-/* Presentation slides: a full-height stage with centred text. There is no
- * slide component in the design system; typography comes from nldd-title and
- * nldd-rich-text, only the stage geometry and its colour live here. The stage
- * is Rijkshuisstijl-blauw, as the POC's deck was: hard-coded, because a brand
- * colour must not follow the light/dark scheme. `color-scheme: dark` makes the
- * design-system tokens inside pick their dark-scheme values, so the text and
- * the controls come out light without restyling any component. */
-.slide-stage {
-  min-height: 100%;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  place-items: center;
-  padding: var(--primitives-space-40, 40px) var(--primitives-space-40, 40px) var(--primitives-space-16, 16px);
-  background: linear-gradient(135deg, #154273 0%, #1e5a9e 100%);
-  color-scheme: dark;
-  color: var(--semantics-content-color, #fff);
-}
-
-.slide-stage .slide-controls {
-  display: flex;
-  align-items: center;
-  gap: var(--primitives-space-12, 12px);
-}
-
-.slide-stage .slide {
-  max-width: 56rem;
-  text-align: center;
-  /* Slides are read from the back of a room: scale the design-system
-   * typography up as a whole rather than restyling each component. */
-  zoom: 1.5;
-}
-
 /* Organisation logos in tiles and data rows: fixed box, image scaled inside.
  * nldd-image forces full width, which is wrong for a 40px mark. */
 .org-logo {
