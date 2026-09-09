@@ -11,14 +11,15 @@ import GraphLawNode from '../components/graph/GraphLawNode.vue';
 import GraphBoxNode from '../components/graph/GraphBoxNode.vue';
 import GraphItemNode from '../components/graph/GraphItemNode.vue';
 import OrgLogo from '../components/OrgLogo.vue';
-import { buildGraph, lawShape } from '../graph/lawGraph.js';
+import { buildGraph, lawShape, neighbourhood } from '../graph/lawGraph.js';
 import { fieldSpec, formatValue } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 import { useDemo } from '../store/demoStore.js';
 
-// The dependency graph as the POC drew it: every selected law as a box with
-// its register sources, its inputs from other laws and its outputs, an edge
+// The dependency graph as the POC drew it: every selected law and its direct
+// neighbours as a box with its register sources, its inputs from other laws
+// and its outputs, an edge
 // from each input to the output that supplies it, and on every item the value
 // the engine found for the active persona. The profile chooses the laws that
 // tell its story (`graph_laws`); the sidebar lets the presenter add or drop
@@ -91,7 +92,9 @@ function only(lawId) {
   selected.value = new Set([lawId]);
   preset.value = '';
 }
-const shownLaws = computed(() => allLaws.value.filter((l) => selected.value.has(l.id)));
+// As in the POC: the selected laws and everything directly connected to them.
+const shownIds = computed(() => neighbourhood(selected.value, allLaws.value));
+const shownLaws = computed(() => allLaws.value.filter((l) => shownIds.value.has(l.id)));
 
 // ---- the persona's values ----------------------------------------------------
 // Every shown law is evaluated for the active persona; the outputs go on the
@@ -177,7 +180,7 @@ function unique(laws) {
     <nldd-split-view-pane slot="sidebar" has-content background="tinted">
       <nldd-page sticky-header background="inherit">
         <nldd-container slot="header" padding="12" gap="8">
-          <nldd-top-title-bar text="Graaf" :supporting-text="`${shownLaws.length} van ${allLaws.length} wetten`"></nldd-top-title-bar>
+          <nldd-top-title-bar text="Graaf" :supporting-text="`${selected.size} gekozen, ${shownLaws.length} in beeld`"></nldd-top-title-bar>
           <nldd-segmented-control size="sm" width="full" :value="preset" @change="applyPreset($event.detail?.value)">
             <nldd-segmented-control-item value="verhaal" text="Verhaal"></nldd-segmented-control-item>
             <nldd-segmented-control-item value="portaal" :text="profile?.name ?? 'Portaal'"></nldd-segmented-control-item>
@@ -195,7 +198,7 @@ function unique(laws) {
               <nldd-list-item v-for="law in group.laws" :key="law.id" size="sm" checkbox :checked="selected.has(law.id) || undefined" @change="toggle(law.id)">
                 <nldd-cell><nldd-checkbox :checked="selected.has(law.id) || undefined" aria-hidden="true" tabindex="-1"></nldd-checkbox></nldd-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-text-cell size="sm" :text="law.name"></nldd-text-cell>
+                <nldd-text-cell size="sm" :text="law.name" :supporting-text="!selected.has(law.id) && shownIds.has(law.id) ? 'in beeld als buur' : undefined"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
           </template>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraph, itemId, lawShape, lawSize, layout, LAW_W } from './lawGraph.js';
+import { buildGraph, colourIndex, itemId, lawShape, lawSize, layout, neighbourhood, LAW_W } from './lawGraph.js';
 
 const law = (id, { sources = [], inputs = [], outputs = [] } = {}) => ({
   id,
@@ -65,8 +65,29 @@ describe('buildGraph', () => {
     const ib = law('ib', { outputs: ['inkomen'] });
     const { nodes, edges } = buildGraph([brp, zt, ib], values, 'brp');
     expect(nodes.find((n) => n.id === itemId('zt', 'out', 'hoogte')).data.value).toBe('€ 1.654');
-    expect(nodes.find((n) => n.id === 'ib').class).toBe('graph-dim');
-    expect(nodes.find((n) => n.id === 'zt').class).toBe('');
+    expect(nodes.find((n) => n.id === 'ib').class).toMatch(/graph-dim/);
+    expect(nodes.find((n) => n.id === 'zt').class).not.toMatch(/graph-dim/);
     expect(edges.find((e) => e.data.to === 'ib').style.opacity).toBeLessThan(0.5);
+  });
+});
+
+describe('neighbourhood', () => {
+  it('adds what a selected law reads from and what reads from it, but not further', () => {
+    const brp = law('brp', { outputs: ['leeftijd'] });
+    const zvw = law('zvw', { inputs: [['detentie', 'pbw', 'detentie']], outputs: ['verzekerd'] });
+    const pbw = law('pbw', { outputs: ['detentie'] });
+    const zt = law('zt', { inputs: [['leeftijd', 'brp', 'leeftijd'], ['verzekerd', 'zvw', 'verzekerd']], outputs: ['hoogte'] });
+    const ww = law('ww', { inputs: [['leeftijd', 'brp', 'leeftijd']], outputs: ['uitkering'] });
+    const shown = neighbourhood(new Set(['zt']), [brp, zvw, pbw, zt, ww]);
+    expect([...shown].sort()).toEqual(['brp', 'zt', 'zvw']);
+  });
+});
+
+describe('colourIndex', () => {
+  it('gives a service a stable colour and wraps after seven', () => {
+    const idx = colourIndex(['A', 'B', 'A', 'C', 'D', 'E', 'F', 'G', 'H']);
+    expect(idx('A')).toBe(0);
+    expect(idx('B')).toBe(1);
+    expect(idx('H')).toBe(0);
   });
 });

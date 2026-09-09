@@ -102,6 +102,33 @@ export function layout(laws) {
 export const itemId = (lawId, kind, name) => `${lawId}::${kind}::${name}`;
 
 /**
+ * The laws to draw for a selection, as the POC did it: the selected laws plus
+ * every law directly connected to one of them (what they read from and what
+ * reads from them), so the picture is the connected neighbourhood, not one
+ * chain.
+ * @param {Set<string>} selected
+ * @param {object[]} laws   all corpus laws
+ * @returns {Set<string>}
+ */
+export function neighbourhood(selected, laws) {
+  const shown = new Set(selected);
+  const known = new Set(laws.map((l) => l.id));
+  for (const law of laws) {
+    const refs = lawShape(law).inputs.map((i) => i.ref.regulation).filter((id) => known.has(id));
+    if (selected.has(law.id)) refs.forEach((id) => shown.add(id));
+    else if (refs.some((id) => selected.has(id))) shown.add(law.id);
+  }
+  return shown;
+}
+
+/** Seven Rijkshuisstijl colours; a service keeps its colour by first appearance. */
+export const COLOUR_COUNT = 7;
+export function colourIndex(services) {
+  const order = [...new Set(services)];
+  return (service) => order.indexOf(service) % COLOUR_COUNT;
+}
+
+/**
  * Nodes and edges for vue-flow.
  * @param {object[]} laws          corpus law entries to draw
  * @param {object} [values]        { outputs: {lawId: {name: text}}, sources: {lawId: {name: text}}, inputs: {lawId: {name: text}} }
@@ -117,6 +144,7 @@ export function buildGraph(laws, values = {}, focus = null) {
   }
   const positions = layout(sized);
 
+  const colour = colourIndex(laws.map((l) => l.service));
   const nodes = [];
   const edges = [];
   const dimmed = (lawId) => !!focus && lawId !== focus && !edges.some((e) => (e.data.from === focus && e.data.to === lawId) || (e.data.to === focus && e.data.from === lawId));
@@ -150,7 +178,7 @@ export function buildGraph(laws, values = {}, focus = null) {
       position: positions.get(law.id),
       style: { width: `${size.width}px`, height: `${size.height}px` },
       data: { law, selected: focus === law.id },
-      class: dim ? 'graph-dim' : '',
+      class: `graph-c${colour(law.service)}${dim ? ' graph-dim' : ''}`,
       selectable: false,
     });
     const box = (kind, label, items, x, y) => {
@@ -164,6 +192,7 @@ export function buildGraph(laws, values = {}, focus = null) {
         position: { x, y },
         style: { width: `${COL_W}px`, height: `${h}px` },
         data: { label, kind },
+        class: `graph-c${colour(law.service)}`,
         draggable: false,
         selectable: false,
       });

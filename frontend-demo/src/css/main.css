@@ -296,6 +296,86 @@ body {
   stroke-width: 1.5;
 }
 
+
+/* One Rijkshuisstijl colour per organisation, as the POC coloured its laws. */
+.graph-c0 .graph-law {
+  border-color: var(--primitives-color-lintblauw-500);
+  background: light-dark(var(--primitives-color-lintblauw-25), var(--primitives-color-lintblauw-950));
+}
+.graph-c0 .graph-box {
+  border-color: var(--primitives-color-lintblauw-300);
+  background: light-dark(var(--primitives-color-lintblauw-75), var(--primitives-color-lintblauw-900));
+}
+.graph-c0 .graph-box__label {
+  color: light-dark(var(--primitives-color-lintblauw-800), var(--primitives-color-lintblauw-200));
+}
+.graph-c1 .graph-law {
+  border-color: var(--primitives-color-oranje-500);
+  background: light-dark(var(--primitives-color-oranje-25), var(--primitives-color-oranje-950));
+}
+.graph-c1 .graph-box {
+  border-color: var(--primitives-color-oranje-300);
+  background: light-dark(var(--primitives-color-oranje-75), var(--primitives-color-oranje-900));
+}
+.graph-c1 .graph-box__label {
+  color: light-dark(var(--primitives-color-oranje-800), var(--primitives-color-oranje-200));
+}
+.graph-c2 .graph-law {
+  border-color: var(--primitives-color-groen-500);
+  background: light-dark(var(--primitives-color-groen-25), var(--primitives-color-groen-950));
+}
+.graph-c2 .graph-box {
+  border-color: var(--primitives-color-groen-300);
+  background: light-dark(var(--primitives-color-groen-75), var(--primitives-color-groen-900));
+}
+.graph-c2 .graph-box__label {
+  color: light-dark(var(--primitives-color-groen-800), var(--primitives-color-groen-200));
+}
+.graph-c3 .graph-law {
+  border-color: var(--primitives-color-paars-500);
+  background: light-dark(var(--primitives-color-paars-25), var(--primitives-color-paars-950));
+}
+.graph-c3 .graph-box {
+  border-color: var(--primitives-color-paars-300);
+  background: light-dark(var(--primitives-color-paars-75), var(--primitives-color-paars-900));
+}
+.graph-c3 .graph-box__label {
+  color: light-dark(var(--primitives-color-paars-800), var(--primitives-color-paars-200));
+}
+.graph-c4 .graph-law {
+  border-color: var(--primitives-color-robijnrood-500);
+  background: light-dark(var(--primitives-color-robijnrood-25), var(--primitives-color-robijnrood-950));
+}
+.graph-c4 .graph-box {
+  border-color: var(--primitives-color-robijnrood-300);
+  background: light-dark(var(--primitives-color-robijnrood-75), var(--primitives-color-robijnrood-900));
+}
+.graph-c4 .graph-box__label {
+  color: light-dark(var(--primitives-color-robijnrood-800), var(--primitives-color-robijnrood-200));
+}
+.graph-c5 .graph-law {
+  border-color: var(--primitives-color-donkergeel-500);
+  background: light-dark(var(--primitives-color-donkergeel-25), var(--primitives-color-donkergeel-950));
+}
+.graph-c5 .graph-box {
+  border-color: var(--primitives-color-donkergeel-300);
+  background: light-dark(var(--primitives-color-donkergeel-75), var(--primitives-color-donkergeel-900));
+}
+.graph-c5 .graph-box__label {
+  color: light-dark(var(--primitives-color-donkergeel-800), var(--primitives-color-donkergeel-200));
+}
+.graph-c6 .graph-law {
+  border-color: var(--primitives-color-mintgroen-500);
+  background: light-dark(var(--primitives-color-mintgroen-25), var(--primitives-color-mintgroen-950));
+}
+.graph-c6 .graph-box {
+  border-color: var(--primitives-color-mintgroen-300);
+  background: light-dark(var(--primitives-color-mintgroen-75), var(--primitives-color-mintgroen-900));
+}
+.graph-c6 .graph-box__label {
+  color: light-dark(var(--primitives-color-mintgroen-800), var(--primitives-color-mintgroen-200));
+}
+
 .graph-canvas .vue-flow__node.graph-dim {
   opacity: 0.25;
 }
