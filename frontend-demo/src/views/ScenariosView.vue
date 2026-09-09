@@ -4,18 +4,18 @@ import { useRoute, useRouter } from 'vue-router';
 import { parseFeature, dispatch, quotedValue, bareValue, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
 import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.js';
 import { serviceInfo } from '../data/loadCorpus.js';
+import { prepareScenarioEngine } from '../engine/useDemoEngine.js';
 import { useDemo } from '../store/demoStore.js';
 
 // The scenario runner: every law's acceptance scenarios (Gherkin, canonical
 // grammar) in the sidebar; the chosen feature rendered for a Dutch audience;
 // "Uitvoeren" runs a scenario in the browser against the same WASM engine the
-// portal uses and shows the engine's full trace. This is the live proof that
-// the law behaves as the scenario says.
+// portal uses (a second instance, with the same laws) and shows the engine's
+// full trace. This is the live proof that the law behaves as the scenario says.
 
 const route = useRoute();
 const router = useRouter();
-const demo = useDemo();
-const { corpus, profile, engine } = demo;
+const { corpus, profile } = useDemo();
 
 const features = computed(() => corpus.value?.scenarios ?? []);
 // The list of test files is a sheet, closed until asked for.
@@ -25,6 +25,13 @@ const parsed = ref(null);
 const rawText = ref('');
 const loadError = ref(null);
 const runs = reactive({}); // scenario index -> { status, steps: [{status, error}], trace, outputs }
+// Scenarios start collapsed: a feature with a dozen scenarios is otherwise a
+// wall of steps. Each card opens on its own; a failed run opens itself so the
+// failing step is in view.
+const open = reactive({}); // scenario index -> boolean
+const backgroundOpen = ref(false);
+const runningAll = ref(false);
+const anyRunning = computed(() => runningAll.value || Object.values(runs).some((r) => r.status === 'running'));
 const query = ref('');
 
 const filtered = computed(() => {
@@ -42,6 +49,8 @@ async function select(path, { replaceRoute = false } = {}) {
   selectedPath.value = path;
   splitView.value?.hidePrimarySidebarSheet?.();
   Object.keys(runs).forEach((k) => delete runs[k]);
+  Object.keys(open).forEach((k) => delete open[k]);
+  backgroundOpen.value = false;
   loadError.value = null;
   try {
     const res = await fetch(path);
@@ -83,20 +92,42 @@ function stepsOf(scenario) {
 }
 
 /**
- * Run one scenario. Data steps register scoped sources on the shared engine;
- * afterwards the persona data is restored so the portal is unaffected.
+ * Run one scenario on the scenario engine. Data steps register scoped sources
+ * there; the sources are cleared before every run so scenarios never see each
+ * other's rows. The portal's engine and its persona data are never touched.
  */
 async function run(index) {
   const scenario = parsed.value?.scenarios[index];
-  if (!scenario || !engine.value) return;
+  if (!scenario || !corpus.value || runs[index]?.status === 'running') return;
   const wip = scenario.tags.includes('@wip');
-  const state = { status: 'running', steps: [], trace: null, traceText: '', outputs: null, error: null, wip };
+  // Reactive on purpose: the run mutates this object step by step, and the card
+  // has to follow. A plain object assigned into `runs` would only be tracked
+  // through `runs[index]`, not through this reference.
+  const state = reactive({ status: 'running', steps: [], trace: null, traceText: '', outputs: null, error: null, wip });
   runs[index] = state;
+  // Let the card repaint (status icon, loading button) before the engine work.
+  await new Promise((resolve) => setTimeout(resolve));
   const ctx = new ExecutionContext();
-  const e = engine.value;
+  const t0 = performance.now();
+  const timings = [];
+  const lap = (label, from) => timings.push(`${label} ${(performance.now() - from).toFixed(1)}ms`);
+  let t = performance.now();
+  let e;
+  try {
+    e = await prepareScenarioEngine(corpus.value);
+  } catch (err) {
+    state.error = `Engine niet beschikbaar: ${err?.message ?? err}`;
+    state.status = 'fail';
+    open[index] = true;
+    return;
+  }
+  lap('engine', t);
+  t = performance.now();
   e.clearDataSources();
+  lap('clearDataSources', t);
   try {
     for (const step of stepsOf(scenario)) {
+      t = performance.now();
       const match = matchStep(step.text);
       const record = { status: 'pending', error: null };
       state.steps.push(record);
@@ -118,6 +149,7 @@ async function run(index) {
           await dispatch(ctx, e, entry.action, [...typed, ...entry.literals], table, { loadDependency: async () => {} });
         }
         record.status = 'pass';
+        lap(`step:${entry.action}`, t);
       } catch (err) {
         record.status = 'fail';
         record.error = String(err?.message ?? err?.error ?? err);
@@ -126,11 +158,45 @@ async function run(index) {
     }
     const failed = state.steps.some((s) => s.status === 'fail');
     state.status = failed ? 'fail' : 'pass';
+    // A failure opens the card so the failing step is in view; a pass leaves
+    // the card as the presenter had it.
+    if (failed) open[index] = true;
   } finally {
-    // Give the portal its persona data back.
     e.clearDataSources();
-    demo.reregister();
+    console.debug(`[scenario-timing] ${scenario.name}: total ${(performance.now() - t0).toFixed(1)}ms | ${timings.join(' | ')}`);
   }
+}
+
+/** The 1-based number of the failing step within the scenario's own steps, or 0 when it is a background step. */
+function failedStepNumber(index) {
+  const r = runs[index];
+  const at = r?.steps?.findIndex((s) => s.status === 'fail') ?? -1;
+  if (at < 0) return null;
+  const bg = parsed.value?.background?.length ?? 0;
+  return at < bg ? 0 : at - bg + 1;
+}
+
+function resultTag(index) {
+  const r = runs[index];
+  if (r?.status === 'pass') return { color: 'success', text: 'Geslaagd' };
+  if (r?.status === 'fail') {
+    const n = failedStepNumber(index);
+    const text = n === 0 ? 'Mislukt in de achtergrond' : n ? `Mislukt bij stap ${n}` : 'Mislukt';
+    // A @wip scenario is known not to pass yet (the Rust runner skips it); its
+    // failure is expected, not a regression.
+    return r.wip ? { color: 'warning', text: `${text} (@wip)` } : { color: 'critical', text };
+  }
+  return null;
+}
+
+function statusIcon(index) {
+  const s = runs[index]?.status;
+  return s === 'pass' ? 'check-mark-circle' : s === 'fail' ? 'dismiss-circle' : s === 'running' ? 'clock' : 'circle-dashed';
+}
+
+function statusColor(index) {
+  const r = runs[index];
+  return r?.status === 'pass' ? 'success' : r?.status === 'fail' ? (r.wip ? 'warning' : 'critical') : 'secondary';
 }
 
 function evaluateWithTrace(ctx, e, lawId, outputs, state) {
@@ -159,9 +225,15 @@ function renderTraceFallback(err) {
 
 
 async function runAll() {
-  for (let i = 0; i < (parsed.value?.scenarios.length ?? 0); i += 1) {
-    // eslint-disable-next-line no-await-in-loop
-    await run(i);
+  if (runningAll.value) return;
+  runningAll.value = true;
+  try {
+    for (let i = 0; i < (parsed.value?.scenarios.length ?? 0); i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await run(i);
+    }
+  } finally {
+    runningAll.value = false;
   }
 }
 
@@ -224,7 +296,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               </nldd-segmented-control>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="parsed">
-              <nldd-button size="sm" variant="primary" start-icon="play" text="Alles uitvoeren" @click="runAll"></nldd-button>
+              <nldd-button size="sm" variant="primary" start-icon="play" text="Alles uitvoeren" :loading="runningAll || undefined" :disabled="(anyRunning && !runningAll) || undefined" @click="runAll"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="parsed && selectedLaw">
               <nldd-button size="sm" variant="neutral-tinted" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(selectedLaw.id)}`)"></nldd-button>
@@ -246,30 +318,31 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         <nldd-simple-section v-else width="full">
           <nldd-container gap="16">
           <nldd-box>
-            <nldd-container padding="16">
+            <nldd-container padding="12" layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon-cell icon="checklist" color="secondary"></nldd-icon-cell>
+              <nldd-title-cell size="5" :text="parsed.feature" :overline="FEATURE_KEYWORDS_NL.Feature" :supporting-text="parsed.background?.length ? `${FEATURE_KEYWORDS_NL.Background}: ${parsed.background.length} ${parsed.background.length === 1 ? 'stap' : 'stappen'}` : undefined"></nldd-title-cell>
+              <nldd-icon-button v-if="parsed.background?.length" size="sm" variant="neutral-transparent" :icon="backgroundOpen ? 'chevron-up' : 'chevron-down'" :text="backgroundOpen ? 'Achtergrond verbergen' : 'Achtergrond tonen'" :expanded="backgroundOpen || undefined" @click="backgroundOpen = !backgroundOpen"></nldd-icon-button>
+            </nldd-container>
+            <nldd-container v-if="backgroundOpen && parsed.background?.length" padding-inline="16" padding-bottom="12">
               <div class="gherkin">
-                <div><span class="kw">{{ FEATURE_KEYWORDS_NL.Feature }}:</span> {{ parsed.feature }}</div>
-                <template v-if="parsed.background?.length">
-                  <div>&nbsp;</div>
-                  <div><span class="kw">{{ FEATURE_KEYWORDS_NL.Background }}:</span></div>
-                  <div v-for="(step, i) in parsed.background" :key="`bg-${i}`" class="step">
-                    <span class="kw">{{ renderStepNl(step).keyword }}</span> {{ renderStepNl(step).text }}
-                  </div>
-                </template>
+                <div><span class="kw">{{ FEATURE_KEYWORDS_NL.Background }}:</span></div>
+                <div v-for="(step, i) in parsed.background" :key="`bg-${i}`" class="step">
+                  <span class="kw">{{ renderStepNl(step).keyword }}</span> {{ renderStepNl(step).text }}
+                </div>
               </div>
             </nldd-container>
           </nldd-box>
           <nldd-card v-for="(scenario, index) in parsed.scenarios" :key="index" :accessible-label="scenario.name">
             <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
-              <nldd-icon-cell
-                :icon="runs[index]?.status === 'pass' ? 'check-mark-circle' : runs[index]?.status === 'fail' ? 'dismiss-circle' : runs[index]?.status === 'running' ? 'clock' : 'circle-dashed'"
-                :color="runs[index]?.status === 'pass' ? 'success' : runs[index]?.status === 'fail' ? 'critical' : 'secondary'"
-              ></nldd-icon-cell>
+              <nldd-icon-cell :icon="statusIcon(index)" :color="statusColor(index)"></nldd-icon-cell>
               <nldd-title-cell size="5" :text="scenario.name" :supporting-text="scenario.tags.join(' ') || undefined"></nldd-title-cell>
-              <nldd-button size="sm" variant="secondary" start-icon="play" text="Uitvoeren" @click="run(index)"></nldd-button>
+              <nldd-tag v-if="resultTag(index)" size="sm" :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag>
+              <nldd-button size="sm" variant="secondary" start-icon="play" text="Uitvoeren" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="run(index)"></nldd-button>
               <nldd-button v-if="runs[index]?.traceText" size="sm" variant="neutral-tinted" start-icon="list" text="Trace" @click="activeTrace = index"></nldd-button>
+              <nldd-icon-button size="sm" variant="neutral-transparent" :icon="open[index] ? 'chevron-up' : 'chevron-down'" :text="open[index] ? 'Stappen verbergen' : 'Stappen tonen'" :expanded="open[index] || undefined" @click="open[index] = !open[index]"></nldd-icon-button>
             </nldd-container>
-            <nldd-container padding-inline="16" padding-bottom="12">
+            <nldd-container v-if="open[index]" padding-inline="16" padding-bottom="12" gap="12">
+              <nldd-banner v-if="runs[index]?.error && !runs[index]?.steps?.length" variant="critical" text="Uitvoering mislukt" :supporting-text="runs[index].error"></nldd-banner>
               <div class="gherkin">
                 <div v-for="(step, si) in scenario.steps" :key="si" :class="['step', stepClass(index, (parsed.background?.length ?? 0) + si)]">
                   <span class="kw">{{ renderStepNl(step).keyword }}</span> {{ renderStepNl(step).text }}

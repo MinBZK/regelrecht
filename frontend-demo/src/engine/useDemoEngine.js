@@ -15,6 +15,8 @@ import {
 
 let engineInstance = null;
 let initPromise = null;
+/** The wasm-bindgen module once initialised; a second engine is constructed from it. */
+let wasmModule = null;
 export const engineReady = ref(false);
 export const engineError = ref(null);
 
@@ -36,6 +38,7 @@ async function initEngine() {
       const wasm = await import(/* @vite-ignore */ blobUrl);
       URL.revokeObjectURL(blobUrl);
       await wasm.default('/wasm/pkg/regelrecht_engine_bg.wasm');
+      wasmModule = wasm;
       engineInstance = new wasm.WasmEngine();
       engineReady.value = true;
       return engineInstance;
@@ -47,21 +50,59 @@ async function initEngine() {
   return initPromise;
 }
 
+function loadLaws(engine, corpus) {
+  for (const law of corpus.laws) {
+    try {
+      engine.loadLaw(law.text);
+    } catch (e) {
+      console.warn(`Wet ${law.id} (${law.path}) kon niet geladen worden:`, e);
+    }
+  }
+}
+
 /** Load every law version of the corpus into the engine (idempotent). */
 let lawsLoaded = false;
 export async function prepareEngine(corpus) {
   const engine = await initEngine();
   if (!lawsLoaded) {
-    for (const law of corpus.laws) {
-      try {
-        engine.loadLaw(law.text);
-      } catch (e) {
-        console.warn(`Wet ${law.id} (${law.path}) kon niet geladen worden:`, e);
-      }
-    }
+    loadLaws(engine, corpus);
     lawsLoaded = true;
   }
   return engine;
+}
+
+/**
+ * A second engine for the scenario runner, created on first use with every
+ * corpus law loaded and no persona data at all.
+ *
+ * Scenario steps register their own data sources and the runner clears them
+ * between runs. Done on the portal's engine, that threw away the persona data
+ * after every run and forced a full re-registration, which bumps `dataVersion`
+ * and makes every kept-alive tile re-evaluate its law: one scenario run cost
+ * dozens of law evaluations elsewhere. On its own engine a run touches nothing
+ * the portal sees.
+ */
+let scenarioEngine = null;
+let scenarioPromise = null;
+export async function prepareScenarioEngine(corpus) {
+  if (scenarioEngine) return scenarioEngine;
+  if (scenarioPromise) return scenarioPromise;
+  scenarioPromise = (async () => {
+    try {
+      await initEngine();
+      const t0 = performance.now();
+      const engine = new wasmModule.WasmEngine();
+      loadLaws(engine, corpus);
+      console.debug(`[scenario-engine] tweede engine met ${engine.lawCount()} wetten geladen in ${(performance.now() - t0).toFixed(0)}ms`);
+      scenarioEngine = engine;
+      return engine;
+    } catch (e) {
+      // Do not cache the failure: the next run tries again.
+      scenarioPromise = null;
+      throw e;
+    }
+  })();
+  return scenarioPromise;
 }
 
 /** Every parameter name any demo law declares; these are the candidate keys. */
@@ -205,5 +246,5 @@ export function evaluateLaw(engine, lawEntry, params, referenceDate, outputs = n
 }
 
 export function useDemoEngine() {
-  return { initEngine, prepareEngine, registerPersonaData, registerClaims, evaluateLaw, engineReady, engineError };
+  return { initEngine, prepareEngine, prepareScenarioEngine, registerPersonaData, registerClaims, evaluateLaw, engineReady, engineError };
 }
