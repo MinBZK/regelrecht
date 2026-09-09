@@ -189,7 +189,7 @@ kán iets ingevuld worden, en dat is nog niet gebeurd.
 
 ---
 
-### LDP — loondispensatie · Wajong art. 2:20 → corpusnummer `140`
+### LDP — loondispensatie · Wajong art. 2:20
 
 | | |
 |---|---|
@@ -197,18 +197,13 @@ kán iets ingevuld worden, en dat is nog niet gebeurd.
 | Cross-law | 0 |
 | Rechtskarakter | BESCHIKKING |
 
-> **Valkuil in de nummering.** De Wajong nummert in het corpus niet uniform.
-> Hoofdstuk 1a en 3 gebruiken de juridische notatie (`1a:1`, `3:63`), maar
-> hoofdstuk 2 is positioneel genummerd. Zoek dus niet op `2:20`:
->
-> | Juridisch | In het corpus |
-> |---|---|
-> | 2:15 arbeidsondersteuning | `135` |
-> | 2:20 loondispensatie | `140` |
-> | 2:22 voorzieningen | `142` |
-> | 2:24 proefplaatsing | `144` |
->
-> Dit is geen cosmetisch punt — zie bevinding 1 hieronder.
+> **Let op bij het lezen van dit corpus met Python.** De Wajong en de Awb
+> nummeren hun artikelen met een dubbele punt (`2:20`, `3:46`). In YAML 1.1 —
+> wat PyYAML gebruikt — is `2:20` een getal in grondtal 60 en wordt het stil
+> `140`. De bestanden zijn correct en `serde_yaml` (YAML 1.2) leest ze goed,
+> dus de engine ook. Wie met PyYAML analyseert krijgt nummers die niet bestaan,
+> en botsingen: `220` zou dan zowel 3:40 als een echt artikel aanwijzen. Haal
+> `number` uit het `#ArtikelNNN`-anker of gebruik een YAML 1.2-lezer.
 
 ---
 
@@ -228,8 +223,9 @@ de IoC-koppeling daadwerkelijk rondloopt.** Het Reïntegratiebesluit
 `(wet_werk_en_inkomen_naar_arbeidsvermogen, 35, nadere_regels_voorzieningen_artikel_35)`
 en vult die term dus in.
 
-Dezelfde regeling heeft een Wajong-tegenhanger (art. `142`, juridisch 2:22) met
-een eigen open term — die koppeling werkt níét. Zie bevinding 1.
+Dezelfde regeling heeft een Wajong-tegenhanger (art. 2:22) met een eigen open
+term, en die koppeling werkt óók — zie bevinding 1 voor de eerder gemelde fout
+die geen fout bleek.
 
 ---
 
@@ -242,7 +238,7 @@ een eigen kader.
 |---|---|---|---|---|
 | WW | 76a | 1 | `months` | 6 |
 | Wet WIA | 37 | 1 | `months` | 6 |
-| Wajong | `144` (2:24) | 1 | `months` | 6 |
+| Wajong | 2:24 | 1 | `months` | 6 |
 | Participatiewet | 8a lid 2 d | (binnen de 3 van 8a) | `months` | 2 + max. 4 |
 
 **Waarom vier keer apart en niet één gedeelde definitie via cross-law.** Dat was
@@ -285,32 +281,23 @@ de enige twee in het dossier.
 
 Twee dingen die niet uit de scenario's blijken, omdat geen scenario ze afdekt.
 
-### Bevinding 1 — de Wajong-kant van het Reïntegratiebesluit koppelt niet
+### Bevinding 1 — ingetrokken
 
-Het Reïntegratiebesluit declareert:
+Hier stond dat het Reïntegratiebesluit `implements` declareert op Wajong-artikel
+`2:22` terwijl dat artikel `142` zou heten, en dat de koppeling daardoor stil
+doodloopt.
 
-```yaml
-implements:
-  - law: wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten
-    article: '2:22'
-    open_term: nadere_regels_voorzieningen_artikel_2_22
-```
+**Dat klopt niet.** Het artikel heet gewoon `2:22`. De `142` was een artefact van
+de analyse: die gebruikte PyYAML, en YAML 1.1 leest `2:22` als het sexagesimale
+getal 142. De engine gebruikt `serde_yaml` (YAML 1.2), ziet de string `2:22`, en
+de sleutel `(law_id, article, open_term_id)` matcht dus wél.
 
-De engine indexeert `implements` op de sleutel
-`(law_id, article, open_term_id)` (`packages/engine/src/resolver.rs`). Het
-Wajong-artikel dat die open term declareert heeft echter `number: 142`, niet
-`2:22`. De sleutel matcht dus niet en de koppeling komt niet tot stand.
+Aangetoond met een kopie van het Wajong-bestand waarin één `number: 3:40` is
+vervangen door de echte integer `340`: het origineel valideert, de kopie faalt
+met `340 is not of type "string"`. Het bestand op schijf draagt dus een string.
 
-Het faalt **stil**: de open term heeft een `default`, dus de Wajong valt
-ongemerkt terug op die default in plaats van op het besluit. Geen scenario dekt
-dit af, dus `just bdd` merkt er niets van.
-
-De WIA-kant van hetzelfde besluit (`article: '35'`) werkt wel, omdat de WIA zijn
-artikelen wél op nummer `35` heeft staan.
-
-**Kleinste herstel:** `article: '2:22'` → `'142'`. **Betere vraag:** of de
-Wajong-nummering in het corpus niet gelijkgetrokken moet worden, want deze
-valkuil komt terug bij elke volgende verwijzing naar hoofdstuk 2.
+Wat overblijft is een gereedschapsles, geen corpusfout: **analyseer dit corpus
+niet met PyYAML.** Zie het kader bij de loondispensatie hierboven.
 
 ### Bevinding 2 — er is niets dat op BESCHIKKING vuurt
 
@@ -320,9 +307,9 @@ BESLUIT_VAN_ALGEMENE_STREKKING en 5 artikelen zonder karakter). Dat veld is volg
 het filter waarop Awb-hooks vuren: art. 3:46 motiveringsplicht, 6:7
 bezwaartermijn.
 
-Op deze branch bevat de Awb 565 artikelen en **nul** `machine_readable`; de
-artikelen 3:46, 6:7 en 6:8 bestaan er niet eens onder die nummers. Er is dus
-niets dat luistert.
+Op deze branch bevat de Awb 565 artikelen en **nul** `machine_readable`. De
+artikelen 3:46, 6:7 en 6:8 bestaan er wel degelijk — ze dragen alleen geen
+executielogica. Er is dus niets dat luistert.
 
 Dat is op zichzelf geen fout — de annotatie is correct en toekomstvast. Maar het
 overzichtsdiagram in [README.md](README.md) toont de Awb-hooks als bestaande
@@ -342,9 +329,9 @@ regeling beslaat.
 | LKV | Wtl 2.1, 2.6, 2.14 | 1 (+2 intra) | — | 6 | BESCHIKKING |
 | LKS | Pwet 10c | — | 1 | 6 | BESCHIKKING |
 | Gemeentelijke route | Pwet 8a, 10, 10b, 10da, 10e | — | **9** ⚠ | 10 | BESCHIKKING + TOETS |
-| LDP | Wajong 140 | — | 1 | 3 | BESCHIKKING |
+| LDP | Wajong 2:20 | — | 1 | 3 | BESCHIKKING |
 | JC / WPA | WIA 35 | — | 1 ✅ gekoppeld | 4 | BESCHIKKING |
-| PP (4 wetten) | WW 76a, WIA 37, Wajong 144, Pwet 8a | — | 3 (+1 in 8a) | 8 | BESCHIKKING |
+| PP (4 wetten) | WW 76a, WIA 37, Wajong 2:24, Pwet 8a | — | 3 (+1 in 8a) | 8 | BESCHIKKING |
 | DGR | Wfsv 38b, 38f | — | — | 9 | TOETS + BvAS |
 | Reïntegratiebesluit | art. 1a | — | 2 (1 werkt) | 0 | BESLUIT VAN ALGEMENE STREKKING |
 

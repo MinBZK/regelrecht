@@ -486,6 +486,8 @@ juridische context per regeling.)
 | `docs/financieel-cv/financieel-cv-graph.png`                                      | Overview-diagram (alle 7 + AWB-hooks)                  |
 | `docs/financieel-cv/financieel-cv-graph-detail.png`                               | NRP zoom-in (8 cross-law inputs + lid-OR-logica)       |
 | `docs/financieel-cv/financieel-cv-graph-detail-alle-7.png`                        | Detail-diagram alle 7 met untranslatables-annotaties   |
+| `docs/financieel-cv/relaties-per-regeling.md`                                      | Welk RFC-mechanisme per regeling, met welk veldtype en waarom |
+| `docs/financieel-cv/pyyaml-valkuil.md`                                            | Waarom je dit corpus niet met PyYAML analyseert         |
 | `docs/financieel-cv/szw/ruwe-feedback.md`                                         | Onbewerkte juristfeedback, letterlijk, per ronde        |
 | `docs/financieel-cv/szw/actieregister.md`                                         | Doorlopend actieregister: wat is gesignaleerd, wanneer gedaan |
 | `docs/financieel-cv/szw/2026-07-23-juristvalidatie-notities.md`                   | Ronde 1 — juristvalidatie                              |
