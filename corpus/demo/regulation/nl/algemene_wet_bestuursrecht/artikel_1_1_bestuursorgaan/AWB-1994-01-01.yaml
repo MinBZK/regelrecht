@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: algemene_wet_bestuursrecht
 regulatory_layer: WET
 publication_date: '1994-01-01'
@@ -51,36 +51,46 @@ articles:
         input:
           - name: is_orgaan_van_rechtspersoon
             type: boolean
+            nullable: true
             source: {}
           - name: publiekrechtelijke_rechtspersoon_type
             type: string
+            nullable: true
             source: {}
           - name: heeft_publiekrechtelijke_bevoegdheid
             type: boolean
+            nullable: true
             source: {}
           - name: bevoegdheid_bij_of_krachtens_wet
             type: boolean
+            nullable: true
             source: {}
           - name: overheidsfinanciering_percentage
             type: number
             source: {}
           - name: criteria_door_overheid_bepaald
             type: boolean
+            nullable: true
             source: {}
           - name: is_uitsluitend_financiele_uitkering
             type: boolean
+            nullable: true
             source: {}
           - name: is_volksvertegenwoordigend_orgaan
             type: boolean
+            nullable: true
             source: {}
           - name: is_rechterlijk_orgaan
             type: boolean
+            nullable: true
             source: {}
           - name: is_ombudsman
             type: boolean
+            nullable: true
             source: {}
           - name: is_algemene_rekenkamer
             type: boolean
+            nullable: true
             source: {}
         output:
           - name: is_bestuursorgaan
@@ -89,6 +99,7 @@ articles:
             type: string
           - name: exclusion_reason
             type: string
+            nullable: true
           - name: is_excluded
             type: boolean
           - name: qualifies_as_bestuursorgaan

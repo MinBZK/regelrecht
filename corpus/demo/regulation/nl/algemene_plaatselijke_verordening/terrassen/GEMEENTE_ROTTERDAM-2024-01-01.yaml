@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: algemene_plaatselijke_verordening/terrassen
 regulatory_layer: GEMEENTELIJKE_VERORDENING
 publication_date: '2024-01-01'
@@ -128,7 +128,9 @@ articles:
                 17: 17:00
                 18: 18:00
           - name: gewenste_sluitingstijd_doordeweeks
-            type: string
+            # Een uur (23, 24), vergeleken met het getal uit het terrassenbeleid; de POC declareerde
+            # een string (RFC-037, T1).
+            type: number
             required: false
             type_spec:
               enum:
@@ -160,7 +162,9 @@ articles:
                 24: 00:00
                 1: 01:00 (maximum)
           - name: gewenste_sluitingstijd_weekend
-            type: string
+            # Een uur (23, 24), vergeleken met het getal uit het terrassenbeleid; de POC declareerde
+            # een string (RFC-037, T1).
+            type: number
             required: false
             type_spec:
               enum:
@@ -196,6 +200,7 @@ articles:
         input:
           - name: heeft_exploitatievergunning
             type: boolean
+            nullable: true
             source:
               regulation: algemene_plaatselijke_verordening/exploitatievergunning
               output: heeft_actieve_vergunning
@@ -205,6 +210,7 @@ articles:
               type: point_in_time
           - name: vestigingsadres
             type: string
+            nullable: true
             source:
               regulation: handelsregisterwet/bedrijfsgegevens
               output: vestigingsadres
@@ -214,6 +220,7 @@ articles:
               type: point_in_time
           - name: bag_gebruiksdoel
             type: string
+            nullable: true
             source:
               regulation: wet_bag
               output: gebruiksdoel
@@ -223,6 +230,7 @@ articles:
               type: point_in_time
           - name: schenkt_alcohol
             type: boolean
+            nullable: true
             source:
               regulation: algemene_plaatselijke_verordening/exploitatievergunning
               output: verstrekt_alcoholhoudende_dranken
@@ -232,27 +240,35 @@ articles:
               type: point_in_time
           - name: heeft_alcoholvergunning
             type: boolean
+            nullable: true
             source: {}
           - name: beschikbare_oppervlakte
             type: number
+            nullable: true
             source: {}
           - name: functie_oppervlak
             type: string
+            nullable: true
             source: {}
           - name: is_openbare_weg
             type: boolean
+            nullable: true
             source: {}
           - name: terrassenbeleid_gebied
             type: object
+            nullable: true
             source: {}
           - name: max_sluitingstijd_doordeweeks
             type: number
+            nullable: true
             source: {}
           - name: max_sluitingstijd_weekend
             type: number
+            nullable: true
             source: {}
           - name: tarief_per_m2
             type: number
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden
@@ -267,14 +283,25 @@ articles:
             type: number
           - name: vergunde_sluitingstijd_doordeweeks
             type: number
+            nullable: true
           - name: vergunde_sluitingstijd_weekend
             type: number
+            nullable: true
           - name: precariobelasting_per_jaar
             type: number
           - name: precariobelasting_verschuldigd
             type: boolean
+            nullable: true
         actions:
           - output: voldoet_aan_voorwaarden
+            # Art. 2:28 jo. 2:30b APV Rotterdam: de terrasvergunning geldt voor een inrichting op een
+            # vestigingsadres. Zonder inschrijving in het handelsregister is er geen adres en dus geen
+            # BAG-gebruiksdoel, geen BGT-terraslocatie en geen terrassenbeleidsgebied op te zoeken; aan de
+            # voorwaarden is dan niet voldaan (RFC-036).
+            # Art. 2:28 jo. 2:30b APV Rotterdam: de terrasvergunning geldt voor een inrichting op een
+            # vestigingsadres. Zonder inschrijving in het handelsregister is er geen adres en dus geen
+            # BGT-terraslocatie en geen terrassenbeleidsgebied op te zoeken; de oppervlakte en de
+            # sluitingstijden zijn dan afwezig en aan de voorwaarden is niet voldaan (RFC-036).
             value:
               operation: AND
               conditions:
@@ -287,15 +314,30 @@ articles:
                 - operation: GREATER_THAN_OR_EQUAL
                   subject: $obstakelvrije_ruimte
                   value: $minimale_obstakelvrije_ruimte
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $beschikbare_oppervlakte
+                    value: null
                 - operation: LESS_THAN_OR_EQUAL
                   subject: $terras_oppervlakte
                   value: $beschikbare_oppervlakte
                 - subject: $functie_oppervlak
                   operation: IN
                   value: $toegestane_bgt_functies
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_doordeweeks
+                    value: null
                 - operation: LESS_THAN_OR_EQUAL
                   subject: $gewenste_sluitingstijd_doordeweeks
                   value: $max_sluitingstijd_doordeweeks
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_weekend
+                    value: null
                 - operation: LESS_THAN_OR_EQUAL
                   subject: $gewenste_sluitingstijd_weekend
                   value: $max_sluitingstijd_weekend
@@ -320,15 +362,30 @@ articles:
                 - operation: GREATER_THAN_OR_EQUAL
                   subject: $obstakelvrije_ruimte
                   value: $minimale_obstakelvrije_ruimte
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $beschikbare_oppervlakte
+                    value: null
                 - operation: LESS_THAN_OR_EQUAL
                   subject: $terras_oppervlakte
                   value: $beschikbare_oppervlakte
                 - operation: IN
                   subject: $functie_oppervlak
                   value: $toegestane_bgt_functies
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_doordeweeks
+                    value: null
                 - operation: LESS_THAN_OR_EQUAL
                   subject: $gewenste_sluitingstijd_doordeweeks
                   value: $max_sluitingstijd_doordeweeks
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_weekend
+                    value: null
                 - operation: LESS_THAN_OR_EQUAL
                   subject: $gewenste_sluitingstijd_weekend
                   value: $max_sluitingstijd_weekend
@@ -376,9 +433,16 @@ articles:
                     value: $minimale_obstakelvrije_ruimte
                   then: Obstakelvrije ruimte is minder dan 1,8 meter
                 - when:
-                    operation: GREATER_THAN
-                    subject: $terras_oppervlakte
-                    value: $beschikbare_oppervlakte
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $beschikbare_oppervlakte
+                          value: null
+                      - operation: GREATER_THAN
+                        subject: $terras_oppervlakte
+                        value: $beschikbare_oppervlakte
                   then: Gevraagde oppervlakte groter dan beschikbare ruimte
                 - when:
                     operation: NOT
@@ -388,15 +452,29 @@ articles:
                       value: $toegestane_bgt_functies
                   then: Locatie niet geschikt voor terras (verkeerde BGT-functie)
                 - when:
-                    operation: GREATER_THAN
-                    subject: $gewenste_sluitingstijd_doordeweeks
-                    value: $max_sluitingstijd_doordeweeks
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $max_sluitingstijd_doordeweeks
+                          value: null
+                      - operation: GREATER_THAN
+                        subject: $gewenste_sluitingstijd_doordeweeks
+                        value: $max_sluitingstijd_doordeweeks
                   then: >-
                     Gevraagde sluitingstijd doordeweeks (zo-do) later dan toegestaan in dit gebied
                 - when:
-                    operation: GREATER_THAN
-                    subject: $gewenste_sluitingstijd_weekend
-                    value: $max_sluitingstijd_weekend
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $max_sluitingstijd_weekend
+                          value: null
+                      - operation: GREATER_THAN
+                        subject: $gewenste_sluitingstijd_weekend
+                        value: $max_sluitingstijd_weekend
                   then: >-
                     Gevraagde sluitingstijd weekend (vr-za) later dan toegestaan in dit gebied
                 - when:
@@ -417,11 +495,21 @@ articles:
               explanation: >-
                 De burgemeester weigert de vergunning indien niet aan de voorwaarden wordt voldaan
           - output: vergunde_oppervlakte
+            # Zonder BGT-terraslocatie op het vestigingsadres is er geen beschikbare ruimte en wordt geen
+            # oppervlakte vergund (0 m2) (RFC-036).
             value:
-              operation: MIN
-              values:
-                - $terras_oppervlakte
-                - $beschikbare_oppervlakte
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $beschikbare_oppervlakte
+                    value: null
+                  then: 0
+              default:
+                operation: MIN
+                values:
+                  - $terras_oppervlakte
+                  - $beschikbare_oppervlakte
             legal_basis:
               law: Algemene plaatselijke verordening Rotterdam 2012
               article: 2:30b
@@ -429,11 +517,21 @@ articles:
               explanation: >-
                 De vergunde oppervlakte is het minimum van de aangevraagde en beschikbare oppervlakte
           - output: vergunde_sluitingstijd_doordeweeks
+            # Zonder terrassenbeleid voor het gebied is er geen toegestane sluitingstijd en dus geen
+            # vergunde sluitingstijd (afwezig) (RFC-036).
             value:
-              operation: MIN
-              values:
-                - $gewenste_sluitingstijd_doordeweeks
-                - $max_sluitingstijd_doordeweeks
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_doordeweeks
+                    value: null
+                  then: null
+              default:
+                operation: MIN
+                values:
+                  - $gewenste_sluitingstijd_doordeweeks
+                  - $max_sluitingstijd_doordeweeks
             legal_basis:
               law: Terrassenbeleid Rotterdam 2023
               article: '5'
@@ -443,10 +541,18 @@ articles:
                 maximaal toegestane tijd
           - output: vergunde_sluitingstijd_weekend
             value:
-              operation: MIN
-              values:
-                - $gewenste_sluitingstijd_weekend
-                - $max_sluitingstijd_weekend
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_weekend
+                    value: null
+                  then: null
+              default:
+                operation: MIN
+                values:
+                  - $gewenste_sluitingstijd_weekend
+                  - $max_sluitingstijd_weekend
             legal_basis:
               law: Terrassenbeleid Rotterdam 2023
               article: '5'
@@ -463,13 +569,28 @@ articles:
               explanation: >-
                 Precariobelasting is verschuldigd indien het terras op openbare gemeentegrond staat
           - output: precariobelasting_per_jaar
+            # Art. 2 jo. 5 Verordening precariobelasting Rotterdam: belasting voor het terras op openbare
+            # gemeentegrond, naar de vergunde oppervlakte en het tarief van het gebied. Zonder BGT-locatie
+            # of tariefrij is er niets te heffen (RFC-036).
             value:
               operation: IF
               cases:
                 - when:
-                    operation: EQUALS
-                    subject: $is_openbare_weg
-                    value: true
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $is_openbare_weg
+                        value: true
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $beschikbare_oppervlakte
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $tarief_per_m2
+                          value: null
                   then:
                     operation: MULTIPLY
                     values:

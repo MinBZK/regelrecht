@@ -12,9 +12,15 @@ Regenerate and run:
     node corpus/demo/tools/convert_features.mjs <poc>/features corpus/demo/regulation/nl
     uv run corpus/demo/tools/rewrite_array_property_access.py corpus/demo/regulation/nl
     uv run corpus/demo/tools/round_amount_outputs.py corpus/demo/regulation/nl
+    uv run corpus/demo/tools/pass_brp_referentiedatum.py corpus/demo/regulation/nl
+    node corpus/demo/tools/apply_absent_semantics.mjs corpus/demo
+    uv run corpus/demo/tools/declare_nullable.py corpus/demo
+    node corpus/demo/tools/apply_nullable_cells.mjs corpus/demo
     just bdd-demo
 
-The two `uv run` tools are idempotent; running them again reports 0 rewrites.
+The tools are idempotent; running them again reports 0 rewrites. The hand
+changes listed under "Made by hand" and in the RFC-036 sections are not
+reproduced by a regeneration.
 
 ## Counts (last run)
 
@@ -357,6 +363,171 @@ form field, shows `null` as "geen" and an unknown as "onbekend" with
 bepalen"; application: to the caseworker; simulation: counted as "onbekend"
 and the disposable income of that subject unknown rather than 0). Records
 handed to the engine never contain `undefined`.
+
+## Absence is declared: `nullable` (schema v0.5.8)
+
+RFC-036's follow-up makes absence a property of the type: a parameter, input
+or output carries `nullable: true` when `null` is a legitimate value of it,
+and the engine refuses a `null` at every boundary where the declaration says
+none can occur (a register delivering null for a non-nullable input, a
+non-nullable output evaluating to null, a non-nullable parameter passed null).
+The validator runs a static type check (RFC-037) on top: `EQUALS … null` only
+on a nullable field (N1), a literal null only as a nullable output's value
+(N2), an `IF` without `default` only as a nullable output's value (N3), a
+nullable variable only in arithmetic, ordering, logic, dates and `FOREACH`
+after an absence test on that same variable (N4), a cross-law input nullable
+when the output it takes is (N5), and the general typing rules T1 to T4. With
+the declarations in place the first run of `just bdd-demo` under that engine
+failed 184 steps (118 "declares as never absent", 45 "cannot be evaluated for
+nobody"); the run after the work below passes 330 of 330.
+
+### `declare_nullable.py` derives the declarations
+
+`corpus/demo/tools/declare_nullable.py` (run with `uv run`, `--report` for a
+dry run) reads the laws, `bindings.yaml` and the scenario files and marks a
+field nullable under one or more criteria, iterating to a fixpoint over the
+corpus because a nullable output makes the consuming input nullable:
+
+| criterion | fields | meaning |
+|---|---|---|
+| `binding` | 77 | the input's binding says `absent: null` |
+| `null-test` | 59 | the law compares the field with a literal null |
+| `cross-law` | 36 | the input takes a cross-law output that is nullable |
+| `through` | 34 | the output passes a nullable variable, or a property of a nullable record, straight through |
+| `selector` | 30 | the input is a table lookup keyed on a nullable variable (the partner's data without a partner) |
+| `skip` | 19 | the input is a cross-law call that passes a nullable variable for a required parameter (RFC-007 skip rule) |
+| `scenario` | 16 | a scenario passes the parameter as `"null"` |
+| `no-default` | 14 | the output's value is an `IF` without `default` |
+| `literal` | 7 | the output's value can be a literal null |
+
+225 fields in 49 of the 80 laws (151 inputs, 55 outputs, 19 parameters; a
+field may satisfy several criteria). Those 49 laws moved their `$schema` to
+v0.5.8, the version that defines the attribute; the other 31 declare nothing
+and stay on v0.5.7. The tool is idempotent and reports a declaration no
+criterion derives any more as `STALE`; it never removes one. The `argument`
+criterion (a nullable variable passed to an optional parameter) fired nowhere.
+
+The demo's `bindings.yaml` and the laws are held together by
+`frontend-demo/src/data/bindings.test.js` (part of `npm test -w frontend-demo`):
+`absent: null`, or a `select_on` on a nullable variable, requires
+`nullable: true` on the input; every other scalar table input must not be
+nullable; an array input carries neither. Two mismatches came out of it, both
+on the law side (below: `wet_brp.geboortedatum`,
+`burgerlijk_wetboek_minderjarigheid.persoonsgegevens`). One binding changed:
+`kieswet.verkiezingsdatum` went from `absent: null` to `absent: unknown`, since
+a register without a scheduled election cannot name a date; an absent date
+would have made `wet_brp` skip the age on the election day and the right to
+vote null, deciding nothing.
+
+`corpus/demo/tools/apply_nullable_cells.mjs` rewrites a `null` cell in a
+data-table column whose input is not nullable (to `0` for an `absent: 0`
+binding, to an empty cell otherwise). After `apply_absent_semantics.mjs` every
+remaining `null` cell already sat in a nullable column, so it changed 0 cells;
+it stays as the check for a future regeneration. The 67 `parameter "x" is
+"null"` steps are covered by the `scenario` criterion.
+
+### Dead absence tests removed (mismatches and N1)
+
+A test on a field that can never be null is dead under the type system, and
+it was pulling nullability into every consumer. Each site carries a comment:
+
+- `wet_brp`: the BRP has a birth date for every registered person (art. 2.7
+  lid 1 onder a Wet BRP); a person the BRP does not know is unknown, not
+  absent (`absent: unknown`). `leeftijd` is `AGE` without the POC's null
+  guard, `voldoet_aan_voorwaarden` is `true`. Before this, `leeftijd` was
+  nullable and with it the `leeftijd` input of 15 laws and, through
+  `geboortedatum`, the `pensioenleeftijd` of 8.
+- `algemene_ouderdomswet/leeftijdsbepaling`: `geboortedatum` is a required,
+  never absent parameter; `voldoet_aan_voorwaarden` is `true`.
+- `burgerlijk_wetboek_minderjarigheid`: `persoonsgegevens` is the BRP row,
+  unknown for a person the BRP does not know; `voldoet_aan_voorwaarden` is
+  `true`. The property tests (`$persoonsgegevens.heeft_handlichting`) stay.
+- `wet_brp/laa`, `wet_brp/terugmelding/*` (3), `wet_bag`: the `adres`
+  parameter is required and never null (a caller without a BRP address skips
+  the call, a top-level null is refused at the boundary); each
+  `voldoet_aan_voorwaarden` is `true`.
+
+### The RFC-024 rounding guard is gone
+
+`round_amount_outputs.py` used to wrap `IF EQUALS(expr, null) THEN null DEFAULT
+ROUND(expr)`. Under RFC-036 arithmetic on an absent operand is an error, never
+a null, so the guard was dead, and the checker reads `EQUALS <arithmetic> null`
+as N1 and the `then: null` as a nullable output, which then made
+`algemene_ouderdomswet.pensioenbedrag` and its consumers nullable. The tool now
+writes the bare `ROUND` and unwraps a guard it finds (12 outputs in 11 laws).
+
+### Guards added (N3, N4)
+
+Where the checker found a real gap, the law got the guard or default the legal
+text supports, with a comment citing the article. The type checker establishes
+presence only for the variable an absence test names, so a guard on a
+correlated variable (`heeft_partner`, `partner_bsn`) does not cover the
+partner's income; those sites now test the variables they calculate with.
+
+- `algemene_kinderbijslagwet`: `ontvangt_kinderbijslag`, `aantal_kinderen`,
+  `kinderen_leeftijden` are false, 0 and `[]` without an SVB record (art. 7
+  AKW); they were properties of an absent record and the kindgebonden budget
+  could not calculate with them.
+- `wet_studiefinanciering`: the per-onderwijstype choices and the aanvullende
+  beurs have `default: 0` (art. 2.1 jo. 3.1 and 3.9 WSF 2000); nested in ADD
+  and MULTIPLY an `IF` without default is N3. The partner's aanvullende beurs
+  tests the partner's parental incomes and family count.
+- `wet_op_het_kindgebonden_budget`, `zorgtoeslagwet` (both versions): the
+  partner/no-partner `IF` under `ROUND` had two boolean cases and no default;
+  it is now `heeft_partner true -> B, default A`. KGB also tests
+  `partner_vermogen` and `partner_toetsingsinkomen` next to `heeft_partner`.
+- `besluit_bijstandverlening_zelfstandigen`: `NOT(EQUALS $bbz_aanvraag null)`
+  opens the conditions (art. 2 lid 1 jo. 35 Bbz 2004); they read properties of
+  the application record, absent for anyone who did not apply.
+- `wet_inkomstenbelasting` (both versions): the partner boxes and
+  `gezamenlijk_vermogen` test the twelve partner amounts next to
+  `partner_bsn` (art. 2.17 Wet IB 2001); `partner_buitenlands_inkomen` counts
+  0 when absent.
+- `wet_kinderopvang`: the partner's income is tested itself instead of
+  `partner_bsn` (art. 1.7 Wko jo. art. 7 Awir); the partner's worked hours are
+  tested before the comparison (art. 1.6 Wko).
+- `participatiewet/bijstand`: `partner_bezittingen` and `partner_inkomen` are
+  tested next to `heeft_partner` (art. 32 and 34 Pw).
+- `algemene_ouderdomswet`: the partner's age and AOW age are tested before the
+  toeslag comparison (art. 8 AOW).
+- `pensioenwet`: the first case names every fund input (`type_regeling`,
+  `pensioenkapitaal`, `pensioenjaren`, `pensioengevend_loon`, `franchise`,
+  `pensioen_leeftijd_fonds`) in one `OR` of absence tests (art. 1 Pw), so the
+  calculation per regeling only sees present values.
+- `algemene_plaatselijke_verordening/exploitatievergunning`:
+  `leeftijd_exploitant` is tested before the age conditions (art. 2:28 lid 3
+  APV Rotterdam); without a registered owner there is no age.
+- `algemene_plaatselijke_verordening/terrassen`: `beschikbare_oppervlakte`,
+  `max_sluitingstijd_doordeweeks` and `max_sluitingstijd_weekend` are tested
+  before use (art. 2:28 jo. 2:30b APV Rotterdam: without a KVK registration
+  there is no vestigingsadres and no BGT location or beleidsgebied to look
+  up); `vergunde_oppervlakte` is 0 and the vergunde sluitingstijden are
+  absent without them; `precariobelasting_per_jaar` tests the surface and the
+  tariff (art. 2 jo. 5 Verordening precariobelasting Rotterdam).
+
+`IN` on a nullable subject is not flagged (`IN(null, list)` is a definite
+false, RFC-036), so the register statuses tested with `IN`
+(`penitentiaire_beginselenwet.status`, `wet_forensische_zorg.zorgtype`, …)
+carry only the declaration.
+
+### Type errors the checker found (T1, T3)
+
+- `algemene_plaatselijke_verordening/terrassen`: `gewenste_sluitingstijd_*`
+  were declared `string` and compared with the policy's number; the scenarios
+  pass 23 and 24. Now `number`.
+- `awb/bezwaar`, `awb/beroep`: the count of "Objected" events summed the
+  booleans of an `EQUALS` in `FOREACH combine ADD`; now `filter:` plus
+  `body: 1` (RFC-016).
+- `wet_brp.woonsituatie` compared the residence address (object) with the
+  parents' addresses (array) with `EQUALS`, never true; now `IN`. Nothing in
+  the demo data has parent addresses, so no outcome changes.
+- `zvw.registratie` was declared `object` while the binding reads one status
+  column compared with `ACTIEF`; now `string`.
+
+Not changed after discussion with the engine side: a literal null inside a
+`LIST` or an uncombined `FOREACH` body (`valid_from_dates: [null]` in the
+delegation laws) is a value, and N2 was narrowed to leave container literals
+alone.
 
 ## `@wip`
 

@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_bag
 regulatory_layer: WET
 publication_date: '2018-07-28'
@@ -78,31 +78,32 @@ articles:
         input:
           - name: verblijfsobject
             type: object
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden
             type: boolean
           - name: gebruiksdoel
             type: string
+            nullable: true
           - name: oppervlakte
             type: number
+            nullable: true
             type_spec:
               precision: 0
               min: 1
           - name: status
             type: string
+            nullable: true
           - name: is_woonfunctie
             type: boolean
         actions:
           - output: voldoet_aan_voorwaarden
-            value:
-              operation: AND
-              conditions:
-                - operation: NOT
-                  value:
-                    operation: EQUALS
-                    subject: $adres
-                    value: null
+            # Het adres is een verplichte, nooit afwezige parameter: een aanroeper zonder
+            # BRP-adres slaat deze wet over (RFC-007/RFC-036) en een afwezig adres op het
+            # hoogste niveau wordt aan de grens geweigerd. De POC-toets op een None-adres kon
+            # dus nooit onwaar zijn; art. 2 Wet bag (de registratie wordt bevraagd op een opgegeven adres).
+            value: true
           - output: gebruiksdoel
             value: $verblijfsobject.gebruiksdoel
             legal_basis:
@@ -134,6 +135,8 @@ articles:
               juriconnect: jci1.3:c:BWBR0023466&artikel=1&z=2018-07-28&g=2018-07-28
               explanation: Artikel 1 bepaalt registratie van status
           - output: is_woonfunctie
+            # Art. 2 jo. art. 21 Wet bag: het gebruiksdoel is een gegeven van het verblijfsobject. Is er op
+            # het adres geen verblijfsobject geregistreerd, dan is er geen woonfunctie (RFC-036).
             value:
               operation: IN
               subject: $verblijfsobject.gebruiksdoel

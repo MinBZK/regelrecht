@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: besluit_kerninstallaties
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -133,6 +133,7 @@ articles:
             required: true
           - name: heeft_beeindigingsplan
             type: boolean
+            nullable: true
             required: false
           - name: financiele_zekerheid_bedrag
             type: amount

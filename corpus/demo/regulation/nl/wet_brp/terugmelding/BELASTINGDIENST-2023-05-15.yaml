@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_brp/terugmelding/belastingdienst
 regulatory_layer: WET
 publication_date: '2023-05-15'
@@ -53,9 +53,11 @@ articles:
         input:
           - name: belasting_adres
             type: object
+            nullable: true
             source: {}
           - name: langdurig_afwezig
             type: boolean
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden
@@ -64,16 +66,14 @@ articles:
             type: boolean
           - name: twijfel_reden
             type: string
+            nullable: true
         actions:
           - output: voldoet_aan_voorwaarden
-            value:
-              operation: AND
-              conditions:
-                - operation: NOT
-                  value:
-                    operation: EQUALS
-                    subject: $adres
-                    value: null
+            # Het adres is een verplichte, nooit afwezige parameter: een aanroeper zonder
+            # BRP-adres slaat deze wet over (RFC-007/RFC-036) en een afwezig adres op het
+            # hoogste niveau wordt aan de grens geweigerd. De POC-toets op een None-adres kon
+            # dus nooit onwaar zijn; art. 2.34 Wet BRP (een terugmelding betreft een opgegeven adres).
+            value: true
           - output: heeft_gerede_twijfel_adres
         # POC: de adressen werden als dicts vergeleken met alleen de kolommen die het
         # register had (postcode, huisnummer); het gematerialiseerde object draagt ook

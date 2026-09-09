@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: archiefwet/vernietiging
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -42,6 +42,7 @@ articles:
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
           - name: op_selectielijst_vernietiging
             type: boolean
@@ -51,6 +52,7 @@ articles:
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
             type_spec:
               unit: years
@@ -61,20 +63,24 @@ articles:
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
           - name: selectielijst_gepubliceerd
             type: boolean
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
         output:
           - name: mag_vernietigd_worden
             type: boolean
           - name: vernietig_vanaf_datum
             type: date
+            nullable: true
           - name: reden_niet_vernietigen
             type: string
+            nullable: true
         actions:
           - output: mag_vernietigd_worden
             value:

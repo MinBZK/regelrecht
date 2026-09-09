@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: handelsregisterwet/bedrijfsgegevens
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -34,18 +34,24 @@ articles:
         input:
           - name: organisatie_gegevens
             type: object
+            nullable: true
             source: {}
         output:
           - name: aantal_werknemers
             type: number
+            nullable: true
           - name: status
             type: string
+            nullable: true
           - name: rechtsvorm
             type: string
+            nullable: true
           - name: datum_aanvang
             type: date
+            nullable: true
           - name: vestigingsadres
             type: string
+            nullable: true
         actions:
           - output: aantal_werknemers
             value: $organisatie_gegevens.aantal_werknemers

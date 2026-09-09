@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: ziektewet
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -145,10 +145,12 @@ articles:
         input:
           - name: zw_uitkering
             type: object
+            nullable: true
             source: {}
         output:
           - name: heeft_ziektewet_uitkering
             type: boolean
+            nullable: true
         actions:
           - output: heeft_ziektewet_uitkering
             value: $zw_uitkering.heeft_ziektewet_uitkering

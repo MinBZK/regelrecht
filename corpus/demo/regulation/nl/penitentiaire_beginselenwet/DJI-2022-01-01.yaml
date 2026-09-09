@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: penitentiaire_beginselenwet
 regulatory_layer: WET
 publication_date: '2022-01-01'
@@ -38,9 +38,11 @@ articles:
         input:
           - name: status
             type: string
+            nullable: true
             source: {}
           - name: inrichting_type
             type: string
+            nullable: true
             source: {}
         output:
           - name: is_gedetineerd

@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_forensische_zorg
 regulatory_layer: WET
 publication_date: '2022-01-01'
@@ -83,9 +83,11 @@ articles:
         input:
           - name: zorgtype
             type: string
+            nullable: true
             source: {}
           - name: juridische_titel
             type: string
+            nullable: true
             source: {}
         output:
           - name: is_forensisch

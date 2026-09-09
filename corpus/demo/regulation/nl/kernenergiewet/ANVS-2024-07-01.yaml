@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: kernenergiewet
 regulatory_layer: WET
 publication_date: '2024-07-01'
@@ -64,6 +64,7 @@ articles:
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
           - name: verwachte_dosis_jaar
             type: number

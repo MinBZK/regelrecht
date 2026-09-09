@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: archiefwet/overbrenging
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -42,18 +42,21 @@ articles:
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
           - name: opschortingsmachtiging
             type: boolean
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
         output:
           - name: moet_overgebracht_worden
             type: boolean
           - name: uiterste_overbrengdatum
             type: date
+            nullable: true
         actions:
           - output: moet_overgebracht_worden
             value:

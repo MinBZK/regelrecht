@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_brp
 regulatory_layer: WET
 publication_date: '2020-01-01'
@@ -102,12 +102,15 @@ articles:
             source: {}
           - name: partner_geboortedatum
             type: date
+            nullable: true
             source: {}
           - name: partnerschap_type
             type: object
+            nullable: true
             source: {}
           - name: partner_bsn
             type: string
+            nullable: true
             source: {}
           - name: kinderen_gegevens
             type: array
@@ -126,6 +129,7 @@ articles:
             source: {}
           - name: adres
             type: object
+            nullable: true
             source: {}
           - name: medebewoners
             type: array
@@ -143,6 +147,7 @@ articles:
             type: boolean
           - name: partner_bsn
             type: string
+            nullable: true
           - name: woonsituatie
             type: string
           - name: land_van_verblijf
@@ -155,16 +160,20 @@ articles:
             type: date
           - name: partner_geboortedatum
             type: date
+            nullable: true
           - name: heeft_vast_adres
             type: boolean
           - name: kinderen_bsns
             type: array
           - name: verblijfsadres
             type: string
+            nullable: true
           - name: postadres
             type: string
+            nullable: true
           - name: woonplaats
             type: string
+            nullable: true
           - name: huishoudgrootte
             type: number
             type_spec:
@@ -172,20 +181,19 @@ articles:
               min: 1
           - name: huishoudleden
             type: array
+            nullable: true
           - name: kinderen
             type: array
+            nullable: true
           - name: heeft_kinderen_onder_12
             type: boolean
         actions:
           - output: voldoet_aan_voorwaarden
-            value:
-              operation: AND
-              conditions:
-                - operation: NOT
-                  value:
-                    operation: EQUALS
-                    subject: $geboortedatum
-                    value: null
+            # De BRP kent geen persoon zonder geboortedatum (art. 2.7 lid 1 onder a Wet BRP:
+            # de geboortedatum is een algemeen gegeven van iedere ingeschrevene). Een persoon
+            # die de BRP niet kent is onbekend, geen afwezigheid (RFC-036); de toets op een
+            # afwezige geboortedatum kon dus nooit waar zijn en is weg.
+            value: true
           - output: geboortedatum
             value: $geboortedatum
           - output: partner_geboortedatum
@@ -200,24 +208,15 @@ articles:
                     value: $geldige_partnertypen
                   then: $partner_bsn
           - output: leeftijd
-        # POC: een onbekende geboortedatum gaf leeftijd None; de engine eist een
-        # datum, daarom expliciet afgevangen.
+            # Iedere ingeschrevene heeft een geboortedatum (art. 2.7 lid 1 onder a Wet BRP);
+            # is de persoon de BRP onbekend, dan is de leeftijd onbekend, niet afwezig
+            # (RFC-036). De POC-afvanging van een None-geboortedatum is daarom weg.
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: NOT
-                    value:
-                      operation: EQUALS
-                      subject: $geboortedatum
-                      value: null
-                  then:
-                    operation: AGE
-                    # De peildatum is een verplichte parameter; de aanroeper bepaalt haar
-                    # (RFC-036: geen stille terugval op de rekendatum).
-                    reference_date: $referentiedatum
-                    date_of_birth: $geboortedatum
-              default: null
+              operation: AGE
+              # De peildatum is een verplichte parameter; de aanroeper bepaalt haar
+              # (RFC-036: geen stille terugval op de rekendatum).
+              reference_date: $referentiedatum
+              date_of_birth: $geboortedatum
             legal_basis:
               law: Wet basisregistratie personen
               bwb_id: BWBR0033715
@@ -256,11 +255,14 @@ articles:
               explanation: >-
                 Artikel 1.7 Wet BRP verplicht gebruik authentieke gegevens over huwelijk en partnerschap
           - output: woonsituatie
+            # Thuiswonend is wie op het adres van een ouder woont: het verblijfsadres is een van de
+            # ouderadressen (IN). De POC vergeleek het adres met de lijst als geheel (EQUALS), wat
+            # nooit waar kon zijn; de typering (RFC-037, T3) wees dat aan.
             value:
               operation: IF
               cases:
                 - when:
-                    operation: EQUALS
+                    operation: IN
                     subject: $verblijfsadres
                     value: $ouder_adressen
                   then: THUIS

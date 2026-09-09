@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_inkomstenbelasting/toetsingsinkomen
 regulatory_layer: WET
 publication_date: '2020-01-01'
@@ -118,6 +118,7 @@ articles:
               period_type: year
           - name: partner_buitenlands_inkomen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -152,10 +153,21 @@ articles:
                 - $box3_inkomen
                 - $buitenlands_inkomen
           - output: partner_inkomen
+            # Het buitenlandse inkomen van de partner telt mee als er een partner is (art. 2.17 Wet IB
+            # 2001); zonder partner is het afwezig en telt 0 (RFC-036).
             value:
               operation: ADD
               values:
                 - $partner_box1_inkomen
                 - $partner_box2_inkomen
                 - $partner_box3_inkomen
-                - $partner_buitenlands_inkomen
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_buitenlands_inkomen
+                          value: null
+                      then: $partner_buitenlands_inkomen
+                  default: 0

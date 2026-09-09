@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: vreemdelingenwet
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -82,13 +82,16 @@ articles:
         input:
           - name: vergunning_gegevens
             type: object
+            nullable: true
             source: {}
           - name: eu_inschrijving
             type: object
+            nullable: true
             source: {}
         output:
           - name: verblijfsvergunning_type
             type: string
+            nullable: true
         actions:
           - output: verblijfsvergunning_type
             value:

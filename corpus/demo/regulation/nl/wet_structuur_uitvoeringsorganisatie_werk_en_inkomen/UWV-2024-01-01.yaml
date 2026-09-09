@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -122,119 +122,60 @@ articles:
           - output: verzekerde_jaren
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: DIVIDE
-                      values:
-                        - operation: ADD
-                          values:
-                            - operation: FOREACH
-                              collection: $dienstverbandperiodes
-                              body:
-                                operation: DATE_DIFF
-                                from: $start_date
+              operation: ROUND
+              precision: 2
+              value:
+                operation: DIVIDE
+                values:
+                  - operation: ADD
+                    values:
+                      - operation: FOREACH
+                        collection: $dienstverbandperiodes
+                        body:
+                          operation: DATE_DIFF
+                          from: $start_date
                   # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
                   # peildatum; de engine eist een datum, daarom expliciet gemaakt.
-                                to:
-                                  operation: IF
-                                  cases:
-                                    - when:
-                                        operation: OR
-                                        conditions:
-                                          - operation: EQUALS
-                                            subject: $end_date
-                                            value: null
-                                          - operation: EQUALS
-                                            subject: $end_date
-                                            value: ''
-                                      then: $referencedate
-                                  default: $end_date
-                                in: days
-                              combine: ADD
-                            - operation: FOREACH
-                              collection: $uitkeringsperiodes
-                              body:
-                                operation: DATE_DIFF
-                                from: $start_date
+                          to:
+                            operation: IF
+                            cases:
+                              - when:
+                                  operation: OR
+                                  conditions:
+                                    - operation: EQUALS
+                                      subject: $end_date
+                                      value: null
+                                    - operation: EQUALS
+                                      subject: $end_date
+                                      value: ''
+                                then: $referencedate
+                            default: $end_date
+                          in: days
+                        combine: ADD
+                      - operation: FOREACH
+                        collection: $uitkeringsperiodes
+                        body:
+                          operation: DATE_DIFF
+                          from: $start_date
                   # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
                   # peildatum; de engine eist een datum, daarom expliciet gemaakt.
-                                to:
-                                  operation: IF
-                                  cases:
-                                    - when:
-                                        operation: OR
-                                        conditions:
-                                          - operation: EQUALS
-                                            subject: $end_date
-                                            value: null
-                                          - operation: EQUALS
-                                            subject: $end_date
-                                            value: ''
-                                      then: $referencedate
-                                  default: $end_date
-                                in: days
-                              combine: ADD
-                        - $dagen_per_jaar
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 2
-                value:
-                  operation: DIVIDE
-                  values:
-                    - operation: ADD
-                      values:
-                        - operation: FOREACH
-                          collection: $dienstverbandperiodes
-                          body:
-                            operation: DATE_DIFF
-                            from: $start_date
-                  # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
-                  # peildatum; de engine eist een datum, daarom expliciet gemaakt.
-                            to:
-                              operation: IF
-                              cases:
-                                - when:
-                                    operation: OR
-                                    conditions:
-                                      - operation: EQUALS
-                                        subject: $end_date
-                                        value: null
-                                      - operation: EQUALS
-                                        subject: $end_date
-                                        value: ''
-                                  then: $referencedate
-                              default: $end_date
-                            in: days
-                          combine: ADD
-                        - operation: FOREACH
-                          collection: $uitkeringsperiodes
-                          body:
-                            operation: DATE_DIFF
-                            from: $start_date
-                  # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
-                  # peildatum; de engine eist een datum, daarom expliciet gemaakt.
-                            to:
-                              operation: IF
-                              cases:
-                                - when:
-                                    operation: OR
-                                    conditions:
-                                      - operation: EQUALS
-                                        subject: $end_date
-                                        value: null
-                                      - operation: EQUALS
-                                        subject: $end_date
-                                        value: ''
-                                  then: $referencedate
-                              default: $end_date
-                            in: days
-                          combine: ADD
-                    - $dagen_per_jaar
+                          to:
+                            operation: IF
+                            cases:
+                              - when:
+                                  operation: OR
+                                  conditions:
+                                    - operation: EQUALS
+                                      subject: $end_date
+                                      value: null
+                                    - operation: EQUALS
+                                      subject: $end_date
+                                      value: ''
+                                then: $referencedate
+                            default: $end_date
+                          in: days
+                        combine: ADD
+                  - $dagen_per_jaar
           - output: gewerkte_uren
             value:
               operation: MULTIPLY

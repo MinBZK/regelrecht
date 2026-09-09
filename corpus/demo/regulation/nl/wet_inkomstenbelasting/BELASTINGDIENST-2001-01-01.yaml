@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_inkomstenbelasting
 regulatory_layer: WET
 publication_date: '2001-01-01'
@@ -97,6 +97,7 @@ articles:
                 referentiedatum: $referencedate
           - name: partner_bsn
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: partner_bsn
@@ -149,39 +150,51 @@ articles:
             source: {}
           - name: partner_loon_uit_dienstbetrekking
             type: amount
+            nullable: true
             source: {}
           - name: partner_uitkeringen_en_pensioenen
             type: amount
+            nullable: true
             source: {}
           - name: partner_winst_uit_onderneming
             type: amount
+            nullable: true
             source: {}
           - name: partner_resultaat_overige_werkzaamheden
             type: amount
+            nullable: true
             source: {}
           - name: partner_eigen_woning
             type: amount
+            nullable: true
             source: {}
           - name: partner_reguliere_voordelen
             type: amount
+            nullable: true
             source: {}
           - name: partner_vervreemdingsvoordelen
             type: amount
+            nullable: true
             source: {}
           - name: partner_spaargeld
             type: amount
+            nullable: true
             source: {}
           - name: partner_beleggingen
             type: amount
+            nullable: true
             source: {}
           - name: partner_onroerend_goed
             type: amount
+            nullable: true
             source: {}
           - name: partner_schulden
             type: amount
+            nullable: true
             source: {}
           - name: partner_buitenlands_inkomen
             type: amount
+            nullable: true
             source: {}
           - name: buitenlands_inkomen
             type: amount
@@ -287,6 +300,7 @@ articles:
               precision: 0
           - name: partner_buitenlands_inkomen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -671,63 +685,31 @@ articles:
           - output: totale_heffingskortingen
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: ADD
-                      values:
-                        - $algemene_heffingskorting
-                        - $arbeidskorting
-                        - $inkomensafhankelijke_combinatiekorting
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 0
-                value:
-                  operation: ADD
-                  values:
-                    - $algemene_heffingskorting
-                    - $arbeidskorting
-                    - $inkomensafhankelijke_combinatiekorting
+              operation: ROUND
+              precision: 0
+              value:
+                operation: ADD
+                values:
+                  - $algemene_heffingskorting
+                  - $arbeidskorting
+                  - $inkomensafhankelijke_combinatiekorting
           - output: totale_belastingschuld
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: MAX
-                      values:
-                        - operation: SUBTRACT
-                          values:
-                            - operation: ADD
-                              values:
-                                - $box1_belasting
-                                - $box2_belasting
-                                - $box3_belasting
-                            - $totale_heffingskortingen
-                        - 0
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 0
-                value:
-                  operation: MAX
-                  values:
-                    - operation: SUBTRACT
-                      values:
-                        - operation: ADD
-                          values:
-                            - $box1_belasting
-                            - $box2_belasting
-                            - $box3_belasting
-                        - $totale_heffingskortingen
-                    - 0
+              operation: ROUND
+              precision: 0
+              value:
+                operation: MAX
+                values:
+                  - operation: SUBTRACT
+                    values:
+                      - operation: ADD
+                        values:
+                          - $box1_belasting
+                          - $box2_belasting
+                          - $box3_belasting
+                      - $totale_heffingskortingen
+                  - 0
           - output: buitenlands_inkomen
             value: $buitenlands_inkomen
           - output: inkomen
@@ -749,17 +731,48 @@ articles:
                     - $onroerend_goed
                 - $schulden
           - output: partner_box1_inkomen
+            # Art. 2.17 Wet IB 2001: inkomensbestanddelen en de rendementsgrondslag van de partner tellen
+            # mee als er een partner is. Zonder partner is er niemand op te zoeken en zijn de
+            # partnergegevens afwezig; de toets noemt ze naast de partner zelf, zodat de optelling alleen
+            # met aanwezige bedragen rekent (RFC-036).
             value:
               operation: ADD
               values:
                 - operation: IF
                   cases:
                     - when:
-                        operation: NOT
-                        value:
-                          operation: EQUALS
-                          subject: $partner_bsn
-                          value: null
+                        operation: AND
+                        conditions:
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_bsn
+                              value: null
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_loon_uit_dienstbetrekking
+                              value: null
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_uitkeringen_en_pensioenen
+                              value: null
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_winst_uit_onderneming
+                              value: null
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_resultaat_overige_werkzaamheden
+                              value: null
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_eigen_woning
+                              value: null
                       then:
                         operation: ADD
                         values:
@@ -776,11 +789,23 @@ articles:
                 - operation: IF
                   cases:
                     - when:
-                        operation: NOT
-                        value:
-                          operation: EQUALS
-                          subject: $partner_bsn
-                          value: null
+                        operation: AND
+                        conditions:
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_bsn
+                              value: null
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_reguliere_voordelen
+                              value: null
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_vervreemdingsvoordelen
+                              value: null
                       then:
                         operation: ADD
                         values:
@@ -792,11 +817,33 @@ articles:
               operation: IF
               cases:
                 - when:
-                    operation: NOT
-                    value:
-                      operation: EQUALS
-                      subject: $partner_bsn
-                      value: null
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_bsn
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_spaargeld
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_beleggingen
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_onroerend_goed
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_schulden
+                          value: null
                   then:
                     operation: MULTIPLY
                     values:
@@ -817,23 +864,56 @@ articles:
           - output: partner_buitenlands_inkomen
             value: $partner_buitenlands_inkomen
           - output: partner_inkomen
+            # Het buitenlandse inkomen van de partner telt mee als er een partner is (art. 2.17 Wet IB
+            # 2001); zonder partner is het afwezig en telt 0 (RFC-036).
             value:
               operation: ADD
               values:
                 - $partner_box1_inkomen
                 - $partner_box2_inkomen
                 - $partner_box3_inkomen
-                - $partner_buitenlands_inkomen
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_buitenlands_inkomen
+                          value: null
+                      then: $partner_buitenlands_inkomen
+                  default: 0
           - output: gezamenlijk_vermogen
             value:
               operation: IF
               cases:
                 - when:
-                    operation: NOT
-                    value:
-                      operation: EQUALS
-                      subject: $partner_bsn
-                      value: null
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_bsn
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_spaargeld
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_beleggingen
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_onroerend_goed
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_schulden
+                          value: null
                   then:
                     operation: ADD
                     values:

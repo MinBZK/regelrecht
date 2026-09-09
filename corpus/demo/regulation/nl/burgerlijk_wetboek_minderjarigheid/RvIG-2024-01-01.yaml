@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: burgerlijk_wetboek_minderjarigheid
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -76,12 +76,11 @@ articles:
             type: array
         actions:
           - output: voldoet_aan_voorwaarden
-            value:
-              operation: NOT
-              value:
-                operation: EQUALS
-                subject: $persoonsgegevens
-                value: null
+            # De persoonsgegevens zijn de BRP-rij van de persoon; kent de BRP de persoon
+            # niet, dan zijn ze onbekend, niet afwezig (RFC-036, binding `absent: unknown`).
+            # De POC-toets op een None-rij kon dus nooit onwaar zijn. Art. 1:233 BW kent
+            # aan iedere natuurlijke persoon een leeftijdsstatus toe.
+            value: true
           - output: leeftijd
             value:
               operation: AGE

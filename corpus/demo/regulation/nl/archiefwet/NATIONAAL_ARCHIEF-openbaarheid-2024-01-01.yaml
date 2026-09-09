@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: archiefwet/openbaarheid
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -63,17 +63,20 @@ articles:
             required: true
           - name: overbrengdatum
             type: date
+            nullable: true
           - name: beperking_type
             type: string
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
           - name: beperking_termijn_jaren
             type: number
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
             type_spec:
               unit: years
@@ -85,14 +88,17 @@ articles:
             # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
             # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
             # een afwezigheid waarop de wet beslist).
+            nullable: true
             required: false
         output:
           - name: is_openbaar
             type: boolean
           - name: beperking_reden
             type: string
+            nullable: true
           - name: openbaar_vanaf_datum
             type: date
+            nullable: true
         actions:
           - output: is_openbaar
             value:

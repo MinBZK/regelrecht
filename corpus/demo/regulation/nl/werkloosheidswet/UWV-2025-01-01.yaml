@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: werkloosheidswet
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -117,6 +117,7 @@ articles:
                 referentiedatum: $referencedate
           - name: verblijfsvergunning_type
             type: string
+            nullable: true
             source:
               regulation: vreemdelingenwet
               output: verblijfsvergunning_type
@@ -192,6 +193,7 @@ articles:
               period_type: year
           - name: ontvangt_ziektewet
             type: boolean
+            nullable: true
             source:
               regulation: ziektewet
               output: heeft_ziektewet_uitkering
@@ -306,31 +308,16 @@ articles:
           - output: ww_uitkering_per_maand
         # RFC-024: afronding expliciet (POC rondde impliciet af op hele eurocenten)
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: MULTIPLY
-                      values:
-                        - operation: MULTIPLY
-                          values:
-                            - $ww_dagloon
-                            - $percentage_eerste_2_maanden
-                        - $werkdagen_per_maand
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 0
-                value:
-                  operation: MULTIPLY
-                  values:
-                    - operation: MULTIPLY
-                      values:
-                        - $ww_dagloon
-                        - $percentage_eerste_2_maanden
-                    - $werkdagen_per_maand
+              operation: ROUND
+              precision: 0
+              value:
+                operation: MULTIPLY
+                values:
+                  - operation: MULTIPLY
+                    values:
+                      - $ww_dagloon
+                      - $percentage_eerste_2_maanden
+                  - $werkdagen_per_maand
             legal_basis:
               law: Werkloosheidswet
               bwb_id: BWBR0004045
@@ -343,65 +330,33 @@ articles:
           - output: ww_duur_maanden
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: MIN
-                      values:
-                        - operation: MAX
+              operation: FLOOR
+              precision: 0
+              value:
+                operation: MIN
+                values:
+                  - operation: MAX
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: LESS_THAN_OR_EQUAL
+                              subject: $arbeidsverleden_jaren
+                              value: 10
+                            then: $arbeidsverleden_jaren
+                        default:
+                          operation: ADD
                           values:
-                            - operation: IF
-                              cases:
-                                - when:
-                                    operation: LESS_THAN_OR_EQUAL
-                                    subject: $arbeidsverleden_jaren
-                                    value: 10
-                                  then: $arbeidsverleden_jaren
-                              default:
-                                operation: ADD
-                                values:
-                                  - 10
-                                  - operation: MULTIPLY
-                                    values:
-                                      - operation: SUBTRACT
-                                        values:
-                                          - $arbeidsverleden_jaren
-                                          - 10
-                                      - 0.5
-                            - $minimum_duur_maanden
-                        - $maximum_duur_maanden
-                    value: null
-                  then: null
-              default:
-                operation: FLOOR
-                precision: 0
-                value:
-                  operation: MIN
-                  values:
-                    - operation: MAX
-                      values:
-                        - operation: IF
-                          cases:
-                            - when:
-                                operation: LESS_THAN_OR_EQUAL
-                                subject: $arbeidsverleden_jaren
-                                value: 10
-                              then: $arbeidsverleden_jaren
-                          default:
-                            operation: ADD
-                            values:
-                              - 10
-                              - operation: MULTIPLY
-                                values:
-                                  - operation: SUBTRACT
-                                    values:
-                                      - $arbeidsverleden_jaren
-                                      - 10
-                                  - 0.5
-                        - $minimum_duur_maanden
-                    - $maximum_duur_maanden
+                            - 10
+                            - operation: MULTIPLY
+                              values:
+                                - operation: SUBTRACT
+                                  values:
+                                    - $arbeidsverleden_jaren
+                                    - 10
+                                - 0.5
+                      - $minimum_duur_maanden
+                  - $maximum_duur_maanden
             legal_basis:
               law: Werkloosheidswet
               bwb_id: BWBR0004045

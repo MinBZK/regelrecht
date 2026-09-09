@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_op_het_kindgebonden_budget
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -119,6 +119,7 @@ articles:
               type: point_in_time
           - name: partner_bsn
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: partner_bsn
@@ -168,6 +169,7 @@ articles:
               immutable_after: P2Y
           - name: partner_toetsingsinkomen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -196,6 +198,7 @@ articles:
               type: point_in_time
           - name: partner_vermogen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -226,6 +229,9 @@ articles:
               min: 0
         actions:
           - output: voldoet_aan_voorwaarden
+            # Art. 1 lid 2 Wkb jo. art. 7 lid 3 Awir: met partner geldt de vermogensgrens voor partners over
+            # het gezamenlijke vermogen. Het partnervermogen is afwezig zonder partner; de toets noemt het
+            # naast de partnervoorwaarde (RFC-036).
             value:
               operation: AND
               conditions:
@@ -238,9 +244,16 @@ articles:
                 - operation: IF
                   cases:
                     - when:
-                        subject: $heeft_partner
-                        operation: EQUALS
-                        value: true
+                        operation: AND
+                        conditions:
+                          - subject: $heeft_partner
+                            operation: EQUALS
+                            value: true
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_vermogen
+                              value: null
                       then:
                         operation: LESS_THAN
                         subject:
@@ -324,179 +337,96 @@ articles:
           - output: kindgebonden_budget_jaar
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: IF
-                      cases:
-                        - when:
+              operation: ROUND
+              precision: 0
+              # Met partner het partnerbedrag, anders het bedrag voor een alleenstaande. Als twee
+              # gevallen (partner ja/nee) zonder default geschreven zou de afronding op een mogelijk
+              # afwezige waarde werken (RFC-036); een boolean laat geen derde geval over.
+              value:
+                operation: IF
+                cases:
+                  - when:
+                      operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $heeft_partner
+                          value: true
+                        - operation: NOT
+                          value:
                             operation: EQUALS
-                            subject: $heeft_partner
-                            value: false
-                          then:
-                            operation: MAX
-                            values:
-                              - operation: SUBTRACT
-                                values:
-                                  - operation: ADD
+                            subject: $partner_toetsingsinkomen
+                            value: null
+                    then:
+                      operation: MAX
+                      values:
+                        - operation: SUBTRACT
+                          values:
+                            - operation: ADD
+                              values:
+                                - operation: MULTIPLY
+                                  values:
+                                    - $aantal_kinderen
+                                    - $basisbedrag_per_kind
+                                - $leeftijdstoeslagen
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: GREATER_THAN
+                                    subject:
+                                      operation: ADD
+                                      values:
+                                        - $toetsingsinkomen
+                                        - $partner_toetsingsinkomen
+                                    value:
+                                      operation: ADD
+                                      values:
+                                        - $drempelinkomen_partner
+                                        - $extra_drempel_partner
+                                  then:
+                                    operation: MULTIPLY
                                     values:
-                                      - operation: MULTIPLY
+                                      - operation: SUBTRACT
                                         values:
-                                          - $aantal_kinderen
-                                          - $basisbedrag_per_kind
-                                      - $leeftijdstoeslagen
-                                      - $alo_kop_bedrag
-                                  - operation: IF
-                                    cases:
-                                      - when:
-                                          operation: GREATER_THAN
-                                          subject: $toetsingsinkomen
-                                          value: $drempelinkomen_alleenstaand
-                                        then:
-                                          operation: MULTIPLY
-                                          values:
-                                            - operation: SUBTRACT
-                                              values:
-                                                - $toetsingsinkomen
-                                                - $drempelinkomen_alleenstaand
-                                            - $afbouwpercentage
-                                    default: 0
-                              - 0
-                        - when:
-                            operation: EQUALS
-                            subject: $heeft_partner
-                            value: true
-                          then:
-                            operation: MAX
-                            values:
-                              - operation: SUBTRACT
-                                values:
-                                  - operation: ADD
-                                    values:
-                                      - operation: MULTIPLY
-                                        values:
-                                          - $aantal_kinderen
-                                          - $basisbedrag_per_kind
-                                      - $leeftijdstoeslagen
-                                  - operation: IF
-                                    cases:
-                                      - when:
-                                          operation: GREATER_THAN
-                                          subject:
-                                            operation: ADD
+                                          - operation: ADD
                                             values:
                                               - $toetsingsinkomen
                                               - $partner_toetsingsinkomen
-                                          value:
-                                            operation: ADD
+                                          - operation: ADD
                                             values:
                                               - $drempelinkomen_partner
                                               - $extra_drempel_partner
-                                        then:
-                                          operation: MULTIPLY
-                                          values:
-                                            - operation: SUBTRACT
-                                              values:
-                                                - operation: ADD
-                                                  values:
-                                                    - $toetsingsinkomen
-                                                    - $partner_toetsingsinkomen
-                                                - operation: ADD
-                                                  values:
-                                                    - $drempelinkomen_partner
-                                                    - $extra_drempel_partner
-                                            - $afbouwpercentage
-                                    default: 0
-                              - 0
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 0
-                value:
-                  operation: IF
-                  cases:
-                    - when:
-                        operation: EQUALS
-                        subject: $heeft_partner
-                        value: false
-                      then:
-                        operation: MAX
-                        values:
-                          - operation: SUBTRACT
-                            values:
-                              - operation: ADD
+                                      - $afbouwpercentage
+                              default: 0
+                        - 0
+                default:
+                  operation: MAX
+                  values:
+                    - operation: SUBTRACT
+                      values:
+                        - operation: ADD
+                          values:
+                            - operation: MULTIPLY
+                              values:
+                                - $aantal_kinderen
+                                - $basisbedrag_per_kind
+                            - $leeftijdstoeslagen
+                            - $alo_kop_bedrag
+                        - operation: IF
+                          cases:
+                            - when:
+                                operation: GREATER_THAN
+                                subject: $toetsingsinkomen
+                                value: $drempelinkomen_alleenstaand
+                              then:
+                                operation: MULTIPLY
                                 values:
-                                  - operation: MULTIPLY
+                                  - operation: SUBTRACT
                                     values:
-                                      - $aantal_kinderen
-                                      - $basisbedrag_per_kind
-                                  - $leeftijdstoeslagen
-                                  - $alo_kop_bedrag
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: GREATER_THAN
-                                      subject: $toetsingsinkomen
-                                      value: $drempelinkomen_alleenstaand
-                                    then:
-                                      operation: MULTIPLY
-                                      values:
-                                        - operation: SUBTRACT
-                                          values:
-                                            - $toetsingsinkomen
-                                            - $drempelinkomen_alleenstaand
-                                        - $afbouwpercentage
-                                default: 0
-                          - 0
-                    - when:
-                        operation: EQUALS
-                        subject: $heeft_partner
-                        value: true
-                      then:
-                        operation: MAX
-                        values:
-                          - operation: SUBTRACT
-                            values:
-                              - operation: ADD
-                                values:
-                                  - operation: MULTIPLY
-                                    values:
-                                      - $aantal_kinderen
-                                      - $basisbedrag_per_kind
-                                  - $leeftijdstoeslagen
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: GREATER_THAN
-                                      subject:
-                                        operation: ADD
-                                        values:
-                                          - $toetsingsinkomen
-                                          - $partner_toetsingsinkomen
-                                      value:
-                                        operation: ADD
-                                        values:
-                                          - $drempelinkomen_partner
-                                          - $extra_drempel_partner
-                                    then:
-                                      operation: MULTIPLY
-                                      values:
-                                        - operation: SUBTRACT
-                                          values:
-                                            - operation: ADD
-                                              values:
-                                                - $toetsingsinkomen
-                                                - $partner_toetsingsinkomen
-                                            - operation: ADD
-                                              values:
-                                                - $drempelinkomen_partner
-                                                - $extra_drempel_partner
-                                        - $afbouwpercentage
-                                default: 0
-                          - 0
+                                      - $toetsingsinkomen
+                                      - $drempelinkomen_alleenstaand
+                                  - $afbouwpercentage
+                          default: 0
+                    - 0
             legal_basis:
               law: Wet op het kindgebonden budget
               bwb_id: BWBR0022751

@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: handelsregisterwet/jaarrekening
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -86,9 +86,11 @@ articles:
         input:
           - name: rechtsvorm
             type: string
+            nullable: true
             source: {}
           - name: laatste_boekjaar_einde
             type: date
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden
@@ -99,6 +101,7 @@ articles:
             type: string
           - name: volgende_deadline
             type: date
+            nullable: true
           - name: reden_vrijstelling
             type: string
         actions:

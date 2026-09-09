@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: warenwet/haccp
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -95,15 +95,19 @@ articles:
         input:
           - name: sbi_code
             type: string
+            nullable: true
             source: {}
           - name: is_geregistreerd_nvwa
             type: boolean
+            nullable: true
             source: {}
           - name: heeft_haccp_systeem
             type: boolean
+            nullable: true
             source: {}
           - name: type_haccp_systeem
             type: string
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden
@@ -114,12 +118,15 @@ articles:
             type: boolean
           - name: is_geregistreerd
             type: boolean
+            nullable: true
           - name: heeft_haccp_systeem
             type: boolean
+            nullable: true
           - name: voldoet_aan_verplichting
             type: boolean
           - name: type_haccp_systeem
             type: string
+            nullable: true
           - name: toezichthouder
             type: string
         actions:

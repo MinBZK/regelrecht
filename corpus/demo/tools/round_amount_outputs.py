@@ -8,25 +8,23 @@ to whole eurocents implicitly. The regelrecht engine keeps the exact decimal:
 rounding is never implicit, a law that rounds has to say so. For the outputs
 listed in `OUTPUTS` this tool wraps the action value in
 
-    operation: IF
-    cases:
-    - when: {operation: EQUALS, subject: <the existing expression>, value: null}
-      then: null
-    default:
-      operation: ROUND
-      precision: <the output's type_spec.precision, 0 when absent>
-      value: <the existing expression>
-
-The null guard keeps the POC's None propagation: the engine's arithmetic lets a
-null operand through, but ROUND/FLOOR insist on a number, and a law called for
-someone without register data (WW for a Bbz applicant without dienstverbanden)
-would otherwise fail where the POC produced None.
+    operation: ROUND
+    precision: <the output's type_spec.precision, 0 when absent>
+    value: <the existing expression>
 
 ROUND is half-up. The POC's own feature expectations pin that down: 126307.84
 is asserted as 126308 and 209691.79 as 209692, which FLOOR (truncation) would
 not produce.
 
-Idempotent: an action whose value already is a ROUND is left alone. Usage:
+An earlier version wrapped the rounding in `IF EQUALS(expr, null) THEN null
+DEFAULT ROUND(expr)`, to keep the POC's None propagation. Under RFC-036 that
+guard is dead: every expression rounded here is arithmetic, and arithmetic on an
+absent operand is an error, never a null result. The guard also declared, in
+effect, that the output could be absent, which the type checker (schema v0.5.8,
+`nullable`) then carries into every law that consumes the amount. The tool now
+writes the bare ROUND and unwraps a guard it finds.
+
+Idempotent: an action whose value already is a bare ROUND is left alone. Usage:
 
     uv run corpus/demo/tools/round_amount_outputs.py corpus/demo/regulation/nl
 """
@@ -36,15 +34,18 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import copy
-
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
 yaml = YAML()
 yaml.preserve_quotes = True
 yaml.width = 4096
-yaml.indent(mapping=2, sequence=2, offset=0)
+yaml.explicit_start = True
+# The corpus style (see reformat_yaml.py): indented sequences, explicit null.
+yaml.indent(mapping=2, sequence=4, offset=2)
+yaml.representer.add_representer(
+    type(None), lambda r, _d: r.represent_scalar("tag:yaml.org,2002:null", "null")
+)
 
 COMMENT = "RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)"
 
@@ -76,34 +77,26 @@ def wrap(value, precision: int, operation: str) -> CommentedMap:
     rounding["operation"] = operation
     rounding["precision"] = precision
     rounding["value"] = value
-    is_null = CommentedMap()
-    is_null["operation"] = "EQUALS"
-    is_null["subject"] = copy.deepcopy(value)
-    is_null["value"] = None
-    case = CommentedMap()
-    case["when"] = is_null
-    case["then"] = None
-    node = CommentedMap()
-    node["operation"] = "IF"
-    node["cases"] = [case]
-    node["default"] = rounding
-    return node
+    return rounding
 
 
-def unwrap_plain_rounding(value):
-    """An earlier version wrapped the expression in a bare ROUND; return its operand."""
-    if isinstance(value, dict) and value.get("operation") in ROUNDING_OPS:
-        return value["value"]
-    return None
+def is_plain_rounding(value) -> bool:
+    return isinstance(value, dict) and value.get("operation") in ROUNDING_OPS
 
 
-def is_guarded_rounding(value) -> bool:
-    return (
+def unwrap_guarded_rounding(value):
+    """The earlier `IF EQUALS(expr, null) THEN null DEFAULT ROUND(expr)` form;
+    return the rounded expression, else None."""
+    if (
         isinstance(value, dict)
         and value.get("operation") == "IF"
         and isinstance(value.get("default"), dict)
         and value["default"].get("operation") in ROUNDING_OPS
-    )
+        and len(value.get("cases") or []) == 1
+        and value["cases"][0].get("then") is None
+    ):
+        return value["default"]["value"]
+    return None
 
 
 def round_file(path: Path) -> int:
@@ -126,9 +119,9 @@ def round_file(path: Path) -> int:
             if action.get("output") not in wanted or "value" not in action:
                 continue
             value = action["value"]
-            if is_guarded_rounding(value):
+            if is_plain_rounding(value):
                 continue
-            inner = unwrap_plain_rounding(value)
+            inner = unwrap_guarded_rounding(value)
             if inner is not None:
                 value = inner
             action["value"] = wrap(value, precisions.get(action.get("output"), 0), wanted[action.get("output")])

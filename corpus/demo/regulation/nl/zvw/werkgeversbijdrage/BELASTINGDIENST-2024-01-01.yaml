@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: zvw/werkgeversbijdrage
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -126,31 +126,16 @@ articles:
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec).
         # The POC feature values match half-up rounding (470595.96 -> 470596), so ROUND, not FLOOR.
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: MULTIPLY
-                      values:
-                        - $bijdrage_inkomen
-                        - operation: DIVIDE
-                          values:
-                            - $zvw_percentage
-                            - 100
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 0
-                value:
-                  operation: MULTIPLY
-                  values:
-                    - $bijdrage_inkomen
-                    - operation: DIVIDE
-                      values:
-                        - $zvw_percentage
-                        - 100
+              operation: ROUND
+              precision: 0
+              value:
+                operation: MULTIPLY
+                values:
+                  - $bijdrage_inkomen
+                  - operation: DIVIDE
+                    values:
+                      - $zvw_percentage
+                      - 100
             legal_basis:
               law: Zorgverzekeringswet
               bwb_id: BWBR0018450

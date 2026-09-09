@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: algemene_kinderbijslagwet
 regulatory_layer: WET
 publication_date: '2020-01-01'
@@ -44,6 +44,7 @@ articles:
         input:
           - name: kinderen_data
             type: object
+            nullable: true
             source: {}
         output:
           - name: ontvangt_kinderbijslag
@@ -57,8 +58,45 @@ articles:
             type: array
         actions:
           - output: ontvangt_kinderbijslag
-            value: $kinderen_data.ontvangt_kinderbijslag
+            # Art. 7 AKW: recht op kinderbijslag bestaat voor een kind waarvoor de SVB het recht
+            # heeft vastgesteld. De SVB is daarvoor gezaghebbend: zonder dossier ontvangt niemand
+            # kinderbijslag, is er geen kind waarvoor zij wordt betaald en zijn er geen leeftijden
+            # te tellen. Zonder deze gevallen waren de drie uitkomsten afwezig (een eigenschap van
+            # een afwezig dossier) en kon het kindgebonden budget er niet mee rekenen (RFC-036).
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $kinderen_data
+                      value: null
+                  then: $kinderen_data.ontvangt_kinderbijslag
+              default: false
           - output: aantal_kinderen
-            value: $kinderen_data.aantal_kinderen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $kinderen_data
+                      value: null
+                  then: $kinderen_data.aantal_kinderen
+              default: 0
           - output: kinderen_leeftijden
-            value: $kinderen_data.kinderen_leeftijden
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $kinderen_data
+                      value: null
+                  then: $kinderen_data.kinderen_leeftijden
+              default:
+                operation: LIST
+                items: []

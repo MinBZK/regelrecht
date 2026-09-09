@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: participatiewet/bijstand/amsterdam
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -104,6 +104,7 @@ articles:
                 referentiedatum: $referencedate
           - name: postadres
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: postadres
@@ -130,6 +131,7 @@ articles:
                 bsn: $bsn
           - name: arbeidsvermogen
             type: object
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden
@@ -185,123 +187,62 @@ articles:
           - output: uitkeringsbedrag
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: ADD
-                      values:
-                        - operation: MULTIPLY
-                          values:
-                            - $landelijk_basisbedrag
-                            - $kostendelersnorm
-                        - operation: IF
-                          cases:
-                            - when:
-                                operation: AND
-                                conditions:
-                                  - operation: LESS_THAN_OR_EQUAL
-                                    subject: $leeftijd
-                                    value: $jeugd_max_leeftijd
-                                  - operation: EQUALS
-                                    subject: $heeft_vast_adres
-                                    value: true
-                              then: $jeugd_toeslag
-                          default: 0
-                        - operation: IF
-                          cases:
-                            - when:
-                                operation: AND
-                                conditions:
-                                  - operation: EQUALS
-                                    subject: $is_ondernemer
-                                    value: true
-                                  - operation: GREATER_THAN
-                                    subject: $bedrijfsinkomen
-                                    value: 0
-                                  - operation: LESS_THAN
-                                    subject:
-                                      operation: DIVIDE
-                                      values:
-                                        - $bedrijfsinkomen
-                                        - $maanden_per_jaar
-                                    value:
-                                      operation: MULTIPLY
-                                      values:
-                                        - $landelijk_basisbedrag
-                                        - $kostendelersnorm
-                              then:
-                                operation: MULTIPLY
-                                values:
-                                  - operation: DIVIDE
-                                    values:
-                                      - $bedrijfsinkomen
-                                      - $maanden_per_jaar
-                                  - $zzp_inkomen_vrijlating_percentage
-                          default: 0
-                        - operation: IF
-                          cases: []
-                          default: 0
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 0
-                value:
-                  operation: ADD
-                  values:
-                    - operation: MULTIPLY
-                      values:
-                        - $landelijk_basisbedrag
-                        - $kostendelersnorm
-                    - operation: IF
-                      cases:
-                        - when:
-                            operation: AND
-                            conditions:
-                              - operation: LESS_THAN_OR_EQUAL
-                                subject: $leeftijd
-                                value: $jeugd_max_leeftijd
-                              - operation: EQUALS
-                                subject: $heeft_vast_adres
-                                value: true
-                          then: $jeugd_toeslag
-                      default: 0
-                    - operation: IF
-                      cases:
-                        - when:
-                            operation: AND
-                            conditions:
-                              - operation: EQUALS
-                                subject: $is_ondernemer
-                                value: true
-                              - operation: GREATER_THAN
-                                subject: $bedrijfsinkomen
-                                value: 0
-                              - operation: LESS_THAN
-                                subject:
-                                  operation: DIVIDE
-                                  values:
-                                    - $bedrijfsinkomen
-                                    - $maanden_per_jaar
-                                value:
-                                  operation: MULTIPLY
-                                  values:
-                                    - $landelijk_basisbedrag
-                                    - $kostendelersnorm
-                          then:
-                            operation: MULTIPLY
-                            values:
-                              - operation: DIVIDE
+              operation: ROUND
+              precision: 0
+              value:
+                operation: ADD
+                values:
+                  - operation: MULTIPLY
+                    values:
+                      - $landelijk_basisbedrag
+                      - $kostendelersnorm
+                  - operation: IF
+                    cases:
+                      - when:
+                          operation: AND
+                          conditions:
+                            - operation: LESS_THAN_OR_EQUAL
+                              subject: $leeftijd
+                              value: $jeugd_max_leeftijd
+                            - operation: EQUALS
+                              subject: $heeft_vast_adres
+                              value: true
+                        then: $jeugd_toeslag
+                    default: 0
+                  - operation: IF
+                    cases:
+                      - when:
+                          operation: AND
+                          conditions:
+                            - operation: EQUALS
+                              subject: $is_ondernemer
+                              value: true
+                            - operation: GREATER_THAN
+                              subject: $bedrijfsinkomen
+                              value: 0
+                            - operation: LESS_THAN
+                              subject:
+                                operation: DIVIDE
                                 values:
                                   - $bedrijfsinkomen
                                   - $maanden_per_jaar
-                              - $zzp_inkomen_vrijlating_percentage
-                      default: 0
-                    - operation: IF
-                      cases: []
-                      default: 0
+                              value:
+                                operation: MULTIPLY
+                                values:
+                                  - $landelijk_basisbedrag
+                                  - $kostendelersnorm
+                        then:
+                          operation: MULTIPLY
+                          values:
+                            - operation: DIVIDE
+                              values:
+                                - $bedrijfsinkomen
+                                - $maanden_per_jaar
+                            - $zzp_inkomen_vrijlating_percentage
+                    default: 0
+                  - operation: IF
+                    cases: []
+                    default: 0
           - output: woonkostentoeslag
             value:
               operation: IF

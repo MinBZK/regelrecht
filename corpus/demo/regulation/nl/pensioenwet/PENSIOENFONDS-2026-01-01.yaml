@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: pensioenwet
 regulatory_layer: WET
 publication_date: '2026-01-01'
@@ -321,21 +321,27 @@ articles:
               type: point_in_time
           - name: pensioenkapitaal
             type: amount
+            nullable: true
             source: {}
           - name: pensioenjaren
             type: number
+            nullable: true
             source: {}
           - name: type_regeling
             type: string
+            nullable: true
             source: {}
           - name: franchise
             type: amount
+            nullable: true
             source: {}
           - name: pensioengevend_loon
             type: amount
+            nullable: true
             source: {}
           - name: pensioen_leeftijd_fonds
             type: number
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden
@@ -344,6 +350,7 @@ articles:
             type: boolean
           - name: pensioenkapitaal
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -362,6 +369,7 @@ articles:
               min: 0
           - name: pensioenleeftijd
             type: number
+            nullable: true
             type_spec:
               unit: years
               precision: 0
@@ -376,9 +384,17 @@ articles:
               operation: IF
               cases:
                 - when:
-                    operation: EQUALS
-                    subject: $type_regeling
-                    value: null
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $type_regeling
+                        value: null
+                      - operation: EQUALS
+                        subject: $pensioen_leeftijd_fonds
+                        value: null
+                      - operation: EQUALS
+                        subject: $pensioenkapitaal
+                        value: null
                   then: false
               default:
                 operation: AND
@@ -425,6 +441,10 @@ articles:
                 jci1.3:c:BWBR0020809&artikel=18&lid=4&z=2024-01-01&g=2024-01-01
               explanation: 'Artikel 18 lid 4 Pensioenwet: pensioenrichtleeftijd'
           - output: pensioen_uitkering_bruto
+            # Artikel 1 Pensioenwet (deelnemer): zonder deelnemersregistratie is er geen aanspraak. Het
+            # fonds is gezaghebbend, dus zonder rij zijn regeling, kapitaal, jaren, loon en franchise
+            # afwezig; de toets noemt ze alle, zodat de berekening per regeling alleen met aanwezige
+            # waarden rekent (RFC-036).
             value:
               operation: IF
               cases:
@@ -432,9 +452,23 @@ articles:
                 # dus een uitkering van 0. Zonder dit geval viel de berekening terug op een
                 # vermenigvuldiging met een afwezig kapitaal (RFC-036).
                 - when:
-                    operation: EQUALS
-                    subject: $type_regeling
-                    value: null
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $type_regeling
+                        value: null
+                      - operation: EQUALS
+                        subject: $pensioenkapitaal
+                        value: null
+                      - operation: EQUALS
+                        subject: $pensioenjaren
+                        value: null
+                      - operation: EQUALS
+                        subject: $pensioengevend_loon
+                        value: null
+                      - operation: EQUALS
+                        subject: $franchise
+                        value: null
                   then: 0
                 - when:
                     operation: EQUALS
@@ -488,25 +522,13 @@ articles:
           - output: pensioen_uitkering_maandelijks
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: DIVIDE
-                      values:
-                        - $pensioen_uitkering_bruto
-                        - $maanden_per_jaar
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 0
-                value:
-                  operation: DIVIDE
-                  values:
-                    - $pensioen_uitkering_bruto
-                    - $maanden_per_jaar
+              operation: ROUND
+              precision: 0
+              value:
+                operation: DIVIDE
+                values:
+                  - $pensioen_uitkering_bruto
+                  - $maanden_per_jaar
             legal_basis:
               law: Pensioenwet
               bwb_id: BWBR0020809

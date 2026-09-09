@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: algemene_ouderdomswet/leeftijdsbepaling
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -123,14 +123,11 @@ articles:
               min: 65
         actions:
           - output: voldoet_aan_voorwaarden
-            value:
-              operation: AND
-              conditions:
-                - operation: NOT
-                  value:
-                    operation: EQUALS
-                    subject: $geboortedatum
-                    value: null
+            # De geboortedatum is een verplichte, nooit afwezige parameter: zonder
+            # geboortedatum wordt de wet niet uitgevoerd (RFC-036), dus de POC-toets op
+            # een None-geboortedatum kon nooit onwaar zijn. De AOW-leeftijd is voor iedere
+            # geborene bepaald (art. 7a lid 1 AOW).
+            value: true
           - output: pensioenleeftijd
             value:
               operation: ADD

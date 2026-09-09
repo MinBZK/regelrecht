@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_bibob
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -64,6 +64,7 @@ articles:
             type: string
           - name: bsn
             type: string
+            nullable: true
             required: false
           - name: beschikking_type
             type: string
@@ -82,27 +83,35 @@ articles:
         input:
           - name: advies_uitgebracht
             type: boolean
+            nullable: true
             source: {}
           - name: advies_mate_van_gevaar
             type: string
+            nullable: true
             source: {}
           - name: advies_datum
             type: date
+            nullable: true
             source: {}
           - name: relatie_tot_strafbare_feiten
             type: boolean
+            nullable: true
             source: {}
           - name: financieringsrisico
             type: boolean
+            nullable: true
             source: {}
           - name: voorschriften_geadviseerd
             type: boolean
+            nullable: true
             source: {}
         output:
           - name: advies_uitgebracht
             type: boolean
+            nullable: true
           - name: mate_van_gevaar
             type: string
+            nullable: true
           - name: weigering_mogelijk
             type: boolean
           - name: voorschriften_mogelijk
@@ -111,8 +120,10 @@ articles:
             type: boolean
           - name: financieringsrisico
             type: boolean
+            nullable: true
           - name: relatie_strafbare_feiten
             type: boolean
+            nullable: true
         actions:
           - output: advies_uitgebracht
             value: $advies_uitgebracht

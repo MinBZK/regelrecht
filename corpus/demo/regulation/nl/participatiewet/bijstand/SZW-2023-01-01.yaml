@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: participatiewet/bijstand
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -92,6 +92,7 @@ articles:
                 referentiedatum: $referencedate
           - name: verblijfsvergunning_type
             type: string
+            nullable: true
             source:
               regulation: vreemdelingenwet
               output: verblijfsvergunning_type
@@ -99,6 +100,7 @@ articles:
                 bsn: $bsn
           - name: verblijfsadres
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: verblijfsadres
@@ -148,6 +150,7 @@ articles:
                 referentiedatum: $referencedate
           - name: partner_bsn
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: partner_bsn
@@ -156,6 +159,7 @@ articles:
                 referentiedatum: $referencedate
           - name: partner_inkomen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -167,6 +171,7 @@ articles:
                 bsn: $partner_bsn
           - name: partner_bezittingen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -224,6 +229,13 @@ articles:
               max: 1
         actions:
           - output: voldoet_aan_voorwaarden
+            # Art. 11 lid 2 en 3 Pw: een vreemdeling is gelijkgesteld naar zijn verblijfsvergunning; zonder
+            # vastgesteld vergunningtype geldt alleen de nationaliteit. Art. 32 en 34 Pw: inkomen en
+            # vermogen van de partner tellen mee als er een partner is; de toets dat het partnerinkomen
+            # en -vermogen er zijn is de vorm waarin de typering de partnervoorwaarde vraagt (RFC-036).
+            # Art. 32 en 34 Pw: inkomen en vermogen van de partner tellen mee als er een partner is; de
+            # toets dat het partnerinkomen en -vermogen er zijn is de vorm waarin de typering de
+            # partnervoorwaarde vraagt (RFC-036).
             value:
               operation: AND
               conditions:
@@ -260,9 +272,16 @@ articles:
                 - operation: IF
                   cases:
                     - when:
-                        subject: $heeft_partner
-                        operation: EQUALS
-                        value: true
+                        operation: AND
+                        conditions:
+                          - subject: $heeft_partner
+                            operation: EQUALS
+                            value: true
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_bezittingen
+                              value: null
                       then:
                         operation: LESS_THAN
                         subject:
@@ -278,9 +297,16 @@ articles:
                 - operation: IF
                   cases:
                     - when:
-                        subject: $heeft_partner
-                        operation: EQUALS
-                        value: true
+                        operation: AND
+                        conditions:
+                          - subject: $heeft_partner
+                            operation: EQUALS
+                            value: true
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $partner_inkomen
+                              value: null
                       then:
                         operation: LESS_THAN
                         subject:

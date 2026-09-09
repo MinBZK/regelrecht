@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: verordening_precariobelasting
 regulatory_layer: GEMEENTELIJKE_VERORDENING
 publication_date: '2024-01-01'
@@ -55,6 +55,7 @@ articles:
               type: point_in_time
           - name: vestigingsadres
             type: string
+            nullable: true
             source:
               regulation: handelsregisterwet/bedrijfsgegevens
               output: vestigingsadres
@@ -64,9 +65,11 @@ articles:
               type: point_in_time
           - name: heeft_terras
             type: boolean
+            nullable: true
             source: {}
           - name: is_openbare_weg
             type: boolean
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden

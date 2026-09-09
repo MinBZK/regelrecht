@@ -877,7 +877,10 @@ kieswet:
         value: TWEEDE_KAMER
     kind: table
     service: KIESRAAD
-    absent: null
+    # verkiezingen: without a scheduled election the register cannot name a date; the
+    # date is unknown, not absent. An absent date would make wet_brp skip the age on the
+    # election day and the right to vote null, while nothing is decided about it.
+    absent: unknown
 machtigingenwet:
   functionarissen:
     table: functionarissen

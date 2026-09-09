@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_op_de_huurtoeslag
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -83,6 +83,7 @@ articles:
         input:
           - name: huishoudleden
             type: array
+            nullable: true
             source:
               regulation: wet_brp
               output: huishoudleden
@@ -93,6 +94,7 @@ articles:
               type: point_in_time
           - name: kinderen
             type: array
+            nullable: true
             source:
               regulation: wet_brp
               output: kinderen
@@ -103,6 +105,7 @@ articles:
               type: point_in_time
           - name: partner_bsn
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: partner_bsn
@@ -113,6 +116,7 @@ articles:
               type: point_in_time
           - name: partner_adres
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: verblijfsadres
@@ -153,6 +157,7 @@ articles:
               type: point_in_time
           - name: verblijfsadres
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: verblijfsadres

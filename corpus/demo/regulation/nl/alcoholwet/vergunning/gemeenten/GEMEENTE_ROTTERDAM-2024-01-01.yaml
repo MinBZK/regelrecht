@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: alcoholwet/vergunning/rotterdam
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -50,6 +50,7 @@ articles:
             source: {}
           - name: heeft_alcoholvergunning
             type: boolean
+            nullable: true
             source: {}
           - name: leeftijd_exploitant
             type: number
@@ -72,6 +73,7 @@ articles:
               type: point_in_time
           - name: bedrijf_status
             type: string
+            nullable: true
             source:
               regulation: handelsregisterwet/bedrijfsgegevens
               output: status
@@ -79,6 +81,7 @@ articles:
                 kvk_nummer: $kvk_nummer
           - name: svh_registratie_geldig
             type: boolean
+            nullable: true
             source:
               regulation: alcoholwet/register_sociale_hygiene
               output: is_geregistreerd
@@ -86,6 +89,7 @@ articles:
                 bsn: $bsn
           - name: svh_registratienummer
             type: string
+            nullable: true
             source:
               regulation: alcoholwet/register_sociale_hygiene
               output: registratienummer
@@ -93,6 +97,7 @@ articles:
                 bsn: $bsn
           - name: voldoet_aan_nationale_eisen
             type: boolean
+            nullable: true
             source:
               regulation: alcoholwet/vergunning
               output: voldoet_aan_nationale_eisen
@@ -111,6 +116,7 @@ articles:
                 is_van_slecht_levensgedrag: $geen_slecht_levensgedrag
           - name: weigeringsgrond_nationaal
             type: string
+            nullable: true
             source:
               regulation: alcoholwet/vergunning
               output: weigeringsgrond_nationaal
@@ -129,6 +135,7 @@ articles:
                 is_van_slecht_levensgedrag: $geen_slecht_levensgedrag
           - name: bibob_mate_van_gevaar
             type: string
+            nullable: true
             source:
               regulation: wet_bibob
               output: mate_van_gevaar
@@ -144,8 +151,10 @@ articles:
             type: boolean
           - name: heeft_actieve_vergunning
             type: boolean
+            nullable: true
           - name: weigeringsgrond
             type: string
+            nullable: true
         actions:
           - output: voldoet_aan_voorwaarden
             value:

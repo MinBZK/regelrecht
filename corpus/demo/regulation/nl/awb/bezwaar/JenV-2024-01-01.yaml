@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: awb/bezwaar
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -59,6 +59,7 @@ articles:
             type: boolean
           - name: reden_niet_mogelijk
             type: string
+            nullable: true
           - name: bezwaartermijn
             type: number
             type_spec:
@@ -79,6 +80,8 @@ articles:
               min: 0
         actions:
           - output: bezwaar_mogelijk
+            # Het aantal gebeurtenissen van een soort wordt geteld met een filter en een telling van 1 per
+            # gebeurtenis (RFC-016). De POC telde de waarheidswaarden zelf op (RFC-037, T1).
             value:
               operation: AND
               conditions:
@@ -94,10 +97,11 @@ articles:
                   subject:
                     operation: FOREACH
                     collection: $gebeurtenissen
-                    body:
+                    filter:
                       operation: EQUALS
                       subject: $event_type
                       value: Objected
+                    body: 1
                     combine: ADD
                   value: 0
             legal_basis:
@@ -134,10 +138,11 @@ articles:
                       subject:
                         operation: FOREACH
                         collection: $gebeurtenissen
-                        body:
+                        filter:
                           operation: EQUALS
                           subject: $event_type
                           value: Objected
+                        body: 1
                         combine: ADD
                       value: 0
                   then: er is al eerder bezwaar gemaakt tegen dit besluit

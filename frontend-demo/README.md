@@ -8,7 +8,7 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
 
 - **Geen backend.** De regelrecht-engine draait als WebAssembly in de browser
   (`public/wasm/pkg`, gebouwd door `just wasm-build` of de Dockerfile).
-- **Corpus** in `corpus/demo/`: wetten (schema v0.5.7), scenario's, `bindings.yaml`,
+- **Corpus** in `corpus/demo/`: wetten (schema v0.5.8), scenario's, `bindings.yaml`,
   `profiles.yaml`, `demo-config.yaml`, `services.yaml`. `scripts/copy-demo-corpus.mjs`
   kopieert het bij `predev`/`prebuild` naar `public/data` en schrijft `index.json`.
 - **Data**: `src/data/materialize.js` past de bindings toe op de persona-tabellen en

@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_studiefinanciering
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -95,6 +95,7 @@ articles:
               period_type: year
           - name: partner_bsn
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: partner_bsn
@@ -105,6 +106,7 @@ articles:
               type: point_in_time
           - name: partner_woonsituatie
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: woonsituatie
@@ -116,6 +118,7 @@ articles:
               period_type: month
           - name: partner_ouder1_inkomen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -130,6 +133,7 @@ articles:
               period_type: year
           - name: partner_ouder2_inkomen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
               precision: 0
@@ -144,15 +148,18 @@ articles:
               period_type: year
           - name: onderwijstype
             type: string
+            nullable: true
             source: {}
           - name: aantal_studerend_gezin
             type: number
             source: {}
           - name: partner_onderwijstype
             type: string
+            nullable: true
             source: {}
           - name: partner_aantal_studerend_gezin
             type: number
+            nullable: true
             source: {}
         output:
           - name: studiefinanciering
@@ -173,6 +180,12 @@ articles:
             type: boolean
         actions:
           - output: studiefinanciering
+            # De keuzes per onderwijstype hieronder hebben `default: 0`: art. 2.1 jo. 3.1 WSF 2000
+            # kennen alleen aan mbo, hbo en wo een basisbeurs en een aanvullende beurs toe, een ander
+            # onderwijstype geeft 0. De aanvullende beurs heeft eveneens `default: 0`: boven de
+            # inkomensgrens van art. 3.9 WSF 2000 bestaat er geen recht op. Zonder default leverde
+            # zo'n keuze binnen een optelling een afwezige waarde op waarmee niet gerekend kan worden
+            # (RFC-036).
             value:
               # Artikel 2.1 WSF 2000: alleen wie is ingeschreven voor een opleiding (onderwijstype
               # bekend) heeft recht op studiefinanciering. Zonder inschrijving is het bedrag 0; de
@@ -230,6 +243,7 @@ articles:
                                     value: UIT
                                   then: $basisbeurs_mbo_uit
                               default: $basisbeurs_mbo_thuis
+                        default: 0
                       - operation: IF
                         cases:
                           - when:
@@ -260,6 +274,7 @@ articles:
                                         subject: $onderwijstype
                                         value: MBO
                                       then: $max_aanvullende_beurs_mbo
+                                  default: 0
                                 - operation: SUBTRACT
                                   values:
                                     - 1
@@ -280,6 +295,7 @@ articles:
                                           values:
                                             - $inkomen_grens_geen_beurs
                                             - $inkomensdrempel_basis
+                        default: 0
               default: 0
             legal_basis:
               law: Wet studiefinanciering 2000
@@ -292,6 +308,9 @@ articles:
                 Artikel 3.1 bepaalt dat studiefinanciering bestaat uit de som van basisbeurs en
                 aanvullende beurs.
           - output: partner_studiefinanciering
+            # Art. 3.9 WSF 2000: de aanvullende beurs hangt af van het inkomen van de ouders en het aantal
+            # studerende kinderen. Voor de partner komen die uit het DUO-register op het partner-BSN en zijn
+            # ze afwezig zonder partner; de toets noemt ze voor de berekening (RFC-036).
             value:
               # Artikel 2.1 WSF 2000, voor de partner: geen inschrijving, geen studiefinanciering (0).
               # Zie de toelichting bij studiefinanciering (RFC-036).
@@ -347,16 +366,34 @@ articles:
                                     value: UIT
                                   then: $basisbeurs_mbo_uit
                               default: $basisbeurs_mbo_thuis
+                        default: 0
                       - operation: IF
                         cases:
                           - when:
-                              operation: LESS_THAN
-                              subject:
-                                operation: ADD
-                                values:
-                                  - $partner_ouder1_inkomen
-                                  - $partner_ouder2_inkomen
-                              value: $inkomen_grens_geen_beurs
+                              operation: AND
+                              conditions:
+                                - operation: NOT
+                                  value:
+                                    operation: EQUALS
+                                    subject: $partner_ouder1_inkomen
+                                    value: null
+                                - operation: NOT
+                                  value:
+                                    operation: EQUALS
+                                    subject: $partner_ouder2_inkomen
+                                    value: null
+                                - operation: NOT
+                                  value:
+                                    operation: EQUALS
+                                    subject: $partner_aantal_studerend_gezin
+                                    value: null
+                                - operation: LESS_THAN
+                                  subject:
+                                    operation: ADD
+                                    values:
+                                      - $partner_ouder1_inkomen
+                                      - $partner_ouder2_inkomen
+                                  value: $inkomen_grens_geen_beurs
                             then:
                               operation: MULTIPLY
                               values:
@@ -377,6 +414,7 @@ articles:
                                         subject: $partner_onderwijstype
                                         value: MBO
                                       then: $max_aanvullende_beurs_mbo
+                                  default: 0
                                 - operation: SUBTRACT
                                   values:
                                     - 1
@@ -397,6 +435,7 @@ articles:
                                           values:
                                             - $inkomen_grens_geen_beurs
                                             - $inkomensdrempel_basis
+                        default: 0
               default: 0
             legal_basis:
               law: Wet studiefinanciering 2000

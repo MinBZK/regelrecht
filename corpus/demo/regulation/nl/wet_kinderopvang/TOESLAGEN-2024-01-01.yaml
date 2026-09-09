@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_kinderopvang
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -57,6 +57,7 @@ articles:
                 bsn: $bsn
           - name: partner_bsn
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: partner_bsn
@@ -65,6 +66,7 @@ articles:
                 referentiedatum: $referencedate
           - name: partner_inkomen
             type: amount
+            nullable: true
             type_spec:
               unit: eurocent
             source:
@@ -89,6 +91,7 @@ articles:
                 bsn: $bsn
           - name: partner_gewerkte_uren
             type: number
+            nullable: true
             source:
               regulation: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
               output: gewerkte_uren
@@ -119,6 +122,9 @@ articles:
               min: 0
         actions:
           - output: voldoet_aan_voorwaarden
+            # Art. 1.6 lid 1 en 3 Wko: met partner bestaat het recht als ook de partner werkt of een
+            # traject volgt. Zonder partner is er geen partnervoorwaarde; de gewerkte uren van de partner
+            # komen uit het UWV-register en zijn afwezig zonder partner (RFC-036).
             value:
               operation: AND
               conditions:
@@ -129,9 +135,16 @@ articles:
                       value: null
                     - operation: OR
                       conditions:
-                        - subject: $partner_gewerkte_uren
-                          operation: GREATER_THAN_OR_EQUAL
-                          value: $min_hours_partner
+                        - operation: AND
+                          conditions:
+                            - operation: NOT
+                              value:
+                                operation: EQUALS
+                                subject: $partner_gewerkte_uren
+                                value: null
+                            - subject: $partner_gewerkte_uren
+                              operation: GREATER_THAN_OR_EQUAL
+                              value: $min_hours_partner
                         - subject: $verwachte_partner_uren
                           operation: GREATER_THAN_OR_EQUAL
                           value: $min_hours_per_week
@@ -144,6 +157,9 @@ articles:
         # berekent elke uitvoer, daarom expliciet aan voldoet_aan_voorwaarden gekoppeld.
             value: $voldoet_aan_voorwaarden
           - output: jaarbedrag
+            # Art. 1.7 Wko jo. art. 7 Awir: het gezamenlijke toetsingsinkomen omvat dat van de partner als
+            # er een partner is. Het partnerinkomen is afwezig zonder partner (de aanroep van de Wet IB
+            # wordt dan overgeslagen), dus de toets staat op het partnerinkomen zelf (RFC-036).
             value:
               operation: FOREACH
               collection: $aangegeven_uren
@@ -179,7 +195,7 @@ articles:
                                       operation: NOT
                                       value:
                                         operation: EQUALS
-                                        subject: $partner_bsn
+                                        subject: $partner_inkomen
                                         value: null
                                     then: $partner_inkomen
                                 default: 0
@@ -197,7 +213,7 @@ articles:
                                       operation: NOT
                                       value:
                                         operation: EQUALS
-                                        subject: $partner_bsn
+                                        subject: $partner_inkomen
                                         value: null
                                     then: $partner_inkomen
                                 default: 0

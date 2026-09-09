@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: algemene_ouderdomswet
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -70,6 +70,7 @@ articles:
               type: point_in_time
           - name: partner_geboortedatum
             type: date
+            nullable: true
             source:
               regulation: wet_brp
               output: partner_geboortedatum
@@ -104,6 +105,7 @@ articles:
               type: point_in_time
           - name: partner_bsn
             type: string
+            nullable: true
             source:
               regulation: wet_brp
               output: partner_bsn
@@ -112,6 +114,7 @@ articles:
                 referentiedatum: $referencedate
           - name: partner_leeftijd
             type: number
+            nullable: true
             type_spec:
               unit: years
               precision: 0
@@ -168,6 +171,7 @@ articles:
               type: point_in_time
           - name: partner_pensioenleeftijd
             type: number
+            nullable: true
             type_spec:
               unit: years
               precision: 2
@@ -280,100 +284,64 @@ articles:
                 Artikel 13 lid 1 AOW: pensioen verminderd met 2% voor elk niet-verzekerd jaar
           - output: pensioenbedrag
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            # Art. 8 AOW: de toeslag geldt voor de pensioengerechtigde met een partner die jonger is dan
+            # de AOW-leeftijd. Zonder in de BRP geregistreerde partner zijn de leeftijd en AOW-leeftijd van
+            # de partner afwezig en is er geen toeslag (RFC-036).
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject:
-                      operation: MULTIPLY
-                      values:
-                        - $basisbedrag
-                        - $opbouwpercentage
-                        - operation: IF
-                          cases:
-                            - when:
-                                operation: EQUALS
-                                subject: $heeft_partner
-                                value: true
-                              then:
-                                operation: ADD
-                                values:
-                                  - 1
-                                  - operation: IF
-                                    cases:
-                                      - when:
-                                          operation: AND
-                                          conditions:
-                                            - operation: LESS_THAN
-                                              subject: $partner_leeftijd
-                                              value: $partner_pensioenleeftijd
-                                            - operation: LESS_THAN
-                                              subject: $partner_inkomen
-                                              value: $inkomensgrens_partner
-                                        then:
-                                          operation: MIN
-                                          values:
-                                            - operation: DIVIDE
-                                              values:
-                                                - $partner_toeslag_maximum
-                                                - $basisbedrag_gedeeld
-                                            - operation: DIVIDE
-                                              values:
-                                                - operation: SUBTRACT
-                                                  values:
-                                                    - $inkomensgrens_partner
-                                                    - $partner_inkomen
-                                                - $kortingsdeler
-                                    default: 0
-                          default: 1
-                    value: null
-                  then: null
-              default:
-                operation: ROUND
-                precision: 0
-                value:
-                  operation: MULTIPLY
-                  values:
-                    - $basisbedrag
-                    - $opbouwpercentage
-                    - operation: IF
-                      cases:
-                        - when:
-                            operation: EQUALS
-                            subject: $heeft_partner
-                            value: true
-                          then:
-                            operation: ADD
-                            values:
-                              - 1
-                              - operation: IF
-                                cases:
-                                  - when:
-                                      operation: AND
-                                      conditions:
-                                        - operation: LESS_THAN
+              operation: ROUND
+              precision: 0
+              value:
+                operation: MULTIPLY
+                values:
+                  - $basisbedrag
+                  - $opbouwpercentage
+                  - operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $heeft_partner
+                          value: true
+                        then:
+                          operation: ADD
+                          values:
+                            - 1
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: AND
+                                    conditions:
+                                      - operation: NOT
+                                        value:
+                                          operation: EQUALS
                                           subject: $partner_leeftijd
-                                          value: $partner_pensioenleeftijd
-                                        - operation: LESS_THAN
-                                          subject: $partner_inkomen
-                                          value: $inkomensgrens_partner
-                                    then:
-                                      operation: MIN
-                                      values:
-                                        - operation: DIVIDE
-                                          values:
-                                            - $partner_toeslag_maximum
-                                            - $basisbedrag_gedeeld
-                                        - operation: DIVIDE
-                                          values:
-                                            - operation: SUBTRACT
-                                              values:
-                                                - $inkomensgrens_partner
-                                                - $partner_inkomen
-                                            - $kortingsdeler
-                                default: 0
-                      default: 1
+                                          value: null
+                                      - operation: NOT
+                                        value:
+                                          operation: EQUALS
+                                          subject: $partner_pensioenleeftijd
+                                          value: null
+                                      - operation: LESS_THAN
+                                        subject: $partner_leeftijd
+                                        value: $partner_pensioenleeftijd
+                                      - operation: LESS_THAN
+                                        subject: $partner_inkomen
+                                        value: $inkomensgrens_partner
+                                  then:
+                                    operation: MIN
+                                    values:
+                                      - operation: DIVIDE
+                                        values:
+                                          - $partner_toeslag_maximum
+                                          - $basisbedrag_gedeeld
+                                      - operation: DIVIDE
+                                        values:
+                                          - operation: SUBTRACT
+                                            values:
+                                              - $inkomensgrens_partner
+                                              - $partner_inkomen
+                                          - $kortingsdeler
+                              default: 0
+                    default: 1
             legal_basis:
               law: Algemene Ouderdomswet
               bwb_id: BWBR0002221

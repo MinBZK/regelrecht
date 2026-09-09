@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: besluit_bijstandverlening_zelfstandigen
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -147,6 +147,7 @@ articles:
                 bsn: $bsn
           - name: bbz_aanvraag
             type: object
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden
@@ -155,6 +156,7 @@ articles:
             type: boolean
           - name: categorie_zelfstandige
             type: string
+            nullable: true
           - name: algemene_bijstand_bedrag
             type: amount
             type_spec:
@@ -176,9 +178,17 @@ articles:
             type: string
         actions:
           - output: voldoet_aan_voorwaarden
+            # Art. 2 lid 1 jo. art. 35 Bbz 2004: bijstand wordt op aanvraag verleend; zonder
+            # aanvraagdossier is er niets te beoordelen. De overige voorwaarden lezen eigenschappen
+            # van het dossier, dat afwezig is voor wie geen aanvraag deed (RFC-036).
             value:
               operation: AND
               conditions:
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $bbz_aanvraag
+                    value: null
                 - subject: $is_actieve_ondernemer
                   operation: EQUALS
                   value: true

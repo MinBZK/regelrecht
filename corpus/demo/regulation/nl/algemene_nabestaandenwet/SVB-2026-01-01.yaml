@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: algemene_nabestaandenwet
 regulatory_layer: WET
 publication_date: '2026-01-01'
@@ -110,15 +110,18 @@ articles:
               period_type: year
           - name: partner_verzekerd
             type: boolean
+            nullable: true
             source: {}
           - name: overlijdensdatum_partner
             type: date
+            nullable: true
             source: {}
           - name: ao_percentage
             type: number
             source: {}
           - name: heeft_kinderen_onder_18
             type: boolean
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden

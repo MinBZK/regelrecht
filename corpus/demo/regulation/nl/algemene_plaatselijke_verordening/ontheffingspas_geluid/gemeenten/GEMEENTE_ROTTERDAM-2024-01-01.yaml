@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: algemene_plaatselijke_verordening/ontheffingspas_geluid
 regulatory_layer: GEMEENTELIJKE_VERORDENING
 publication_date: '2024-01-01'
@@ -47,6 +47,7 @@ articles:
         input:
           - name: kvk_status
             type: string
+            nullable: true
             source:
               regulation: handelsregisterwet/bedrijfsgegevens
               output: status
@@ -57,6 +58,7 @@ articles:
             source: {}
           - name: heeft_actieve_klachten
             type: boolean
+            nullable: true
             source: {}
         output:
           - name: voldoet_aan_voorwaarden

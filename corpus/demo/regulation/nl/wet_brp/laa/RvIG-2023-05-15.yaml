@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_brp/laa
 regulatory_layer: WET
 publication_date: '2023-05-15'
@@ -60,6 +60,7 @@ articles:
                 adres: $adres
           - name: bag_gebruiksdoel
             type: string
+            nullable: true
             source:
               regulation: wet_bag
               output: gebruiksdoel
@@ -94,14 +95,11 @@ articles:
               precision: 0
         actions:
           - output: voldoet_aan_voorwaarden
-            value:
-              operation: AND
-              conditions:
-                - operation: NOT
-                  value:
-                    operation: EQUALS
-                    subject: $adres
-                    value: null
+            # Het adres is een verplichte, nooit afwezige parameter: een aanroeper zonder
+            # BRP-adres slaat deze wet over (RFC-007/RFC-036) en een afwezig adres op het
+            # hoogste niveau wordt aan de grens geweigerd. De POC-toets op een None-adres kon
+            # dus nooit onwaar zijn; art. 2.34 e.v. Wet BRP (terugmelding en adresonderzoek gaan over een opgegeven adres).
+            value: true
           - output: genereer_signaal
             value:
               operation: OR

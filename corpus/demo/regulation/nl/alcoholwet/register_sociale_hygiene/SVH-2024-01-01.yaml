@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: alcoholwet/register_sociale_hygiene
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -48,16 +48,21 @@ articles:
         input:
           - name: registratie
             type: object
+            nullable: true
             source: {}
         output:
           - name: is_geregistreerd
             type: boolean
+            nullable: true
           - name: registratienummer
             type: string
+            nullable: true
           - name: naam
             type: string
+            nullable: true
           - name: registratiedatum
             type: date
+            nullable: true
         actions:
           - output: is_geregistreerd
             value: $registratie.is_geregistreerd
