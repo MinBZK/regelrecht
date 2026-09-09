@@ -108,12 +108,10 @@ articles:
                     value: $meerderjarigheid_leeftijd
                   - operation: OR
                     conditions:
+                  # Art. 1:245 BW: ontbrekende einddatum is afwezig (null), geen lege tekst; POC-tak verwijderd.
                       - operation: EQUALS
                         subject: $current.datum_einde
                         value: null
-                      - operation: EQUALS
-                        subject: $current.datum_einde
-                        value: ''
                       - operation: GREATER_THAN
                         subject: $current.datum_einde
                         value: $referencedate

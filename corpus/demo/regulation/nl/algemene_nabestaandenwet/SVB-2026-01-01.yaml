@@ -171,7 +171,10 @@ articles:
                       operation: GREATER_THAN_OR_EQUAL
                       value: $ao_drempel
           - output: is_gerechtigd
-            value: true
+            # Art. 14 lid 1 Anw: recht op uitkering ontstaat wanneer aan de
+            # voorwaarden van dit artikel is voldaan; geen ongeconditioneerd
+            # recht, dus geen constante maar de uitkomst van voldoet_aan_voorwaarden.
+            value: $voldoet_aan_voorwaarden
             legal_basis:
               law: Algemene nabestaandenwet
               bwb_id: BWBR0007795

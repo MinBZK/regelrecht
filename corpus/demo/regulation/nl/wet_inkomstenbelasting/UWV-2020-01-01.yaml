@@ -65,6 +65,9 @@ articles:
               type: period
               period_type: year
           - name: buitenlands_inkomen
+            # Art. 2.17 Wet IB 2001: het eigen buitenlands inkomen van de belastingplichtige is
+            # niet nullable (bindings.yaml: absent: 0) - geen rij betekent geen buitenlands
+            # inkomen, dus geen EQUALS-null-guard nodig.
             type: amount
             type_spec:
               unit: eurocent
@@ -117,6 +120,9 @@ articles:
               type: period
               period_type: year
           - name: partner_buitenlands_inkomen
+            # Art. 2.17 Wet IB 2001: dit veld is nullable met een EQUALS-null-guard hieronder
+            # (geen partner, of partner zonder buitenlands inkomen); bindings.yaml gebruikt
+            # daarom absent: null, niet absent: 0.
             type: amount
             nullable: true
             type_spec:

@@ -46,10 +46,11 @@ Feature: Berekening Kinderopvangtoeslag
       | bsn       | verwachting_65 |
       | 999888888 | 20.5           |
       | 999999999 | 20.5           |
+    # Art. 33 Wet SUWI: een lopend dienstverband heeft geen einddatum (null); de POC-lege tekst "" is geen datum
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                       | uitkeringsperiodes |
-      | 999888888 | [{"start_date":"2023-01-01","end_date":""}] | []                 |
-      | 999999999 | [{"start_date":"2023-01-01","end_date":""}] | []                 |
+      | 999888888 | [{"start_date":"2023-01-01","end_date":null}] | []                 |
+      | 999999999 | [{"start_date":"2023-01-01","end_date":null}] | []                 |
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     And the following parameters:
       | kinderopvang_kvk       | 87654321                                                                                                                       |
@@ -69,9 +70,10 @@ Feature: Berekening Kinderopvangtoeslag
     And the following "CBS" data with key "bsn" for law "wet_op_het_centraal_bureau_voor_de_statistiek":
       | bsn       | verwachting_65 |
       | 999888888 | 20.5           |
+    # Art. 33 Wet SUWI: een lopend dienstverband heeft geen einddatum (null); de POC-lege tekst "" is geen datum
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                       | uitkeringsperiodes |
-      | 999888888 | [{"start_date":"2023-03-01","end_date":""}] | []                 |
+      | 999888888 | [{"start_date":"2023-03-01","end_date":null}] | []                 |
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     And the following parameters:
       | kinderopvang_kvk       | 23456789                                                                                                                                                                                                                                        |
@@ -94,9 +96,10 @@ Feature: Berekening Kinderopvangtoeslag
       | bsn       | verwachting_65 |
       | 999888888 | 20.5           |
       | 999777777 | 20.5           |
+    # Art. 33 Wet SUWI: een lopend dienstverband heeft geen einddatum (null); de POC-lege tekst "" is geen datum
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                                 | uitkeringsperiodes |
-      | 999888888 | [{"start_date":"2022-09-01","end_date":""}]           | []                 |
+      | 999888888 | [{"start_date":"2022-09-01","end_date":null}]           | []                 |
       | 999777777 | [{"start_date":"2023-01-01","end_date":"2023-01-15"}] | []                 |
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     And the following parameters:
@@ -119,10 +122,11 @@ Feature: Berekening Kinderopvangtoeslag
       | bsn       | verwachting_65 |
       | 999888888 | 20.5           |
       | 888888880 | 20.5           |
+    # Art. 33 Wet SUWI: een lopend dienstverband heeft geen einddatum (null); de POC-lege tekst "" is geen datum
     And the following "UWV" data with key "bsn" for law "wet_structuur_uitvoeringsorganisatie_werk_en_inkomen":
       | bsn       | dienstverbandperiodes                       | uitkeringsperiodes |
-      | 999888888 | [{"start_date":"2020-02-01","end_date":""}] | []                 |
-      | 888888880 | [{"start_date":"2020-02-01","end_date":""}] | []                 |
+      | 999888888 | [{"start_date":"2020-02-01","end_date":null}] | []                 |
+      | 888888880 | [{"start_date":"2020-02-01","end_date":null}] | []                 |
     # POC: the citizen submitted these values as claims; they override the inputs of the same name
     And the following parameters:
       | kinderopvang_kvk       | 56789012                                                                                                                                                                                                                                              |

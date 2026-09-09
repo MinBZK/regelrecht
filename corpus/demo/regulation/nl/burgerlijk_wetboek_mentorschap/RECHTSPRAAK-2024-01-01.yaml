@@ -94,12 +94,10 @@ articles:
                     value: ACTIEF
                   - operation: OR
                     conditions:
+                  # Art. 1:462 BW: ontbrekende einddatum is afwezig (null), geen lege tekst; POC-tak verwijderd.
                       - operation: EQUALS
                         subject: $current.datum_einde
                         value: null
-                      - operation: EQUALS
-                        subject: $current.datum_einde
-                        value: ''
                       - operation: GREATER_THAN
                         subject: $current.datum_einde
                         value: $referencedate

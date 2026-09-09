@@ -86,7 +86,11 @@ articles:
                   subject: $aantal_werknemers
                   value: $werknemers_drempel
           - output: rapportageverplichting
-            value: true
+            # Art. 18.11 lid 1 en 2: de rapportageverplichting geldt alleen als de
+            # onderneming voldoet aan de voorwaarden van lid 1 (aanwijzing) en niet
+            # onder een van de uitzonderingen van lid 2 valt; dat is precies
+            # voldoet_aan_voorwaarden.
+            value: $voldoet_aan_voorwaarden
             legal_basis:
               law: Besluit activiteiten leefomgeving
               bwb_id: BWBR0041330

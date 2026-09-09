@@ -12,7 +12,7 @@ Feature: Burgerlijk Wetboek Handelingsonbekwaamheid (BW 1:378-391)
     Given parameter "bsn" is "999500001"
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                                    |
-      | 999500001 | [{"bsn_curator":"999410001","bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999500001 | [{"bsn_curator":"999410001","bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":null,"status":"ACTIEF"}] |
       | 999410001 | []                                                                                                                                                       |
     When I evaluate outputs "is_onder_curatele, is_handelingsonbekwaam" of "burgerlijk_wetboek_handelingsonbekwaamheid"
     Then output "is_onder_curatele" is true
@@ -27,7 +27,7 @@ Feature: Burgerlijk Wetboek Handelingsonbekwaamheid (BW 1:378-391)
       | bsn       | curatele_als_curandus                                                                                                                                    |
       | 999993653 | []                                                                                                                                                       |
       | 999410001 | []                                                                                                                                                       |
-      | 999500001 | [{"bsn_curator":"999410001","bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999500001 | [{"bsn_curator":"999410001","bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":null,"status":"ACTIEF"}] |
     When I evaluate outputs "is_onder_curatele, is_handelingsonbekwaam" of "burgerlijk_wetboek_handelingsonbekwaamheid"
     Then output "is_onder_curatele" is false
     And output "is_handelingsonbekwaam" is false
@@ -73,7 +73,7 @@ Feature: Burgerlijk Wetboek Handelingsonbekwaamheid (BW 1:378-391)
     Given parameter "bsn" is "999500001"
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                                    |
-      | 999500001 | [{"bsn_curator":"999410001","bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999500001 | [{"bsn_curator":"999410001","bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":null,"status":"ACTIEF"}] |
       | 999410001 | []                                                                                                                                                       |
     When I evaluate outputs "heeft_delegaties" of "burgerlijk_wetboek_handelingsonbekwaamheid"
     Then output "heeft_delegaties" is true
@@ -88,7 +88,7 @@ Feature: Burgerlijk Wetboek Handelingsonbekwaamheid (BW 1:378-391)
       | bsn       | curatele_als_curandus                                                                                                                                    |
       | 999993653 | []                                                                                                                                                       |
       | 999410001 | []                                                                                                                                                       |
-      | 999500001 | [{"bsn_curator":"999410001","bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999500001 | [{"bsn_curator":"999410001","bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":null,"status":"ACTIEF"}] |
     When I evaluate outputs "heeft_delegaties" of "burgerlijk_wetboek_handelingsonbekwaamheid"
     Then output "heeft_delegaties" is true
     # POC: output "subject_ids" contains 999993653 (array membership not expressible in the canonical grammar)

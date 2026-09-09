@@ -54,6 +54,21 @@ articles:
           - name: gebeurtenissen
             type: object
             source: {}
+          # Losse getypeerde inputs voor art. 6:7 en 7:10: een subveld van het object-input
+          # 'wet' kan geen nullable krijgen, terwijl deze termijnen wel legitiem afwezig
+          # kunnen zijn (dan geldt de wettelijke standaardtermijn).
+          - name: bezwaartermijn_weken
+            type: number
+            nullable: true
+            source: {}
+          - name: beslistermijn_weken
+            type: number
+            nullable: true
+            source: {}
+          - name: verdagingstermijn_weken
+            type: number
+            nullable: true
+            source: {}
         output:
           - name: bezwaar_mogelijk
             type: boolean
@@ -162,9 +177,9 @@ articles:
                     operation: NOT
                     value:
                       operation: EQUALS
-                      subject: $wet.bezwaartermijn_weken
+                      subject: $bezwaartermijn_weken
                       value: null
-                  then: $wet.bezwaartermijn_weken
+                  then: $bezwaartermijn_weken
               default: $default_termijn_bezwaar_weken
             legal_basis:
               law: Algemene wet bestuursrecht
@@ -183,9 +198,9 @@ articles:
                     operation: NOT
                     value:
                       operation: EQUALS
-                      subject: $wet.beslistermijn_weken
+                      subject: $beslistermijn_weken
                       value: null
-                  then: $wet.beslistermijn_weken
+                  then: $beslistermijn_weken
               default: $default_termijn_beslissing_weken
             legal_basis:
               law: Algemene wet bestuursrecht
@@ -206,9 +221,9 @@ articles:
                     operation: NOT
                     value:
                       operation: EQUALS
-                      subject: $wet.verdagingstermijn_weken
+                      subject: $verdagingstermijn_weken
                       value: null
-                  then: $wet.verdagingstermijn_weken
+                  then: $verdagingstermijn_weken
               default: $default_termijn_verdaging_weken
             legal_basis:
               law: Algemene wet bestuursrecht

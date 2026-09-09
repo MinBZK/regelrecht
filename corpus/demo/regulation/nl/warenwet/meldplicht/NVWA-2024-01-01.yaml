@@ -37,6 +37,24 @@ articles:
         melding_deadline_uren: 4
         rapportage_methode: NVWA meldformulier (nvwa.nl/melden)
         toezichthouder: NVWA
+      untranslatables:
+        - construct: >-
+            "naar het oordeel van Onze Minister" (lid 1): de last om houders te
+            waarschuwen ontstaat uit een discretionair oordeel van de Minister dat de
+            waar gevaar oplevert, niet uit een geregistreerd feit
+          reason: >-
+            er is geen operatie voor een discretionaire bestuurlijke beoordeling; het
+            dichtstbijzijnde geregistreerde feit (heeft_actief_incident) is een proxy
+            voor het gevaar, niet voor het ministeriële oordeel zelf of de last die
+            daaruit volgt
+          suggestion: >-
+            modelleer de last zelf als apart gegeven (bijv. een NVWA-lastbesluit) zodra
+            zo'n register bestaat, in plaats van heeft_actief_incident als proxy te
+            gebruiken
+          legal_text_excerpt: >-
+            Indien waren naar het oordeel van Onze Minister gevaar opleveren voor de
+            veiligheid of de gezondheid van de mens, [...] kan hij [...] gelasten
+          accepted: true
       execution:
         produces:
           legal_character: BESCHIKKING
@@ -79,7 +97,23 @@ articles:
                   operation: EQUALS
                   value: true
           - output: heeft_meldplicht
-            value: true
+            # Art. 21 lid 1: de meldplicht ontstaat pas als er daadwerkelijk een incident
+            # is (waren die naar het oordeel van de Minister gevaar opleveren) - vgl.
+            # is_event_driven. Zonder bekend incident (heeft_actief_incident afwezig) is
+            # er geen grondslag om een meldplicht vast te stellen, dus dan is de uitkomst
+            # onbekend in plaats van stilzwijgend "geen meldplicht" (RFC-036): de absentie
+            # wordt eerst getoetst met EQUALS ... null in plaats van als default te gelden.
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $heeft_actief_incident
+                    value: null
+                - subject: $heeft_actief_incident
+                  operation: EQUALS
+                  value: true
             legal_basis:
               law: Warenwet
               bwb_id: BWBR0001969
@@ -88,7 +122,9 @@ articles:
                 https://wetten.overheid.nl/BWBR0001969/2024-01-01#HoofdstukVII_Artikel21
               juriconnect: jci1.3:c:BWBR0001969&artikel=21&z=2024-01-01&g=2024-01-01
               explanation: >-
-                Het bedrijf is een levensmiddelenbedrijf; de meldplicht is van toepassing
+                De meldplicht ontstaat wanneer een waar naar het oordeel van de Minister
+                gevaar oplevert; heeft_actief_incident is daarvan het geregistreerde feit
+                (zie untranslatables voor het ministeriele oordeel zelf)
           - output: heeft_actief_incident
             value: $heeft_actief_incident
             legal_basis:

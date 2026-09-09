@@ -136,18 +136,14 @@ articles:
                           from: $start_date
                   # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
                   # peildatum; de engine eist een datum, daarom expliciet gemaakt.
+                  # Art. 33 Wet SUWI: ontbrekende einddatum is afwezig (null), geen lege tekst; POC-tak verwijderd.
                           to:
                             operation: IF
                             cases:
                               - when:
-                                  operation: OR
-                                  conditions:
-                                    - operation: EQUALS
-                                      subject: $end_date
-                                      value: null
-                                    - operation: EQUALS
-                                      subject: $end_date
-                                      value: ''
+                                  operation: EQUALS
+                                  subject: $end_date
+                                  value: null
                                 then: $referencedate
                             default: $end_date
                           in: days
@@ -159,18 +155,14 @@ articles:
                           from: $start_date
                   # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
                   # peildatum; de engine eist een datum, daarom expliciet gemaakt.
+                  # Art. 33 Wet SUWI: ontbrekende einddatum is afwezig (null), geen lege tekst; POC-tak verwijderd.
                           to:
                             operation: IF
                             cases:
                               - when:
-                                  operation: OR
-                                  conditions:
-                                    - operation: EQUALS
-                                      subject: $end_date
-                                      value: null
-                                    - operation: EQUALS
-                                      subject: $end_date
-                                      value: ''
+                                  operation: EQUALS
+                                  subject: $end_date
+                                  value: null
                                 then: $referencedate
                             default: $end_date
                           in: days
@@ -187,18 +179,14 @@ articles:
                     from: $start_date
                 # POC: een lopende periode had geen einddatum (leeg/None) en telde tot de
                 # peildatum; de engine eist een datum, daarom expliciet gemaakt.
+                # Art. 33 Wet SUWI: ontbrekende einddatum is afwezig (null), geen lege tekst; POC-tak verwijderd.
                     to:
                       operation: IF
                       cases:
                         - when:
-                            operation: OR
-                            conditions:
-                              - operation: EQUALS
-                                subject: $end_date
-                                value: null
-                              - operation: EQUALS
-                                subject: $end_date
-                                value: ''
+                            operation: EQUALS
+                            subject: $end_date
+                            value: null
                           then: $referencedate
                       default: $end_date
                     in: days

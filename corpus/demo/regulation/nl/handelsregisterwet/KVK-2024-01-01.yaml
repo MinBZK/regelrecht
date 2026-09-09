@@ -58,8 +58,11 @@ articles:
         output:
           - name: is_actieve_ondernemer
             type: boolean
-          - name: kvk_nummer
-            type: string
+          # Art. 9 lid 1: het kvk-nummer van de actieve inschrijving. Eén ondernemer kan
+          # meer dan één actieve inschrijving hebben (bv. twee eenmanszaken), dus dit is
+          # een array van kvk-nummers, niet een enkelvoudige string.
+          - name: kvk_nummers_actieve_inschrijvingen
+            type: array
         actions:
           - output: is_actieve_ondernemer
         # POC: impliciete map over een lijst ($inschrijvingen.rechtsvorm); expliciet
@@ -102,13 +105,24 @@ articles:
               juriconnect: jci1.3:c:BWBR0021777&artikel=7&z=2024-01-01&g=2024-01-01
               explanation: >-
                 Artikel 7 Handelsregisterwet bepaalt wanneer sprake is van actief ondernemerschap
-          - output: kvk_nummer
-        # POC: impliciete map over een lijst ($inschrijvingen.kvk_nummer); expliciet als FOREACH (RFC-016)
+          - output: kvk_nummers_actieve_inschrijvingen
+        # Art. 9 lid 1: het kvk-nummer wordt opgehaald uit de inschrijving in het
+        # handelsregister; art. 9 verwijst naar de actieve inschrijving zoals art. 7
+        # die afbakent (rechtsvorm + status), dus filter op diezelfde criteria (RFC-016).
             value:
               operation: FOREACH
               collection: $inschrijvingen
-              as: item
-              body: $item.kvk_nummer
+              as: inschrijving
+              filter:
+                operation: AND
+                conditions:
+                  - operation: IN
+                    subject: $inschrijving.rechtsvorm
+                    value: $ondernemersvormen
+                  - operation: IN
+                    subject: $inschrijving.status
+                    value: $actieve_statussen
+              body: $inschrijving.kvk_nummer
             legal_basis:
               law: Handelsregisterwet 2007
               bwb_id: BWBR0021777

@@ -57,8 +57,6 @@ articles:
             type: number
             source: {}
         output:
-          - name: voldoet_aan_voorwaarden
-            type: boolean
           - name: woon_werk_auto_benzine
             type: number
           - name: woon_werk_auto_diesel
@@ -72,13 +70,10 @@ articles:
           - name: co2_uitstoot_totaal
             type: number
         actions:
-          - output: voldoet_aan_voorwaarden
-            value:
-              operation: AND
-              conditions:
-                - operation: EQUALS
-                  subject: true
-                  value: true
+          # Art. 18.14 lid 2 kent geen voorwaarde: het lid schrijft alleen voor
+          # hoe de emissie wordt berekend (kilometers x emissiefactor, opgeteld).
+          # De verwijderde output "voldoet_aan_voorwaarden" was AND(EQUALS true
+          # true), een constante zonder grondslag in de tekst.
           - output: woon_werk_auto_benzine
             value: $woon_werk_auto_benzine
             legal_basis:

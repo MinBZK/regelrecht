@@ -84,6 +84,11 @@ articles:
                 referentiedatum: $referencedate
           - name: gewerkte_uren
             type: number
+            # Art. 1.5: niet nullable. wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+            # berekent gewerkte_uren als FOREACH/MULTIPLY over dienstverbandperiodes, een
+            # array-input (bindings.yaml, kind: table) die zonder rijen leeg is (0 dienstverbanden),
+            # niet null/unknown; array-inputs dragen geen `absent` (bindings.yaml regel 24-25).
+            # Voor de eigen bsn levert de bron dus altijd een getal (0 als er geen dienstverband is).
             source:
               regulation: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
               output: gewerkte_uren

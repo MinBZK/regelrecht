@@ -363,9 +363,11 @@ algemene_plaatselijke_verordening/terrassen:
         value: $terras_locatie
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # bgt_terraslocaties: no BGT surface found for this address and location; the space is unknown,
-    # not 0 m2
-    absent: unknown
+    # Art. 2:30b lid 1/2 APV Rotterdam: het register (BGT-terraslocaties) is gezaghebbend over
+    # welke oppervlakte voor een adres/locatie is toegestaan. Geen rij betekent geen
+    # BGT-terraslocatie voor dit adres/locatie, dus geen toegestane oppervlakte: een echte
+    # afwezigheid, geen onbekende waarde (vgl. nullable: true op beschikbare_oppervlakte in de wet).
+    absent: null
   functie_oppervlak:
     table: bgt_terraslocaties
     field: functie_oppervlak
@@ -419,8 +421,10 @@ algemene_plaatselijke_verordening/terrassen:
         value: $seizoen
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # terrassenbeleid: policy table without a row for this area/season; the limit is unknown, not 0
-    absent: unknown
+    # Art. 2:30b lid 1/2 APV Rotterdam: geen rij in terrassenbeleid betekent geen beleid voor dit
+    # gebied/seizoen, dus geen maximum sluitingstijd vastgesteld: een echte afwezigheid, geen
+    # onbekende waarde (vgl. nullable: true op max_sluitingstijd_doordeweeks in de wet).
+    absent: null
   max_sluitingstijd_weekend:
     table: terrassenbeleid
     field: max_sluitingstijd_weekend
@@ -431,8 +435,10 @@ algemene_plaatselijke_verordening/terrassen:
         value: $seizoen
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # terrassenbeleid: policy table without a row for this area/season; the limit is unknown, not 0
-    absent: unknown
+    # Art. 2:30b lid 1/2 APV Rotterdam: geen rij in terrassenbeleid betekent geen beleid voor dit
+    # gebied/seizoen, dus geen maximum sluitingstijd vastgesteld: een echte afwezigheid, geen
+    # onbekende waarde (vgl. nullable: true op max_sluitingstijd_weekend in de wet).
+    absent: null
   tarief_per_m2:
     table: precario_tarieven
     field: tarief_per_m2
@@ -443,8 +449,10 @@ algemene_plaatselijke_verordening/terrassen:
         value: terras
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # precario_tarieven: no tariff row means the rate is unknown, not that no precario is due
-    absent: unknown
+    # Art. 2:30b lid 1/2 APV Rotterdam: geen rij in precario_tarieven betekent geen tarief
+    # vastgesteld voor dit adres/gebruik: een echte afwezigheid, geen onbekende waarde
+    # (vgl. nullable: true op tarief_per_m2 in de wet).
+    absent: null
 algemene_wet_bestuursrecht:
   is_orgaan_van_rechtspersoon:
     table: organisaties
@@ -613,9 +621,33 @@ awb/bezwaar:
       - name
       - valid_from
       - legal_character
-      - bezwaartermijn_weken
-      - beslistermijn_weken
-      - verdagingstermijn_weken
+    select_on:
+      - name: uuid
+        value: $zaak.rulespec_uuid
+    kind: laws
+    service: JenV
+  # Losse scalaire inputs (art. 6:7/7:10): dezelfde tabel/rij als 'wet', maar los
+  # gebonden zodat de wet 'nullable: true' erop kan zetten (niet declareerbaar op
+  # een subveld van een object-input).
+  bezwaartermijn_weken:
+    table: laws
+    field: bezwaartermijn_weken
+    select_on:
+      - name: uuid
+        value: $zaak.rulespec_uuid
+    kind: laws
+    service: JenV
+  beslistermijn_weken:
+    table: laws
+    field: beslistermijn_weken
+    select_on:
+      - name: uuid
+        value: $zaak.rulespec_uuid
+    kind: laws
+    service: JenV
+  verdagingstermijn_weken:
+    table: laws
+    field: verdagingstermijn_weken
     select_on:
       - name: uuid
         value: $zaak.rulespec_uuid
@@ -1793,8 +1825,10 @@ wet_inkomstenbelasting:
         value: $partner_bsn
     kind: table
     service: BELASTINGDIENST
-    # Belastingdienst box/aftrek registers: no row means no such income, asset, debt or deduction (0)
-    absent: 0
+    # Art. 2.17 Wet IB 2001: dit veld is nullable met een EQUALS-null-guard (geen partner, of
+    # partner zonder buitenlands inkomen); geen rij mag dus niet stil 0 worden, anders wordt de
+    # guard nooit geraakt.
+    absent: null
   buitenlands_inkomen:
     table: buitenlands
     field: inkomen
@@ -1803,7 +1837,8 @@ wet_inkomstenbelasting:
         value: $bsn
     kind: table
     service: BELASTINGDIENST
-    # Belastingdienst box/aftrek registers: no row means no such income, asset, debt or deduction (0)
+    # Art. 2.17 Wet IB 2001: het eigen buitenlands inkomen van de belastingplichtige is niet
+    # nullable (geen guard) - geen rij betekent geen buitenlands inkomen, dus absent: 0.
     absent: 0
 wet_kinderopvang:
   kinderopvang_kvk:

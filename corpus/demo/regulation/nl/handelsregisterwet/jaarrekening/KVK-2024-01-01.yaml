@@ -113,7 +113,9 @@ articles:
                   operation: IN
                   value: $deponeringsplichtige_rechtsvormen
           - output: heeft_deponeringsplicht
-            value: true
+            # Art. 2:394 lid 1: de deponeringsplicht geldt voor de rechtspersoon die aan de
+            # voorwaarden (rechtsvorm) voldoet, niet onvoorwaardelijk voor iedereen.
+            value: $voldoet_aan_voorwaarden
             legal_basis:
               law: Burgerlijk Wetboek Boek 2
               bwb_id: BWBR0003045

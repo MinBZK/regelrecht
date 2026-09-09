@@ -29,8 +29,9 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 999999990 | 1999-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "heeft_recht_op_vergunning" is true
+    # Art. 8 lid 1 onder b Alcoholwet: de demo heeft geen levensgedrag-register, dus het levensgedrag is onbekend en de uitkomst ook (was true via een constante false)
+    Then output "voldoet_aan_voorwaarden" is unknown
+    And output "heeft_recht_op_vergunning" is unknown
 
   Scenario: Succesvolle aanvraag - precies 21 jaar (grenswaarde artikel 8 lid 1 onder a)
     Given parameter "kvk_nummer" is "85234567"
@@ -53,8 +54,9 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 999999990 | 2003-06-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "heeft_recht_op_vergunning" is true
+    # Art. 8 lid 1 onder b Alcoholwet: de demo heeft geen levensgedrag-register, dus het levensgedrag is onbekend en de uitkomst ook (was true via een constante false)
+    Then output "voldoet_aan_voorwaarden" is unknown
+    And output "heeft_recht_op_vergunning" is unknown
 
   Scenario: Succesvolle aanvraag - precies 35 m2 vloeroppervlakte (grenswaarde artikel 10 lid 2)
     Given parameter "kvk_nummer" is "85234567"
@@ -77,8 +79,9 @@ Feature: Bepalen recht op Alcoholwetvergunning horeca Rotterdam
       | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
       | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_recht_op_vergunning" of "alcoholwet/vergunning/rotterdam"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "heeft_recht_op_vergunning" is true
+    # Art. 8 lid 1 onder b Alcoholwet: de demo heeft geen levensgedrag-register, dus het levensgedrag is onbekend en de uitkomst ook (was true via een constante false)
+    Then output "voldoet_aan_voorwaarden" is unknown
+    And output "heeft_recht_op_vergunning" is unknown
 
   Scenario: Afwijzing - exploitant is 20 jaar (niet voldaan aan artikel 8 lid 1 onder a)
     Given parameter "kvk_nummer" is "85234567"

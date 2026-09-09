@@ -45,9 +45,8 @@ Feature: WPM Rapportageverplichting
     When I evaluate outputs "voldoet_aan_voorwaarden, rapportageverplichting" of "omgevingswet/werkgebonden_personenmobiliteit"
     Then output "voldoet_aan_voorwaarden" is true
     And output "rapportageverplichting" is true
-    When I evaluate outputs "voldoet_aan_voorwaarden, woon_werk_auto_benzine, woon_werk_auto_diesel, zakelijk_auto_benzine, zakelijk_auto_diesel, woon_werk_openbaar_vervoer, co2_uitstoot_totaal" of "omgevingswet/werkgebonden_personenmobiliteit/gegevens"
-    Then output "voldoet_aan_voorwaarden" is true
-    And output "woon_werk_auto_benzine" equals 10000
+    When I evaluate outputs "woon_werk_auto_benzine, woon_werk_auto_diesel, zakelijk_auto_benzine, zakelijk_auto_diesel, woon_werk_openbaar_vervoer, co2_uitstoot_totaal" of "omgevingswet/werkgebonden_personenmobiliteit/gegevens"
+    Then output "woon_werk_auto_benzine" equals 10000
     And output "woon_werk_auto_diesel" equals 5000
     And output "zakelijk_auto_benzine" equals 3000
     And output "zakelijk_auto_diesel" equals 2000

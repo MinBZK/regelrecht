@@ -226,7 +226,10 @@ articles:
                       - $werkzame_verzekerde_jaren
                   value: 0
           - output: is_gerechtigd
-            value: true
+            # Art. 7 lid 1 AOW: recht op ouderdomspensioen bestaat als aan de voorwaarden
+            # (leeftijd + verzekeringsperiode, getoetst in voldoet_aan_voorwaarden) is voldaan,
+            # niet onvoorwaardelijk.
+            value: $voldoet_aan_voorwaarden
             legal_basis:
               law: Algemene Ouderdomswet
               bwb_id: BWBR0002221

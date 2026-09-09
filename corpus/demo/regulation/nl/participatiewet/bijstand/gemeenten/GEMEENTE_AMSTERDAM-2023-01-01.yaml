@@ -183,7 +183,10 @@ articles:
                         subject: $arbeidsvermogen.re_integratie_traject
                         value: null
           - output: is_gerechtigd
-            value: true
+            # Artikel 11, eerste lid: recht op bijstand bestaat alleen als aan de voorwaarden
+            # (landelijke gerechtigdheid, huisvesting, arbeidsvermogen) is voldaan; dit was
+            # hier altijd true, los van voldoet_aan_voorwaarden hierboven.
+            value: $voldoet_aan_voorwaarden
           - output: uitkeringsbedrag
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:

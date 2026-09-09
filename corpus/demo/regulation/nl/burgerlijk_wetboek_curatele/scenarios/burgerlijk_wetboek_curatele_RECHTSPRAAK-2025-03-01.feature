@@ -12,7 +12,7 @@ Feature: Burgerlijk Wetboek Curatele (BW 1:378-391)
     Given parameter "bsn" is "999400001"
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_curatele":
       | bsn       | curatele_registraties                                                                                                          |
-      | 999400001 | [{"bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999400001 | [{"bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":null,"status":"ACTIEF"}] |
       | 999500001 | []                                                                                                                             |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties" of "burgerlijk_wetboek_curatele"
     Then output "voldoet_aan_voorwaarden" is true
@@ -29,7 +29,7 @@ Feature: Burgerlijk Wetboek Curatele (BW 1:378-391)
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_curatele":
       | bsn       | curatele_registraties                                                                                                          |
       | 999993653 | []                                                                                                                             |
-      | 999400001 | [{"bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":"","status":"ACTIEF"}] |
+      | 999400001 | [{"bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":null,"status":"ACTIEF"}] |
       | 999500001 | []                                                                                                                             |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "burgerlijk_wetboek_curatele"
     Then output "voldoet_aan_voorwaarden" is false
@@ -62,7 +62,7 @@ Feature: Burgerlijk Wetboek Curatele (BW 1:378-391)
     Given parameter "bsn" is "999400001"
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_curatele":
       | bsn       | curatele_registraties                                                                                                                                                                                                                                    |
-      | 999400001 | [{"bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":"","status":"ACTIEF"},{"bsn_curandus":"500000010","naam_curandus":"Pieter Zwak","datum_ingang":"2023-06-01","datum_einde":"","status":"ACTIEF"}] |
+      | 999400001 | [{"bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":null,"status":"ACTIEF"},{"bsn_curandus":"500000010","naam_curandus":"Pieter Zwak","datum_ingang":"2023-06-01","datum_einde":null,"status":"ACTIEF"}] |
       | 999500001 | []                                                                                                                                                                                                                                                       |
       | 500000010 | []                                                                                                                                                                                                                                                       |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties" of "burgerlijk_wetboek_curatele"
@@ -77,7 +77,7 @@ Feature: Burgerlijk Wetboek Curatele (BW 1:378-391)
     Given parameter "bsn" is "999400001"
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_curatele":
       | bsn       | curatele_registraties                                                                                                                                                                                                                                                 |
-      | 999400001 | [{"bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":"","status":"ACTIEF"},{"bsn_curandus":"999500009","naam_curandus":"Jan de Boer","datum_ingang":"2020-01-01","datum_einde":"2023-12-31","status":"BEEINDIGD"}] |
+      | 999400001 | [{"bsn_curandus":"999500001","naam_curandus":"Sophie van Dam","datum_ingang":"2022-01-15","datum_einde":null,"status":"ACTIEF"},{"bsn_curandus":"999500009","naam_curandus":"Jan de Boer","datum_ingang":"2020-01-01","datum_einde":"2023-12-31","status":"BEEINDIGD"}] |
       | 999500001 | []                                                                                                                                                                                                                                                                    |
       | 999500009 | []                                                                                                                                                                                                                                                                    |
     When I evaluate outputs "voldoet_aan_voorwaarden, heeft_delegaties" of "burgerlijk_wetboek_curatele"

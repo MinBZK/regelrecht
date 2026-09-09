@@ -25,7 +25,6 @@ articles:
       definitions:
         bibob_ernstig_gevaar: ernstig_gevaar
         bibob_beschikking_type: vergunning
-        geen_slecht_levensgedrag: false
       execution:
         produces:
           legal_character: BESCHIKKING
@@ -52,6 +51,14 @@ articles:
             type: boolean
             nullable: true
             source: {}
+          - name: levensgedrag_onbekend
+            type: boolean
+            nullable: true
+            source: {}
+            # Geen levensgedrag-register op gemeenteniveau in de demo: dit
+            # veld blijft altijd ongevoed (null), wat art. 8 lid 1 onder b van
+            # de Alcoholwet aan VWS als een onbekend levensgedrag doorgeeft
+            # (geen "voldoet") in plaats van de eerdere constante false.
           - name: leeftijd_exploitant
             type: number
             source:
@@ -106,14 +113,19 @@ articles:
                 is_onder_curatele: $is_onder_curatele_exploitant
                 vloeroppervlakte: $vloeroppervlakte_horecalokaliteit
                 type_bedrijf: $type_bedrijf
-            # The two optional parameters of alcoholwet/vergunning were None in the
-            # POC when not passed; the engine has no such default (an absent
-            # parameter is an error, a null one skips the law), so they are passed
-            # explicitly: the SVH registration this law already resolves, and the
-            # constant `geen_slecht_levensgedrag` (no levensgedrag register in the
-            # demo, which is what None meant in the POC).
+            # is_van_slecht_levensgedrag wordt hier bewust op null gezet (in
+            # plaats van de constante `geen_slecht_levensgedrag` die het
+            # register vervangt): er is in de demo geen levensgedrag-register
+            # op gemeenteniveau, en de eerdere binding gaf altijd false door,
+            # wat de art. 8 lid 1 onder b-toets bij VWS feitelijk altijd liet
+            # slagen. De engine vereist een expliciete binding voor een
+            # nullable parameter (een weggelaten binding is een fout, geen
+            # impliciete null), dus wordt hier letterlijk null doorgegeven; VWS
+            # behandelt een onbekend levensgedrag terecht als niet-voldaan.
+            # is_ingeschreven_svh_register blijft gebonden aan het register
+            # dat deze wet al resolvet.
                 is_ingeschreven_svh_register: $svh_registratie_geldig
-                is_van_slecht_levensgedrag: $geen_slecht_levensgedrag
+                is_van_slecht_levensgedrag: $levensgedrag_onbekend
           - name: weigeringsgrond_nationaal
             type: string
             nullable: true
@@ -125,14 +137,11 @@ articles:
                 is_onder_curatele: $is_onder_curatele_exploitant
                 vloeroppervlakte: $vloeroppervlakte_horecalokaliteit
                 type_bedrijf: $type_bedrijf
-            # The two optional parameters of alcoholwet/vergunning were None in the
-            # POC when not passed; the engine has no such default (an absent
-            # parameter is an error, a null one skips the law), so they are passed
-            # explicitly: the SVH registration this law already resolves, and the
-            # constant `geen_slecht_levensgedrag` (no levensgedrag register in the
-            # demo, which is what None meant in the POC).
+            # Zie de toelichting bij voldoet_aan_nationale_eisen hierboven:
+            # is_van_slecht_levensgedrag wordt op null gezet, niet op de
+            # constante `geen_slecht_levensgedrag`.
                 is_ingeschreven_svh_register: $svh_registratie_geldig
-                is_van_slecht_levensgedrag: $geen_slecht_levensgedrag
+                is_van_slecht_levensgedrag: $levensgedrag_onbekend
           - name: bibob_mate_van_gevaar
             type: string
             nullable: true

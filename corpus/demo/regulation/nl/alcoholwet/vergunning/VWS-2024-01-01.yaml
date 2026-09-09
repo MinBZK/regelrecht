@@ -143,14 +143,13 @@ articles:
                 https://wetten.overheid.nl/BWBR0002458/2024-01-01#Hoofdstuk2_Artikel8
               explanation: Mag niet onder curatele staan
           - output: voldoet_aan_levensgedrag_eis
+            # Art. 8 lid 1 onder b: alleen een expliciet vastgesteld "niet van
+            # slecht levensgedrag" telt als voldaan. Een null (geen registratie
+            # van slecht levensgedrag beschikbaar) is onbekend, geen "voldoet",
+            # dus de eerdere EQUALS ... null -> true tak is verwijderd.
             value:
               operation: IF
               cases:
-                - when:
-                    operation: EQUALS
-                    subject: $is_van_slecht_levensgedrag
-                    value: null
-                  then: true
                 - when:
                     operation: EQUALS
                     subject: $is_van_slecht_levensgedrag
@@ -166,14 +165,12 @@ articles:
                 https://wetten.overheid.nl/BWBR0002458/2024-01-01#Hoofdstuk2_Artikel8
               explanation: Mag niet van slecht levensgedrag zijn
           - output: voldoet_aan_svh_eis
+            # Art. 8 lid 3/4: een onbekende inschrijving (null, geen gegevens
+            # over het Register sociale hygiëne) is niet "voldoet aan de eis";
+            # de eerdere EQUALS ... null -> true tak is daarom verwijderd.
             value:
               operation: IF
               cases:
-                - when:
-                    operation: EQUALS
-                    subject: $is_ingeschreven_svh_register
-                    value: null
-                  then: true
                 - when:
                     operation: EQUALS
                     subject: $is_ingeschreven_svh_register

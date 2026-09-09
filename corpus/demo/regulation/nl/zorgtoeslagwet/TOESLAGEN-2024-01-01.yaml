@@ -217,8 +217,20 @@ articles:
                 - subject: $is_forensisch
                   operation: EQUALS
                   value: false
+          # Art. 2 lid 1: "verzekerde" (art. 1 sub c) is de voorwaarde voor de aanspraak; deze
+          # toets was een constante true. voldoet_aan_voorwaarden toetst ook leeftijd, detentie
+          # en forensische zorg, dus hier alleen de verzekerdheidscomponent (zorgverzekering of
+          # verdragsverzekering) overnemen.
           - output: is_verzekerde_zorgtoeslag
-            value: true
+            value:
+              operation: OR
+              conditions:
+                - subject: $heeft_verzekering
+                  operation: EQUALS
+                  value: true
+                - subject: $heeft_verdragsverzekering
+                  operation: EQUALS
+                  value: true
           - output: hoogte_toeslag
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:

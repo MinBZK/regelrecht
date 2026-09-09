@@ -185,7 +185,10 @@ articles:
               explanation: >-
                 Vrijdag en zaterdag (dag 4 en 5) geldig tot 02:00, overige dagen tot 00:00 middernacht
           - output: komt_in_aanmerking_voor_geluidsontheffing
-            value: true
+            # Komt in aanmerking volgt rechtstreeks uit het voldoen aan de voorwaarden
+            # van artikel 4:2 (kvk-status, geen actieve klachten, binnen quotum, tijdig
+            # aangevraagd); geen zelfstandige extra toets in de tekst.
+            value: $voldoet_aan_voorwaarden
             legal_basis:
               law: Algemene plaatselijke verordening Rotterdam 2012
               article: 4:2

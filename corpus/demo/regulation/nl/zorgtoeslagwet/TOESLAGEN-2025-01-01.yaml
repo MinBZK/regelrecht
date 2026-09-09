@@ -187,8 +187,11 @@ articles:
                 - subject: $is_verzekerde
                   operation: EQUALS
                   value: true
+          # Art. 2 lid 1: "verzekerde" (art. 1 sub c) is de voorwaarde voor de aanspraak; deze
+          # toets was een constante true. voldoet_aan_voorwaarden toetst ook de leeftijd, dus
+          # hier direct de verzekerdheidstoets zelf gebruiken.
           - output: is_verzekerde_zorgtoeslag
-            value: true
+            value: $is_verzekerde
           - output: hoogte_toeslag
         # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             value:

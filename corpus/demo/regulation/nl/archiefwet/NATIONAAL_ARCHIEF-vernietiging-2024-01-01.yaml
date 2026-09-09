@@ -75,6 +75,10 @@ articles:
         output:
           - name: mag_vernietigd_worden
             type: boolean
+            # Art. 5 geeft geen uitkomst voor vernietiging bij een onbekende bewaartermijn
+            # (geen default: true meer); een onbekende invoer moet dus als onbekende
+            # uitkomst kunnen doorwerken in plaats van als vaststaand oordeel.
+            nullable: true
           - name: vernietig_vanaf_datum
             type: date
             nullable: true
@@ -84,33 +88,52 @@ articles:
         actions:
           - output: mag_vernietigd_worden
             value:
-              operation: AND
-              conditions:
-                - operation: EQUALS
-                  subject: $op_selectielijst_vernietiging
-                  value: true
-                - operation: EQUALS
-                  subject: $selectielijst_vastgesteld
-                  value: true
-                - operation: EQUALS
-                  subject: $selectielijst_gepubliceerd
-                  value: true
-                - operation: IF
-                  cases:
-                    - when:
-                        operation: NOT
-                        value:
-                          operation: EQUALS
-                          subject: $bewaartermijn_jaren
-                          value: null
-                      then:
-                        operation: GREATER_THAN_OR_EQUAL
+              # Art. 5 geeft geen grond om te vernietigen zonder een verstreken bewaartermijn
+              # (geen default: true meer). Zolang op_selectielijst_vernietiging,
+              # selectielijst_vastgesteld of selectielijst_gepubliceerd al op false vaststaat,
+              # is vernietiging definitief niet toegestaan, ongeacht de bewaartermijn. Alleen
+              # als die drie waar zijn en de bewaartermijn onbekend is, propageert die
+              # onbekende waarde naar mag_vernietigd_worden (EQUALS … null-test, geen default: true).
+              operation: IF
+              cases:
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $op_selectielijst_vernietiging
+                        value: false
+                      - operation: EQUALS
+                        subject: $selectielijst_vastgesteld
+                        value: false
+                      - operation: EQUALS
+                        subject: $selectielijst_gepubliceerd
+                        value: false
+                  then: false
+                - when:
+                    operation: EQUALS
+                    subject: $bewaartermijn_jaren
+                    value: null
+                  then: null
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $op_selectielijst_vernietiging
+                        value: true
+                      - operation: EQUALS
+                        subject: $selectielijst_vastgesteld
+                        value: true
+                      - operation: EQUALS
+                        subject: $selectielijst_gepubliceerd
+                        value: true
+                      - operation: GREATER_THAN_OR_EQUAL
                         subject:
                           operation: AGE
                           reference_date: $referencedate
                           date_of_birth: $aanmaakdatum
                         value: $bewaartermijn_jaren
-                  default: true
+                  then: true
+              default: false
             legal_basis:
               law: Archiefwet 1995
               bwb_id: BWBR0007376

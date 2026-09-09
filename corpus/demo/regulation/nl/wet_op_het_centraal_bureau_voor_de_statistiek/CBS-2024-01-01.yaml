@@ -28,9 +28,14 @@ articles:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
         parameters:
+          # Art. 3, eerste lid: het CBS voert onderzoek uit en maakt statistieken openbaar
+          # (levensverwachting); de tekst kent geen aanwijzing van een individuele burger.
+          # De aanroep vanuit algemene_ouderdomswet/leeftijdsbepaling geeft bsn wel door,
+          # maar de binding (bindings.yaml) selecteert de levensverwachting uitsluitend op
+          # jaar, niet op bsn. Daarom optioneel in plaats van verplicht.
           - name: bsn
             type: string
-            required: true
+            required: false
         input:
           - name: verwachting_65
             type: number

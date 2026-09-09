@@ -103,7 +103,10 @@ articles:
                   operation: EQUALS
                   value: true
           - output: is_belastingplichtig
-            value: true
+            # Art. 2 lid 1: belasting wordt geheven ter zake van het hebben van voorwerpen
+            # onder, op of boven gemeentegrond; belastingplicht volgt dus uit het voldoen
+            # aan de voorwaarden (terras op openbare grond met vergunning), geen constante.
+            value: $voldoet_aan_voorwaarden
             legal_basis:
               law: Verordening precariobelasting Rotterdam 2024
               article: '2'

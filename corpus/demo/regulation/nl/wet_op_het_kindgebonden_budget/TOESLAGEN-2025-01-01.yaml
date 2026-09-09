@@ -198,6 +198,10 @@ articles:
               type: point_in_time
           - name: partner_vermogen
             type: amount
+            # nullable door de overgeslagen aanroep: bij partner_bsn = null (art. 2 lid 1
+            # onderdeel b Wkb, geen partner) wordt deze bron niet aangeroepen en blijft de
+            # waarde null. belastingdienst_vermogen.vermogen zelf is niet nullable; het
+            # register levert altijd een bedrag zodra er een bsn is om op te vragen.
             nullable: true
             type_spec:
               unit: eurocent

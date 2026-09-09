@@ -74,31 +74,33 @@ articles:
           - output: heeft_gerede_twijfel_adres
         # POC: de adressen werden als dicts vergeleken met alleen de kolommen die het
         # register had (postcode, huisnummer); het gematerialiseerde object draagt ook
-        # straat en woonplaats (null), daarom veldsgewijs vergeleken. Geen registeradres
-        # blijft, zoals in de POC, een afwijking.
+        # straat en woonplaats (null), daarom veldsgewijs vergeleken.
+        # Art. 2.34 lid 1: "gerede twijfel heeft over de juistheid van dat gegeven" vereist
+        # een concreet, afwijkend gegeven om aan te twijfelen. Ontbreekt het adres bij de
+        # Belastingdienst ($belasting_adres = null), dan is er geen vergelijkingsmateriaal en
+        # dus geen gerede twijfel over het BRP-adres (geen impliciete "afwezig = twijfel").
             value:
               operation: OR
               conditions:
-                - operation: IF
-                  cases:
-                    - when:
+                - operation: AND
+                  conditions:
+                    - operation: NOT
+                      value:
                         operation: EQUALS
                         subject: $belasting_adres
                         value: null
-                      then: true
-                  default:
-                    operation: OR
-                    conditions:
-                      - operation: NOT
-                        value:
-                          operation: EQUALS
-                          subject: $adres.postcode
-                          value: $belasting_adres.postcode
-                      - operation: NOT
-                        value:
-                          operation: EQUALS
-                          subject: $adres.huisnummer
-                          value: $belasting_adres.huisnummer
+                    - operation: OR
+                      conditions:
+                        - operation: NOT
+                          value:
+                            operation: EQUALS
+                            subject: $adres.postcode
+                            value: $belasting_adres.postcode
+                        - operation: NOT
+                          value:
+                            operation: EQUALS
+                            subject: $adres.huisnummer
+                            value: $belasting_adres.huisnummer
                 - operation: EQUALS
                   subject: $langdurig_afwezig
                   value: true
@@ -115,27 +117,28 @@ articles:
               operation: IF
               cases:
                 - when:
-              # Dezelfde veldsgewijze vergelijking als bij heeft_gerede_twijfel_adres.
-                    operation: IF
-                    cases:
-                      - when:
+              # Zelfde grond als bij heeft_gerede_twijfel_adres (art. 2.34 lid 1): geen
+              # BRP-adres bij de Belastingdienst betekent geen vergelijkingsmateriaal en dus
+              # geen twijfel_adres_afwijking-reden, ook al is $belasting_adres afwezig.
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
                           operation: EQUALS
                           subject: $belasting_adres
                           value: null
-                        then: true
-                    default:
-                      operation: OR
-                      conditions:
-                        - operation: NOT
-                          value:
-                            operation: EQUALS
-                            subject: $adres.postcode
-                            value: $belasting_adres.postcode
-                        - operation: NOT
-                          value:
-                            operation: EQUALS
-                            subject: $adres.huisnummer
-                            value: $belasting_adres.huisnummer
+                      - operation: OR
+                        conditions:
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $adres.postcode
+                              value: $belasting_adres.postcode
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $adres.huisnummer
+                              value: $belasting_adres.huisnummer
                   then: $twijfel_adres_afwijking
                 - when:
                     operation: EQUALS
