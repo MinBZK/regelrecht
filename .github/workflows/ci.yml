@@ -306,7 +306,12 @@ jobs:
           components: rustfmt, clippy
 
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
@@ -434,7 +439,12 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
@@ -468,7 +478,12 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
@@ -522,7 +537,12 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Install mold linker
-        run: sudo apt-get update && sudo apt-get install -y mold
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          sudo apt-get update && sudo apt-get install -y mold
 
       - name: Run sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
@@ -957,7 +977,12 @@ jobs:
       - name: Install Playwright Chromium
         if: needs.changes.outputs.ci == 'true'
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          npx playwright install --with-deps chromium
 
       # Bouwt eerst het WASM-artefact (frontend/public/wasm/pkg) en start dan de
       # vite-dev-server via playwright's webServer-config.
@@ -1063,7 +1088,12 @@ jobs:
       - name: Install Playwright Chromium
         if: needs.changes.outputs.docs == 'true'
         working-directory: docs
-        run: npx playwright install --with-deps chromium
+        run: |
+          # De runner-image draagt een Google Chrome-apt-bron mee die geregeld een
+          # kapotte index geeft ("Hash Sum mismatch") en dan elke apt-get update laat
+          # falen; wij gebruiken die bron niet, dus weg ermee vóór apt-get update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          npx playwright install --with-deps chromium
 
       # pa11y draait niet op playwright maar op puppeteer, met een eigen
       # browsercache (~/.cache/puppeteer). Die download zat in puppeteers
