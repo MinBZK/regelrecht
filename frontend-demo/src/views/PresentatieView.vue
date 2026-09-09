@@ -38,7 +38,7 @@ function kindLabel(s) {
       <nldd-rich-text spacing="tight">
         <p>Pijltjes of spatie bladeren, <kbd>Esc</kbd> sluit de dia's en laat de demo staan, <kbd>f</kbd> zet het scherm vol. Buiten dit tabblad opent <kbd>Shift</kbd>+<kbd>P</kbd> de dia's bij de huidige plek in het verhaal.</p>
       </nldd-rich-text>
-      <nldd-list variant="box" accessible-label="Dia's">
+      <nldd-list variant="box-base" accessible-label="Dia's">
         <nldd-list-item v-for="(s, i) in slides" :key="i" size="sm" button @click="p.start(i)">
           <nldd-text-cell size="sm" color="secondary" width="fit-content" min-width="32px" :text="String(i + 1)"></nldd-text-cell>
           <nldd-text-cell size="sm" :text="s.title ?? s.lines?.[0]?.replaceAll('**', '') ?? ''" :supporting-text="s.route ? `${kindLabel(s)} · ${s.route}` : kindLabel(s)"></nldd-text-cell>

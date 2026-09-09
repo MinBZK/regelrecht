@@ -203,8 +203,8 @@ watch(() => graph.value.nodes.length, async () => {
       </nldd-page>
     </nldd-split-view-pane>
 
-    <nldd-split-view-pane slot="inspector" :has-content="selectedLaw ? true : undefined" background="tinted">
-      <nldd-page v-if="selectedLaw" background="inherit">
+    <nldd-split-view-pane v-if="selectedLaw" slot="inspector" has-content background="tinted">
+      <nldd-page background="inherit">
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar :text="selectedLaw.name" :supporting-text="selectedLaw.id" dismiss-text="Sluiten" @dismiss="selected = null"></nldd-top-title-bar>
         </nldd-container>
@@ -215,14 +215,14 @@ watch(() => graph.value.nodes.length, async () => {
           </nldd-container>
           <nldd-button variant="secondary" size="sm" start-icon="book" text="Open in Wetten" @click="router.push(`/wetten/${encodeURIComponent(selectedLaw.id)}`)"></nldd-button>
           <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Gebruikt gegevens uit"></nldd-text-cell></nldd-container>
-<nldd-list variant="box" accessible-label="Gebruikt gegevens uit">
+<nldd-list variant="box-base" accessible-label="Gebruikt gegevens uit">
             <nldd-list-item v-if="uses.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
             <nldd-list-item v-for="l in uses" :key="l.id" size="sm" button @click="selected = l.id">
               <nldd-text-cell size="sm" :text="l.name" :supporting-text="l.service"></nldd-text-cell>
             </nldd-list-item>
           </nldd-list>
           <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Wordt gebruikt door"></nldd-text-cell></nldd-container>
-<nldd-list variant="box" accessible-label="Wordt gebruikt door">
+<nldd-list variant="box-base" accessible-label="Wordt gebruikt door">
             <nldd-list-item v-if="usedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
             <nldd-list-item v-for="l in usedBy" :key="l.id" size="sm" button @click="selected = l.id">
               <nldd-text-cell size="sm" :text="l.name" :supporting-text="l.service"></nldd-text-cell>

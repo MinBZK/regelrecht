@@ -124,7 +124,7 @@ const statusTag = computed(() => {
       <nldd-tag v-if="statusTag" :color="statusTag.color" :text="statusTag.text" :icon="statusTag.icon" size="sm"></nldd-tag>
     </nldd-container>
 
-    <nldd-container padding-inline="16" padding-bottom="16" class="tile-body">
+    <nldd-container padding-inline="16" padding-bottom="16" gap="12">
       <template v-if="!evaluation">
         <nldd-activity-indicator timing="instant" size="24"></nldd-activity-indicator>
       </template>
@@ -135,7 +135,7 @@ const statusTag = computed(() => {
         <nldd-inline-dialog variant="alert" text="Kon deze regeling niet berekenen" :supporting-text="evaluation.error"></nldd-inline-dialog>
       </template>
       <template v-else>
-        <nldd-list variant="box" background="tinted" accessible-label="Uitkomst">
+        <nldd-list variant="box-tinted" accessible-label="Uitkomst">
           <nldd-list-item size="md">
             <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -163,20 +163,15 @@ const statusTag = computed(() => {
             <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'Opgeven'"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
-        <nldd-button
-          variant="neutral-tinted"
-          size="sm"
-          width="full"
-          horizontal-alignment="left"
-          :start-icon="showData ? 'chevron-up' : 'chevron-down'"
-          :text="`Gebruikte gegevens (${valueCount})`"
-          :expanded="showData || undefined"
-          @click="showData = !showData"
-        ></nldd-button>
-        <template v-if="showData">
-          <DataLineage :nodes="lineage" @edit="emit('edit-value', { node: $event, law })" />
-          <nldd-rich-text spacing="tight"><p><small>Klik op een gegeven om het te corrigeren.</small></p></nldd-rich-text>
-        </template>
+        <nldd-list type="tree" variant="box-tinted" accessible-label="Gebruikte gegevens">
+          <nldd-list-item size="sm" button :expanded="showData" @click="showData = !showData">
+            <nldd-icon-cell icon="rectangle-stack" size="16" color="secondary"></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell size="sm" :text="`Gebruikte gegevens (${valueCount})`" :supporting-text="showData ? 'Klik op een gegeven om het te corrigeren' : undefined"></nldd-text-cell>
+            <nldd-icon-cell disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+            <DataLineage v-if="showData" :nodes="lineage" nested @edit="emit('edit-value', { node: $event, law })" />
+          </nldd-list-item>
+        </nldd-list>
       </template>
     </nldd-container>
 
@@ -198,7 +193,7 @@ const statusTag = computed(() => {
           <nldd-container padding="16">
             <nldd-rich-text spacing="tight"><p>Dit is de volledige uitvoering van de wet door de RegelRecht-engine voor deze persoon: elke stap, elk opgehaald gegeven en elke tussenuitkomst.</p></nldd-rich-text>
             <nldd-spacer size="12"></nldd-spacer>
-            <nldd-code-viewer v-if="showTrace" variant="box" no-copy>{{ evaluation?.traceText }}</nldd-code-viewer>
+            <nldd-code-viewer v-if="showTrace" variant="box-tinted" no-copy>{{ evaluation?.traceText }}</nldd-code-viewer>
           </nldd-container>
         </nldd-page>
       </nldd-sheet>

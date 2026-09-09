@@ -15,16 +15,20 @@ body {
   height: 100%;
 }
 
-/* Organisation logos in tiles and data rows: fixed box, image scaled inside.
- * nldd-image forces full width, which is wrong for a 40px mark. */
+/* Organisation logos on tiles and in data rows: a padded tile with the wordmark
+ * scaled inside. Logos are designed on white, also in dark mode. nldd-avatar
+ * crops an image to fill (object-fit: cover), which cuts a wordmark; nldd-image
+ * forces full width. Services without a logo get an nldd-avatar instead. */
 .org-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 40px;
   height: 40px;
+  padding: 5px;
   border-radius: var(--primitives-radius-8, 8px);
-  background: #fff; /* logos are designed on white, also in dark mode */
+  background: #fff;
+  border: 1px solid var(--semantics-border-color, var(--primitives-color-neutral-200, #e2e2e2));
   overflow: hidden;
   flex: none;
 }
@@ -38,6 +42,7 @@ body {
 .org-logo--sm {
   width: 24px;
   height: 24px;
+  padding: 3px;
   border-radius: var(--primitives-radius-4, 4px);
 }
 
@@ -162,33 +167,6 @@ body {
   line-height: 1.45;
   white-space: pre;
   overflow-x: auto;
-}
-
-/* The tile grid on the portal: cards of equal width. nldd-collection
- * layout="grid" does this; the class only pins the tile's inner stack. */
-.tile-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--primitives-space-12, 12px);
-}
-
-/* Data lineage tree in a tile (value rows nest under the input they feed). */
-.data-tree {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
-}
-
-.data-tree .data-tree {
-  padding-left: var(--primitives-space-16, 16px);
-  border-left: 1px solid var(--primitives-color-neutral-200, #e2e2e2);
-}
-
-/* Case board: three columns that wrap on narrow screens. */
-.case-board {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--primitives-space-16, 16px);
 }
 
 /* Law graph canvas: vue-flow needs an explicit height. */

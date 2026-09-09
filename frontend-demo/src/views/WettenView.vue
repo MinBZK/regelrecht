@@ -7,17 +7,18 @@ import { useDemo } from '../store/demoStore.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 
 // The law browser: every demo law in the sidebar, grouped by the organisation
-// that executes it; opened laws as document tabs; the selected law as a
-// collapsible YAML tree in which every `source.regulation` is a link that opens
-// the referenced law in a new tab. That walk from zorgtoeslag to BRP to the
+// that executes it; the selected law as a collapsible YAML tree in which every
+// `source.regulation` is a link that opens the referenced law, with a back
+// button retracing the walk. That walk from zorgtoeslag to BRP to the
 // penitentiaire beginselenwet is the point of this tab.
 
 const route = useRoute();
 const router = useRouter();
 const { corpus, profile } = useDemo();
 
-const MAX_TABS = 10;
-const openTabs = reactive([]); // law ids
+// The laws walked through in this tab, in order; the back button in the
+// header retraces them (zorgtoeslag → BRP → penitentiaire beginselenwet).
+const trail = reactive([]); // law ids
 const activeId = ref(null);
 const showRaw = ref(false);
 const query = ref('');
@@ -56,10 +57,7 @@ function expandedFor(law) {
 
 function openLaw(lawId, { replaceRoute = false } = {}) {
   if (!lawIds.value.has(lawId)) return;
-  if (!openTabs.includes(lawId)) {
-    openTabs.push(lawId);
-    if (openTabs.length > MAX_TABS) openTabs.shift();
-  }
+  if (trail.at(-1) !== lawId) trail.push(lawId);
   activeId.value = lawId;
   expandState.paths = expandedFor(corpus.value.lawById(lawId));
   expandState.all = null;
@@ -68,24 +66,11 @@ function openLaw(lawId, { replaceRoute = false } = {}) {
   if (route.fullPath !== target) (replaceRoute ? router.replace : router.push).call(router, target);
 }
 
-function closeTab(lawId) {
-  const i = openTabs.indexOf(lawId);
-  if (i === -1) return;
-  openTabs.splice(i, 1);
-  if (activeId.value === lawId) {
-    const next = openTabs[i] ?? openTabs[i - 1] ?? null;
-    if (next) openLaw(next, { replaceRoute: true });
-    else {
-      activeId.value = null;
-      router.replace('/wetten');
-    }
-  }
-}
-
-function closeAll() {
-  openTabs.splice(0, openTabs.length);
-  activeId.value = null;
-  router.replace('/wetten');
+function goBack() {
+  if (trail.length < 2) return;
+  trail.pop();
+  const previous = trail.pop();
+  openLaw(previous, { replaceRoute: true });
 }
 
 function expandAll() {
@@ -118,15 +103,6 @@ watch(
   },
   { immediate: true },
 );
-
-function onTabChange(e) {
-  const id = e.detail?.item?.dataset?.lawId;
-  if (id) openLaw(id);
-}
-function onTabDismiss(e) {
-  const id = e.detail?.item?.dataset?.lawId;
-  if (id) closeTab(id);
-}
 
 function tabInfo(lawId) {
   return corpus.value?.lawById(lawId);
@@ -190,20 +166,12 @@ const referencedBy = computed(() => {
     <nldd-split-view-pane slot="main" has-content>
       <nldd-page sticky-header>
         <nldd-container slot="header" padding="0">
-          <nldd-document-tab-bar accessible-label="Geopende wetten" @tabchange="onTabChange" @tabdismiss="onTabDismiss">
-            <nldd-document-tab-bar-item
-              v-for="id in openTabs"
-              :key="id"
-              :data-law-id="id"
-              :text="tabInfo(id)?.name ?? id"
-              :supporting-text="tabInfo(id)?.service ?? ''"
-              :selected="id === activeId || undefined"
-            ></nldd-document-tab-bar-item>
-            <nldd-icon-button slot="end" size="sm" variant="neutral-transparent" icon="dismiss" text="Alles sluiten" @click="closeAll"></nldd-icon-button>
-          </nldd-document-tab-bar>
           <nldd-container v-if="activeLaw" padding="8">
             <nldd-toolbar size="sm">
-              <nldd-toolbar-title slot="start" :text="activeLaw.name" :supporting-text="`${activeLaw.id} · geldig vanaf ${activeLaw.valid_from}`"></nldd-toolbar-title>
+              <nldd-toolbar-item slot="start" v-if="trail.length > 1">
+                <nldd-icon-button size="sm" variant="neutral-transparent" icon="chevron-left" :text="`Terug naar ${tabInfo(trail.at(-2))?.name ?? 'vorige wet'}`" @click="goBack"></nldd-icon-button>
+              </nldd-toolbar-item>
+              <nldd-toolbar-title slot="start" :text="activeLaw.name" :supporting-text="`${serviceInfo(corpus, activeLaw.service).name} · geldig vanaf ${activeLaw.valid_from}`" max-width="480px"></nldd-toolbar-title>
               <nldd-toolbar-item slot="end">
                 <nldd-segmented-control size="sm" width="fit-content" :value="showRaw ? 'raw' : 'tree'" @change="showRaw = $event.detail?.value === 'raw'">
                   <nldd-segmented-control-item value="tree" text="Boom"></nldd-segmented-control-item>
@@ -240,13 +208,13 @@ const referencedBy = computed(() => {
       </nldd-page>
     </nldd-split-view-pane>
 
-    <nldd-split-view-pane slot="inspector" :has-content="!!activeLaw || undefined" background="tinted">
-      <nldd-page v-if="activeLaw" background="inherit">
+    <nldd-split-view-pane v-if="activeLaw" slot="inspector" has-content background="tinted">
+      <nldd-page background="inherit">
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar text="Verwijzingen"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="12" gap="16">
-          <nldd-list variant="box" accessible-label="Uitgevoerd door">
+          <nldd-list variant="box-base" accessible-label="Uitgevoerd door">
             <nldd-list-item size="md">
               <nldd-cell><OrgLogo :service="activeLaw.service" /></nldd-cell>
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -254,7 +222,7 @@ const referencedBy = computed(() => {
             </nldd-list-item>
           </nldd-list>
           <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Gebruikt gegevens uit"></nldd-text-cell></nldd-container>
-<nldd-list variant="box" accessible-label="Gebruikt gegevens uit">
+<nldd-list variant="box-base" accessible-label="Gebruikt gegevens uit">
             <nldd-list-item v-if="references.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
             <nldd-list-item v-for="ref in references" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
               <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>
@@ -264,7 +232,7 @@ const referencedBy = computed(() => {
             </nldd-list-item>
           </nldd-list>
           <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Wordt gebruikt door"></nldd-text-cell></nldd-container>
-<nldd-list variant="box" accessible-label="Wordt gebruikt door">
+<nldd-list variant="box-base" accessible-label="Wordt gebruikt door">
             <nldd-list-item v-if="referencedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen andere wetten"></nldd-text-cell></nldd-list-item>
             <nldd-list-item v-for="ref in referencedBy" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
               <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>

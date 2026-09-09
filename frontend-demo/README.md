@@ -65,12 +65,10 @@ design system geen component heeft:
 | Selector | Waarom |
 |---|---|
 | `src/presentation/*` (deck, scoped CSS en `presentation.css`) | De presentatie: een Rijkshuisstijl-blauw dek (donkerblauw #154273, RijksoverheidSerif voor titels, RijksSans voor tekst) dat voluit staat bij intro en afsluiting en als linker rail de demo rechts aanstuurt (`html.rr-presenting body { padding-left }`, puls `.rr-present-pulse`). Naar het voorbeeld van Begane Grond. Het design system heeft geen presentatiecomponent; de serif-fonts staan in `public/fonts` (Rijkshuisstijl-licentie). |
-| `.org-logo` | Vaste 40px/24px box voor organisatielogo's; `nldd-image` vult altijd de volle breedte. |
+| `.org-logo` | Organisatielogo in een blokje met padding (40px/24px). `nldd-avatar` snijdt een afbeelding bij (`object-fit: cover`), wat een woordmerk afsnijdt; `nldd-image` vult altijd de volle breedte. Organisaties zonder logo krijgen wél een `nldd-avatar` met initialen. |
 | `.yaml-tree*` | Opvouwbare YAML-boom met kruiswet-links; `nldd-code-viewer` highlight wel YAML maar vouwt niet en kent geen links. |
 | `.gherkin*` | Gherkin-weergave met slaag/faal-markering per stap en tabellen; de viewer kent Gherkin als taal maar geen stapstatus. |
 | `.trace` | Monospace box-drawing-trace. |
-| `.tile-body`, `.data-tree` | Verticale stapel in een tegel en de inspringing van de herkomstboom. |
-| `.case-board` | Drie kolommen die op smalle schermen onder elkaar vallen (`nldd-container layout="grid"` zit op 280px-kolommen vast met eigen padding). |
 | `.graph-canvas`, `.graph-node*`, `.graph-dim` | vue-flow heeft een expliciete hoogte nodig; knopen en dimmen van niet-geselecteerde knopen. Een graafcanvas bestaat niet in het design system (zelfde uitzondering als de editor). |
 
 Eén afwijking buiten CSS: `App.vue` roept na elke routewissel `_evaluateScrollMode()` van

@@ -61,9 +61,6 @@ const properties = computed(() => persona.value?.properties ?? []);
       <nldd-container padding-inline="24" padding-block="12" background="base">
         <nldd-toolbar size="md" :label="profile?.portal_tab_label ?? 'Burger.nl'">
           <nldd-toolbar-title slot="start" :text="profile?.portal_tab_label ?? 'Burger.nl'" supporting-text="Demo, geen echte overheidsdienst"></nldd-toolbar-title>
-          <nldd-toolbar-item slot="end">
-            <nldd-tag icon="account" :text="persona?.name ?? profile?.name ?? ''"></nldd-tag>
-          </nldd-toolbar-item>
         </nldd-toolbar>
       </nldd-container>
     </nldd-container>

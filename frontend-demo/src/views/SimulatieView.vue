@@ -302,7 +302,7 @@ function exportJson() {
             <nldd-form-field-help-text>Dezelfde seed geeft dezelfde populatie.</nldd-form-field-help-text>
           </nldd-form-field>
 
-          <nldd-button width="full" variant="neutral-tinted" :start-icon="open.populatie ? 'chevron-up' : 'chevron-down'" :text="kind === 'ondernemers' ? 'Samenstelling bedrijven' : 'Demografie'" @click="open.populatie = !open.populatie"></nldd-button>
+          <nldd-button width="full" variant="neutral-transparent" horizontal-alignment="left" :end-icon="open.populatie ? 'chevron-up' : 'chevron-down'" :text="kind === 'ondernemers' ? 'Samenstelling bedrijven' : 'Demografie'" :expanded="open.populatie || undefined" @click="open.populatie = !open.populatie"></nldd-button>
           <template v-if="open.populatie">
             <nldd-container v-for="group in knobs" :key="group.group" gap="8">
               <nldd-text-cell size="sm" color="secondary" :text="group.group"></nldd-text-cell>
@@ -312,8 +312,8 @@ function exportJson() {
             </nldd-container>
           </template>
 
-          <nldd-button width="full" variant="neutral-tinted" :start-icon="open.wetgeving ? 'chevron-up' : 'chevron-down'" :text="totalOverrides ? `Parameters van wetgeving (${totalOverrides} aangepast)` : 'Parameters van wetgeving'" @click="open.wetgeving = !open.wetgeving"></nldd-button>
-          <nldd-list v-if="open.wetgeving" variant="box" accessible-label="Wetten met aanpasbare parameters">
+          <nldd-button width="full" variant="neutral-transparent" horizontal-alignment="left" :end-icon="open.wetgeving ? 'chevron-up' : 'chevron-down'" :text="totalOverrides ? `Parameters van wetgeving (${totalOverrides} aangepast)` : 'Parameters van wetgeving'" :expanded="open.wetgeving || undefined" @click="open.wetgeving = !open.wetgeving"></nldd-button>
+          <nldd-list v-if="open.wetgeving" variant="box-tinted" accessible-label="Wetten met aanpasbare parameters">
             <nldd-list-item v-for="law in lawSet.runnable" :key="law.id" size="sm" button :disabled="definitionsByLaw[law.id].length === 0 || undefined" @click="editParameters(law)">
               <nldd-cell><OrgLogo :service="law.service" size="sm" /></nldd-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -403,7 +403,7 @@ function exportJson() {
                 </nldd-container>
               </nldd-card>
 
-              <nldd-list variant="box" accessible-label="Regelingen">
+              <nldd-list variant="box-tinted" accessible-label="Regelingen">
                 <nldd-list-item v-for="law in lawRows" :key="law.id" size="md" button @click="showLaw(law.id)">
                   <nldd-cell><OrgLogo :service="law.service" /></nldd-cell>
                   <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -485,8 +485,8 @@ function exportJson() {
       </nldd-page>
     </nldd-split-view-pane>
 
-    <nldd-split-view-pane slot="inspector" :has-content="inspector ? true : undefined">
-      <nldd-page v-if="inspector && inspectorLaw">
+    <nldd-split-view-pane v-if="inspector && inspectorLaw" slot="inspector" has-content>
+      <nldd-page>
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar :text="inspectorLaw.name" :supporting-text="inspector.type === 'params' ? 'Parameters voor deze simulatie' : serviceInfo(corpus, inspectorLaw.service).name" dismiss-text="Sluiten" @dismiss="inspector = null"></nldd-top-title-bar>
         </nldd-container>
@@ -503,7 +503,7 @@ function exportJson() {
 
         <!-- One law in the active run -->
         <nldd-container v-else-if="activeRun && activeRun.summary[inspector.lawId]" padding="12" gap="12">
-          <nldd-list variant="box" accessible-label="Uitkomst">
+          <nldd-list variant="box-tinted" accessible-label="Uitkomst">
             <nldd-list-item size="sm"><nldd-text-cell size="sm" color="secondary" text="Doorgerekend"></nldd-text-cell><nldd-text-cell size="sm" width="fit-content" :text="num(activeRun.summary[inspector.lawId].evaluated)"></nldd-text-cell></nldd-list-item>
             <nldd-list-item v-if="activeRun.summary[inspector.lawId].hasEligibility" size="sm"><nldd-text-cell size="sm" color="secondary" text="Voldoet aan de voorwaarden"></nldd-text-cell><nldd-text-cell size="sm" width="fit-content" :text="`${num(activeRun.summary[inspector.lawId].eligible)} (${pct(activeRun.summary[inspector.lawId].eligiblePct)})`"></nldd-text-cell></nldd-list-item>
             <nldd-list-item v-if="activeRun.summary[inspector.lawId].withAmount" size="sm"><nldd-text-cell size="sm" color="secondary" :text="`Gemiddeld · ${amountLabel(activeRun, inspector.lawId)}`"></nldd-text-cell><nldd-text-cell size="sm" width="fit-content" :text="fmtAmount(activeRun, inspector.lawId, activeRun.summary[inspector.lawId].avgAmount)"></nldd-text-cell></nldd-list-item>

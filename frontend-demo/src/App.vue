@@ -130,23 +130,23 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="`${openCases} te beoordelen`" @click="router.push('/zaaksysteem')"></nldd-button>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting">
-            <nldd-tag color="accent" :text="`Profiel: ${profile.name}`" icon="person"></nldd-tag>
+            <nldd-button size="md" variant="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">
+              <nldd-menu slot="popup" accessible-label="Demoprofiel" @select="onProfileSelect">
+                <nldd-menu-item
+                  v-for="[key, p] in profileOptions"
+                  :key="key"
+                  type="radio"
+                  :value="key"
+                  :text="p.name"
+                  :details="p.type"
+                  :selected="profileKey === key || undefined"
+                ></nldd-menu-item>
+              </nldd-menu>
+            </nldd-button>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end">
-            <nldd-icon-button size="md" icon="menu" text="Menu" tooltip-timing="never" expandable>
+            <nldd-icon-button size="md" variant="neutral-transparent" icon="ellipsis" text="Meer" tooltip-timing="never" popup-type="menu">
               <nldd-menu slot="popup" accessible-label="Demo-menu">
-                <nldd-menu-item text="Demoprofiel" icon="users">
-                  <nldd-menu @select="onProfileSelect">
-                    <nldd-menu-item
-                      v-for="[key, p] in profileOptions"
-                      :key="key"
-                      type="radio"
-                      :value="key"
-                      :text="`${p.name} (${p.type})`"
-                      :selected="profileKey === key || undefined"
-                    ></nldd-menu-item>
-                  </nldd-menu>
-                </nldd-menu-item>
                 <nldd-menu-item
                   type="checkbox"
                   text="Alle aanvragen handmatig beoordelen"

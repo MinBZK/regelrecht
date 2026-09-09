@@ -124,7 +124,7 @@ function submit() {
           <nldd-top-title-bar :text="humanize(node.name)" :supporting-text="law?.name ?? node.law" dismiss-text="Sluiten" @dismiss="emit('close')"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="16" gap="16">
-          <nldd-list variant="box" accessible-label="Huidige waarde">
+          <nldd-list variant="box-tinted" accessible-label="Huidige waarde">
             <nldd-list-item size="md">
               <nldd-cell v-if="node.service"><OrgLogo :service="node.service" /></nldd-cell>
               <nldd-spacer-cell v-if="node.service" size="12"></nldd-spacer-cell>

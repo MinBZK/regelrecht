@@ -2,8 +2,8 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { parseFeature, dispatch, quotedValue, bareValue, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
-import OrgLogo from '../components/OrgLogo.vue';
 import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.js';
+import { serviceInfo } from '../data/loadCorpus.js';
 import { useDemo } from '../store/demoStore.js';
 
 // The scenario runner: every law's acceptance scenarios (Gherkin, canonical
@@ -190,9 +190,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         <nldd-container padding-inline="8" padding-bottom="16">
           <nldd-list type="navigation" accessible-label="Testbestanden">
             <nldd-list-item v-for="f in filtered" :key="f.path" size="sm" button :selected="f.path === selectedPath || undefined" @click="select(f.path)">
-              <nldd-cell v-if="lawFor(f)?.service"><OrgLogo :service="lawFor(f).service" size="sm" /></nldd-cell>
-              <nldd-spacer-cell v-if="lawFor(f)?.service" size="8"></nldd-spacer-cell>
-              <nldd-text-cell size="sm" :text="f.title" :supporting-text="f.law_path"></nldd-text-cell>
+              <nldd-text-cell size="sm" :text="f.title" :supporting-text="lawFor(f) ? serviceInfo(corpus, lawFor(f).service).name : f.law_path"></nldd-text-cell>
             </nldd-list-item>
           </nldd-list>
         </nldd-container>
@@ -277,20 +275,20 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
       </nldd-page>
     </nldd-split-view-pane>
 
-    <nldd-split-view-pane slot="inspector" :has-content="traceScenario ? true : undefined">
-      <nldd-page v-if="traceScenario">
+    <nldd-split-view-pane v-if="traceScenario" slot="inspector" has-content>
+      <nldd-page>
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar text="Uitvoering door de engine" :supporting-text="parsed?.scenarios[activeTrace]?.name" dismiss-text="Sluiten" @dismiss="activeTrace = null"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="12" gap="12">
           <nldd-banner v-if="traceScenario.error" variant="critical" text="Uitvoering mislukt" :supporting-text="traceScenario.error"></nldd-banner>
-          <nldd-list v-if="traceScenario.outputs" variant="box" accessible-label="Uitkomsten">
+          <nldd-list v-if="traceScenario.outputs" variant="box-tinted" accessible-label="Uitkomsten">
             <nldd-list-item v-for="(v, k) in traceScenario.outputs" :key="k" size="sm">
               <nldd-text-cell size="sm" :text="String(k)"></nldd-text-cell>
               <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="JSON.stringify(v)"></nldd-text-cell>
             </nldd-list-item>
           </nldd-list>
-          <nldd-code-viewer variant="box" no-copy>{{ traceScenario.traceText }}</nldd-code-viewer>
+          <nldd-code-viewer variant="box-tinted" no-copy>{{ traceScenario.traceText }}</nldd-code-viewer>
         </nldd-container>
       </nldd-page>
     </nldd-split-view-pane>

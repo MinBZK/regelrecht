@@ -1,7 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import OrgLogo from '../components/OrgLogo.vue';
 import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { useDemo } from '../store/demoStore.js';
 
@@ -102,42 +101,41 @@ function claimSpec(cl) {
 <template>
   <nldd-navigation-split-view inspector-accessible-label="Zaakdetails">
     <nldd-split-view-pane slot="main" has-content>
-      <nldd-page background="tinted">
-        <nldd-container slot="header" padding="12" background="base">
-          <nldd-toolbar size="md">
-            <nldd-toolbar-item slot="start" v-if="service"><OrgLogo :service="service" /></nldd-toolbar-item>
-            <nldd-toolbar-title slot="start" text="Zaaksysteem" :supporting-text="corpus.services[service]?.name ?? service ?? ''"></nldd-toolbar-title>
-            <nldd-toolbar-item slot="end" v-if="services.length > 1">
-              <nldd-segmented-control size="sm" width="fit-content" :value="service" @change="service = $event.detail?.value">
-                <nldd-segmented-control-item v-for="s in services" :key="s" :value="s" :text="s"></nldd-segmented-control-item>
-              </nldd-segmented-control>
-            </nldd-toolbar-item>
-          </nldd-toolbar>
+      <nldd-page sticky-header>
+        <nldd-container slot="header" padding="12">
+          <nldd-top-title-bar text="Zaaksysteem" :supporting-text="corpus.services[service]?.name ?? service ?? ''">
+            <nldd-segmented-control v-if="services.length > 1" slot="toolbar" size="sm" width="fit-content" :value="service" @change="service = $event.detail?.value">
+              <nldd-segmented-control-item v-for="s in services" :key="s" :value="s" :text="corpus.services[s]?.name ?? s"></nldd-segmented-control-item>
+            </nldd-segmented-control>
+          </nldd-top-title-bar>
         </nldd-container>
 
         <nldd-simple-section width="full">
           <nldd-inline-dialog v-if="cases.length === 0 && serviceClaims.length === 0" icon="inbox" text="Geen zaken" supporting-text="Zodra een burger op het portaal een aanvraag indient, verschijnt die hier."></nldd-inline-dialog>
-          <div v-else class="case-board">
-            <div v-for="lane in lanes" :key="lane.key">
-              <nldd-container padding-inline="12" padding-block="6">
-                <nldd-text-cell size="sm" color="secondary" :text="`**${lane.title}** (${lane.items.length})`"></nldd-text-cell>
+          <nldd-container v-else layout="grid" column-count="3" sm-column-count="1" gap="16">
+            <nldd-box v-for="lane in lanes" :key="lane.key" background="tinted">
+              <nldd-container padding="12" gap="8">
+                <nldd-container layout="row" gap="8" vertical-alignment="center" padding-inline="4">
+                  <nldd-title-cell size="6" :text="lane.title" heading-level="2"></nldd-title-cell>
+                  <nldd-badge color="neutral" :number="lane.items.length" :accessible-label="`${lane.items.length} zaken`"></nldd-badge>
+                </nldd-container>
+                <nldd-container v-if="lane.items.length === 0" padding-inline="4" padding-block="8">
+                  <nldd-text-cell size="sm" color="secondary" text="Geen zaken"></nldd-text-cell>
+                </nldd-container>
+                <nldd-list v-for="c in lane.items" :key="c.id" variant="box-base" :accessible-label="c.lawName">
+                  <nldd-list-item size="md" button :selected="selected?.id === c.id || undefined" @click="open(c)">
+                    <nldd-text-cell :text="c.lawName" :supporting-text="`${personaName(c.bsn)} · ${formatDateTime(c.submittedAt)}`"></nldd-text-cell>
+                    <nldd-cell><nldd-tag size="sm" :color="laneTag(c).color" :text="laneTag(c).text"></nldd-tag></nldd-cell>
+                  </nldd-list-item>
+                </nldd-list>
               </nldd-container>
-              <nldd-list variant="box" background="base" :accessible-label="lane.title">
-                <nldd-list-item v-if="lane.items.length === 0" size="sm">
-                  <nldd-text-cell size="sm" color="secondary" text="Leeg"></nldd-text-cell>
-                </nldd-list-item>
-                <nldd-list-item v-for="c in lane.items" :key="c.id" size="md" button :selected="selected?.id === c.id || undefined" @click="open(c)">
-                  <nldd-text-cell :text="c.lawName" :supporting-text="`${personaName(c.bsn)} · ${formatDateTime(c.submittedAt)}`"></nldd-text-cell>
-                  <nldd-cell><nldd-tag size="sm" :color="laneTag(c).color" :text="laneTag(c).text"></nldd-tag></nldd-cell>
-                </nldd-list-item>
-              </nldd-list>
-            </div>
-          </div>
+            </nldd-box>
+          </nldd-container>
         </nldd-simple-section>
 
         <nldd-simple-section v-if="serviceClaims.length" width="full" padding-top="0">
           <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Correcties van burgers ter beoordeling"></nldd-text-cell></nldd-container>
-<nldd-list variant="box" background="base" accessible-label="Correcties ter beoordeling">
+<nldd-list variant="box-tinted" accessible-label="Correcties ter beoordeling">
             <nldd-list-item v-for="cl in serviceClaims" :key="cl.id" size="md">
               <nldd-text-cell :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`" :supporting-text="`${personaName(cl.bsn)} · ${claimLawName(cl)} · ${cl.reason}`"></nldd-text-cell>
               <nldd-cell>
@@ -152,8 +150,8 @@ function claimSpec(cl) {
       </nldd-page>
     </nldd-split-view-pane>
 
-    <nldd-split-view-pane slot="inspector" :has-content="!!selected || undefined">
-      <nldd-page v-if="selected">
+    <nldd-split-view-pane v-if="selected" slot="inspector" has-content>
+      <nldd-page>
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar :text="selected.lawName" :supporting-text="`Zaak ${selected.id.slice(-5)} · ${personaName(selected.bsn)}`" dismiss-text="Sluiten" @dismiss="close"></nldd-top-title-bar>
         </nldd-container>
@@ -165,7 +163,7 @@ function claimSpec(cl) {
           ></nldd-banner>
 
           <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Uitkomst" supporting-text="aangevraagd → nu berekend door de engine"></nldd-text-cell></nldd-container>
-<nldd-list variant="box" accessible-label="Uitkomst">
+<nldd-list variant="box-tinted" accessible-label="Uitkomst">
             <nldd-list-item v-for="row in outputRows(selected)" :key="row.name" size="sm">
               <nldd-text-cell size="sm" :text="humanize(row.name)"></nldd-text-cell>
               <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="row.differs ? 'warning' : 'default'">
@@ -177,7 +175,7 @@ function claimSpec(cl) {
           <nldd-banner v-if="verified && !verified.ok" variant="warning" text="Herberekening mislukt" :supporting-text="verified.error"></nldd-banner>
 
           <nldd-container v-if="caseClaims.length" padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Correcties van de burger"></nldd-text-cell></nldd-container>
-<nldd-list v-if="caseClaims.length" variant="box" accessible-label="Correcties">
+<nldd-list v-if="caseClaims.length" variant="box-tinted" accessible-label="Correcties">
             <nldd-list-item v-for="cl in caseClaims" :key="cl.id" size="sm">
               <nldd-text-cell size="sm" :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`" :supporting-text="cl.reason"></nldd-text-cell>
               <nldd-cell>
@@ -212,7 +210,7 @@ function claimSpec(cl) {
           <nldd-rich-text v-else-if="selected.status === 'DECIDED' && !selected.objection" spacing="tight"><p><small>Besloten. De burger kan op het portaal bezwaar maken; dat verschijnt dan hier.</small></p></nldd-rich-text>
 
           <nldd-container padding-inline="12" padding-block="6"><nldd-text-cell size="sm" color="secondary" text="Gebeurtenissen"></nldd-text-cell></nldd-container>
-<nldd-list variant="box" accessible-label="Gebeurtenissen">
+<nldd-list variant="box-tinted" accessible-label="Gebeurtenissen">
             <nldd-list-item v-for="(ev, i) in selected.events" :key="i" size="sm">
               <nldd-timeline-track-cell :step="i === selected.events.length - 1 ? 'future' : 'past'" :child="i === 0 ? 'first' : i === selected.events.length - 1 ? 'last' : 'between'"></nldd-timeline-track-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>

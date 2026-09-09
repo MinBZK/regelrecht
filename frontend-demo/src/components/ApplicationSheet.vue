@@ -194,10 +194,10 @@ const claimedPrimary = computed(() => {
           <nldd-top-title-bar :text="law.name" :supporting-text="service" dismiss-text="Sluiten" @dismiss="emit('close')"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="16" gap="16">
-          <nldd-container v-if="step !== 'status'" layout="row" gap="8" vertical-alignment="center">
-            <nldd-tag size="sm" :color="step === 'gegevens' ? 'accent' : 'neutral'" text="1 Gegevens"></nldd-tag>
-            <nldd-tag size="sm" :color="step === 'controleren' ? 'accent' : 'neutral'" text="2 Controleren en indienen"></nldd-tag>
-          </nldd-container>
+          <nldd-step-indicator v-if="step !== 'status'" :current="step === 'gegevens' ? 1 : 2" accessible-label="Stappen van de aanvraag">
+            <nldd-step-indicator-item text="Gegevens"></nldd-step-indicator-item>
+            <nldd-step-indicator-item text="Controleren en indienen"></nldd-step-indicator-item>
+          </nldd-step-indicator>
 
           <!-- Step 1: the questions only the citizen can answer -->
           <template v-if="step === 'gegevens'">
@@ -251,7 +251,7 @@ const claimedPrimary = computed(() => {
               <nldd-rich-text spacing="tight"><p>De regeling wordt met uw gegevens berekend…</p></nldd-rich-text>
             </template>
             <template v-else>
-              <nldd-list variant="box" background="tinted" accessible-label="Uitkomst">
+              <nldd-list variant="box-tinted" accessible-label="Uitkomst">
                 <nldd-list-item size="md">
                   <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
                   <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -269,7 +269,7 @@ const claimedPrimary = computed(() => {
                 <h3>Gegevens waarop de berekening rust</h3>
                 <span slot="subtitle">{{ usedValues.length }} gegevens uit registers en uw eigen opgave</span>
               </nldd-title>
-              <nldd-list variant="box" accessible-label="Gebruikte gegevens">
+              <nldd-list variant="box-tinted" accessible-label="Gebruikte gegevens">
                 <nldd-list-item v-for="node in usedValues" :key="`${node.law}|${node.name}`" size="sm">
                   <nldd-cell v-if="node.service"><OrgLogo :service="node.service" size="sm" /></nldd-cell>
                   <nldd-icon-cell v-else icon="edit" size="16" color="accent"></nldd-icon-cell>
@@ -294,7 +294,7 @@ const claimedPrimary = computed(() => {
           <template v-else-if="currentCase">
             <nldd-banner :variant="statusView.variant" :text="statusView.text" :supporting-text="statusView.supporting"></nldd-banner>
             <nldd-rich-text v-if="justSubmitted" spacing="tight"><p>Uw aanvraag is ingediend bij {{ service }}. U kunt de voortgang hier volgen.</p></nldd-rich-text>
-            <nldd-list v-if="claimedPrimary" variant="box" accessible-label="Aangevraagd">
+            <nldd-list v-if="claimedPrimary" variant="box-tinted" accessible-label="Aangevraagd">
               <nldd-list-item size="sm">
                 <nldd-text-cell size="sm" color="secondary" :text="`Aangevraagd · ${humanize(claimedPrimary.name)}`"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(claimedPrimary.value, fieldSpec(doc, claimedPrimary.name))"></nldd-text-cell>
