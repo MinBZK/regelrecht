@@ -228,6 +228,78 @@ articles:
                         - {"__unknown": true, "missing": [{"law": "verzonnen", "name": "iets", "kind": "no_data"}]}
 "#;
 
+    /// The sentinel as a law would write it, for splicing into a template.
+    const SENTINEL: &str = r#"{"__unknown": true, "missing": [{"law": "verzonnen", "name": "iets", "kind": "no_data"}]}"#;
+
+    /// An `IN` whose three operand positions are filled from the caller, so
+    /// each position can carry the sentinel on its own.
+    fn law_with_in(subject: &str, value: Option<&str>, values: Option<&str>) -> String {
+        let mut op = format!("              operation: IN\n              subject: {subject}\n");
+        if let Some(value) = value {
+            op.push_str(&format!("              value: {value}\n"));
+        }
+        if let Some(values) = values {
+            op.push_str(&format!(
+                "              values:\n                - {values}\n"
+            ));
+        }
+        format!(
+            r#"
+$id: lit_in
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        output:
+          - name: x
+            type: boolean
+        actions:
+          - output: x
+            value:
+{op}"#
+        )
+    }
+
+    /// A `DATE_ADD` with one date and one optional part, likewise fillable per
+    /// position.
+    fn law_with_date_add(date: &str, part: &str, part_value: &str) -> String {
+        format!(
+            r#"
+$id: lit_date_add
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        output:
+          - name: x
+            type: string
+        actions:
+          - output: x
+            value:
+              operation: DATE_ADD
+              date: {date}
+              {part}: {part_value}
+"#
+        )
+    }
+
+    fn assert_rejected(yaml: &str, case: &str) {
+        let mut service = LawExecutionService::new();
+        let err = service.load_law(yaml).err().unwrap_or_else(|| {
+            panic!("{case}: a law with an Unknown literal must not load");
+        });
+        assert!(
+            matches!(err, EngineError::LoadError(_)) && err.to_string().contains("RFC-036"),
+            "{case}: got {err:?}"
+        );
+    }
+
     /// Not an Unknown: a sentinel without a usable `missing` list stays a
     /// plain object, and a law may write whatever objects it likes.
     const MALFORMED_SENTINEL: &str = r#"
@@ -273,6 +345,61 @@ articles:
                 "got {err:?}"
             );
             assert!(message.contains("RFC-036"), "got {message}");
+        }
+    }
+
+    /// The recursion has to look at every operand of an operation, not at some
+    /// of them: a law that hides an Unknown in one position is as invalid as
+    /// one that writes it in all of them. So each position is walked alone,
+    /// with the others holding ordinary values.
+    #[test]
+    fn an_unknown_in_any_single_operand_of_in_is_found() {
+        for (case, yaml) in [
+            (
+                "subject only",
+                law_with_in(SENTINEL, Some("'a'"), Some("'b'")),
+            ),
+            (
+                "value only",
+                law_with_in("'a'", Some(SENTINEL), Some("'b'")),
+            ),
+            (
+                "values only",
+                law_with_in("'a'", Some("'b'"), Some(SENTINEL)),
+            ),
+            // The optional operands are absent one at a time as well: an
+            // operand that is not there must not mask the one that is.
+            ("subject, no value", law_with_in(SENTINEL, None, None)),
+            ("value, no values", law_with_in("'a'", Some(SENTINEL), None)),
+            ("values, no value", law_with_in("'a'", None, Some(SENTINEL))),
+        ] {
+            assert_rejected(&yaml, case);
+        }
+    }
+
+    /// Same for DATE_ADD, whose date sits next to four optional parts.
+    #[test]
+    fn an_unknown_in_any_single_operand_of_date_add_is_found() {
+        for (case, yaml) in [
+            ("date only", law_with_date_add(SENTINEL, "years", "1")),
+            (
+                "years only",
+                law_with_date_add("'2025-01-01'", "years", SENTINEL),
+            ),
+            (
+                "months only",
+                law_with_date_add("'2025-01-01'", "months", SENTINEL),
+            ),
+            (
+                "weeks only",
+                law_with_date_add("'2025-01-01'", "weeks", SENTINEL),
+            ),
+            (
+                "days only",
+                law_with_date_add("'2025-01-01'", "days", SENTINEL),
+            ),
+        ] {
+            assert_rejected(&yaml, case);
         }
     }
 

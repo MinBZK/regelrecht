@@ -7284,6 +7284,107 @@ articles:
     }
 
     #[test]
+    fn test_null_output_of_the_same_law_into_a_non_nullable_input_names_the_article() {
+        // The same rule one article further in: an input that reads another
+        // article of its OWN law (`source.output` without a `regulation`) is
+        // held to its declaration too. Article 1 says "no partner" through a
+        // nullable output; article 2 reads it into an input that promised a
+        // value, and the null is refused at that boundary with the law's own
+        // id as the origin — not carried in to fail three operations later.
+        let law = r#"
+$id: intern_nul
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Partner
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {}
+        output:
+          - name: partner
+            type: string
+            nullable: true
+        actions:
+          - output: partner
+            value: $partner_bsn
+  - number: '2'
+    text: Toeslag
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner
+            type: string
+            source:
+              output: partner
+        output:
+          - name: heeft_partner
+            type: boolean
+        actions:
+          - output: heeft_partner
+            operation: EQUALS
+            subject: $partner
+            value: '2'
+"#;
+        // No well-typed law reaches this boundary: N5 refuses an input that
+        // takes a nullable output, within a law just as across laws (RFC-037).
+        // The run-time check stays as defence in depth, so the law is loaded
+        // unchecked here to test it directly.
+        let mut service = LawExecutionService::new();
+        assert!(service.load_law(law).is_err());
+        service.load_law_unchecked(law).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        row.insert("partner_bsn".to_string(), Value::Null);
+        service
+            .register_dict_source_for_law("intern_nul", "brp", "bsn", vec![row], 10)
+            .unwrap();
+        let err = service
+            .evaluate_law_output("intern_nul", "heeft_partner", bsn_one(), "2025-01-01")
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => {
+                assert_eq!(law_id, "intern_nul");
+                assert_eq!(field, "partner");
+                assert_eq!(origin, "intern_nul.partner");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+        // A partner present is a value, and the same reference runs.
+        let mut service = LawExecutionService::new();
+        service.load_law_unchecked(law).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        row.insert("partner_bsn".to_string(), Value::String("2".to_string()));
+        service
+            .register_dict_source_for_law("intern_nul", "brp", "bsn", vec![row], 10)
+            .unwrap();
+        let result = service
+            .evaluate_law_output("intern_nul", "heeft_partner", bsn_one(), "2025-01-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("heeft_partner"),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    #[test]
     fn test_non_nullable_output_that_evaluates_to_null_is_an_error() {
         // Article 3 takes the highest of a list the register delivers empty.
         // The highest of nothing is absent, which the static check cannot see

@@ -2865,6 +2865,274 @@ articles:
         assert_eq!(findings[0].article, "2");
     }
 
+    #[test]
+    fn a_bare_absence_test_guards_as_well_as_the_negated_one() {
+        // The corpus writes the guard as `NOT(EQUALS … null)`, but the four
+        // bare forms decide the same thing, and each of them establishes its
+        // fact in both directions. `NOT_EQUALS`/`NOT_NULL` hold where the
+        // field is present, `EQUALS`/`IS_NULL` where it is absent, so the
+        // branch that runs on the holding side is the guarded one for the
+        // first pair and the unguarded one for the second.
+        let guard = |when: &str, then: &str, default: &str| {
+            n4_law(&format!(
+                "  - output: uitkomst\n    value:\n      operation: IF\n      cases:\n        - when:\n{when}          then: {then}\n      default: {default}\n"
+            ))
+        };
+        let sum = "\n            operation: ADD\n            values:\n              - $huur\n              - 100";
+        let sum_in_default =
+            "\n        operation: ADD\n        values:\n          - $huur\n          - 100";
+        for present_when_true in [
+            "            operation: NOT_EQUALS\n            subject: $huur\n            value: null\n",
+            "            operation: NOT_NULL\n            subject: $huur\n",
+        ] {
+            assert_clean(&guard(present_when_true, sum, "0"));
+            // And absent on the other side, which the message names.
+            assert_only(
+                &guard(present_when_true, "0", sum_in_default),
+                Rule::N4,
+                "'huur' is absent on this path",
+            );
+        }
+        for absent_when_true in [
+            "            operation: EQUALS\n            subject: $huur\n            value: null\n",
+            "            operation: IS_NULL\n            subject: $huur\n",
+        ] {
+            assert_only(
+                &guard(absent_when_true, sum, "0"),
+                Rule::N4,
+                "'huur' is absent on this path",
+            );
+            assert_clean(&guard(absent_when_true, "0", sum_in_default));
+        }
+    }
+
+    #[test]
+    fn an_absence_test_is_read_from_the_operation_and_not_from_the_text_of_a_literal() {
+        // The subject of an absence test only establishes a fact when it is a
+        // reference. A plain string that happens to read like a variable name
+        // with a character in front of it is a literal: `NOT_NULL('xhuur')`
+        // is an N1 about a literal, and it says nothing about 'huur'.
+        let findings = check(&n4_law(
+            "  - output: uitkomst\n    value:\n      operation: IF\n      cases:\n        - when:\n            operation: NOT_NULL\n            subject: xhuur\n          then:\n            operation: ADD\n            values:\n              - $huur\n              - 100\n      default: 0\n",
+        ));
+        assert_eq!(rules(&findings), vec![Rule::N1, Rule::N4], "{findings:#?}");
+        assert!(findings[0].message.contains("the literal is not nullable"));
+        assert!(findings[1].message.contains("'huur' may be absent"));
+    }
+
+    #[test]
+    fn ordering_a_number_against_a_boolean_reports_the_boolean_and_stops_there() {
+        // An operand that is not orderable at all is one mistake: naming the
+        // two sides as "not the same kind of value" on top of it would be a
+        // second message about the same operand.
+        let base = r#"
+input:
+  - name: aantal
+    type: number
+    source: {}
+  - name: vlag
+    type: boolean
+    source: {}
+output:
+  - name: x
+    type: boolean
+actions:
+  - output: x
+    operation: GREATER_THAN
+    subject: $aantal
+    value: $vlag
+"#;
+        assert_only(
+            base,
+            Rule::T1,
+            "'vlag' is a boolean and is used in GREATER_THAN",
+        );
+    }
+
+    #[test]
+    fn an_if_without_default_whose_branch_is_unknown_still_may_be_absent() {
+        // The missing default is what makes the IF absent, and a branch the
+        // checker knows nothing about cannot take that away: "unknown" only
+        // weakens a claim of presence, never a claim of absence.
+        let base = r#"
+input:
+  - name: bedragen
+    type: array
+    source: {}
+output:
+  - name: totaal
+    type: number
+actions:
+  - output: totaal
+    operation: ADD
+    values:
+      - operation: IF
+        cases:
+          - when:
+              operation: EQUALS
+              subject: 1
+              value: 1
+            then:
+              operation: FOREACH
+              collection: $bedragen
+              as: b
+              body: $b
+              combine: MIN
+      - 1
+"#;
+        let findings = check(base);
+        assert_eq!(rules(&findings), vec![Rule::N3, Rule::N4], "{findings:#?}");
+        assert!(findings[1].message.contains("the IF"));
+        assert!(findings[1]
+            .message
+            .contains("may be absent and is used in ADD"));
+    }
+
+    #[test]
+    fn a_foreach_binding_shadows_an_output_of_the_same_name_and_its_facts() {
+        // `heeft_huur` is a boolean output that is an absence test, so a
+        // condition on `$heeft_huur` normally guards `$huur`. Inside a FOREACH
+        // that binds the same name, `$heeft_huur` is the element, and the
+        // element says nothing about 'huur'.
+        let foreach = |as_name: &str| {
+            n4_law(&format!(
+                r#"  - output: heeft_huur
+    operation: NOT_NULL
+    subject: $huur
+  - output: uitkomst
+    value:
+      operation: FOREACH
+      collection: $lijst
+      as: {as_name}
+      filter: $heeft_huur
+      body:
+        operation: ADD
+        values:
+          - $huur
+          - 100
+      combine: ADD
+"#
+            ))
+            .replace(
+                "output:\n  - name: uitkomst",
+                "output:\n  - name: heeft_huur\n    type: boolean\n  - name: uitkomst",
+            )
+            .replace(
+                "  - name: partner",
+                "  - name: lijst\n    type: array\n    source: {}\n  - name: partner",
+            )
+        };
+        // Bound under another name, the output is itself and guards the body.
+        assert_clean(&foreach("k"));
+        // Bound under its own name, it is the element: no guard, so the body
+        // calculates with a value that may be absent.
+        assert_only(&foreach("heeft_huur"), Rule::N4, "'huur' may be absent");
+    }
+
+    #[test]
+    fn an_output_assigned_twice_carries_no_facts_even_when_both_are_absence_tests() {
+        // Which of the two assignments a later condition decides on is not
+        // something the checker can see, so the second one drops the facts
+        // rather than replacing them, also when it tests the same field.
+        let twice = n4_law(
+            r#"  - output: heeft_huur
+    operation: NOT_NULL
+    subject: $huur
+  - output: heeft_huur
+    operation: NOT_NULL
+    subject: $huur
+  - output: uitkomst
+    value:
+      operation: IF
+      cases:
+        - when: $heeft_huur
+          then:
+            operation: ADD
+            values:
+              - $huur
+              - 100
+      default: 0
+"#,
+        )
+        .replace(
+            "output:\n  - name: uitkomst",
+            "output:\n  - name: heeft_huur\n    type: boolean\n  - name: uitkomst",
+        );
+        assert_only(&twice, Rule::N4, "'huur' may be absent and is used in ADD");
+    }
+
+    #[test]
+    fn an_output_that_establishes_a_fact_in_one_direction_only_still_carries_it() {
+        // `AND` learns from its conditions only where it holds, so this output
+        // knows 'huur' is present when it is true and nothing when it is
+        // false. Half a Derived is a Derived: the true side guards the branch
+        // that runs on it.
+        let idiom = n4_law(
+            r#"  - output: hoge_huur
+    operation: AND
+    conditions:
+      - operation: NOT_NULL
+        subject: $huur
+      - true
+  - output: uitkomst
+    value:
+      operation: IF
+      cases:
+        - when: $hoge_huur
+          then:
+            operation: ADD
+            values:
+              - $huur
+              - 100
+      default: 0
+"#,
+        )
+        .replace(
+            "output:\n  - name: uitkomst",
+            "output:\n  - name: hoge_huur\n    type: boolean\n  - name: uitkomst",
+        );
+        assert_clean(&idiom);
+    }
+
+    #[test]
+    fn a_name_declared_twice_is_nullable_when_either_declaration_says_so() {
+        // An input that the article also declares as an output: the two
+        // declarations meet in one symbol, and the absence the one admits is
+        // not talked away by the other. Testing it for absence is therefore
+        // no N1.
+        let both = r#"
+input:
+  - name: huur
+    type: amount
+    source: {}
+output:
+  - name: huur
+    type: amount
+    nullable: true
+  - name: geen_huur
+    type: boolean
+actions:
+  - output: geen_huur
+    value:
+      operation: EQUALS
+      subject: $huur
+      value: null
+"#;
+        assert_clean(both);
+        // The other order declares the same symbol.
+        assert_clean(
+            &both
+                .replace(
+                    "  - name: huur\n    type: amount\n    source: {}",
+                    "  - name: huur\n    type: amount\n    nullable: true\n    source: {}",
+                )
+                .replace(
+                    "  - name: huur\n    type: amount\n    nullable: true\n  - name: geen_huur",
+                    "  - name: huur\n    type: amount\n  - name: geen_huur",
+                ),
+        );
+    }
+
     // -- T1..T4 ---------------------------------------------------------------
 
     #[test]

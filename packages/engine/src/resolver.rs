@@ -1657,6 +1657,131 @@ articles:
         resolver.load_from_yaml(target).unwrap();
     }
 
+    /// A law that references nothing and fails its own type check (N1: an
+    /// absence test on a non-nullable field). Only the unchecked loader takes
+    /// it, which is the point: it is a law the checked loader would never have
+    /// let in.
+    const ILL_TYPED_STRANGER: &str = r#"
+$id: vreemde
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        input:
+          - name: huur
+            type: amount
+            source: {}
+        output:
+          - name: geen_huur
+            type: boolean
+        actions:
+          - output: geen_huur
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null
+"#;
+
+    #[test]
+    fn test_a_law_that_does_not_reference_the_new_one_is_not_re_checked() {
+        // The re-check on load is scoped to the laws that actually read the
+        // arriving law. Scoping it is not only about work: a law already in the
+        // resolver that the new one has nothing to do with must not be dragged
+        // into the new law's load. Here `vreemde` is ill-typed and references
+        // nothing, so re-checking it would produce findings and refuse `doel`
+        // for a defect `doel` neither caused nor could fix — with the error
+        // saying that loading 'doel' makes 'vreemde' ill-typed, which is false.
+        let (_, target) = consumer_and_target("");
+        let mut resolver = RuleResolver::new();
+        assert!(resolver.load_from_yaml(ILL_TYPED_STRANGER).is_err());
+        resolver.load_law_unchecked(ILL_TYPED_STRANGER).unwrap();
+        resolver.load_from_yaml(target).unwrap();
+        assert!(resolver.has_law("doel"));
+    }
+
+    #[test]
+    fn test_an_earlier_version_of_the_arriving_law_itself_is_not_a_consumer() {
+        // A law that reads its own id is a consumer of every law but itself.
+        // The arriving version already stands in for its own id in `check_law`
+        // above, so its own older versions stay out of the consumer sweep: an
+        // ill-typed v1 is superseded by v2, not something to hold v2 against.
+        // Sweeping it in would make a law that repairs its own defect
+        // unloadable, leaving only the broken version in the resolver.
+        //
+        // The self-reference is what makes this a test and not a tautology: it
+        // makes v1 look like a consumer of `zelf` to everything except the
+        // check on the id.
+        let self_reader = r#"
+$id: zelf
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: klasse
+            type: string
+            nullable: true
+        actions:
+          - output: klasse
+            value: null
+  - number: '2'
+    text: t
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: k
+            type: string
+            source:
+              regulation: zelf
+              output: klasse
+              parameters:
+                bsn: $bsn
+        output:
+          - name: y
+            type: boolean
+        actions:
+          - output: y
+            value:
+              operation: EQUALS
+              subject: $k
+              value: a
+"#;
+        // v1 takes its own nullable output into a non-nullable input (N5), so
+        // only the unchecked loader seats it.
+        let mut resolver = RuleResolver::new();
+        assert!(resolver.load_from_yaml(self_reader).is_err());
+        resolver.load_law_unchecked(self_reader).unwrap();
+        // v2 declares that input nullable and is well-typed. It carries the
+        // same id, so the broken v1 is not one of its consumers.
+        let v2 = self_reader
+            .replace(
+                "publication_date: '2025-01-01'\nvalid_from: '2025-01-01'",
+                "publication_date: '2026-01-01'\nvalid_from: '2026-01-01'",
+            )
+            .replace(
+                "          - name: k\n            type: string\n",
+                "          - name: k\n            type: string\n            nullable: true\n",
+            );
+        assert_ne!(v2, self_reader);
+        resolver.load_from_yaml(&v2).unwrap();
+        assert_eq!(resolver.version_count(), 2);
+    }
+
     #[test]
     fn test_a_new_version_of_a_law_is_held_against_its_consumers() {
         // The consumer was fine against version 1 (non-nullable output). A
