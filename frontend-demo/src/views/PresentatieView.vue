@@ -31,9 +31,10 @@ function kindLabel(s) {
         <span slot="overline">Presentatie</span>
         <h1>RegelRecht, van wet naar digitale werking</h1>
         <span slot="subtitle">De dia's vertellen het verhaal en openen onderweg zelf het juiste tabblad.</span>
-        <nldd-container slot="actions" layout="row" gap="8">
-          <nldd-button variant="primary" start-icon="play" text="Start de presentatie" :disabled="!ready || undefined" @click="p.start(0)"></nldd-button>
-        </nldd-container>
+        <!-- `end`, niet `actions`: nldd-title heeft geen actions-slot, en de
+             knop viel daardoor buiten de shadow-DOM (0x0, onzichtbaar). Zonder
+             container ertussen, want die krijgt in `.title__end` geen breedte. -->
+        <nldd-button slot="end" variant="primary" start-icon="play" text="Start de presentatie" :disabled="!ready || undefined" @click="p.start(0)"></nldd-button>
       </nldd-title>
       <nldd-rich-text spacing="tight">
         <p>Pijltjes of spatie bladeren, <kbd>Esc</kbd> sluit de dia's en laat de demo staan, <kbd>f</kbd> zet het scherm vol. Buiten dit tabblad opent <kbd>Shift</kbd>+<kbd>P</kbd> de dia's bij de huidige plek in het verhaal.</p>

@@ -106,6 +106,20 @@ repos:
         pass_filenames: false
         files: ^script/(check-)?nldd-imports(\.test)?\.mjs$
 
+      - id: nldd-slots
+        name: Elke slot-toewijzing bestaat in het ontwerpsysteem
+        entry: just nldd-slots
+        language: system
+        pass_filenames: false
+        files: ^(frontend|frontend-demo|frontend-lawmaking)/src/.*\.(vue|html|js|ts)$
+
+      - id: nldd-slots-tests
+        name: Slot-guard doet wat hij belooft
+        entry: just nldd-slots-test
+        language: system
+        pass_filenames: false
+        files: ^script/(check-)?nldd-slots(\.test)?\.mjs$
+
       - id: dockerfile-consistency
         name: Rust-Dockerfiles blijven bij de cargo-workspace
         entry: just dockerfile-consistency-test

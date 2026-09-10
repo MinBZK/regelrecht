@@ -3,6 +3,7 @@ import { computed, reactive, ref, shallowReactive } from 'vue';
 import LawTile from '../components/LawTile.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
 import ApplicationSheet from '../components/ApplicationSheet.vue';
+import ChangeWizardSheet from '../components/ChangeWizardSheet.vue';
 import { fieldSpec, numericImpact } from '../data/format.js';
 import { loadFailures } from '../engine/useDemoEngine.js';
 import { PERMISSION_LABELS, delegationLabel } from '../data/delegation.js';
@@ -42,6 +43,15 @@ function onEvaluated({ law, evaluation }) {
 
 const sortedLaws = computed(() =>
   [...portalLaws.value].sort((a, b) => (impact[b.id] ?? 0) - (impact[a.id] ?? 0) || a.name.localeCompare(b.name)),
+);
+
+// Wijziging doorgeven staat achter een vlag per profiel (de POC's
+// FEATURE_CHANGE_WIZARD) en alleen voor wie zelf mag corrigeren: namens een
+// ander met alleen leesrecht valt er niets door te geven. Ook alleen voor een
+// burger — de wizard gaat over inkomen, huur, adres en huishouden.
+const wizardOpen = ref(false);
+const showWizard = computed(
+  () => !!profile.value?.feature_flags?.CHANGE_WIZARD && canSubmitClaims.value && activeDelegation.value?.subjectType !== 'BUSINESS' && profile.value?.type !== 'ondernemer',
 );
 
 const editing = ref(null); // { node, law }
@@ -112,12 +122,21 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         <span slot="overline">Ingelogd als {{ persona?.name ?? profile?.name }}<template v-if="activeDelegation"> · namens {{ activeDelegation.subjectName }}</template> · demo, geen echte overheidsdienst</span>
         <h1>{{ heading }}</h1>
         <span slot="subtitle">{{ subtitle }}</span>
-        <!-- Tags naast elkaar: gap 8, dezelfde scheiding als de spacer-cells in de lijstrijen. -->
-        <nldd-container slot="actions" layout="wrap" gap="8">
-          <nldd-tag v-for="p in properties" :key="p" size="sm" :text="p"></nldd-tag>
-          <nldd-tag v-if="profile?.kvk" size="sm" icon="building" :text="`KVK ${profile.kvk}`"></nldd-tag>
-        </nldd-container>
+        <!-- De slot heet `end`, niet `actions`: nldd-title kent alleen
+             overline, default, subtitle en end. Met `actions` viel het blok
+             buiten de shadow-DOM en was het 0x0 — de persona-tags stonden er
+             dus wel, maar zag niemand. `.title__end` is een flexrij die niet
+             krimpt, dus de tags gaan er los in: een nldd-container ertussen
+             heeft geen eigen breedte en werd 0px breed. -->
+        <nldd-tag v-for="p in properties" :key="p" slot="end" size="sm" :text="p"></nldd-tag>
+        <nldd-tag v-if="profile?.kvk && !activeDelegation" slot="end" size="sm" icon="building" :text="`KVK ${profile.kvk}`"></nldd-tag>
       </nldd-title>
+      <!-- Eén ingang voor 'er is iets veranderd', naast de tegels die elk over
+           één regeling gaan. Onder de kop en niet ernaast: het is een actie op
+           de hele pagina, geen eigenschap van de persoon. -->
+      <nldd-container v-if="showWizard" padding-top="8">
+        <nldd-button size="sm" variant="secondary" start-icon="edit" text="Wijziging doorgeven" @click="wizardOpen = true"></nldd-button>
+      </nldd-container>
       <!-- De beschrijving hoort bij de persona zelf; namens een ander zegt zij niets. -->
       <nldd-rich-text v-if="persona?.description && !activeDelegation" spacing="tight"><p><em>{{ persona.description }}</em></p></nldd-rich-text>
       <!-- The persona line above sets `spacing="tight"`, which strips the space
@@ -168,5 +187,6 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
 
     <EditValueSheet :open="!!editing" :node="editing?.node ?? null" :tile-law-id="editing?.law?.id ?? null" :self-declared="!!editing?.selfDeclared" @close="editing = null" />
     <ApplicationSheet :open="!!applying" :law="applying" :evaluation="applying ? evaluations[applying.id] ?? null : null" @close="applying = null" @edit-value="onEditValue" />
+    <ChangeWizardSheet :open="wizardOpen" @close="wizardOpen = false" />
   </nldd-page>
 </template>

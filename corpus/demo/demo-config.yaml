@@ -27,7 +27,9 @@ profiles:
     # (Machtigingenwet), waarvan één als vennoot met alleen leesrecht. Dat
     # verschil in rechten komt uit de wet zelf en is precies wat de demo laat
     # zien.
-    feature_flags: {DELEGATION: true, AUTO_APPROVE_CLAIMS: false}
+    # CHANGE_WIZARD: één ingang voor 'er is iets veranderd' (inkomen, huur,
+    # adres, huishouden), naast de tegels die elk over één regeling gaan.
+    feature_flags: {DELEGATION: true, AUTO_APPROVE_CLAIMS: false, CHANGE_WIZARD: true}
     sidebar_laws: null
     disabled_laws:
       BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]
