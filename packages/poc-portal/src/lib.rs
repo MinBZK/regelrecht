@@ -11,5 +11,14 @@
 //! and is forwarded to in-cluster, the way `editor-api` already forwards to
 //! `pipelineapi`.
 
+pub mod app;
+pub mod config;
 pub mod gate;
+pub mod pagina;
+pub mod proxy;
 pub mod registry;
+
+/// The register, baked into the binary. It describes the PoCs this image was
+/// built with, so reading it from disk at runtime would only allow the two to
+/// disagree.
+pub const REGISTRY_YAML: &str = include_str!("../../../pocs/registry.yaml");

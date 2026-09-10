@@ -43,6 +43,10 @@ time.workspace = true
 # openidconnect, and 0.13 is what corpus/github/pipeline already use. `stream`
 # lets the assistant's SSE responses pass through without buffering.
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream"] }
+# Streaming the request body through to the upstream, so the assistant's SSE
+# responses are not buffered until the model finishes.
+futures-util = { version = "0.3", default-features = false }
+tower.workspace = true
 
 [dev-dependencies]
 tower.workspace = true
