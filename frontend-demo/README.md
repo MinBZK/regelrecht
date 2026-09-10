@@ -52,8 +52,11 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
 ## Draaien
 
 ```bash
-just dev-demo        # WASM bouwen + Vite op :7400
-just bdd-demo        # de demo-scenario's natively, met cargo
+just demo            # WASM bouwen, Vite op :7400, browser open
+just dev-demo        # hetzelfde zonder browser
+just demo-check      # alles controleren: wetten, scenario's, tests, WASM, build
+just bdd-demo        # alleen de demo-scenario's, natively met cargo
+just validate-demo   # alleen de wetten: schema en typecontrole
 ```
 
 ## Afwezig en onbekend (RFC-036)

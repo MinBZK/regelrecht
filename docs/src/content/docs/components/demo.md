@@ -33,13 +33,16 @@ Er is geen backend. De engine draait als WebAssembly in de browser, dezelfde eng
 ## Lokaal draaien
 
 ```bash
-just dev-demo          # bouwt de WASM-engine en start Vite op :7400
+just demo              # bouwt de WASM-engine, start Vite op :7400 en opent de browser
+just dev-demo          # hetzelfde, zonder de browser te openen
 ```
 
-Scenario's natively controleren, buiten de browser:
+Controleren, buiten de browser:
 
 ```bash
-just bdd-demo
+just demo-check        # wetten, scenario's, frontend-tests, WASM en build
+just bdd-demo          # alleen de scenario's
+just validate-demo     # alleen de wetten (schema en typecontrole)
 ```
 
 ## Verder lezen
