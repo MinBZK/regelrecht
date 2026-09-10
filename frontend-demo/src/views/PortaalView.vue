@@ -68,7 +68,11 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
          names it. What the bar carried that nothing else did is the disclaimer,
          so that moves into the overline, where it stays next to the persona the
          visitor is logged in as. -->
-    <nldd-simple-section width="1200px">
+    <!-- 1440px: op 1200 bleef er van drie kolommen 384px per tegel over, en dat
+         is krap voor een bedrag met een zin eromheen. Breder geeft dezelfde drie
+         kolommen meer ruimte in plaats van een vierde erbij. De kop loopt mee, zodat
+         de tekst boven de tegels op dezelfde marge staat. -->
+    <nldd-simple-section width="1440px">
       <nldd-title slot="header" size="2">
         <span slot="overline">Ingelogd als {{ persona?.name ?? profile?.name }} · demo, geen echte overheidsdienst</span>
         <h1>{{ profile?.portal_heading }}</h1>
@@ -99,7 +103,7 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
       </nldd-container>
     </nldd-simple-section>
 
-    <nldd-simple-section width="1200px" padding-top="0">
+    <nldd-simple-section width="1440px" padding-top="0">
       <!-- `item-width` is een minimum, geen breedte: de collectie verdeelt haar
            1200px over zoveel kolommen als er passen en rekt de rest uit. Op 400px
            bleven er dus twee over van 588px elk. 360px geeft er drie, en drie
