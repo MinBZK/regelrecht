@@ -213,6 +213,45 @@ describe('trainBracketModel', () => {
     for (const b of model.boundaries) expect(b % 1000).toBe(0);
   });
 
+  it('geeft wie geen eigen staffel kreeg een reststaffel, niet die van een andere groep', () => {
+    // Twee groepskenmerken waarvan maar twee van de vier cellen groot genoeg
+    // waren. Zonder reststaffel viel wie erbuiten viel terug op de eerste
+    // groep in de lijst — een wíllekeurige andere combinatie.
+    const stap = (a) => ({ lower: 0, upper: 100000, amountAtLower: a, amountAtUpper: a, count: 100 });
+    const model = {
+      primary: { key: 'inkomen', label: 'Inkomen' },
+      groupKeys: [
+        { key: 'heeft_partner', label: 'Heeft partner', kind: 'boolean' },
+        { key: 'huurder', label: 'Huurt een woning', kind: 'boolean' },
+      ],
+      groups: [
+        { filter: { heeft_partner: 0, huurder: 0 }, keys: ['heeft_partner', 'huurder'], steps: [stap(100)], count: 200 },
+        { filter: { heeft_partner: 1, huurder: 1 }, keys: ['heeft_partner', 'huurder'], steps: [stap(900)], count: 200 },
+        { filter: {}, keys: [], steps: [stap(500)], count: 20 },
+      ],
+    };
+    // Een cel met een eigen staffel houdt die.
+    expect(predict(model, { inkomen: 30000, heeft_partner: 1, huurder: 1 })).toBe(900);
+    // Een cel zonder eigen staffel krijgt de rest, niet de 100 van de eerste groep.
+    expect(predict(model, { inkomen: 30000, heeft_partner: 1, huurder: 0 })).toBe(500);
+  });
+
+  it('noemt de reststaffel apart in de tabel', () => {
+    const stap = (a) => ({ lower: 0, upper: 100000, amountAtLower: a, amountAtUpper: a, count: 10 });
+    const metRest = {
+      primary: { key: 'inkomen', label: 'Inkomen' },
+      groupKeys: [{ key: 'heeft_partner', label: 'Heeft partner', kind: 'boolean' }],
+      groups: [
+        { filter: { heeft_partner: 1 }, keys: ['heeft_partner'], steps: [stap(900)], count: 200 },
+        { filter: {}, keys: [], steps: [stap(500)], count: 20 },
+      ],
+    };
+    expect(describeModel(metRest).map((r) => r.group)).toEqual(['Heeft partner: ja', 'Overige combinaties']);
+    // Eén groep zonder kenmerken is gewoon iedereen.
+    const alleen = { ...metRest, groups: [{ filter: {}, keys: [], steps: [stap(500)], count: 220 }] };
+    expect(describeModel(alleen).map((r) => r.group)).toEqual(['Iedereen']);
+  });
+
   it('weigert te leren van te weinig gegevens', () => {
     const run = fakeRun(() => 100, { count: 5 });
     expect(() => trainBracketModel(trainingData(run, ['toeslag']))).toThrow(/te weinig gegevens/i);

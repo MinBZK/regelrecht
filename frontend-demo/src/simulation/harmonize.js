@@ -21,6 +21,12 @@
  * De invoer is een gewone simulatierun (`simulation/runner.js`): dezelfde
  * gegenereerde bevolking, dezelfde echte wetten, dezelfde engine. Er wordt
  * hier dus niets nagebootst — het model leert van wat de wet werkelijk deed.
+ *
+ * **Bedragen in dit bestand staan in hele euro's, niet in eurocent.** Dat wijkt
+ * af van de rest van de corpus, waar geld altijd in centen staat, en het is
+ * geen slordigheid: `runner.js` deelt een uitvoer met een `amount`-spec al door
+ * honderd (zie `reduceOutcome`), dus wat hier binnenkomt is al euro. Daarom
+ * rondt `roundAmount: 1` af op hele euro's en niet op hele centen.
  */
 
 // ---- elementaire statistiek ------------------------------------------------
@@ -315,9 +321,11 @@ export function trainBracketModel(data, options = {}) {
   // genoeg mensen in zitten om iets zinnigs over te zeggen.
   const combos = groupCombinations(groupKeys);
   const groups = [];
+  const covered = [];
   for (const combo of combos) {
     const members = rows.filter((r) => groupKeys.every((f) => r.values[f.key] === combo[f.key]));
     if (members.length < Math.max(config.minGroupSize, 5 * (boundaries.length - 1))) continue;
+    covered.push(combo);
     groups.push({
       filter: combo,
       keys: groupKeys.map((f) => f.key),
@@ -326,13 +334,22 @@ export function trainBracketModel(data, options = {}) {
     });
   }
 
-  // Zonder bruikbare groepen: één staffel voor iedereen.
-  if (!groups.length) {
+  // En altijd een staffel voor de rest: iedereen wiens combinatie te klein was
+  // om er een te verdienen.
+  //
+  // Zonder deze viel zo iemand bij `predict` terug op de eerste groep in de
+  // lijst, wat een wíllekeurige andere combinatie is: wie een partner heeft en
+  // niet huurt kreeg dan het bedrag van wie geen partner heeft en wel huurt.
+  // Dat telde ook mee in de gemiddelde afwijking, terwijl de tabel er geen
+  // regel voor toonde — de staffel was dus geen totale functie over de
+  // bevolking. Nu is er één regel die zegt wat er met de rest gebeurt.
+  const rest = rows.filter((r) => !covered.some((c) => groupKeys.every((f) => r.values[f.key] === c[f.key])));
+  if (!groups.length || rest.length) {
     groups.push({
       filter: {},
       keys: [],
-      steps: stepsFor(rows.map((r) => ({ x: r.values[primary.key], amount: r.amount })), boundaries, config),
-      count: rows.length,
+      steps: stepsFor((rest.length ? rest : rows).map((r) => ({ x: r.values[primary.key], amount: r.amount })), boundaries, config),
+      count: rest.length || rows.length,
     });
   }
 
@@ -444,9 +461,14 @@ export function evaluateModel(model, rows) {
 export function describeModel(model, formatAmount = (v) => `€ ${v.toFixed(0)}`) {
   const lines = [];
   for (const group of model.groups) {
+    // Een groep zonder kenmerken is de rest: iedereen wiens combinatie te
+    // klein was voor een eigen staffel. Staat er maar één groep, dan is dat
+    // gewoon iedereen.
     const label = group.keys.length
       ? group.keys.map((k) => `${labelOf(model, k)}: ${group.filter[k] ? 'ja' : 'nee'}`).join(', ')
-      : 'Iedereen';
+      : model.groups.length > 1
+        ? 'Overige combinaties'
+        : 'Iedereen';
     lines.push({
       group: label,
       count: group.count,
