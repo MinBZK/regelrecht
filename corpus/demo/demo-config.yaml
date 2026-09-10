@@ -166,6 +166,177 @@ dashboard_outputs:
   NVWA/warenwet/meldplicht: heeft_meldplicht
   IND/vreemdelingenwet: heeft_verblijfsrecht
 
+# Wat een tegel onder de uitkomst laat zien.
+#
+# Een burger stelt drie vragen: krijg ik het, hoeveel is het, en moet ik nog
+# iets doen. Alles daarbuiten is verantwoording, en die hoort een klik verder
+# (Berekening, Gebruikte gegevens, Wettekst) waar hij ook te corrigeren is.
+#
+# Standaard toonde de tegel élke andere uitvoerwaarde van de wet, tot zes toe.
+# Daarmee kwam de rekenkeuken op straat: "Uitzondering caribisch nederland van
+# toepassing: Nee" bij iemand die in Nederland woont, "Woonlandfactor" en "Alo
+# kop bedrag" onder het kindgebonden budget. Dat zijn stappen in de redenering,
+# geen antwoorden op een vraag die iemand heeft.
+#
+# `tile_details` zegt per wet welke waarden er wél toe doen voor de burger. Een
+# lege lijst betekent: alleen de uitkomst, verder niets. Een wet die hier niet
+# in staat houdt de oude weergave, dus dit kan wet voor wet groeien.
+tile_details:
+  # De uitspraak is het hele antwoord; het uitzonderingsvinkje is een tussenstap.
+  KIESRAAD/kieswet: []
+  # Het bedrag is het antwoord. Waar het uit is opgebouwd staat in de berekening.
+  TOESLAGEN/wet_op_het_kindgebonden_budget: []
+  TOESLAGEN/zorgtoeslagwet: []
+  TOESLAGEN/wet_op_de_huurtoeslag:
+    # Wat de burger zelf betaalt naast de toeslag: dat verandert wat hij doet.
+    - basishuur
+  SZW/besluit_bijstandverlening_zelfstandigen:
+    # Bedrijfskapitaal is een tweede recht, geen tussenstap.
+    - bedrijfskapitaal
+  BELASTINGDIENST/wet_inkomstenbelasting: []
+  # Het maandbedrag is het antwoord; dagloon en opbouwpercentage zijn de weg
+  # ernaartoe en staan in de berekening.
+  UWV/werkloosheidswet: []
+  UWV/ziektewet: []
+  UWV/wet_werk_en_inkomen_naar_arbeidsvermogen: []
+  SVB/algemene_ouderdomswet: []
+  SVB/algemene_nabestaandenwet: []
+  SVB/participatiewet/aio: []
+  SZW/participatiewet/bijstand: []
+  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten: []
+  DUO/wet_studiefinanciering: []
+  PENSIOENFONDS/pensioenwet: []
+  BELASTINGDIENST/zorgverzekeringswet/bijdrage: []
+  TOESLAGEN/wet_kinderopvang: []
+  GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten: []
+  SVB/algemene_kinderbijslagwet: []
+  IND/vreemdelingenwet: []
+
+# Hoe een tegel haar uitkomst vertelt. Zonder dit zegt elke tegel hetzelfde:
+# "U voldoet aan de voorwaarden", het bedrag, en de veldnaam eronder. Dat is
+# een label, geen antwoord. De POC schreef per wet een zin om het bedrag heen
+# ("Uw huurtoeslag is waarschijnlijk € 302,96 per jaar"), en dat leest als iets
+# wat tegen déze burger gaat.
+#
+# Per wet: `lead` staat boven de uitkomst, `unit` erachter, en `none` vervangt
+# het geheel als de wet niets toekent. Een wet die hier niet in staat houdt de
+# algemene weergave, dus dit kan wet voor wet groeien.
+#
+#   lead:  de aanhef, zonder punt; eindigt waar het bedrag begint
+#   unit:  wat er ná het bedrag staat ("per jaar", "dit jaar", "per maand")
+#   none:  hele zin voor wie er geen recht op heeft
+#   yes/no: voor een ja/nee-wet, in plaats van lead/unit
+outcome_phrasing:
+  TOESLAGEN/zorgtoeslagwet:
+    lead: Uw zorgtoeslag is waarschijnlijk
+    unit: dit jaar
+    none: U krijgt waarschijnlijk geen zorgtoeslag.
+  TOESLAGEN/wet_op_de_huurtoeslag:
+    lead: Uw huurtoeslag is waarschijnlijk
+    unit: per jaar
+    none: U krijgt waarschijnlijk geen huurtoeslag.
+  TOESLAGEN/wet_op_het_kindgebonden_budget:
+    lead: Uw kindgebonden budget is waarschijnlijk
+    unit: per jaar
+    none: U krijgt waarschijnlijk geen kindgebonden budget.
+  TOESLAGEN/wet_kinderopvang:
+    lead: Uw kinderopvangtoeslag is waarschijnlijk
+    unit: per jaar
+    none: U krijgt waarschijnlijk geen kinderopvangtoeslag.
+  BELASTINGDIENST/wet_inkomstenbelasting:
+    lead: Uw verschuldigde inkomstenbelasting is waarschijnlijk
+    unit: dit jaar
+    none: U bent waarschijnlijk geen inkomstenbelasting verschuldigd.
+  SVB/algemene_ouderdomswet:
+    lead: Uw AOW-pensioen is waarschijnlijk
+    unit: per jaar
+    none: U heeft nog geen recht op AOW.
+  SVB/algemene_nabestaandenwet:
+    lead: Uw nabestaandenuitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op een nabestaandenuitkering.
+  SVB/participatiewet/aio:
+    lead: Uw AIO-aanvulling is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op een AIO-aanvulling.
+  SZW/participatiewet/bijstand:
+    lead: Uw bijstandsuitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op bijstand.
+  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten:
+    lead: Uw bijstandsuitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op bijstand.
+  SZW/besluit_bijstandverlening_zelfstandigen:
+    lead: Uw Bbz-bijstand is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op Bbz-bijstand.
+  UWV/werkloosheidswet:
+    lead: Uw WW-uitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op WW.
+  UWV/ziektewet:
+    lead: Uw ziekengeld is waarschijnlijk
+    unit: per dag
+    none: U heeft waarschijnlijk geen recht op ziekengeld.
+  UWV/wet_werk_en_inkomen_naar_arbeidsvermogen:
+    lead: Uw WIA-uitkering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op een WIA-uitkering.
+  DUO/wet_studiefinanciering:
+    lead: Uw studiefinanciering is waarschijnlijk
+    unit: per maand
+    none: U heeft waarschijnlijk geen recht op studiefinanciering.
+  PENSIOENFONDS/pensioenwet:
+    lead: Uw pensioen is waarschijnlijk
+    unit: per maand
+    none: U bouwt hier nog geen pensioen op.
+  BELASTINGDIENST/zorgverzekeringswet/bijdrage:
+    lead: Uw bijdrage Zvw is waarschijnlijk
+    unit: dit jaar
+    none: U bent waarschijnlijk geen bijdrage Zvw verschuldigd.
+  GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten:
+    lead: Uw precariobelasting is waarschijnlijk
+    unit: per jaar
+    none: U bent waarschijnlijk geen precariobelasting verschuldigd.
+  # Ja/nee-wetten: geen bedrag, wel een uitspraak. `date_input` zet de datum
+  # waar de uitspraak over gaat in de aanhef.
+  KIESRAAD/kieswet:
+    lead: Voor de verkiezingen van {date} heeft u
+    # Zonder datum valt de hele bijzin weg, niet alleen de plaatshouder.
+    lead_no_date: Voor de verkiezingen heeft u
+    date_input: verkiezingsdatum
+    'yes': STEMRECHT
+    'no': GEEN stemrecht
+  SVB/algemene_kinderbijslagwet:
+    lead: U heeft
+    'yes': RECHT OP KINDERBIJSLAG
+    'no': GEEN recht op kinderbijslag
+  IND/vreemdelingenwet:
+    lead: U heeft
+    'yes': VERBLIJFSRECHT
+    'no': GEEN verblijfsrecht
+  GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen:
+    lead: Voor een terras heeft u
+    'yes': RECHT OP EEN VERGUNNING
+    'no': GEEN recht op een vergunning
+  GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten:
+    lead: Voor alcoholverkoop heeft u
+    'yes': RECHT OP EEN VERGUNNING
+    'no': GEEN recht op een vergunning
+  NVWA/warenwet/haccp:
+    lead: Voor voedselveiligheid heeft u
+    'yes': EEN HACCP-VERPLICHTING
+    'no': GEEN HACCP-verplichting
+  NVWA/warenwet/meldplicht:
+    lead: Bij een voedselveiligheidsincident heeft u
+    'yes': EEN MELDPLICHT
+    'no': GEEN meldplicht
+  RVO/omgevingswet/energiebesparing/informatieplicht:
+    lead: Voor energiebesparing heeft u
+    'yes': EEN INFORMATIEPLICHT
+    'no': GEEN informatieplicht
+
 # Which YAML paths the law viewer opens by default for a law, so the audience
 # sees the branch that matters (the POC's DEMO_COLLAPSE_CONFIG, trimmed to the
 # laws on the default tabs). Paths are dotted, arrays by index or by the value

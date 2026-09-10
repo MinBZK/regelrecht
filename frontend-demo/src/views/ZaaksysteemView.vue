@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import CorrectionRows from '../components/CorrectionRows.vue';
 import DataLineage from '../components/DataLineage.vue';
@@ -47,6 +47,23 @@ const lanes = computed(() => [
 
 const selected = computed(() => state.cases.find((c) => c.id === route.params.caseId) ?? null);
 watch(selected, (c) => { if (c && c.service !== service.value) service.value = c.service; }, { immediate: true });
+
+// The case opens in a sheet over the board, not in an inspector column beside
+// it. A case carries the banner, both outcomes, the whole data tree and the
+// corrections; the inspector is a narrow fixed rail and squeezed all of that
+// into a column too thin to read. It also matches the citizen's side, where an
+// application opens the same way (ApplicationSheet), so the same case looks the
+// same from both ends.
+const caseSheet = ref(null);
+watch(
+  selected,
+  async (c) => {
+    if (!c) return caseSheet.value?.hide?.();
+    await nextTick();
+    caseSheet.value?.show?.();
+  },
+  { immediate: true },
+);
 
 function open(c) {
   router.push(`/zaaksysteem/${c.id}`);
@@ -107,7 +124,13 @@ const serviceClaims = computed(() => state.claims.filter((cl) => cl.status === '
 const reason = ref('');
 function decide(approved) {
   if (!selected.value) return;
-  const text = reason.value.trim() || (approved ? 'Voldoet aan de voorwaarden.' : 'Voldoet niet aan de voorwaarden.');
+  // Without a typed reason, say who decided — not what the law says. A
+  // caseworker can approve or reject against the engine's own outcome, and
+  // "Voldoet niet aan de voorwaarden" then claimed the law had rejected the
+  // citizen while the tile beside it showed the amount the law had granted.
+  // Awb art. 3:46 asks a besluit to rest on a deugdelijke motivering; the
+  // honest fallback is that none was given.
+  const text = reason.value.trim() || (approved ? 'Toegekend door de behandelaar. Geen toelichting gegeven.' : 'Afgewezen door de behandelaar. Geen toelichting gegeven.');
   demo.decideCase(selected.value.id, approved, text, verified.value?.ok ? verified.value.outputs : null);
   reason.value = '';
 }
@@ -128,7 +151,7 @@ function claimLawName(cl) {
 </script>
 
 <template>
-  <nldd-navigation-split-view inspector-accessible-label="Zaakdetails">
+  <nldd-navigation-split-view>
     <nldd-split-view-pane slot="main" has-content>
       <nldd-page sticky-header>
         <nldd-container slot="header" padding="12">
@@ -192,12 +215,15 @@ function claimLawName(cl) {
       </nldd-page>
     </nldd-split-view-pane>
 
-    <nldd-split-view-pane v-if="selected" slot="inspector" has-content>
-      <nldd-page>
+  </nldd-navigation-split-view>
+
+  <Teleport to="body">
+    <nldd-sheet ref="caseSheet" placement="right" width="720px" accessible-label="Zaakdetails" @close="close">
+      <nldd-page v-if="selected">
         <nldd-container slot="header" padding="12">
           <nldd-top-title-bar :text="selected.lawName" :supporting-text="`Zaak ${selected.id.slice(-5)} · ${personaName(selected.bsn)}`" dismiss-text="Sluiten" @dismiss="close"></nldd-top-title-bar>
         </nldd-container>
-        <nldd-container padding="12" gap="16">
+        <nldd-container padding="16" gap="16">
           <nldd-banner
             :variant="selected.status === 'DECIDED' ? (selected.approved ? 'success' : 'critical') : 'accent'"
             :text="selected.status === 'DECIDED' ? (selected.approved ? 'Toegekend' : 'Afgewezen') : selected.objection?.status === 'PENDING' ? 'Bezwaar ingediend' : 'Wacht op beoordeling'"
@@ -269,8 +295,8 @@ function claimLawName(cl) {
           </nldd-container>
         </nldd-container>
       </nldd-page>
-    </nldd-split-view-pane>
-  </nldd-navigation-split-view>
+    </nldd-sheet>
+  </Teleport>
   <!-- The same correction sheet as on the portal, filled in by the caseworker for this case. -->
   <EditValueSheet
     v-if="selected"

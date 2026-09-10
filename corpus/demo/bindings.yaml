@@ -1765,6 +1765,21 @@ wet_inkomstenbelasting:
     service: BELASTINGDIENST
     # Belastingdienst box/aftrek registers: no row means no such income, asset, debt or deduction (0)
     absent: 0
+  # Elke partner-lookup hieronder selecteert op $partner_bsn, en die moet in
+  # deze wet zelf gebonden zijn: `select_on` leest alleen de parameters en de
+  # invoer van de wet die de lookup doet, niet die van wet_brp. Zonder deze
+  # regel vindt de materialisatie de sleutel niet, wordt elke partnerwaarde
+  # onbekend in plaats van afwezig, en meldt de huurtoeslag dat er iets
+  # ontbreekt voor iemand die helemaal geen partner heeft (RFC-036).
+  partner_bsn:
+    table: relaties
+    field: partner_bsn
+    select_on:
+      - name: bsn
+        value: $bsn
+    kind: table
+    service: RvIG
+    absent: null
   partner_loon_uit_dienstbetrekking:
     table: box1
     field: loon_uit_dienstbetrekking
@@ -1876,8 +1891,8 @@ wet_inkomstenbelasting:
     # Belastingdienst box/aftrek registers: no row means no such income, asset, debt or deduction (0)
     absent: 0
   partner_buitenlands_inkomen:
-    table: buitenlands
-    field: inkomen
+    table: buitenlands_inkomen
+    field: bedrag
     select_on:
       - name: bsn
         value: $partner_bsn
@@ -1888,8 +1903,8 @@ wet_inkomstenbelasting:
     # guard nooit geraakt.
     absent: null
   buitenlands_inkomen:
-    table: buitenlands
-    field: inkomen
+    table: buitenlands_inkomen
+    field: bedrag
     select_on:
       - name: bsn
         value: $bsn
@@ -1971,6 +1986,17 @@ wet_structuur_uitvoeringsorganisatie_werk_en_inkomen:
     kind: table
     service: UWV
 wet_studiefinanciering:
+  # Zie de toelichting bij wet_inkomstenbelasting: een `select_on` op
+  # $partner_bsn werkt alleen als deze wet die sleutel zelf bindt.
+  partner_bsn:
+    table: relaties
+    field: partner_bsn
+    select_on:
+      - name: bsn
+        value: $bsn
+    kind: table
+    service: RvIG
+    absent: null
   onderwijstype:
     table: inschrijvingen
     field: onderwijstype

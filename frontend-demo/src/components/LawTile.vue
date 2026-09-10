@@ -6,6 +6,7 @@ import DataLineage from './DataLineage.vue';
 import { fieldSpec, formatMissing, formatValue, humanize, isUnknown, verdictOf } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
+import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasing.js';
 import { useDemo } from '../store/demoStore.js';
 
 // One regeling on the portal: the outcome of the law for this persona, the
@@ -59,7 +60,52 @@ const primary = computed(() => {
   if (!name) return null;
   return { name, value: evaluation.value.outputs[name], spec: fieldSpec(doc.value, name) };
 });
-const secondary = computed(() => outputs.value.filter(([k]) => k !== primary.value?.name).slice(0, 6));
+/**
+ * What the tile shows under the outcome.
+ *
+ * A citizen asks three things: do I get it, how much, and do I have to do
+ * something. Everything else is justification, and that belongs one click away
+ * (Berekening, Gebruikte gegevens, Wettekst) where it can also be corrected.
+ * Showing every remaining output put the reasoning on the front page —
+ * "Uitzondering caribisch nederland van toepassing: Nee" for someone living in
+ * the Netherlands.
+ *
+ * `tile_details` in demo-config.yaml names the values that do matter, per law;
+ * an empty list means the outcome speaks for itself. A law with no entry keeps
+ * the old behaviour, so this grows law by law.
+ */
+const secondary = computed(() => {
+  const rest = outputs.value.filter(([k]) => k !== primary.value?.name);
+  const wanted = corpus.value?.config?.tile_details?.[`${props.law.service}/${props.law.law_path}`];
+  if (!wanted) return rest.slice(0, 6);
+  return wanted.map((name) => rest.find(([k]) => k === name)).filter(Boolean);
+});
+
+// The tile's sentence (see outcomePhrasing.js): a lead, the outcome big, and
+// the unit after it — "Uw huurtoeslag is waarschijnlijk € 302,96 per jaar".
+// Null for a law nobody wrote wording for, and then the general rendering
+// below stands unchanged.
+const phrasing = computed(() => phrasingFor(corpus.value?.config, props.law.service, props.law.law_path));
+// The date a yes/no law is about ("de verkiezingen van 29 oktober 2025"). It
+// is an input the law resolved, so it is in the lineage the tile already
+// builds; absent, the lead degrades to a sentence without a date.
+const outcomeDate = computed(() => {
+  const name = dateInputFor(phrasing.value);
+  if (!name) return null;
+  const hit = leafValues(lineage.value).find((n) => n.name === name);
+  return hit && !isUnknown(hit.value) && hit.value !== null ? formatValue(hit.value, null) : null;
+});
+const phrased = computed(() => {
+  if (!primary.value) return null;
+  return phraseOutcome(phrasing.value, {
+    met: requirementsMet.value,
+    // An unknown amount is not a number to put in a sentence; the general
+    // rendering names what is missing, so leave it to that.
+    value: isUnknown(primary.value.value) ? null : formatValue(primary.value.value, primary.value.spec),
+    isYesNo: typeof primary.value.value === 'boolean',
+    date: outcomeDate.value,
+  });
+});
 
 const lineage = computed(() => {
   if (!evaluation.value?.trace) return [];
@@ -79,6 +125,24 @@ const askedInputs = computed(() => {
 });
 // What the engine ran into that only the citizen can answer (just in time).
 const missingInputs = computed(() => nextQuestions(askedInputs.value, evaluation.value, props.law.id));
+/**
+ * The self-supplied values this tile shows: the ones already answered, plus the
+ * ones the law actually ran into.
+ *
+ * Not every question a law could ask is a question for this person. The kieswet
+ * declares "ingezetenschapsduur jaren" and "werkzaam in nederlandse openbare
+ * dienst" for the exception that keeps Dutch nationals abroad enfranchised; for
+ * someone living in the Netherlands the law never reaches them, and listing
+ * them anyway asks for paperwork nobody needs and suggests the outcome is
+ * incomplete when it is settled. `nextQuestions` already knows which ones the
+ * engine hit (RFC-036 reports the facts it missed), so the tile follows that.
+ */
+const ownInputs = computed(() => {
+  const answered = askedInputs.value.filter((a) => a.claim);
+  const asked = missingInputs.value.filter((a) => !a.claim);
+  return [...answered, ...asked];
+});
+
 function evaluationParams() {
   return evaluationParamsFor(personaParams(), askedInputs.value);
 }
@@ -113,6 +177,8 @@ const produces = computed(() => {
   return null;
 });
 const canApply = computed(() => evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
+/** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
+const canObject = computed(() => currentCase.value?.status === 'DECIDED' && currentCase.value?.approved === false && !currentCase.value?.objection);
 
 // The application stays in the portal (a sheet); the case system is the
 // caseworker's world.
@@ -137,13 +203,13 @@ const statusTag = computed(() => {
 
 <template>
   <nldd-card :accessible-label="law.name">
-    <nldd-container slot="header" padding="16" layout="row" gap="12" vertical-alignment="top">
+    <nldd-container slot="header" padding="20" layout="row" gap="12" vertical-alignment="top">
       <OrgLogo :service="law.service" />
       <nldd-title-cell size="5" :text="law.name" :supporting-text="corpus.services[law.service]?.name ?? law.service"></nldd-title-cell>
       <nldd-tag v-if="statusTag" :color="statusTag.color" :text="statusTag.text" :icon="statusTag.icon" size="sm"></nldd-tag>
     </nldd-container>
 
-    <nldd-container padding-inline="16" padding-bottom="16" gap="12">
+    <nldd-container padding-inline="20" padding-bottom="20" gap="16">
       <template v-if="!evaluation">
         <nldd-activity-indicator timing="instant" size="24"></nldd-activity-indicator>
       </template>
@@ -159,7 +225,23 @@ const statusTag = computed(() => {
           <nldd-list-item size="md" :button="primary ? true : undefined" @click="primary && correctOutcome(primary.name, primary.value)">
             <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <!-- The law's own sentence, when it has one: the lead as overline,
+                 the outcome as the title, the unit under it. Same cell as the
+                 general rendering below, so the pencil and the row keep working. -->
+            <!-- Size follows what the headline is. With a lead it is a short
+                 figure ("€ 406,95", "STEMRECHT") and carries the tile, so it is
+                 large. Without one the headline IS the whole sentence ("U krijgt
+                 waarschijnlijk geen kindgebonden budget."), and set that large it
+                 shouts a non-result across three lines. -->
             <nldd-title-cell
+              v-if="phrased"
+              :size="phrased.lead ? '3' : '5'"
+              :overline="phrased.lead || undefined"
+              :text="phrased.headline"
+              :supporting-text="phrased.unit || undefined"
+            ></nldd-title-cell>
+            <nldd-title-cell
+              v-else
               size="4"
               :overline="requirementsMet ? 'U voldoet aan de voorwaarden' : 'U voldoet niet aan de voorwaarden'"
               :text="requirementsMet ? (primary ? formatValue(primary.value, primary.spec) : 'Ja') : 'Niet van toepassing'"
@@ -177,15 +259,23 @@ const statusTag = computed(() => {
           </nldd-list-item>
         </nldd-list>
 
-        <nldd-list v-if="askedInputs.length" variant="simple" accessible-label="Door u opgegeven">
-          <nldd-list-item v-for="input in askedInputs" :key="input.name" size="sm" button @click="supply(input)">
-            <nldd-icon-cell icon="edit" size="16" color="accent"></nldd-icon-cell>
+        <!-- These rows are questions the registers cannot answer, so only the
+             citizen can. Until one is answered it is not "door u opgegeven" —
+             saying that of an empty row claims the person supplied something
+             they never did. Unanswered reads as a question, answered says who
+             gave the answer. -->
+        <nldd-list v-if="ownInputs.length" variant="simple" accessible-label="Gegevens die u zelf opgeeft">
+          <nldd-list-item v-for="input in ownInputs" :key="input.name" size="sm" button @click="supply(input)">
+            <nldd-icon-cell :icon="input.claim ? 'edit' : 'question-mark-circle'" size="16" :color="input.claim ? 'accent' : 'secondary'"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell size="sm" :text="humanize(input.name)" supporting-text="door u opgegeven"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'Opgeven'"></nldd-text-cell>
+            <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.claim ? 'door u opgegeven' : 'alleen u kunt dit opgeven'"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'default' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'nog niet opgegeven'"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
-        <nldd-list type="tree" variant="box-tinted" accessible-label="Gebruikte gegevens">
+        <!-- Outlined, not tinted. The tinted box is the answer; giving the same
+             fill to a link into the reasoning made the two read as equals, and
+             the eye had nowhere to land. This one is a door, not a statement. -->
+        <nldd-list type="tree" variant="box-base" accessible-label="Gebruikte gegevens">
           <nldd-list-item size="sm" button :expanded="showData" @click="showData = !showData">
             <nldd-icon-cell icon="rectangle-stack" size="16" color="secondary"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -212,8 +302,18 @@ const statusTag = computed(() => {
          pushed "Wettekst" onto a second line while every neighbouring tile kept
          its buttons on one. The heading above the button already says which data
          is missing. -->
-    <nldd-container slot="footer" padding="16" layout="wrap" gap="8" vertical-alignment="center">
-      <nldd-button v-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Mijn aanvraag" @click="apply"></nldd-button>
+    <nldd-container slot="footer" padding="20" layout="wrap" gap="12" vertical-alignment="center">
+      <!-- A rejected decision leads with the objection, not with the file. Awb
+           art. 6:5 gives the citizen six weeks to disagree, and hiding that
+           route one click deep behind the file made the tile a dead end: the POC
+           put it in view. Once an objection is running the button goes back to
+           the file, which is where its status is.
+           Labels are one word for a measured reason: the three buttons have
+           about 313px of a 384px footer before padding and gaps push the last
+           one onto a second line. "Mijn aanvraag" needed 336px and "Bezwaar
+           maken" 347px, so both wrapped; "Aanvraag" and "Bezwaar" fit. -->
+      <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" text="Bezwaar" @click="apply"></nldd-button>
+      <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Aanvraag" @click="apply"></nldd-button>
       <nldd-button v-else-if="evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
       <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" text="Berekening" @click="showTrace = true"></nldd-button>
