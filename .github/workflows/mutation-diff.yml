@@ -101,7 +101,16 @@ jobs:
         working-directory: packages/engine
         run: |
           set +e
-          cargo mutants --in-place --timeout-multiplier 3 \
+          # Een vaste ondergrens, geen multiplier op de baseline. De
+          # baseline meet een warme testrun (seconden); een mutant draait
+          # daarna op een runner die tegelijk compileert, en dan haalt
+          # dezelfde suite die grens niet. Op 9 september 2026 liepen 46
+          # van de 370 mutanten daardoor in een timeout terwijl de suite
+          # in acht seconden groen was: de poort meldde "mogelijk een
+          # oneindige lus" waar in werkelijkheid 46 overlevers verstopt
+          # zaten. Twee minuten is ruim boven elke echte run en nog altijd
+          # kort genoeg om een echte lus af te kappen.
+          cargo mutants --in-place --timeout 120 \
             --in-diff "$RUNNER_TEMP/pr.diff"
           code=$?
           set -e
