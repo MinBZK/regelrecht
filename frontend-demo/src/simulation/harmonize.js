@@ -97,17 +97,34 @@ export function featuresFor(kind) {
 }
 
 /**
+ * Welke van de gekozen wetten geld kósten in plaats van opleveren.
+ *
+ * Een belasting en een toeslag bij elkaar optellen alsof ze hetzelfde teken
+ * hebben levert een onzinnig bedrag op: € 4.000 belasting plus € 1.600
+ * zorgtoeslag is niet € 5.600 waar iemand recht op heeft. Welke wet een
+ * belasting is staat in `simulation.disposable_income` in demo-config.yaml
+ * (`kind: tax`), dezelfde bron die de besteedbaar-inkomenberekening gebruikt;
+ * de wet zelf zegt het niet.
+ */
+export function taxLawIds(corpus) {
+  const components = corpus?.config?.simulation?.disposable_income ?? [];
+  return new Set(components.filter((c) => c.kind === 'tax').map((c) => c.law));
+}
+
+/**
  * Een simulatierun omzetten naar de tabel waarop geleerd wordt: per subject de
  * kenmerken, of er recht bestond op één van de gekozen wetten, en het totaal
- * van wat die wetten opleverden.
+ * van wat die wetten netto opleverden.
  *
  * Meerdere wetten optellen is precies de vraag die harmonisatie stelt: wat de
- * burger overhoudt is de som, niet de losse regelingen.
+ * burger overhoudt is de som, niet de losse regelingen. Een belasting telt
+ * daarin negatief mee.
  *
  * @param {object} run        een run van `runSimulation`
  * @param {string[]} lawIds   de wetten die samengenomen worden
+ * @param {Set<string>} [taxes]  wetten die geld kosten (zie `taxLawIds`)
  */
-export function trainingData(run, lawIds) {
+export function trainingData(run, lawIds, taxes = new Set()) {
   const features = featuresFor(run.kind);
   const rows = [];
   for (const result of run.results) {
@@ -123,7 +140,7 @@ export function trainingData(run, lawIds) {
       // Een wet zonder voorwaardenuitvoer (een belasting) geldt voor iedereen;
       // 'onbekend' is geen ja.
       if (law.met === true || law.met === null) eligible = true;
-      if (typeof law.amount === 'number') amount += law.amount;
+      if (typeof law.amount === 'number') amount += taxes.has(id) ? -law.amount : law.amount;
     }
     // Een subject waarvoor geen enkele gekozen wet kon rekenen zegt niets over
     // de vorm van de regeling en zou het gemiddelde vertekenen.
@@ -164,7 +181,13 @@ function bracketBoundaries(values, count) {
   return rounded.length >= 2 ? rounded : [sorted[0] ?? 0, (sorted[sorted.length - 1] ?? 0) + 1];
 }
 
-/** Kleinste kwadraten binnen één trede, geëvalueerd op de beide grenzen. */
+/**
+ * Kleinste kwadraten binnen één trede, geëvalueerd op de beide grenzen.
+ *
+ * Niet afgekapt op nul: als er een belasting in de som zit is het nettobedrag
+ * negatief, en dat is een echte uitkomst — iemand die per saldo betaalt, niet
+ * iemand die niets krijgt.
+ */
 function fitSegment(points, lower, upper) {
   if (!points.length) return [0, 0];
   if (points.length < 3) {
@@ -182,7 +205,7 @@ function fitSegment(points, lower, upper) {
     den += (xs[i] - mx) ** 2;
   }
   const slope = den > 0 ? num / den : 0;
-  const at = (x) => Math.max(0, my + slope * (x - mx));
+  const at = (x) => my + slope * (x - mx);
   return [at(lower), at(upper)];
 }
 

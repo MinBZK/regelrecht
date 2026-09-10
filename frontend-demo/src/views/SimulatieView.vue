@@ -9,7 +9,7 @@ import { definitionKind, overridableDefinitions } from '../simulation/lawParamet
 import { runSimulation, simulationLaws } from '../simulation/runner.js';
 import { BUSINESS_DIMENSIONS, CITIZEN_DIMENSIONS, breakdown, flattenResults, toCsv } from '../simulation/stats.js';
 import { disposableIncomeBreakdown, summariseDisposableIncome } from '../simulation/income.js';
-import { describeModel, featuresFor, trainBracketModel, trainingData } from '../simulation/harmonize.js';
+import { describeModel, featuresFor, taxLawIds, trainBracketModel, trainingData } from '../simulation/harmonize.js';
 import { useDemo } from '../store/demoStore.js';
 
 // Simulatie: a synthetic population of citizens or businesses, every portal
@@ -178,7 +178,8 @@ function harmonize() {
   harmonizeModel.value = null;
   try {
     if (!harmonizeLaws.value.length) throw new Error('Kies ten minste één regeling om te harmoniseren.');
-    const data = trainingData(activeRun.value, harmonizeLaws.value);
+    // Een belasting telt negatief mee: wat de burger overhoudt is het saldo.
+    const data = trainingData(activeRun.value, harmonizeLaws.value, taxLawIds(corpus.value));
     harmonizeModel.value = trainBracketModel(data, {
       primary: harmonizePrimary.value,
       brackets: Number(harmonizeBrackets.value) || 5,
@@ -189,12 +190,20 @@ function harmonize() {
 }
 
 const harmonizeTable = computed(() => (harmonizeModel.value ? describeModel(harmonizeModel.value, money) : []));
-/** Hoeveel de vereenvoudiging gemiddeld scheelt, als aandeel van het bedrag. */
+/**
+ * Hoeveel de vereenvoudiging gemiddeld scheelt, als aandeel van het bedrag.
+ *
+ * Tegen de absolute waarde van het gemiddelde: zit er een belasting in de som,
+ * dan is het saldo negatief (men betaalt per saldo), en een percentage van een
+ * negatief getal leest als een fout die het niet is.
+ */
 const harmonizeRelativeError = computed(() => {
   const m = harmonizeModel.value?.metrics;
   if (!m?.meanAmount) return null;
-  return (m.mae / m.meanAmount) * 100;
+  return (m.mae / Math.abs(m.meanAmount)) * 100;
 });
+/** Betaalt de gemiddelde persoon per saldo, in plaats van te ontvangen? */
+const harmonizeNetCost = computed(() => (harmonizeModel.value?.metrics?.meanAmount ?? 0) < 0);
 
 // ---- inspector ----------------------------------------------------------------
 const inspector = ref(null); // { type: 'params', lawId } | { type: 'law', lawId }
@@ -648,7 +657,7 @@ function exportJson() {
                         <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="money(harmonizeModel.metrics.mae)"></nldd-text-cell>
                       </nldd-list-item>
                       <nldd-list-item v-if="harmonizeRelativeError !== null" size="md">
-                        <nldd-text-cell text="Als aandeel van het bedrag" :supporting-text="`Gemiddeld kent de wet ${money(harmonizeModel.metrics.meanAmount)} toe.`"></nldd-text-cell>
+                        <nldd-text-cell text="Als aandeel van het bedrag" :supporting-text="harmonizeNetCost ? `Per saldo betaalt men gemiddeld ${money(-harmonizeModel.metrics.meanAmount)}; een belasting telt negatief mee.` : `Gemiddeld kent de wet ${money(harmonizeModel.metrics.meanAmount)} toe.`"></nldd-text-cell>
                         <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="`${num(harmonizeRelativeError, 1)}%`"></nldd-text-cell>
                       </nldd-list-item>
                       <nldd-list-item size="md">

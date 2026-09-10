@@ -8,6 +8,7 @@ import {
   mean,
   predict,
   quantile,
+  taxLawIds,
   trainBracketModel,
   trainingData,
 } from './harmonize.js';
@@ -120,6 +121,48 @@ describe('trainingData', () => {
   it('kiest de ondernemerskenmerken bij een ondernemersrun', () => {
     expect(featuresFor('ondernemers').map((f) => f.key)).toContain('oppervlakte');
     expect(featuresFor('burgers')).toEqual(CITIZEN_FEATURES);
+  });
+
+  it('trekt een belasting af in plaats van hem op te tellen', () => {
+    const run = {
+      kind: 'burgers',
+      results: [
+        {
+          subject: { inkomen: 40000, leeftijd: 40, huur: 0, kinderen: 0, partner: false, huurder: false, student: false },
+          laws: {
+            wet_inkomstenbelasting: { ok: true, met: null, amount: 4000 },
+            zorgtoeslagwet: { ok: true, met: true, amount: 1600 },
+          },
+        },
+      ],
+    };
+    const zonder = trainingData(run, ['wet_inkomstenbelasting', 'zorgtoeslagwet']);
+    expect(zonder.rows[0].amount).toBe(5600);
+    // Met de belasting als belasting: € 1.600 toeslag min € 4.000 belasting.
+    const met = trainingData(run, ['wet_inkomstenbelasting', 'zorgtoeslagwet'], new Set(['wet_inkomstenbelasting']));
+    expect(met.rows[0].amount).toBe(-2400);
+  });
+});
+
+describe('taxLawIds', () => {
+  it('leest uit de configuratie welke wetten geld kosten', () => {
+    const corpus = {
+      config: {
+        simulation: {
+          disposable_income: [
+            { law: 'wet_inkomstenbelasting', kind: 'tax' },
+            { law: 'zorgverzekeringswet/bijdrage', kind: 'tax' },
+            { law: 'zorgtoeslagwet', kind: 'benefit' },
+          ],
+        },
+      },
+    };
+    expect([...taxLawIds(corpus)].sort()).toEqual(['wet_inkomstenbelasting', 'zorgverzekeringswet/bijdrage']);
+  });
+
+  it('geeft een lege verzameling zonder configuratie', () => {
+    expect(taxLawIds(null).size).toBe(0);
+    expect(taxLawIds({ config: {} }).size).toBe(0);
   });
 });
 
