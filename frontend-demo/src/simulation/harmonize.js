@@ -344,7 +344,15 @@ function groupCombinations(keys) {
   return combos;
 }
 
-/** Wat het model voor één persoon zou toekennen. */
+/**
+ * Wat het model voor één persoon zou toekennen.
+ *
+ * Elke trede wordt apart gefit, dus het bedrag op de bovengrens van de ene
+ * trede hoeft niet tot op de cent gelijk te zijn aan dat op de ondergrens van
+ * de volgende. Gemeten op een sterk gebogen functie blijft dat verschil binnen
+ * de afronding op hele euro's (hooguit € 2), dus als sprong is het niet
+ * zichtbaar; op de grens zelf wint de eerste trede die past.
+ */
 export function predict(model, values) {
   const group =
     model.groups.find((g) => g.keys.every((k) => values[k] === g.filter[k])) ??

@@ -189,14 +189,22 @@ describe('trainBracketModel', () => {
   });
 
   it('houdt de staffel doorlopend: geen sprong bij een trederand', () => {
-    const run = fakeRun((s) => Math.max(0, 2000 - 0.05 * s.inkomen));
+    // Een sterk gebogen functie: daar wijken de losse fits per trede het meest
+    // af, dus daar zou een sprong het eerst zichtbaar worden.
+    const run = fakeRun((s) => Math.max(0, 3000 - 0.00004 * s.inkomen ** 1.6));
     const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
     const group = model.groups[0];
+    expect(group.steps.length).toBeGreaterThan(1);
     for (const step of group.steps) {
       const justBelow = predict(model, { ...zeroes(model), inkomen: step.upper - 1 });
       const atEdge = predict(model, { ...zeroes(model), inkomen: step.upper });
-      // Eén euro meer inkomen mag nooit een sprong in het bedrag geven.
-      expect(Math.abs(atEdge - justBelow)).toBeLessThan(50);
+      const justAbove = predict(model, { ...zeroes(model), inkomen: step.upper + 1 });
+      // Elke trede wordt apart gefit, dus de twee kanten van een grens hoeven
+      // niet tot op de cent gelijk te zijn. Wat telt is dat het verschil
+      // binnen de afronding op hele euro's blijft: één euro meer inkomen mag
+      // geen zichtbare sprong in het bedrag geven.
+      expect(Math.abs(atEdge - justBelow)).toBeLessThanOrEqual(3);
+      expect(Math.abs(justAbove - atEdge)).toBeLessThanOrEqual(3);
     }
   });
 
