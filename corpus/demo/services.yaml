@@ -23,6 +23,9 @@ services:
   DJI:
     name: Dienst Justitiële Inrichtingen
     logo: DJI
+  DOUANE:
+    name: Douane
+    logo: DOUANE
   DUO:
     name: Dienst Uitvoering Onderwijs
     logo: DUO
