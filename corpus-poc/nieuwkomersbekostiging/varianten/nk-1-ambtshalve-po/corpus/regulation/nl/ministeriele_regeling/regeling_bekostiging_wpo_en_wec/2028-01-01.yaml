@@ -1,0 +1,1367 @@
+# VARIANT nk-1 (ambtshalve toekenning po): nieuwe versie van de regeling per 1 januari
+# 2028, het OCW-besluit uit de factsheet. DUO stelt per peildatum ambtshalve vast uit
+# ROD (art. 34 lid 2, 6 en 8); alleen het oordeel bij ambigue codes en onderwijsnummers
+# blijft handmatig. Voorwaarde uit de factsheet: gedeeltelijke gelijktrekking van de
+# bedragen, hier budgetneutraal bij 45 procent asielzoekers (AANNAME): eerste jaar
+# asielzoeker EUR 11.500 en overige vreemdeling EUR 7.700 (0,45 x 11.500 + 0,55 x 7.700
+# = 9.410, tegen 9.418 nu); tweede jaar ongewijzigd. Publicatiedatum fictief.
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: regeling_bekostiging_wpo_en_wec
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2027-10-01'
+valid_from: '2028-01-01'
+# Horizonbepaling: "Regeling vervalt per 1 januari 2031." De regeling voor het
+# volgende kalenderjaar neemt het in de praktijk eerder over.
+valid_to: '2030-12-31'
+bwb_id: BWBR0052727
+stcrt_id: stcrt-2026-22733
+url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0
+name: Definitieve regeling bekostiging WPO en WEC 2026
+competent_authority:
+  name: Minister van Onderwijs, Cultuur en Wetenschap
+legal_basis:
+  - law_id: wet_op_het_primair_onderwijs
+    article: '116'
+    description: Bekostiging basisscholen; zesde en elfde lid (aanvullende bekostiging)
+  - law_id: wet_op_het_primair_onderwijs
+    article: '119'
+    description: Bekostiging speciale scholen voor basisonderwijs; tweede en derde lid
+# Machine-uitvoerbare modellering van de nieuwkomersbekostiging in het primair
+# onderwijs (hoofdstuk 5, artikelen 34 tot en met 37 en de aanvullende
+# bekostiging kleine basisscholen) ten behoeve van de OCW/DUO-casus
+# nieuwkomersbekostiging. Het bestand heet naar 1 januari van het kalenderjaar
+# waarop de regeling betrekking heeft: de definitieve regeling wordt medio het
+# jaar gepubliceerd en werkt terug tot 1 januari.
+#
+# Opbouw. Artikel 34 kent twee niveaus die in een regelrecht-artikel niet
+# samen kunnen (andere parameter, andere databron):
+#   - '34'              per leerling (parameter bsn, databron personas):
+#                       categorie, kwartalen, telt op peildatum, bedrag.
+#   - '34, tweede lid'  per school (parameter school_id, databron scholen):
+#                       drempel en de bekostiging volgens de formules van het
+#                       negende lid.
+#   - '34, zevende lid' per school: eenmalige toeslag.
+#   - '34, negende lid' de bedragen en het kwartaalpercentage (constanten).
+#   - '35' / '35, tweede lid'  idem voor het tweede jaar asielzoekers.
+#   - '36'              speciale scholen voor basisonderwijs (constanten; de
+#                       uitvoering loopt via dezelfde outputs als artikel 34).
+#   - '37', '43'  tekst plus constanten, geen uitvoering.
+#
+# Interpretatiekeuzes (zie ook scenarios/nieuwkomers_po.feature):
+#   (a) De aftrek voor de periode vóór de vierde verjaardag (artikel 34,
+#       vierde lid, en artikel 35, vierde lid) gaat af van het EINDE van het
+#       totale recht: de eerste vier kwartalen vallen onder artikel 34, de rest
+#       onder artikel 35. Dit volgt de OCW/DUO-visual ("een jaar en twee
+#       kwartalen"). Naar de letter kan artikel 34, vierde lid, ook gelezen
+#       worden als aftrek van de eerste twaalf maanden; open vraag.
+#   (b) DUO rondt de aftrek naar beneden af op hele kwartalen
+#       (DUO-werkinstructie, geen regelingtekst).
+#   (c) Verstreken kwartalen = hele maanden tussen eerste inschrijving en de
+#       peildatum, gedeeld door drie en naar beneden afgerond; exact omdat
+#       peildata kwartaalbegin zijn.
+#   (d) Categorie op basis van de verblijfstitelcode (tiende lid); bij de codes
+#       21, 33, 34, 98, bij inschrijving op onderwijsnummer of bij een
+#       onbekende code beslist het bevoegd gezag (elfde lid). Zolang dat
+#       oordeel ontbreekt telt de leerling niet mee (BESTUUR_BEOORDEELT).
+#   (e) Leerlingen op een speciale school voor basisonderwijs vallen onder
+#       artikel 36: één tarief, maximaal vier kwartalen, dezelfde drempel.
+#   (f) Artikel 34, twaalfde lid (in Nederland geboren met een van de ouders
+#       afgeleide status): "geboren in Nederland" wordt afgeleid uit de data,
+#       datum van vestiging in Nederland <= geboortedatum. Voor een hier geboren
+#       kind is de BRP-datum van vestiging immers de geboortedatum. Zo'n
+#       leerling krijgt categorie GEEN.
+# Versie 2026: de tabel in artikel 34, tiende lid, kent sinds deze
+# regeling ook de EU-Pact-codes 50 tot en met 56 (allemaal asielzoeker).
+# Artikel 43 is de tegenhanger van artikel 44 in de regeling 2025.
+articles:
+  # ---------------------------------------------------------------- 34
+  - number: '34'
+    text: |
+      1. Voor de toepassing van dit artikel wordt verstaan onder:
+          *asielzoeker:*
+              a. vreemdeling als bedoeld in de Vreemdelingenwet 2000, die:
+                  – ingeschreven staat op een basisschool, niet zijnde een afdeling voor internationaal georiënteerd basisonderwijs als bedoeld in artikel 85a van de WPO of een afdeling basisonderwijs van de Europese school te Den Haag; en
+                  – in het bezit is gesteld:
+                      1°. door de Minister van Asiel en Migratie van een document of schriftelijke verklaring als bedoeld in artikel 9 van de Vreemdelingenwet 2000 op grond van artikel 8, onderdelen c, d, f, g, h of j, van die wet; of
+                      2°. door het Centraal Orgaan opvang asielzoekers van een verklaring waaruit blijkt dat de vreemdeling in afwachting is van een aanvraag voor een verblijfsvergunning als bedoeld in artikel 8, onderdelen c, d, f, g, h of j, van de Vreemdelingenwet 2000 en daarom niet beschikt over het document of schriftelijke verklaring als bedoeld in artikel 9 van die wet; en
+                  – woonachtig is in Nederland.
+              b. ontheemde op wie de tijdelijke bescherming van artikel 2 van het Uitvoeringsbesluit (EU) 2022/382 van de Raad van 4 maart 2022 tot vaststelling van het bestaan van een massale toestroom van ontheemden uit Oekraïne in de zin van artikel 5 van Richtlijn 2001/55/EG, en tot invoering van tijdelijke bescherming naar aanleiding daarvan (PbEU 2022, L 071) van toepassing is en die ingeschreven staat op een basisschool, niet zijnde een afdeling voor internationaal georiënteerd basisonderwijs als bedoeld in artikel 85a van de WPO of een afdeling basisonderwijs van de Europese school te Den Haag en die woonachtig is in Nederland.
+              c. ontheemde op wie de tijdelijke bescherming van artikel 7 van Richtlĳn 2001/55/EG van de Raad van 20 juli 2001 betreffende minimumnormen voor het verlenen van tĳdelĳke bescherming in geval van massale toestroom van ontheemden en maatregelen ter bevordering van een evenwicht tussen de inspanning van de lidstaten voor de opvang en het dragen van de consequenties van de opvang van deze personen (PbEU 2001, L 212) van toepassing is en die ingeschreven staat op een basisschool, niet zijnde een afdeling voor internationaal georiënteerd basisonderwijs als bedoeld in artikel 85a van de WPO of een afdeling basisonderwijs van de Europese school te Den Haag en die woonachtig is in Nederland.
+          *overige vreemdeling:* vreemdeling als bedoeld in de Vreemdelingenwet 2000, niet zijnde een asielzoeker, die:
+              – ingeschreven staat op een basisschool, niet zijnde een afdeling voor internationaal georiënteerd basisonderwijs als bedoeld in artikel 85a van de WPO of een afdeling basisonderwijs van de Europese school te Den Haag; en
+              – in het bezit is gesteld:
+                  1°. Door de Minister van Asiel en Migratie van een document of schriftelijke verklaring als bedoeld in artikel 9 van de Vreemdelingenwet 2000; of
+                  2°. Van een paspoort of identiteitsbewijs waaruit blijkt dat de vreemdeling burger is van de Europese Unie of een staat die partij is bij de Overeenkomst betreffende de Europese Economische Ruimte of Zwitserland; en
+              – woonachtig is in Nederland.
+
+      2. Het bevoegd gezag van een basisschool waar de eerste opvang in het onderwijs wordt verzorgd voor ten minste vier asielzoekers of overige vreemdelingen die in aanmerking komen voor de bekostiging als bedoeld in dit artikel, ontvangt ambtshalve aanvullende bekostiging.
+
+      3. Het recht van aanvullende bekostiging bedraagt per leerling maximaal twaalf maanden gerekend vanaf de eerste dag van inschrijving op een school met inachtneming van de peildata in het vijfde lid.
+
+      4. In afwijking van het derde lid wordt in het geval de datum van vestiging in Nederland van de leerling voor het vierde levensjaar van deze leerling ligt, de periode tussen de datum van vestiging in Nederland en het bereiken van de leeftijd van vier jaar in mindering gebracht op het recht op deze bekostiging. De datum van vestiging is de oudste datum van inschrijving in Nederland als bedoeld in bijlage 1 van de Regeling register onderwijsdeelnemers.
+
+      5. De aanvullende bekostiging heeft betrekking op een periode van drie maanden, met als peildata:
+          a. 1 januari voor de periode januari tot en met maart;
+          b. 1 april voor de periode april tot en met juni;
+          c. 1 juli voor de periode juli tot en met september;
+          d. 1 oktober voor de periode oktober tot en met december.
+
+      6. De minister stelt de aanvullende bekostiging per peildatum ambtshalve vast op basis van de eerste inschrijfdatum en de verblijfstitel in het register onderwijsdeelnemers. Voor een leerling met een verblijfstitel als bedoeld in het elfde lid of zonder burgerservicenummer geeft het bevoegd gezag zijn oordeel door via Mijn DUO binnen vier weken na de peildatum.
+
+      7. Een basisschool die niet eerder eenmalige aanvullende bekostiging heeft ontvangen voor het verzorgen van de eerste opvang van asielzoekers of overige vreemdelingen, komt in aanmerking voor een eenmalige aanvulling op de aanvullende bekostiging van € 18.174,57.
+
+      8. [Vervallen.]
+          a. naam, instellingscode, postcode en plaats van de school;
+          b. indien de peildatum 1 januari betreft, het aantal ingeschreven asielzoekers en het aantal ingeschreven overige vreemdelingen op 1 januari, en het aantal eerstejaars asielzoekers dat op 1 februari van het voorgaande schooljaar aan de basisschool stond ingeschreven of indien de peildatum niet 1 januari betreft het aantal ingeschreven asielzoekers en het aantal ingeschreven overige vreemdelingen op de peildatum; en
+          c. in geval van toepassing van het zevende lid, een verklaring dat de basisschool niet eerder de eerste opvang van vreemdelingen respectievelijk de eerste opvang van asielzoekers of overige vreemdelingen heeft verzorgd.
+
+      9. De bekostiging, bedoeld in het tweede lid, wordt berekend volgens de formules:
+          • Indien de peildatum 1 januari betreft:
+              ○ indien Ap groter is dan At: (Ap – At) x € 11.500,00 x 25,00% verhoogd met (At + Vp) x € 7.700,00 x 25,00%.
+              ○ indien Ap niet groter is dan At: (Ap + Vp) x € 7.700,00 x 25,00%.
+          • Indien de peildatum 1 april, 1 juli of 1 oktober betreft: Ap x € 11.500,00 x 25,00% verhoogd met Vp x € 7.700,00 x 25,00%.
+          waarin steeds:
+          • Ap = het aantal op de peildatum ingeschreven leerlingen dat asielzoeker is;
+          • Vp = het aantal op de peildatum ingeschreven leerlingen dat overige vreemdeling is;
+          • At = het totaal aantal op 1 februari van het voorgaande schooljaar ingeschreven leerlingen dat eerstejaars asielzoeker is.
+
+      10. Het bedrag per leerling wordt vastgesteld overeenkomstig de code van de verblijfsrechtelijke status van de leerling waaruit volgt of de leerling als een asielzoeker of een overige vreemdeling wordt beschouwd. Wanneer een leerling asielzoeker of overige vreemdeling is, wordt dit weergegeven in onderstaande tabel:
+          | Code | Omschrijving | Categorie |
+          |---|---|---|
+          | 21 | Vreemdelingenwet 2000 art. 8, onder a. Verblijfsvergunning voor bepaalde tijd, arbeid vrij. | Asielzoeker of overige vreemdeling |
+          | 22 | Vreemdelingenwet 2000 art. 8, sub a. Verblijfsvergunning regulier voor bepaalde tijd met tewerkstellingsvergunning OF gecombineerde vergunning voor verblijf en arbeid. | Overige vreemdeling |
+          | 23 | Vreemdelingenwet 2000 art. 8, onder a. Vergunning regulier voor bepaalde tijd, met enkel de mogelijkheid om specifieke arbeid te verrichten (zonder twv). | Overige vreemdeling |
+          | 24 | Vreemdelingenwet 2000 art. 8, onder a. Vergunning regulier voor bepaalde tijd, geen arbeid. | Overige vreemdeling |
+          | 25 | Vreemdelingenwet 2000 art. 8, sub b. Verblijfsvergunning regulier voor onbepaalde tijd OF EU-verblijfsvergunning voor langdurig ingezetenen. | Overige vreemdeling |
+          | 26 | Vreemdelingenwet 2000 art. 8, onder c. Verblijfsvergunning asiel bepaalde tijd, arbeid vrij. | Asielzoeker |
+          | 27 | Vreemdelingenwet 2000 art. 8, sub d. Verblijfsvergunning asiel onbepaalde tijd OF EU-verblijfsvergunning voor langdurig ingezetenen. | Asielzoeker |
+          | 28 | Vreemdelingenwet 2000 art. 8, onder e. Gemeenschapsonderdaan, economisch actief, arbeid vrij. | Overige vreemdeling |
+          | 29 | Vreemdelingenwet 2000 art. 8, onder e. Gemeenschapsonderdaan, economisch niet actief, arbeid vrij. | Overige vreemdeling |
+          | 30 | Vreemdelingenwet 2000 art. 8, onder e. Familielid van een gemeenschapsonderdaan, na toetsing aan EU-recht, arbeid vrij. | Overige vreemdeling |
+          | 31 | Vreemdelingenwet 2000 art. 8, onder f en h. In procedure voor aanvraag verblijfsvergunning regulier voor bepaalde tijd. | Overige vreemdeling |
+          | 32 | Vreemdelingenwet 2000 art. 8, onder f en h. In procedure voor aanvraag verblijfsvergunning asiel voor bepaalde tijd. | Asielzoeker |
+          | 33 | Vreemdelingenwet 2000 art. 8, onder g en h. In procedure voor voortgezet verblijf, tijdige aanvraag. | Asielzoeker of overige vreemdeling |
+          | 34 | Vreemdelingenwet 2000 art. 8, onder g en h. In procedure voor voortgezet verblijf, ontijdige aanvraag. | Asielzoeker of overige vreemdeling |
+          | 35 | Vreemdelingenwet 2000 art. 8, onder I. Onderdaan heeft verblijfsrecht o.b.v. het Associatiebesluit 1/80 van de Associatieraad EEG/Turkije (waarin soepelere regels zijn opgenomen voor Turkse onderdanen). | Overige vreemdeling |
+          | 36 | Vreemdelingenwet 2000 art. 8, onder e. Gemeenschapsonderdaan, economisch actief, met enkel de mogelijkheid om specifieke arbeid te verrichten. | Overige vreemdeling |
+          | 37 | Vreemdelingenwet 2000 art. 8, onder e. Gemeenschapsonderdaan, economisch niet actief, met enkel de mogelijkheid om specifieke arbeid te verrichten. | Overige vreemdeling |
+          | 38 | Vreemdelingenwet 2000 art. 8, onder e. Familielid van een gemeenschapsonderdaan, na toetsing aan EU-recht, met enkel de mogelijkheid om specifieke arbeid te verrichten. | Overige vreemdeling |
+          | 39 | Vreemdelingenwet 2000 art. 8, onder m. Persoon is in afwachting van indiening asielaanvraag bij andere lidstaat o.g.v. Dublinverordening. | Asielzoeker |
+          | 40 | Vreemdelingenwet 2000 art. 8, onder e. Gemeenschapsonderdaan of familielid met recht op duurzaam verblijf. Dit kan men aanvragen als men 5 jaar rechtmatig in NL heeft verbleven als gemeenschapsonderdaan of familielid. | Overige vreemdeling |
+          | 41 | Rechtmatig verblijf Vreemdelingenwet 2000 art. 8, onder e, is beëindigd. | Overige vreemdeling |
+          | 42 | Rechtmatig verblijf op grond van voorlopige maatregel EHRM, geen arbeid. | Overige vreemdeling |
+          | 43 | Rechtmatig verblijf op aanwijzing Minister van Justitie en Veiligheid, geen arbeid. | Overige vreemdeling |
+          | 44 | Vreemdelingenwet 2000 art. 8, onder m. Leerling is in afwachting van overdracht naar andere lidstaat o.g.v. Dublinverordening. | Asielzoeker |
+          | 45 | Vreemdelingenwet2000 art. 8, onder i. Leerling heeft verblijfsrecht voor termijn van 180 dagen (bedoeld voor onderzoeker of student). | Overige vreemdeling |
+          | 46 | Vreemdelingenwet 2000 art 8, onder f en h, EU-richtlijn 2001/55, in procedure art 28, arbeid loondienst. Verblijfstitel voor Oekraïense ontheemden. | Asielzoeker |
+          | 50 | Verordening (EU) 2024/1348, art 26, asielwens, in procedure asiel | Asielzoeker |
+          | 51 | Verordening (EU) 2024/1348, art 35 lid 4, in niet versnelde procedure asiel | Asielzoeker |
+          | 52 | Verordening (EU) 2024/1348, art 42.1, a t/m f, in versnelde procedure asiel | Asielzoeker |
+          | 53 | Verordening (EU) 2024/1348, art 42.1, g t/m j, in versnelde procedure asiel | Asielzoeker |
+          | 54 | Vw 2000 na EU-Pact, art 29, lid 1, asiel vluchteling | Asielzoeker |
+          | 55 | Vw 2000 na EU-Pact, art 29a, lid 1, asiel subsidiair beschermde | Asielzoeker |
+          | 56 | Vw 2000 na EU-Pact, art 29b, 29c, 29d, asiel gezinslid internationaal beschermde | Asielzoeker |
+          | 98 | Geen verblijftitel meer. | Asielzoeker of overige vreemdeling |
+
+      11. Het bevoegd gezag bepaalt of een leerling een asielzoeker of een overige vreemdeling is in het geval de leerling:
+          a. is ingeschreven op basis van het onderwijsnummer bedoeld in artikel 40b, vierde lid, van de WPO en waarvan het evident is dat hij asielzoeker of overige vreemdeling is; of
+          b. een verblijfstitel 21, 33, 34 of 98 heeft als bedoeld in de tabel in het tiende lid.
+
+      12. De aanvullende bekostiging, bedoeld in het tweede lid, kan niet worden aangevraagd voor leerlingen die geboren zijn in Nederland en die de verblijfsrechtelijke status krijgen van één van de ouders of voogden.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel34
+    machine_readable:
+      implements:
+        - law: wet_op_het_primair_onderwijs
+          article: '119'
+          open_term: aanvullende_bekostiging_bijzondere_ontwikkelingen
+          gelet_op: >-
+            Gelet op de artikelen 116, zesde en elfde lid, 119, tweede en
+            derde lid, 121, tweede lid, 122, vierde lid, en 124, derde en
+            vijfde lid, van de Wet op het primair onderwijs
+      definitions:
+        kwartalen_eerste_jaar:
+          value: 4
+          type: number
+          description: >-
+            maximaal twaalf maanden gerekend vanaf de eerste dag van
+            inschrijving (derde lid), in perioden van drie maanden (vijfde
+            lid); vier kwartalen
+        maanden_per_kwartaal:
+          value: 3
+          type: number
+          type_spec:
+            unit: months
+          description: een periode van drie maanden (vijfde lid)
+        leeftijd_vier_jaar:
+          value: 4
+          type: number
+          type_spec:
+            unit: years
+          description: het bereiken van de leeftijd van vier jaar (vierde lid)
+        geen_aftrek:
+          value: 0
+          type: number
+          description: >-
+            geen aftrek: de datum van vestiging in Nederland ligt niet voor het
+            vierde levensjaar (vierde lid)
+        geen_recht_kwartalen:
+          value: 0
+          type: number
+          description: geen recht op aanvullende bekostiging (nul kwartalen)
+        geen_verstreken_kwartalen:
+          value: 0
+          type: number
+          description: >-
+            nog geen peildatum verstreken sinds de eerste dag van inschrijving
+        geen_bekostigingsjaar:
+          value: 0
+          type: number
+          description: de leerling telt op deze peildatum niet mee
+        eerste_bekostigingsjaar:
+          value: 1
+          type: number
+          description: de eerste twaalf maanden, artikel 34
+        tweede_bekostigingsjaar:
+          value: 2
+          type: number
+          description: >-
+            aansluitend op de twaalf maanden bedoeld in artikel 34 (artikel 35,
+            derde lid)
+        geen_bedrag:
+          value: 0
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: geen bekostiging voor deze leerling op deze peildatum
+        codes_asielzoeker:
+          value: [26, 27, 32, 39, 44, 46, 50, 51, 52, 53, 54, 55, 56]
+          description: >-
+            Categorie "Asielzoeker" in de tabel van het tiende lid (codes
+            26, 27, 32, 39, 44, 46, 50 tot en met 56)
+        codes_overige_vreemdeling:
+          value: [22, 23, 24, 25, 28, 29, 30, 31, 35, 36, 37, 38, 40, 41, 42, 43, 45]
+          description: >-
+            Categorie "Overige vreemdeling" in de tabel van het tiende lid
+        codes_bevoegd_gezag_bepaalt:
+          value: [21, 33, 34, 98]
+          description: >-
+            Categorie "Asielzoeker of overige vreemdeling" in de tabel van het
+            tiende lid; een verblijfstitel 21, 33, 34 of 98 (elfde lid,
+            onderdeel b)
+        schoolsoorten_primair_onderwijs:
+          value: [basisschool, sbo]
+          description: >-
+            ingeschreven staat op een basisschool (eerste lid) dan wel op een
+            speciale school voor basisonderwijs (artikel 36, eerste lid)
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: >-
+              Burgerservicenummer, of bij inschrijving op onderwijsnummer een
+              onderwijsnummer-achtige sleutel
+        input:
+          - name: geboortedatum
+            type: date
+            source:
+              description: Geboortedatum van de leerling (personas-databron)
+          - name: is_vreemdeling
+            type: boolean
+            source:
+              description: >-
+                Vreemdeling als bedoeld in de Vreemdelingenwet 2000, dus geen
+                Nederlandse nationaliteit (personas-databron)
+          - name: verblijfstitel_code
+            type: number
+            source:
+              description: >-
+                Code van de verblijfsrechtelijke status zoals in het Register
+                onderwijsdeelnemers (tiende lid); null als onbekend
+                (personas-databron)
+          - name: heeft_bsn
+            type: boolean
+            source:
+              description: >-
+                false als de leerling is ingeschreven op basis van het
+                onderwijsnummer, artikel 40b, vierde lid, WPO (elfde lid,
+                onderdeel a) (personas-databron)
+          - name: datum_vestiging_nederland
+            type: date
+            source:
+              description: >-
+                De datum van vestiging: de oudste datum van inschrijving in
+                Nederland als bedoeld in bijlage 1 van de Regeling register
+                onderwijsdeelnemers (vierde lid) (personas-databron)
+          - name: eerste_inschrijfdatum
+            type: date
+            source:
+              description: >-
+                De eerste dag van inschrijving op een school (derde lid)
+                (personas-databron)
+          - name: woonachtig_in_nederland
+            type: boolean
+            source:
+              description: woonachtig is in Nederland (eerste lid) (personas-databron)
+          - name: werkelijk_schoolgaand
+            type: boolean
+            source:
+              description: >-
+                Ingeschreven en werkelijk schoolgaand op de peildatum
+                (personas-databron)
+          - name: schoolsoort
+            type: string
+            source:
+              description: >-
+                basisschool of sbo (speciale school voor basisonderwijs,
+                artikel 36) (personas-databron)
+          - name: internationaal_georienteerd
+            type: boolean
+            source:
+              description: >-
+                Afdeling voor internationaal georiënteerd basisonderwijs
+                (artikel 85a WPO) of afdeling basisonderwijs van de Europese
+                school te Den Haag (eerste lid) (personas-databron)
+          - name: oordeel_bevoegd_gezag
+            type: string
+            source:
+              description: >-
+                Oordeel van het bevoegd gezag, ASIELZOEKER of
+                OVERIGE_VREEMDELING, in de gevallen van het elfde lid; null
+                zolang dat oordeel er niet is (personas-databron)
+          - name: bedrag_per_asielzoeker_eerste_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_per_asielzoeker_eerste_jaar
+          - name: bedrag_per_overige_vreemdeling
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_per_overige_vreemdeling
+          - name: kwartaalfractie
+            type: number
+            type_spec:
+              unit: ratio
+            source:
+              output: kwartaalfractie
+          - name: kwartalen_tweede_jaar_asielzoeker
+            type: number
+            source:
+              output: kwartalen_tweede_jaar_asielzoeker
+          - name: bedrag_per_asielzoeker_tweede_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_per_asielzoeker_tweede_jaar
+          - name: kwartalen_maximaal_sbo
+            type: number
+            source:
+              output: kwartalen_maximaal_sbo
+          - name: bedrag_per_vreemdeling_sbo
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_per_vreemdeling_sbo
+        output:
+          - name: valt_onder_artikel_36
+            type: boolean
+            description: >-
+              Ingeschreven op een speciale school voor basisonderwijs: de
+              opvang valt dan onder artikel 36 in plaats van artikel 34 en 35
+          - name: geboren_in_nederland
+            type: boolean
+            description: >-
+              Twaalfde lid: geboren in Nederland met de verblijfsrechtelijke
+              status van een van de ouders of voogden. Afgeleid uit de data:
+              de datum van vestiging in Nederland ligt niet na de
+              geboortedatum, want voor een hier geboren kind is de BRP-datum
+              van vestiging de geboortedatum
+          - name: categorie_nieuwkomer
+            type: string
+            description: >-
+              ASIELZOEKER, OVERIGE_VREEMDELING, BESTUUR_BEOORDEELT (het bevoegd
+              gezag moet nog bepalen, elfde lid) of GEEN
+          - name: vierde_verjaardag
+            type: date
+            description: De dag waarop de leerling de leeftijd van vier jaar bereikt
+          - name: aftrek_maanden_voor_vierde_verjaardag
+            type: number
+            type_spec:
+              unit: months
+            description: >-
+              Hele maanden tussen de datum van vestiging in Nederland en het
+              bereiken van de leeftijd van vier jaar (vierde lid); 0 als de
+              vestiging op of na de vierde verjaardag ligt
+          - name: aftrek_kwartalen
+            type: number
+            description: >-
+              De aftrek in hele kwartalen, naar beneden afgerond
+              (DUO-werkinstructie)
+          - name: bekostigbare_kwartalen_maximaal
+            type: number
+            description: >-
+              Kwartalen zonder aftrek: acht voor een asielzoeker (artikel 34
+              en 35), vier voor een overige vreemdeling, vier op een speciale
+              school voor basisonderwijs (artikel 36), nul als de leerling niet
+              in aanmerking komt
+          - name: bekostigbare_kwartalen
+            type: number
+            description: Kwartalen recht op aanvullende bekostiging na aftrek, minimaal nul
+          - name: kwartalen_verstreken
+            type: number
+            description: >-
+              Aantal peildata vóór deze peildatum sinds de eerste dag van
+              inschrijving
+          - name: telt_op_peildatum
+            type: boolean
+            description: >-
+              De leerling telt op deze peildatum mee voor de aanvullende
+              bekostiging
+          - name: bekostigingsjaar
+            type: number
+            description: >-
+              1 in de eerste twaalf maanden (artikel 34), 2 daarna (artikel
+              35), 0 als de leerling niet meetelt
+          - name: bedrag_per_leerling_per_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Het jaarbedrag dat voor deze leerling op deze peildatum geldt
+          - name: bedrag_kwartaal
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Het bedrag voor deze leerling op deze peildatum: het jaarbedrag
+              maal 25,00%, afgerond op hele eurocenten; 0 als de leerling niet
+              meetelt
+          - name: aanvraag_vereist
+            type: boolean
+            description: >-
+              De aanvullende bekostiging wordt op aanvraag verstrekt (tweede
+              en zesde lid)
+        actions:
+          - output: valt_onder_artikel_36
+            value:
+              operation: EQUALS
+              subject: $schoolsoort
+              value: sbo
+          # Lid 12: kan niet worden aangevraagd voor leerlingen die geboren
+          # zijn in Nederland en de status van een ouder of voogd krijgen.
+          - output: geboren_in_nederland
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $datum_vestiging_nederland
+              value: $geboortedatum
+          # Lid 1 en artikel 36, eerste en tweede lid: wie komt in aanmerking;
+          # lid 10 en 11: de categorie volgt uit de verblijfstitelcode; lid 12
+          # sluit in Nederland geboren leerlingen uit.
+          - output: categorie_nieuwkomer
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: NOT
+                        value: $is_vreemdeling
+                      - $geboren_in_nederland
+                      - $internationaal_georienteerd
+                      - operation: NOT
+                        value: $woonachtig_in_nederland
+                      - operation: NOT
+                        value: $werkelijk_schoolgaand
+                      - operation: NOT
+                        value:
+                          operation: IN
+                          subject: $schoolsoort
+                          value: $schoolsoorten_primair_onderwijs
+                  then: GEEN
+                - when:
+                    operation: IN
+                    subject: $verblijfstitel_code
+                    value: $codes_asielzoeker
+                  then: ASIELZOEKER
+                - when:
+                    operation: IN
+                    subject: $verblijfstitel_code
+                    value: $codes_overige_vreemdeling
+                  then: OVERIGE_VREEMDELING
+                # Elfde lid: het bevoegd gezag bepaalt. Een gegeven oordeel
+                # wordt gevolgd.
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $oordeel_bevoegd_gezag
+                          value: null
+                      - operation: OR
+                        conditions:
+                          - operation: IN
+                            subject: $verblijfstitel_code
+                            value: $codes_bevoegd_gezag_bepaalt
+                          - operation: NOT
+                            value: $heeft_bsn
+                          - operation: EQUALS
+                            subject: $verblijfstitel_code
+                            value: null
+                  then: $oordeel_bevoegd_gezag
+                # Artikel 36, elfde lid: op een speciale school voor
+                # basisonderwijs telt elke status uit de tabel als vreemdeling;
+                # het onderscheid asielzoeker/overige speelt daar niet.
+                - when:
+                    operation: AND
+                    conditions:
+                      - $valt_onder_artikel_36
+                      - operation: IN
+                        subject: $verblijfstitel_code
+                        value: $codes_bevoegd_gezag_bepaalt
+                  then: OVERIGE_VREEMDELING
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: IN
+                        subject: $verblijfstitel_code
+                        value: $codes_bevoegd_gezag_bepaalt
+                      - operation: NOT
+                        value: $heeft_bsn
+                      - operation: EQUALS
+                        subject: $verblijfstitel_code
+                        value: null
+                  then: BESTUUR_BEOORDEELT
+              default: GEEN
+          # Lid 4: aftrek voor de periode tussen vestiging en vierde verjaardag.
+          - output: vierde_verjaardag
+            value:
+              operation: DATE_ADD
+              date: $geboortedatum
+              years: $leeftijd_vier_jaar
+          - output: aftrek_maanden_voor_vierde_verjaardag
+            value:
+              operation: MAX
+              values:
+                - $geen_aftrek
+                - operation: DATE_DIFF
+                  from: $datum_vestiging_nederland
+                  to: $vierde_verjaardag
+                  in: months
+          - output: aftrek_kwartalen
+            operation: FLOOR
+            precision: 0
+            value:
+              operation: DIVIDE
+              values:
+                - $aftrek_maanden_voor_vierde_verjaardag
+                - $maanden_per_kwartaal
+          # Lid 3 (vier kwartalen), artikel 35, derde lid (nog eens vier voor
+          # asielzoekers), artikel 36, vierde lid (vier op sbo).
+          - output: bekostigbare_kwartalen_maximaal
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_nieuwkomer
+                    value: GEEN
+                  then: $geen_recht_kwartalen
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_nieuwkomer
+                    value: BESTUUR_BEOORDEELT
+                  then: $geen_recht_kwartalen
+                - when: $valt_onder_artikel_36
+                  then: $kwartalen_maximaal_sbo
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_nieuwkomer
+                    value: ASIELZOEKER
+                  then:
+                    operation: ADD
+                    values:
+                      - $kwartalen_eerste_jaar
+                      - $kwartalen_tweede_jaar_asielzoeker
+              default: $kwartalen_eerste_jaar
+          - output: bekostigbare_kwartalen
+            value:
+              operation: MAX
+              values:
+                - $geen_recht_kwartalen
+                - operation: SUBTRACT
+                  values:
+                    - $bekostigbare_kwartalen_maximaal
+                    - $aftrek_kwartalen
+          # Lid 5: peildata zijn kwartaalbegin, dus hele maanden gedeeld door
+          # drie telt precies de verstreken peildata.
+          - output: kwartalen_verstreken
+            value:
+              operation: MAX
+              values:
+                - $geen_verstreken_kwartalen
+                - operation: FLOOR
+                  precision: 0
+                  value:
+                    operation: DIVIDE
+                    values:
+                      - operation: DATE_DIFF
+                        from: $eerste_inschrijfdatum
+                        to: $referencedate.iso
+                        in: months
+                      - $maanden_per_kwartaal
+          - output: telt_op_peildatum
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $eerste_inschrijfdatum
+                  value: $referencedate.iso
+                - operation: LESS_THAN
+                  subject: $kwartalen_verstreken
+                  value: $bekostigbare_kwartalen
+          - output: bekostigingsjaar
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value: $telt_op_peildatum
+                  then: $geen_bekostigingsjaar
+                - when:
+                    operation: LESS_THAN
+                    subject: $kwartalen_verstreken
+                    value: $kwartalen_eerste_jaar
+                  then: $eerste_bekostigingsjaar
+              default: $tweede_bekostigingsjaar
+          # Lid 9 (bedragen), artikel 35, achtste lid, artikel 36, tiende lid.
+          - output: bedrag_per_leerling_per_jaar
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value: $telt_op_peildatum
+                  then: $geen_bedrag
+                - when: $valt_onder_artikel_36
+                  then: $bedrag_per_vreemdeling_sbo
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_nieuwkomer
+                    value: OVERIGE_VREEMDELING
+                  then: $bedrag_per_overige_vreemdeling
+                - when:
+                    operation: EQUALS
+                    subject: $bekostigingsjaar
+                    value: $tweede_bekostigingsjaar
+                  then: $bedrag_per_asielzoeker_tweede_jaar
+              default: $bedrag_per_asielzoeker_eerste_jaar
+          - output: bedrag_kwartaal
+            operation: ROUND
+            precision: 0
+            value:
+              operation: MULTIPLY
+              values:
+                - $bedrag_per_leerling_per_jaar
+                - $kwartaalfractie
+          - output: aanvraag_vereist
+            value: false
+
+  # ---------------------------------------------------------------- 34 lid 2
+  - number: '34, tweede lid'
+    text: |
+      2. Het bevoegd gezag van een basisschool waar de eerste opvang in het onderwijs wordt verzorgd voor ten minste vier asielzoekers of overige vreemdelingen die in aanmerking komen voor de bekostiging als bedoeld in dit artikel, ontvangt ambtshalve aanvullende bekostiging.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel34_Lid2
+    machine_readable:
+      definitions:
+        drempel_aantal_leerlingen:
+          value: 4
+          type: number
+          description: >-
+            ten minste vier asielzoekers of overige vreemdelingen die in
+            aanmerking komen voor de bekostiging
+        maand_januari:
+          value: 1
+          type: number
+          description: Indien de peildatum 1 januari betreft (negende lid)
+        geen_bedrag:
+          value: 0
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            geen aanvullende bekostiging: de school haalt de drempel van het
+            tweede lid niet
+      execution:
+        parameters:
+          - name: school_id
+            type: string
+            required: true
+            description: Instellingscode van de school
+        input:
+          - name: schoolsoort
+            type: string
+            source:
+              description: >-
+                basisschool of sbo (speciale school voor basisonderwijs,
+                artikel 36) (scholen-databron)
+          - name: aantal_asielzoekers_peildatum
+            type: number
+            source:
+              description: >-
+                Ap = het aantal op de peildatum ingeschreven leerlingen dat
+                asielzoeker is (negende lid) (scholen-databron)
+          - name: aantal_overige_vreemdelingen_peildatum
+            type: number
+            source:
+              description: >-
+                Vp = het aantal op de peildatum ingeschreven leerlingen dat
+                overige vreemdeling is (negende lid) (scholen-databron)
+          - name: aantal_asielzoekers_telling_1_februari
+            type: number
+            source:
+              description: >-
+                At = het totaal aantal op 1 februari van het voorgaande
+                schooljaar ingeschreven leerlingen dat eerstejaars asielzoeker
+                is (negende lid) (scholen-databron)
+          - name: bedrag_per_asielzoeker_eerste_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_per_asielzoeker_eerste_jaar
+          - name: bedrag_per_overige_vreemdeling
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_per_overige_vreemdeling
+          - name: kwartaalfractie
+            type: number
+            type_spec:
+              unit: ratio
+            source:
+              output: kwartaalfractie
+          - name: drempel_aantal_vreemdelingen_sbo
+            type: number
+            source:
+              output: drempel_aantal_vreemdelingen_sbo
+          - name: bedrag_per_vreemdeling_sbo
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_per_vreemdeling_sbo
+        output:
+          - name: school_valt_onder_artikel_36
+            type: boolean
+            description: Speciale school voor basisonderwijs (artikel 36)
+          - name: aantal_asielzoekers_en_overige_vreemdelingen
+            type: number
+            description: Ap + Vp op de peildatum
+          - name: voldoet_aan_drempel
+            type: boolean
+            description: >-
+              Ten minste vier asielzoekers of overige vreemdelingen op de
+              peildatum (artikel 36, derde lid, voor sbo)
+          - name: bedrag_eerste_opvang_peildatum
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              De aanvullende bekostiging voor deze peildatum volgens de
+              formules van het negende lid (artikel 36, tiende lid, voor sbo),
+              afgerond op hele eurocenten; 0 onder de drempel
+        actions:
+          - output: school_valt_onder_artikel_36
+            value:
+              operation: EQUALS
+              subject: $schoolsoort
+              value: sbo
+          - output: aantal_asielzoekers_en_overige_vreemdelingen
+            value:
+              operation: ADD
+              values:
+                - $aantal_asielzoekers_peildatum
+                - $aantal_overige_vreemdelingen_peildatum
+          - output: voldoet_aan_drempel
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $aantal_asielzoekers_en_overige_vreemdelingen
+              value:
+                operation: IF
+                cases:
+                  - when: $school_valt_onder_artikel_36
+                    then: $drempel_aantal_vreemdelingen_sbo
+                default: $drempel_aantal_leerlingen
+          # Negende lid: op 1 januari worden de eerstejaars asielzoekers uit de
+          # 1-februari-telling (At) al via de reguliere bekostiging vergoed en
+          # tellen zij hier tegen het tarief voor overige vreemdelingen.
+          - output: bedrag_eerste_opvang_peildatum
+            operation: ROUND
+            precision: 0
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value: $voldoet_aan_drempel
+                  then: $geen_bedrag
+                - when: $school_valt_onder_artikel_36
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $aantal_asielzoekers_en_overige_vreemdelingen
+                      - $bedrag_per_vreemdeling_sbo
+                      - $kwartaalfractie
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $referencedate.month
+                        value: $maand_januari
+                      - operation: GREATER_THAN
+                        subject: $aantal_asielzoekers_peildatum
+                        value: $aantal_asielzoekers_telling_1_februari
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - operation: SUBTRACT
+                            values:
+                              - $aantal_asielzoekers_peildatum
+                              - $aantal_asielzoekers_telling_1_februari
+                          - $bedrag_per_asielzoeker_eerste_jaar
+                          - $kwartaalfractie
+                      - operation: MULTIPLY
+                        values:
+                          - operation: ADD
+                            values:
+                              - $aantal_asielzoekers_telling_1_februari
+                              - $aantal_overige_vreemdelingen_peildatum
+                          - $bedrag_per_overige_vreemdeling
+                          - $kwartaalfractie
+                - when:
+                    operation: EQUALS
+                    subject: $referencedate.month
+                    value: $maand_januari
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $aantal_asielzoekers_en_overige_vreemdelingen
+                      - $bedrag_per_overige_vreemdeling
+                      - $kwartaalfractie
+              default:
+                operation: ADD
+                values:
+                  - operation: MULTIPLY
+                    values:
+                      - $aantal_asielzoekers_peildatum
+                      - $bedrag_per_asielzoeker_eerste_jaar
+                      - $kwartaalfractie
+                  - operation: MULTIPLY
+                    values:
+                      - $aantal_overige_vreemdelingen_peildatum
+                      - $bedrag_per_overige_vreemdeling
+                      - $kwartaalfractie
+
+  # ---------------------------------------------------------------- 34 lid 7
+  - number: '34, zevende lid'
+    text: |
+      7. Een basisschool die niet eerder eenmalige aanvullende bekostiging heeft ontvangen voor het verzorgen van de eerste opvang van asielzoekers of overige vreemdelingen, komt in aanmerking voor een eenmalige aanvulling op de aanvullende bekostiging van € 18.174,57.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel34_Lid7
+    machine_readable:
+      definitions:
+        eenmalige_toeslag:
+          value: 1817457
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            een eenmalige aanvulling op de aanvullende bekostiging van
+            € 18.174,57
+        geen_toeslag:
+          value: 0
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            geen toeslag: de school verzorgde al eerder eerste opvang, of
+            ontvangt op deze peildatum geen aanvullende bekostiging
+      execution:
+        parameters:
+          - name: school_id
+            type: string
+            required: true
+            description: Instellingscode van de school
+        input:
+          - name: schoolsoort
+            type: string
+            source:
+              description: >-
+                basisschool of sbo (speciale school voor basisonderwijs,
+                artikel 36) (scholen-databron)
+          - name: eerste_keer_eerste_opvang
+            type: boolean
+            source:
+              description: >-
+                De school heeft niet eerder aanvullende bekostiging voor de
+                eerste opvang van asielzoekers of overige vreemdelingen
+                ontvangen (scholen-databron)
+          - name: voldoet_aan_drempel
+            type: boolean
+            source:
+              output: voldoet_aan_drempel
+          - name: toeslag_eerste_keer_sbo
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: toeslag_eerste_keer_sbo
+        output:
+          - name: toeslag_eerste_keer
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Eenmalige aanvulling bij de eerste keer eerste opvang (artikel
+              36, achtste lid, voor sbo); 0 als niet van toepassing
+        actions:
+          - output: toeslag_eerste_keer
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: AND
+                      conditions:
+                        - $eerste_keer_eerste_opvang
+                        - $voldoet_aan_drempel
+                  then: $geen_toeslag
+                - when:
+                    operation: EQUALS
+                    subject: $schoolsoort
+                    value: sbo
+                  then: $toeslag_eerste_keer_sbo
+              default: $eenmalige_toeslag
+
+  # ---------------------------------------------------------------- 34 lid 9
+  - number: '34, negende lid'
+    text: |
+      9. De bekostiging, bedoeld in het tweede lid, wordt berekend volgens de formules:
+          • Indien de peildatum 1 januari betreft:
+              ○ indien Ap groter is dan At: (Ap – At) x € 11.500,00 x 25,00% verhoogd met (At + Vp) x € 7.700,00 x 25,00%.
+              ○ indien Ap niet groter is dan At: (Ap + Vp) x € 7.700,00 x 25,00%.
+          • Indien de peildatum 1 april, 1 juli of 1 oktober betreft: Ap x € 11.500,00 x 25,00% verhoogd met Vp x € 7.700,00 x 25,00%.
+          waarin steeds:
+          • Ap = het aantal op de peildatum ingeschreven leerlingen dat asielzoeker is;
+          • Vp = het aantal op de peildatum ingeschreven leerlingen dat overige vreemdeling is;
+          • At = het totaal aantal op 1 februari van het voorgaande schooljaar ingeschreven leerlingen dat eerstejaars asielzoeker is.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel34_Lid9
+    machine_readable:
+      definitions:
+        bedrag_per_asielzoeker_eerste_jaar:
+          value: 1150000
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: Ap x € 11.500,00 (per asielzoeker per jaar)
+        bedrag_per_overige_vreemdeling:
+          value: 770000
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: Vp x € 7.700,00 (per overige vreemdeling per jaar)
+        kwartaalfractie:
+          value: 0.25
+          type: number
+          type_spec:
+            unit: ratio
+          description: >-
+            x 25,00%: een peildatum dekt een periode van drie maanden (vijfde
+            lid)
+      execution:
+        output:
+          - name: bedrag_per_asielzoeker_eerste_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Jaarbedrag per asielzoeker in het eerste jaar
+          - name: bedrag_per_overige_vreemdeling
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Jaarbedrag per overige vreemdeling
+          - name: kwartaalfractie
+            type: number
+            type_spec:
+              unit: ratio
+            description: Aandeel van het jaarbedrag per peildatum (25,00%)
+        actions:
+          - output: bedrag_per_asielzoeker_eerste_jaar
+            value: $bedrag_per_asielzoeker_eerste_jaar
+          - output: bedrag_per_overige_vreemdeling
+            value: $bedrag_per_overige_vreemdeling
+          - output: kwartaalfractie
+            value: $kwartaalfractie
+
+  # ---------------------------------------------------------------- 35
+  - number: '35'
+    text: |
+      1. Voor de toepassing van dit artikel wordt verstaan onder *asielzoeker:*
+          a. vreemdeling als bedoeld in de Vreemdelingenwet 2000, die:
+              – ingeschreven staat op een basisschool, niet zijnde een afdeling voor internationaal georiënteerd basisonderwijs als bedoeld in artikel 85a van de WPO of een afdeling basisonderwijs van de Europese school te Den Haag;
+              – in het bezit is gesteld:
+                  1°. door de Minister van Asiel en Migratie van een document of schriftelijke verklaring als bedoeld in artikel 9 van de Vreemdelingenwet 2000 op grond van artikel 8, onderdelen c, d, f, g, h of j, van die wet; of
+                  2°. door het Centraal Orgaan opvang asielzoekers van een verklaring waaruit blijkt dat de vreemdeling in afwachting is van een aanvraag voor een verblijfsvergunning als bedoeld in artikel 8, onderdelen c, d, f, g, h of j, van de Vreemdelingenwet 2000 en daarom niet beschikt over het document of schriftelijke verklaring als bedoeld in artikel 9 van die wet; en
+              – woonachtig is in Nederland.
+          b. ontheemde op wie de tijdelijke bescherming van artikel 2 van het Uitvoeringsbesluit (EU) 2022/382 van de Raad van 4 maart 2022 tot vaststelling van het bestaan van een massale toestroom van ontheemden uit Oekraïne in de zin van artikel 5 van Richtlijn 2001/55/EG, en tot invoering van tijdelijke bescherming naar aanleiding daarvan (PbEU 2022, L 071) van toepassing is en die ingeschreven staat op een basisschool, niet zijnde een afdeling voor internationaal georiënteerd basisonderwijs als bedoeld in artikel 85a van de WPO of een afdeling basisonderwijs van de Europese school te Den Haag en woonachtig is in Nederland.
+          c. ontheemde op wie de tijdelijke bescherming van artikel 7 van Richtlĳn 2001/55/EG van de Raad van 20 juli 2001 betreffende minimumnormen voor het verlenen van tĳdelĳke bescherming in geval van massale toestroom van ontheemden en maatregelen ter bevordering van een evenwicht tussen de inspanning van de lidstaten voor de opvang en het dragen van de consequenties van de opvang van deze personen (PbEU 2001, L 212) van toepassing is en die ingeschreven staat op een basisschool, niet zijnde een afdeling voor internationaal georiënteerd basisonderwijs als bedoeld in artikel 85a van de WPO of een afdeling basisonderwijs van de Europese school te Den Haag en die woonachtig is in Nederland.
+
+      2. Het bevoegd gezag van een basisschool waar onderwijs wordt verzorgd voor asielzoekers ontvangt op aanvraag aanvullende bekostiging.
+
+      3. De aanvullende bekostiging vangt aan aansluitend op de twaalf maanden bedoeld in artikel 34, tweede lid, en bedraagt per leerling maximaal twaalf maanden.
+
+      4. In afwijking van het derde lid wordt, indien het aantal maanden van de periode tussen de datum van vestiging in Nederland en het bereiken van de leeftijd van vier jaar als bedoeld in artikel 34, vierde lid, de twaalf maanden overschrijdt, het restant van dit aantal maanden boven de twaalf als bedoeld in artikel 34, derde lid, in mindering gebracht op het recht op deze bekostiging. De datum van vestiging is de oudste datum van vestiging in Nederland als bedoeld in bijlage 1 van de Regeling register onderwijsdeelnemers.
+
+      5. De aanvullende bekostiging heeft betrekking op een periode van drie maanden, met als peildata:
+          a. 1 januari voor de periode januari tot en met maart;
+          b. 1 april voor de periode april tot en met juni;
+          c. 1 juli voor de periode juli tot en met september;
+          d. 1 oktober voor de periode oktober tot en met december.
+
+      6. Het bevoegd gezag dient ter verkrijging van de aanvullende bekostiging een aanvraag in die indien de peildatum 1 juli betreft moet zijn ontvangen binnen acht weken na de peildatum en indien de peildatum niet 1 juli betreft binnen vier weken na de peildatum. De aanvraag wordt in ieder geval afgewezen indien het een aanvraag betreft die is ontvangen na deze termijn.
+
+      7. Voor het indienen van een aanvraag wordt gebruikgemaakt van het daarvoor beschikbaar gestelde formulier op www.duo.nl. De aanvraag gaat vergezeld van de volgende gegevens:
+          a. naam, instellingscode, postcode en plaats van de school; en
+          b. het aantal ingeschreven asielzoekers volgens dit artikel op de peildatum.
+
+      8. De bekostiging, bedoeld in het tweede lid, bedraagt € 2.281,08 per asielzoeker vermenigvuldigd met 25,00%.
+
+      9. Het bedrag per leerling wordt vastgesteld overeenkomstig de code van de verblijfsrechtelijke status van de leerling waaruit volgt of de leerling als een asielzoeker wordt beschouwd. Wanneer een leerling een asielzoeker is, wordt weergegeven in artikel 34, tiende lid.
+
+      10. Het bevoegd gezag bepaalt of een leerling een asielzoeker is in het geval dat de leerling:
+          a. is ingeschreven op basis van het onderwijsnummer bedoeld in artikel 40b, vierde lid, van de WPO en waarvan het evident is dat hij nieuwkomer is; of
+          b. een verblijfstitel 21, 33, 34 of 98 heeft als bedoeld in de tabel in artikel 34, tiende lid.
+
+      11. De aanvullende bekostiging, bedoeld in het tweede lid, kan niet worden aangevraagd voor leerlingen die geboren zijn in Nederland en die de verblijfsrechtelijke status krijgen van één van de ouders of voogden.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel35
+    machine_readable:
+      implements:
+        - law: wet_op_het_primair_onderwijs
+          article: '119'
+          open_term: aanvullende_bekostiging_bijzondere_ontwikkelingen
+          gelet_op: >-
+            Gelet op de artikelen 116, zesde en elfde lid, 119, tweede en
+            derde lid, 121, tweede lid, 122, vierde lid, en 124, derde en
+            vijfde lid, van de Wet op het primair onderwijs
+      definitions:
+        kwartalen_tweede_jaar_asielzoeker:
+          value: 4
+          type: number
+          description: >-
+            vangt aan aansluitend op de twaalf maanden bedoeld in artikel 34
+            en bedraagt per leerling maximaal twaalf maanden (derde lid); vier
+            kwartalen
+        bedrag_per_asielzoeker_tweede_jaar:
+          value: 228108
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: € 2.281,08 per asielzoeker (achtste lid)
+      execution:
+        output:
+          - name: kwartalen_tweede_jaar_asielzoeker
+            type: number
+            description: Kwartalen in het tweede jaar voor asielzoekers
+          - name: bedrag_per_asielzoeker_tweede_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Jaarbedrag per asielzoeker in het tweede jaar
+        actions:
+          - output: kwartalen_tweede_jaar_asielzoeker
+            value: $kwartalen_tweede_jaar_asielzoeker
+          - output: bedrag_per_asielzoeker_tweede_jaar
+            value: $bedrag_per_asielzoeker_tweede_jaar
+
+  # ---------------------------------------------------------------- 35 lid 2
+  - number: '35, tweede lid'
+    text: |
+      2. Het bevoegd gezag van een basisschool waar onderwijs wordt verzorgd voor asielzoekers ontvangt op aanvraag aanvullende bekostiging.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel35_Lid2
+    machine_readable:
+      definitions:
+        geen_bedrag:
+          value: 0
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            geen bekostiging tweede jaar: artikel 35 geldt alleen voor
+            basisscholen (eerste lid)
+      execution:
+        parameters:
+          - name: school_id
+            type: string
+            required: true
+            description: Instellingscode van de school
+        input:
+          - name: schoolsoort
+            type: string
+            source:
+              description: >-
+                basisschool of sbo (speciale school voor basisonderwijs,
+                artikel 36) (scholen-databron)
+          - name: aantal_tweedejaars_asielzoekers_peildatum
+            type: number
+            source:
+              description: >-
+                het aantal ingeschreven asielzoekers volgens dit artikel op de
+                peildatum (zevende lid, onderdeel b) (scholen-databron)
+          - name: bedrag_per_asielzoeker_tweede_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: bedrag_per_asielzoeker_tweede_jaar
+          - name: kwartaalfractie
+            type: number
+            type_spec:
+              unit: ratio
+            source:
+              output: kwartaalfractie
+        output:
+          - name: bedrag_tweede_jaar_peildatum
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              De aanvullende bekostiging voor het tweede jaar op deze peildatum
+              (achtste lid), afgerond op hele eurocenten; er geldt geen drempel
+        actions:
+          - output: bedrag_tweede_jaar_peildatum
+            operation: ROUND
+            precision: 0
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $schoolsoort
+                    value: sbo
+                  then: $geen_bedrag
+              default:
+                operation: MULTIPLY
+                values:
+                  - $aantal_tweedejaars_asielzoekers_peildatum
+                  - $bedrag_per_asielzoeker_tweede_jaar
+                  - $kwartaalfractie
+
+  # ---------------------------------------------------------------- 36
+  - number: '36'
+    text: |
+      1. Voor de toepassing van dit artikel wordt verstaan onder:
+          a. *school:* bekostigde speciale school voor basisonderwijs;
+          b. *vreemdeling:*
+              – leerling die ingeschreven staat op een school en die de school geregeld bezoekt;
+              – die door de Minister van Asiel en Migratie in het bezit is gesteld van een document of schriftelijke verklaring als bedoeld in artikel 9 van de Vreemdelingenwet 2000; en
+              – woonachtig is in Nederland.
+
+      2. Voor de toepassing van dit artikel wordt onder vreemdeling mede verstaan:
+          a. leerling
+              – die ingeschreven staat op een school en die de school geregeld bezoekt;
+              – van wie uit het paspoort of ander identiteitsbewijs blijkt dat hij burger is van de Europese Unie of een staat die partij is bij de Overeenkomst betreffende de Europese Economische Ruimte of Zwitserland;
+              – die op grond van het Verdrag betreffende de werking van de Europese Unie in Nederland verblijft;
+              – woonachtig is in Nederland.
+          b. ontheemde op wie de tijdelijke bescherming van artikel 2 van het Uitvoeringsbesluit (EU) 2022/382 van de Raad van 4 maart 2022 tot vaststelling van het bestaan van een massale toestroom van ontheemden uit Oekraïne in de zin van artikel 5 van Richtlijn 2001/55/EG, en tot invoering van tijdelijke bescherming naar aanleiding daarvan (PbEU 2022, L 071) van toepassing is en die ingeschreven staat op een school en woonachtig is in Nederland.
+          c. ontheemde op wie de tijdelijke bescherming van artikel 7 van Richtlĳn 2001/55/EG van de Raad van 20 juli 2001 betreffende minimumnormen voor het verlenen van tĳdelĳke bescherming in geval van massale toestroom van ontheemden en maatregelen ter bevordering van een evenwicht tussen de inspanning van de lidstaten voor de opvang en het dragen van de consequenties van de opvang van deze personen (PbEU 2001, L 212) van toepassing is, en die ingeschreven staat op een school en woonachtig is in Nederland.
+
+      3. Het bevoegd gezag van een school waar de opvang in het onderwijs wordt verzorgd voor ten minste vier vreemdelingen die in aanmerking komen voor de bekostiging als bedoeld in dit artikel ontvangt op aanvraag aanvullende bekostiging.
+
+      4. De aanvullende bekostiging die op grond van het derde lid wordt verstrekt voor de vreemdelingen op speciale scholen voor basisonderwijs bedraagt per leerling maximaal twaalf maanden gerekend vanaf de eerste dag van inschrijving op een school voor basisonderwijs met inachtneming van de peildata in het zesde lid.
+
+      5. In afwijking van het vierde lid wordt in het geval de datum van vestiging in Nederland van de leerling voor het vierde levensjaar van deze leerling ligt, de periode tussen de datum van vestiging in Nederland en het bereiken van de leeftijd van vier jaar in mindering gebracht op het recht op deze bekostiging. De datum van vestiging is de oudste datum van inschrijving in Nederland als bedoeld in bijlage 1 van de Regeling register onderwijsdeelnemers.
+
+      6. De aanvullende bekostiging heeft betrekking op een periode van drie maanden, met als peildata:
+          a. 1 januari voor de periode januari tot en met maart;
+          b. 1 april voor de periode april tot en met juni;
+          c. 1 juli voor de periode juli tot en met september;
+          d. 1 oktober voor de periode oktober tot en met december.
+
+      7. Het bevoegd gezag dient ter verkrijging van de aanvullende bekostiging een aanvraag in die indien de peildatum 1 juli betreft, moet zijn ontvangen binnen acht weken na de peildatum en indien het een andere peildatum betreft binnen vier weken na de peildatum. De aanvraag wordt in ieder geval afgewezen indien het een aanvraag betreft die is ontvangen na deze termijn.
+
+      8. Een basisschool die niet eerder eenmalige aanvullende bekostiging heeft ontvangen voor het verzorgen van de eerste opvang van asielzoekers of overige vreemdelingen, komt in aanmerking voor een eenmalige aanvulling op de aanvullende bekostiging van € 18.174,57.
+
+      9. Voor het indienen van een aanvraag wordt gebruikgemaakt van het daarvoor beschikbaar gestelde formulier op www.duo.nl. De aanvraag gaat vergezeld van de volgende gegevens:
+          a. naam, instellingscode, postcode en plaats van de school;
+          b. het aantal ingeschreven vreemdelingen volgens dit artikel op de peildatum;
+          c. in geval van toepassing van het achtste lid, een verklaring dat de school niet eerder de eerste opvang van vreemdelingen heeft verzorgd.
+
+      10. De bekostiging, bedoeld in het zesde lid, bedraagt per ingeschreven vreemdeling € 4.712,34 vermenigvuldigd met 25,00%.
+
+      11. Voor de toepassing van dit artikel wordt als vreemdeling tevens aangemerkt de leerling:
+          a. met een verblijfsrechtelijke status als bedoeld in artikel 34, tiende lid;
+          b. met een onderwijsnummer bedoeld in artikel 40b, vierde lid, van de WPO en waarvan het evident is dat hij vreemdeling is; of
+          c. met een verblijfstitel 98 heeft als bedoeld in de tabel in artikel 34, tiende lid.
+
+      12. De aanvullende bekostiging, bedoeld in het derde lid, kan niet worden aangevraagd voor leerlingen die geboren zijn in Nederland en die de verblijfsrechtelijke status krijgen van één van de ouders of voogden.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel36
+    machine_readable:
+      implements:
+        - law: wet_op_het_primair_onderwijs
+          article: '119'
+          open_term: aanvullende_bekostiging_bijzondere_ontwikkelingen
+          gelet_op: >-
+            Gelet op de artikelen 116, zesde en elfde lid, 119, tweede en
+            derde lid, 121, tweede lid, 122, vierde lid, en 124, derde en
+            vijfde lid, van de Wet op het primair onderwijs
+      definitions:
+        drempel_aantal_vreemdelingen_sbo:
+          value: 4
+          type: number
+          description: >-
+            ten minste vier vreemdelingen die in aanmerking komen voor de
+            bekostiging (derde lid)
+        kwartalen_maximaal_sbo:
+          value: 4
+          type: number
+          description: >-
+            per leerling maximaal twaalf maanden gerekend vanaf de eerste dag
+            van inschrijving (vierde lid); vier kwartalen
+        toeslag_eerste_keer_sbo:
+          value: 1817457
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            een eenmalige aanvulling op de aanvullende bekostiging van
+            € 18.174,57 (achtste lid)
+        bedrag_per_vreemdeling_sbo:
+          value: 471234
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: per ingeschreven vreemdeling € 4.712,34 (tiende lid)
+      execution:
+        output:
+          - name: drempel_aantal_vreemdelingen_sbo
+            type: number
+            description: Drempel voor speciale scholen voor basisonderwijs
+          - name: kwartalen_maximaal_sbo
+            type: number
+            description: Maximaal aantal kwartalen op een speciale school voor basisonderwijs
+          - name: toeslag_eerste_keer_sbo
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Eenmalige aanvulling voor speciale scholen voor basisonderwijs
+          - name: bedrag_per_vreemdeling_sbo
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Jaarbedrag per vreemdeling op een speciale school voor basisonderwijs
+        actions:
+          - output: drempel_aantal_vreemdelingen_sbo
+            value: $drempel_aantal_vreemdelingen_sbo
+          - output: kwartalen_maximaal_sbo
+            value: $kwartalen_maximaal_sbo
+          - output: toeslag_eerste_keer_sbo
+            value: $toeslag_eerste_keer_sbo
+          - output: bedrag_per_vreemdeling_sbo
+            value: $bedrag_per_vreemdeling_sbo
+
+  # ---------------------------------------------------------------- 37
+  # Procesopvanglocaties en gezinslocaties: een jaarlijkse, aparte telling op
+  # 1 februari; alleen de constanten zijn gemodelleerd.
+  - number: '37'
+    text: |
+      1. Voor de toepassing van dit artikel wordt verstaan onder asielzoeker: een leerling die verblijft in een procesopvanglocatie, zijnde de verblijfplaats van vreemdelingen tijdens de rust- en voorbereidingstermijn voorafgaand aan de algemene asielprocedure en gedurende de algemene asielprocedure door de Immigratie- en Naturalisatiedienst, dan wel leerling die verblijft in een gezinslocatie voor gezinnen met minderjarige kinderen die geen recht meer hebben op verstrekkingen conform de Regeling verstrekkingen asielzoekers en andere categorieën vreemdelingen 2005.
+
+      2. Het bevoegd gezag van de basisschool waar op 1 februari 2025 asielzoekers worden opgevangen, ontvangt op aanvraag aanvullende bekostiging.
+
+      3. De bekostiging, bedoeld in het tweede lid, bedraagt per asielzoeker € 1.379,03.
+
+      4. Voor het indienen van een aanvraag wordt gebruikgemaakt van het daarvoor beschikbaar gestelde formulier op www.duo.nl. De aanvraag gaat vergezeld van de volgende gegevens:
+          a. naam, instellingscode, postcode en plaats van de school.
+          b. het aantal asielzoekers op 1 februari 2025 onder de instellingscode zoals opgenomen in de aanvraag; en
+          c. een verklaring van het bevoegd gezag dat voor het aantal asielzoekers zoals opgenomen in de aanvraag, tevens in de leerlingenadministratie documenten zijn opgenomen, waarin het Centraal Orgaan Opvang Asielzoekers de school noemt als opvang school voor deze kinderen.
+
+      5. De aanvraag, bedoeld in het tweede lid, wordt in ieder geval afgewezen indien de aanvraag op of na 1 februari 2026 is ontvangen.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel37
+    machine_readable:
+      definitions:
+        bedrag_per_asielzoeker_pol_glo:
+          value: 137903
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: per asielzoeker € 1.379,03 (derde lid)
+        peildatum_telling_pol_glo:
+          value: '2025-02-01'
+          type: date
+          description: >-
+            de basisschool waar op 1 februari 2025 asielzoekers worden
+            opgevangen (tweede lid)
+        uiterste_ontvangstdatum_aanvraag_pol_glo:
+          value: '2026-02-01'
+          type: date
+          description: >-
+            afgewezen indien de aanvraag op of na 1 februari 2026 is
+            ontvangen (vijfde lid)
+      execution:
+        output:
+          - name: bedrag_per_asielzoeker_pol_glo
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Jaarbedrag per asielzoeker in een procesopvanglocatie of
+              gezinslocatie
+        actions:
+          - output: bedrag_per_asielzoeker_pol_glo
+            value: $bedrag_per_asielzoeker_pol_glo
+
+  # ---------------------------------------------------------------- 43
+  # Herrekening van de extra bekostiging kleine basisscholen (Besluit
+  # bekostiging WPO 2022, artikel 14, tweede lid) zonder de eerstejaars
+  # nieuwkomers; de regeling noemt geen bedragen, alleen de teldata.
+  - number: '43'
+    text: |
+      1. Het bevoegd gezag van een basisschool dat door de eerste opvang van asielzoekers en overige vreemdelingen als bedoeld in artikel 34, eerste lid, geen of minder extra bekostiging kleine basisscholen ontvangt als bedoeld in artikel 14, tweede lid, van het Besluit bekostiging WPO 2022, ontvangt aanvullende bekostiging.
+
+      2. Voor de berekening van de aanvullende bekostiging, bedoeld in het eerste lid, wordt de extra bekostiging kleine bassischolen herrekend, door voor de herrekening uit te gaan van het aantal leerlingen op de basisschool op 1 februari 2025 minus het aantal eerstejaarsasielzoekers en overige vreemdelingen op de basisschool op 1 januari 2025 voor wie bekostiging is toegekend op grond van artikel 34 van Definitieve regeling bekostiging WPO en WEC 2025.
+
+      3. De aanvullende bekostiging, bedoeld in het eerste lid, bedraagt het verschil tussen de herrekende extra bekostiging kleine basisscholen, bedoeld in het tweede lid, en de extra bekostiging kleine basisscholen, bedoeld in artikel 14 tweede lid van het Besluit bekostiging WPO 2022.
+    url: https://wetten.overheid.nl/BWBR0052727/2026-06-26/0#Hoofdstuk5_Artikel43
+    machine_readable:
+      implements:
+        - law: wet_op_het_primair_onderwijs
+          article: '116'
+          open_term: bekostigingsbedragen_per_school_en_per_leerling
+          gelet_op: >-
+            Gelet op de artikelen 116, zesde en elfde lid, 119, tweede en
+            derde lid, 121, tweede lid, 122, vierde lid, en 124, derde en
+            vijfde lid, van de Wet op het primair onderwijs
+      definitions:
+        teldatum_leerlingen:
+          value: '2025-02-01'
+          type: date
+          description: >-
+            het aantal leerlingen op de basisschool op
+            1 februari 2025 (tweede lid)
+        teldatum_eerstejaars_nieuwkomers:
+          value: '2025-01-01'
+          type: date
+          description: >-
+            het aantal eerstejaarsasielzoekers en overige vreemdelingen op de
+            basisschool op 1 januari 2025 voor wie
+            bekostiging is toegekend op grond van artikel 34 van
+            Definitieve regeling bekostiging WPO en WEC 2025 (tweede lid)

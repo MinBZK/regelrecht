@@ -60,6 +60,19 @@ export const COMPONENTS = {
     paths: ['frontend-lawmaking/', 'packages/frontend-shared/', NGINX_SHARED],
   },
   docs: { crate: null, paths: ['docs/', NGINX_SHARED] },
+  // Het poc-portaal bakt de statische pocs in zijn eigen image, dus het raakt
+  // ook aan hun frontends en hun casus-corpus. De crate-kant (auth, corpus,
+  // engine) volgt uit de graaf.
+  poc: {
+    crate: 'regelrecht-poc-portal',
+    paths: [
+      'pocs/',
+      'corpus-poc/',
+      'frontend-poc-portal/',
+      'frontend-poc-terugbetaalregimes/',
+      'packages/poc-portal/Dockerfile',
+    ],
+  },
 };
 
 // Raakt elk component met een Rust-image: de workspace zelf.

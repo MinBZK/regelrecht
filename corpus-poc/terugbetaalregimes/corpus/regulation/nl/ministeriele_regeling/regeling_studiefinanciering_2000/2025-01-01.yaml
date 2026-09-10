@@ -1,0 +1,57 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: regeling_studiefinanciering_2000
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2024-12-10'
+valid_from: '2025-01-01'
+valid_to: '2025-12-31'
+bwb_id: BWBR0011595
+url: https://wetten.overheid.nl/BWBR0011595/2025-01-01
+name: Regeling studiefinanciering 2000
+competent_authority:
+  name: Minister van Onderwijs, Cultuur en Wetenschap
+legal_basis:
+  - law_id: wet_studiefinanciering_2000
+    article: '6.3'
+articles:
+  # VEREENVOUDIGING: de rentepercentages worden in werkelijkheid jaarlijks
+  # vastgesteld in een afzonderlijke, niet in het BWB geconsolideerde
+  # regeling in de Staatscourant (voor 2025: o.g.v. artikel 6.3 WSF 2000).
+  # Voor deze casus zijn ze als artikel in de Regeling studiefinanciering
+  # 2000 gemodelleerd; zie de fidelity-audit-TODO in de README.
+  # 2025: 2,21% (Stand van de Uitvoering OCW 2026, voetnoot 11).
+  - number: '5.0'
+    text: >-
+      Het rentepercentage, bedoeld in artikel 6.3 van de wet, bedraagt voor
+      het kalenderjaar 2025: 2,21.
+    url: https://wetten.overheid.nl/BWBR0011595/2025-01-01
+    machine_readable:
+      implements:
+        - law: wet_studiefinanciering_2000
+          article: '6.3'
+          open_term: rentepercentage_sf15
+          gelet_op: Gelet op artikel 6.3 van de Wet studiefinanciering 2000
+        - law: wet_studiefinanciering_2000
+          article: '6.3'
+          open_term: rentepercentage_sf35
+          gelet_op: Gelet op artikel 6.3 van de Wet studiefinanciering 2000
+      execution:
+        output:
+          - name: rentepercentage_sf15
+            type: number
+            type_spec:
+              unit: ratio
+            description: >-
+              Rentepercentage studieschulden 15-jaarsregimes, kalenderjaar 2025
+          - name: rentepercentage_sf35
+            type: number
+            type_spec:
+              unit: ratio
+            description: >-
+              Rentepercentage studieschulden 35-jaarsregime en
+              levenlanglerenkrediet, kalenderjaar 2025
+        actions:
+          - output: rentepercentage_sf15
+            value: 0.0221
+          - output: rentepercentage_sf35
+            value: 0.0221

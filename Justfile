@@ -749,6 +749,20 @@ docs-a11y:
 poc-assets:
     npm run build -w poc-portal-assets
 
+# Bouw elke statische poc met zijn eigen basis, en zet alles klaar in .poc-static/
+#
+# De WASM-engine komt uit `just wasm-build`; copy-assets.js van elke poc stopt
+# met een duidelijke melding als die er niet is.
+poc-build: wasm-build poc-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf .poc-static
+    mkdir -p .poc-static/_assets
+    cp -R frontend-poc-portal/dist/. .poc-static/_assets/
+    POC_BASE=/terugbetaalregimes/ npm run build -w poc-terugbetaalregimes
+    mkdir -p .poc-static/terugbetaalregimes
+    cp -R frontend-poc-terugbetaalregimes/dist/. .poc-static/terugbetaalregimes/
+
 # Start het poc-portaal op http://localhost:8611
 #
 # De wachtwoorden zijn hier bewust hardcoded en flauw: dit recept draait alleen
@@ -758,11 +772,9 @@ poc-assets:
 # De statische pocs worden verwacht in .poc-static/<slug>/. Zolang die er niet
 # zijn toont het overzicht ze wel en geeft de poc zelf een 404 achter de poort —
 # de poort werkt dus los van de vraag of er al een poc gebouwd is.
-poc: poc-assets
+poc: poc-build
     #!/usr/bin/env bash
     set -euo pipefail
-    mkdir -p .poc-static/_assets
-    cp -R frontend-poc-portal/dist/. .poc-static/_assets/
     echo "poc-portaal → http://localhost:8611"
     echo "wachtwoorden: terugbetaalregimes/nieuwkomersbekostiging/napp = 'demo'"
     POC_COOKIE_SECRET=lokale-ontwikkelsleutel-niet-geheim-0123 \
