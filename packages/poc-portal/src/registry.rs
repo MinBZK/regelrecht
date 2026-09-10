@@ -19,12 +19,72 @@ pub enum Soort {
     Proxy,
 }
 
+/// How finished a PoC's model of the law is.
+///
+/// A computed amount looks equally confident whether the rules behind it were
+/// walked through with a lawyer or sketched in an afternoon, so the difference
+/// has to be stated rather than left to the visitor to guess. There is no
+/// "production" here on purpose: a PoC never becomes one, it gets replaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Status {
+    Verkenning,
+    InOntwikkeling,
+    Gevalideerd,
+}
+
+impl Status {
+    /// Short label, for the tag on the card.
+    pub fn label(self) -> &'static str {
+        match self {
+            Status::Verkenning => "Verkenning",
+            Status::InOntwikkeling => "In ontwikkeling",
+            Status::Gevalideerd => "Gevalideerd",
+        }
+    }
+
+    /// What this status means, in one sentence, for the banner.
+    pub fn uitleg(self) -> &'static str {
+        match self {
+            Status::Verkenning => {
+                "Een eerste uitwerking, niet nagelopen door iemand van het beleidsterrein. \
+                 Neem geen enkele uitkomst voor waar aan."
+            }
+            Status::InOntwikkeling => {
+                "Gedeeltelijk nagelopen: sommige onderdelen kloppen, andere nog niet, en \
+                 welke dat zijn ligt niet vast."
+            }
+            Status::Gevalideerd => {
+                "Doorgelopen met uitvoerings- of beleidsexperts. Nog steeds een demonstratie \
+                 op fictieve gegevens, geen besluit over een echt geval."
+            }
+        }
+    }
+
+    /// Colour of the tag. `critical` for the least finished, so the eye lands
+    /// on the one that deserves the most doubt.
+    pub fn kleur(self) -> &'static str {
+        match self {
+            Status::Verkenning => "critical",
+            Status::InOntwikkeling => "warning",
+            Status::Gevalideerd => "success",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Poc {
     pub slug: String,
     pub titel: String,
     pub samenvatting: String,
     pub soort: Soort,
+    /// How finished this uitwerking is. No default: leaving it out would make
+    /// every new PoC look as trustworthy as the most-checked one.
+    pub status: Status,
+    /// Why this does not (yet) hold, in this PoC's own words. Required for the
+    /// same reason — and free text, because the house sentence is the one
+    /// every reader skips.
+    pub voorbehoud: String,
     /// npm workspace producing the `dist` — `statisch` only.
     #[serde(default)]
     pub bron: Option<String>,
@@ -73,7 +133,16 @@ pub enum RegistryError {
         "PoC {0:?} is `proxy`; the assistant runs in this image and cannot serve a proxied PoC"
     )]
     ProxyWithAssistent(String),
+    #[error(
+        "PoC {0:?} has no usable `voorbehoud`. Write what does not hold in this PoC, in your own \
+         words — a visitor cannot tell a sketch from a checked model by looking at it."
+    )]
+    VoorbehoudTeKort(String),
 }
+
+/// Shortest `voorbehoud` that can say anything. Not a quality bar — it only
+/// catches the placeholder that was never filled in.
+const VOORBEHOUD_MINIMUM: usize = 30;
 
 /// A slug ends up in a URL path, a cookie name and an environment variable
 /// name. Restricting it to this alphabet means none of those three ever needs
@@ -110,6 +179,9 @@ impl Registry {
             if !seen.insert(&poc.slug) {
                 return Err(RegistryError::DuplicateSlug(poc.slug.clone()));
             }
+            if poc.voorbehoud.trim().len() < VOORBEHOUD_MINIMUM {
+                return Err(RegistryError::VoorbehoudTeKort(poc.slug.clone()));
+            }
             match poc.soort {
                 Soort::Statisch if poc.bron.is_none() => {
                     return Err(RegistryError::StaticWithoutBron(poc.slug.clone()))
@@ -140,10 +212,17 @@ impl Registry {
 mod tests {
     use super::*;
 
+    const VOORBEHOUD: &str = "Dit is een demonstratie en geen geldend recht.";
+
     fn statisch(slug: &str) -> String {
         format!(
-            "pocs:\n  - slug: {slug}\n    titel: T\n    samenvatting: S\n    soort: statisch\n    bron: b\n"
+            "pocs:\n  - slug: {slug}\n    titel: T\n    samenvatting: S\n    soort: statisch\n    \
+             bron: b\n    status: verkenning\n    voorbehoud: {VOORBEHOUD}\n"
         )
+    }
+
+    fn registry_echt() -> Registry {
+        Registry::from_yaml(include_str!("../../../pocs/registry.yaml")).expect("registry.yaml")
     }
 
     #[test]
@@ -185,23 +264,78 @@ mod tests {
 
     #[test]
     fn a_static_poc_must_name_its_source() {
-        let yaml = "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: statisch\n";
+        let yaml = &format!(
+            "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: statisch\n    \
+             status: verkenning\n    voorbehoud: {VOORBEHOUD}\n"
+        );
         let err = Registry::from_yaml(yaml).expect_err("must fail");
         assert!(err.to_string().contains("bron"), "{err}");
     }
 
     #[test]
     fn a_proxy_poc_must_name_its_upstream() {
-        let yaml = "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: proxy\n";
+        let yaml = &format!(
+            "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: proxy\n    \
+             status: verkenning\n    voorbehoud: {VOORBEHOUD}\n"
+        );
         let err = Registry::from_yaml(yaml).expect_err("must fail");
         assert!(err.to_string().contains("upstream"), "{err}");
     }
 
     #[test]
     fn the_assistant_cannot_be_switched_on_for_a_proxied_poc() {
-        let yaml = "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: proxy\n    upstream: u\n    assistent: true\n";
+        let yaml = &format!(
+            "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: proxy\n    \
+             upstream: u\n    assistent: true\n    status: verkenning\n    \
+             voorbehoud: {VOORBEHOUD}\n"
+        );
         let err = Registry::from_yaml(yaml).expect_err("must fail");
         assert!(err.to_string().contains("assistant"), "{err}");
+    }
+
+    #[test]
+    fn every_poc_in_the_real_register_states_what_does_not_hold() {
+        // The point of the whole field: a visitor who lands on a PoC through a
+        // forwarded link must be able to see how finished it is.
+        for poc in &registry_echt().pocs {
+            assert!(
+                poc.voorbehoud.trim().len() >= VOORBEHOUD_MINIMUM,
+                "{} has no real voorbehoud",
+                poc.slug
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_status_is_refused_rather_than_assumed() {
+        // No `#[serde(default)]` on purpose: a default would silently make a
+        // brand-new sketch look as checked as the most-reviewed PoC.
+        let yaml = format!(
+            "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: statisch\n    \
+             bron: b\n    voorbehoud: {VOORBEHOUD}\n"
+        );
+        assert!(Registry::from_yaml(&yaml).is_err());
+    }
+
+    #[test]
+    fn a_placeholder_voorbehoud_is_refused() {
+        let yaml =
+            "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: statisch\n    \
+                    bron: b\n    status: verkenning\n    voorbehoud: tbd\n";
+        let err = Registry::from_yaml(yaml).expect_err("must fail");
+        assert!(err.to_string().contains("voorbehoud"), "{err}");
+    }
+
+    #[test]
+    fn an_unknown_status_is_refused() {
+        let yaml = format!(
+            "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: statisch\n    \
+             bron: b\n    status: productie\n    voorbehoud: {VOORBEHOUD}\n"
+        );
+        assert!(
+            Registry::from_yaml(&yaml).is_err(),
+            "a PoC is never 'productie'"
+        );
     }
 
     #[test]

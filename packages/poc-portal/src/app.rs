@@ -117,14 +117,17 @@ async fn poc_request(State(state): State<AppState>, request: Request) -> Respons
 
     match poc.soort {
         Soort::Proxy => match state.upstreams.get(slug) {
-            Some(base) => proxy::forward(&state.http, base, request).await,
+            Some(base) => {
+                let response = proxy::forward(&state.http, base, request).await;
+                injecteer_strip(response, poc).await
+            }
             None => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 format!("PoC {slug} is not reachable: no upstream configured"),
             )
                 .into_response(),
         },
-        Soort::Statisch => serve_static(&state.config.static_root, slug, rest, request).await,
+        Soort::Statisch => serve_static(&state.config.static_root, poc, rest, request).await,
     }
 }
 
@@ -234,7 +237,8 @@ fn percent_decode(s: &str) -> String {
 }
 
 /// Serve a static PoC from `{static_root}/{slug}`, with its own SPA fallback.
-async fn serve_static(static_root: &str, slug: &str, rest: &str, request: Request) -> Response {
+async fn serve_static(static_root: &str, poc: &Poc, rest: &str, request: Request) -> Response {
+    let slug = &poc.slug;
     let dir = format!("{static_root}/{slug}");
     let index = ServeFile::new(format!("{dir}/index.html"));
     let files = ServeDir::new(&dir).not_found_service(index);
@@ -254,12 +258,65 @@ async fn serve_static(static_root: &str, slug: &str, rest: &str, request: Reques
         .unwrap_or_else(|_| Uri::from_static("/"));
     let request = Request::from_parts(parts.0, parts.1);
 
-    files
+    let response = files
         .oneshot(request)
         .await
         .map(|r| r.map(Body::new))
-        .unwrap_or_else(|e| match e {})
+        .unwrap_or_else(|e| match e {});
+
+    injecteer_strip(response, poc).await
 }
+
+/// Splice the portal's notice into an HTML response from a PoC.
+///
+/// Only HTML: a JSON or JavaScript body with a `<div>` prepended is a corrupted
+/// file, and the check is on the response's own `content-type` rather than the
+/// path, because a SPA fallback serves `index.html` under any URL.
+///
+/// A body that is not valid UTF-8, or has no `<body...>`, is passed through
+/// untouched. Failing to add the notice is bad; corrupting the page the notice
+/// is about would be worse.
+async fn injecteer_strip(response: Response, poc: &Poc) -> Response {
+    let is_html = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("text/html"));
+    if !is_html {
+        return response;
+    }
+
+    let (mut parts, body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, MAX_HTML).await else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let Ok(html) = std::str::from_utf8(&bytes) else {
+        return Response::from_parts(parts, Body::from(bytes));
+    };
+
+    // After the opening <body ...>, so the strip is the first thing in the
+    // document rather than a sibling of <html>.
+    let Some(open) = html.find("<body") else {
+        return Response::from_parts(parts, Body::from(bytes));
+    };
+    let Some(rel) = html[open..].find('>') else {
+        return Response::from_parts(parts, Body::from(bytes));
+    };
+    let split = open + rel + 1;
+
+    let mut out = String::with_capacity(html.len() + 512);
+    out.push_str(&html[..split]);
+    out.push_str(&pagina::voorbehoud_strip(poc));
+    out.push_str(&html[split..]);
+
+    // The body grew, and a stale content-length truncates the page.
+    parts.headers.remove(header::CONTENT_LENGTH);
+    Response::from_parts(parts, Body::from(out))
+}
+
+/// Cap on an HTML page the portal rewrites. A PoC's index is a few hundred
+/// kilobytes at most; anything larger is not a document to splice a notice into.
+const MAX_HTML: usize = 8 * 1024 * 1024;
 
 fn not_found() -> Response {
     (StatusCode::NOT_FOUND, "Niet gevonden").into_response()
@@ -292,5 +349,77 @@ mod tests {
     fn a_plus_in_a_password_is_a_space() {
         let f = form_urlencoded_parse("wachtwoord=a+b");
         assert_eq!(f.get("wachtwoord").map(String::as_str), Some("a b"));
+    }
+
+    fn poc() -> Poc {
+        crate::registry::Registry::from_yaml(crate::REGISTRY_YAML)
+            .expect("registry")
+            .get("napp")
+            .expect("napp")
+            .clone()
+    }
+
+    fn antwoord(content_type: &str, body: &'static str) -> Response {
+        Response::builder()
+            .header(header::CONTENT_TYPE, content_type)
+            .body(Body::from(body))
+            .expect("response")
+    }
+
+    async fn tekst(response: Response) -> String {
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .expect("body");
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[tokio::test]
+    async fn the_notice_lands_just_inside_the_body() {
+        let html = antwoord(
+            "text/html",
+            "<html><head></head><body class=x><h1>Hoi</h1></body></html>",
+        );
+        let out = tekst(injecteer_strip(html, &poc()).await).await;
+        let strip = out.find("data-poc-portaal").expect("strip present");
+        let body = out.find("<body").expect("body");
+        let h1 = out.find("<h1>").expect("h1");
+        assert!(body < strip && strip < h1, "{out}");
+    }
+
+    #[tokio::test]
+    async fn only_html_is_rewritten() {
+        // A JSON or JS body with a <div> prepended is a corrupted file, and the
+        // PoCs fetch their laws and their WASM glue over exactly those types.
+        for ct in ["application/json", "text/javascript", "application/wasm"] {
+            let out = tekst(injecteer_strip(antwoord(ct, "{\"a\":1}"), &poc()).await).await;
+            assert_eq!(out, "{\"a\":1}", "{ct} must pass through untouched");
+        }
+    }
+
+    #[tokio::test]
+    async fn html_without_a_body_tag_is_left_alone() {
+        let out =
+            tekst(injecteer_strip(antwoord("text/html", "<p>fragment</p>"), &poc()).await).await;
+        assert_eq!(out, "<p>fragment</p>");
+    }
+
+    #[tokio::test]
+    async fn the_stale_content_length_is_dropped() {
+        // The body grows; leaving the original length truncates the page.
+        let response = Response::builder()
+            .header(header::CONTENT_TYPE, "text/html")
+            .header(header::CONTENT_LENGTH, "13")
+            .body(Body::from("<body>Hoi</body>"))
+            .expect("response");
+        let out = injecteer_strip(response, &poc()).await;
+        assert!(out.headers().get(header::CONTENT_LENGTH).is_none());
+    }
+
+    #[tokio::test]
+    async fn the_notice_names_the_status_and_the_voorbehoud() {
+        let p = poc();
+        let out = tekst(injecteer_strip(antwoord("text/html", "<body></body>"), &p).await).await;
+        assert!(out.contains(p.status.label()), "{out}");
+        assert!(out.contains("wetsvoorstel"), "{out}");
     }
 }

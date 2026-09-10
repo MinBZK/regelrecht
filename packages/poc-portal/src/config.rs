@@ -62,6 +62,18 @@ pub fn upstream_url(
 }
 
 impl Config {
+    /// Point this configuration at another static root.
+    ///
+    /// For tests: `POC_STATIC_DIR` is process-wide, so a test that sets it
+    /// races every other test in the binary — which is how a passing suite
+    /// still failed one run in five. Building the config and then moving it
+    /// keeps that choice on the test rather than on the environment.
+    #[must_use]
+    pub fn met_static_root(mut self, root: impl Into<String>) -> Self {
+        self.static_root = root.into();
+        self
+    }
+
     /// Read the configuration, or explain what is missing.
     pub fn from_env(registry_yaml: &str) -> Result<Self, ConfigError> {
         let registry =
@@ -113,6 +125,8 @@ mod tests {
             titel: "N".into(),
             samenvatting: "S".into(),
             soort: Soort::Proxy,
+            status: crate::registry::Status::Verkenning,
+            voorbehoud: "Een demonstratie, geen geldend recht.".into(),
             bron: None,
             upstream: Some("napp".into()),
             corpus: vec![],

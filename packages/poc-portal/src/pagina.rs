@@ -55,17 +55,21 @@ fn omhulsel(titel: &str, inhoud: &str) -> String {
 }
 
 fn kaart(poc: &Poc) -> String {
-    let tags = poc
-        .tags
-        .iter()
-        .map(|t| {
-            format!(
-                r#"<nldd-tag color="accent" size="md">{}</nldd-tag>"#,
-                esc(t)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n            ");
+    // The status tag goes first, before the subject tags: it is the thing a
+    // reader needs before they read anything the PoC computes.
+    let tags = std::iter::once(format!(
+        r#"<nldd-tag color="{}" size="md">{}</nldd-tag>"#,
+        poc.status.kleur(),
+        poc.status.label(),
+    ))
+    .chain(poc.tags.iter().map(|t| {
+        format!(
+            r#"<nldd-tag color="neutral" size="md">{}</nldd-tag>"#,
+            esc(t)
+        )
+    }))
+    .collect::<Vec<_>>()
+    .join("\n            ");
 
     format!(
         r#"        <nldd-card accessible-label="{titel}">
@@ -123,6 +127,58 @@ pub fn index(registry: &Registry) -> String {
     omhulsel("Proof-of-concepts — regelrecht", &inhoud)
 }
 
+/// What this PoC is and is not, as a banner.
+///
+/// Shown before the visitor is in (on the password screen) and again inside the
+/// PoC itself, because those reach different people: a forwarded deep link
+/// skips the index entirely, and a screenshot taken inside a PoC travels
+/// without any of the surrounding text.
+///
+/// `warning`, not `critical`: this is a standing property of the page, not
+/// something that just went wrong, and `critical` carries role="alert" — which
+/// would interrupt a screen reader on every page load.
+pub fn voorbehoud_banner(poc: &Poc) -> String {
+    format!(
+        r#"<nldd-banner variant="warning" text="Demonstratie — {status}"
+          supporting-text="{uitleg} {voorbehoud}"></nldd-banner>"#,
+        status = esc(poc.status.label()),
+        uitleg = esc(poc.status.uitleg()),
+        voorbehoud = esc(poc.voorbehoud.trim()),
+    )
+}
+
+/// The strip the portal injects into a PoC's own pages.
+///
+/// A PoC is a separate application that knows nothing about this portal, so the
+/// notice cannot live in its source without editing all three of them (and
+/// every one added later). Injecting it here means a new PoC carries it by
+/// arriving in the register, which is the whole point of the register.
+///
+/// Deliberately not the `nldd-banner` used elsewhere: this lands inside another
+/// app's page, and mounting a web component there would depend on that app
+/// having loaded the same design-system build. Plain HTML with inline styles in
+/// a `data-poc-portaal` element cannot collide with the PoC's own markup and
+/// needs nothing loaded.
+///
+/// The inline `style` attribute is why `POC_CSP` keeps `style-src
+/// 'unsafe-inline'` — which it needs for the NDD components anyway.
+pub fn voorbehoud_strip(poc: &Poc) -> String {
+    // One line: this is spliced into another document, and a raw string would
+    // otherwise carry this file's indentation into it.
+    let stijl = "position:sticky;top:0;z-index:2147483647;display:flex;gap:.75rem;\
+                 align-items:baseline;flex-wrap:wrap;padding:.5rem 1rem;background:#fef3c7;\
+                 color:#4b3a05;font:500 .8125rem/1.4 system-ui,sans-serif;\
+                 border-bottom:1px solid #d7b95c";
+    format!(
+        r#"<div data-poc-portaal style="{stijl}"><strong>Demonstratie — {status}</strong>"#,
+        stijl = stijl,
+        status = esc(poc.status.label()),
+    ) + &format!(
+        r#"<span>{voorbehoud}</span><a href="/" style="margin-left:auto;color:inherit">Alle proof-of-concepts</a></div>"#,
+        voorbehoud = esc(poc.voorbehoud.trim()),
+    )
+}
+
 /// The login screen for one PoC.
 ///
 /// Served with 401, not a redirect: a deep link keeps its address, so signing
@@ -143,6 +199,8 @@ pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
       <nldd-title size="1"><h1>{titel}</h1></nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-rich-text><p>{samenvatting}</p></nldd-rich-text>
+      <nldd-spacer size="16"></nldd-spacer>
+      {voorbehoud}
       <nldd-spacer size="24"></nldd-spacer>
       <nldd-card accessible-label="Wachtwoord">
         <nldd-container padding="24">
@@ -172,6 +230,7 @@ pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
         slug = esc(&poc.slug),
         pad = esc(pad),
         melding = melding,
+        voorbehoud = voorbehoud_banner(poc),
     );
 
     omhulsel(&format!("{} — wachtwoord", poc.titel), &inhoud)
@@ -275,6 +334,8 @@ mod tests {
             titel: r#"A "quoted" <b>title</b>"#.into(),
             samenvatting: "5 > 3 & rising".into(),
             soort: crate::registry::Soort::Statisch,
+            status: crate::registry::Status::Verkenning,
+            voorbehoud: r#"Een "demo" & niets meer."#.into(),
             bron: Some("b".into()),
             upstream: None,
             corpus: vec![],

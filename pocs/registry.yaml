@@ -21,6 +21,21 @@
 #   corpus       de mappen met casus-regelgeving die dit image meeneemt.
 #   assistent    true als de beleidsassistent voor deze casus aanstaat.
 #   tags         korte labels op de kaart.
+#   status       hoe af deze uitwerking is; verplicht. Zie hieronder.
+#   voorbehoud   één of twee zinnen: waarom dit nog niet klopt, of waar het
+#                overheen loopt. Verplicht, en in eigen woorden — een lege
+#                huisregel leest iedereen heen.
+#
+# De status is er omdat een bezoeker anders niet kan zien of hij naar een
+# schets kijkt of naar iets dat met juristen is doorgelopen. Een uitgerekend
+# bedrag ziet er in beide gevallen even stellig uit. Toegestane waarden:
+#
+#   verkenning      een eerste uitwerking; niet nagelopen door iemand van het
+#                   beleidsterrein. Neem geen enkele uitkomst voor waar aan.
+#   in-ontwikkeling gedeeltelijk nagelopen; delen kloppen, andere niet, en
+#                   welke dat zijn staat niet vast.
+#   gevalideerd     met uitvoerings- of beleidsexperts doorgelopen. Nog steeds
+#                   een demo op fictieve gegevens, geen besluit.
 
 pocs:
   - slug: terugbetaalregimes
@@ -35,6 +50,11 @@ pocs:
       - corpus-poc/terugbetaalregimes
     assistent: true
     tags: [OCW, DUO, studiefinanciering]
+    status: in-ontwikkeling
+    voorbehoud: >-
+      De regimes zijn uitgewerkt voor een sessie met OCW en DUO en op die
+      onderdelen nagelopen; daarbuiten is de uitwerking niet getoetst.
+      Bedragen en uitkomsten zijn illustratief en gelden voor niemand.
 
   - slug: nieuwkomersbekostiging
     titel: Aanvullende bekostiging nieuwkomers
@@ -48,6 +68,12 @@ pocs:
       - corpus-poc/nieuwkomersbekostiging
     assistent: true
     tags: [OCW, DUO, bekostiging]
+    status: verkenning
+    voorbehoud: >-
+      Een verkenning van maatregel 1 uit de knelpuntenbrief, inclusief
+      varianten die niet bestaan en niet zijn voorgesteld. De
+      populatiesimulatie en het uitvoeringslastmodel draaien op synthetische
+      gegevens en aannames, niet op cijfers van DUO of scholen.
 
   - slug: napp
     titel: Napp — Nederlandse autoriteit politieke partijen
@@ -61,3 +87,8 @@ pocs:
       - corpus-poc/napp
     assistent: false
     tags: [BZK, Wpp, subsidie, AWB]
+    status: verkenning
+    voorbehoud: >-
+      De Napp bestaat niet en de Wet op de politieke partijen is een
+      wetsvoorstel; de wettekst hier is een uitvoerbare reconstructie, geen
+      geldend recht. Partijen, aanvragen en besluiten zijn verzonnen.

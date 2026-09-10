@@ -24,23 +24,28 @@ pocs:
     samenvatting: De eerste
     soort: statisch
     bron: poc-alfa
+    status: verkenning
+    voorbehoud: Een demonstratie op verzonnen gegevens, geen geldend recht.
   - slug: beta
     titel: Beta
     samenvatting: De tweede
     soort: statisch
     bron: poc-beta
+    status: gevalideerd
+    voorbehoud: Doorgelopen met experts, maar nog steeds een demonstratie.
 "#;
 
 /// Build a portal over a register of two static PoCs.
-///
-/// The env vars are process-wide, so every test here runs against the same
-/// set; they are only ever set to these values.
 fn app() -> axum::Router {
+    // Only the variables every test agrees on are set here, and they are always
+    // set to the same values. The static root is not among them: it differs per
+    // test, and a process-wide variable that differs per test is a race.
     std::env::set_var("POC_COOKIE_SECRET", SECRET);
     std::env::set_var("POC_PW_ALFA", "alfa-geheim");
     std::env::set_var("POC_PW_BETA", "beta-geheim");
-    std::env::set_var("POC_STATIC_DIR", "/nonexistent");
-    let config = Config::from_env(REGISTER).expect("config");
+    let config = Config::from_env(REGISTER)
+        .expect("config")
+        .met_static_root("/nonexistent");
     router(AppState::new(config))
 }
 
@@ -111,7 +116,7 @@ async fn one_pocs_cookie_does_not_open_another() {
 
 #[tokio::test]
 async fn a_valid_cookie_gets_past_the_gate() {
-    // POC_STATIC_DIR points at nothing, so "past the gate" shows up as a 404
+    // The static root points at nothing, so "past the gate" shows up as a 404
     // from the file service rather than the 401 the gate would return.
     let app = app();
     let (status, _) = get(&app, "/alfa/", Some(&cookie_voor("alfa"))).await;
@@ -206,6 +211,42 @@ async fn the_return_path_cannot_send_a_visitor_off_this_host() {
 }
 
 #[tokio::test]
+async fn a_poc_page_carries_the_notice_and_its_assets_do_not() {
+    // The third place the disclaimer lives, and the one that survives a
+    // forwarded deep link or a screenshot: inside the PoC's own page. Its
+    // assets must stay untouched — a <div> prepended to a JS bundle is a
+    // broken PoC.
+    let dir = std::env::temp_dir().join(format!("poc-strip-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("alfa")).expect("mkdir");
+    std::fs::write(
+        dir.join("alfa/index.html"),
+        "<html><body><h1>Alfa</h1></body></html>",
+    )
+    .expect("index");
+    std::fs::write(dir.join("alfa/app.js"), "console.log(1)").expect("js");
+
+    // The static root is set on the config, not through POC_STATIC_DIR: that
+    // variable is process-wide, and setting it here raced the other tests in
+    // this binary (one failure in five runs).
+    std::env::set_var("POC_COOKIE_SECRET", SECRET);
+    std::env::set_var("POC_PW_ALFA", "alfa-geheim");
+    std::env::set_var("POC_PW_BETA", "beta-geheim");
+    let config = Config::from_env(REGISTER)
+        .expect("config")
+        .met_static_root(dir.to_string_lossy().into_owned());
+    let app = router(AppState::new(config));
+
+    let (_, html) = get(&app, "/alfa/", Some(&cookie_voor("alfa"))).await;
+    assert!(html.contains("data-poc-portaal"), "{html}");
+    assert!(html.contains("Demonstratie"), "{html}");
+
+    let (_, js) = get(&app, "/alfa/app.js", Some(&cookie_voor("alfa"))).await;
+    assert_eq!(js, "console.log(1)", "an asset must not be rewritten");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
 async fn every_answer_carries_the_security_headers() {
     // The layer sits over the fallback too, which is where the PoCs are
     // served — the mistake `serve_static_and_secure` in editor-api documents.
@@ -243,7 +284,10 @@ async fn a_config_without_a_password_refuses_to_start() {
     // anyone because its env var was forgotten.
     std::env::set_var("POC_COOKIE_SECRET", SECRET);
     std::env::remove_var("POC_PW_GAMMA");
-    let register = format!("{REGISTER}  - slug: gamma\n    titel: G\n    samenvatting: S\n    soort: statisch\n    bron: b\n");
+    let register = format!(
+        "{REGISTER}  - slug: gamma\n    titel: G\n    samenvatting: S\n    soort: statisch\n    \
+         bron: b\n    status: verkenning\n    voorbehoud: Een demonstratie, geen geldend recht.\n"
+    );
     // `Config` holds the signing key and every password, so it deliberately
     // does not derive Debug — hence matching rather than `expect_err`.
     match Config::from_env(&register) {
