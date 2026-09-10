@@ -90,7 +90,7 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         v-if="pendingClaims.length"
         variant="accent"
         :text="`${pendingClaims.length} ${pendingClaims.length === 1 ? 'correctie wacht' : 'correcties wachten'} op beoordeling`"
-        supporting-text="Tot een behandelaar de correctie goedkeurt rekenen de regelingen met het geregistreerde gegeven."
+        supporting-text="De regelingen hieronder rekenen al met wat u heeft opgegeven. Een behandelaar beoordeelt de correctie; pas daarna staat de uitkomst vast."
       ></nldd-banner>
     </nldd-simple-section>
 

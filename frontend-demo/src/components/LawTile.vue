@@ -241,12 +241,17 @@ const statusTag = computed(() => {
           </nldd-list-item>
         </nldd-list>
 
-        <nldd-list v-if="askedInputs.length" variant="simple" accessible-label="Door u opgegeven">
+        <!-- These rows are questions the registers cannot answer, so only the
+             citizen can. Until one is answered it is not "door u opgegeven" —
+             saying that of an empty row claims the person supplied something
+             they never did. Unanswered reads as a question, answered says who
+             gave the answer. -->
+        <nldd-list v-if="askedInputs.length" variant="simple" accessible-label="Gegevens die u zelf opgeeft">
           <nldd-list-item v-for="input in askedInputs" :key="input.name" size="sm" button @click="supply(input)">
-            <nldd-icon-cell icon="edit" size="16" color="accent"></nldd-icon-cell>
+            <nldd-icon-cell :icon="input.claim ? 'edit' : 'question-mark-circle'" size="16" :color="input.claim ? 'accent' : 'secondary'"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell size="sm" :text="humanize(input.name)" supporting-text="door u opgegeven"></nldd-text-cell>
-            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'Opgeven'"></nldd-text-cell>
+            <nldd-text-cell size="sm" :text="humanize(input.name)" :supporting-text="input.claim ? 'door u opgegeven' : 'alleen u kunt dit opgeven'"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="input.claim ? 'default' : 'secondary'" :text="input.claim ? formatValue(input.claim.newValue, input.spec) : 'nog niet opgegeven'"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
         <nldd-list type="tree" variant="box-tinted" accessible-label="Gebruikte gegevens">
