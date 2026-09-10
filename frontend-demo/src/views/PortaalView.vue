@@ -63,7 +63,16 @@ function onApply({ law }) {
   applying.value = law;
 }
 
-const pendingClaims = computed(() => state.claims.filter((c) => c.bsn === demo.subjectBsn() && c.status === 'PENDING'));
+// De banner gaat over wat er op déze pagina wacht. Namens een onderneming is
+// dat wat op haar KvK-nummer staat: `subjectBsn()` is dan de gemachtigde zelf,
+// en zonder dit onderscheid verschenen zijn eigen privécorrecties boven de
+// regelingen van het bedrijf.
+const pendingClaims = computed(() => {
+  const key = activeDelegation.value?.subjectType === 'BUSINESS' ? activeDelegation.value.subjectId : null;
+  return state.claims.filter(
+    (c) => c.status === 'PENDING' && (key ? c.keyValue === key : c.bsn === demo.subjectBsn()),
+  );
+});
 const properties = computed(() => (activeDelegation.value ? [] : persona.value?.properties ?? []));
 
 // Namens een ander gaat de pagina over die ander: de vraag "waar heb ik recht

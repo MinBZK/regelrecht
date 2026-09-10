@@ -210,6 +210,53 @@ function fitSegment(points, lower, upper) {
 }
 
 /**
+ * De treden van één staffel: één bedrag per trederand, gedeeld door de treden
+ * aan weerszijden.
+ *
+ * Elke trede apart fitten en de twee randwaarden los opschrijven gaf een
+ * staffel die op papier doorloopt maar in werkelijkheid springt: bij een wet
+ * die op één inkomensgrens wegvalt, scheelde het € 512 tussen de laatste euro
+ * van de ene trede en de eerste van de volgende. Dat is precies het
+ * cliff-effect dat een staffel juist zou wegnemen.
+ *
+ * Nu levert elke trede haar eigen schatting voor beide randen, en waar twee
+ * treden dezelfde rand raken wordt het gemiddelde genomen. Het bedrag is
+ * daarmee per definitie doorlopend; de prijs is dat een echte klif in de
+ * gegevens wordt uitgesmeerd over de twee treden eromheen. Dat is de juiste
+ * ruil: dat de vereenvoudiging een klif niet kan volgen, hoort te blijken uit
+ * "Waar het misgaat", niet uit een sprong die het model zelf introduceert.
+ *
+ * Bedragen worden niet op nul afgekapt: zit er een belasting in de som, dan is
+ * een negatief nettobedrag een echte uitkomst.
+ */
+function stepsFor(points, boundaries, config) {
+  const n = boundaries.length - 1;
+  // Per trede de eigen schatting op beide randen.
+  const fits = [];
+  for (let i = 0; i < n; i += 1) {
+    const lower = boundaries[i];
+    const upper = boundaries[i + 1];
+    const inBracket = points.filter((p) => p.x >= lower && p.x <= upper);
+    fits.push({ lower, upper, count: inBracket.length, fit: fitSegment(inBracket.length >= 3 ? inBracket : points, lower, upper) });
+  }
+  // Eén waarde per rand: het gemiddelde van wat de treden eromheen zeggen.
+  const atBoundary = [];
+  for (let b = 0; b <= n; b += 1) {
+    const left = b > 0 ? fits[b - 1].fit[1] : null;
+    const right = b < n ? fits[b].fit[0] : null;
+    const both = [left, right].filter((v) => v !== null);
+    atBoundary.push(both.reduce((s, v) => s + v, 0) / both.length);
+  }
+  return fits.map((f, i) => ({
+    lower: f.lower,
+    upper: f.upper,
+    amountAtLower: roundTo(atBoundary[i], config.roundAmount),
+    amountAtUpper: roundTo(atBoundary[i + 1], config.roundAmount),
+    count: f.count,
+  }));
+}
+
+/**
  * Een staffelmodel leren.
  *
  * Eerst wordt gekozen waarop gestaffeld wordt (het kenmerk met de meeste
@@ -271,40 +318,22 @@ export function trainBracketModel(data, options = {}) {
   for (const combo of combos) {
     const members = rows.filter((r) => groupKeys.every((f) => r.values[f.key] === combo[f.key]));
     if (members.length < Math.max(config.minGroupSize, 5 * (boundaries.length - 1))) continue;
-    const points = members.map((r) => ({ x: r.values[primary.key], amount: r.amount }));
-    const steps = [];
-    for (let i = 0; i < boundaries.length - 1; i += 1) {
-      const lower = boundaries[i];
-      const upper = boundaries[i + 1];
-      const inBracket = points.filter((p) => p.x >= lower && p.x <= upper);
-      const [atLower, atUpper] = fitSegment(inBracket.length >= 3 ? inBracket : points, lower, upper);
-      steps.push({
-        lower,
-        upper,
-        amountAtLower: roundTo(atLower, config.roundAmount),
-        amountAtUpper: roundTo(atUpper, config.roundAmount),
-        count: inBracket.length,
-      });
-    }
-    groups.push({ filter: combo, keys: groupKeys.map((f) => f.key), steps, count: members.length });
+    groups.push({
+      filter: combo,
+      keys: groupKeys.map((f) => f.key),
+      steps: stepsFor(members.map((r) => ({ x: r.values[primary.key], amount: r.amount })), boundaries, config),
+      count: members.length,
+    });
   }
 
   // Zonder bruikbare groepen: één staffel voor iedereen.
   if (!groups.length) {
-    const points = rows.map((r) => ({ x: r.values[primary.key], amount: r.amount }));
-    const steps = [];
-    for (let i = 0; i < boundaries.length - 1; i += 1) {
-      const inBracket = points.filter((p) => p.x >= boundaries[i] && p.x <= boundaries[i + 1]);
-      const [atLower, atUpper] = fitSegment(inBracket.length >= 3 ? inBracket : points, boundaries[i], boundaries[i + 1]);
-      steps.push({
-        lower: boundaries[i],
-        upper: boundaries[i + 1],
-        amountAtLower: roundTo(atLower, config.roundAmount),
-        amountAtUpper: roundTo(atUpper, config.roundAmount),
-        count: inBracket.length,
-      });
-    }
-    groups.push({ filter: {}, keys: [], steps, count: rows.length });
+    groups.push({
+      filter: {},
+      keys: [],
+      steps: stepsFor(rows.map((r) => ({ x: r.values[primary.key], amount: r.amount })), boundaries, config),
+      count: rows.length,
+    });
   }
 
   const model = { primary, groupKeys, boundaries, groups, influence, config };
