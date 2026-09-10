@@ -122,11 +122,13 @@ fn engine_thread(
 }
 
 fn load_corpus(service: &mut LawExecutionService, project_root: &Path) -> usize {
+    // Prefer the parent `regulation/` tree so every jurisdiction (nl, lu, eu, …)
+    // is loaded; fall back to the historical nl-only layout and older paths.
     let candidates = [
-        project_root.join("corpus/regulation/nl"),
         project_root.join("corpus/regulation"),
-        project_root.join("corpus/central/nl"),
+        project_root.join("corpus/regulation/nl"),
         project_root.join("corpus/central"),
+        project_root.join("corpus/central/nl"),
     ];
 
     let corpus_dir = candidates.iter().find(|p| p.is_dir());

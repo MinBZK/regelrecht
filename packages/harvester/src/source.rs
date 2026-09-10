@@ -20,6 +20,8 @@ pub enum LawSourceType {
     Bwb,
     /// Decentral regulation from CVDR.
     Cvdr,
+    /// EU instrument from EUR-Lex / CELLAR (phase 2 — stub only).
+    EurLex,
 }
 
 /// Strategy trait for downloading laws from different sources.
@@ -107,6 +109,64 @@ impl LawSource for CvdrSource {
     }
 }
 
+/// EUR-Lex / CELLAR source (phase 2 stub).
+///
+/// Accepts CELEX-style identifiers so callers and the registry can already
+/// route EU ids. Download is not implemented yet — see
+/// `docs/src/content/docs/concepts/eu-corpus-ingest.md`.
+#[derive(Debug, Default)]
+pub struct EurLexSource;
+
+/// CELEX numbers look like `32016R0679` (sector+year+type+number) or the
+/// prefixed form `CELEX:32016R0679`.
+pub fn is_celex_id(id: &str) -> bool {
+    let bare = id
+        .strip_prefix("CELEX:")
+        .or_else(|| id.strip_prefix("celex:"))
+        .unwrap_or(id);
+    let bytes = bare.as_bytes();
+    if bytes.len() < 8 || !bytes[0].is_ascii_digit() {
+        return false;
+    }
+    // Year is positions 1-4; type letter at 5 (R/L/D/…); rest digits.
+    bytes[1..5].iter().all(|b| b.is_ascii_digit())
+        && bytes[5].is_ascii_alphabetic()
+        && bytes[6..].iter().all(|b| b.is_ascii_digit())
+}
+
+#[async_trait]
+impl LawSource for EurLexSource {
+    fn validate_id(&self, id: &str) -> Result<()> {
+        if is_celex_id(id) {
+            Ok(())
+        } else {
+            Err(HarvesterError::InvalidLawId(id.to_string()))
+        }
+    }
+
+    async fn download(&self, _client: &Client, id: &str, _date: Option<&str>) -> Result<Law> {
+        Err(HarvesterError::NotImplemented(format!(
+            "EUR-Lex download for '{id}' is not implemented yet (phase 2)"
+        )))
+    }
+
+    fn public_url(&self, id: &str) -> String {
+        let bare = id
+            .strip_prefix("CELEX:")
+            .or_else(|| id.strip_prefix("celex:"))
+            .unwrap_or(id);
+        format!("https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:{bare}")
+    }
+
+    fn name(&self) -> &'static str {
+        "EUR-Lex"
+    }
+
+    fn source_type(&self) -> LawSourceType {
+        LawSourceType::EurLex
+    }
+}
+
 /// Detect the law source from an ID and return the appropriate strategy.
 ///
 /// # Errors
@@ -129,6 +189,8 @@ pub fn detect_source(law_id: &str) -> Result<Box<dyn LawSource>> {
         Box::new(BwbSource::default())
     } else if law_id.starts_with("CVDR") {
         Box::new(CvdrSource)
+    } else if is_celex_id(law_id) {
+        Box::new(EurLexSource)
     } else {
         return Err(HarvesterError::InvalidLawId(law_id.to_string()));
     };
@@ -150,6 +212,20 @@ mod tests {
     fn detect_cvdr_source() {
         let source = detect_source("CVDR681386").unwrap();
         assert_eq!(source.name(), "CVDR");
+    }
+
+    #[test]
+    fn detect_eurlex_source() {
+        let source = detect_source("32016R0679").unwrap();
+        assert_eq!(source.name(), "EUR-Lex");
+        assert_eq!(source.source_type(), LawSourceType::EurLex);
+        assert!(source.public_url("32016R0679").contains("CELEX:32016R0679"));
+    }
+
+    #[test]
+    fn eurlex_rejects_non_celex() {
+        let source = EurLexSource;
+        assert!(source.validate_id("NOTCELEX").is_err());
     }
 
     #[test]

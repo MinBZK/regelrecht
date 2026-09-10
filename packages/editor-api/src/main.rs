@@ -23,6 +23,7 @@ mod corpus_handlers;
 mod credentials;
 mod crypto;
 mod enrich_review;
+mod execute;
 mod favorites;
 mod feature_flags;
 mod github_oauth;
@@ -227,6 +228,16 @@ async fn main() {
         .route("/api/favorites", get(favorites::list))
         .route("/api/user/settings", get(user_settings::list))
         .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
+        // Deterministic law execution for 4LM / external callers. Behind
+        // editor-reader when auth is on; passthrough when auth is disabled.
+        .route(
+            "/api/v1/execute",
+            axum::routing::post(execute::execute_handler),
+        )
+        .route(
+            "/api/v1/regulations/{law_id}/nrml",
+            get(execute::nrml_export_handler),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_role::<AppState>("editor-reader"),

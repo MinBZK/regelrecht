@@ -82,6 +82,8 @@ pub struct ValidatedLawMeta {
     pub law_id: String,
     pub regulatory_layer: RegulatoryLayer,
     pub valid_from: chrono::NaiveDate,
+    /// ISO 3166-1 alpha-2 (or `eu`); defaults to `nl` when absent in YAML.
+    pub jurisdictie: String,
 }
 
 /// A validated, freshly-generated base law.
@@ -308,11 +310,19 @@ pub fn validate_law_yaml(yaml: &str) -> std::result::Result<ValidatedLawMeta, Ve
         errors.push("valid_from: missing or not a YYYY-MM-DD date".to_string());
     }
 
+    let jurisdictie = value
+        .get("jurisdictie")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "nl".to_string());
+
     match (layer, valid_from) {
         (Some(regulatory_layer), Some(valid_from)) if errors.is_empty() => Ok(ValidatedLawMeta {
             law_id,
             regulatory_layer,
             valid_from,
+            jurisdictie,
         }),
         _ => Err(errors),
     }

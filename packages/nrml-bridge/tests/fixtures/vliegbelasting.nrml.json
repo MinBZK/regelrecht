@@ -1,0 +1,210 @@
+{
+  "$schema": "https://example.com/nrml-facts-schema.json",
+  "facts": {
+    "19337aba-651a-5e82-ac85-3b8954ae9246": {
+      "items": {
+        "c626cab1-88e0-55f6-9b00-b56b9bdbb8cb": {
+          "name": {
+            "de": "klimaatneutraal",
+            "en": "klimaatneutraal",
+            "fr": "klimaatneutraal",
+            "nl": "klimaatneutraal"
+          },
+          "versions": [
+            {
+              "type": "boolean",
+              "validFrom": "2026"
+            }
+          ]
+        },
+        "e08d9c6c-fea4-5e57-9cd5-e8244ed3675f": {
+          "name": {
+            "de": "vliegbelasting_bedrag",
+            "en": "vliegbelasting_bedrag",
+            "fr": "vliegbelasting_bedrag",
+            "nl": "vliegbelasting_bedrag"
+          },
+          "versions": [
+            {
+              "type": "numeric",
+              "validFrom": "2026"
+            }
+          ]
+        },
+        "ee2d1375-e36a-572d-a10f-c62d49987f6c": {
+          "name": {
+            "de": "afstand_km",
+            "en": "afstand_km",
+            "fr": "afstand_km",
+            "nl": "afstand_km"
+          },
+          "versions": [
+            {
+              "type": "numeric",
+              "validFrom": "2026"
+            }
+          ]
+        },
+        "f48d4a29-e00a-5d06-bef2-fba9cf071102": {
+          "name": {
+            "de": "binnenlands",
+            "en": "binnenlands",
+            "fr": "binnenlands",
+            "nl": "binnenlands"
+          },
+          "versions": [
+            {
+              "type": "boolean",
+              "validFrom": "2026"
+            }
+          ]
+        }
+      },
+      "name": {
+        "en": "vliegbelasting_korting_klimaatneutraal_lu",
+        "nl": "vliegbelasting_korting_klimaatneutraal_lu"
+      }
+    },
+    "d11e3f01-534d-5360-bc1a-58e04dcde08c": {
+      "items": {
+        "2a38fd07-235c-58ad-bbc8-c07d4908e7e4": {
+          "name": {
+            "en": "recht_op_korting",
+            "nl": "recht_op_korting"
+          },
+          "versions": [
+            {
+              "type": {
+                "subtype": "possessive",
+                "type": "characteristic"
+              },
+              "validFrom": "2026"
+            }
+          ]
+        },
+        "f0980b69-28f2-5b01-a7b6-85b54bee9b02": {
+          "name": {
+            "en": "korting_bedrag",
+            "nl": "korting_bedrag"
+          },
+          "versions": [
+            {
+              "type": {
+                "$ref": "#/facts/f3beb0ab-b54f-50de-bf53-c955f7f3a6b2"
+              },
+              "validFrom": "2026"
+            }
+          ]
+        }
+      },
+      "name": {
+        "en": "outputs",
+        "nl": "uitkomsten"
+      }
+    },
+    "f3beb0ab-b54f-50de-bf53-c955f7f3a6b2": {
+      "items": {
+        "57d72490-df9f-5431-91bc-7d7d1448e18c": {
+          "name": {
+            "en": "Amount definition",
+            "nl": "Bedrag definitie"
+          },
+          "versions": [
+            {
+              "precision": 2,
+              "type": "numeric",
+              "unit": "€",
+              "validFrom": "2026"
+            }
+          ]
+        }
+      },
+      "name": {
+        "de": "Betrag",
+        "en": "Amount",
+        "fr": "Montant",
+        "nl": "Bedrag"
+      }
+    }
+  },
+  "language": "nl",
+  "rules": {
+    "00e72bca-1f1e-51db-8ada-5cfdfa9d8f3f": {
+      "name": {
+        "en": "korting_bedrag",
+        "nl": "korting_bedrag"
+      },
+      "versions": [
+        {
+          "expression": {
+            "cases": [
+              {
+                "then": {
+                  "operands": [
+                    {
+                      "subject": "#/facts/19337aba-651a-5e82-ac85-3b8954ae9246/items/e08d9c6c-fea4-5e57-9cd5-e8244ed3675f"
+                    },
+                    0.5
+                  ],
+                  "operation": "MULTIPLY"
+                },
+                "when": {
+                  "operation": "EQUALS",
+                  "subject": "#/facts/d11e3f01-534d-5360-bc1a-58e04dcde08c/items/2a38fd07-235c-58ad-bbc8-c07d4908e7e4",
+                  "value": true
+                }
+              }
+            ],
+            "default": 0,
+            "operation": "IF"
+          },
+          "target": "#/facts/d11e3f01-534d-5360-bc1a-58e04dcde08c/items/f0980b69-28f2-5b01-a7b6-85b54bee9b02",
+          "validFrom": "2026"
+        }
+      ]
+    },
+    "9bf1184d-b0ad-55ac-ba71-001873396231": {
+      "name": {
+        "en": "recht_op_korting",
+        "nl": "recht_op_korting"
+      },
+      "versions": [
+        {
+          "expression": {
+            "conditions": [
+              {
+                "operation": "EQUALS",
+                "subject": "#/facts/19337aba-651a-5e82-ac85-3b8954ae9246/items/c626cab1-88e0-55f6-9b00-b56b9bdbb8cb",
+                "value": true
+              },
+              {
+                "conditions": [
+                  {
+                    "operation": "EQUALS",
+                    "subject": "#/facts/19337aba-651a-5e82-ac85-3b8954ae9246/items/f48d4a29-e00a-5d06-bef2-fba9cf071102",
+                    "value": true
+                  },
+                  {
+                    "operation": "LESS_THAN",
+                    "subject": "#/facts/19337aba-651a-5e82-ac85-3b8954ae9246/items/ee2d1375-e36a-572d-a10f-c62d49987f6c",
+                    "value": 500
+                  }
+                ],
+                "operation": "OR"
+              }
+            ],
+            "operation": "AND"
+          },
+          "target": "#/facts/d11e3f01-534d-5360-bc1a-58e04dcde08c/items/2a38fd07-235c-58ad-bbc8-c07d4908e7e4",
+          "validFrom": "2026"
+        }
+      ]
+    }
+  },
+  "source": {
+    "jurisdictie": "LU",
+    "law_id": "vliegbelasting_korting_klimaatneutraal_lu",
+    "valid_from": "2026-07-21"
+  },
+  "version": "3.0"
+}

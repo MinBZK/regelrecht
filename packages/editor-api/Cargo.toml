@@ -22,6 +22,8 @@ regelrecht-shared = { path = "../shared", features = ["telemetry", "dates"] }
 regelrecht-corpus = { path = "../corpus", features = ["github", "annotation-validation"] }
 regelrecht-github = { path = "../github" }
 regelrecht-law-model = { path = "../law-model" }
+regelrecht-engine = { path = "../engine" }
+regelrecht-nrml-bridge = { path = "../nrml-bridge" }
 regelrecht-pipeline = { path = "../pipeline" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower = { workspace = true, features = ["util"] }
@@ -43,6 +45,7 @@ sha2.workspace = true
 time.workspace = true
 tracing.workspace = true
 url.workspace = true
+walkdir.workspace = true
 
 [dev-dependencies]
 regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }

@@ -4146,8 +4146,10 @@ dependencies = [
  "pretty_assertions",
  "regelrecht-auth",
  "regelrecht-corpus",
+ "regelrecht-engine",
  "regelrecht-github",
  "regelrecht-law-model",
+ "regelrecht-nrml-bridge",
  "regelrecht-pipeline",
  "regelrecht-shared",
  "reqwest 0.12.28",
@@ -4168,6 +4170,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "walkdir",
  "wiremock",
 ]
 
@@ -4254,6 +4257,20 @@ dependencies = [
  "rust_decimal_macros",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "regelrecht-nrml-bridge"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "regelrecht-law-model",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2",
+ "thiserror 2.0.20",
+ "uuid",
 ]
 
 [[package]]

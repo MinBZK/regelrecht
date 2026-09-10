@@ -42,7 +42,7 @@ fn main() {
     let regulation_dir = Path::new(manifest_dir)
         .parent()
         .and_then(|p| p.parent())
-        .map(|p| p.join("corpus").join("regulation").join("nl"))
+        .map(|p| p.join("corpus").join("regulation"))
         .expect("Could not find regulation directory");
 
     let mut count = 0;

@@ -1,0 +1,23 @@
+[package]
+name = "regelrecht-nrml-bridge"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "Minimal RegelRecht YAML ↔ NRML JSON bridge (4LM interop subset)"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+
+[dependencies]
+regelrecht-law-model = { path = "../law-model" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+
+[lints]
+workspace = true

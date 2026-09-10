@@ -863,9 +863,18 @@ pub struct ArticleBasedLaw {
     /// Competent authority
     #[serde(default)]
     pub competent_authority: Option<CompetentAuthority>,
+    /// ISO 3166-1 alpha-2 jurisdiction (omit or NL for Dutch instruments)
+    #[serde(default)]
+    pub jurisdictie: Option<String>,
     /// BWB identifier for national laws
     #[serde(default)]
     pub bwb_id: Option<String>,
+    /// CELEX number for EU regulations and directives
+    #[serde(default)]
+    pub celex_nummer: Option<String>,
+    /// European Legislation Identifier (also used for non-NL national ELIs)
+    #[serde(default)]
+    pub eli: Option<String>,
     /// URL to official source
     #[serde(default)]
     pub url: Option<String>,
@@ -875,9 +884,15 @@ pub struct ArticleBasedLaw {
     /// Municipality code for gemeentelijke verordeningen
     #[serde(default)]
     pub gemeente_code: Option<String>,
+    /// Province code for provinciale verordeningen
+    #[serde(default)]
+    pub provincie_code: Option<String>,
     /// Water board code for waterschapsverordeningen
     #[serde(default)]
     pub waterschap_code: Option<String>,
+    /// Tractatenblad id for treaties
+    #[serde(default)]
+    pub tractatenblad_id: Option<String>,
     /// Official title for local regulations
     #[serde(default)]
     pub officiele_titel: Option<String>,

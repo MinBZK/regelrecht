@@ -126,9 +126,15 @@ pub enum HarvesterError {
     #[error("Invalid CVDR ID format: '{0}'. Expected CVDR followed by 3 or more digits (e.g., CVDR681386)")]
     InvalidCvdrId(String),
 
-    /// Invalid law ID format (neither BWB nor CVDR).
-    #[error("Invalid law ID format: '{0}'. Expected BWB ID (BWBRXXXXXXX) or CVDR ID (CVDRXXX...)")]
+    /// Invalid law ID format (neither BWB, CVDR, nor CELEX).
+    #[error(
+        "Invalid law ID format: '{0}'. Expected BWB ID (BWBRXXXXXXX), CVDR ID (CVDRXXX...), or CELEX (e.g. 32016R0679)"
+    )]
     InvalidLawId(String),
+
+    /// Feature not implemented yet (e.g. EUR-Lex download, phase 2).
+    #[error("{0}")]
+    NotImplemented(String),
 
     /// CVDR SRU search failed.
     #[error("CVDR SRU search failed for {cvdr_id}: {message}")]

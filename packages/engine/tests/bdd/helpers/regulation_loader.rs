@@ -1,6 +1,7 @@
 //! Regulation loader for BDD tests
 //!
-//! Loads all YAML regulation files from the corpus/regulation/nl directory.
+//! Loads all YAML regulation files from every jurisdiction directory under
+//! `corpus/regulation/` (e.g. `nl/`, `lu/`, `eu/`).
 
 use crate::common::regulation_base_path;
 use regelrecht_engine::{EngineError, LawExecutionService};
@@ -8,45 +9,68 @@ use walkdir::WalkDir;
 
 /// Load all regulation YAML files into the service.
 ///
-/// Scans the `corpus/regulation/nl/` directory (or `REGULATION_PATH` env var base)
+/// Scans each jurisdiction subdirectory of `corpus/regulation/` (or
+/// `REGULATION_PATH`) — historically only `nl/`, now also `lu/`, `eu/`, etc. —
 /// and loads all `.yaml` files found.
 pub fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, EngineError> {
-    let regulation_dir = regulation_base_path().join("nl");
+    let regulation_root = regulation_base_path();
 
-    if !regulation_dir.exists() {
+    if !regulation_root.exists() {
         return Err(EngineError::LoadError(format!(
             "Regulation directory not found: {}",
-            regulation_dir.display()
+            regulation_root.display()
         )));
+    }
+
+    let mut roots = Vec::new();
+    let entries = std::fs::read_dir(&regulation_root).map_err(|e| {
+        EngineError::LoadError(format!(
+            "Failed to read {}: {}",
+            regulation_root.display(),
+            e
+        ))
+    })?;
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            roots.push(path);
+        }
+    }
+    // Fallback: REGULATION_PATH may already point at a single-jurisdiction tree
+    // (e.g. a checkout that only has wet/… at the top level).
+    if roots.is_empty() {
+        roots.push(regulation_root);
     }
 
     let mut count = 0;
 
-    for entry in WalkDir::new(&regulation_dir)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
+    for regulation_dir in roots {
+        for entry in WalkDir::new(&regulation_dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
 
-        // Only process YAML files
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "yaml") {
-            let content = std::fs::read_to_string(path).map_err(|e| {
-                EngineError::LoadError(format!("Failed to read {}: {}", path.display(), e))
-            })?;
+            // Only process YAML files
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "yaml") {
+                let content = std::fs::read_to_string(path).map_err(|e| {
+                    EngineError::LoadError(format!("Failed to read {}: {}", path.display(), e))
+                })?;
 
-            match service.load_law(&content) {
-                Ok(law_id) => {
-                    tracing::debug!(law_id = %law_id, path = %path.display(), "Loaded law");
-                    count += 1;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        path = %path.display(),
-                        error = %e,
-                        "Failed to load law file (skipping)"
-                    );
-                    // Continue loading other files even if one fails
+                match service.load_law(&content) {
+                    Ok(law_id) => {
+                        tracing::debug!(law_id = %law_id, path = %path.display(), "Loaded law");
+                        count += 1;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "Failed to load law file (skipping)"
+                        );
+                        // Continue loading other files even if one fails
+                    }
                 }
             }
         }

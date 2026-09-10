@@ -252,6 +252,10 @@ fn valid_repo_path(s: &str) -> bool {
 // `auth_ref` is derived from owner+repo (see `derive_auth_ref`).
 const CENTRAL_WRITABLE_OWNER: &str = "MinBZK";
 const CENTRAL_WRITABLE_REPO: &str = "regelrecht-corpus";
+/// Writable path for the central MinBZK corpus. Remains `regulation/nl` until
+/// an EU/LU harvest lands in the remote corpus; local LU/EU files live under
+/// `corpus/regulation/{cc}/` in this repo and are loaded by the engine/execute
+/// API without changing this constant.
 const CENTRAL_WRITABLE_PATH: &str = "regulation/nl";
 const CENTRAL_WRITABLE_BASE_BRANCH: &str = "development";
 const CENTRAL_WRITABLE_AUTH_REF: &str = "minbzk-central";

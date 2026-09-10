@@ -55,6 +55,7 @@ fn generated_law() -> GeneratedLaw {
             law_id: "werkinstructie_toetsing".to_string(),
             regulatory_layer: RegulatoryLayer::Uitvoeringsbeleid,
             valid_from: chrono::NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
+            jurisdictie: "nl".to_string(),
         },
     }
 }

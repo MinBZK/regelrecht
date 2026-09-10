@@ -30,6 +30,8 @@ pub struct LawHeader {
     pub valid_from: Option<String>,
     /// The `bwb_id` field.
     pub bwb_id: Option<String>,
+    /// The `jurisdictie` field (ISO 3166-1 alpha-2).
+    pub jurisdictie: Option<String>,
     /// The raw `name` field (may be a `#`-prefixed output reference).
     pub name: Option<String>,
     /// Approximate number of articles, counted by `- number:` list entries at
@@ -68,6 +70,8 @@ pub fn parse_law_header(yaml: &str) -> LawHeader {
             header.valid_from = header.valid_from.or_else(|| scalar(rest));
         } else if let Some(rest) = line.strip_prefix("bwb_id:") {
             header.bwb_id = header.bwb_id.or_else(|| scalar(rest));
+        } else if let Some(rest) = line.strip_prefix("jurisdictie:") {
+            header.jurisdictie = header.jurisdictie.or_else(|| scalar(rest));
         } else if let Some(rest) = line.strip_prefix("name:") {
             header.name = header.name.or_else(|| scalar(rest));
         } else if line.trim_start().starts_with("- number:") {

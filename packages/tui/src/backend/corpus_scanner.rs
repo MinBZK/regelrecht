@@ -57,10 +57,10 @@ pub fn extract_metadata(content: &str) -> LawMetadata {
 /// Find the corpus regulation directory by checking common locations.
 fn find_regulation_dir(project_root: &Path) -> Option<PathBuf> {
     let candidates = [
-        project_root.join("corpus/regulation/nl"),
         project_root.join("corpus/regulation"),
-        project_root.join("corpus/central/nl"),
+        project_root.join("corpus/regulation/nl"),
         project_root.join("corpus/central"),
+        project_root.join("corpus/central/nl"),
     ];
 
     for candidate in &candidates {

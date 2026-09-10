@@ -3923,7 +3923,8 @@ pub async fn upload_traject_law(
 /// converted law needs this create path. Unlike `save_law` the body gets
 /// FULL schema validation (there is no existing file to fall back on), and
 /// the corpus path is derived **server-side** from the validated body:
-/// `regulation/nl/{regulatory_layer}/{$id}/{valid_from}.yaml`.
+/// `regulation/{jurisdictie}/{regulatory_layer}/{$id}/{valid_from}.yaml`
+/// (`jurisdictie` defaults to `nl`).
 pub async fn create_traject_law(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -3974,7 +3975,7 @@ pub async fn create_traject_law(
 
     // Standard corpus layout, relative to the writable-own source root.
     let relative_path = PathBuf::from("regulation")
-        .join("nl")
+        .join(&meta.jurisdictie)
         .join(meta.regulatory_layer.as_dir_name())
         .join(&law_id)
         .join(format!("{}.yaml", meta.valid_from));

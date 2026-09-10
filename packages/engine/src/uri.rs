@@ -5,7 +5,8 @@
 //! # Supported Formats
 //!
 //! 1. **regelrecht:// URI**: `regelrecht://{law_id}/{output}#{field}`
-//! 2. **File path reference**: `regulation/nl/{layer}/{law_id}#{field}`
+//! 2. **File path reference**: `regulation/{cc}/{layer}/{law_id}#{field}`
+//!    (`cc` = ISO 3166-1 alpha-2 such as `nl`/`lu`, or `eu`)
 //! 3. **Internal reference**: `#{output_name}` (same-law reference)
 //!
 //! # Examples
@@ -32,6 +33,22 @@
 //! ```
 
 use crate::error::{EngineError, Result};
+
+/// Whether `path` is a corpus file-path URI (`regulation/{cc}/…`).
+///
+/// Accepts ISO 3166-1 alpha-2 codes (`nl`, `lu`, …) and the special code `eu`.
+fn is_regulation_file_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("regulation/") else {
+        return false;
+    };
+    let Some((cc, _)) = rest.split_once('/') else {
+        return false;
+    };
+    if cc.eq_ignore_ascii_case("eu") {
+        return true;
+    }
+    cc.len() == 2 && cc.chars().all(|c| c.is_ascii_alphabetic())
+}
 
 /// Reference type indicating where the reference points
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +81,7 @@ impl RegelrechtUri {
     ///
     /// - `regelrecht://law_id/output` - external reference
     /// - `regelrecht://law_id/output#field` - external reference with field
-    /// - `regulation/nl/layer/law_id#field` - file path reference
+    /// - `regulation/{cc}/layer/law_id#field` - file path reference
     /// - `#output_name` - internal reference (same law)
     ///
     /// # Errors
@@ -99,12 +116,13 @@ impl RegelrechtUri {
         if let Some(path) = path_part.strip_prefix("regelrecht://") {
             Self::parse_regelrecht_uri(uri, path, field)
         }
-        // Check if it's a file path reference
-        else if path_part.starts_with("regulation/nl/") {
+        // File path reference: regulation/{jurisdiction}/layer/law_id
+        // Jurisdiction is ISO 3166-1 alpha-2 (nl, lu, …) or the special code `eu`.
+        else if is_regulation_file_path(path_part) {
             Self::parse_file_path(uri, path_part, field)
         } else {
             Err(EngineError::InvalidUri(format!(
-                "Invalid URI format: must be regelrecht://, regulation/nl/..., or #reference, got: {}",
+                "Invalid URI format: must be regelrecht://, regulation/{{cc}}/..., or #reference, got: {}",
                 uri
             )))
         }
@@ -145,13 +163,13 @@ impl RegelrechtUri {
         })
     }
 
-    /// Parse a file path reference (regulation/nl/layer/law_id#field)
+    /// Parse a file path reference (regulation/{cc}/layer/law_id#field)
     fn parse_file_path(original: &str, path: &str, field: Option<String>) -> Result<Self> {
-        // Parse path parts: regulation/nl/layer/law_id
+        // Parse path parts: regulation/{cc}/layer/law_id
         let parts: Vec<&str> = path.split('/').collect();
         if parts.len() < 4 {
             return Err(EngineError::InvalidUri(format!(
-                "Invalid file path reference: expected regulation/nl/layer/law_id, got: {}",
+                "Invalid file path reference: expected regulation/{{cc}}/layer/law_id, got: {}",
                 original
             )));
         }
@@ -400,6 +418,17 @@ mod tests {
             assert_eq!(uri.law_id(), "regeling_standaardpremie");
             assert_eq!(uri.output(), "standaardpremie");
             assert_eq!(uri.field(), Some("standaardpremie"));
+            assert!(uri.is_external());
+        }
+
+        #[test]
+        fn test_parse_file_path_lu_jurisdiction() {
+            let uri = RegelrechtUri::parse(
+                "regulation/lu/wet/vliegbelasting_korting_klimaatneutraal_lu#recht_op_korting",
+            )
+            .unwrap();
+            assert_eq!(uri.law_id(), "vliegbelasting_korting_klimaatneutraal_lu");
+            assert_eq!(uri.field(), Some("recht_op_korting"));
             assert!(uri.is_external());
         }
 

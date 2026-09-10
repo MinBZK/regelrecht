@@ -1,6 +1,9 @@
 ---
 schema_version: '1.0'
 sources:
+  # Dutch national + decentralised corpus (BWB/CVDR harvest). Future EU/LU
+  # sources land as additional entries with path: regulation/eu or regulation/lu
+  # (local checkout or a dedicated GitHub repo), leaving this NL source unchanged.
   - id: minbzk-central
     name: Centrale Regelrecht Corpus
     type: github

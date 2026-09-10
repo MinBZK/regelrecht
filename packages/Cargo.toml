@@ -10,6 +10,7 @@ members = [
     "github",
     "harvester",
     "law-model",
+    "nrml-bridge",
     "pipeline",
     "shared",
     "tui",
