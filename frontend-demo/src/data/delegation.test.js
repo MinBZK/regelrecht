@@ -162,6 +162,28 @@ describe('delegationsFor', () => {
     expect(delegations[0].permissions).toEqual(['LEZEN']);
   });
 
+  it('laat een machtiging die pas later ingaat nog niet zien', () => {
+    // Claudia's koffiezaak staat sinds 2025-01-15 in het handelsregister. Op
+    // een peildatum daarvóór bestaat die machtiging nog niet, en dan hoort de
+    // keuze uit de werkbalk te verdwijnen. Dat is de wet, geen fout.
+    const engine = engineOf({
+      machtigingenwet: {
+        heeft_delegaties: true,
+        subject_ids: ['85234567'],
+        subject_names: ['Koffiezaak Noon'],
+        subject_types: ['BUSINESS'],
+        delegation_types: ['EIGENAAR'],
+        permissions: [['LEZEN']],
+        valid_from_dates: ['2025-01-15'],
+        valid_until_dates: [null],
+      },
+    });
+    expect(delegationsFor(engine, corpus, '999999990', '2025-01-01').delegations).toEqual([]);
+    // Op de dag van inschrijving gaat zij in, en later geldt zij nog steeds.
+    expect(delegationsFor(engine, corpus, '999999990', '2025-01-15').delegations).toHaveLength(1);
+    expect(delegationsFor(engine, corpus, '999999990', '2025-06-01').delegations).toHaveLength(1);
+  });
+
   it('laat een machtiging weg die op de peildatum nog niet of niet meer geldt', () => {
     const engine = engineOf({
       burgerlijk_wetboek_gezag: {

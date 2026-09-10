@@ -126,6 +126,12 @@ function delegationsFromLaw(law, outputs) {
  * Een machtiging geldt alleen binnen haar termijn. Een wet die zelf al op de
  * peildatum rekent levert niets buiten de termijn, maar niet elke wet doet
  * dat, en een demo die een verlopen machtiging toont is misleidend.
+ *
+ * Dit werkt door in wat er te zien is, en dat is de bedoeling: Claudia's
+ * koffiezaak staat sinds 2025-01-15 in het handelsregister, dus op een
+ * peildatum daarvóór heeft zij die machtiging nog niet en verdwijnt de keuze
+ * uit de werkbalk. Wie zich afvraagt waarom de knop weg is bij een vroege
+ * peildatum: dat is de wet, niet een fout.
  */
 function isValidOn(delegation, referenceDate) {
   if (!referenceDate) return true;
