@@ -14,7 +14,7 @@
  * an array of plain values is a list.
  */
 
-import { isAmountSpec } from './format.js';
+import { isAmountSpec, isUnknown } from './format.js';
 
 /** True for a non-empty array whose elements are all plain objects: a table. */
 export function isRecordArray(value) {
@@ -34,6 +34,10 @@ export function isRecordArray(value) {
  */
 export function editKind(value, spec = null) {
   const declared = spec?.type;
+  // An unknown value (RFC-036) is a marker object, not a value: reading its
+  // shape would make every unknown field a record editor. The declaration
+  // decides, exactly as it does for an absent value.
+  if (isUnknown(value)) value = null;
   // The declaration wins: it holds for an absent value too, where the value
   // itself says nothing.
   if (declared === 'boolean' || typeof value === 'boolean') return 'boolean';

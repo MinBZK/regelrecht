@@ -198,14 +198,24 @@ const statusTag = computed(() => {
     </nldd-container>
 
     <!-- wrap, not row: in a narrow tile (three-column grid) a whole button moves to a
-         second line, right-aligned with the other secondary actions, instead of a
-         button breaking its label. The buttons stay direct children: a nested
-         container has size containment and so no intrinsic width in a flex line. -->
-    <nldd-container slot="footer" padding="16" layout="wrap" gap="8" vertical-alignment="center" horizontal-alignment="right">
+         second line instead of a button breaking its label. The buttons stay direct
+         children: a nested container has size containment and so no intrinsic width
+         in a flex line.
+         No flexible spacer between the primary and the secondary actions. It ate
+         every leftover pixel, so a long primary label ("Gegevens aanvullen") pushed
+         the row over its width and dropped "Wettekst" alone onto a second line,
+         while a short one ("Aanvragen") kept all three together. The footer then
+         looked different from tile to tile for no reason the reader can see. Left
+         alignment with a plain gap wraps the same way for every label length.
+         The primary label is kept short for the same reason: "Gegevens aanvullen"
+         made the three buttons 374px wide in a 384px footer, so padding and gaps
+         pushed "Wettekst" onto a second line while every neighbouring tile kept
+         its buttons on one. The heading above the button already says which data
+         is missing. -->
+    <nldd-container slot="footer" padding="16" layout="wrap" gap="8" vertical-alignment="center">
       <nldd-button v-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Mijn aanvraag" @click="apply"></nldd-button>
-      <nldd-button v-else-if="evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Gegevens aanvullen" @click="apply"></nldd-button>
+      <nldd-button v-else-if="evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
-      <nldd-spacer size="flexible" direction="horizontal"></nldd-spacer>
       <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" text="Berekening" @click="showTrace = true"></nldd-button>
       <nldd-button variant="neutral-transparent" size="sm" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(law.id)}`)"></nldd-button>
     </nldd-container>

@@ -58,7 +58,7 @@ const tabs = computed(() => [
   { name: 'graaf', text: 'Graaf', icon: 'centralized-network', to: '/graaf' },
   { name: 'scenarios', text: "Scenario's", icon: 'checklist', to: '/scenarios' },
   { name: 'simulatie', text: 'Simulatie', icon: 'chart-x-y-axis-line', to: '/simulatie' },
-  { name: 'portaal', text: profile.value?.portal_tab_label ?? 'Burger.nl', icon: 'person', to: '/portaal' },
+  { name: 'portaal', text: profile.value?.portal_tab_label ?? 'Mijn overheid', icon: 'person', to: '/portaal' },
   { name: 'zaaksysteem', text: 'Zaaksysteem', icon: 'inbox', to: '/zaaksysteem' },
 ]);
 

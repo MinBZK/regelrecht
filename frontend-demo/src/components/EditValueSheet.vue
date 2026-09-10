@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 import OrgLogo from './OrgLogo.vue';
-import { fieldSpec, formatValue, humanize } from '../data/format.js';
+import { fieldSpec, formatValue, humanize, isUnknown } from '../data/format.js';
 import { columnKind as columnKindOf, decimalsFor, editKind, emptyRow, parseCell, parseDutchNumber, stepFor, tableColumns, unitLabel, valueKind } from '../data/editKinds.js';
 import { useDemo } from '../store/demoStore.js';
 
@@ -109,7 +109,14 @@ watch(
     reason.value = '';
     hardship.value = '';
     evidence.value = null;
-    const v = props.node?.value;
+    // An unknown value (RFC-036) carries no value to edit: the engine does not
+    // have the fact. It arrives as `{__unknown: true, missing: [...]}`, so
+    // without this the box would open on the literal text "[object Object]".
+    // The field then starts from nothing, like an absent value does, and the
+    // citizen fills in what the register lacks. (A number field renders that
+    // as 0, which is the design system's own empty state.)
+    const raw = props.node?.value;
+    const v = isUnknown(raw) ? null : raw;
     if (kind.value === 'amount' && typeof v === 'number') newValue.value = (v / 100).toFixed(2).replace('.', ',');
     else if (kind.value === 'boolean') newValue.value = v ? 'true' : 'false';
     else if (kind.value === 'rows') rows.value = (v ?? []).map((r) => ({ ...r }));
