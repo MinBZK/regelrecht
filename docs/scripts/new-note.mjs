@@ -7,6 +7,10 @@
  * headings and no sections: what a note says is the author's business, and a
  * template with slots invites filling them in rather than saying something.
  *
+ * The one exception is a single comment line asking what we got wrong. It is a
+ * prompt, not a slot: it renders as nothing if left in, and answering it is
+ * what usually makes a note worth reading.
+ *
  * Everything it guesses is easy to correct afterwards, except the filename,
  * which sets the published URL. That is why it prints the URL before it exits.
  */
@@ -80,6 +84,7 @@ summary: >-
 tags: []
 ---
 
+<!-- Wat hadden we mis? Dat stuk wordt het vaakst gelezen. Regel mag weg. -->
 `;
 
 mkdirSync(NOTES_DIR, { recursive: true });
@@ -94,5 +99,7 @@ Two TODOs to replace:
   summary  one or two sentences; this is what the overview and the feed show
 
 Then write. No headings required; start them at ## if you use any.
+The file carries one comment line as a prompt, not a section: delete it or
+answer it.
 Preview with  just notes
 `);

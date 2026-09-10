@@ -44,6 +44,10 @@ annotations on legal text inside the editor. These are site pages.
 3. **Write it.** Plain markdown. Start headings at `##` — the title is already
    the page's `h1`. There is no template and there are no required sections.
 
+   The scaffolded file carries one comment line — *wat hadden we mis?* — as a
+   prompt rather than a section. Answering it is usually what makes a note
+   worth reading; deleting it is fine too.
+
 4. **Open a pull request.** `just notes` previews it locally at
    <http://localhost:4321/notes>. Merging to `main` publishes it.
 
@@ -52,7 +56,7 @@ annotations on legal text inside the editor. These are site pages.
 You do not need git, a terminal or a clone. This link opens GitHub's file
 editor with the frontmatter already filled in:
 
-[**Write a note in the browser**](https://github.com/MinBZK/regelrecht/new/main?filename=docs%2Fsrc%2Fcontent%2Fnotes%2FJJJJ-MM-DD-slug.md&value=---%0Atitle%3A%20Titel%20van%20de%20notitie%0Adate%3A%20%27JJJJ-MM-DD%27%0Aauthors%3A%0A%20%20-%20name%3A%20Je%20naam%0A%20%20%20%20role%3A%20je%20rol%0Asummary%3A%20%3E-%0A%20%20Een%20of%20twee%20zinnen.%20Dit%20is%20wat%20het%20overzicht%20en%20de%20RSS-feed%20tonen.%0Atags%3A%20%5B%5D%0A---%0A%0ASchrijf%20hier.%0A)
+[**Write a note in the browser**](https://github.com/MinBZK/regelrecht/new/main?filename=docs%2Fsrc%2Fcontent%2Fnotes%2FJJJJ-MM-DD-slug.md&value=---%0Atitle%3A%20Titel%20van%20de%20notitie%0Adate%3A%20%27JJJJ-MM-DD%27%0Aauthors%3A%0A%20%20-%20name%3A%20Je%20naam%0A%20%20%20%20role%3A%20je%20rol%0Asummary%3A%20%3E-%0A%20%20Een%20of%20twee%20zinnen.%20Dit%20is%20wat%20het%20overzicht%20en%20de%20RSS-feed%20tonen.%0Atags%3A%20%5B%5D%0A---%0A%0A%3C%21--%20Wat%20hadden%20we%20mis%3F%20Dat%20stuk%20wordt%20het%20vaakst%20gelezen.%20Regel%20mag%20weg.%20--%3E%0A%0ASchrijf%20hier.%0A)
 
 Replace `JJJJ-MM-DD` in the filename and in `date` with the date, replace
 `slug` with a few words from the title, write the text, and press **Commit
