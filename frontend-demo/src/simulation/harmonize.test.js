@@ -261,6 +261,23 @@ describe('evaluateModel', () => {
   it('geeft nul terug zonder gegevens', () => {
     expect(evaluateModel({ groups: [], primary: { key: 'inkomen' } }, [])).toMatchObject({ r2: 0, mae: 0 });
   });
+
+  it('telt de afwijking absoluut, zodat te veel en te weinig elkaar niet opheffen', () => {
+    // Een staffel die iedereen € 100 toekent, naast twee mensen die € 0 en
+    // € 200 hadden moeten krijgen. Met tekens erbij is het gemiddelde 0, en
+    // dan zou het scherm beweren dat het model perfect is terwijl het er bij
+    // allebei € 100 naast zit.
+    const model = {
+      primary: { key: 'inkomen', label: 'Inkomen' },
+      groupKeys: [],
+      groups: [{ filter: {}, keys: [], count: 2, steps: [{ lower: 0, upper: 100000, amountAtLower: 100, amountAtUpper: 100 }] }],
+    };
+    const rows = [
+      { values: { inkomen: 10000 }, amount: 0 },
+      { values: { inkomen: 20000 }, amount: 200 },
+    ];
+    expect(evaluateModel(model, rows).mae).toBe(100);
+  });
 });
 
 describe('describeModel', () => {
