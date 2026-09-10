@@ -6,6 +6,7 @@ import DataLineage from './DataLineage.vue';
 import { fieldSpec, formatMissing, formatValue, humanize, isUnknown, verdictOf } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
+import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasing.js';
 import { useDemo } from '../store/demoStore.js';
 
 // One regeling on the portal: the outcome of the law for this persona, the
@@ -60,6 +61,32 @@ const primary = computed(() => {
   return { name, value: evaluation.value.outputs[name], spec: fieldSpec(doc.value, name) };
 });
 const secondary = computed(() => outputs.value.filter(([k]) => k !== primary.value?.name).slice(0, 6));
+
+// The tile's sentence (see outcomePhrasing.js): a lead, the outcome big, and
+// the unit after it — "Uw huurtoeslag is waarschijnlijk € 302,96 per jaar".
+// Null for a law nobody wrote wording for, and then the general rendering
+// below stands unchanged.
+const phrasing = computed(() => phrasingFor(corpus.value?.config, props.law.service, props.law.law_path));
+// The date a yes/no law is about ("de verkiezingen van 29 oktober 2025"). It
+// is an input the law resolved, so it is in the lineage the tile already
+// builds; absent, the lead degrades to a sentence without a date.
+const outcomeDate = computed(() => {
+  const name = dateInputFor(phrasing.value);
+  if (!name) return null;
+  const hit = leafValues(lineage.value).find((n) => n.name === name);
+  return hit && !isUnknown(hit.value) && hit.value !== null ? formatValue(hit.value, null) : null;
+});
+const phrased = computed(() => {
+  if (!primary.value) return null;
+  return phraseOutcome(phrasing.value, {
+    met: requirementsMet.value,
+    // An unknown amount is not a number to put in a sentence; the general
+    // rendering names what is missing, so leave it to that.
+    value: isUnknown(primary.value.value) ? null : formatValue(primary.value.value, primary.value.spec),
+    isYesNo: typeof primary.value.value === 'boolean',
+    date: outcomeDate.value,
+  });
+});
 
 const lineage = computed(() => {
   if (!evaluation.value?.trace) return [];
@@ -161,7 +188,18 @@ const statusTag = computed(() => {
           <nldd-list-item size="md" :button="primary ? true : undefined" @click="primary && correctOutcome(primary.name, primary.value)">
             <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <!-- The law's own sentence, when it has one: the lead as overline,
+                 the outcome as the title, the unit under it. Same cell as the
+                 general rendering below, so the pencil and the row keep working. -->
             <nldd-title-cell
+              v-if="phrased"
+              size="3"
+              :overline="phrased.lead || undefined"
+              :text="phrased.headline"
+              :supporting-text="phrased.unit || undefined"
+            ></nldd-title-cell>
+            <nldd-title-cell
+              v-else
               size="4"
               :overline="requirementsMet ? 'U voldoet aan de voorwaarden' : 'U voldoet niet aan de voorwaarden'"
               :text="requirementsMet ? (primary ? formatValue(primary.value, primary.spec) : 'Ja') : 'Niet van toepassing'"
