@@ -80,6 +80,10 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         </nldd-container>
       </nldd-title>
       <nldd-rich-text v-if="persona?.description" spacing="tight"><p><em>{{ persona.description }}</em></p></nldd-rich-text>
+      <!-- The persona line above sets `spacing="tight"`, which strips the space
+           under it, so a banner placed straight after touched it (measured: 0px
+           between them). The banners get their own container with a gap. -->
+      <nldd-container v-if="loadFailures.length || pendingClaims.length" padding-top="16" gap="12">
       <nldd-banner
         v-if="loadFailures.length"
         variant="critical"
@@ -92,10 +96,16 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         :text="`${pendingClaims.length} ${pendingClaims.length === 1 ? 'correctie wacht' : 'correcties wachten'} op beoordeling`"
         supporting-text="De regelingen hieronder rekenen al met wat u heeft opgegeven. Een behandelaar beoordeelt de correctie; pas daarna staat de uitkomst vast."
       ></nldd-banner>
+      </nldd-container>
     </nldd-simple-section>
 
     <nldd-simple-section width="1200px" padding-top="0">
-      <nldd-collection layout="grid" item-width="380px" max-items="60">
+      <!-- `item-width` is een minimum, geen breedte: de collectie verdeelt haar
+           1200px over zoveel kolommen als er passen en rekt de rest uit. Op 400px
+           bleven er dus twee over van 588px elk. 360px geeft er drie, en drie
+           tegels naast elkaar laat het oog rustig scannen. Ruimte hoort binnen de
+           tegel (padding 20, gap 16), niet in de doos. -->
+      <nldd-collection layout="grid" item-width="360px" max-items="60">
         <LawTile v-for="law in sortedLaws" :key="law.id" :law="law" @edit-value="onEditValue" @evaluated="onEvaluated" @apply="onApply" />
       </nldd-collection>
       <nldd-inline-dialog v-if="sortedLaws.length === 0" icon="inbox" text="Geen regelingen" supporting-text="Voor dit profiel zijn geen regelingen zichtbaar."></nldd-inline-dialog>
