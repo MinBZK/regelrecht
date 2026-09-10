@@ -1,6 +1,6 @@
 ---
 name: roadmap
-description: Onderhoudt de inhoud van de roadmap op /roadmap — werkpakketten toevoegen, wijzigen, verplaatsen of verwijderen, onderzoeksvragen schrijven en aan een sectie van het position paper koppelen, en RFC's koppelen die het ontwerp beschrijven. Gebruik dit bij "voeg een werkpakket toe", "verplaats X naar de Hoe-fase", "zet er een onderzoeksvraag bij", of het bijwerken van fases en disciplines.
+description: Onderhoudt de inhoud van de roadmap op /roadmap — werkpakketten toevoegen, wijzigen, verplaatsen of verwijderen, onderzoeksvragen schrijven en aan een sectie van het position paper koppelen, en RFC's koppelen die het ontwerp beschrijven. Gebruik dit bij "voeg een werkpakket toe", "verplaats X naar de Hoe-fase", "zet er een onderzoeksvraag bij", of het bijwerken van fases, disciplines en swimlanes.
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write
 ---
@@ -19,7 +19,7 @@ redenering erachter in de commits van PR #1317.
 
 ```
 docs/src/content/roadmap/werkpakketten/<uuid>.md   één bestand per werkpakket
-docs/src/data/roadmap-config.json                  de fases en de disciplines
+docs/src/data/roadmap-config.json                  de fases, disciplines en swimlanes
 ```
 
 De bestandsnaam ís het `id` uit de frontmatter. Dat wordt bij de build
@@ -92,9 +92,13 @@ samenhangIds: []
 
 ### Wat er in de velden mag
 
-`faseId` — een van `wat`, `wat-fase-2`, `hoe`, `waar`, `garantie`.
+`faseId` — een van `wat`, `wat-fase-2`, `hoe`, `waar`, `garantie`. Dit is een
+procesvolwassenheids-fasering (Fase I t/m V), geen tijdas: de Wat-fase is met
+opzet in twee stappen geknipt (fundering/definitie, dan verdieping/onderzoek)
+in plaats van er een aparte tijdsindeling naast te zetten — dat las als twee
+losse assen in één matrix. Zie de discussie in PR #1356.
 `disciplineId` — een van `techniek`, `recht`, `mensen`, `ethiek`,
-`service-design`.
+`service-design`, `samenwerking`, `transitie-ondersteuning`.
 
 Beide staan in `roadmap-config.json`; een waarde die daar niet in staat laat de
 build vallen met de naam van het werkpakket erbij.
@@ -255,13 +259,30 @@ zegt alleen waar het misgaat.
 ## Fases en disciplines wijzigen
 
 Die staan in `roadmap-config.json`. Een fase heeft een `volgnummer` dat de
-kolomvolgorde bepaalt; disciplines staan in de volgorde van het bestand.
+kolomvolgorde bepaalt.
+
+Disciplines zijn gegroepeerd in `swimlanes`: elke swimlane heeft een `naam` en
+een `disciplineIds`-lijst, en die volgorde — swimlane voor swimlane, en
+binnen een swimlane de volgorde van `disciplineIds` — bepaalt de rijvolgorde
+op de matrix, niet de volgorde van het `disciplines`-blok zelf. Een swimlane
+met meer dan één discipline krijgt een eigen, opvallende bannerrij erboven;
+een swimlane met precies één discipline niet — die ene rij draagt dan zelf de
+naam en de nadrukkelijke stijl van de swimlane (zie `matrixRijen` in
+`pages/roadmap/index.astro`), anders zou dezelfde naam twee keer vlak boven
+elkaar staan.
+
+**Elke discipline moet in precies één swimlane staan.** Een nieuwe discipline
+toevoegen aan `disciplines` zonder 'm ook in een `disciplineIds`-lijst te
+zetten laat de build vallen op `assertSwimlanesMatchDisciplines`
+(`lib/roadmap.ts`) — net als een `disciplineId` die niet bestaat, of die in
+twee swimlanes tegelijk staat. Dat is met opzet een harde fout: een discipline
+buiten elke swimlane zou stilzwijgend nergens renderen.
 
 Een fase of discipline verwijderen kan alleen als geen enkel werkpakket er nog
 naar wijst — anders faalt de build. Zoek eerst wie er hangt:
 
 ```bash
-grep -l 'faseId: hoe' docs/src/content/roadmap/werkpakketten/*.md
+grep -l 'faseId: garantie' docs/src/content/roadmap/werkpakketten/*.md
 ```
 
 **Een categorie toevoegen aan `CATEGORIEEN` in `docs/src/lib/roadmap.ts` is
@@ -283,6 +304,7 @@ aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 `docs-build` faalt met een leesbare melding bij:
 
 - een onbekende `faseId` of `disciplineId`
+- een discipline die in geen, of in meer dan één, swimlane staat
 - een `samenhangId` dat nergens heen wijst
 - twee bestanden met hetzelfde `id`, of een bestandsnaam die niet het `id` is
 - een `paper:`-anker dat niet in het paper staat
