@@ -37,14 +37,30 @@ export default defineConfig({
     outDir: 'dist',
     rolldownOptions: {
       output: {
-        // Keep echarts (only the simulation tab needs it) out of the entry
-        // graph; same grouping as the editor, see frontend/vite.config.js.
+        // Group echarts into its own chunk, as the editor does (see
+        // frontend/vite.config.js).
+        //
+        // Deliberately WITHOUT the editor's `includeDependenciesRecursively:
+        // false`. That option keeps the chunk out of the entry graph entirely,
+        // but here it also leaves a shared helper behind that the chunk still
+        // calls, and every chart then dies on `TypeError: <helper> is not a
+        // function`. Vue's async-component boundary swallows that error, so the
+        // build succeeds, the page loads, and only the charts stay blank — which
+        // is exactly how it reached production unnoticed. The editor gets away
+        // with the option because it imports echarts straight from
+        // node_modules; here it arrives through SimBarChart.vue, whose helpers
+        // the dependency walk would have to carry along.
+        //
+        // The cost is that echarts is modulepreloaded on first paint (~570 kB
+        // over the entry). A working simulation is worth more than that; if the
+        // first load has to come down, the fix is to make the chart component
+        // reachable only through its own async chunk, not to switch this option
+        // back on.
         codeSplitting: {
           groups: [
             {
               name: 'echarts',
               test: /node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/,
-              includeDependenciesRecursively: false,
             },
           ],
         },
