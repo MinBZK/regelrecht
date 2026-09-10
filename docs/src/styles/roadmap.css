@@ -6,7 +6,7 @@
  * and nldd-text for every run of text. Those bring their own responsive
  * behaviour, so this file deliberately holds no media queries.
  *
- * What is left are the two things the design system has no component for:
+ * What is left are the things the design system has no component for:
  *
  * 1. The fase x discipline matrix. It is a real <table> so a screen reader can
  *    place a card, laid out as one CSS grid (`display: contents` on the table
@@ -16,11 +16,34 @@
  *    checkbox state, and nldd-checkbox-field keeps its <input> in shadow DOM
  *    where a page stylesheet cannot reach it. Using the component would mean
  *    adding a script; the docs site runs zero client islands on purpose.
+ * 3. Two measures on one page: the section runs full-width for the matrix,
+ *    while the heading and the filter keep the docs measure. A section has one
+ *    body width, so the narrower one is restored on a block inside it.
  *
  * Colours, spacing and radii come from NLDD tokens, which are light-dark()
  * pairs, so both blocks follow the theme toggle. Nothing here sets a font or
  * hardcodes a colour.
  */
+
+/* --- Kop ---------------------------------------------------------------- */
+
+/*
+ * The page's section runs at width="full" so the matrix can use the whole
+ * viewport. The heading and the filter are prose-shaped and would read badly
+ * that wide, so this block puts the docs measure back for them. It uses the
+ * token nldd-simple-section applies by default, so the heading lands on the
+ * same measure as every other docs page rather than on a width invented here.
+ *
+ * `margin-inline: auto` centres it, which is what puts it back where it would
+ * have been: the navigation bar and the footer centre their own content on
+ * this same token, and so does a page section that is not at width="full".
+ * Left-aligning it instead lines it up with the matrix, but then the heading
+ * sits left of the bar above it and the page reads as misaligned.
+ */
+.rr-roadmap .rr-roadmap__kop {
+  max-width: var(--semantics-page-sections-body-max-width);
+  margin-inline: auto;
+}
 
 /* --- Filter ------------------------------------------------------------- */
 
