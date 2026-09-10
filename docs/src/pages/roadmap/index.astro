@@ -72,6 +72,7 @@ assertFilterRules(roadmapCss);
 interface MatrixRow {
   discipline: Discipline;
   label: string;
+  laneId: string;
   bar?: { naam: string; rowspan: number; zichtbaar: boolean };
 }
 const matrixRijen: MatrixRow[] = swimlanes.flatMap((lane) => {
@@ -79,6 +80,7 @@ const matrixRijen: MatrixRow[] = swimlanes.flatMap((lane) => {
   return laneDisciplines.map((discipline, index) => ({
     discipline,
     label: discipline.naam,
+    laneId: lane.id,
     bar:
       index === 0
         ? {
@@ -91,6 +93,15 @@ const matrixRijen: MatrixRow[] = swimlanes.flatMap((lane) => {
         : undefined,
   }));
 });
+
+// Ids for the `headers` attribute below: with two levels of row header (the
+// swimlane bar spans several rows, the discipline header one), a screen
+// reader can no longer infer the association from `scope` alone — pa11y's
+// htmlcs runner flags exactly that ("multiple levels of th elements"). Every
+// <td> names all three headers that apply to it explicitly instead.
+const faseHeaderId = (faseId: string) => `rr-fase-${faseId}`;
+const disciplineHeaderId = (disciplineId: string) => `rr-discipline-${disciplineId}`;
+const swimlaneHeaderId = (laneId: string) => `rr-swimlane-${laneId}`;
 
 const pathname = '/roadmap';
 ---
@@ -169,7 +180,11 @@ const pathname = '/roadmap';
               ></td>
               {
                 fases.map((fase) => (
-                  <th scope="col" class="rr-matrix__header rr-matrix__header--fase">
+                  <th
+                    scope="col"
+                    id={faseHeaderId(fase.id)}
+                    class="rr-matrix__header rr-matrix__header--fase"
+                  >
                     <nldd-container gap="4" horizontal-alignment="center">
                       <nldd-text size="md" weight="bold">{fase.naam}</nldd-text>
                       {fase.ondertitel && (
@@ -190,6 +205,7 @@ const pathname = '/roadmap';
                     {rij.bar && (
                       <th
                         scope="rowgroup"
+                        id={swimlaneHeaderId(rij.laneId)}
                         rowspan={rij.bar.rowspan}
                         style={`grid-row: span ${rij.bar.rowspan}`}
                         class="rr-matrix__header rr-matrix__header--swimlanebalk"
@@ -205,6 +221,7 @@ const pathname = '/roadmap';
                     )}
                     <th
                       scope="row"
+                      id={disciplineHeaderId(rij.discipline.id)}
                       class="rr-matrix__header rr-matrix__header--discipline"
                     >
                       <nldd-container gap="4">
@@ -220,6 +237,7 @@ const pathname = '/roadmap';
                       fases.map((fase, index) => (
                         <RoadmapMatrixCel
                           class={index > 0 ? 'rr-matrix__cell--kolom-start' : undefined}
+                          headers={`${swimlaneHeaderId(rij.laneId)} ${disciplineHeaderId(rij.discipline.id)} ${faseHeaderId(fase.id)}`}
                           cel={werkpakkettenInCel(
                             werkpakketten,
                             fase.id,

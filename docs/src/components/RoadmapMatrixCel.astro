@@ -17,12 +17,14 @@ import {
 interface Props {
   cel: { data: WerkpakketData }[];
   class?: string;
+  /** Space-separated header ids: swimlane, discipline, fase — see index.astro. */
+  headers: string;
 }
 
-const { cel, class: className } = Astro.props;
+const { cel, class: className, headers } = Astro.props;
 ---
 
-<td class:list={['rr-matrix__cell', className]}>
+<td class:list={['rr-matrix__cell', className]} headers={headers}>
   <nldd-container gap="8">
     {
       cel.map((wp) => {
