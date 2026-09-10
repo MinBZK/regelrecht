@@ -4,7 +4,7 @@
  *
  * The route is a rest param so the year/month segments come from one place:
  * noteParam() derives them from the filename, the same function the overview
- * and the feed link with. Nothing here reads the title or a counter, so a note
+ * and the overview link with. Nothing here reads the title or a counter, so a note
  * keeps the URL it was published under even if it is edited later.
  *
  * The note body is plain prose. Everything the page adds around it — byline,
@@ -48,13 +48,6 @@ const pathname = notePath(entry.id);
   description={summary}
 >
   <link slot="head" rel="canonical" href={NOTES_SITE + pathname} />
-  <link
-    slot="head"
-    rel="alternate"
-    type="application/rss+xml"
-    title="RegelRecht notities"
-    href={`${NOTES_SITE}/notes/feed.xml`}
-  />
 
   <nldd-simple-section
     sm-padding-bottom="32"

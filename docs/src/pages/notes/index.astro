@@ -31,13 +31,6 @@ const description =
   description={description}
 >
   <link slot="head" rel="canonical" href={`${NOTES_SITE}/notes`} />
-  <link
-    slot="head"
-    rel="alternate"
-    type="application/rss+xml"
-    title="RegelRecht notities"
-    href={`${NOTES_SITE}/notes/feed.xml`}
-  />
 
   <nldd-one-third-two-thirds-section
     sm-padding-bottom="32"
@@ -51,10 +44,7 @@ const description =
       <nldd-spacer />
       <nldd-rich-text>
         <p>{description}</p>
-        <p>
-          Losse notities, geen serie. Meelezen zonder langs te komen kan via de
-          <a href="/notes/feed.xml">RSS-feed</a>.
-        </p>
+        <p>Losse notities, geen serie.</p>
       </nldd-rich-text>
     </div>
     <div slot="right">

@@ -96,7 +96,7 @@ Publishes at  /notes/${today.slice(0, 4)}/${today.slice(5, 7)}/${slug}
 
 Two TODOs to replace:
   role     what you were doing here, e.g. "ontwikkelaar" or "jurist"
-  summary  one or two sentences; this is what the overview and the feed show
+  summary  one or two sentences; this is what the overview shows
 
 Then write. No headings required; start them at ## if you use any.
 The file carries one comment line as a prompt, not a section: delete it or

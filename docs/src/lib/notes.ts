@@ -13,8 +13,8 @@
 /*
  * The notes section is published on the apex host. `astro.config.mjs` sets `site` to
  * the docs subdomain, and the same build serves both hostnames, so notes pages
- * carry an explicit canonical and the feed builds absolute URLs from this
- * constant rather than from `Astro.site`.
+ * carry an explicit canonical built from this constant rather than from
+ * `Astro.site`.
  */
 export const NOTES_SITE = 'https://regelrecht.rijks.app';
 
@@ -55,7 +55,7 @@ export function noteParam(id: string): string {
   return notePath(id).replace(/^\/notes\//, '');
 }
 
-/** Absolute URL, for the feed and the canonical link. */
+/** Absolute URL, for the canonical link. */
 export function noteUrl(id: string): string {
   return NOTES_SITE + notePath(id);
 }
@@ -81,10 +81,6 @@ export function formatDate(date: string): string {
   });
 }
 
-/** RFC-822 date, as RSS requires. */
-export function rfc822(date: string): string {
-  return new Date(date + 'T00:00:00Z').toUTCString();
-}
 
 /**
  * Link to a regulation in the reading environment. The id is the law's `$id`
@@ -99,14 +95,4 @@ export function regulationUrl(id: string): string {
 /** `wet_op_de_zorgtoeslag` -> `wet op de zorgtoeslag`, for link text. */
 export function regulationLabel(id: string): string {
   return id.replace(/_/g, ' ');
-}
-
-/** Escape the five XML entities. The feed is assembled as text. */
-export function xmlEscape(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }

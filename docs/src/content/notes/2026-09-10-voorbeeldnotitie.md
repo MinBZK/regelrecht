@@ -36,7 +36,7 @@ vaste secties, geen sjabloon om in te vullen.
 
 De velden bovenaan dit bestand sturen vier dingen aan:
 
-- `title`, `date` en `summary` vullen het overzicht en de RSS-feed.
+- `title`, `date` en `summary` vullen het overzicht.
 - `authors` levert de regel onder de titel. De tweede auteur hierboven heeft
   geen naam — een rol alleen mag ook.
 - `tags` staan onderaan. Er zijn geen tagpagina's; het is beschrijving, geen
