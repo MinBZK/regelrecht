@@ -31,6 +31,13 @@ fn esc(s: &str) -> String {
     out
 }
 
+/// The page shell.
+///
+/// `nldd-app-view` is the design system's required root and is not optional
+/// chrome: it is the element carrying `min-height: 100dvh`. `nldd-page` only
+/// has `height: 100%`, which resolves to nothing without a parent that has a
+/// height — so leaving app-view out ends the page background wherever the
+/// content happens to stop, with the viewport bare underneath.
 fn omhulsel(titel: &str, inhoud: &str) -> String {
     format!(
         r#"<!doctype html>
@@ -43,9 +50,11 @@ fn omhulsel(titel: &str, inhoud: &str) -> String {
 <script type="module" src="/_assets/nldd.js"></script>
 </head>
 <body>
+<nldd-app-view>
 <nldd-page>
 {inhoud}
 </nldd-page>
+</nldd-app-view>
 </body>
 </html>
 "#,
@@ -262,6 +271,25 @@ mod tests {
         }
     }
 
+    /// Both pages open with the design system's required root.
+    ///
+    /// Not a style rule: `nldd-app-view` carries `min-height: 100dvh`, and
+    /// `nldd-page` inside it only has `height: 100%`. Without the wrapper the
+    /// page background ends wherever the content ends and the rest of the
+    /// viewport is bare — which is exactly how this shipped the first time.
+    #[test]
+    fn every_page_is_wrapped_in_the_app_view_root() {
+        let r = registry();
+        for html in [
+            index(&r),
+            inloggen(r.get("napp").expect("napp"), "/napp/", false),
+        ] {
+            let app_view = html.find("<nldd-app-view").expect("app-view is the root");
+            let page = html.find("<nldd-page").expect("page");
+            assert!(app_view < page, "nldd-page must sit inside nldd-app-view");
+        }
+    }
+
     #[test]
     fn the_index_does_not_leak_a_password_or_env_name() {
         let html = index(&registry());
@@ -290,9 +318,14 @@ mod tests {
     /// has no `background`, `nldd-container` has no `max-width`, and
     /// `nldd-form-field` has no `for`), so it is worth pinning what survived
     /// that check.
+    ///
+    /// `nldd-app-view` is in the list for a second reason: it is the required
+    /// root, and dropping it is not a missing decoration but a page whose
+    /// background stops halfway down the viewport.
     #[test]
     fn only_elements_that_exist_in_the_design_system_are_used() {
         const BESTAAT: &[&str] = &[
+            "nldd-app-view",
             "nldd-page",
             "nldd-simple-section",
             "nldd-collection",

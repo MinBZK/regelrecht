@@ -12,6 +12,9 @@
 //
 // Regenerate: npm run nldd:imports -w poc-portal-assets
 import '@nldd/design-system/styles';
+// app-view is the required root and the element that carries min-height:100dvh;
+// without it the page background stops where the content does.
+import '@nldd/design-system/app-view';
 import '@nldd/design-system/banner';
 import '@nldd/design-system/button';
 import '@nldd/design-system/card';
