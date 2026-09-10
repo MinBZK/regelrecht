@@ -74,14 +74,20 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-icon-cell icon="edit" size="16" color="secondary"></nldd-icon-cell>
   </nldd-list-item>
+  <!-- A law row expands only when it has children to show. A law whose inputs
+       the trace does not carry (a register that answers straight from its own
+       data) is a leaf: no disclosure chevron, because there is nothing under it
+       to open. Every row stays correctable through its own pencil, an outcome
+       of a law included: what the engine computed is a claim like any other,
+       and citizen and caseworker may both dispute it. -->
   <nldd-list-item
     v-for="node in laws"
     :key="keyOf(node)"
     :slot="slotName"
     size="sm"
-    button
-    :expanded="!!open[keyOf(node)]"
-    @click="open[keyOf(node)] = !open[keyOf(node)]"
+    :button="node.children?.length ? true : undefined"
+    :expanded="node.children?.length && open[keyOf(node)] ? true : undefined"
+    @click="node.children?.length && (open[keyOf(node)] = !open[keyOf(node)])"
   >
     <nldd-spacer-cell v-for="i in depth" :key="i" size="20"></nldd-spacer-cell>
     <nldd-cell v-if="lawService(node.law)"><OrgLogo :service="lawService(node.law)" size="sm" /></nldd-cell>
@@ -89,7 +95,9 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="isUnknown(node.value) ? `berekend door ${lawName(node.law)} · ${formatMissing(node.value, { ownLaw: node.law, lawName })}` : `berekend door ${lawName(node.law)}`"></nldd-text-cell>
     <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="isUnknown(node.value) ? 'secondary' : 'default'" :text="formatValue(node.value, specFor(node))"></nldd-text-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-    <nldd-icon-cell disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+    <nldd-icon-cell icon="edit" size="16" color="secondary" role="button" tabindex="0" accessible-label="Corrigeren" @click.stop="emit('edit', node)" @keydown.enter.stop="emit('edit', node)"></nldd-icon-cell>
+    <nldd-spacer-cell v-if="node.children?.length" size="8"></nldd-spacer-cell>
+    <nldd-icon-cell v-if="node.children?.length" disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
     <DataLineage v-if="node.children?.length" :nodes="node.children" :depth="depth + 1" nested @edit="emit('edit', $event)" />
   </nldd-list-item>
 </template>

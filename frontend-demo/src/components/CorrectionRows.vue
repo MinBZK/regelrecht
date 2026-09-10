@@ -54,6 +54,8 @@ function formatSize(bytes) {
     </nldd-list-item>
     <nldd-list-item v-if="cl.hardship?.clause || cl.evidence" size="sm">
       <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" text="Hardheidsclausule"></nldd-tag></nldd-cell>
+      <!-- Twee losse labels naast elkaar: zonder tussenruimte lezen ze als een. -->
+      <nldd-spacer-cell v-if="cl.hardship?.clause && cl.evidence" size="8"></nldd-spacer-cell>
       <nldd-cell v-if="cl.evidence">
         <nldd-button v-if="cl.evidence.dataUrl" size="sm" variant="neutral-transparent" start-icon="file" :text="cl.evidence.name" :href="cl.evidence.dataUrl" target="_blank" rel="noopener"></nldd-button>
         <nldd-tag v-else size="sm" color="neutral" icon="file" :text="cl.evidence.name"></nldd-tag>

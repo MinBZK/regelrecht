@@ -76,7 +76,8 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         <span slot="overline">Ingelogd als {{ persona?.name ?? profile?.name }}</span>
         <h1>{{ profile?.portal_heading }}</h1>
         <span slot="subtitle">{{ profile?.portal_subtitle }}</span>
-        <nldd-container slot="actions" layout="wrap" gap="4">
+        <!-- Tags naast elkaar: gap 8, dezelfde scheiding als de spacer-cells in de lijstrijen. -->
+        <nldd-container slot="actions" layout="wrap" gap="8">
           <nldd-tag v-for="p in properties" :key="p" size="sm" :text="p"></nldd-tag>
           <nldd-tag v-if="profile?.kvk" size="sm" icon="building" :text="`KVK ${profile.kvk}`"></nldd-tag>
         </nldd-container>

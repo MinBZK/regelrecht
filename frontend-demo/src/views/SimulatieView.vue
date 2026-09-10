@@ -453,6 +453,8 @@ function exportJson() {
                   <nldd-text-cell :text="law.name" :supporting-text="outcomeLine(activeRun, law)"></nldd-text-cell>
                   <nldd-cell v-if="law.s.hasEligibility"><nldd-tag size="sm" :color="law.s.eligiblePct >= 50 ? 'success' : law.s.eligiblePct > 0 ? 'neutral' : 'critical'" :text="pct(law.s.eligiblePct)"></nldd-tag></nldd-cell>
                   <nldd-cell v-else><nldd-tag size="sm" color="neutral" text="berekend"></nldd-tag></nldd-cell>
+                  <!-- Een tag pal tegen de chevron leest als een knop; scheid ze. -->
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-icon-cell icon="chevron-right" color="secondary"></nldd-icon-cell>
                 </nldd-list-item>
               </nldd-list>

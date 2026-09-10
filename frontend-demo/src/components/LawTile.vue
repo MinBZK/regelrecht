@@ -93,6 +93,18 @@ function supply(input) {
     node: { kind: 'value', law: props.law.id, name: input.name, value: input.claim?.newValue ?? null, service: null, ...claimKeyFor(props.law, params) },
   });
 }
+/**
+ * Correct an outcome of this law: the aggregates on the tile (the primary
+ * amount and the secondary rows) are claims like any other value, so citizen
+ * and caseworker can both dispute them, as they could in the POC.
+ */
+function correctOutcome(name, value) {
+  const params = personaParams();
+  emit('edit-value', {
+    law: props.law,
+    node: { kind: 'law', law: props.law.id, name, value, service: props.law.service, ...claimKeyFor(props.law, params) },
+  });
+}
 const produces = computed(() => {
   for (const a of doc.value.articles ?? []) {
     const p = a.machine_readable?.execution?.produces;
@@ -144,7 +156,7 @@ const statusTag = computed(() => {
       <template v-else>
         <nldd-inline-dialog v-if="verdict === 'unknown'" icon="info" text="Nog niet te bepalen" :supporting-text="`De wet kan met de bekende gegevens geen uitkomst geven; ${verdictMissing}.`"></nldd-inline-dialog>
         <nldd-list v-else variant="box-tinted" accessible-label="Uitkomst">
-          <nldd-list-item size="md">
+          <nldd-list-item size="md" :button="primary ? true : undefined" @click="primary && correctOutcome(primary.name, primary.value)">
             <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-title-cell
@@ -157,9 +169,11 @@ const statusTag = computed(() => {
         </nldd-list>
 
         <nldd-list v-if="secondary.length" variant="simple" accessible-label="Overige uitkomsten">
-          <nldd-list-item v-for="[name, value] in secondary" :key="name" size="sm">
+          <nldd-list-item v-for="[name, value] in secondary" :key="name" size="sm" button @click="correctOutcome(name, value)">
             <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="humanize(name)"></nldd-text-cell>
             <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :color="isUnknown(value) ? 'secondary' : 'default'" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-icon-cell icon="edit" size="16" color="secondary"></nldd-icon-cell>
           </nldd-list-item>
         </nldd-list>
 

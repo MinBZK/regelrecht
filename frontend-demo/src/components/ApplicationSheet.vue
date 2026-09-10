@@ -334,6 +334,8 @@ function claimStatus(cl) {
                     </span>
                   </nldd-text-cell>
                   <nldd-cell v-if="cl.hardship?.clause"><nldd-tag size="sm" color="warning" text="Hardheidsclausule"></nldd-tag></nldd-cell>
+                  <!-- Twee losse labels naast elkaar: zonder tussenruimte lezen ze als een. -->
+                  <nldd-spacer-cell v-if="cl.hardship?.clause" size="8"></nldd-spacer-cell>
                   <nldd-cell><nldd-tag size="sm" :color="claimStatus(cl).color" :text="claimStatus(cl).text"></nldd-tag></nldd-cell>
                 </nldd-list-item>
               </nldd-list>
