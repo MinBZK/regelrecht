@@ -13,8 +13,10 @@ annotations on legal text inside the editor. These are site pages.
 
 ## Adding a note, in four steps
 
-1. **Create the file.** `docs/src/content/notes/YYYY-MM-DD-slug.md`. The filename
-   sets the URL: `2026-09-10-voorbeeldnotitie.md` is published at
+1. **Create the file.** `just note "Titel van de notitie"` writes
+   `docs/src/content/notes/YYYY-MM-DD-slug.md` with the frontmatter filled in
+   and prints the URL it will be published at. Doing it by hand works too: the
+   filename sets the URL, so `2026-09-10-voorbeeldnotitie.md` becomes
    `/notes/2026/09/voorbeeldnotitie`. Pick the slug once — the URL is a
    contract and will not be changed afterwards.
 
@@ -44,6 +46,21 @@ annotations on legal text inside the editor. These are site pages.
 
 4. **Open a pull request.** `just notes` previews it locally at
    <http://localhost:4321/notes>. Merging to `main` publishes it.
+
+## Without a local checkout
+
+You do not need git, a terminal or a clone. This link opens GitHub's file
+editor with the frontmatter already filled in:
+
+[**Write a note in the browser**](https://github.com/MinBZK/regelrecht/new/main?filename=docs%2Fsrc%2Fcontent%2Fnotes%2FJJJJ-MM-DD-slug.md&value=---%0Atitle%3A%20Titel%20van%20de%20notitie%0Adate%3A%20%27JJJJ-MM-DD%27%0Aauthors%3A%0A%20%20-%20name%3A%20Je%20naam%0A%20%20%20%20role%3A%20je%20rol%0Asummary%3A%20%3E-%0A%20%20Een%20of%20twee%20zinnen.%20Dit%20is%20wat%20het%20overzicht%20en%20de%20RSS-feed%20tonen.%0Atags%3A%20%5B%5D%0A---%0A%0ASchrijf%20hier.%0A)
+
+Replace `JJJJ-MM-DD` in the filename and in `date` with the date, replace
+`slug` with a few words from the title, write the text, and press **Commit
+changes**. GitHub creates the branch and the pull request for you.
+
+If you cannot reach the repository at all, send the text to someone who can.
+A note under a role without a name is fine, so it can be published as it
+arrived.
 
 ## Writing guidelines
 

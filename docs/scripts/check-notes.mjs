@@ -41,6 +41,12 @@ function frontmatter(src) {
   if (!block) return null;
   const body = block[1];
   const date = /^date:\s*['"]?(\d{4}-\d{2}-\d{2})['"]?\s*$/m.exec(body)?.[1];
+  // A scaffolded note carries TODO in the fields only the author can fill.
+  // The schema accepts them (they are strings), so they would publish.
+  const todos = [...body.matchAll(/^\s*(?:-\s*)?(\w+):.*\bTODO\b/gm)].map((m) => m[1]);
+  if (/^summary:\s*>-?\s*\n\s*TODO\s*$/m.test(body) && !todos.includes('summary')) {
+    todos.push('summary');
+  }
   const regulations = [];
   const list = /^regulations:\s*\n((?:\s*-\s*.+\n?)+)/m.exec(body);
   if (list) {
@@ -49,7 +55,7 @@ function frontmatter(src) {
       if (id) regulations.push(id);
     }
   }
-  return { date, regulations };
+  return { date, regulations, todos };
 }
 
 /** Every law `$id` in this repository's corpus. */
@@ -140,6 +146,10 @@ for (const file of files) {
     fail(file, 'has no date in its frontmatter');
   } else if (data.date !== filenameDate) {
     fail(file, `date ${data.date} does not match the filename date ${filenameDate}`);
+  }
+
+  if (data.todos.length > 0) {
+    fail(file, `still has TODO in: ${[...new Set(data.todos)].join(', ')}`);
   }
 
   for (const id of data.regulations) {
