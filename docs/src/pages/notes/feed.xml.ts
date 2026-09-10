@@ -12,35 +12,36 @@
  */
 import type { APIRoute } from 'astro';
 import { getCollection } from 'astro:content';
-import { NOTES_SITE, byline, postUrl, rfc822, xmlEscape } from '~/lib/notes';
+import { NOTES_SITE, byline, noteUrl, rfc822, xmlEscape } from '~/lib/notes';
 
 const FEED_TITLE = 'RegelRecht notities';
 const FEED_DESCRIPTION =
   'Notities van het RegelRecht-team over uitvoerbare wetgeving, het corpus en de techniek eronder.';
 
 export const GET: APIRoute = async () => {
-  const posts = (await getCollection('notes')).sort((a, b) =>
-    b.data.date.localeCompare(a.data.date),
+  const notes = (await getCollection('notes')).sort(
+    (a, b) => b.data.date.localeCompare(a.data.date) || a.id.localeCompare(b.id),
   );
 
-  const items = posts
-    .map((post) => {
-      const url = postUrl(post.id);
+  const items = notes
+    .map((note) => {
+      const url = noteUrl(note.id);
       return `    <item>
-      <title>${xmlEscape(post.data.title)}</title>
+      <title>${xmlEscape(note.data.title)}</title>
       <link>${xmlEscape(url)}</link>
       <guid isPermaLink="true">${xmlEscape(url)}</guid>
-      <pubDate>${rfc822(post.data.date)}</pubDate>
-      <dc:creator>${xmlEscape(byline(post.data.authors))}</dc:creator>
-      <description>${xmlEscape(post.data.summary)}</description>
-${post.data.tags.map((t) => `      <category>${xmlEscape(t)}</category>`).join('\n')}
+      <pubDate>${rfc822(note.data.date)}</pubDate>
+      <dc:creator>${xmlEscape(byline(note.data.authors))}</dc:creator>
+      <description>${xmlEscape(note.data.summary)}</description>${note.data.tags
+        .map((t) => `\n      <category>${xmlEscape(t)}</category>`)
+        .join('')}
     </item>`;
     })
     .join('\n');
 
-  // lastBuildDate follows the newest post rather than the build clock, so an
+  // lastBuildDate follows the newest note rather than the build clock, so an
   // unrelated rebuild does not present itself to a reader as new activity.
-  const lastBuild = posts.length > 0 ? rfc822(posts[0].data.date) : undefined;
+  const lastBuild = notes.length > 0 ? rfc822(notes[0].data.date) : undefined;
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"

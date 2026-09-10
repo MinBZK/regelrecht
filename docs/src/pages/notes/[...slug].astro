@@ -3,11 +3,11 @@
  * A single note (/notes/YYYY/MM/slug).
  *
  * The route is a rest param so the year/month segments come from one place:
- * postParam() derives them from the filename, the same function the overview
- * and the feed link with. Nothing here reads the title or a counter, so a post
+ * noteParam() derives them from the filename, the same function the overview
+ * and the feed link with. Nothing here reads the title or a counter, so a note
  * keeps the URL it was published under even if it is edited later.
  *
- * The post body is plain prose. Everything the page adds around it — byline,
+ * The note body is plain prose. Everything the page adds around it — byline,
  * date, tags, regulation links — sits outside the rich-text so the article's
  * own heading structure starts at the <h1> and continues with the author's
  * own headings, with nothing injected in between.
@@ -19,16 +19,16 @@ import {
   NOTES_SITE,
   byline,
   formatDate,
-  postParam,
-  postPath,
+  noteParam,
+  notePath,
   regulationLabel,
   regulationUrl,
 } from '~/lib/notes';
 
 export async function getStaticPaths() {
-  const posts = await getCollection('notes');
-  return posts.map((entry) => ({
-    params: { slug: postParam(entry.id) },
+  const notes = await getCollection('notes');
+  return notes.map((entry) => ({
+    params: { slug: noteParam(entry.id) },
     props: { entry },
   }));
 }
@@ -37,7 +37,7 @@ const { entry } = Astro.props;
 const { Content } = await render(entry);
 
 const { title, date, authors, summary, tags, regulations } = entry.data;
-const pathname = postPath(entry.id);
+const pathname = notePath(entry.id);
 ---
 
 <Base
@@ -82,7 +82,7 @@ const pathname = postPath(entry.id);
         regulations && regulations.length > 0 && (
           <>
             <nldd-spacer size="32" />
-            {/* h2 keeps the document outline intact: the post body's own
+            {/* h2 keeps the document outline intact: the note body's own
                 headings are h2 as well, and this section follows them. */}
             <nldd-title size="4">
               <h2>Regelingen in deze notitie</h2>
@@ -110,8 +110,11 @@ const pathname = postPath(entry.id);
           <>
             <nldd-spacer size="24" />
             {/* Tags are metadata, not navigation: there are no tag pages to
-                link to, so they render as plain labels. */}
-            <nldd-container layout="wrap" gap="4" aria-label="Onderwerpen">
+                link to, so they render as plain labels. The label is visible
+                rather than an aria-label, which a role-less container does not
+                expose to assistive technology anyway. */}
+            <nldd-container layout="wrap" gap="4">
+              <span>Onderwerpen:</span>
               {tags.map((tag) => (
                 <nldd-tag color="neutral" size="md">
                   {tag}

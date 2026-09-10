@@ -1,21 +1,23 @@
 ---
 /*
- * Notes overview (/notes) — every post, newest first.
+ * Notes overview (/notes) — every note, newest first.
  *
- * Dutch: the docs are English, the posts are not, so the page carries
+ * Dutch: the docs are English, the notes are not, so the page carries
  * lang="nl". It renders as a docs-kind page, which gives it the back button
  * and the site footer without a global menu.
  *
- * No pagination, no tag pages, no author pages: tags are metadata on a post,
+ * No pagination, no tag pages, no author pages: tags are metadata on a note,
  * not a taxonomy with its own routes to maintain.
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
-import { NOTES_SITE, formatDate, postPath } from '~/lib/notes';
+import { NOTES_SITE, formatDate, notePath } from '~/lib/notes';
 
 const pathname = '/notes';
-const posts = (await getCollection('notes')).sort((a, b) =>
-  b.data.date.localeCompare(a.data.date),
+// Newest first. Two notes on the same date fall back to the filename, so the
+// order is the same on every build rather than whatever the loader returned.
+const notes = (await getCollection('notes')).sort(
+  (a, b) => b.data.date.localeCompare(a.data.date) || a.id.localeCompare(b.id),
 );
 const description =
   'Notities van het RegelRecht-team over uitvoerbare wetgeving, het corpus en de techniek eronder.';
@@ -57,18 +59,18 @@ const description =
     </div>
     <div slot="right">
       {
-        posts.length === 0 ? (
+        notes.length === 0 ? (
           <nldd-rich-text>
             <p>Er staat nog niets. De eerste notitie volgt.</p>
           </nldd-rich-text>
         ) : (
           <nldd-list type="navigation" variant="box-tinted">
-            {posts.map((post) => (
-              <nldd-list-item href={postPath(post.id)}>
+            {notes.map((note) => (
+              <nldd-list-item href={notePath(note.id)}>
                 <nldd-text-cell
-                  overline={formatDate(post.data.date)}
-                  text={post.data.title}
-                  supporting-text={post.data.summary}
+                  overline={formatDate(note.data.date)}
+                  text={note.data.title}
+                  supporting-text={note.data.summary}
                   width="full"
                 />
                 <nldd-spacer-cell />

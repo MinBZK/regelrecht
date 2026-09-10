@@ -1,9 +1,9 @@
 /*
- * Notes helpers: URL shape, post ordering, and the outbound links a post can
+ * Notes helpers: URL shape, note ordering, and the outbound links a note can
  * carry.
  *
  * The URL is the part worth being careful about. `/notes/YYYY/MM/slug` is a
- * published contract: once a post is out, that path has to keep resolving.
+ * published contract: once a note is out, that path has to keep resolving.
  * It is derived here, in one place, from the filename — never from a title, a
  * counter, or anything else that can be edited later. `scripts/check-notes.mjs`
  * pins the set of built URLs so a rename that would break a live link fails
@@ -23,7 +23,7 @@ export const NOTES_SITE = 'https://regelrecht.rijks.app';
 export const LAW_READER = 'https://editor.regelrecht.rijks.app/corpus-juris';
 
 export interface NoteAuthor {
-  /** Optional: a post may be published under a role alone. */
+  /** Optional: a note may be published under a role alone. */
   name?: string;
   role: string;
 }
@@ -32,14 +32,14 @@ export interface NoteAuthor {
 const ID_PATTERN = /^(\d{4})-(\d{2})-\d{2}-(.+)$/;
 
 /**
- * Route for a post, derived from its filename.
+ * Route for a note, derived from its filename.
  *
  * Year and month come from the filename rather than the `date` frontmatter so
- * the file on disk and the published URL can never disagree — a post that is
+ * the file on disk and the published URL can never disagree — a note that is
  * edited later keeps the URL it was published under. `check-notes.mjs` asserts
  * the two agree at build time.
  */
-export function postPath(id: string): string {
+export function notePath(id: string): string {
   const m = ID_PATTERN.exec(id.replace(/\.mdx?$/, ''));
   if (!m) {
     throw new Error(
@@ -50,18 +50,18 @@ export function postPath(id: string): string {
   return `/notes/${year}/${month}/${slug}`;
 }
 
-/** The `[...slug]` param for a post, i.e. its path without the `/notes/` prefix. */
-export function postParam(id: string): string {
-  return postPath(id).replace(/^\/notes\//, '');
+/** The `[...slug]` param for a note, i.e. its path without the `/notes/` prefix. */
+export function noteParam(id: string): string {
+  return notePath(id).replace(/^\/notes\//, '');
 }
 
 /** Absolute URL, for the feed and the canonical link. */
-export function postUrl(id: string): string {
-  return NOTES_SITE + postPath(id);
+export function noteUrl(id: string): string {
+  return NOTES_SITE + notePath(id);
 }
 
 /**
- * Byline: "Name, role" per author, or just the role when a post is published
+ * Byline: "Name, role" per author, or just the role when a note is published
  * anonymously. Roles carry the weight here — who was speaking matters more
  * than which person typed it, and an author is free to leave the name out.
  */
@@ -71,7 +71,7 @@ export function byline(authors: NoteAuthor[]): string {
     .join(' · ');
 }
 
-/** Dutch long date, e.g. "10 september 2026". Posts are Dutch. */
+/** Dutch long date, e.g. "10 september 2026". Notes are Dutch. */
 export function formatDate(date: string): string {
   return new Date(date + 'T00:00:00Z').toLocaleDateString('nl-NL', {
     day: 'numeric',

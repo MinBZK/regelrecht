@@ -5,13 +5,13 @@
  * Three of them:
  *
  *  1. Filename shape and date agreement. The published URL is derived from the
- *     filename, the visible date from frontmatter; if they disagree, a post
+ *     filename, the visible date from frontmatter; if they disagree, a note
  *     lives at a URL that contradicts what it says.
  *
  *  2. URL stability. Every URL that exists on the default branch must still
  *     exist here. `/notes/YYYY/MM/slug` is a published contract, so a rename
  *     that would break a live link fails instead of shipping. Adding and
- *     removing posts is fine; moving an existing one is not.
+ *     removing notes is fine; moving an existing one is not.
  *
  *  3. `regulations` ids resolve. The docs image builds from `docs/` alone
  *     (see docs/Dockerfile), so the corpus is not there at build time — this
