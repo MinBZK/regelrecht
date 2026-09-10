@@ -1,0 +1,129 @@
+---
+/*
+ * A single note (/notes/YYYY/MM/slug).
+ *
+ * The route is a rest param so the year/month segments come from one place:
+ * postParam() derives them from the filename, the same function the overview
+ * and the feed link with. Nothing here reads the title or a counter, so a post
+ * keeps the URL it was published under even if it is edited later.
+ *
+ * The post body is plain prose. Everything the page adds around it — byline,
+ * date, tags, regulation links — sits outside the rich-text so the article's
+ * own heading structure starts at the <h1> and continues with the author's
+ * own headings, with nothing injected in between.
+ */
+import { getCollection, render } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import EditLink from '~/components/EditLink.astro';
+import {
+  NOTES_SITE,
+  byline,
+  formatDate,
+  postParam,
+  postPath,
+  regulationLabel,
+  regulationUrl,
+} from '~/lib/notes';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('notes');
+  return posts.map((entry) => ({
+    params: { slug: postParam(entry.id) },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+
+const { title, date, authors, summary, tags, regulations } = entry.data;
+const pathname = postPath(entry.id);
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  title={`${title} · RegelRecht`}
+  description={summary}
+>
+  <link slot="head" rel="canonical" href={NOTES_SITE + pathname} />
+  <link
+    slot="head"
+    rel="alternate"
+    type="application/rss+xml"
+    title="RegelRecht notities"
+    href={`${NOTES_SITE}/notes/feed.xml`}
+  />
+
+  <nldd-simple-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <article>
+      <nldd-title size="1">
+        <h1>{title}</h1>
+      </nldd-title>
+      <nldd-spacer size="4" />
+      {/* Byline and date, in the same shape the RFC pages use for their
+          author line. */}
+      <nldd-identity
+        text={byline(authors)}
+        supporting-text={formatDate(date)}
+      ></nldd-identity>
+      <nldd-spacer size="24" />
+
+      <nldd-rich-text>
+        <Content />
+      </nldd-rich-text>
+
+      {
+        regulations && regulations.length > 0 && (
+          <>
+            <nldd-spacer size="32" />
+            {/* h2 keeps the document outline intact: the post body's own
+                headings are h2 as well, and this section follows them. */}
+            <nldd-title size="4">
+              <h2>Regelingen in deze notitie</h2>
+            </nldd-title>
+            <nldd-spacer size="8" />
+            <nldd-list type="navigation" variant="box-tinted">
+              {regulations.map((id) => (
+                <nldd-list-item href={regulationUrl(id)}>
+                  <nldd-text-cell
+                    text={regulationLabel(id)}
+                    supporting-text="Lezen in de leesomgeving"
+                    width="full"
+                  />
+                  <nldd-spacer-cell />
+                  <nldd-icon-cell size="20" icon="chevron-right" />
+                </nldd-list-item>
+              ))}
+            </nldd-list>
+          </>
+        )
+      }
+
+      {
+        tags.length > 0 && (
+          <>
+            <nldd-spacer size="24" />
+            {/* Tags are metadata, not navigation: there are no tag pages to
+                link to, so they render as plain labels. */}
+            <nldd-container layout="wrap" gap="4" aria-label="Onderwerpen">
+              {tags.map((tag) => (
+                <nldd-tag color="neutral" size="md">
+                  {tag}
+                </nldd-tag>
+              ))}
+            </nldd-container>
+          </>
+        )
+      }
+
+      <nldd-spacer size="24" />
+      <EditLink filePath={entry.filePath} />
+    </article>
+  </nldd-simple-section>
+</Base>

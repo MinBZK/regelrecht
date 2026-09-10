@@ -124,4 +124,40 @@ const werkpakketten = defineCollection({
   }),
 });
 
-export const collections = { docs, rfcs, werkpakketten };
+/*
+ * Notes (/notes), one markdown file per post, named `YYYY-MM-DD-slug.md`.
+ *
+ * The glob only picks up date-prefixed files, so README.md can live next to
+ * the posts without being loaded as one. The filename is the source of the
+ * published URL (see lib/notes.ts); the `date` below is what the page and the
+ * feed show, and scripts/check-notes.mjs asserts the two agree.
+ */
+const notes = defineCollection({
+  loader: glob({
+    pattern: '[0-9][0-9][0-9][0-9]-*.{md,mdx}',
+    base: 'src/content/notes',
+  }),
+  schema: z.object({
+    title: z.string(),
+    // 'YYYY-MM-DD' as a string rather than z.date(), for the same reason the
+    // RFCs do it: no timezone shift between build and render.
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+    // At least one author. `role` is required and `name` is not: a post may be
+    // published under a role alone.
+    authors: z
+      .array(
+        z.object({
+          name: z.string().optional(),
+          role: z.string(),
+        }),
+      )
+      .min(1),
+    summary: z.string(),
+    tags: z.array(z.string()).default([]),
+    // Optional: law `$id`s from corpus/regulation. When present, the post
+    // links through to each one in the public reading environment.
+    regulations: z.array(z.string()).optional(),
+  }),
+});
+
+export const collections = { docs, rfcs, werkpakketten, notes };

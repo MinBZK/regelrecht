@@ -743,6 +743,15 @@ docs-preview:
 docs-a11y:
     cd docs && npm run a11y
 
+# Preview the notes locally at http://localhost:4321/notes (same dev server as `just docs`)
+notes:
+    cd docs && npm run dev -- --open /notes
+
+# Check notes: filename/date agreement, URL stability, and that every
+# `regulations` id exists in corpus/regulation. Runs in CI as part of `docs-a11y`.
+notes-check:
+    node docs/scripts/check-notes.mjs
+
 # --- Architecture model ---
 
 # Generate the code-derived architecture model

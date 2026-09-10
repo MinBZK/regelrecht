@@ -1,0 +1,83 @@
+---
+/*
+ * Notes overview (/notes) — every post, newest first.
+ *
+ * Dutch: the docs are English, the posts are not, so the page carries
+ * lang="nl". It renders as a docs-kind page, which gives it the back button
+ * and the site footer without a global menu.
+ *
+ * No pagination, no tag pages, no author pages: tags are metadata on a post,
+ * not a taxonomy with its own routes to maintain.
+ */
+import { getCollection } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import { NOTES_SITE, formatDate, postPath } from '~/lib/notes';
+
+const pathname = '/notes';
+const posts = (await getCollection('notes')).sort((a, b) =>
+  b.data.date.localeCompare(a.data.date),
+);
+const description =
+  'Notities van het RegelRecht-team over uitvoerbare wetgeving, het corpus en de techniek eronder.';
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  title="Notities · RegelRecht"
+  description={description}
+>
+  <link slot="head" rel="canonical" href={`${NOTES_SITE}/notes`} />
+  <link
+    slot="head"
+    rel="alternate"
+    type="application/rss+xml"
+    title="RegelRecht notities"
+    href={`${NOTES_SITE}/notes/feed.xml`}
+  />
+
+  <nldd-one-third-two-thirds-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <div slot="left">
+      <nldd-title size="2">
+        <h1>Notities</h1>
+      </nldd-title>
+      <nldd-spacer />
+      <nldd-rich-text>
+        <p>{description}</p>
+        <p>
+          Losse notities, geen serie. Meelezen zonder langs te komen kan via de
+          <a href="/notes/feed.xml">RSS-feed</a>.
+        </p>
+      </nldd-rich-text>
+    </div>
+    <div slot="right">
+      {
+        posts.length === 0 ? (
+          <nldd-rich-text>
+            <p>Er staat nog niets. De eerste notitie volgt.</p>
+          </nldd-rich-text>
+        ) : (
+          <nldd-list type="navigation" variant="box-tinted">
+            {posts.map((post) => (
+              <nldd-list-item href={postPath(post.id)}>
+                <nldd-text-cell
+                  overline={formatDate(post.data.date)}
+                  text={post.data.title}
+                  supporting-text={post.data.summary}
+                  width="full"
+                />
+                <nldd-spacer-cell />
+                <nldd-icon-cell size="20" icon="chevron-right" />
+              </nldd-list-item>
+            ))}
+          </nldd-list>
+        )
+      }
+    </div>
+  </nldd-one-third-two-thirds-section>
+</Base>
