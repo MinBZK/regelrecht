@@ -282,6 +282,10 @@ expanded_paths:
     - articles.*.machine_readable.execution.output
   algemene_plaatselijke_verordening/exploitatievergunning:
     - articles.*.machine_readable.execution.output
+  vliegbelasting_korting_klimaatneutraal_lu:
+    - articles.*.machine_readable.execution.parameters
+    - articles.*.machine_readable.execution.output
+    - articles.*.machine_readable.execution.actions
 
 # The presentation slides (Presentatie tab). A slide without `route` covers the
 # screen (title, statement, closing); a slide with `route` puts the deck on the
@@ -393,6 +397,21 @@ slides:
       - Gemeente, NVWA en RVO in één overzicht, zonder dat zij iets aan elkaar hoeven te vragen.
     route: /portaal
     profile: claudia
+  - kind: statement
+    overline: Ook buiten Nederland
+    lines:
+      - Dezelfde engine
+      - werkt voor **andere jurisdicties**
+      - hier: **Luxemburg**
+  - kind: demo
+    overline: Luxemburg
+    title: Vliegbelasting, machine-uitvoerbaar
+    lead: Een LU-demo-wet met Engelse scenario's — dezelfde engine als de Nederlandse wetten.
+    bullets:
+      - Klimaatneutraal én (binnenlands of korter dan 500 km) geeft **50% korting**.
+      - Scenario's staan in het **Engels** voor internationale demos.
+      - In de graaf kies je deze wet **los** bij; hij zit niet in het Merijn-verhaal.
+    route: /scenarios
   - kind: closing
     overline: Demo RegelRecht
     title: Proof of concept
