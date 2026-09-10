@@ -163,18 +163,25 @@ pub fn voorbehoud_banner(poc: &Poc) -> String {
 /// The inline `style` attribute is why `POC_CSP` keeps `style-src
 /// 'unsafe-inline'` — which it needs for the NDD components anyway.
 pub fn voorbehoud_strip(poc: &Poc) -> String {
-    // One line: this is spliced into another document, and a raw string would
-    // otherwise carry this file's indentation into it.
+    // One line each: this is spliced into another document, and a multi-line
+    // raw string would carry this file's indentation into it.
+    //
+    // The strip stays one row high. Its job here is to be present on every
+    // screenshot and every deep link, not to repeat the argument — the full
+    // text is on the password screen, which nobody reaches this page without
+    // passing, and it is in the `title` for anyone who wants it again.
     let stijl = "position:sticky;top:0;z-index:2147483647;display:flex;gap:.75rem;\
-                 align-items:baseline;flex-wrap:wrap;padding:.5rem 1rem;background:#fef3c7;\
-                 color:#4b3a05;font:500 .8125rem/1.4 system-ui,sans-serif;\
-                 border-bottom:1px solid #d7b95c";
+                 align-items:baseline;padding:.4rem 1rem;background:#fef3c7;color:#4b3a05;\
+                 font:500 .8125rem/1.4 system-ui,sans-serif;border-bottom:1px solid #d7b95c";
+    let tekst = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
     format!(
-        r#"<div data-poc-portaal style="{stijl}"><strong>Demonstratie — {status}</strong>"#,
+        r#"<div data-poc-portaal style="{stijl}" title="{voorbehoud}"><strong style="flex:none">Demonstratie — {status}</strong>"#,
         stijl = stijl,
         status = esc(poc.status.label()),
+        voorbehoud = esc(poc.voorbehoud.trim()),
     ) + &format!(
-        r#"<span>{voorbehoud}</span><a href="/" style="margin-left:auto;color:inherit">Alle proof-of-concepts</a></div>"#,
+        r#"<span style="{tekst}">{voorbehoud}</span><a href="/" style="flex:none;color:inherit">Alle proof-of-concepts</a></div>"#,
+        tekst = tekst,
         voorbehoud = esc(poc.voorbehoud.trim()),
     )
 }
