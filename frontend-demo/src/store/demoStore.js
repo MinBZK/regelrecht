@@ -93,9 +93,20 @@ function casesForMaterialiser() {
   }));
 }
 
-function approvedClaimsForEngine() {
+/**
+ * The corrections the citizen's own view computes with: everything they have
+ * submitted that has not been rejected, so a pending one counts too.
+ *
+ * That is the POC's behaviour (`web/routers/laws.py` calls the engine with
+ * `approved=False` and feeds it every PENDING and APPROVED claim), and it is
+ * the point of the portal: someone who corrects their income wants to see what
+ * that would mean, not the old amount with an arrow next to it. Nothing is
+ * granted by it — the case still waits for a caseworker, who recomputes with
+ * approved values only.
+ */
+function claimsForEngine() {
   return state.claims
-    .filter((c) => c.status === 'APPROVED')
+    .filter((c) => c.status === 'APPROVED' || c.status === 'PENDING')
     .map((c) => ({
       lawId: c.lawId,
       keyField: c.keyField,
@@ -107,8 +118,8 @@ function approvedClaimsForEngine() {
 
 function reregister() {
   if (!engine.value || !corpus.value) return;
-  registerPersonaData(engine.value, corpus.value, state.referenceDate, casesForMaterialiser(), approvedClaimsForEngine());
-  registerClaims(engine.value, approvedClaimsForEngine());
+  registerPersonaData(engine.value, corpus.value, state.referenceDate, casesForMaterialiser(), claimsForEngine());
+  registerClaims(engine.value, claimsForEngine());
   dataVersion.value += 1;
 }
 
