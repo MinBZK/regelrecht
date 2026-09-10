@@ -68,7 +68,7 @@ fn kaart(poc: &Poc) -> String {
         .join("\n            ");
 
     format!(
-        r#"        <nldd-card background="tinted" accessible-label="{titel}">
+        r#"        <nldd-card accessible-label="{titel}">
           <nldd-container padding="20" padding-bottom="12">
             <nldd-title size="3"><h3>{titel}</h3></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
@@ -80,7 +80,7 @@ fn kaart(poc: &Poc) -> String {
           </nldd-container>
           <nldd-container slot="footer" padding="20" padding-top="0">
             <nldd-button variant="secondary" width="full" href="/{slug}/"
-              text="Open {titel}" accessible-label="Open {titel}"></nldd-button>
+              text="Openen" accessible-label="Open {titel}"></nldd-button>
           </nldd-container>
         </nldd-card>"#,
         titel = esc(&poc.titel),
@@ -128,34 +128,35 @@ pub fn index(registry: &Registry) -> String {
 /// Served with 401, not a redirect: a deep link keeps its address, so signing
 /// in lands the visitor where they were going instead of on the index.
 pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
+    // `critical` rather than a quieter variant: the banner then carries
+    // role="alert", which is what a screen reader needs after a failed attempt.
     let melding = if mislukt {
-        r#"<nldd-spacer size="16"></nldd-spacer>
-            <nldd-alert variant="error" heading="Onjuist wachtwoord"
-              text="Controleer het wachtwoord en probeer het opnieuw."></nldd-alert>"#
+        r#"<nldd-banner variant="critical" text="Onjuist wachtwoord"
+            supporting-text="Controleer het wachtwoord en probeer het opnieuw."></nldd-banner>
+          <nldd-spacer size="16"></nldd-spacer>"#
     } else {
         ""
     };
 
     let inhoud = format!(
-        r#"  <nldd-simple-section sm-padding-block="32" md-padding-block="64">
-    <nldd-container max-width="480px">
+        r#"  <nldd-simple-section width="480px" sm-padding-block="32" md-padding-block="64">
       <nldd-title size="1"><h1>{titel}</h1></nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-rich-text><p>{samenvatting}</p></nldd-rich-text>
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-card>
+      <nldd-card accessible-label="Wachtwoord">
         <nldd-container padding="24">
+          {melding}
           <nldd-rich-text>
             <p>Deze omgeving is afgeschermd. Vul het wachtwoord in dat je bij de
             uitnodiging hebt gekregen.</p>
           </nldd-rich-text>
-          {melding}
           <nldd-spacer size="16"></nldd-spacer>
           <form method="post" action="/_toegang/{slug}">
             <input type="hidden" name="verder" value="{pad}">
-            <nldd-form-field label="Wachtwoord" for="wachtwoord">
-              <input type="password" id="wachtwoord" name="wachtwoord"
-                autocomplete="current-password" autofocus required>
+            <nldd-form-field label="Wachtwoord">
+              <nldd-password-field name="wachtwoord" autocomplete="current-password"
+                required></nldd-password-field>
             </nldd-form-field>
             <nldd-spacer size="16"></nldd-spacer>
             <nldd-button type="submit" variant="primary" text="Toegang"></nldd-button>
@@ -164,7 +165,6 @@ pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
       </nldd-card>
       <nldd-spacer size="24"></nldd-spacer>
       <nldd-link href="/" text="Terug naar het overzicht"></nldd-link>
-    </nldd-container>
   </nldd-simple-section>"#,
         titel = esc(&poc.titel),
         samenvatting = esc(&poc.samenvatting),
@@ -211,7 +211,50 @@ mod tests {
         let html = inloggen(poc, "/napp/aanvrager/", false);
         assert!(html.contains(r#"action="/_toegang/napp""#));
         assert!(html.contains(r#"value="/napp/aanvrager/""#));
-        assert!(html.contains(r#"type="password""#));
+        assert!(html.contains(r#"<nldd-password-field name="wachtwoord""#));
+    }
+
+    /// Every custom element these pages use, checked against the design
+    /// system's own API (`@nldd/design-system/dist/components/**/*.d.ts`).
+    ///
+    /// A web component with an attribute it does not know renders nothing and
+    /// says nothing — no console error, no failed build. This list was wrong in
+    /// four places on the first pass (`nldd-alert` does not exist, `nldd-card`
+    /// has no `background`, `nldd-container` has no `max-width`, and
+    /// `nldd-form-field` has no `for`), so it is worth pinning what survived
+    /// that check.
+    #[test]
+    fn only_elements_that_exist_in_the_design_system_are_used() {
+        const BESTAAT: &[&str] = &[
+            "nldd-page",
+            "nldd-simple-section",
+            "nldd-collection",
+            "nldd-container",
+            "nldd-card",
+            "nldd-title",
+            "nldd-rich-text",
+            "nldd-spacer",
+            "nldd-tag",
+            "nldd-button",
+            "nldd-link",
+            "nldd-banner",
+            "nldd-form-field",
+            "nldd-password-field",
+        ];
+        let r = registry();
+        let mut html = index(&r);
+        html.push_str(&inloggen(r.get("napp").expect("napp"), "/napp/", true));
+
+        for (i, _) in html.match_indices("<nldd-") {
+            let naam: String = html[i + 1..]
+                .chars()
+                .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                .collect();
+            assert!(
+                BESTAAT.contains(&naam.as_str()),
+                "{naam} is not in the design system — check its .d.ts before using it",
+            );
+        }
     }
 
     #[test]
