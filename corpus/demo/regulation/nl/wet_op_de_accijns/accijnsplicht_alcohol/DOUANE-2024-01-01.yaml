@@ -510,10 +510,17 @@ articles:
               precision: 0
         actions:
           - output: tarief_bier
-            # ROUND op hele eurocent (RFC-024): de engine rondt niet vanzelf af, en
-            # het tarief per volumeprocent levert bij een gebroken alcoholgehalte een
-            # fractie van een cent op. Artikel 7 lid 1 schrijft rekenkundig afronden
-            # voor, wat half-up is; ROUND is half-up.
+            # Artikel 7 lid 1 schrijft twee afrondingen voor, en ze gaan de
+            # andere kant op. Het volumeprocent gaat "naar beneden op één
+            # decimaal" (FLOOR, precision 1) vóór de vermenigvuldiging: 5,28%
+            # rekent als 5,2%. Het bedrag dat eruit komt wordt "rekenkundig"
+            # afgerond, en dat is half-up (ROUND) op hele eurocent (RFC-024) —
+            # de engine rondt niets uit zichzelf af.
+            #
+            # De volgorde doet ertoe: met het ruwe percentage betaalt iemand
+            # met 5,28% bier € 0,65 per hectoliter te veel, en bij 40,37%
+            # gedistilleerd (art. 13, dezelfde zin) € 1,28. Altijd ten nadele
+            # van de belastingplichtige.
             value:
               operation: ROUND
               precision: 0
@@ -530,17 +537,24 @@ articles:
                         - operation: MULTIPLY
                           values:
                             - $tarief_bier_klein_per_hl_per_procent
-                            - $alcoholpercentage
+                            - operation: FLOOR
+                              precision: 1
+                              value: $alcoholpercentage
                         - $tarief_bier_minimum_per_hl
                     # Art. 7 lid 2: verlaagd tarief van € 7,51 per hectoliter per
-                    # volumeprocent, met hetzelfde minimum van € 26,13.
+                    # volumeprocent, met hetzelfde minimum van € 26,13. Lid 1 zegt
+                    # "ten minste € 26,13", lid 2 "€ 26,13 per hectoliter"; hier
+                    # staat één definitie voor allebei, want per hectoliter is de
+                    # enige lezing die met de rest van het artikel rijmt.
                 default:
                   operation: MAX
                   values:
                     - operation: MULTIPLY
                       values:
                         - $tarief_bier_per_hl_per_procent
-                        - $alcoholpercentage
+                        - operation: FLOOR
+                          precision: 1
+                          value: $alcoholpercentage
                     - $tarief_bier_minimum_per_hl
             legal_basis:
               law: Wet op de accijns
@@ -738,9 +752,13 @@ articles:
               precision: 0
         actions:
           - output: tarief_overige_alcohol
-            # ROUND op hele eurocent (RFC-024), zoals bij artikel 7: het tarief per
-            # volumeprocent levert bij een gebroken alcoholgehalte een fractie van
-            # een cent op, en artikel 13 schrijft rekenkundig afronden voor.
+            # Artikel 13 draagt dezelfde slotzin als artikel 7 lid 1: het
+            # volumeprocent naar beneden op één decimaal (FLOOR, precision 1)
+            # vóór de vermenigvuldiging, het bedrag daarna rekenkundig, dus
+            # half-up (ROUND) op hele eurocent (RFC-024).
+            #
+            # Zonder het afkappen betaalt iemand met 40,37% gedistilleerd
+            # € 1,28 per hectoliter te veel.
             value:
               operation: ROUND
               precision: 0
@@ -748,7 +766,9 @@ articles:
                 operation: MULTIPLY
                 values:
                   - $tarief_overige_per_hl_per_procent
-                  - $alcoholpercentage
+                  - operation: FLOOR
+                    precision: 1
+                    value: $alcoholpercentage
             legal_basis:
               law: Wet op de accijns
               bwb_id: BWBR0005251
