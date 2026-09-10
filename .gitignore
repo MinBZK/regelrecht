@@ -27,7 +27,12 @@
 node_modules/
 frontend/dist/
 frontend/public/wasm/pkg/
+frontend-poc-portal/dist/
 packages/admin/static/
+
+# PoC-portaal: wat `just poc` lokaal samenstelt om te serveren.
+.poc-static/
+.poc-shot.sh
 
 # Rust
 target/

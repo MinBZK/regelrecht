@@ -743,6 +743,36 @@ docs-preview:
 docs-a11y:
     cd docs && npm run a11y
 
+# --- PoC-portaal ---
+
+# Bouw de assets van het portaal (het ontwerpsysteem voor zijn eigen twee pagina's)
+poc-assets:
+    npm run build -w poc-portal-assets
+
+# Start het poc-portaal op http://localhost:8611
+#
+# De wachtwoorden zijn hier bewust hardcoded en flauw: dit recept draait alleen
+# lokaal, en een ontwikkelaar die ze moet opzoeken gebruikt het niet. In ZAD
+# komen ze uit `zad env`; het portaal weigert te starten als er één ontbreekt.
+#
+# De statische pocs worden verwacht in .poc-static/<slug>/. Zolang die er niet
+# zijn toont het overzicht ze wel en geeft de poc zelf een 404 achter de poort —
+# de poort werkt dus los van de vraag of er al een poc gebouwd is.
+poc: poc-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p .poc-static/_assets
+    cp -R frontend-poc-portal/dist/. .poc-static/_assets/
+    echo "poc-portaal → http://localhost:8611"
+    echo "wachtwoorden: terugbetaalregimes/nieuwkomersbekostiging/napp = 'demo'"
+    POC_COOKIE_SECRET=lokale-ontwikkelsleutel-niet-geheim-0123 \
+    POC_PW_TERUGBETAALREGIMES=demo \
+    POC_PW_NIEUWKOMERSBEKOSTIGING=demo \
+    POC_PW_NAPP=demo \
+    POC_STATIC_DIR="$(pwd)/.poc-static" \
+    POC_PORT=8611 \
+    cargo run --manifest-path packages/Cargo.toml --package regelrecht-poc-portal
+
 # --- Architecture model ---
 
 # Generate the code-derived architecture model

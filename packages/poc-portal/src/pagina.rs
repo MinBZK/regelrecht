@@ -164,7 +164,8 @@ pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
         </nldd-container>
       </nldd-card>
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-link href="/" text="Terug naar het overzicht"></nldd-link>
+      <nldd-link href="/" size="md" start-icon="arrow-left"
+        text="Terug naar het overzicht"></nldd-link>
   </nldd-simple-section>"#,
         titel = esc(&poc.titel),
         samenvatting = esc(&poc.samenvatting),
