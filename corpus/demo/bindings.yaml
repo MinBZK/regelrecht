@@ -1876,8 +1876,8 @@ wet_inkomstenbelasting:
     # Belastingdienst box/aftrek registers: no row means no such income, asset, debt or deduction (0)
     absent: 0
   partner_buitenlands_inkomen:
-    table: buitenlands
-    field: inkomen
+    table: buitenlands_inkomen
+    field: bedrag
     select_on:
       - name: bsn
         value: $partner_bsn
@@ -1888,8 +1888,8 @@ wet_inkomstenbelasting:
     # guard nooit geraakt.
     absent: null
   buitenlands_inkomen:
-    table: buitenlands
-    field: inkomen
+    table: buitenlands_inkomen
+    field: bedrag
     select_on:
       - name: bsn
         value: $bsn
