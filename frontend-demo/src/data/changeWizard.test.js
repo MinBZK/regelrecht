@@ -135,6 +135,19 @@ describe('claimsFromAnswers voor het huishouden', () => {
     }
   });
 
+  it('houdt een niet-ondersteunde gebeurtenis tegen, ook als zij wél wijzigingen zou kennen', () => {
+    // De vorige test bewijst dit niet: geen enkele echte gebeurtenis heeft
+    // `unsupported` én `changes`, dus daar houdt het ontbreken van `changes`
+    // de melding al tegen. Hier wel allebei, zodat de `unsupported`-toets
+    // zelf de doorslag geeft — anders zou een half afgebouwde gebeurtenis
+    // stilletjes correcties indienen.
+    const halfaf = {
+      ...huishouden,
+      events: [{ value: 'halfaf', label: 'Half afgebouwd', unsupported: 'Kan nog niet.', changes: { partnerschap_type: 'GEEN' } }],
+    };
+    expect(claimsFromAnswers(halfaf, { event: 'halfaf' })).toEqual([]);
+  });
+
   it('zegt per niet-ondersteunde gebeurtenis waaróm het niet kan', () => {
     for (const e of huishouden.events.filter((e) => !e.changes)) {
       expect(e.unsupported).toMatch(/kan in deze demo nog niet|demo nog niet/);
