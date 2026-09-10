@@ -27,6 +27,13 @@
  * geen slordigheid: `runner.js` deelt een uitvoer met een `amount`-spec al door
  * honderd (zie `reduceOutcome`), dus wat hier binnenkomt is al euro. Daarom
  * rondt `roundAmount: 1` af op hele euro's en niet op hele centen.
+ *
+ * Dat er in drijvende komma wordt gerekend kan hier, anders dan in een wet:
+ * de trederanden worden op hele euro's afgerond en het model is een
+ * benadering die per persoon toch al honderden euro's mis kan zitten. Nagegaan
+ * op een echte staffel: de randen komen exact op hun gehele bedrag uit, de
+ * interpolatie ertussen loopt monotoon, en de grootste stap is € 0,44 per euro
+ * inkomen. Een bedrag dat iemand écht krijgt komt uit de engine, niet hieruit.
  */
 
 // ---- elementaire statistiek ------------------------------------------------
