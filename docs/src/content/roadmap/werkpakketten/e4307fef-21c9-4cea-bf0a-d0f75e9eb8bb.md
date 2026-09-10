@@ -1,7 +1,7 @@
 ---
 id: e4307fef-21c9-4cea-bf0a-d0f75e9eb8bb
 titel: Herzieningsplicht bij gedetecteerde wetseffecten
-faseId: wat
+faseId: hoe
 disciplineId: recht
 prioriteit: ''
 omvang: ''
@@ -9,7 +9,7 @@ categorie: bar
 capability: ''
 capaciteit: ''
 toelichting: ''
-volgorde: 6000
+volgorde: 1000
 onderzoeksvragen:
   - vraag: >-
       Als we nu technisch in staat zijn om automatisch te detecteren wanneer
