@@ -103,6 +103,14 @@ function saveName(e) {
  * palette is the Rijkshuisstijl (donkerblauw #154273, lintblauw #01689b), the
  * type is RijksoverheidSerif for titles and RijksSans for the rest. */
 .deck {
+  /* Size the type against the deck's own box, not the viewport: the deck is a
+     40vw rail on a demo slide and the whole screen on an intro, so a viewport
+     unit would be wrong in one of the two. `container-type: size` makes 1cqmin
+     one percent of the deck's shorter side, and every size below is a multiple
+     of it, so a short window shrinks the text instead of pushing it past the
+     bottom edge. */
+  container-type: size;
+  --slide-unit: 1cqmin;
   position: fixed;
   inset: 0 auto 0 0;
   width: 36vw;
@@ -119,22 +127,28 @@ function saveName(e) {
 }
 .deck.full {
   width: 100vw;
-  padding: 4rem clamp(3rem, 9vw, 10rem) 2rem;
+  padding: clamp(1.25rem, calc(4 * var(--slide-unit, 1vw)), 4rem) clamp(3rem, 9vw, 10rem) clamp(0.75rem, calc(2 * var(--slide-unit, 1vw)), 2rem);
 }
 
+/* A slide never scrolls. Scrolling hides the bottom of an argument behind a
+ * gesture nobody makes while presenting, and on a projector the speaker cannot
+ * see that there is more. The type shrinks with the slide instead: every size
+ * below scales on the smaller of width and height (`min(1vw, …)`-style through
+ * `--slide-unit`), so a short window makes the text smaller rather than taller
+ * than the slide. `clamp()` keeps a floor, so it never becomes unreadable. */
 .content {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 .content-main {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1.4rem;
+  gap: clamp(0.5rem, calc(1.4 * var(--slide-unit, 1vw)), 1.4rem);
 }
 .content-foot {
   flex: 0 0 auto;
@@ -144,7 +158,7 @@ function saveName(e) {
 }
 
 .overline {
-  font-size: clamp(1rem, 1.5vw, 1.6rem);
+  font-size: clamp(0.7rem, calc(1.5 * var(--slide-unit, 1vw)), 1.6rem);
   font-weight: 600;
   letter-spacing: 0.02em;
   color: rgba(255, 255, 255, 0.72);
@@ -152,16 +166,16 @@ function saveName(e) {
 .title {
   font-family: 'RijksoverheidSerif', Georgia, serif;
   font-weight: 700;
-  font-size: clamp(2.4rem, 4.2vw, 5.4rem);
+  font-size: clamp(1.15rem, calc(4.2 * var(--slide-unit, 1vw)), 5.4rem);
   line-height: 1.08;
   margin: 0;
   color: #fff;
 }
 .title-hero {
-  font-size: clamp(3.2rem, 7vw, 9rem);
+  font-size: clamp(1.5rem, calc(7 * var(--slide-unit, 1vw)), 9rem);
 }
 .statement {
-  font-size: clamp(2rem, 3.8vw, 5rem);
+  font-size: clamp(1.05rem, calc(3.8 * var(--slide-unit, 1vw)), 5rem);
   line-height: 1.2;
   font-weight: 400;
 }
@@ -175,7 +189,7 @@ function saveName(e) {
   font-weight: 700;
 }
 .lead {
-  font-size: clamp(1.3rem, 2vw, 2.3rem);
+  font-size: clamp(0.8rem, calc(2 * var(--slide-unit, 1vw)), 2.3rem);
   line-height: 1.4;
   margin: 0;
   font-weight: 500;
@@ -184,17 +198,17 @@ function saveName(e) {
   font-family: 'RijksoverheidSerif', Georgia, serif;
   font-style: italic;
   font-weight: 400;
-  font-size: clamp(1.6rem, 3vw, 3.6rem);
+  font-size: clamp(0.9rem, calc(3 * var(--slide-unit, 1vw)), 3.6rem);
   color: rgba(255, 255, 255, 0.9);
 }
 .bullets {
-  font-size: clamp(1.15rem, 1.75vw, 2rem);
+  font-size: clamp(0.75rem, calc(1.75 * var(--slide-unit, 1vw)), 2rem);
   line-height: 1.45;
   margin: 0;
   padding-left: 1.3rem;
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: clamp(0.3rem, calc(0.9 * var(--slide-unit, 1vw)), 0.9rem);
   color: rgba(255, 255, 255, 0.96);
 }
 .bullets li::marker {
@@ -203,7 +217,7 @@ function saveName(e) {
 .bullets-plain {
   list-style: none;
   padding-left: 0;
-  font-size: clamp(1.4rem, 2.4vw, 2.8rem);
+  font-size: clamp(0.85rem, calc(2.4 * var(--slide-unit, 1vw)), 2.8rem);
 }
 .bullets :deep(strong) {
   font-weight: 700;

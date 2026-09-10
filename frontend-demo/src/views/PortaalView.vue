@@ -63,17 +63,14 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
 
 <template>
   <nldd-page>
-    <nldd-container slot="header" padding="0">
-      <nldd-container padding-inline="24" padding-block="12" background="base">
-        <nldd-toolbar size="md" :label="profile?.portal_tab_label ?? 'Burger.nl'">
-          <nldd-toolbar-title slot="start" :text="profile?.portal_tab_label ?? 'Burger.nl'" supporting-text="Demo, geen echte overheidsdienst"></nldd-toolbar-title>
-        </nldd-toolbar>
-      </nldd-container>
-    </nldd-container>
-
+    <!-- No title bar above the heading: it repeated the portal's name right on
+         top of the page heading that follows, and the tab in the app bar already
+         names it. What the bar carried that nothing else did is the disclaimer,
+         so that moves into the overline, where it stays next to the persona the
+         visitor is logged in as. -->
     <nldd-simple-section width="1200px">
       <nldd-title slot="header" size="2">
-        <span slot="overline">Ingelogd als {{ persona?.name ?? profile?.name }}</span>
+        <span slot="overline">Ingelogd als {{ persona?.name ?? profile?.name }} · demo, geen echte overheidsdienst</span>
         <h1>{{ profile?.portal_heading }}</h1>
         <span slot="subtitle">{{ profile?.portal_subtitle }}</span>
         <!-- Tags naast elkaar: gap 8, dezelfde scheiding als de spacer-cells in de lijstrijen. -->

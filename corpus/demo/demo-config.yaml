@@ -18,7 +18,7 @@ profiles:
     # Graaf: the laws that tell this persona's story (detentie -> verzekerd -> zorgtoeslag)
     graph_laws: [penitentiaire_beginselenwet, zvw, zorgtoeslagwet]
     zaaksysteem_service: TOESLAGEN
-    portal_tab_label: Burger.nl
+    portal_tab_label: Mijn overheid
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
       Bekijk hier uw toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
@@ -67,7 +67,7 @@ profiles:
       - handelsregisterwet
       - handelsregisterwet/bedrijfsgegevens
     zaaksysteem_service: GEMEENTE_ROTTERDAM
-    portal_tab_label: Overheid.nl
+    portal_tab_label: Mijn onderneming
     portal_heading: Welke regelingen passen bij mijn bedrijf?
     portal_subtitle: >-
       Bekijk beschikbare subsidies, rapportageverplichtingen, vergunningen, wetten en andere
