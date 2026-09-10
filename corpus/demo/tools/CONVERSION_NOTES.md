@@ -578,3 +578,14 @@ alone.
 - The engine evaluates every action of an article for any requested output; the
   POC computed outputs only when its `requirements` held. Constant-true outputs
   therefore read differently in negative cases (see wet_kinderopvang).
+
+## Getrouwheid aan de wettekst
+
+`AUDIT_GETROUWHEID.md` in deze map is de neerslag van een audit over elke wet
+die deze migratie aanraakt: per wet is de `machine_readable` naast de
+artikeltekst gelegd om te vinden waar de modellering om een technische reden
+afwijkt (schema, engine, typechecker, scenario, datacontract, POC-erfenis) in
+plaats van om een juridische. Wat zonder nieuwe taalconstructen recht te
+trekken was, is rechtgetrokken; de rest staat er met reden, inclusief de
+constructen die de taal nog mist. Lees dat bestand voordat je een wet uit dit
+corpus als bron gebruikt: het zegt per wet wat de tekst dekt en wat niet.
