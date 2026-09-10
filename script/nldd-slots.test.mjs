@@ -106,8 +106,10 @@ test('laat een tag die niet uit het ontwerpsysteem komt met rust', () => {
   }
 });
 
-test('leest de slots van het echte ontwerpsysteem, met nldd-title als ijkpunt', () => {
+test('leest de slots van het echte ontwerpsysteem, met nldd-title als ijkpunt', (t) => {
   const slots = componentSlots('node_modules/@nldd/design-system/dist/components');
+  // De pre-commit-job in CI draait geen `npm ci`; daar valt niets te ijken.
+  if (slots.size === 0) return t.skip('ontwerpsysteem niet geïnstalleerd');
   const title = slots.get('nldd-title');
   assert.ok(title, 'nldd-title moet gevonden worden');
   assert.ok(title.has('end'), 'nldd-title heeft een end-slot');

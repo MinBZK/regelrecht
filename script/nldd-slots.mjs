@@ -9,13 +9,18 @@
 // presentatie" button, both on `slot="actions"` of `nldd-title`, which only
 // has `overline`, `subtitle` and `end`.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const EXTENSIONS = ['.vue', '.html', '.js', '.ts'];
 
-/** Every file under `dir` with one of these extensions. */
+/**
+ * Every file under `dir` with one of these extensions. A directory that is not
+ * there yields nothing: the design-system package is only present after
+ * `npm ci`, and this guard has to stay silent where it is not, not crash.
+ */
 export function sourceFiles(dir, extensions = EXTENSIONS, out = []) {
+  if (!existsSync(dir)) return out;
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry === 'dist' || entry.startsWith('.')) continue;
     const full = join(dir, entry);

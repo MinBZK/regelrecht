@@ -20,9 +20,14 @@ if (dirs.length === 0) {
 
 const PACKAGE_DIR = 'node_modules/@nldd/design-system/dist/components';
 const slots = componentSlots(PACKAGE_DIR);
+// Zonder het ontwerpsysteem valt er niets te toetsen. Dat is geen fout: de
+// pre-commit-job in CI draait `npm ci` niet, en een guard die dáár omvalt
+// blokkeert elke pull request om iets wat niets met de wijziging te maken
+// heeft. Waar de package er wél is (lokaal, en de Frontend-tests-job) doet hij
+// zijn werk.
 if (slots.size === 0) {
-  console.error(`✗ geen componenten gevonden in ${PACKAGE_DIR} — is het ontwerpsysteem geïnstalleerd?`);
-  process.exit(2);
+  console.log(`— ontwerpsysteem niet geïnstalleerd (${PACKAGE_DIR}); slot-controle overgeslagen`);
+  process.exit(0);
 }
 
 let failures = 0;
