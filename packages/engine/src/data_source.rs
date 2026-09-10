@@ -1115,6 +1115,56 @@ mod tests {
     }
 
     #[test]
+    fn test_default_key_fields_is_none_and_keys_on_every_criterion() {
+        // A source that does not say which criteria it keys on keys on all of
+        // them. That is what makes a lookup blocked: with `bsn` unknown, a
+        // source that reads any criterion cannot be asked about anybody, so
+        // the input inherits the unknown instead of reading as "no data"
+        // (RFC-036). A default that named a fixed field, or none at all,
+        // would let the unknown key slip past unnoticed.
+        assert!(Unscoped.key_fields().is_none());
+        let mut registry = DataSourceRegistry::new();
+        registry.add_source(Box::new(Unscoped));
+        let mut criteria = BTreeMap::new();
+        criteria.insert(
+            "bsn".to_string(),
+            Value::unknown("wet_a", "partner_bsn", crate::types::MissingKind::NoData),
+        );
+        let blocked = registry
+            .blocked_lookup_for_law("x", &criteria, Some("wet_a"))
+            .expect("an unknown criterion blocks the lookup");
+        assert_eq!(blocked.missing_facts()[0].name, "partner_bsn");
+        // The same holds for an absent key: asked about nobody, the input is
+        // absent rather than missing.
+        let mut null_criteria = BTreeMap::new();
+        null_criteria.insert("bsn".to_string(), Value::Null);
+        assert_eq!(
+            registry.blocked_lookup_for_law("x", &null_criteria, Some("wet_a")),
+            Some(Value::Null)
+        );
+        // A source that declares its key fields is only blocked by those.
+        let record = BTreeMap::from([
+            ("bsn".to_string(), Value::String("123".to_string())),
+            ("x".to_string(), Value::Int(1)),
+        ]);
+        let mut keyed = DataSourceRegistry::new();
+        keyed.add_source(Box::new(
+            DictDataSource::from_records("keyed", 10, "bsn", vec![record]).unwrap(),
+        ));
+        let mut other_key = BTreeMap::new();
+        other_key.insert("bsn".to_string(), Value::String("123".to_string()));
+        other_key.insert(
+            "jaar".to_string(),
+            Value::unknown("wet_a", "jaar", crate::types::MissingKind::NoData),
+        );
+        assert_eq!(
+            keyed.blocked_lookup_for_law("x", &other_key, None),
+            None,
+            "a criterion the source does not key on cannot block its lookup"
+        );
+    }
+
+    #[test]
     fn test_scoped_source_answers_only_for_its_law() {
         let mut registry = DataSourceRegistry::new();
         let mut record = BTreeMap::new();
