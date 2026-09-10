@@ -166,6 +166,52 @@ dashboard_outputs:
   NVWA/warenwet/meldplicht: heeft_meldplicht
   IND/vreemdelingenwet: heeft_verblijfsrecht
 
+# Wat een tegel onder de uitkomst laat zien.
+#
+# Een burger stelt drie vragen: krijg ik het, hoeveel is het, en moet ik nog
+# iets doen. Alles daarbuiten is verantwoording, en die hoort een klik verder
+# (Berekening, Gebruikte gegevens, Wettekst) waar hij ook te corrigeren is.
+#
+# Standaard toonde de tegel élke andere uitvoerwaarde van de wet, tot zes toe.
+# Daarmee kwam de rekenkeuken op straat: "Uitzondering caribisch nederland van
+# toepassing: Nee" bij iemand die in Nederland woont, "Woonlandfactor" en "Alo
+# kop bedrag" onder het kindgebonden budget. Dat zijn stappen in de redenering,
+# geen antwoorden op een vraag die iemand heeft.
+#
+# `tile_details` zegt per wet welke waarden er wél toe doen voor de burger. Een
+# lege lijst betekent: alleen de uitkomst, verder niets. Een wet die hier niet
+# in staat houdt de oude weergave, dus dit kan wet voor wet groeien.
+tile_details:
+  # De uitspraak is het hele antwoord; het uitzonderingsvinkje is een tussenstap.
+  KIESRAAD/kieswet: []
+  # Het bedrag is het antwoord. Waar het uit is opgebouwd staat in de berekening.
+  TOESLAGEN/wet_op_het_kindgebonden_budget: []
+  TOESLAGEN/zorgtoeslagwet: []
+  TOESLAGEN/wet_op_de_huurtoeslag:
+    # Wat de burger zelf betaalt naast de toeslag: dat verandert wat hij doet.
+    - basishuur
+  SZW/besluit_bijstandverlening_zelfstandigen:
+    # Bedrijfskapitaal is een tweede recht, geen tussenstap.
+    - bedrijfskapitaal
+  BELASTINGDIENST/wet_inkomstenbelasting: []
+  # Het maandbedrag is het antwoord; dagloon en opbouwpercentage zijn de weg
+  # ernaartoe en staan in de berekening.
+  UWV/werkloosheidswet: []
+  UWV/ziektewet: []
+  UWV/wet_werk_en_inkomen_naar_arbeidsvermogen: []
+  SVB/algemene_ouderdomswet: []
+  SVB/algemene_nabestaandenwet: []
+  SVB/participatiewet/aio: []
+  SZW/participatiewet/bijstand: []
+  GEMEENTE_AMSTERDAM/participatiewet/bijstand/gemeenten: []
+  DUO/wet_studiefinanciering: []
+  PENSIOENFONDS/pensioenwet: []
+  BELASTINGDIENST/zorgverzekeringswet/bijdrage: []
+  TOESLAGEN/wet_kinderopvang: []
+  GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten: []
+  SVB/algemene_kinderbijslagwet: []
+  IND/vreemdelingenwet: []
+
 # Hoe een tegel haar uitkomst vertelt. Zonder dit zegt elke tegel hetzelfde:
 # "U voldoet aan de voorwaarden", het bedrag, en de veldnaam eronder. Dat is
 # een label, geen antwoord. De POC schreef per wet een zin om het bedrag heen

@@ -60,7 +60,26 @@ const primary = computed(() => {
   if (!name) return null;
   return { name, value: evaluation.value.outputs[name], spec: fieldSpec(doc.value, name) };
 });
-const secondary = computed(() => outputs.value.filter(([k]) => k !== primary.value?.name).slice(0, 6));
+/**
+ * What the tile shows under the outcome.
+ *
+ * A citizen asks three things: do I get it, how much, and do I have to do
+ * something. Everything else is justification, and that belongs one click away
+ * (Berekening, Gebruikte gegevens, Wettekst) where it can also be corrected.
+ * Showing every remaining output put the reasoning on the front page —
+ * "Uitzondering caribisch nederland van toepassing: Nee" for someone living in
+ * the Netherlands.
+ *
+ * `tile_details` in demo-config.yaml names the values that do matter, per law;
+ * an empty list means the outcome speaks for itself. A law with no entry keeps
+ * the old behaviour, so this grows law by law.
+ */
+const secondary = computed(() => {
+  const rest = outputs.value.filter(([k]) => k !== primary.value?.name);
+  const wanted = corpus.value?.config?.tile_details?.[`${props.law.service}/${props.law.law_path}`];
+  if (!wanted) return rest.slice(0, 6);
+  return wanted.map((name) => rest.find(([k]) => k === name)).filter(Boolean);
+});
 
 // The tile's sentence (see outcomePhrasing.js): a lead, the outcome big, and
 // the unit after it — "Uw huurtoeslag is waarschijnlijk € 302,96 per jaar".
@@ -191,9 +210,14 @@ const statusTag = computed(() => {
             <!-- The law's own sentence, when it has one: the lead as overline,
                  the outcome as the title, the unit under it. Same cell as the
                  general rendering below, so the pencil and the row keep working. -->
+            <!-- Size follows what the headline is. With a lead it is a short
+                 figure ("€ 406,95", "STEMRECHT") and carries the tile, so it is
+                 large. Without one the headline IS the whole sentence ("U krijgt
+                 waarschijnlijk geen kindgebonden budget."), and set that large it
+                 shouts a non-result across three lines. -->
             <nldd-title-cell
               v-if="phrased"
-              size="3"
+              :size="phrased.lead ? '3' : '5'"
               :overline="phrased.lead || undefined"
               :text="phrased.headline"
               :supporting-text="phrased.unit || undefined"
