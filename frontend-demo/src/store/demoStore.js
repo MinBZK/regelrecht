@@ -304,17 +304,25 @@ function evaluate(lawEntry, params = personaParams(), outputs = null) {
 // ---- cases -----------------------------------------------------------------
 
 /**
- * De zaak van het huidige onderwerp voor deze wet. Namens een onderneming is
- * dat de zaak op haar KvK-nummer, namens een kind die op zijn BSN.
+ * De zaak van het huidige onderwerp voor deze wet.
+ *
+ * Waarop vergeleken wordt volgt de wet, niet de aanroeper: een wet over een
+ * onderneming (`discoverable: BUSINESS`) heeft een zaak op het KvK-nummer, een
+ * wet over een persoon een zaak op de BSN. Dat onderscheid is nodig omdat een
+ * ondernemer bij zichzelf allebei bij zich draagt: matchen op de BSN zolang
+ * die er is, liet een ondernemer zijn eigen bedrijfszaak niet zien zodra een
+ * gemachtigde die had ingediend (die zaak staat op diéns BSN), terwijl de
+ * zaak wel over dezelfde onderneming ging.
  */
 function findCase(lawEntry, subject = null) {
   const params = subject ?? personaParams();
+  const onBusiness = lawEntry.discoverable === 'BUSINESS' && params.kvk_nummer !== undefined;
   return (
     state.cases.find(
       (c) =>
         c.lawId === lawEntry.id &&
         c.status !== 'WITHDRAWN' &&
-        (params.bsn !== undefined ? c.bsn === params.bsn : c.kvk === params.kvk_nummer),
+        (onBusiness ? c.kvk === params.kvk_nummer : c.bsn === params.bsn),
     ) ?? null
   );
 }

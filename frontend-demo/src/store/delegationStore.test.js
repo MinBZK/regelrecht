@@ -166,6 +166,57 @@ describe('handelen namens een ander', () => {
   });
 });
 
+/**
+ * Dezelfde matchregel als `demoStore.findCase`. Welk veld telt volgt de wet:
+ * een wet over een onderneming heeft haar zaak op het KvK-nummer, een wet over
+ * een persoon op de BSN.
+ */
+function findCase(cases, law, params) {
+  const onBusiness = law.discoverable === 'BUSINESS' && params.kvk_nummer !== undefined;
+  return (
+    cases.find(
+      (c) => c.lawId === law.id && c.status !== 'WITHDRAWN' && (onBusiness ? c.kvk === params.kvk_nummer : c.bsn === params.bsn),
+    ) ?? null
+  );
+}
+
+describe('de zaak van het juiste onderwerp', () => {
+  const bedrijfswet = { id: 'accijns', discoverable: 'BUSINESS' };
+  const burgerwet = { id: 'zorgtoeslag', discoverable: 'CITIZEN' };
+
+  it('vindt de zaak van een onderneming ongeacht wie hem indiende', () => {
+    // De eigenaar diende in; de zaak staat op háár BSN en op de KvK.
+    const doorEigenaar = { id: 'z1', lawId: 'accijns', status: 'IN_REVIEW', bsn: '999999990', kvk: '85234567' };
+    // Een gemachtigde ziet dezelfde zaak: het gaat om dezelfde onderneming.
+    expect(findCase([doorEigenaar], bedrijfswet, { kvk_nummer: '85234567' })?.id).toBe('z1');
+    // En de eigenaar zelf ook, die bsn én kvk bij zich draagt. Op de BSN
+    // matchen liet juist deze zaak wegvallen zodra een ander hem indiende.
+    expect(findCase([doorEigenaar], bedrijfswet, { bsn: '999999990', kvk_nummer: '85234567' })?.id).toBe('z1');
+  });
+
+  it('laat de eigenaar de zaak zien die een gemachtigde namens zijn bedrijf indiende', () => {
+    const doorGemachtigde = { id: 'z2', lawId: 'accijns', status: 'IN_REVIEW', bsn: '999100001', kvk: '85234567' };
+    expect(findCase([doorGemachtigde], bedrijfswet, { bsn: '999999990', kvk_nummer: '85234567' })?.id).toBe('z2');
+  });
+
+  it('houdt de zaak van een andere onderneming buiten beeld', () => {
+    const andere = { id: 'z3', lawId: 'accijns', status: 'IN_REVIEW', bsn: '999999990', kvk: '99001122' };
+    expect(findCase([andere], bedrijfswet, { kvk_nummer: '85234567' })).toBeNull();
+  });
+
+  it('houdt bij een burgerwet de zaak van een ander buiten beeld', () => {
+    const vanHetKind = { id: 'z4', lawId: 'zorgtoeslag', status: 'IN_REVIEW', bsn: '999200001', kvk: null };
+    expect(findCase([vanHetKind], burgerwet, { bsn: '999200001' })?.id).toBe('z4');
+    // De ouder ziet de zaak van zijn kind niet zolang hij voor zichzelf handelt.
+    expect(findCase([vanHetKind], burgerwet, { bsn: '999100001' })).toBeNull();
+  });
+
+  it('negeert een ingetrokken zaak', () => {
+    const ingetrokken = { id: 'z5', lawId: 'accijns', status: 'WITHDRAWN', bsn: '999999990', kvk: '85234567' };
+    expect(findCase([ingetrokken], bedrijfswet, { kvk_nummer: '85234567' })).toBeNull();
+  });
+});
+
 describe('delegationsFor tegen de echte interface', () => {
   it('leest de parallelle lijsten zoals de wetten ze opleveren', () => {
     const law = {
