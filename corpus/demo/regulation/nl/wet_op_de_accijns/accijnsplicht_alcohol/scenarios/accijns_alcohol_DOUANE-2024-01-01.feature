@@ -61,6 +61,32 @@ Feature: Bepalen accijnsplicht en tarief voor alcoholhoudende dranken
     When I evaluate outputs "tarief_per_hectoliter" of "wet_op_de_accijns/accijnsplicht_alcohol"
     Then output "tarief_per_hectoliter" equals 2613
 
+  # Het minimum geldt per hectoliter en niet per partij: bij tien hectoliter
+  # blijft het tarief € 26,13 per hectoliter en wordt het totaal tien keer zo
+  # hoog. Lid 1 zegt "ten minste € 26,13", lid 2 "€ 26,13 per hectoliter"; deze
+  # twee scenario's leggen vast dat beide leden per hectoliter rekenen.
+  Scenario: Het minimumbedrag geldt per hectoliter, ook bij een grote partij
+    Given parameter "type_product" is "bier"
+    And parameter "alcoholpercentage" is 0.6
+    And parameter "hoeveelheid_hectoliter" is 10
+    And the following parameters:
+      | is_kleine_brouwerij | false |
+    And parameter "activiteit" is "handel"
+    When I evaluate outputs "tarief_per_hectoliter, verschuldigde_accijns" of "wet_op_de_accijns/accijnsplicht_alcohol"
+    Then output "tarief_per_hectoliter" equals 2613
+    And output "verschuldigde_accijns" equals 26130
+
+  Scenario: Ook het verlaagde tarief van lid 2 kent hetzelfde minimum per hectoliter
+    Given parameter "type_product" is "bier"
+    And parameter "alcoholpercentage" is 0.6
+    And parameter "hoeveelheid_hectoliter" is 10
+    And the following parameters:
+      | is_kleine_brouwerij | true |
+    And parameter "activiteit" is "handel"
+    When I evaluate outputs "tarief_per_hectoliter, verschuldigde_accijns" of "wet_op_de_accijns/accijnsplicht_alcohol"
+    Then output "tarief_per_hectoliter" equals 2613
+    And output "verschuldigde_accijns" equals 26130
+
   # Artikel 6: bier is pas bier boven 0,5%vol, dus daaronder is er geen
   # accijnsgoed en dus niets verschuldigd.
   Scenario: Alcoholvrij bier is geen accijnsgoed
