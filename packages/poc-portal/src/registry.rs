@@ -1,0 +1,216 @@
+//! The PoC register: `pocs/registry.yaml`, parsed once at startup.
+//!
+//! Everything that differs per PoC is described here and nowhere else — the
+//! cards on the index page, which paths are served or proxied, and the name of
+//! the environment variable holding each PoC's password. Adding a PoC is
+//! therefore a register entry plus a directory, not an edit to this crate.
+
+use std::collections::HashSet;
+
+use serde::Deserialize;
+
+/// How a PoC reaches the visitor.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Soort {
+    /// Built into this image, served from `{static_root}/{slug}`.
+    Statisch,
+    /// Another ZAD component, reached in-cluster and proxied through.
+    Proxy,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Poc {
+    pub slug: String,
+    pub titel: String,
+    pub samenvatting: String,
+    pub soort: Soort,
+    /// npm workspace producing the `dist` — `statisch` only.
+    #[serde(default)]
+    pub bron: Option<String>,
+    /// ZAD component name — `proxy` only.
+    #[serde(default)]
+    pub upstream: Option<String>,
+    #[serde(default)]
+    pub corpus: Vec<String>,
+    #[serde(default)]
+    pub assistent: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+impl Poc {
+    /// Name of the environment variable carrying this PoC's password.
+    ///
+    /// `terugbetaalregimes` → `POC_PW_TERUGBETAALREGIMES`, and a hyphenated
+    /// slug becomes an underscore: `mijn-poc` → `POC_PW_MIJN_POC`. Derived
+    /// rather than configured, so a new PoC needs no code here.
+    pub fn wachtwoord_env(&self) -> String {
+        format!("POC_PW_{}", self.slug.to_uppercase().replace('-', "_"))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Registry {
+    pub pocs: Vec<Poc>,
+}
+
+/// Why a register was refused. Every one of these is a startup failure: a
+/// half-understood register would decide who gets in.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum RegistryError {
+    #[error("registry is empty — a portal with no PoCs is a mistake, not a state")]
+    Empty,
+    #[error("slug {0:?} is used more than once")]
+    DuplicateSlug(String),
+    #[error("slug {0:?} may only contain a-z, 0-9 and '-', and must start with a letter or digit")]
+    InvalidSlug(String),
+    #[error("PoC {0:?} is `statisch` but names no `bron`")]
+    StaticWithoutBron(String),
+    #[error("PoC {0:?} is `proxy` but names no `upstream`")]
+    ProxyWithoutUpstream(String),
+    #[error(
+        "PoC {0:?} is `proxy`; the assistant runs in this image and cannot serve a proxied PoC"
+    )]
+    ProxyWithAssistent(String),
+}
+
+/// A slug ends up in a URL path, a cookie name and an environment variable
+/// name. Restricting it to this alphabet means none of those three ever needs
+/// escaping, and no slug can climb out of its path prefix.
+fn slug_is_valid(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+impl Registry {
+    /// Parse and validate a register.
+    pub fn from_yaml(yaml: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let registry: Registry = serde_yaml_ng::from_str(yaml)?;
+        registry.validate()?;
+        Ok(registry)
+    }
+
+    fn validate(&self) -> Result<(), RegistryError> {
+        if self.pocs.is_empty() {
+            return Err(RegistryError::Empty);
+        }
+
+        let mut seen = HashSet::new();
+        for poc in &self.pocs {
+            if !slug_is_valid(&poc.slug) {
+                return Err(RegistryError::InvalidSlug(poc.slug.clone()));
+            }
+            if !seen.insert(&poc.slug) {
+                return Err(RegistryError::DuplicateSlug(poc.slug.clone()));
+            }
+            match poc.soort {
+                Soort::Statisch if poc.bron.is_none() => {
+                    return Err(RegistryError::StaticWithoutBron(poc.slug.clone()))
+                }
+                Soort::Proxy if poc.upstream.is_none() => {
+                    return Err(RegistryError::ProxyWithoutUpstream(poc.slug.clone()))
+                }
+                // The assistant spawns the Claude CLI inside *this* container
+                // and rewrites this image's own corpus copy. A proxied PoC runs
+                // somewhere else, so switching it on there would silently do
+                // nothing.
+                Soort::Proxy if poc.assistent => {
+                    return Err(RegistryError::ProxyWithAssistent(poc.slug.clone()))
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get(&self, slug: &str) -> Option<&Poc> {
+        self.pocs.iter().find(|p| p.slug == slug)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn statisch(slug: &str) -> String {
+        format!(
+            "pocs:\n  - slug: {slug}\n    titel: T\n    samenvatting: S\n    soort: statisch\n    bron: b\n"
+        )
+    }
+
+    #[test]
+    fn parses_the_real_register() {
+        // The register that ships is the one the portal will run on; a typo in
+        // it should fail here rather than at startup in the cluster.
+        let yaml = include_str!("../../../pocs/registry.yaml");
+        let registry = Registry::from_yaml(yaml).expect("registry.yaml is valid");
+        assert!(registry.get("napp").is_some());
+        assert_eq!(registry.get("napp").map(|p| &p.soort), Some(&Soort::Proxy));
+    }
+
+    #[test]
+    fn env_var_name_is_derived_from_the_slug() {
+        let poc = Registry::from_yaml(&statisch("mijn-poc"))
+            .expect("valid")
+            .pocs[0]
+            .clone();
+        assert_eq!(poc.wachtwoord_env(), "POC_PW_MIJN_POC");
+    }
+
+    #[test]
+    fn duplicate_slugs_are_refused() {
+        let yaml = format!("{}{}", statisch("a"), statisch("a").replace("pocs:\n", ""));
+        let err = Registry::from_yaml(&yaml).expect_err("duplicate slug must fail");
+        assert!(err.to_string().contains("more than once"), "{err}");
+    }
+
+    #[test]
+    fn a_slug_cannot_escape_its_path_prefix() {
+        for bad in ["../etc", "Foo", "a/b", "", "-leading"] {
+            let yaml = statisch(bad);
+            assert!(
+                Registry::from_yaml(&yaml).is_err(),
+                "slug {bad:?} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn a_static_poc_must_name_its_source() {
+        let yaml = "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: statisch\n";
+        let err = Registry::from_yaml(yaml).expect_err("must fail");
+        assert!(err.to_string().contains("bron"), "{err}");
+    }
+
+    #[test]
+    fn a_proxy_poc_must_name_its_upstream() {
+        let yaml = "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: proxy\n";
+        let err = Registry::from_yaml(yaml).expect_err("must fail");
+        assert!(err.to_string().contains("upstream"), "{err}");
+    }
+
+    #[test]
+    fn the_assistant_cannot_be_switched_on_for_a_proxied_poc() {
+        let yaml = "pocs:\n  - slug: a\n    titel: T\n    samenvatting: S\n    soort: proxy\n    upstream: u\n    assistent: true\n";
+        let err = Registry::from_yaml(yaml).expect_err("must fail");
+        assert!(err.to_string().contains("assistant"), "{err}");
+    }
+
+    #[test]
+    fn an_empty_register_is_refused() {
+        assert_eq!(
+            Registry::from_yaml("pocs: []")
+                .expect_err("must fail")
+                .to_string(),
+            RegistryError::Empty.to_string()
+        );
+    }
+}

@@ -1,0 +1,53 @@
+[package]
+name = "regelrecht-poc-portal"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "Portal serving the regelrecht proof-of-concepts behind one hostname, each with its own password"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+
+[lib]
+name = "regelrecht_poc_portal"
+path = "src/lib.rs"
+
+[[bin]]
+name = "regelrecht-poc-portal"
+path = "src/main.rs"
+
+[dependencies]
+axum.workspace = true
+regelrecht-auth = { path = "../auth" }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+regelrecht-corpus = { path = "../corpus", default-features = false }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower-http = { workspace = true, features = ["fs", "trace"] }
+serde.workspace = true
+serde_yaml_ng.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# The gate: SHA-256 digests compared in constant time (the idiom
+# packages/admin/src/middleware.rs uses), and an HMAC over slug+expiry as the
+# cookie's signature.
+sha2.workspace = true
+subtle.workspace = true
+# 0.12, not the newer 0.13: hmac is generic over `digest`, and 0.13 moved to
+# digest 0.11 / sha2 0.11 while this workspace is on sha2 0.10 (digest 0.10).
+# Taking 0.13 would compile a second digest generation that our Sha256 cannot
+# feed. 0.12.1 is already in the tree via hkdf.
+hmac = "0.12"
+base64.workspace = true
+time.workspace = true
+# Reverse proxy to the `napp` component, in-cluster. 0.13 (not the 0.12 that
+# auth/admin/editor-api are pinned to by openidconnect): nothing here touches
+# openidconnect, and 0.13 is what corpus/github/pipeline already use. `stream`
+# lets the assistant's SSE responses pass through without buffering.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream"] }
+
+[dev-dependencies]
+tower.workspace = true
+http-body-util.workspace = true
+pretty_assertions.workspace = true
+
+[lints]
+workspace = true
