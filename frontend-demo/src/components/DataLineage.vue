@@ -8,7 +8,11 @@ import { useDemo } from '../store/demoStore.js';
 // the law used, and under each law that supplied a computed value the values
 // that law used in turn. Renders `nldd-list-item` rows only; the tile owns the
 // `nldd-list type="tree"` around them. A value row is a button: the citizen
-// can correct it, which becomes a claim. A pending correction shows old → new.
+// can correct it, which becomes a claim. A pending correction shows old → new,
+// and says so: until a caseworker approves it the engine keeps computing with
+// the registered value, so the arrow alone read as "this has been applied"
+// while the amount above it had not moved. Only APPROVED claims reach the
+// engine (demoStore.approvedClaimsForEngine).
 
 const props = defineProps({
   nodes: { type: Array, required: true },
@@ -64,7 +68,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-icon-cell v-else-if="node.corrected" icon="edit" size="16" color="accent"></nldd-icon-cell>
     <nldd-icon-cell v-else icon="question-mark-circle" size="16" color="secondary"></nldd-icon-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-    <nldd-text-cell size="sm" min-width="120px" :text="humanize(node.name)" :supporting-text="supportingText(node)"></nldd-text-cell>
+    <nldd-text-cell size="sm" min-width="120px" :text="humanize(node.name)" :supporting-text="pending(node) ? `${supportingText(node) ? supportingText(node) + ' · ' : ''}correctie wacht op een behandelaar` : supportingText(node)"></nldd-text-cell>
     <nldd-text-cell size="sm" width="fit-content" max-width="55%" horizontal-alignment="right" :color="pending(node) ? 'warning' : isUnknown(node.value) ? 'secondary' : 'default'">
       <template v-if="pending(node)">
         <s>{{ formatValue(node.value, specFor(node)) }}</s> → {{ formatValue(pending(node).newValue, specFor(node)) }}

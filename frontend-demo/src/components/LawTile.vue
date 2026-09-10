@@ -113,6 +113,8 @@ const produces = computed(() => {
   return null;
 });
 const canApply = computed(() => evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
+/** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
+const canObject = computed(() => currentCase.value?.status === 'DECIDED' && currentCase.value?.approved === false && !currentCase.value?.objection);
 
 // The application stays in the portal (a sheet); the case system is the
 // caseworker's world.
@@ -213,7 +215,17 @@ const statusTag = computed(() => {
          its buttons on one. The heading above the button already says which data
          is missing. -->
     <nldd-container slot="footer" padding="16" layout="wrap" gap="8" vertical-alignment="center">
-      <nldd-button v-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Mijn aanvraag" @click="apply"></nldd-button>
+      <!-- A rejected decision leads with the objection, not with the file. Awb
+           art. 6:5 gives the citizen six weeks to disagree, and hiding that
+           route one click deep behind the file made the tile a dead end: the POC
+           put it in view. Once an objection is running the button goes back to
+           the file, which is where its status is.
+           Labels are one word for a measured reason: the three buttons have
+           about 313px of a 384px footer before padding and gaps push the last
+           one onto a second line. "Mijn aanvraag" needed 336px and "Bezwaar
+           maken" 347px, so both wrapped; "Aanvraag" and "Bezwaar" fit. -->
+      <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" text="Bezwaar" @click="apply"></nldd-button>
+      <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Aanvraag" @click="apply"></nldd-button>
       <nldd-button v-else-if="evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
       <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" text="Berekening" @click="showTrace = true"></nldd-button>

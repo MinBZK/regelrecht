@@ -107,7 +107,13 @@ const serviceClaims = computed(() => state.claims.filter((cl) => cl.status === '
 const reason = ref('');
 function decide(approved) {
   if (!selected.value) return;
-  const text = reason.value.trim() || (approved ? 'Voldoet aan de voorwaarden.' : 'Voldoet niet aan de voorwaarden.');
+  // Without a typed reason, say who decided — not what the law says. A
+  // caseworker can approve or reject against the engine's own outcome, and
+  // "Voldoet niet aan de voorwaarden" then claimed the law had rejected the
+  // citizen while the tile beside it showed the amount the law had granted.
+  // Awb art. 3:46 asks a besluit to rest on a deugdelijke motivering; the
+  // honest fallback is that none was given.
+  const text = reason.value.trim() || (approved ? 'Toegekend door de behandelaar. Geen toelichting gegeven.' : 'Afgewezen door de behandelaar. Geen toelichting gegeven.');
   demo.decideCase(selected.value.id, approved, text, verified.value?.ok ? verified.value.outputs : null);
   reason.value = '';
 }
