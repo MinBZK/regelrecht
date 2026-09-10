@@ -1,0 +1,225 @@
+import { describe, expect, it } from 'vitest';
+import {
+  CITIZEN_FEATURES,
+  describeModel,
+  etaSquared,
+  evaluateModel,
+  featuresFor,
+  mean,
+  predict,
+  quantile,
+  trainBracketModel,
+  trainingData,
+} from './harmonize.js';
+
+describe('quantile', () => {
+  it('interpoleert lineair tussen waarnemingen, zoals numpy', () => {
+    const xs = [0, 10, 20, 30, 40];
+    expect(quantile(xs, 0)).toBe(0);
+    expect(quantile(xs, 1)).toBe(40);
+    expect(quantile(xs, 0.5)).toBe(20);
+    expect(quantile(xs, 0.25)).toBe(10);
+    // Tussen twee punten in: 0,375 ligt op driekwart tussen index 1 en 2.
+    expect(quantile(xs, 0.375)).toBeCloseTo(15, 6);
+  });
+
+  it('gaat om met een lege en een eenpuntsreeks', () => {
+    expect(quantile([], 0.5)).toBe(0);
+    expect(quantile([7], 0.9)).toBe(7);
+  });
+});
+
+describe('etaSquared', () => {
+  it('is 1 als de groep het bedrag volledig bepaalt', () => {
+    const groups = [[100, 100, 100], [200, 200, 200]];
+    const all = groups.flat();
+    const m = mean(all);
+    const ssTotal = all.reduce((s, v) => s + (v - m) ** 2, 0);
+    expect(etaSquared(groups, m, ssTotal)).toBeCloseTo(1, 6);
+  });
+
+  it('is 0 als de groepen niet verschillen', () => {
+    const groups = [[100, 200], [100, 200]];
+    const all = groups.flat();
+    const m = mean(all);
+    const ssTotal = all.reduce((s, v) => s + (v - m) ** 2, 0);
+    expect(etaSquared(groups, m, ssTotal)).toBeCloseTo(0, 6);
+  });
+
+  it('is 0 als er geen spreiding te verklaren valt', () => {
+    expect(etaSquared([[5, 5], [5, 5]], 5, 0)).toBe(0);
+  });
+});
+
+// Een nagebootste simulatierun: bevolking met bekende eigenschappen, en een
+// wet waarvan we de vorm zelf kiezen, zodat te controleren is of het model
+// hem terugvindt.
+function fakeRun(makeAmount, { count = 400, kind = 'burgers' } = {}) {
+  const results = [];
+  for (let i = 0; i < count; i += 1) {
+    const subject = {
+      id: `p${i}`,
+      inkomen: 10000 + (i % 50) * 1000,
+      leeftijd: 20 + (i % 45),
+      huur: 500 + (i % 10) * 50,
+      kinderen: i % 3,
+      partner: i % 2 === 0,
+      huurder: i % 4 !== 0,
+      student: i % 11 === 0,
+    };
+    const amount = makeAmount(subject);
+    results.push({
+      subject,
+      laws: { toeslag: { ok: true, met: amount > 0, amount, amountName: 'bedrag', error: null } },
+    });
+  }
+  return { kind, results };
+}
+
+describe('trainingData', () => {
+  it('telt de bedragen van de gekozen wetten bij elkaar op', () => {
+    const run = {
+      kind: 'burgers',
+      results: [
+        {
+          subject: { inkomen: 20000, leeftijd: 30, huur: 600, kinderen: 1, partner: true, huurder: true, student: false },
+          laws: {
+            zorg: { ok: true, met: true, amount: 100 },
+            huur: { ok: true, met: true, amount: 250 },
+          },
+        },
+      ],
+    };
+    const { rows } = trainingData(run, ['zorg', 'huur']);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amount).toBe(350);
+    expect(rows[0].eligible).toBe(true);
+    expect(rows[0].values.heeft_partner).toBe(1);
+    expect(rows[0].values.heeft_kinderen).toBe(1);
+  });
+
+  it('slaat een subject over waarvoor geen enkele gekozen wet kon rekenen', () => {
+    const run = {
+      kind: 'burgers',
+      results: [
+        { subject: { inkomen: 1 }, laws: { zorg: { ok: false, error: 'kapot' } } },
+        { subject: { inkomen: 2 }, laws: { zorg: { ok: true, met: true, amount: 10 } } },
+      ],
+    };
+    expect(trainingData(run, ['zorg']).rows).toHaveLength(1);
+  });
+
+  it('telt een onbekende uitkomst niet als recht', () => {
+    const run = {
+      kind: 'burgers',
+      results: [{ subject: { inkomen: 1 }, laws: { zorg: { ok: true, met: 'unknown', amount: null } } }],
+    };
+    expect(trainingData(run, ['zorg']).rows[0].eligible).toBe(false);
+  });
+
+  it('kiest de ondernemerskenmerken bij een ondernemersrun', () => {
+    expect(featuresFor('ondernemers').map((f) => f.key)).toContain('oppervlakte');
+    expect(featuresFor('burgers')).toEqual(CITIZEN_FEATURES);
+  });
+});
+
+describe('trainBracketModel', () => {
+  it('vindt een rechtlijnige afbouw op inkomen vrijwel exact terug', () => {
+    // Een simpele regeling: € 2000 minus 5% van het inkomen, nooit onder nul.
+    const run = fakeRun((s) => Math.max(0, 2000 - 0.05 * s.inkomen));
+    const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
+    expect(model.primary.key).toBe('inkomen');
+    // Een rechte lijn is precies wat een staffel kan; de fout hoort klein te zijn.
+    expect(model.metrics.r2).toBeGreaterThan(0.98);
+    expect(model.metrics.mae).toBeLessThan(25);
+  });
+
+  it('geeft groepen met een eigen bedrag een eigen staffel', () => {
+    // Wie een partner heeft krijgt structureel € 500 meer: dat hoort het
+    // model als aparte staffel terug te vinden.
+    const run = fakeRun((s) => Math.max(0, 2000 - 0.05 * s.inkomen) + (s.partner ? 500 : 0));
+    const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
+    expect(model.groupKeys.map((f) => f.key)).toContain('heeft_partner');
+    const withPartner = predict(model, { inkomen: 20000, heeft_partner: 1, heeft_kinderen: 0, huurder: 1, student: 0 });
+    const without = predict(model, { inkomen: 20000, heeft_partner: 0, heeft_kinderen: 0, huurder: 1, student: 0 });
+    expect(withPartner - without).toBeGreaterThan(300);
+  });
+
+  it('houdt de staffel doorlopend: geen sprong bij een trederand', () => {
+    const run = fakeRun((s) => Math.max(0, 2000 - 0.05 * s.inkomen));
+    const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
+    const group = model.groups[0];
+    for (const step of group.steps) {
+      const justBelow = predict(model, { ...zeroes(model), inkomen: step.upper - 1 });
+      const atEdge = predict(model, { ...zeroes(model), inkomen: step.upper });
+      // Eén euro meer inkomen mag nooit een sprong in het bedrag geven.
+      expect(Math.abs(atEdge - justBelow)).toBeLessThan(50);
+    }
+  });
+
+  it('rondt de trederanden af op leesbare getallen', () => {
+    const run = fakeRun((s) => Math.max(0, 2000 - 0.05 * s.inkomen));
+    const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
+    for (const b of model.boundaries) expect(b % 1000).toBe(0);
+  });
+
+  it('weigert te leren van te weinig gegevens', () => {
+    const run = fakeRun(() => 100, { count: 5 });
+    expect(() => trainBracketModel(trainingData(run, ['toeslag']))).toThrow(/te weinig gegevens/i);
+  });
+
+  it('levert altijd een staffel, ook als geen enkel kenmerk groepen rechtvaardigt', () => {
+    // Een vast bedrag voor iedereen: niets om op te groeperen.
+    const run = fakeRun(() => 500);
+    const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
+    expect(model.groups.length).toBeGreaterThanOrEqual(1);
+    expect(predict(model, { ...zeroes(model), inkomen: 25000 })).toBeCloseTo(500, 0);
+  });
+});
+
+function zeroes(model) {
+  const out = {};
+  for (const f of model.groupKeys) out[f.key] = 0;
+  return out;
+}
+
+describe('evaluateModel', () => {
+  it('vangt een uitzondering die op een kenmerk hangt in een eigen staffel', () => {
+    // Een vaste bonus voor studenten, los van het inkomen. Dat is geen
+    // uitzondering die de staffel niet kan volgen: het hangt aan een kenmerk,
+    // dus het model hoort er een aparte staffel voor te maken en daarna
+    // vrijwel geen fout meer te hebben.
+    const run = fakeRun((s) => Math.max(0, 2000 - 0.05 * s.inkomen) + (s.student ? 3000 : 0));
+    const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
+    expect(model.groupKeys.map((f) => f.key)).toContain('student');
+    expect(model.metrics.r2).toBeGreaterThan(0.98);
+  });
+
+  it('houdt een uitzondering over die aan geen enkel kenmerk hangt', () => {
+    // Een bonus die aan niets hangt wat het model kan zien (hier: een
+    // willekeurige groep). Zo'n regel kan een staffel niet volgen, en dan
+    // hoort hij bij de grootste afwijkingen terug te komen — dat is precies
+    // waar harmonisatie iets over de wet zegt.
+    const run = fakeRun((s) => Math.max(0, 2000 - 0.05 * s.inkomen) + (Number(s.id.slice(1)) % 97 === 0 ? 4000 : 0));
+    const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
+    expect(model.metrics.worst).toHaveLength(5);
+    // De onverklaarbare gevallen zitten er ver naast, niet een paar euro.
+    expect(Math.abs(model.metrics.worst[0].error)).toBeGreaterThan(1000);
+  });
+
+  it('geeft nul terug zonder gegevens', () => {
+    expect(evaluateModel({ groups: [], primary: { key: 'inkomen' } }, [])).toMatchObject({ r2: 0, mae: 0 });
+  });
+});
+
+describe('describeModel', () => {
+  it('schrijft de staffel op als leesbare tabel', () => {
+    const run = fakeRun((s) => Math.max(0, 2000 - 0.05 * s.inkomen) + (s.partner ? 500 : 0));
+    const model = trainBracketModel(trainingData(run, ['toeslag']), { primary: 'inkomen' });
+    const described = describeModel(model);
+    expect(described.length).toBeGreaterThan(0);
+    expect(described[0].steps.length).toBe(model.groups[0].steps.length);
+    expect(described[0].steps[0].range).toMatch(/\d/);
+    expect(described[0].steps[0].from).toMatch(/€/);
+  });
+});

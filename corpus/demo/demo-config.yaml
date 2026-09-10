@@ -29,7 +29,13 @@ profiles:
     # zien.
     # CHANGE_WIZARD: één ingang voor 'er is iets veranderd' (inkomen, huur,
     # adres, huishouden), naast de tegels die elk over één regeling gaan.
-    feature_flags: {DELEGATION: true, AUTO_APPROVE_CLAIMS: false, CHANGE_WIZARD: true}
+    # HARMONIZE: uit een simulatierun één vereenvoudigde regeling afleiden en
+    # laten zien hoe dicht die bij de bestaande wetten blijft.
+    feature_flags:
+      DELEGATION: true
+      AUTO_APPROVE_CLAIMS: false
+      CHANGE_WIZARD: true
+      HARMONIZE: true
     sidebar_laws: null
     disabled_laws:
       BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]
