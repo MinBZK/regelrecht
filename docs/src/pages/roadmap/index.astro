@@ -114,43 +114,60 @@ const pathname = '/roadmap';
   title="Roadmap · RegelRecht"
   description="Werkpakketten van RegelRecht, geordend per fase en discipline."
 >
+  {/*
+    Two measures on one page. `width="full"` drops the section's body
+    max-width, which every other docs page keeps for a readable line length;
+    the matrix needs that, because it is seven columns wide and would
+    otherwise scroll horizontally inside a measure meant for paragraphs.
+
+    Only the matrix. The heading and the filter keep the docs measure and stay
+    where they sit on every other page: .rr-roadmap__kop (roadmap.css) puts
+    the token back and centres them, so they line up with the navigation bar
+    above and the footer below, and the table alone breaks out of that column.
+    The section's own inline padding stays either way, so the table keeps a
+    gutter to the viewport edge.
+  */}
   <nldd-simple-section
+    width="full"
     sm-padding-bottom="32"
     md-padding-bottom="64"
     lg-padding-bottom="96"
   >
     <nldd-container class="rr-roadmap" gap="24">
-      <nldd-title size="1">
-        <h1>Roadmap</h1>
-        <p slot="subtitle">
-          Werkpakketten per fase en discipline. Deze weergave is read-only;
-          wijzigen gaat via een pull request op GitHub.
-        </p>
-      </nldd-title>
+      <nldd-container class="rr-roadmap__kop" gap="24">
+        <nldd-title size="1">
+          <h1>Roadmap</h1>
+          <p slot="subtitle">
+            Werkpakketten per fase en discipline. Deze weergave is read-only;
+            wijzigen gaat via een pull request op GitHub.
+          </p>
+        </nldd-title>
 
-      {/*
-        The filter works without any JavaScript of our own: nldd-checkbox-field
-        reflects `checked` onto its host element, so the :has() rules in
-        roadmap.css can read the state straight off the component. A <fieldset>
-        and <legend> group the controls, which is what a group of checkboxes
-        needs and what the design system has no component for.
-      */}
-      <fieldset class="rr-filter">
-        <legend class="rr-filter__legend">
-          <nldd-text size="sm" weight="medium" color="secondary">
-            Filter op categorie
-          </nldd-text>
-        </legend>
-        {
-          FILTER_OPTIES.map((optie) => (
-            <nldd-checkbox-field
-              class="rr-filter__option"
-              id={`rr-cat-${optie.id}`}
-              label={optie.label}
-            />
-          ))
-        }
-      </fieldset>
+        {/*
+          The filter works without any JavaScript of our own:
+          nldd-checkbox-field reflects `checked` onto its host element, so the
+          :has() rules in roadmap.css can read the state straight off the
+          component. A <fieldset> and <legend> group the controls, which is
+          what a group of checkboxes needs and what the design system has no
+          component for.
+        */}
+        <fieldset class="rr-filter">
+          <legend class="rr-filter__legend">
+            <nldd-text size="sm" weight="medium" color="secondary">
+              Filter op categorie
+            </nldd-text>
+          </legend>
+          {
+            FILTER_OPTIES.map((optie) => (
+              <nldd-checkbox-field
+                class="rr-filter__option"
+                id={`rr-cat-${optie.id}`}
+                label={optie.label}
+              />
+            ))
+          }
+        </fieldset>
+      </nldd-container>
 
       {/* tabindex + role make the horizontally scrolling matrix reachable by
           keyboard; without it axe flags scrollable-region-focusable. */}
