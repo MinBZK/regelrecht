@@ -156,16 +156,21 @@ function submitApplication() {
 }
 
 // ---- status and objection --------------------------------------------------------
+// `variant` decides the banner's colour AND its default icon; there is no
+// `info` variant (neutral | accent | success | warning | critical), so the two
+// statuses that used it rendered without an icon at all — an empty column to
+// the left of the text. `accent` is the neutral-but-noticed one. The icons
+// mirror the tile's status tag, so the same case looks the same in both.
 const statusView = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
-  if (c.objection?.status === 'PENDING') return { variant: 'warning', text: 'Bezwaar ingediend', supporting: 'De gemeente of dienst beoordeelt uw bezwaar.' };
+  if (c.objection?.status === 'PENDING') return { variant: 'warning', icon: 'flag', text: 'Bezwaar ingediend', supporting: 'De gemeente of dienst beoordeelt uw bezwaar.' };
   if (c.status === 'DECIDED') {
-    if (c.objection) return c.approved ? { variant: 'success', text: 'Toegekend na bezwaar', supporting: c.reason } : { variant: 'critical', text: 'Afgewezen, bezwaar ongegrond', supporting: c.reason };
-    return c.approved ? { variant: 'success', text: 'Toegekend', supporting: c.reason } : { variant: 'critical', text: 'Afgewezen', supporting: c.reason };
+    if (c.objection) return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: 'Toegekend na bezwaar', supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: 'Afgewezen, bezwaar ongegrond', supporting: c.reason };
+    return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: 'Toegekend', supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: 'Afgewezen', supporting: c.reason };
   }
-  if (c.status === 'IN_REVIEW') return { variant: 'info', text: 'In behandeling', supporting: 'Een behandelaar beoordeelt uw aanvraag. U ontvangt bericht.' };
-  return { variant: 'info', text: 'Ingediend', supporting: 'Uw aanvraag is ontvangen.' };
+  if (c.status === 'IN_REVIEW') return { variant: 'accent', icon: 'clock', text: 'In behandeling', supporting: 'Een behandelaar beoordeelt uw aanvraag. U ontvangt bericht.' };
+  return { variant: 'accent', icon: 'paper-plane', text: 'Ingediend', supporting: 'Uw aanvraag is ontvangen.' };
 });
 const citizenEvents = computed(() =>
   (currentCase.value?.events ?? []).map((e) => ({
@@ -274,7 +279,7 @@ function claimStatus(cl) {
               <nldd-rich-text spacing="tight"><p>De regeling wordt met uw gegevens berekend…</p></nldd-rich-text>
             </template>
             <template v-else>
-              <nldd-banner v-if="verdict === 'unknown'" variant="info" text="De wet kan nog geen uitkomst geven" :supporting-text="`Er ${verdictMissing}. Zonder deze gegevens kan de aanvraag niet worden beoordeeld.`"></nldd-banner>
+              <nldd-banner v-if="verdict === 'unknown'" variant="accent" text="De wet kan nog geen uitkomst geven" :supporting-text="`Er ${verdictMissing}. Zonder deze gegevens kan de aanvraag niet worden beoordeeld.`"></nldd-banner>
               <nldd-list v-else variant="box-tinted" accessible-label="Uitkomst">
                 <nldd-list-item size="md">
                   <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
@@ -310,7 +315,7 @@ function claimStatus(cl) {
 
           <!-- Status of the application -->
           <template v-else-if="currentCase">
-            <nldd-banner :variant="statusView.variant" :text="statusView.text" :supporting-text="statusView.supporting"></nldd-banner>
+            <nldd-banner :variant="statusView.variant" :icon="statusView.icon" :text="statusView.text" :supporting-text="statusView.supporting"></nldd-banner>
             <nldd-rich-text v-if="justSubmitted" spacing="tight"><p>Uw aanvraag is ingediend bij {{ service }}. U kunt de voortgang hier volgen.</p></nldd-rich-text>
             <nldd-list v-if="claimedPrimary" variant="box-tinted" accessible-label="Aangevraagd">
               <nldd-list-item size="sm">

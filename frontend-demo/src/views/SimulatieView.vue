@@ -390,7 +390,7 @@ function exportJson() {
           <nldd-simple-section v-if="mainView === 'overzicht'" width="full">
             <nldd-container gap="16">
               <nldd-banner v-if="activeRun.cancelled" variant="warning" text="Gestopt" :supporting-text="`${activeRun.results.length} van ${activeRun.subjects.length} doorgerekend.`"></nldd-banner>
-              <nldd-banner v-if="Object.keys(activeRun.overrides).length" variant="info" text="Met aangepaste parameters" :supporting-text="Object.entries(activeRun.overrides).map(([id, o]) => `${corpus.lawById(id)?.name ?? id}: ${Object.entries(o).map(([k, v]) => `${k} = ${v}`).join(', ')}`).join(' · ')"></nldd-banner>
+              <nldd-banner v-if="Object.keys(activeRun.overrides).length" variant="accent" text="Met aangepaste parameters" :supporting-text="Object.entries(activeRun.overrides).map(([id, o]) => `${corpus.lawById(id)?.name ?? id}: ${Object.entries(o).map(([k, v]) => `${k} = ${v}`).join(', ')}`).join(' · ')"></nldd-banner>
 
               <nldd-card accessible-label="Populatie">
                 <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center"><nldd-title-cell size="5" text="Populatie" :supporting-text="`Peildatum ${formatValue(activeRun.referenceDate)} · seed ${activeRun.params.seed} · ${(activeRun.durationMs / 1000).toFixed(1)} s`"></nldd-title-cell></nldd-container>
