@@ -6,6 +6,8 @@
 services:
   ACICT:
     name: Adviescollege ICT-toetsing
+  ADMIN_FISCALE_LU:
+    name: Administration de l'enregistrement (LU)
   ANVS:
     name: Autoriteit Nucleaire Veiligheid en Stralingsbescherming
     logo: ANVS

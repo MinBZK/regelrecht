@@ -1,0 +1,95 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
+$id: vliegbelasting_korting_klimaatneutraal_lu
+uuid: b1b1b1b1-b1b1-b1b1-b1b1-b1b1b1b10114
+regulatory_layer: WET
+jurisdictie: LU
+name: Vliegbelasting — duurzaamheidskorting (LU)
+service: ADMIN_FISCALE_LU
+discoverable: HIDDEN
+publication_date: '2026-07-21'
+valid_from: '2026-07-21'
+officiele_titel: Vliegbelastingwet Luxemburg - Klimaatneutrale kortingsregeling
+eli: https://legilux.public.lu/eli/etat/lu/2026/07/21/vliegbelasting_klimaat
+url: https://legilux.public.lu/eli/etat/lu/2026/07/21/vliegbelasting_klimaat
+
+legal_basis:
+  - law_id: luxemburgse_vliegbelastingwet
+    article: '4LM-1'
+    description: Duurzaamheidskorting voor klimaatneutrale vluchten
+
+articles:
+  - number: '4LM-1'
+    text: |
+      Duurzaamheidskorting vliegbelasting
+
+      1. Een passagier komt in aanmerking voor een duurzaamheidskorting
+      indien de vlucht klimaatneutraal is en de vlucht een binnenlandse
+      vlucht is of de afstand tot de bestemming minder dan 500 km bedraagt.
+
+      2. De korting bedraagt vijftig procent van de vliegbelasting.
+    url: https://legilux.public.lu/eli/etat/lu/2026/07/21/vliegbelasting_klimaat#art4LM-1
+
+    machine_readable:
+      implements:
+        - law: luxemburgse_vliegbelastingwet
+          article: '4LM-1'
+          open_term: recht_op_korting
+      execution:
+        parameters:
+          - name: klimaatneutraal
+            type: boolean
+            required: true
+            description: Is de vlucht klimaatneutraal (SAF-gebaseerd)?
+          - name: binnenlands
+            type: boolean
+            required: true
+            description: Zowel vertrek als bestemming in Luxemburg?
+          - name: afstand_km
+            type: number
+            required: true
+            description: Afstand tot bestemming in kilometers
+          - name: vliegbelasting_bedrag
+            type: number
+            required: true
+            description: Basis vliegbelasting in EUR
+
+        output:
+          - name: recht_op_korting
+            type: boolean
+            description: Passagier heeft recht op duurzaamheidskorting
+          - name: korting_bedrag
+            type: number
+            description: Korting in EUR (0 indien geen recht)
+
+        actions:
+          - output: recht_op_korting
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $klimaatneutraal
+                  value: true
+                - operation: OR
+                  conditions:
+                    - operation: EQUALS
+                      subject: $binnenlands
+                      value: true
+                    - operation: LESS_THAN
+                      subject: $afstand_km
+                      value: 500
+
+          - output: korting_bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $recht_op_korting
+                    value: true
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $vliegbelasting_bedrag
+                      - 0.50
+              default: 0
