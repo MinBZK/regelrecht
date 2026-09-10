@@ -22,7 +22,12 @@ profiles:
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
       Bekijk hier uw toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
-    feature_flags: {DELEGATION: false, AUTO_APPROVE_CLAIMS: false}
+    # DELEGATION staat aan: Merijn heeft ouderlijk gezag over twee kinderen
+    # (Burgerlijk Wetboek) en vertegenwoordigt twee ondernemingen
+    # (Machtigingenwet), waarvan één als vennoot met alleen leesrecht. Dat
+    # verschil in rechten komt uit de wet zelf en is precies wat de demo laat
+    # zien.
+    feature_flags: {DELEGATION: true, AUTO_APPROVE_CLAIMS: false}
     sidebar_laws: null
     disabled_laws:
       BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]

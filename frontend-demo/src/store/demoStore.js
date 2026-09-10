@@ -16,6 +16,7 @@ import {
   registerClaims,
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
+import { DELEGATION_TYPE_LABELS, delegationKey, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
@@ -34,6 +35,10 @@ function defaultState() {
     cases: [],
     claims: [],
     presenterName: '',
+    // Namens wie er gehandeld wordt: null is voor zichzelf. Bewaard als
+    // sleutel (`BUSINESS:85234567`), niet als het hele object, want de
+    // machtiging zelf komt uit de wet en wordt bij het laden opnieuw bepaald.
+    delegationKey: null,
   };
 }
 
@@ -176,8 +181,67 @@ const persona = computed(() => {
   return corpus.value.profiles.profiles?.[p.bsn] ?? null;
 });
 
-/** Parameters the portal passes to a law for the active persona. */
+// ---- machtigingen ----------------------------------------------------------
+
+/**
+ * Namens wie de ingelogde persoon mag handelen, volgens de wet. Elke
+ * provider-wet wordt met de engine geëvalueerd, dus dit verandert mee met de
+ * peildatum en met gecorrigeerde gegevens; `dataVersion` triggert dat.
+ */
+const delegationResult = computed(() => {
+  // Lees `dataVersion` zodat een correctie of een nieuwe peildatum doorwerkt.
+  dataVersion.value; // eslint-disable-line no-unused-expressions
+  if (!ready.value || !profile.value?.bsn) return { delegations: [], errors: [] };
+  return delegationsFor(engine.value, corpus.value, profile.value.bsn, state.referenceDate);
+});
+
+/** Of dit profiel machtigingen mag gebruiken (demo-config per profiel). */
+const delegationEnabled = computed(() => !!profile.value?.feature_flags?.DELEGATION);
+
+/** De machtigingen die dit profiel kan kiezen; leeg als de vlag uit staat. */
+const delegations = computed(() => (delegationEnabled.value ? delegationResult.value.delegations : []));
+
+/**
+ * De gekozen machtiging, of null als er voor zichzelf gehandeld wordt.
+ * Een bewaarde keuze die niet meer bestaat (andere peildatum, ander profiel)
+ * vervalt stil naar 'voor zichzelf': dat is de veilige kant.
+ */
+const activeDelegation = computed(() => {
+  if (!state.delegationKey) return null;
+  const found = delegations.value.find((d) => delegationKey(d) === state.delegationKey) ?? null;
+  return found && found.subjectType !== 'SELF' ? found : null;
+});
+
+/** Mag er in de huidige context gecorrigeerd en aangevraagd worden? */
+const canSubmitClaims = computed(() => maySubmitClaims(activeDelegation.value));
+
+/**
+ * De BSN waar het nu over gaat. Namens een kind is dat het kind; namens een
+ * onderneming blijft het de gemachtigde, want een onderneming heeft er geen.
+ */
+function subjectBsn() {
+  const d = activeDelegation.value;
+  return d?.subjectType === 'CITIZEN' ? d.subjectId : profile.value?.bsn;
+}
+
+function setDelegation(delegation) {
+  const key = delegationKey(delegation);
+  // 'Mezelf' is geen machtiging maar de afwezigheid ervan.
+  state.delegationKey = !delegation || delegation.subjectType === 'SELF' ? null : key;
+}
+
+/**
+ * Parameters the portal passes to a law for the active persona.
+ *
+ * Handelt iemand namens een ander, dan gaan de parameters over die ander: een
+ * onderneming wordt op haar KvK-nummer bevraagd, een kind op zijn BSN. Dat is
+ * het hele punt van machtigen — de wet rekent over het onderwerp, niet over
+ * degene die de knop indrukt.
+ */
 function personaParams() {
+  const d = activeDelegation.value;
+  if (d?.subjectType === 'BUSINESS') return { kvk_nummer: d.subjectId };
+  if (d?.subjectType === 'CITIZEN') return { bsn: d.subjectId };
   const p = profile.value;
   const params = { bsn: p.bsn };
   if (p.kvk) params.kvk_nummer = p.kvk;
@@ -186,6 +250,8 @@ function personaParams() {
 
 function setProfile(key) {
   state.profileKey = key;
+  // De machtigingen van het vorige profiel gelden niet voor dit profiel.
+  state.delegationKey = null;
 }
 
 function setReferenceDate(date) {
@@ -193,19 +259,39 @@ function setReferenceDate(date) {
   reregister();
 }
 
-/** Is a law shown on the active profile's portal? */
+/**
+ * Is a law shown on the active profile's portal?
+ *
+ * `hidden_laws` geldt altijd: dat zijn infrastructuurwetten die nergens op een
+ * portaal horen. `disabled_laws` is iets anders — het snoeit het portaal van
+ * één persona bij, zodat het verhaal van díe persoon overzichtelijk blijft.
+ * Zodra iemand namens een ander handelt gaat dat niet meer op: de regelingen
+ * van een onderneming zijn niet weggelaten omdat de gemachtigde ze in zijn
+ * eigen portaal niet wil zien. Zonder deze uitzondering staat het portaal
+ * namens Merijns eigen bedrijf helemaal leeg.
+ */
 function isLawEnabled(lawEntry) {
   const cfg = corpus.value?.config ?? {};
   const inList = (map) => (map?.[lawEntry.service] ?? []).some((p) => lawEntry.law_path === p || lawEntry.law_path.startsWith(`${p}/`));
   if (inList(cfg.hidden_laws)) return false;
-  if (inList(profile.value?.disabled_laws)) return false;
+  if (!activeDelegation.value && inList(profile.value?.disabled_laws)) return false;
   return true;
 }
 
-/** Laws the active persona can discover on their portal. */
+/**
+ * Laws the active persona can discover on their portal.
+ *
+ * Namens een onderneming zijn dat de ondernemersregelingen, namens een kind de
+ * burgerregelingen: waar de wet over gaat volgt het onderwerp, niet degene die
+ * inlogt. Het profiel bepaalt nog wel wat verborgen blijft, want dat is een
+ * keuze van de demo en niet van de wet.
+ */
 const portalLaws = computed(() => {
   if (!corpus.value || !profile.value) return [];
-  const wanted = profile.value.type === 'ondernemer' ? 'BUSINESS' : 'CITIZEN';
+  const d = activeDelegation.value;
+  const wanted = d
+    ? d.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN'
+    : profile.value.type === 'ondernemer' ? 'BUSINESS' : 'CITIZEN';
   return [...corpus.value.latestById.values()].filter(
     (law) => law.discoverable === wanted && isLawEnabled(law),
   );
@@ -217,8 +303,40 @@ function evaluate(lawEntry, params = personaParams(), outputs = null) {
 
 // ---- cases -----------------------------------------------------------------
 
-function findCase(lawEntry, bsn = profile.value?.bsn) {
-  return state.cases.find((c) => c.lawId === lawEntry.id && c.bsn === bsn && c.status !== 'WITHDRAWN') ?? null;
+/**
+ * De zaak van het huidige onderwerp voor deze wet. Namens een onderneming is
+ * dat de zaak op haar KvK-nummer, namens een kind die op zijn BSN.
+ */
+function findCase(lawEntry, subject = null) {
+  const params = subject ?? personaParams();
+  return (
+    state.cases.find(
+      (c) =>
+        c.lawId === lawEntry.id &&
+        c.status !== 'WITHDRAWN' &&
+        (params.bsn !== undefined ? c.bsn === params.bsn : c.kvk === params.kvk_nummer),
+    ) ?? null
+  );
+}
+
+/**
+ * Wie de handeling verricht, als het niet de persoon zelf is. Komt in het
+ * dossier terecht: een besluit dat namens een ander is aangevraagd moet
+ * terug te vinden zijn bij wie dat deed.
+ */
+function actingOn() {
+  const d = activeDelegation.value;
+  if (!d) return null;
+  return {
+    actorBsn: profile.value?.bsn ?? null,
+    actorName: profile.value?.name ?? null,
+    subjectId: d.subjectId,
+    subjectName: d.subjectName,
+    subjectType: d.subjectType,
+    delegationType: d.delegationType,
+    lawId: d.lawId,
+    lawName: d.lawName,
+  };
 }
 
 /**
@@ -228,6 +346,7 @@ function findCase(lawEntry, bsn = profile.value?.bsn) {
  */
 function submitCase(lawEntry, evaluation, params = personaParams()) {
   const bsn = params.bsn;
+  const acting = actingOn();
   const pendingClaims = state.claims.filter(
     (c) => c.bsn === bsn && c.status === 'PENDING' && c.tileLawId === lawEntry.id,
   );
@@ -254,8 +373,16 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
     submittedAt: nowIso(),
     decidedAt: needsReview ? null : nowIso(),
     objection: null,
+    // Namens wie deze aanvraag is ingediend, als dat niet de persoon zelf was.
+    acting,
     events: [
-      { at: nowIso(), type: 'SUBMITTED', text: 'Aanvraag ingediend door de burger.' },
+      {
+        at: nowIso(),
+        type: 'SUBMITTED',
+        text: acting
+          ? `Aanvraag ingediend door ${acting.actorName} namens ${acting.subjectName} (${DELEGATION_TYPE_LABELS[acting.delegationType] ?? acting.delegationType}).`
+          : 'Aanvraag ingediend door de burger.',
+      },
       needsReview
         ? { at: nowIso(), type: 'IN_REVIEW', text: pendingClaims.length ? 'Handmatige beoordeling: de burger heeft gegevens gewijzigd.' : undecided ? 'Handmatige beoordeling: de wet kan nog geen uitkomst geven, er ontbreken gegevens.' : 'Handmatige beoordeling (steekproef).' }
         : { at: nowIso(), type: 'DECIDED', text: requirementsMet ? 'Automatisch toegekend.' : 'Automatisch afgewezen.' },
@@ -318,6 +445,11 @@ function decideObjection(caseId, upheld, reason) {
  * case's, and `approve` is true, because the caseworker is the one who would
  * otherwise approve it.
  *
+ * Handelt iemand namens een kind, dan hoort de correctie bij dat kind: het
+ * gaat om diens gegevens. Namens een onderneming blijft de correctie op het
+ * KvK-nummer staan (`keyField`/`keyValue` dragen dat al), en is de BSN van de
+ * gemachtigde alleen wie het deed.
+ *
  * `evidence` is `{ name, type, size, dataUrl? }` for an uploaded document;
  * `hardship` is `{ clause }` when the correction appeals to a hardship clause.
  */
@@ -334,10 +466,11 @@ function submitClaim({
   hardship = null,
   selfDeclared = false,
   claimant = 'BURGER',
-  bsn = profile.value?.bsn,
+  bsn = subjectBsn(),
   caseId = null,
   approve = null,
 }) {
+  const acting = claimant === 'BEHANDELAAR' ? null : actingOn();
   // A value no register holds is the citizen's own declaration and applies at
   // once; a correction of a register value waits for the caseworker unless the
   // profile auto-approves. An appeal to a hardship clause always needs a human,
@@ -360,6 +493,8 @@ function submitClaim({
     selfDeclared,
     status: autoApprove ? 'APPROVED' : 'PENDING',
     caseId,
+    // Namens wie deze correctie is ingediend, als dat niet de persoon zelf was.
+    acting,
     submittedAt: nowIso(),
     decidedAt: autoApprove ? nowIso() : null,
   };
@@ -377,7 +512,7 @@ function decideClaim(claimId, approved, reason = '') {
   reregister();
 }
 
-function claimFor(lawId, input, bsn = profile.value?.bsn) {
+function claimFor(lawId, input, bsn = subjectBsn()) {
   return state.claims.find((c) => c.lawId === lawId && c.input === input && c.bsn === bsn && c.status !== 'REJECTED') ?? null;
 }
 
@@ -399,6 +534,13 @@ export function useDemo() {
     profile,
     persona,
     personaParams,
+    delegations,
+    delegationEnabled,
+    delegationErrors: computed(() => delegationResult.value.errors),
+    activeDelegation,
+    canSubmitClaims,
+    setDelegation,
+    subjectBsn,
     setProfile,
     setReferenceDate,
     reregister,

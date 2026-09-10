@@ -21,7 +21,10 @@ const props = defineProps({
   nested: { type: Boolean, default: false },
 });
 const emit = defineEmits(['edit']);
-const { corpus, claimFor } = useDemo();
+// `canSubmitClaims` is false wanneer iemand namens een ander handelt met
+// alleen leesrecht: dan is een waarde te zien maar niet te corrigeren, en
+// hoort de rij ook niet als knop te reageren.
+const { corpus, claimFor, canSubmitClaims } = useDemo();
 
 function specFor(node) {
   return fieldSpec(corpus.value?.lawById(node.law)?.doc, node.name);
@@ -62,7 +65,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
 </script>
 
 <template>
-  <nldd-list-item v-for="node in values" :key="`${node.law}|${node.name}`" :slot="slotName" size="sm" button @click="emit('edit', node)">
+  <nldd-list-item v-for="node in values" :key="`${node.law}|${node.name}`" :slot="slotName" size="sm" :button="canSubmitClaims || undefined" @click="canSubmitClaims && emit('edit', node)">
     <nldd-spacer-cell v-for="i in depth" :key="i" size="20"></nldd-spacer-cell>
     <nldd-cell v-if="node.service"><OrgLogo :service="node.service" size="sm" /></nldd-cell>
     <nldd-icon-cell v-else-if="node.corrected" icon="edit" size="16" color="accent"></nldd-icon-cell>
@@ -76,7 +79,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
       <template v-else>{{ formatValue(node.value, specFor(node)) }}</template>
     </nldd-text-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-    <nldd-icon-cell icon="edit" size="16" color="secondary"></nldd-icon-cell>
+    <nldd-icon-cell v-if="canSubmitClaims" icon="edit" size="16" color="secondary"></nldd-icon-cell>
   </nldd-list-item>
   <!-- A law row expands only when it has children to show. A law whose inputs
        the trace does not carry (a register that answers straight from its own
@@ -99,7 +102,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-text-cell size="sm" :text="humanize(node.name)" :supporting-text="isUnknown(node.value) ? `berekend door ${lawName(node.law)} · ${formatMissing(node.value, { ownLaw: node.law, lawName })}` : `berekend door ${lawName(node.law)}`"></nldd-text-cell>
     <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="isUnknown(node.value) ? 'secondary' : 'default'" :text="formatValue(node.value, specFor(node))"></nldd-text-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-    <nldd-icon-cell icon="edit" size="16" color="secondary" role="button" tabindex="0" accessible-label="Corrigeren" @click.stop="emit('edit', node)" @keydown.enter.stop="emit('edit', node)"></nldd-icon-cell>
+    <nldd-icon-cell v-if="canSubmitClaims" icon="edit" size="16" color="secondary" role="button" tabindex="0" accessible-label="Corrigeren" @click.stop="emit('edit', node)" @keydown.enter.stop="emit('edit', node)"></nldd-icon-cell>
     <nldd-spacer-cell v-if="node.children?.length" size="8"></nldd-spacer-cell>
     <nldd-icon-cell v-if="node.children?.length" disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
     <DataLineage v-if="node.children?.length" :nodes="node.children" :depth="depth + 1" nested @edit="emit('edit', $event)" />

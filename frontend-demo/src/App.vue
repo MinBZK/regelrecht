@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
 import { useDemo } from './store/demoStore.js';
+import { delegationLabel } from './data/delegation.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
 import { usePresentation } from './presentation/usePresentation.js';
 
@@ -14,7 +15,7 @@ import { usePresentation } from './presentation/usePresentation.js';
 const route = useRoute();
 const router = useRouter();
 const demo = useDemo();
-const { ready, loadError, profile, profileKey, corpus, state } = demo;
+const { ready, loadError, profile, profileKey, corpus, state, delegations, delegationEnabled, activeDelegation } = demo;
 
 // The design system derives its scroll mode (document vs. per-pane) from the
 // outermost split view once, at connect. Ours arrives later (the tab views are
@@ -58,7 +59,14 @@ const tabs = computed(() => [
   { name: 'graaf', text: 'Graaf', icon: 'centralized-network', to: '/graaf' },
   { name: 'scenarios', text: "Scenario's", icon: 'checklist', to: '/scenarios' },
   { name: 'simulatie', text: 'Simulatie', icon: 'chart-x-y-axis-line', to: '/simulatie' },
-  { name: 'portaal', text: profile.value?.portal_tab_label ?? 'Mijn overheid', icon: 'person', to: '/portaal' },
+  // Namens een onderneming heet het tabblad naar die onderneming: 'Mijn
+  // overheid' gaat over de ingelogde burger, en dat is dan niet het onderwerp.
+  {
+    name: 'portaal',
+    text: activeDelegation.value?.subjectType === 'BUSINESS' ? activeDelegation.value.subjectName : profile.value?.portal_tab_label ?? 'Mijn overheid',
+    icon: activeDelegation.value?.subjectType === 'BUSINESS' ? 'building' : 'person',
+    to: '/portaal',
+  },
   { name: 'zaaksysteem', text: 'Zaaksysteem', icon: 'inbox', to: '/zaaksysteem' },
 ]);
 
@@ -71,6 +79,24 @@ const profileOptions = computed(() => Object.entries(corpus.value?.config?.profi
 function onProfileSelect(e) {
   const value = e.target?.getAttribute?.('value');
   if (value) demo.setProfile(value);
+}
+
+// ---- machtigingen ----------------------------------------------------------
+// Namens wie er gehandeld wordt. De lijst komt uit de wet (elke wet met
+// discoverable: DELEGATION_PROVIDER), niet uit de app.
+
+/** Toon de keuze pas als er echt iets te kiezen valt. */
+const showDelegation = computed(() => delegationEnabled.value && delegations.value.length > 1);
+
+/** Wat er in de knop staat: 'Mezelf' of degene namens wie gehandeld wordt. */
+const delegationButtonText = computed(() => activeDelegation.value?.subjectName ?? 'Mezelf');
+
+const DELEGATION_ICONS = { SELF: 'person', CITIZEN: 'person', BUSINESS: 'building' };
+
+function onDelegationSelect(e) {
+  const value = e.target?.getAttribute?.('value');
+  if (!value) return;
+  demo.setDelegation(delegations.value.find((d) => `${d.subjectType}:${d.subjectId}` === value) ?? null);
 }
 
 const { colorScheme, setColorScheme } = useColorScheme();
@@ -128,6 +154,31 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
             <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="`${openCases} te beoordelen`" @click="router.push('/zaaksysteem')"></nldd-button>
+          </nldd-toolbar-item>
+          <!-- Namens wie: alleen als de wet meer dan één mogelijkheid geeft.
+               Staat naast het profiel, want het hoort bij wie er ingelogd is. -->
+          <nldd-toolbar-item slot="end" v-if="showDelegation" class="rr-hide-presenting">
+            <nldd-button
+              size="md"
+              :variant="activeDelegation ? 'accent-tinted' : 'neutral-transparent'"
+              :start-icon="activeDelegation ? DELEGATION_ICONS[activeDelegation.subjectType] : 'switch'"
+              :text="delegationButtonText"
+              expandable
+              popup-type="menu"
+            >
+              <nldd-menu slot="popup" accessible-label="Namens wie" @select="onDelegationSelect">
+                <nldd-menu-item
+                  v-for="d in delegations"
+                  :key="`${d.subjectType}:${d.subjectId}`"
+                  type="radio"
+                  :value="`${d.subjectType}:${d.subjectId}`"
+                  :text="d.subjectName"
+                  :details="delegationLabel(d)"
+                  :icon="DELEGATION_ICONS[d.subjectType] ?? 'person'"
+                  :selected="(activeDelegation ? `${activeDelegation.subjectType}:${activeDelegation.subjectId}` : `SELF:${profile?.bsn}`) === `${d.subjectType}:${d.subjectId}` || undefined"
+                ></nldd-menu-item>
+              </nldd-menu>
+            </nldd-button>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting">
             <nldd-button size="md" variant="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">

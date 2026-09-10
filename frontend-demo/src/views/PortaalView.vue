@@ -5,6 +5,7 @@ import EditValueSheet from '../components/EditValueSheet.vue';
 import ApplicationSheet from '../components/ApplicationSheet.vue';
 import { fieldSpec, numericImpact } from '../data/format.js';
 import { loadFailures } from '../engine/useDemoEngine.js';
+import { PERMISSION_LABELS, delegationLabel } from '../data/delegation.js';
 import { useDemo } from '../store/demoStore.js';
 
 // The citizen's (or entrepreneur's) portal: every regeling the persona can
@@ -13,7 +14,7 @@ import { useDemo } from '../store/demoStore.js';
 // submits an application.
 
 const demo = useDemo();
-const { profile, persona, portalLaws, corpus, state } = demo;
+const { profile, persona, portalLaws, corpus, state, activeDelegation, canSubmitClaims } = demo;
 
 // Impact per law (from the tiles' evaluations) drives the ordering.
 const impact = reactive({});
@@ -52,8 +53,42 @@ function onApply({ law }) {
   applying.value = law;
 }
 
-const pendingClaims = computed(() => state.claims.filter((c) => c.bsn === profile.value?.bsn && c.status === 'PENDING'));
-const properties = computed(() => persona.value?.properties ?? []);
+const pendingClaims = computed(() => state.claims.filter((c) => c.bsn === demo.subjectBsn() && c.status === 'PENDING'));
+const properties = computed(() => (activeDelegation.value ? [] : persona.value?.properties ?? []));
+
+// Namens een ander gaat de pagina over die ander: de vraag "waar heb ik recht
+// op" is dan niet de goede vraag, en de persoonsbeschrijving van de
+// gemachtigde hoort er evenmin te staan.
+const heading = computed(() => {
+  const d = activeDelegation.value;
+  if (!d) return profile.value?.portal_heading;
+  return d.subjectType === 'BUSINESS'
+    ? `Welke regelingen gelden voor ${d.subjectName}?`
+    : `Waar heeft ${d.subjectName} recht op?`;
+});
+const subtitle = computed(() => {
+  const d = activeDelegation.value;
+  if (!d) return profile.value?.portal_subtitle;
+  return d.subjectType === 'BUSINESS'
+    ? 'Bekijk de subsidies, rapportageverplichtingen, vergunningen en andere regelingen van deze onderneming.'
+    : 'Bekijk de toeslagen, uitkeringen en andere regelingen waar deze persoon mee te maken heeft.';
+});
+
+// Namens wie er gehandeld wordt. De machtiging komt uit een wet, en die wet
+// staat erbij: waaróm iemand dit mag zien is onderdeel van het antwoord.
+const actingText = computed(() => {
+  const d = activeDelegation.value;
+  if (!d) return null;
+  const kind = delegationLabel(d);
+  return `U handelt namens ${d.subjectName}${kind ? ` (${kind})` : ''}.`;
+});
+const actingSupport = computed(() => {
+  const d = activeDelegation.value;
+  if (!d) return null;
+  const rights = d.permissions.map((p) => PERMISSION_LABELS[p] ?? p).join(', ').toLowerCase();
+  const source = d.lawName ? ` Deze machtiging volgt uit ${d.lawName}.` : '';
+  return `Wat u hier ziet zijn de regelingen van ${d.subjectName}. U mag: ${rights}.${source}`;
+});
 
 // A law the engine refused to load (a type-check finding, RFC-037) is missing
 // from every tile that depends on it. The refusal is shown here, not buried in
@@ -74,20 +109,36 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
          de tekst boven de tegels op dezelfde marge staat. -->
     <nldd-simple-section width="1440px">
       <nldd-title slot="header" size="2">
-        <span slot="overline">Ingelogd als {{ persona?.name ?? profile?.name }} · demo, geen echte overheidsdienst</span>
-        <h1>{{ profile?.portal_heading }}</h1>
-        <span slot="subtitle">{{ profile?.portal_subtitle }}</span>
+        <span slot="overline">Ingelogd als {{ persona?.name ?? profile?.name }}<template v-if="activeDelegation"> · namens {{ activeDelegation.subjectName }}</template> · demo, geen echte overheidsdienst</span>
+        <h1>{{ heading }}</h1>
+        <span slot="subtitle">{{ subtitle }}</span>
         <!-- Tags naast elkaar: gap 8, dezelfde scheiding als de spacer-cells in de lijstrijen. -->
         <nldd-container slot="actions" layout="wrap" gap="8">
           <nldd-tag v-for="p in properties" :key="p" size="sm" :text="p"></nldd-tag>
           <nldd-tag v-if="profile?.kvk" size="sm" icon="building" :text="`KVK ${profile.kvk}`"></nldd-tag>
         </nldd-container>
       </nldd-title>
-      <nldd-rich-text v-if="persona?.description" spacing="tight"><p><em>{{ persona.description }}</em></p></nldd-rich-text>
+      <!-- De beschrijving hoort bij de persona zelf; namens een ander zegt zij niets. -->
+      <nldd-rich-text v-if="persona?.description && !activeDelegation" spacing="tight"><p><em>{{ persona.description }}</em></p></nldd-rich-text>
       <!-- The persona line above sets `spacing="tight"`, which strips the space
            under it, so a banner placed straight after touched it (measured: 0px
            between them). The banners get their own container with a gap. -->
-      <nldd-container v-if="loadFailures.length || pendingClaims.length" padding-top="16" gap="12">
+      <nldd-container v-if="loadFailures.length || pendingClaims.length || activeDelegation" padding-top="16" gap="12">
+      <!-- Namens een ander handelen is niet hetzelfde als zelf inloggen; dat
+           hoort in beeld te blijven zolang het duurt, met de wet erbij. -->
+      <nldd-banner
+        v-if="activeDelegation"
+        variant="accent"
+        :icon="activeDelegation.subjectType === 'BUSINESS' ? 'building' : 'person'"
+        :text="actingText"
+        :supporting-text="actingSupport"
+      ></nldd-banner>
+      <nldd-banner
+        v-if="activeDelegation && !canSubmitClaims"
+        variant="warning"
+        text="U mag deze gegevens alleen inzien"
+        supporting-text="Met deze machtiging kunt u geen gegevens corrigeren en geen aanvraag indienen."
+      ></nldd-banner>
       <nldd-banner
         v-if="loadFailures.length"
         variant="critical"
