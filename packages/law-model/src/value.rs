@@ -23,9 +23,20 @@ use std::fmt;
 /// originates from an article with untranslatable constructs. It propagates
 /// through operations: any operation involving an Untranslatable input produces
 /// an Untranslatable output.
+///
+/// Two kinds of "nothing" are kept apart (RFC-036):
+///
+/// - [`Value::Null`] is **absence**: the register is authoritative and says
+///   there is none (no partner, no rent, no permit). It is a value a law can
+///   test for (`EQUALS … null`), but not calculate with or decide on.
+/// - [`Value::Unknown`] is **a fact nobody has (yet)**: no data source held
+///   the input, or an optional parameter was not passed. It cannot be written
+///   in a law; only resolution produces it, and it propagates through every
+///   operation carrying the names of the missing facts, so a decision process
+///   can ask for exactly those (Awb art. 4:5).
 #[derive(Debug, Clone, Default)]
 pub enum Value {
-    /// Null/None value
+    /// Null/None value: an absence the data is authoritative about (RFC-036).
     #[default]
     Null,
     /// Boolean value
@@ -48,10 +59,47 @@ pub enum Value {
         /// The construct that could not be translated
         construct: String,
     },
+    /// Unknown: the facts listed are missing (RFC-036). Never empty.
+    ///
+    /// Built with [`Value::unknown`] and widened with [`Value::merge_unknown`];
+    /// the list is ordered by first appearance and free of duplicates.
+    Unknown(Vec<MissingFact>),
+}
+
+/// One fact the engine needed and nobody supplied (RFC-036).
+///
+/// This is what an Unknown outcome is made of: not "null", but the name of
+/// the input or parameter that has no value, and the law that declares it.
+/// A decision process turns this list into the request for completion of an
+/// incomplete application (Awb art. 4:5).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct MissingFact {
+    /// `$id` of the law whose input or parameter is missing.
+    pub law: String,
+    /// The input or parameter name.
+    pub name: String,
+    /// Why it is missing.
+    pub kind: MissingKind,
+}
+
+/// Why a fact is missing (RFC-036).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MissingKind {
+    /// A `source: {}` input no data source has a value for.
+    NoData,
+    /// A `required: false` parameter the caller did not pass.
+    NotPassed,
 }
 
 /// Sentinel key used to identify serialized Untranslatable values.
 const UNTRANSLATABLE_KEY: &str = "__untranslatable";
+
+/// Sentinel key used to identify serialized Unknown values (RFC-036).
+const UNKNOWN_KEY: &str = "__unknown";
+
+/// Key under which an Unknown carries its missing facts.
+const MISSING_KEY: &str = "missing";
 
 impl Serialize for Value {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
@@ -77,8 +125,54 @@ impl Serialize for Value {
                 map.serialize_entry("construct", construct)?;
                 map.end()
             }
+            Value::Unknown(missing) => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry(UNKNOWN_KEY, &true)?;
+                map.serialize_entry(MISSING_KEY, missing)?;
+                map.end()
+            }
         }
     }
+}
+
+/// Read the `missing` list of a serialized Unknown back into facts.
+///
+/// Every entry has to be a complete `{law, name, kind}` object; a list that
+/// is empty or malformed is not an Unknown at all, and the caller reports it
+/// as such rather than inventing a provenance.
+fn missing_facts_from_value(value: &Value) -> Option<Vec<MissingFact>> {
+    let Value::Array(items) = value else {
+        return None;
+    };
+    let mut facts = Vec::with_capacity(items.len());
+    for item in items {
+        let Value::Object(fields) = item else {
+            return None;
+        };
+        let law = fields.get("law")?.as_str()?.to_string();
+        let name = fields.get("name")?.as_str()?.to_string();
+        let kind = match fields.get("kind")?.as_str()? {
+            "no_data" => MissingKind::NoData,
+            "not_passed" => MissingKind::NotPassed,
+            _ => return None,
+        };
+        facts.push(MissingFact { law, name, kind });
+    }
+    if facts.is_empty() {
+        return None;
+    }
+    Some(dedup_facts(facts))
+}
+
+/// Keep the first occurrence of every fact, in order of first appearance.
+fn dedup_facts(facts: Vec<MissingFact>) -> Vec<MissingFact> {
+    let mut seen: Vec<MissingFact> = Vec::with_capacity(facts.len());
+    for fact in facts {
+        if !seen.contains(&fact) {
+            seen.push(fact);
+        }
+    }
+    seen
 }
 
 impl<'de> Deserialize<'de> for Value {
@@ -155,6 +249,15 @@ impl<'de> Visitor<'de> for ValueVisitor {
             };
             return Ok(Value::Untranslatable { article, construct });
         }
+        // Check if this is a serialized Unknown (RFC-036). A marker without a
+        // usable `missing` list is a plain object, exactly as in
+        // `From<serde_json::Value>`: the two readers must agree, and `From`
+        // cannot fail. Only a well-formed sentinel becomes an Unknown.
+        if obj.get(UNKNOWN_KEY) == Some(&Value::Bool(true)) {
+            if let Some(missing) = obj.get(MISSING_KEY).and_then(missing_facts_from_value) {
+                return Ok(Value::Unknown(missing));
+            }
+        }
         Ok(Value::Object(obj))
     }
 }
@@ -171,6 +274,14 @@ impl PartialEq for Value {
             (Value::Object(a), Value::Object(b)) => a == b,
             // Two Untranslatable values are equal (like NaN == NaN in this domain)
             (Value::Untranslatable { .. }, Value::Untranslatable { .. }) => true,
+            // Two Unknowns are equal whatever facts they miss (RFC-036): both
+            // say "not decidable", and the provenance is diagnostics, not identity.
+            // This rule exists for the test harnesses (`is unknown` compares an
+            // output against an Unknown) and never decides a law: every engine
+            // operation checks `contains_unknown` on its operands first and
+            // propagates, so no comparison in a law reaches this arm with an
+            // Unknown at any depth.
+            (Value::Unknown(_), Value::Unknown(_)) => true,
             _ => false,
         }
     }
@@ -180,6 +291,87 @@ impl Value {
     /// Check if value is null
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
+    }
+
+    /// Check if value is unknown (RFC-036): a fact nobody has yet.
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Value::Unknown(_))
+    }
+
+    /// An Unknown for one missing fact (RFC-036).
+    pub fn unknown(law: impl Into<String>, name: impl Into<String>, kind: MissingKind) -> Value {
+        Value::Unknown(vec![MissingFact {
+            law: law.into(),
+            name: name.into(),
+            kind,
+        }])
+    }
+
+    /// The facts an Unknown misses; empty for every other variant.
+    pub fn missing_facts(&self) -> &[MissingFact] {
+        match self {
+            Value::Unknown(missing) => missing,
+            _ => &[],
+        }
+    }
+
+    /// Whether an Unknown sits anywhere inside this value: the value itself,
+    /// an element of an array, a field of an object, at any depth (RFC-036).
+    ///
+    /// A `LIST` or a `FOREACH` without `combine` may hold Unknown elements,
+    /// and a structural comparison of such a container has to propagate them
+    /// instead of comparing them as equal.
+    pub fn contains_unknown(&self) -> bool {
+        match self {
+            Value::Unknown(_) => true,
+            Value::Array(items) => items.iter().any(Value::contains_unknown),
+            Value::Object(fields) => fields.values().any(Value::contains_unknown),
+            _ => false,
+        }
+    }
+
+    /// Collect the missing facts of every Unknown nested anywhere in this
+    /// value, in order of appearance, into `into` (see [`Self::contains_unknown`]).
+    fn collect_missing_facts(&self, into: &mut Vec<MissingFact>) {
+        match self {
+            Value::Unknown(missing) => into.extend(missing.iter().cloned()),
+            Value::Array(items) => items.iter().for_each(|v| v.collect_missing_facts(into)),
+            Value::Object(fields) => fields.values().for_each(|v| v.collect_missing_facts(into)),
+            _ => {}
+        }
+    }
+
+    /// The union of the missing facts of every Unknown among `values`, as one
+    /// Unknown; `None` when none of them is Unknown (RFC-036).
+    ///
+    /// This is how an operation propagates: `ADD($huur, $partner_inkomen)`
+    /// with both unknown misses both facts, in the order the operands name
+    /// them, each fact once.
+    pub fn merge_unknown<'a>(values: impl IntoIterator<Item = &'a Value>) -> Option<Value> {
+        let facts: Vec<MissingFact> = values
+            .into_iter()
+            .flat_map(|v| v.missing_facts().iter().cloned())
+            .collect();
+        if facts.is_empty() {
+            return None;
+        }
+        Some(Value::Unknown(dedup_facts(facts)))
+    }
+
+    /// Like [`Self::merge_unknown`], but an Unknown counts wherever it sits
+    /// inside a value: `[unknown] == [1]` cannot be decided any more than
+    /// `unknown == 1` can (RFC-036). Used by the structural operations
+    /// (`EQUALS`, `NOT_EQUALS`, `IN`, `NOT_IN`), which compare containers
+    /// element by element.
+    pub fn merge_unknown_deep<'a>(values: impl IntoIterator<Item = &'a Value>) -> Option<Value> {
+        let mut facts = Vec::new();
+        for value in values {
+            value.collect_missing_facts(&mut facts);
+        }
+        if facts.is_empty() {
+            return None;
+        }
+        Some(Value::Unknown(dedup_facts(facts)))
     }
 
     /// Try to get value as boolean
@@ -260,10 +452,16 @@ impl Value {
             Value::Array(_) => "array",
             Value::Object(_) => "object",
             Value::Untranslatable { .. } => "untranslatable",
+            Value::Unknown(_) => "unknown",
         }
     }
 
     /// Convert value to boolean (Python-style truthiness)
+    ///
+    /// `Null` and `Unknown` read as `false` here for display code only
+    /// (RFC-036): no boolean context in the engine may reach this with either.
+    /// The logical operations reject `Null` (`AbsentOperand`) and propagate
+    /// `Unknown` before they ever ask for a truth value.
     pub fn to_bool(&self) -> bool {
         match self {
             Value::Null => false,
@@ -274,8 +472,18 @@ impl Value {
             Value::Array(a) => !a.is_empty(),
             Value::Object(o) => !o.is_empty(),
             Value::Untranslatable { .. } => false,
+            Value::Unknown(_) => false,
         }
     }
+}
+
+/// Render the names of missing facts as `law.name, law.name`.
+fn format_missing(missing: &[MissingFact]) -> String {
+    missing
+        .iter()
+        .map(|m| format!("{}.{}", m.law, m.name))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl From<bool> for Value {
@@ -395,6 +603,19 @@ fn json_object_as_untranslatable(
     Some(Value::Untranslatable { article, construct })
 }
 
+/// If the JSON object carries the Unknown marker (RFC-036), build the variant.
+///
+/// A marker without a usable `missing` list is not an Unknown: it stays an
+/// ordinary object, so a malformed sentinel cannot smuggle in an Unknown
+/// without provenance.
+fn json_object_as_unknown(obj: &serde_json::Map<String, serde_json::Value>) -> Option<Value> {
+    if obj.get(UNKNOWN_KEY) != Some(&serde_json::Value::Bool(true)) {
+        return None;
+    }
+    let missing = Value::from(obj.get(MISSING_KEY)?);
+    missing_facts_from_value(&missing).map(Value::Unknown)
+}
+
 impl From<serde_json::Value> for Value {
     fn from(v: serde_json::Value) -> Self {
         match v {
@@ -407,6 +628,9 @@ impl From<serde_json::Value> for Value {
             }
             serde_json::Value::Object(obj) => {
                 if let Some(u) = json_object_as_untranslatable(&obj) {
+                    return u;
+                }
+                if let Some(u) = json_object_as_unknown(&obj) {
                     return u;
                 }
                 let map: BTreeMap<String, Value> =
@@ -429,6 +653,9 @@ impl From<&serde_json::Value> for Value {
                 if let Some(u) = json_object_as_untranslatable(obj) {
                     return u;
                 }
+                if let Some(u) = json_object_as_unknown(obj) {
+                    return u;
+                }
                 let map: BTreeMap<String, Value> = obj
                     .iter()
                     .map(|(k, v)| (k.clone(), Value::from(v)))
@@ -437,6 +664,14 @@ impl From<&serde_json::Value> for Value {
             }
         }
     }
+}
+
+/// The JSON shape of an Unknown: `{"__unknown": true, "missing": [...]}`.
+fn unknown_to_json(missing: &[MissingFact]) -> serde_json::Value {
+    serde_json::json!({
+        UNKNOWN_KEY: true,
+        MISSING_KEY: missing,
+    })
 }
 
 impl From<&Value> for serde_json::Value {
@@ -458,6 +693,7 @@ impl From<&Value> for serde_json::Value {
                     "construct": construct,
                 })
             }
+            Value::Unknown(missing) => unknown_to_json(missing),
         }
     }
 }
@@ -483,6 +719,7 @@ impl From<Value> for serde_json::Value {
                     "construct": construct,
                 })
             }
+            Value::Unknown(missing) => unknown_to_json(&missing),
         }
     }
 }
@@ -518,6 +755,7 @@ impl fmt::Display for Value {
             Value::Untranslatable { article, construct } => {
                 write!(f, "UNTRANSLATABLE(art. {}: {})", article, construct)
             }
+            Value::Unknown(missing) => write!(f, "UNKNOWN({})", format_missing(missing)),
         }
     }
 }
@@ -871,6 +1109,200 @@ mod tests {
         assert!(json.contains("__untranslatable"));
         let parsed: Value = serde_json::from_str(&json).unwrap();
         assert!(parsed.is_untranslatable());
+    }
+
+    fn missing(law: &str, name: &str, kind: MissingKind) -> MissingFact {
+        MissingFact {
+            law: law.into(),
+            name: name.into(),
+            kind,
+        }
+    }
+
+    #[test]
+    fn test_unknown_constructor_and_accessors() {
+        let unknown = Value::unknown("wet_huur", "huur", MissingKind::NoData);
+        assert!(unknown.is_unknown());
+        assert!(!unknown.is_null());
+        assert_eq!(
+            unknown.missing_facts(),
+            &[missing("wet_huur", "huur", MissingKind::NoData)]
+        );
+        // Every other variant misses nothing.
+        assert!(Value::Null.missing_facts().is_empty());
+        assert!(Value::Int(1).missing_facts().is_empty());
+        assert_eq!(unknown.type_name(), "unknown");
+        // Display code may ask for a truth value; the engine never does.
+        assert!(!unknown.to_bool());
+    }
+
+    #[test]
+    fn test_unknown_equality_ignores_provenance() {
+        let a = Value::unknown("wet_a", "huur", MissingKind::NoData);
+        let b = Value::unknown("wet_b", "partner_bsn", MissingKind::NotPassed);
+        // Like Untranslatable: both say "not decidable".
+        assert_eq!(a, b);
+        // Unknown is neither absence nor a taint nor a value.
+        assert_ne!(a, Value::Null);
+        assert_ne!(
+            a,
+            Value::Untranslatable {
+                article: "1".into(),
+                construct: "x".into(),
+            }
+        );
+        assert_ne!(a, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_unknown_serde_roundtrip() {
+        let value = Value::Unknown(vec![
+            missing("wet_huur", "huur", MissingKind::NoData),
+            missing("wet_brp", "partner_bsn", MissingKind::NotPassed),
+        ]);
+        let json = serde_json::to_value(&value).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "__unknown": true,
+                "missing": [
+                    {"law": "wet_huur", "name": "huur", "kind": "no_data"},
+                    {"law": "wet_brp", "name": "partner_bsn", "kind": "not_passed"},
+                ],
+            })
+        );
+        // Through serde…
+        let parsed: Value = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(parsed.missing_facts(), value.missing_facts());
+        // …and through the From conversions, in both directions.
+        let converted = Value::from(json.clone());
+        assert_eq!(converted.missing_facts(), value.missing_facts());
+        assert_eq!(serde_json::Value::from(&value), json);
+        assert_eq!(serde_json::Value::from(value), json);
+    }
+
+    #[test]
+    fn test_unknown_deserialization_dedups_and_orders_by_first_appearance() {
+        let json = serde_json::json!({
+            "__unknown": true,
+            "missing": [
+                {"law": "w", "name": "b", "kind": "no_data"},
+                {"law": "w", "name": "a", "kind": "no_data"},
+                {"law": "w", "name": "b", "kind": "no_data"},
+            ],
+        });
+        let parsed: Value = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            parsed.missing_facts(),
+            &[
+                missing("w", "b", MissingKind::NoData),
+                missing("w", "a", MissingKind::NoData),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unknown_marker_without_facts_is_not_an_unknown() {
+        // An Unknown without provenance would be "null" under another name,
+        // which is exactly what RFC-036 rules out. Both readers, serde
+        // `Deserialize` and `From<serde_json::Value>`, keep such a sentinel
+        // as the plain object it is; neither fails and neither invents facts.
+        let cases = [
+            serde_json::json!({"__unknown": true, "missing": []}),
+            serde_json::json!({"__unknown": true}),
+            serde_json::json!({
+                "__unknown": true,
+                "missing": [{"law": "w", "name": "x", "kind": "lost"}],
+            }),
+            serde_json::json!({"__unknown": true, "missing": "huur"}),
+        ];
+        for malformed in cases {
+            let deserialized: Value = serde_json::from_value(malformed.clone())
+                .expect("a malformed sentinel deserializes as an object");
+            let converted = Value::from(malformed.clone());
+            assert!(matches!(deserialized, Value::Object(_)), "{malformed}");
+            assert_eq!(deserialized, converted, "{malformed}");
+            // The object keeps its marker key, so nothing is silently dropped.
+            assert_eq!(
+                deserialized.as_object().and_then(|o| o.get("__unknown")),
+                Some(&Value::Bool(true))
+            );
+        }
+    }
+
+    #[test]
+    fn test_contains_unknown_looks_inside_containers() {
+        let huur = Value::unknown("wet_huur", "huur", MissingKind::NoData);
+        assert!(huur.contains_unknown());
+        assert!(!Value::Int(1).contains_unknown());
+        assert!(!Value::Null.contains_unknown());
+        assert!(Value::Array(vec![Value::Int(1), huur.clone()]).contains_unknown());
+        let mut record = BTreeMap::new();
+        record.insert("status".to_string(), Value::String("ACTIEF".to_string()));
+        record.insert(
+            "bedragen".to_string(),
+            Value::Array(vec![Value::Array(vec![huur.clone()])]),
+        );
+        assert!(Value::Object(record).contains_unknown());
+        assert!(!Value::Array(vec![Value::Array(vec![Value::Null])]).contains_unknown());
+    }
+
+    #[test]
+    fn test_merge_unknown_deep_unites_nested_facts() {
+        let huur = Value::unknown("wet_huur", "huur", MissingKind::NoData);
+        let partner = Value::unknown("wet_huur", "partner_bsn", MissingKind::NoData);
+        let mut record = BTreeMap::new();
+        record.insert("partner".to_string(), partner.clone());
+        let left = Value::Array(vec![Value::Int(1), huur.clone()]);
+        let right = Value::Object(record);
+        let merged = Value::merge_unknown_deep([&left, &right, &huur]).unwrap();
+        assert_eq!(
+            merged.missing_facts(),
+            &[
+                missing("wet_huur", "huur", MissingKind::NoData),
+                missing("wet_huur", "partner_bsn", MissingKind::NoData),
+            ]
+        );
+        // The shallow merge does not see them; the deep one is what the
+        // structural operations must use.
+        assert_eq!(Value::merge_unknown([&left, &right]), None);
+        assert_eq!(
+            Value::merge_unknown_deep([&Value::Array(vec![Value::Int(1)]), &Value::Null]),
+            None
+        );
+    }
+
+    #[test]
+    fn test_merge_unknown_is_the_ordered_union() {
+        let huur = Value::unknown("wet_huur", "huur", MissingKind::NoData);
+        let partner = Value::unknown("wet_huur", "partner_bsn", MissingKind::NoData);
+        let merged = Value::merge_unknown([&Value::Int(5), &huur, &partner, &huur]).unwrap();
+        assert_eq!(
+            merged.missing_facts(),
+            &[
+                missing("wet_huur", "huur", MissingKind::NoData),
+                missing("wet_huur", "partner_bsn", MissingKind::NoData),
+            ]
+        );
+        // The same name under another law or another reason is another fact.
+        let elsewhere = Value::unknown("wet_brp", "huur", MissingKind::NotPassed);
+        let merged = Value::merge_unknown([&huur, &elsewhere]).unwrap();
+        assert_eq!(merged.missing_facts().len(), 2);
+        // No Unknown among the operands: nothing to propagate.
+        assert_eq!(Value::merge_unknown([&Value::Int(1), &Value::Null]), None);
+        assert_eq!(Value::merge_unknown(std::iter::empty()), None);
+    }
+
+    #[test]
+    fn test_unknown_display_names_the_facts() {
+        let value = Value::Unknown(vec![
+            missing("wet_huur", "huur", MissingKind::NoData),
+            missing("wet_brp", "partner_bsn", MissingKind::NotPassed),
+        ]);
+        assert_eq!(
+            value.to_string(),
+            "UNKNOWN(wet_huur.huur, wet_brp.partner_bsn)"
+        );
     }
 
     #[test]

@@ -1,0 +1,178 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: warenwet/meldplicht
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Warenwet - Meldplicht Voedselveiligheidsincident
+bwb_id: BWBR0001969
+url: https://wetten.overheid.nl/BWBR0001969/2024-01-01
+service: NVWA
+uuid: a4c7e9f1-2b5d-4e8a-93f6-5a1c9b7e2d40
+discoverable: BUSINESS
+articles:
+  - number: '21'
+    text: >-
+      1 Indien waren naar het oordeel van Onze Minister gevaar opleveren voor de veiligheid of
+      de gezondheid van de mens, of indien het technische voortbrengselen betreft, tevens gevaar
+      opleveren voor de veiligheid van zaken, kan hij met het oog op de bescherming van die
+      belangen degene die de waar of het voortbrengsel verhandelt of heeft verhandeld, gelasten
+      om de houders dan wel de vermoedelijke houders van die waar onverwijld en op doeltreffende
+      wijze op de hoogte te stellen van het gevaar. Degene tot wie de last is gericht, geeft
+      daaraan onverwijld gevolg.
+
+      2 Indien waren, niet zijnde eet- of drinkwaren, naar het oordeel van Onze Minister gevaar
+      opleveren voor de veiligheid of de gezondheid van de mens, of gevaar opleveren voor de
+      veiligheid van zaken, kan hij met het oog op de bescherming van die belangen degene die de
+      waar verhandelt of heeft verhandeld, gelasten de verhandeling daarvan te staken dan wel al
+      de noodzakelijke maatregelen te treffen om die waar terug te nemen. Degene tot wie de last
+      is gericht, geeft daaraan onverwijld gevolg.
+
+      3 Het niet uitvoeren van een door Onze Minister gegeven last als bedoeld in het tweede lid
+      is een misdrijf.
+    url: https://wetten.overheid.nl/BWBR0001969/2024-01-01#Artikel21
+    machine_readable:
+      definitions:
+        melding_deadline_uren: 4
+        rapportage_methode: NVWA meldformulier (nvwa.nl/melden)
+        toezichthouder: NVWA
+      untranslatables:
+        - construct: >-
+            "naar het oordeel van Onze Minister" (lid 1): de last om houders te
+            waarschuwen ontstaat uit een discretionair oordeel van de Minister dat de
+            waar gevaar oplevert, niet uit een geregistreerd feit
+          reason: >-
+            er is geen operatie voor een discretionaire bestuurlijke beoordeling; het
+            dichtstbijzijnde geregistreerde feit (heeft_actief_incident) is een proxy
+            voor het gevaar, niet voor het ministeriële oordeel zelf of de last die
+            daaruit volgt
+          suggestion: >-
+            modelleer de last zelf als apart gegeven (bijv. een NVWA-lastbesluit) zodra
+            zo'n register bestaat, in plaats van heeft_actief_incident als proxy te
+            gebruiken
+          legal_text_excerpt: >-
+            Indien waren naar het oordeel van Onze Minister gevaar opleveren voor de
+            veiligheid of de gezondheid van de mens, [...] kan hij [...] gelasten
+          accepted: true
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+        input:
+          - name: is_levensmiddelenbedrijf
+            type: boolean
+            nullable: true
+            source: {}
+          - name: heeft_actief_incident
+            type: boolean
+            nullable: true
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: heeft_meldplicht
+            type: boolean
+          - name: heeft_actief_incident
+            type: boolean
+            nullable: true
+          - name: melding_deadline_uren
+            type: number
+          - name: rapportage_methode
+            type: string
+          - name: is_event_driven
+            type: boolean
+          - name: toezichthouder
+            type: string
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - subject: $is_levensmiddelenbedrijf
+                  operation: EQUALS
+                  value: true
+          - output: heeft_meldplicht
+            # Art. 21 lid 1: de meldplicht ontstaat pas als er daadwerkelijk een incident
+            # is (waren die naar het oordeel van de Minister gevaar opleveren) - vgl.
+            # is_event_driven. Zonder bekend incident (heeft_actief_incident afwezig) is
+            # er geen grondslag om een meldplicht vast te stellen, dus dan is de uitkomst
+            # onbekend in plaats van stilzwijgend "geen meldplicht" (RFC-036): de absentie
+            # wordt eerst getoetst met EQUALS ... null in plaats van als default te gelden.
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $heeft_actief_incident
+                    value: null
+                - subject: $heeft_actief_incident
+                  operation: EQUALS
+                  value: true
+            legal_basis:
+              law: Warenwet
+              bwb_id: BWBR0001969
+              article: '21'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001969/2024-01-01#HoofdstukVII_Artikel21
+              juriconnect: jci1.3:c:BWBR0001969&artikel=21&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                De meldplicht ontstaat wanneer een waar naar het oordeel van de Minister
+                gevaar oplevert; heeft_actief_incident is daarvan het geregistreerde feit
+                (zie untranslatables voor het ministeriele oordeel zelf)
+          - output: heeft_actief_incident
+            value: $heeft_actief_incident
+            legal_basis:
+              law: Warenwet
+              bwb_id: BWBR0001969
+              article: '21'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001969/2024-01-01#HoofdstukVII_Artikel21
+              juriconnect: jci1.3:c:BWBR0001969&artikel=21&z=2024-01-01&g=2024-01-01
+              explanation: Incidentstatus wordt overgenomen uit het NVWA-systeem
+          - output: melding_deadline_uren
+            value: $melding_deadline_uren
+            legal_basis:
+              law: Warenwet
+              bwb_id: BWBR0001969
+              article: '21'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001969/2024-01-01#HoofdstukVII_Artikel21
+              juriconnect: jci1.3:c:BWBR0001969&artikel=21&z=2024-01-01&g=2024-01-01
+              explanation: Incidenten moeten binnen 4 uur worden gemeld bij de NVWA
+          - output: rapportage_methode
+            value: $rapportage_methode
+            legal_basis:
+              law: Warenwet
+              bwb_id: BWBR0001969
+              article: '21'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001969/2024-01-01#HoofdstukVII_Artikel21
+              juriconnect: jci1.3:c:BWBR0001969&artikel=21&z=2024-01-01&g=2024-01-01
+              explanation: Melding geschiedt via het NVWA-meldformulier
+          - output: is_event_driven
+            value: true
+            legal_basis:
+              law: Warenwet
+              bwb_id: BWBR0001969
+              article: '21'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001969/2024-01-01#HoofdstukVII_Artikel21
+              juriconnect: jci1.3:c:BWBR0001969&artikel=21&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                De meldplicht is event-driven en treedt alleen in werking bij een daadwerkelijk incident
+          - output: toezichthouder
+            value: $toezichthouder
+            legal_basis:
+              law: Warenwet
+              bwb_id: BWBR0001969
+              article: '2'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001969/2024-01-01#HoofdstukII_Artikel2
+              juriconnect: jci1.3:c:BWBR0001969&artikel=2&z=2024-01-01&g=2024-01-01
+              explanation: De NVWA is de aangewezen toezichthouder

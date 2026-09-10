@@ -1,0 +1,337 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: algemene_ouderdomswet/leeftijdsbepaling
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bepalen AOW-leeftijd 2025
+bwb_id: BWBR0002221
+url: https://wetten.overheid.nl/BWBR0002221/2024-01-01
+service: SVB
+uuid: 47fa262a-b8f7-43bf-a5dd-5f9b2d2c1228
+articles:
+  - number: 7a
+    text: >-
+      1 De pensioengerechtigde leeftijd en de aanvangsleeftijd zijn:
+        a. vóór 1 januari 2013: 65, respectievelijk 15 jaar;
+        b. in 2013: 65 jaar en één maand, respectievelijk 15 jaar en één maand;
+        c. in 2014: 65 jaar en twee maanden, respectievelijk 15 jaar en twee maanden;
+        d. in 2015: 65 jaar en drie maanden, respectievelijk 15 jaar en drie maanden;
+        e. in 2016: 65 jaar en zes maanden, respectievelijk 15 jaar en zes maanden;
+        f. in 2017: 65 jaar en negen maanden, respectievelijk 15 jaar en negen maanden;
+        g. in 2018: 66 jaar, respectievelijk 16 jaar;
+        h. in 2019: 66 jaar en vier maanden, respectievelijk 16 jaar en vier maanden;
+        i. in 2020: 66 jaar en vier maanden, respectievelijk 16 jaar en vier maanden;
+        j. in 2021: 66 jaar en vier maanden, respectievelijk 16 jaar en vier maanden;
+        k. in 2022: 66 jaar en zeven maanden, respectievelijk 16 jaar en zeven maanden;
+        l. in 2023: 66 jaar en tien maanden, respectievelijk 16 jaar en tien maanden;
+        m. in 2024: 67 jaar, respectievelijk 17 jaar;
+        n. in 2025: 67 jaar, respectievelijk 17 jaar;
+        o. in 2026 en de kalenderjaren daarna: de pensioengerechtigde leeftijd en de
+      aanvangsleeftijd,
+      die jaarlijks op basis van de verhoging van de pensioengerechtigde leeftijd en de
+      aanvangsleeftijd op grond van het tweede lid worden vastgesteld. Op pensioengerechtigden
+      die in een bepaald kalenderjaar de pensioengerechtigde leeftijd hebben bereikt zijn de
+      pensioengerechtigde leeftijd en de aanvangsleeftijd in de kalenderjaren daarna niet van
+      toepassing.
+
+      2 De verhoging van de pensioengerechtigde leeftijd en de aanvangsleeftijd in 2026 en de
+      kalenderjaren daarna wordt jaarlijks, voor de eerste maal uiterlijk op 1 januari 2021 voor
+      het jaar 2026, vastgesteld volgens de formule:
+
+      V = 2/3 * (L – 20,64) – (P – 67)
+
+      waarbij:
+
+      V staat voor de periode waarmee de pensioengerechtigde leeftijd respectievelijk
+      aanvangsleeftijd wordt verhoogd, uitgedrukt in perioden van een jaar;
+
+      L staat voor de geraamde macro gemiddelde resterende levensverwachting op 65-jarige
+      leeftijd in het kalenderjaar van verhoging;
+
+      P staat voor de pensioengerechtigde leeftijd in het kalenderjaar voorafgaande aan het
+      kalenderjaar van verhoging.
+
+      Indien V negatief is of minder dan 0,25 bedraagt, wordt deze gesteld op 0. Indien V 0,25
+      of meer bedraagt, wordt deze gesteld op drie maanden.
+
+      De volgens de formule vastgestelde verdere verhoging van de pensioengerechtigde leeftijd
+      en de aanvangsleeftijd wordt door of namens Onze Minister medegedeeld in de Staatscourant.
+
+      3 De verhoging, bedoeld in het tweede lid, treedt telkens in werking vijf jaar na de
+      uiterste datum van vaststelling, bedoeld in het tweede lid, voor de eerste maal met ingang
+      van 1 januari 2026.
+
+      4 De ramingen van de macro gemiddelde resterende levensverwachting, bedoeld in het tweede
+      lid, worden uitgevoerd en bekendgemaakt door het CBS.
+    url: https://wetten.overheid.nl/BWBR0002221/2024-01-01#Artikel7a
+    machine_readable:
+      definitions:
+        basis_pensioenleeftijd: 65
+        verhoging_2013: 1
+        verhoging_2014: 2
+        verhoging_2015: 3
+        verhoging_2016: 6
+        verhoging_2017: 9
+        verhoging_2018: 12
+        verhoging_2019: 16
+        verhoging_2020: 16
+        verhoging_2021: 18
+        verhoging_2022: 21
+        verhoging_2023: 24
+        verhoging_2024: 24
+        verhoging_2025: 24
+        # Art. 7a lid 2: constanten van de formule V = 2/3 * (L - 20,64) - (P - 67),
+        # letterlijk overgenomen uit de tekst (audit AUDIT_GETROUWHEID.md constateerde
+        # dat referentie_levensverwachting: 20.0 een andere waarde was dan de 20,64 uit
+        # de tekst, en dat P ontbrak).
+        levensverwachting_constante: 20.64
+        pensioenleeftijd_constante: 67
+        verhouding_levensverwachting: 0.6666666666666666
+        verhogingsdrempel: 0.25
+        verhoging_bij_overschrijding: 3
+        # P uit de formule: de pensioengerechtigde leeftijd in het kalenderjaar
+        # voorafgaand aan het jaar van verhoging. Er is in dit corpus geen
+        # jaargebonden tabel van pensioenleeftijden na 2025 (dat vergt de
+        # vijfjaarscyclus van lid 3, hier niet gemodelleerd; zie untranslatables),
+        # dus voor de eerste verhogingsronde (2026, P = leeftijd in 2025) is dit
+        # de bij tekst vastgestelde waarde uit lid 1 onder n. Voor rondes na 2026
+        # is dit een vereenvoudiging.
+        pensioenleeftijd_voorafgaand_jaar: 67
+        # Art. 7a lid 3: de verhoging treedt pas vijf jaar na vaststelling in werking,
+        # voor de eerste maal per 1 januari 2026; hier niet gebruikt omdat er geen
+        # jaargebonden pensioenleeftijd-tabel is (zie untranslatables).
+        aankondigingsperiode_jaren: 5
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: geboortedatum
+            type: date
+            required: true
+      # Alleen doorgegeven aan de CBS-levensverwachting (die per persoon wordt
+      # opgezocht); de leeftijdsbepaling zelf gebruikt het niet.
+          - name: bsn
+            type: string
+            required: false
+        input:
+          - name: levensverwachting_65
+            type: number
+            type_spec:
+              unit: years
+              precision: 2
+            source:
+              regulation: wet_op_het_centraal_bureau_voor_de_statistiek
+              output: levensverwachting_65
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+        output:
+          - name: pensioenleeftijd
+            type: number
+            type_spec:
+              unit: years
+              precision: 2
+              min: 65
+        actions:
+          # Geen voldoet_aan_voorwaarden: art. 7a lid 1 AOW bepaalt de pensioengerechtigde
+          # leeftijd voor iedere geborene en kent geen voorwaarde. De POC-toets "geboortedatum
+          # aanwezig" kon nooit onwaar zijn: de geboortedatum is een verplichte parameter en
+          # zonder haar wordt de wet niet uitgevoerd (RFC-036).
+          - output: pensioenleeftijd
+            value:
+              operation: ADD
+              values:
+                - $basis_pensioenleeftijd
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1948-01-01'
+                      then: 0
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1949-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2013
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1950-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2014
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1951-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2015
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1952-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2016
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1953-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2017
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1954-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2018
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1955-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2019
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1956-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2020
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1957-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2021
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1958-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2022
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1959-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2023
+                          - 12
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1960-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2024
+                          - 12
+                    # Art. 7a lid 1 onder n: geboren in 1960 bereikt de pensioengerechtigde
+                    # leeftijd in 2025 (67 jaar, verhoging_2025 maanden). Deze case ontbrak,
+                    # waardoor 1960-geborenen ten onrechte in de formule-tak (lid 2, vanaf
+                    # 2026) vielen (audit AUDIT_GETROUWHEID.md).
+                    - when:
+                        operation: LESS_THAN
+                        subject: $geboortedatum
+                        value: '1961-01-01'
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $verhoging_2025
+                          - 12
+                  # Art. 7a lid 2: V = 2/3 * (L - 20,64) - (P - 67); is V < 0,25 dan
+                  # geen verhoging, is V >= 0,25 dan een stap van precies drie maanden
+                  # (geen proportionele verhoging: de tekst noemt alleen 0 of drie
+                  # maanden). De vorige modellering rekende MIN((L - 20.0) * 3/12, 2)
+                  # zonder P en met een verkeerde referentiewaarde (audit
+                  # AUDIT_GETROUWHEID.md); dit vervangt die door de formule uit de tekst.
+                  #
+                  # De buitenste ADD telt deze uitkomst op bij $basis_pensioenleeftijd
+                  # (65). Omdat de pensioenleeftijd na lid 1 al op P (67) staat, wordt
+                  # hier ook (P - basis_pensioenleeftijd) meegeteld, zodat de uitkomst
+                  # "P (+ 3 maanden)" is en niet "65 (+ 3 maanden)".
+                  default:
+                    operation: ADD
+                    values:
+                      - operation: SUBTRACT
+                        values:
+                          - $pensioenleeftijd_voorafgaand_jaar
+                          - $basis_pensioenleeftijd
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: GREATER_THAN_OR_EQUAL
+                              subject:
+                                operation: SUBTRACT
+                                values:
+                                  - operation: MULTIPLY
+                                    values:
+                                      - $verhouding_levensverwachting
+                                      - operation: SUBTRACT
+                                        values:
+                                          - $levensverwachting_65
+                                          - $levensverwachting_constante
+                                  - operation: SUBTRACT
+                                    values:
+                                      - $pensioenleeftijd_voorafgaand_jaar
+                                      - $pensioenleeftijd_constante
+                              value: $verhogingsdrempel
+                            then:
+                              operation: DIVIDE
+                              values:
+                                - $verhoging_bij_overschrijding
+                                - 12
+                        # Art. 7a lid 2, derde alinea: "Indien V negatief is of minder
+                        # dan 0,25 bedraagt, wordt deze gesteld op 0."
+                        default: 0
+      untranslatables:
+        - construct: >-
+            P uit de formule van art. 7a lid 2 (de pensioengerechtigde leeftijd in het
+            kalenderjaar voorafgaand aan het jaar van verhoging) als jaargebonden,
+            per verhogingsronde vastgestelde waarde
+          reason: >-
+            Lid 3 koppelt elke verhoging aan een vijf jaar eerder vastgestelde
+            Staatscourant-bekendmaking; dit corpus heeft geen tabel van
+            pensioengerechtigde leeftijden per kalenderjaar na 2025 om P uit af te
+            leiden. `pensioenleeftijd_voorafgaand_jaar` is daarom een vaste waarde
+            (67, de bij tekst laatst vastgestelde leeftijd, lid 1 onder n), correct
+            voor de eerste verhogingsronde (2026) maar niet voor rondes daarna.
+          suggestion: >-
+            Modelleer een jaargebonden gegeven `pensioengerechtigde_leeftijd_kalenderjaar`
+            dat de vijfjaarscyclus van lid 3 volgt, zodra zo'n tabel beschikbaar is.
+          accepted: true

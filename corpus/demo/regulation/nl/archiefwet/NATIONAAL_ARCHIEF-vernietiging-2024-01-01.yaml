@@ -1,0 +1,230 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: archiefwet/vernietiging
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Archiefwet - Vernietiging archiefbescheiden
+bwb_id: BWBR0007376
+url: https://wetten.overheid.nl/BWBR0007376/2024-01-01
+service: NATIONAAL_ARCHIEF
+uuid: 81c1b431-545b-4a8a-b1e2-eacfc6c3915a
+articles:
+  - number: '5'
+    text: >-
+      1. De zorgdrager is verplicht tot het ontwerpen van selectielijsten waarin tenminste wordt
+      aangegeven welke archiefbescheiden voor vernietiging in aanmerking komen. 2. De lijsten
+      worden vastgesteld, voor zover het betreft: a. archiefbescheiden van de Eerste en de
+      Tweede Kamer der Staten-Generaal, de andere Hoge Colleges van Staat en het Kabinet van de
+      Koning: bij koninklijk besluit, op voordracht van Onze minister, in overeenstemming met
+      het betrokken overheidsorgaan; b. archiefbescheiden van de ministeries: door Onze minister
+      en Onze minister wie het mede aangaat; c. archiefbescheiden van andere overheidsorganen:
+      door Onze minister. 3. Een besluit tot vaststelling van een selectielijst wordt
+      bekendgemaakt in de Staatscourant.
+    url: https://wetten.overheid.nl/BWBR0007376/2024-01-01#Artikel5
+    machine_readable:
+      definitions:
+        minimale_bewaartermijn_jaren: 0
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: archiefstuk_id
+            type: string
+            required: true
+          - name: aanmaakdatum
+            type: date
+            required: true
+          - name: documenttype
+            type: string
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            nullable: true
+            required: false
+          - name: op_selectielijst_vernietiging
+            type: boolean
+            required: true
+          - name: bewaartermijn_jaren
+            type: number
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            nullable: true
+            required: false
+            type_spec:
+              unit: years
+              precision: 0
+              min: 0
+          - name: selectielijst_vastgesteld
+            type: boolean
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            nullable: true
+            required: false
+          - name: selectielijst_gepubliceerd
+            type: boolean
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            nullable: true
+            required: false
+        output:
+          - name: mag_vernietigd_worden
+            type: boolean
+            # Art. 5 geeft geen uitkomst voor vernietiging bij een onbekende bewaartermijn
+            # (geen default: true meer); een onbekende invoer moet dus als onbekende
+            # uitkomst kunnen doorwerken in plaats van als vaststaand oordeel.
+            nullable: true
+          - name: vernietig_vanaf_datum
+            type: date
+            nullable: true
+          - name: reden_niet_vernietigen
+            type: string
+            nullable: true
+        actions:
+          - output: mag_vernietigd_worden
+            value:
+              # Art. 5 geeft geen grond om te vernietigen zonder een verstreken bewaartermijn
+              # (geen default: true meer). Zolang op_selectielijst_vernietiging,
+              # selectielijst_vastgesteld of selectielijst_gepubliceerd al op false vaststaat,
+              # is vernietiging definitief niet toegestaan, ongeacht de bewaartermijn. Alleen
+              # als die drie waar zijn en de bewaartermijn onbekend is, propageert die
+              # onbekende waarde naar mag_vernietigd_worden (EQUALS … null-test, geen default: true).
+              operation: IF
+              cases:
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: EQUALS
+                        subject: $op_selectielijst_vernietiging
+                        value: false
+                      - operation: EQUALS
+                        subject: $selectielijst_vastgesteld
+                        value: false
+                      - operation: EQUALS
+                        subject: $selectielijst_gepubliceerd
+                        value: false
+                  then: false
+                - when:
+                    operation: EQUALS
+                    subject: $bewaartermijn_jaren
+                    value: null
+                  then: null
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $op_selectielijst_vernietiging
+                        value: true
+                      - operation: EQUALS
+                        subject: $selectielijst_vastgesteld
+                        value: true
+                      - operation: EQUALS
+                        subject: $selectielijst_gepubliceerd
+                        value: true
+                      - operation: GREATER_THAN_OR_EQUAL
+                        subject:
+                          operation: AGE
+                          reference_date: $referencedate
+                          date_of_birth: $aanmaakdatum
+                        value: $bewaartermijn_jaren
+                  then: true
+              default: false
+            legal_basis:
+              law: Archiefwet 1995
+              bwb_id: BWBR0007376
+              article: '3'
+              url: >-
+                https://wetten.overheid.nl/BWBR0007376/2024-01-01#Hoofdstuk2_Artikel3
+              juriconnect: jci1.3:c:BWBR0007376&artikel=3&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 3 bepaalt de zorgplicht voor vernietiging van daarvoor in aanmerking komende
+                archiefbescheiden
+          - output: vernietig_vanaf_datum
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $op_selectielijst_vernietiging
+                        value: true
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $bewaartermijn_jaren
+                          value: null
+                  then:
+                    operation: DATE_ADD
+                    date: $aanmaakdatum
+                    years: $bewaartermijn_jaren
+            legal_basis:
+              law: Archiefwet 1995
+              bwb_id: BWBR0007376
+              article: '5'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0007376/2024-01-01#Hoofdstuk2_Artikel5
+              juriconnect: >-
+                jci1.3:c:BWBR0007376&artikel=5&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                De selectielijst bepaalt de termijn na welke vernietiging plaats mag vinden
+          - output: reden_niet_vernietigen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $mag_vernietigd_worden
+                    value: false
+                  then:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $op_selectielijst_vernietiging
+                          value: false
+                        then: >-
+                          Archiefstuk komt niet voor op een selectielijst voor vernietiging (mogelijk blijvend te
+                          bewaren)
+                      - when:
+                          operation: EQUALS
+                          subject: $selectielijst_vastgesteld
+                          value: false
+                        then: >-
+                          Selectielijst is niet formeel vastgesteld volgens artikel 5 lid 2 Archiefwet
+                      - when:
+                          operation: EQUALS
+                          subject: $selectielijst_gepubliceerd
+                          value: false
+                        then: >-
+                          Selectielijst is niet bekendgemaakt in de Staatscourant volgens artikel 5 lid 3 Archiefwet
+                      - when:
+                          operation: AND
+                          conditions:
+                            - operation: NOT
+                              value:
+                                operation: EQUALS
+                                subject: $bewaartermijn_jaren
+                                value: null
+                            - operation: LESS_THAN
+                              subject:
+                                operation: AGE
+                                reference_date: $referencedate
+                                date_of_birth: $aanmaakdatum
+                              value: $bewaartermijn_jaren
+                        then: Bewaartermijn is nog niet verstreken
+                    default: Onbekende reden
+            legal_basis:
+              law: Archiefwet 1995
+              bwb_id: BWBR0007376
+              article: '5'
+              url: >-
+                https://wetten.overheid.nl/BWBR0007376/2024-01-01#Hoofdstuk2_Artikel5
+              juriconnect: jci1.3:c:BWBR0007376&artikel=5&z=2024-01-01&g=2024-01-01
+              explanation: Artikel 5 bepaalt de voorwaarden voor vernietiging

@@ -60,6 +60,14 @@ export const COMPONENTS = {
     paths: ['frontend-lawmaking/', 'packages/frontend-shared/', NGINX_SHARED],
   },
   docs: { crate: null, paths: ['docs/', NGINX_SHARED] },
+  // De demo bouwt de engine als WASM (zie frontend-demo/Dockerfile), dus hij
+  // hangt aan de engine-crate; daarnaast aan zijn eigen map, het gedeelde
+  // frontend-pakket en het demo-corpus dat hij bundelt. Nog geen job in
+  // deploy.yml gebruikt deze uitkomst: de demo wordt bewust nog niet uitgerold.
+  demo: {
+    crate: 'regelrecht-engine',
+    paths: ['frontend-demo/', 'packages/frontend-shared/', 'corpus/demo/', NGINX_SHARED],
+  },
 };
 
 // Raakt elk component met een Rust-image: de workspace zelf.

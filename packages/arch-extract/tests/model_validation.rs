@@ -286,17 +286,18 @@ fn ids_of_kind(model: &Value, kind: &str) -> std::collections::BTreeSet<String> 
 fn frontend_apps_extracted() {
     let model = model();
 
-    // The three npm-workspace frontends appear as `app` containers.
+    // The four npm-workspace frontends appear as `app` containers.
     let apps = ids_of_kind(model, "app");
     let expected_apps: std::collections::BTreeSet<String> = [
         "app:frontend",
+        "app:frontend-demo",
         "app:frontend-lawmaking",
         "app:frontend-shared",
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
-    assert_eq!(apps, expected_apps, "expected the three frontend apps");
+    assert_eq!(apps, expected_apps, "expected the four frontend apps");
 
     // Components (.vue) and composables (useXxx) are extracted, with lang set.
     let nodes = model["nodes"].as_array().expect("nodes array");

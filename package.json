@@ -6,7 +6,8 @@
   "workspaces": [
     "packages/frontend-shared",
     "frontend",
-    "frontend-lawmaking"
+    "frontend-lawmaking",
+    "frontend-demo"
   ],
   "overrides": {
     "brace-expansion": "^5.0.8",

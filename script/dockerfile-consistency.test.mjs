@@ -22,6 +22,7 @@ const DOCKERFILES = [
   'packages/admin/Dockerfile',
   'packages/pipeline/Dockerfile',
   'frontend/Dockerfile',
+  'frontend-demo/Dockerfile',
 ];
 
 /** De members uit packages/Cargo.toml, in de multiline vorm die de `sed` aanneemt. */

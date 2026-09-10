@@ -98,6 +98,48 @@ describe('ScenarioParameterInput', () => {
     });
   });
 
+  // RFC-036: a stated absence shows as the word `null`, in a text field
+  // whatever the declared type - a number field cannot hold it, a switch
+  // cannot show it, a date picker would reject it.
+  describe('a stated absence (null)', () => {
+    for (const type of ['number', 'amount', 'date', 'boolean', 'string']) {
+      it(`shows the word null in a text field for type=${type}`, () => {
+        const wrapper = mountInput({ type, unit: type === 'amount' ? 'eurocent' : null, value: 'null' });
+        const text = wrapper.find('nldd-text-field');
+        expect(text.exists()).toBe(true);
+        expect(text.attributes('value')).toBe('null');
+        expect(text.attributes('type')).toBeUndefined(); // not the date picker
+        expect(wrapper.find('nldd-number-field').exists()).toBe(false);
+        expect(wrapper.find('nldd-switch-field').exists()).toBe(false);
+      });
+    }
+
+    it('treats a JS null from a typed record the same way', () => {
+      const wrapper = mountInput({ type: 'amount', unit: 'eurocent', value: null });
+      expect(wrapper.find('nldd-text-field').attributes('value')).toBe('null');
+    });
+
+    it('does not mistake a blank or the text "nul" for an absence', () => {
+      expect(mountInput({ type: 'number', value: '' }).find('nldd-number-field').exists()).toBe(true);
+      expect(mountInput({ type: 'string', value: 'nul' }).find('nldd-text-field').attributes('value')).toBe('nul');
+    });
+
+    it('lets the author type over the null, emitting the new text', () => {
+      const wrapper = mountInput({ type: 'number', value: 'null' });
+      wrapper.find('nldd-text-field').element.dispatchEvent(
+        new CustomEvent('input', { detail: { value: '' } }),
+      );
+      expect(lastUpdate(wrapper)).toBe('');
+    });
+
+    it('carries the invalid state and error ids onto the text field', () => {
+      const wrapper = mountInput({ type: 'number', value: 'null', invalid: true, errorMessageIds: 'e1' });
+      const text = wrapper.find('nldd-text-field');
+      expect(text.attributes('invalid')).toBeDefined();
+      expect(text.attributes('error-message-ids')).toBe('e1');
+    });
+  });
+
   describe('date / string', () => {
     it('emits the date string', () => {
       const wrapper = mountInput({ type: 'date', value: '' });

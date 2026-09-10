@@ -1,0 +1,978 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: wet_inkomstenbelasting
+regulatory_layer: WET
+publication_date: '2001-01-01'
+valid_from: '2001-01-01'
+name: Inkomstenbelasting
+bwb_id: BWBR0011353
+url: https://wetten.overheid.nl/BWBR0011353/2001-01-01
+service: BELASTINGDIENST
+uuid: cdd0ec9f-4975-4969-9d8a-808f2d6abfc9
+discoverable: CITIZEN
+articles:
+  - number: '2.1'
+    text: >-
+      1 Belastingplichtigen voor de inkomstenbelasting zijn de natuurlijke personen die:
+        a. in Nederland wonen (binnenlandse belastingplichtigen) of
+        b. niet in Nederland wonen maar wel Nederlands inkomen genieten (buitenlandse
+      belastingplichtigen).
+      2 Nederlands inkomen is inkomen bedoeld in hoofdstuk 7.
+    url: https://wetten.overheid.nl/BWBR0011353/2001-01-01#Artikel2.1
+    machine_readable:
+      definitions:
+        box1_schijf1_grens: 7457300
+        box1_schijf2_grens: 11932700
+        box1_tarief1: 0.3693
+        box1_tarief2: 0.4953
+        box1_tarief1_aow: 0.1975
+        box1_tarief2_aow: 0.4953
+        box2_schijf1_grens: 6700000
+        box2_tarief1: 0.245
+        box2_tarief2: 0.33
+        box3_heffingsvrije_voet_alleenstaand: 5772900
+        box3_heffingsvrije_voet_partners: 11545800
+        box3_forfaitair_rendement: 0.06
+        box3_belastingtarief: 0.34
+        box3_rendement: 0.0674
+        # heffingsvrij_vermogen verwijderd: gaf een dubbele vrijstelling in partner_box3_inkomen naast
+        # de partnervoet die box3_bezittingen al toepast (audit: AUDIT_GETROUWHEID.md § Wet IB
+        # Belastingdienst). Overal elders ongebruikt.
+        algemene_heffingskorting_max: 310400
+        algemene_heffingskorting_afbouw_start: 2466800
+        algemene_heffingskorting_afbouw: 0.06578
+        algemene_heffingskorting_nulpunt: 7243000
+        algemene_heffingskorting_max_aow: 165800
+        algemene_heffingskorting_afbouw_aow: 0.03427
+        arbeidskorting_max: 446400
+        arbeidskorting_afbouw_start: 4081200
+        arbeidskorting_afbouw: 0.0651
+        arbeidskorting_nulpunt: 11932700
+        arbeidskorting_max_aow: 238500
+        arbeidskorting_afbouw_aow: 0.034
+        inkomensafhankelijke_combinatiekorting_basis: 88800
+        inkomensafhankelijke_combinatiekorting_percentage: 0.11213
+        inkomensafhankelijke_combinatiekorting_min_inkomen: 550300
+        inkomensafhankelijke_combinatiekorting_max: 265000
+        min_personal_income: 0
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: AANSLAG
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: leeftijd
+            type: number
+            source:
+              regulation: wet_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: geboortedatum
+            type: date
+            source:
+              regulation: wet_brp
+              output: geboortedatum
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: pensioenleeftijd
+            type: number
+            source:
+              regulation: algemene_ouderdomswet/leeftijdsbepaling
+              output: pensioenleeftijd
+              parameters:
+                geboortedatum: $geboortedatum
+                bsn: $bsn
+          - name: heeft_partner
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_partner
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: heeft_kinderen_onder_12
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_kinderen_onder_12
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: loon_uit_dienstbetrekking
+            type: amount
+            source: {}
+          - name: uitkeringen_en_pensioenen
+            type: amount
+            source: {}
+          - name: winst_uit_onderneming
+            type: amount
+            source: {}
+          - name: resultaat_overige_werkzaamheden
+            type: amount
+            source: {}
+          - name: eigen_woning
+            type: amount
+            source: {}
+          - name: reguliere_voordelen
+            type: amount
+            source: {}
+          - name: vervreemdingsvoordelen
+            type: amount
+            source: {}
+          - name: spaargeld
+            type: amount
+            source: {}
+          - name: beleggingen
+            type: amount
+            source: {}
+          - name: onroerend_goed
+            type: amount
+            source: {}
+          - name: schulden
+            type: amount
+            source: {}
+          - name: persoonsgebonden_aftrek
+            type: amount
+            source: {}
+          - name: partner_loon_uit_dienstbetrekking
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_uitkeringen_en_pensioenen
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_winst_uit_onderneming
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_resultaat_overige_werkzaamheden
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_eigen_woning
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_reguliere_voordelen
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_vervreemdingsvoordelen
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_spaargeld
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_beleggingen
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_onroerend_goed
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_schulden
+            type: amount
+            nullable: true
+            source: {}
+          - name: partner_buitenlands_inkomen
+            type: amount
+            nullable: true
+            source: {}
+          - name: buitenlands_inkomen
+            type: amount
+            source: {}
+        output:
+          - name: totale_belastingschuld
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: box1_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: box1_belasting
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: box2_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: box2_belasting
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: box3_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: box3_belasting
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: algemene_heffingskorting
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: arbeidskorting
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: inkomensafhankelijke_combinatiekorting
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: totale_heffingskortingen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: belastbaar_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: buitenlands_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: partner_box1_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: partner_box2_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: partner_box3_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: partner_buitenlands_inkomen
+            type: amount
+            nullable: true
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: partner_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: gezamenlijk_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: bedrijfsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: maandelijks_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+        actions:
+          - output: box1_inkomen
+            value:
+              operation: ADD
+              values:
+                - $loon_uit_dienstbetrekking
+                - $winst_uit_onderneming
+                - $uitkeringen_en_pensioenen
+                - $resultaat_overige_werkzaamheden
+                - $eigen_woning
+          - output: box2_inkomen
+            value:
+              operation: ADD
+              values:
+                - $reguliere_voordelen
+                - $vervreemdingsvoordelen
+          - output: box3_bezittingen
+            value:
+              operation: MAX
+              values:
+                - operation: SUBTRACT
+                  values:
+                    - operation: ADD
+                      values:
+                        - $spaargeld
+                        - $beleggingen
+                        - $onroerend_goed
+                    - $schulden
+                    - operation: IF
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          then: $box3_heffingsvrije_voet_partners
+                      default: $box3_heffingsvrije_voet_alleenstaand
+                - 0
+          - output: box3_inkomen
+            value:
+              operation: MULTIPLY
+              values:
+                - $box3_bezittingen
+                - $box3_forfaitair_rendement
+          - output: belastbaar_inkomen
+            value:
+              operation: ADD
+              values:
+                - $box1_inkomen
+                - $box2_inkomen
+                - $box3_inkomen
+                - operation: SUBTRACT
+                  values:
+                    - 0
+                    - $persoonsgebonden_aftrek
+          - output: box1_inkomen_na_aftrek
+            value:
+              operation: MAX
+              values:
+                - operation: SUBTRACT
+                  values:
+                    - $box1_inkomen
+                    - $persoonsgebonden_aftrek
+                - 0
+          - output: resterende_aftrek_na_box1
+            value:
+              operation: MAX
+              values:
+                - operation: SUBTRACT
+                  values:
+                    - $persoonsgebonden_aftrek
+                    - $box1_inkomen
+                - 0
+          - output: box3_inkomen_na_aftrek
+            value:
+              operation: MAX
+              values:
+                - operation: SUBTRACT
+                  values:
+                    - $box3_inkomen
+                    - $resterende_aftrek_na_box1
+                - 0
+          - output: resterende_aftrek_na_box3
+            value:
+              operation: MAX
+              values:
+                - operation: SUBTRACT
+                  values:
+                    - $resterende_aftrek_na_box1
+                    - $box3_inkomen
+                - 0
+          - output: box2_inkomen_na_aftrek
+            value:
+              operation: MAX
+              values:
+                - operation: SUBTRACT
+                  values:
+                    - $box2_inkomen
+                    - $resterende_aftrek_na_box3
+                - 0
+          - output: is_aow_leeftijd
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $leeftijd
+              value: $pensioenleeftijd
+          - output: box1_belasting
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_aow_leeftijd
+                    value: true
+                  then:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: LESS_THAN_OR_EQUAL
+                          subject: $box1_inkomen_na_aftrek
+                          value: $box1_schijf1_grens
+                        then:
+                          operation: MULTIPLY
+                          values:
+                            - $box1_inkomen_na_aftrek
+                            - $box1_tarief1_aow
+                    default:
+                      operation: ADD
+                      values:
+                        - operation: MULTIPLY
+                          values:
+                            - $box1_schijf1_grens
+                            - $box1_tarief1_aow
+                        - operation: MULTIPLY
+                          values:
+                            - operation: SUBTRACT
+                              values:
+                                - $box1_inkomen_na_aftrek
+                                - $box1_schijf1_grens
+                            - $box1_tarief2_aow
+              default:
+                operation: IF
+                cases:
+                  - when:
+                      operation: LESS_THAN_OR_EQUAL
+                      subject: $box1_inkomen_na_aftrek
+                      value: $box1_schijf1_grens
+                    then:
+                      operation: MULTIPLY
+                      values:
+                        - $box1_inkomen_na_aftrek
+                        - $box1_tarief1
+                default:
+                  operation: ADD
+                  values:
+                    - operation: MULTIPLY
+                      values:
+                        - $box1_schijf1_grens
+                        - $box1_tarief1
+                    - operation: MULTIPLY
+                      values:
+                        - operation: SUBTRACT
+                          values:
+                            - $box1_inkomen_na_aftrek
+                            - $box1_schijf1_grens
+                        - $box1_tarief2
+          - output: box2_belasting
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject: $box2_inkomen_na_aftrek
+                    value: $box2_schijf1_grens
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $box2_inkomen_na_aftrek
+                      - $box2_tarief1
+              default:
+                operation: ADD
+                values:
+                  - operation: MULTIPLY
+                    values:
+                      - $box2_schijf1_grens
+                      - $box2_tarief1
+                  - operation: MULTIPLY
+                    values:
+                      - operation: SUBTRACT
+                        values:
+                          - $box2_inkomen_na_aftrek
+                          - $box2_schijf1_grens
+                      - $box2_tarief2
+          - output: box3_belasting
+            value:
+              operation: MULTIPLY
+              values:
+                - $box3_inkomen_na_aftrek
+                - $box3_belastingtarief
+          - output: algemene_heffingskorting
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_aow_leeftijd
+                    value: true
+                  then:
+                    operation: MAX
+                    values:
+                      - operation: SUBTRACT
+                        values:
+                          - $algemene_heffingskorting_max_aow
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject: $box1_inkomen
+                                  value: $algemene_heffingskorting_afbouw_start
+                                then:
+                                  operation: MULTIPLY
+                                  values:
+                                    - operation: MIN
+                                      values:
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $box1_inkomen
+                                            - $algemene_heffingskorting_afbouw_start
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $algemene_heffingskorting_nulpunt
+                                            - $algemene_heffingskorting_afbouw_start
+                                    - $algemene_heffingskorting_afbouw_aow
+                            default: 0
+                      - 0
+              default:
+                operation: MAX
+                values:
+                  - operation: SUBTRACT
+                    values:
+                      - $algemene_heffingskorting_max
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: GREATER_THAN
+                              subject: $box1_inkomen
+                              value: $algemene_heffingskorting_afbouw_start
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - operation: MIN
+                                  values:
+                                    - operation: SUBTRACT
+                                      values:
+                                        - $box1_inkomen
+                                        - $algemene_heffingskorting_afbouw_start
+                                    - operation: SUBTRACT
+                                      values:
+                                        - $algemene_heffingskorting_nulpunt
+                                        - $algemene_heffingskorting_afbouw_start
+                                - $algemene_heffingskorting_afbouw
+                        default: 0
+                  - 0
+          - output: arbeidskorting
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_aow_leeftijd
+                    value: true
+                  then:
+                    operation: MAX
+                    values:
+                      - operation: SUBTRACT
+                        values:
+                          - $arbeidskorting_max_aow
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject: $loon_uit_dienstbetrekking
+                                  value: $arbeidskorting_afbouw_start
+                                then:
+                                  operation: MULTIPLY
+                                  values:
+                                    - operation: MIN
+                                      values:
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $loon_uit_dienstbetrekking
+                                            - $arbeidskorting_afbouw_start
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $arbeidskorting_nulpunt
+                                            - $arbeidskorting_afbouw_start
+                                    - $arbeidskorting_afbouw_aow
+                            default: 0
+                      - 0
+              default:
+                operation: MAX
+                values:
+                  - operation: SUBTRACT
+                    values:
+                      - $arbeidskorting_max
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: GREATER_THAN
+                              subject: $loon_uit_dienstbetrekking
+                              value: $arbeidskorting_afbouw_start
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - operation: MIN
+                                  values:
+                                    - operation: SUBTRACT
+                                      values:
+                                        - $loon_uit_dienstbetrekking
+                                        - $arbeidskorting_afbouw_start
+                                    - operation: SUBTRACT
+                                      values:
+                                        - $arbeidskorting_nulpunt
+                                        - $arbeidskorting_afbouw_start
+                                - $arbeidskorting_afbouw
+                        default: 0
+                  - 0
+          - output: inkomensafhankelijke_combinatiekorting
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $heeft_kinderen_onder_12
+                        value: true
+                      - operation: GREATER_THAN
+                        subject: $loon_uit_dienstbetrekking
+                        value: $inkomensafhankelijke_combinatiekorting_min_inkomen
+                  then:
+                    operation: MIN
+                    values:
+                      - operation: ADD
+                        values:
+                          - $inkomensafhankelijke_combinatiekorting_basis
+                          - operation: MULTIPLY
+                            values:
+                              - operation: SUBTRACT
+                                values:
+                                  - $loon_uit_dienstbetrekking
+                                  - $inkomensafhankelijke_combinatiekorting_min_inkomen
+                              - $inkomensafhankelijke_combinatiekorting_percentage
+                      - $inkomensafhankelijke_combinatiekorting_max
+              default: 0
+          - output: totale_heffingskortingen
+        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            value:
+              operation: ROUND
+              precision: 0
+              value:
+                operation: ADD
+                values:
+                  - $algemene_heffingskorting
+                  - $arbeidskorting
+                  - $inkomensafhankelijke_combinatiekorting
+          - output: totale_belastingschuld
+        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            value:
+              operation: ROUND
+              precision: 0
+              value:
+                operation: MAX
+                values:
+                  - operation: SUBTRACT
+                    values:
+                      - operation: ADD
+                        values:
+                          - $box1_belasting
+                          - $box2_belasting
+                          - $box3_belasting
+                      - $totale_heffingskortingen
+                  - 0
+          - output: buitenlands_inkomen
+            value: $buitenlands_inkomen
+          - output: inkomen
+            value:
+              operation: ADD
+              values:
+                - $box1_inkomen
+                - $box2_inkomen
+                - $box3_inkomen
+                - $buitenlands_inkomen
+          - output: vermogen
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: ADD
+                  values:
+                    - $spaargeld
+                    - $beleggingen
+                    - $onroerend_goed
+                - $schulden
+          - output: partner_box1_inkomen
+            # Art. 2.17 Wet IB 2001: de inkomensbestanddelen van de partner tellen mee als er een
+            # partner is; zonder partner is het partnerinkomen 0. Een bestanddeel dat de partner niet
+            # heeft (geen rij in het register van de Belastingdienst) telt voor 0 (RFC-036).
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $partner_bsn
+                      value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_loon_uit_dienstbetrekking
+                              value: null
+                            then: 0
+                        default: $partner_loon_uit_dienstbetrekking
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_uitkeringen_en_pensioenen
+                              value: null
+                            then: 0
+                        default: $partner_uitkeringen_en_pensioenen
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_winst_uit_onderneming
+                              value: null
+                            then: 0
+                        default: $partner_winst_uit_onderneming
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_resultaat_overige_werkzaamheden
+                              value: null
+                            then: 0
+                        default: $partner_resultaat_overige_werkzaamheden
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_eigen_woning
+                              value: null
+                            then: 0
+                        default: $partner_eigen_woning
+              default: 0
+          - output: partner_box2_inkomen
+            # Art. 2.17 Wet IB 2001, zie partner_box1_inkomen.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $partner_bsn
+                      value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_reguliere_voordelen
+                              value: null
+                            then: 0
+                        default: $partner_reguliere_voordelen
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_vervreemdingsvoordelen
+                              value: null
+                            then: 0
+                        default: $partner_vervreemdingsvoordelen
+              default: 0
+          - output: partner_box3_inkomen
+            # Art. 2.17 Wet IB 2001: de rendementsgrondslag van de partner telt mee als er een partner
+            # is; een bezitting of schuld die de partner niet heeft telt voor 0 (RFC-036).
+            # Geen aftrek van een heffingsvrije voet hier: die is al verwerkt in box3_bezittingen, dat
+            # bij een partner (box3_heffingsvrije_voet_partners) de gezamenlijke grondslag aftrekt.
+            # Nog eens heffingsvrij_vermogen aftrekken op het partnervermogen alleen was een dubbele
+            # vrijstelling (audit: corpus/demo/tools/AUDIT_GETROUWHEID.md, § Wet IB Belastingdienst).
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $partner_bsn
+                      value: null
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - operation: ADD
+                        values:
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_spaargeld
+                                  value: null
+                                then: 0
+                            default: $partner_spaargeld
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_beleggingen
+                                  value: null
+                                then: 0
+                            default: $partner_beleggingen
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_onroerend_goed
+                                  value: null
+                                then: 0
+                            default: $partner_onroerend_goed
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_schulden
+                                  value: null
+                                then: 0
+                            default:
+                              operation: SUBTRACT
+                              values:
+                                - 0
+                                - $partner_schulden
+                      - $box3_rendement
+              default: 0
+          - output: partner_buitenlands_inkomen
+            value: $partner_buitenlands_inkomen
+          - output: partner_inkomen
+            # Het buitenlandse inkomen van de partner telt mee als er een partner is (art. 2.17 Wet IB
+            # 2001); zonder partner is het afwezig en telt 0 (RFC-036).
+            value:
+              operation: ADD
+              values:
+                - $partner_box1_inkomen
+                - $partner_box2_inkomen
+                - $partner_box3_inkomen
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_buitenlands_inkomen
+                          value: null
+                      then: $partner_buitenlands_inkomen
+                  default: 0
+          - output: gezamenlijk_vermogen
+            # Art. 2.17 Wet IB 2001: met partner is het vermogen het gezamenlijke vermogen; een
+            # bezitting of schuld die de partner niet heeft telt voor 0 (RFC-036).
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $partner_bsn
+                      value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - $vermogen
+                      - operation: SUBTRACT
+                        values:
+                          - operation: ADD
+                            values:
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: EQUALS
+                                      subject: $partner_spaargeld
+                                      value: null
+                                    then: 0
+                                default: $partner_spaargeld
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: EQUALS
+                                      subject: $partner_beleggingen
+                                      value: null
+                                    then: 0
+                                default: $partner_beleggingen
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: EQUALS
+                                      subject: $partner_onroerend_goed
+                                      value: null
+                                    then: 0
+                                default: $partner_onroerend_goed
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: EQUALS
+                                  subject: $partner_schulden
+                                  value: null
+                                then: 0
+                            default: $partner_schulden
+              default: $vermogen
+          - output: bezittingen
+            value:
+              operation: ADD
+              values:
+                - $spaargeld
+                - $beleggingen
+                - $onroerend_goed
+          - output: bedrijfsinkomen
+            value:
+              operation: DIVIDE
+              values:
+                - $winst_uit_onderneming
+                - 12
+          - output: maandelijks_inkomen
+            value:
+              operation: DIVIDE
+              values:
+                - operation: ADD
+                  values:
+                    - $box1_inkomen
+                    - $box2_inkomen
+                    - $box3_inkomen
+                - 12

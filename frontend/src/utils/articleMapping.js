@@ -28,21 +28,48 @@ export function buildArticleMap(articles) {
 }
 
 /**
+ * The form-relevant part of a field declaration (parameter or input): its
+ * datatype, the unit of an amount, and whether `null` is one of its values
+ * (`nullable`, schema v0.5.8, RFC-036). `nullable` is a boolean with schema
+ * default false, so a declaration without the key is a field that is never
+ * absent; the form then offers a value or a blank cell, not `null`.
+ */
+function fieldMeta(field) {
+  return {
+    type: field.type,
+    unit: field.type_spec?.unit ?? null,
+    nullable: field.nullable === true,
+  };
+}
+
+/**
  * Builds a name -> datatype map for scenario parameter inputs, so each input
  * can render the control matching its declared type (boolean -> switch,
  * amount -> currency field, etc.). Merges execution.input and
- * execution.parameters; parameter types win on name collision since a
- * scenario `Given parameter` targets an execution parameter most directly.
- * Captures `type_spec.unit` so the amount branch can convert eurocents<->euros.
+ * execution.parameters. Captures `type_spec.unit` so the amount branch can
+ * convert eurocents<->euros, and `nullable` so the form only accepts a
+ * stated absence where the law allows one.
+ *
+ * Precedence on a name collision: the parameter's declaration wins, for the
+ * whole of the meta (type, unit and nullable alike). This map serves the
+ * parameter rows of the scenario form (`Given parameter "x" is ...`), and
+ * the engine checks a top-level parameter against the *parameter's*
+ * declaration (`required_parameter_for_nobody` in service.rs): a `null` is
+ * accepted or refused by the parameter's `nullable`, whatever a same-named
+ * input says. So a nullable input shadowed by a non-nullable parameter has
+ * `null` refused here, on purpose, because the engine refuses it too. The
+ * columns of a data-source table are the other way round: they feed inputs,
+ * and `buildExternalFieldTypeMap` reads inputs only, untouched by any
+ * same-named parameter.
  *
  * @param {Array} articles - Articles array from useLaw()
- * @returns {Map<string, { type: string, unit: (string|null) }>}
+ * @returns {Map<string, { type: string, unit: (string|null), nullable: boolean }>}
  */
 export function buildTypeMap(articles) {
   const typeMap = new Map();
   const add = (field) => {
     if (field?.name && field.type) {
-      typeMap.set(field.name, { type: field.type, unit: field.type_spec?.unit ?? null });
+      typeMap.set(field.name, fieldMeta(field));
     }
   };
 
@@ -88,9 +115,13 @@ export function buildOutputTypeMap(articles) {
  * Spans a set of law docs (the current law + its loaded dependencies), because
  * data-source fields are declared by the leaf laws, not the law under test.
  * Last doc wins on a name collision. Drives typed cells in DataSourceTable.
+ * Parameters play no part: a table column feeds an input, and the engine
+ * checks the value against the input's declaration, so a same-named
+ * parameter (nullable or not) leaves the column's meta alone. The parameter
+ * rows of the form have the opposite rule, see `buildTypeMap`.
  *
  * @param {Array<{articles?: Array}>} lawDocs - parsed law documents
- * @returns {Map<string, { type: string, unit: (string|null) }>}
+ * @returns {Map<string, { type: string, unit: (string|null), nullable: boolean }>}
  */
 export function buildExternalFieldTypeMap(lawDocs) {
   const map = new Map();
@@ -105,7 +136,7 @@ export function buildExternalFieldTypeMap(lawDocs) {
         // misclassified as external. (versionsCache YAML is not schema-checked.)
         const isExternal = src && typeof src === 'object' && Object.keys(src).length === 0;
         if (isExternal && f.name && f.type) {
-          map.set(f.name, { type: f.type, unit: f.type_spec?.unit ?? null });
+          map.set(f.name, fieldMeta(f));
         }
       }
     }

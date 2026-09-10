@@ -1,6 +1,8 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, useId } from 'vue';
 import ScenarioParameterInput from './ScenarioParameterInput.vue';
+import AbsenceToggle from './AbsenceToggle.vue';
+import { NOT_NULLABLE_MESSAGE, nullAllowed, isNullText } from '../utils/nullability.js';
 
 let nextRowId = 0;
 
@@ -47,9 +49,13 @@ function addRow() {
 }
 
 function removeRow(index) {
+  const rk = rowKey(rows.value[index], index);
   const updated = [...rows.value];
   updated.splice(index, 1);
   rows.value = updated;
+  for (const key of [...rejectedNull.value]) {
+    if (key.startsWith(`${rk}:`)) rejectedNull.value.delete(key);
+  }
 }
 
 function updateCell(rowIndex, fieldName, value) {
@@ -72,14 +78,81 @@ function defaultForType(type) {
   }
 }
 
-// Null contract for data-source cells: null / undefined / the gherkin string
-// "null" all mean "not provided" and display as empty; clearing stores null.
-// (Mirrors steps.js `'null' -> null` and formMapper `null/'' -> 'null'`.)
+// Cell contract (RFC-036). A cell holds what the table says: blank means "no
+// value stated" (the runner leaves the field out, the engine reports the
+// input as unknown), the word `null` is an absence the author stated. The
+// two must stay apart in the form, so a blank shows as blank and a null (a
+// JS null from a typed collection record, or the text `null` from a
+// data-source row) shows as the word `null`; ScenarioParameterInput renders
+// that in a text control whatever the column type. Clearing a field stores
+// a blank. Stating an absence is done with the "afwezig" checkbox
+// (AbsenceToggle) next to the field, which every column declared nullable
+// gets whatever its type, or by typing `null` in a text column or picking
+// it in a boolean column.
+//
+// Whether an absence may be stated at all is the column's `nullable` (the
+// field's declaration in the law, schema v0.5.8). Three states: `true` (the
+// law allows null), `false` (the law declares the field as never absent, the
+// engine rejects a null there), `undefined` (no declaration known - the
+// element fields of a collection, or a source column the law never names).
+// Only `false` restricts: an unknown declaration makes no claim, the same
+// rule the engine's type checker follows (see utils/nullability.js). The
+// checkbox is offered only on `true`: an unknown column is a text column,
+// where typing `null` already works, and offering a control the law does
+// not vouch for would read as a claim the form cannot make.
+const isNullCell = isNullText;
 function cellDisplay(v) {
-  return v == null || v === 'null' ? '' : v;
+  if (isNullCell(v)) return 'null';
+  return v === undefined ? '' : v;
 }
-function cellStore(rowIndex, fieldName, v) {
-  updateCell(rowIndex, fieldName, v === '' || v == null ? null : v);
+function offersAbsenceToggle(col) {
+  return col.nullable === true;
+}
+
+// Cells whose `null` was refused, keyed `<row key>:<column>`. The refusal
+// stores a blank (the record says "no value stated", the honest fallback
+// for a statement the law does not allow) and marks the cell invalid until
+// the author types something else; the field itself keeps showing what was
+// typed, so the message points at the text it is about.
+const rejectedNull = ref(new Set());
+const errorIdPrefix = useId();
+
+function rowKey(row, rowIndex) {
+  return row?._id ?? rowIndex;
+}
+function cellKey(row, rowIndex, col) {
+  return `${rowKey(row, rowIndex)}:${col.name}`;
+}
+function cellErrorId(row, rowIndex, col) {
+  return `${errorIdPrefix}-${cellKey(row, rowIndex, col)}`;
+}
+function cellStore(rowIndex, col, v) {
+  const key = cellKey(rows.value[rowIndex], rowIndex, col);
+  if (isNullCell(v) && !nullAllowed(col)) {
+    rejectedNull.value.add(key);
+    updateCell(rowIndex, col.name, '');
+    return;
+  }
+  rejectedNull.value.delete(key);
+  updateCell(rowIndex, col.name, v == null ? '' : v);
+}
+// A cell is invalid when its `null` was just refused, or when it already
+// holds a `null` (read from the feature file, or the column was re-typed as
+// non-nullable after the law's declaration arrived) that the law does not
+// allow. The stored value stays: it came from the file, a human decides.
+function cellInvalid(row, rowIndex, col) {
+  return rejectedNull.value.has(cellKey(row, rowIndex, col))
+    || (isNullCell(row[col.name]) && !nullAllowed(col));
+}
+// The boolean dropdown: `null` is the stated absence, the empty option a
+// blank cell. The `null` option is offered only where the law allows it, and
+// kept while the cell holds one so the invalid state has something to show.
+function booleanCellValue(v) {
+  if (isNullCell(v)) return 'null';
+  return v === undefined ? '' : String(v);
+}
+function offersNullOption(row, col) {
+  return nullAllowed(col) || isNullCell(row[col.name]);
 }
 
 // All columns: key field + declared fields (deduplicated)
@@ -143,17 +216,23 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
             </template>
             <nldd-cell v-else-if="col.type === 'boolean'" width="full" min-width="120px">
-              <nldd-dropdown size="md">
+              <nldd-dropdown size="md" :invalid="cellInvalid(row, ri, col) || undefined">
                 <select
                   :aria-label="col.name"
-                  :value="String(row[col.name] || 'null')"
+                  :value="booleanCellValue(row[col.name])"
+                  :aria-invalid="cellInvalid(row, ri, col) || undefined"
+                  :aria-describedby="cellInvalid(row, ri, col) ? cellErrorId(row, ri, col) : undefined"
                   @change="updateCell(ri, col.name, $event.target.value)"
                 >
                   <option value="true">true</option>
                   <option value="false">false</option>
-                  <option value="null">null</option>
+                  <option v-if="offersNullOption(row, col)" value="null">null</option>
+                  <option value="">(leeg)</option>
                 </select>
               </nldd-dropdown>
+              <nldd-form-field-error-text v-if="cellInvalid(row, ri, col)" :id="cellErrorId(row, ri, col)" invalid>
+                {{ NOT_NULLABLE_MESSAGE }}
+              </nldd-form-field-error-text>
             </nldd-cell>
             <nldd-cell v-else width="full" min-width="120px">
               <ScenarioParameterInput
@@ -161,9 +240,26 @@ const showBody = computed(() => props.drilledIn || expanded.value);
                 :unit="col.unit"
                 :name="col.name"
                 :value="cellDisplay(row[col.name])"
-                @update="cellStore(ri, col.name, $event)"
+                :invalid="cellInvalid(row, ri, col)"
+                :error-message-ids="cellErrorId(row, ri, col)"
+                @update="cellStore(ri, col, $event)"
               />
+              <nldd-form-field-error-text v-if="cellInvalid(row, ri, col)" :id="cellErrorId(row, ri, col)" invalid>
+                {{ NOT_NULLABLE_MESSAGE }}
+              </nldd-form-field-error-text>
             </nldd-cell>
+            <!-- The explicit way to state an absence, for every nullable
+                 column whatever its type (a number field cannot hold null). -->
+            <template v-if="!readonly && offersAbsenceToggle(col)">
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell width="fit-content">
+                <AbsenceToggle
+                  :value="row[col.name]"
+                  :data-testid="`absent-${col.name}`"
+                  @update="cellStore(ri, col, $event)"
+                />
+              </nldd-cell>
+            </template>
           </nldd-list-item>
 
           <nldd-list-item v-if="!readonly" size="md">

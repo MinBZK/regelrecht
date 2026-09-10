@@ -17,9 +17,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
+- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, population simulation, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; target domain `demo.regelrecht.rijks.app` (wired into deploy.yml; the ZAD component still has to be created)
 - `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
-- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor JS via `bdd/codegen/gen-js.mjs` → `frontend/src/gherkin/grammar.generated.js`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets; `BDD_BUCKET=conformance|corpus` narrows it to one. CI runs and blocks on bucket B (job **BDD conformance**, hung on the `Test` gate); bucket A stays out, because a failure there is a human's call.
+- `corpus/demo/` - The demo corpus: 80 laws migrated from the POC (`regulation/nl/`, schema v0.5.8, `source: {}` for external data), their scenarios (`**/scenarios/*.feature`, canonical grammar, run with `just bdd-demo`), `bindings.yaml` (which register table/column feeds which `source: {}` input; the demo materialises persona data from it), `profiles.yaml` (fictitious personas), `demo-config.yaml` and `services.yaml`. `tools/` holds the one-off migration and conversion scripts
+- `bdd/` - Canonical, engine-agnostic BDD feature language. `bdd/grammar.yaml` is the single source of truth for the law-agnostic Gherkin vocabulary; step bindings for every engine are code-generated from it (Rust via `packages/engine/build.rs`, editor/demo JS via `bdd/codegen/gen-js.mjs` → `packages/frontend-shared/src/gherkin/grammar.generated.js`, re-exported by `frontend/src/gherkin/`). Never hand-edit a generated file — change `grammar.yaml` and run `just bdd-codegen`. Two buckets share the language: **bucket A** = law-validation scenarios next to the live laws (`corpus/regulation/**/scenarios/*.feature`, run against the real corpus — a failure means a law changed or the scenario is stale, a human decides; `@wip`-tagged scenarios are skipped); **bucket B** = engine-conformance suite (`bdd/conformance/*.feature`, `@tier:`-tagged) proving an engine speaks the whole language against synthetic `test_*` laws. `just bdd` runs both buckets; `BDD_BUCKET=conformance|corpus` narrows it to one. CI runs and blocks on bucket B (job **BDD conformance**, hung on the `Test` gate); bucket A stays out, because a failure there is a human's call. Bucket A follows `REGULATION_PATH`, the variable the engine loads its laws from, so the same bucket runs over another corpus: `just bdd-demo` points it at `corpus/demo/regulation` (the migrated POC laws with their synthetic persona data). That run is fully in-repo, so CI blocks on it too (job **BDD demo**). The engine and its test harness know nothing demo-specific.
 
 ## Development Setup
 
@@ -82,7 +84,7 @@ merge). The format is **Conventional Commits**: `type(scope): subject`, where
 - **Allowed types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
   `test`, `chore`, `build`, `ci`.
 - **Allowed scopes** (optional): `engine`, `admin`, `pipeline`, `harvester`,
-  `editor`, `corpus`, `github`, `frontend`, `lawmaking`, `docs`, `grafana`,
+  `editor`, `corpus`, `github`, `frontend`, `lawmaking`, `demo`, `docs`, `grafana`,
   `ci`, `schema`, `deps`, `dev`. An unlisted scope fails the lint.
 - **The subject MUST start with a lowercase letter** (`subjectPattern:
   ^[a-z].*$`). This is the easiest rule to trip on: `docs: RFC-…` fails because
@@ -470,6 +472,7 @@ de job staat in het workflowbestand dat de PR meebrengt.
 | enrichworker | `regelrecht-enrich-worker` | (no web UI) |
 | pipeline-api | `regelrecht-pipeline-api` | (internal) |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
+| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` (ZAD component still to be created) |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 

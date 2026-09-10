@@ -1,0 +1,167 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: archiefwet/overbrenging
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Archiefwet - Overbrenging archiefbescheiden
+bwb_id: BWBR0007376
+url: https://wetten.overheid.nl/BWBR0007376/2024-01-01
+service: NATIONAAL_ARCHIEF
+uuid: 5cebc6f0-caa4-4f2f-908e-37c0fcb7337a
+articles:
+  - number: '12'
+    text: >-
+      1. De zorgdrager brengt de archiefbescheiden die niet voor vernietiging in aanmerking
+      komen en ouder zijn dan twintig jaar over naar een archiefbewaarplaats. 2. Bij of
+      krachtens algemene maatregel van bestuur worden regels gesteld, die bij de overbrenging
+      van archiefbescheiden in acht dienen te worden genomen.
+    url: https://wetten.overheid.nl/BWBR0007376/2024-01-01#Artikel12
+    machine_readable:
+      definitions:
+        minimale_leeftijd_jaren: 20
+        maximale_termijn_overbrengen_jaren: 10
+        uiterste_leeftijd_jaren: 30
+        # Art. 13 lid 4: de machtiging tot opschorting wordt verleend voor een periode
+        # van ten hoogste tien jaar.
+        maximale_termijn_machtiging_jaren: 10
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: archiefstuk_id
+            type: string
+            required: true
+          - name: aanmaakdatum
+            type: date
+            required: true
+          - name: voor_vernietiging
+            type: boolean
+            required: true
+          - name: veelvuldig_gebruik
+            type: boolean
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            nullable: true
+            required: false
+          - name: opschortingsmachtiging
+            type: boolean
+            # Aanvraaggegeven dat de aanvrager kan weglaten; de wet toetst zelf op afwezigheid
+            # (RFC-036: een weggelaten optionele parameter is onbekend, een meegegeven null is
+            # een afwezigheid waarop de wet beslist).
+            nullable: true
+            required: false
+          - name: machtiging_datum
+            type: date
+            # Art. 13 lid 4: de machtiging wordt "verleend voor een periode van ten
+            # hoogste tien jaar". Zonder een verleningsdatum is die termijn niet te
+            # toetsen; nullable omdat een aanvrager die geen machtiging heeft dit
+            # veld weglaat (RFC-036, zelfde afwezigheidssemantiek als de andere
+            # aanvraaggegevens hier).
+            nullable: true
+            required: false
+        output:
+          - name: moet_overgebracht_worden
+            type: boolean
+          - name: uiterste_overbrengdatum
+            type: date
+            nullable: true
+        actions:
+          - output: moet_overgebracht_worden
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $voor_vernietiging
+                  value: false
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject:
+                    operation: AGE
+                    reference_date: $referencedate
+                    date_of_birth: $aanmaakdatum
+                  value: $minimale_leeftijd_jaren
+                - operation: OR
+                  conditions:
+                    - operation: NOT
+                      value:
+                        operation: AND
+                        conditions:
+                          # Art. 13 lid 3: de machtiging tot opschorting.
+                          - operation: EQUALS
+                            subject: $opschortingsmachtiging
+                            value: true
+                          # Art. 13 lid 4: de machtiging geldt alleen "voor een periode
+                          # van ten hoogste tien jaar" vanaf de verleningsdatum; zonder
+                          # verleningsdatum is de machtiging niet vast te stellen en dus
+                          # niet werkzaam.
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $machtiging_datum
+                              value: null
+                          - operation: LESS_THAN
+                            subject:
+                              operation: DATE_DIFF
+                              from: $machtiging_datum
+                              to: $referencedate.iso
+                              in: years
+                            value: $maximale_termijn_machtiging_jaren
+                    - operation: NOT
+                      value:
+                        operation: EQUALS
+                        subject: $veelvuldig_gebruik
+                        value: true
+            legal_basis:
+              law: Archiefwet 1995
+              bwb_id: BWBR0007376
+              article: '12'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0007376/2024-01-01#Hoofdstuk2_Artikel12
+              juriconnect: >-
+                jci1.3:c:BWBR0007376&artikel=12&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 12 lid 1 bepaalt wanneer archiefbescheiden overgebracht moeten worden
+          - output: uiterste_overbrengdatum
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $moet_overgebracht_worden
+                    value: true
+                  then:
+                    operation: DATE_ADD
+                    date: $aanmaakdatum
+                    years: $uiterste_leeftijd_jaren
+            legal_basis:
+              law: Archiefbesluit 1995
+              bwb_id: BWBR0007748
+              article: '11'
+              url: https://wetten.overheid.nl/BWBR0007748/2020-01-01#Artikel11
+              juriconnect: jci1.3:c:BWBR0007748&artikel=11&z=2020-01-01&g=2020-01-01
+              explanation: >-
+                Artikel 11 Archiefbesluit bepaalt de uiterste termijn voor overbrenging
+  - number: '13'
+    text: >-
+      1. De zorgdrager kan archiefbescheiden die niet voor vernietiging in aanmerking komen
+      en jonger zijn dan twintig jaar naar een archiefbewaarplaats overbrengen, wanneer naar
+      het oordeel van de beheerder van de archiefbewaarplaats voldoende aanleiding bestaat
+      hiervoor ruimte beschikbaar te stellen. 2. Een afwijzende beslissing krachtens het
+      eerste lid kan door degene aan wie de beheerder onmiddellijk ondergeschikt is worden
+      herzien. 3. Indien archiefbescheiden ouder dan twintig jaar door het overheidsorgaan
+      nog veelvuldig worden gebruikt of geraadpleegd kan op verzoek van de zorgdrager
+      machtiging tot opschorting van de overbrenging van die archiefbescheiden worden
+      verleend door Onze minister dan wel, indien het archiefbescheiden betreft voor de
+      bewaring waarvan een andere dan een rijksarchiefbewaarplaats of een provinciale
+      archiefbewaarplaats is aangewezen, door gedeputeerde staten. 4. De in het derde lid
+      bedoelde machtiging, waaraan voorwaarden kunnen worden verbonden, wordt verleend voor
+      een periode van ten hoogste tien jaar, na afloop waarvan verlenging kan worden
+      verkregen.
+    url: https://wetten.overheid.nl/BWBR0007376/2024-01-01#Artikel13
+    # De opschortingslogica van lid 3/4 is gemodelleerd in de machine_readable van
+    # artikel 12 (de moet_overgebracht_worden-actie), omdat die uitkomst daar de output
+    # is; deze tekst dient als bron/legal_basis voor die tak.

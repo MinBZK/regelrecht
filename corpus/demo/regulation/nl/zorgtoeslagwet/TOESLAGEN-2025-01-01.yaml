@@ -1,0 +1,413 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: zorgtoeslagwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+name: Zorgtoeslag
+bwb_id: BWBR0018451
+url: https://wetten.overheid.nl/BWBR0018451/2025-01-01
+service: TOESLAGEN
+uuid: 60e71675-38bc-4297-87ac-0c145613e481
+discoverable: CITIZEN
+articles:
+  - number: '2'
+    text: >-
+      1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de
+      standaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag ter grootte
+      van dat verschil. Voor een verzekerde met een partner wordt daarbij tweemaal de
+      standaardpremie in aanmerking genomen; in dat geval worden de verzekerde en zijn partner
+      voor de toepassing van deze wet geacht gezamenlijk één aanspraak te hebben.
+
+      2 De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar,
+      vermeerderd met een percentage van het toetsingsinkomen van de verzekerde in dat jaar
+      voorzover dat toetsingsinkomen het drempelinkomen te boven gaat. Voor een verzekerde met
+      een partner wordt daarbij het gezamenlijke toetsingsinkomen in aanmerking genomen.
+
+      3 De percentages worden voor verzekerden met een partner vastgesteld op 4,273% van het
+      drempelinkomen, vermeerderd met 13,700% van het toetsingsinkomen voor zover dat boven het
+      drempelinkomen uitgaat en voor een verzekerde zonder partner op 1,896% van het
+      drempelinkomen, vermeerderd met 13,700% van het toetsingsinkomen voor zover dat boven het
+      drempelinkomen uitgaat. Deze percentages kunnen bij algemene maatregel van bestuur worden
+      gewijzigd.
+
+      4 In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag voor een
+      verzekerde met een partner die geen verzekerde is, vijftig procent van het op grond van
+      het eerste lid berekende bedrag.
+
+      5 De aanspraak op een zorgtoeslag wordt voor iedere kalendermaand afzonderlijk bepaald.
+
+      6 Bij regeling van Onze Minister kunnen omtrent het bepaalde in het vijfde lid nadere
+      regels worden gesteld.
+
+      7 De voordracht voor een krachtens het derde lid vast te stellen algemene maatregel van
+      bestuur wordt niet eerder gedaan dan twee weken nadat het ontwerp aan beide kamers der
+      Staten-Generaal is overgelegd.
+    url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
+    machine_readable:
+      definitions:
+        minimum_leeftijd: 18
+        percentage_drempelinkomen_met_partner: 0.04273
+        percentage_drempelinkomen_alleenstaand: 0.01896
+        afbouwpercentage_minimum: 0.137
+        afbouwpercentage_boven_drempel: 0.137
+        drempelinkomen_alleenstaande: 3971900
+        drempelinkomen_toeslagpartner: 5020600
+        vermogensgrens_alleenstaande: 14189600
+        vermogensgrens_toeslagpartner: 17942900
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: leeftijd
+            type: number
+            type_spec:
+              unit: years
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: point_in_time
+          - name: is_verzekerde
+            type: boolean
+            source:
+              regulation: zvw
+              output: is_verzekerde
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: month
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+              immutable_after: P2Y
+          - name: vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: vermogen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: gezamenlijk_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: gezamenlijk_vermogen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+          - name: partner_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: partner_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+              immutable_after: P2Y
+          - name: heeft_partner
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_partner
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: point_in_time
+          # Art. 2 lid 4: de halvering geldt voor "een partner die geen verzekerde is". Nodig om
+          # dat vast te stellen: de bsn van de partner (nullable, GEEN partner geeft null) en of
+          # die partner zelf verzekerde is (nullable via de skip-regel: bsn null -> is_verzekerde
+          # null, geen aparte guard nodig).
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: point_in_time
+          - name: partner_is_verzekerde
+            type: boolean
+            nullable: true
+            source:
+              regulation: zvw
+              output: is_verzekerde
+              parameters:
+                bsn: $partner_bsn
+            temporal:
+              type: period
+              period_type: month
+          - name: standaardpremie
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: >-
+                zorgtoeslagwet/regelingen/regeling_vaststelling_standaardpremie_en_bestuursrechtelijke_premies
+              output: standaardpremie
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_verzekerde_zorgtoeslag
+            type: boolean
+          - name: hoogte_toeslag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - subject: $leeftijd
+                  operation: GREATER_THAN_OR_EQUAL
+                  value: $minimum_leeftijd
+                - subject: $is_verzekerde
+                  operation: EQUALS
+                  value: true
+          # Art. 2 lid 1: "verzekerde" (art. 1 sub c) is de voorwaarde voor de aanspraak; deze
+          # toets was een constante true. voldoet_aan_voorwaarden toetst ook de leeftijd, dus
+          # hier direct de verzekerdheidstoets zelf gebruiken.
+          - output: is_verzekerde_zorgtoeslag
+            value: $is_verzekerde
+          - output: hoogte_toeslag
+        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
+            value:
+              operation: ROUND
+              precision: 0
+              # Met partner het partnerbedrag, anders het bedrag voor een alleenstaande. Als twee
+              # gevallen (partner ja/nee) zonder default geschreven zou de afronding op een mogelijk
+              # afwezige waarde werken (RFC-036); een boolean laat geen derde geval over.
+              value:
+                operation: IF
+                cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $heeft_partner
+                      value: true
+                    then:
+                      operation: IF
+                      cases:
+                        - when:
+                            operation: GREATER_THAN
+                            subject:
+                              operation: ADD
+                              values:
+                                - $inkomen
+                                - $partner_inkomen
+                            value: $drempelinkomen_toeslagpartner
+                          then: 0
+                        - when:
+                            operation: GREATER_THAN
+                            subject: $gezamenlijk_vermogen
+                            value: $vermogensgrens_toeslagpartner
+                          then: 0
+                      default:
+                        # Art. 2 lid 4: "in afwijking van het eerste lid" de helft van het lid-1-bedrag
+                        # als de partner geen verzekerde is. partner_is_verzekerde is nullable (skip-regel
+                        # via partner_bsn); EQUALS ... false is alleen waar bij een bevestigd
+                        # niet-verzekerde partner, niet bij ontbrekende partnergegevens ("onbekend").
+                        operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_is_verzekerde
+                              value: false
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - 0.5
+                                - operation: SUBTRACT
+                                  values:
+                                    - operation: MULTIPLY
+                                      values:
+                                        - $standaardpremie
+                                        - 2
+                                    - operation: ADD
+                                      values:
+                                        - operation: MULTIPLY
+                                          values:
+                                            - $percentage_drempelinkomen_met_partner
+                                            - operation: MIN
+                                              values:
+                                                - operation: ADD
+                                                  values:
+                                                    - $inkomen
+                                                    - $partner_inkomen
+                                                - $drempelinkomen_toeslagpartner
+                                        - operation: IF
+                                          cases:
+                                            - when:
+                                                operation: GREATER_THAN
+                                                subject:
+                                                  operation: ADD
+                                                  values:
+                                                    - $inkomen
+                                                    - $partner_inkomen
+                                                value: $drempelinkomen_toeslagpartner
+                                              then:
+                                                operation: MULTIPLY
+                                                values:
+                                                  - operation: SUBTRACT
+                                                    values:
+                                                      - operation: ADD
+                                                        values:
+                                                          - $inkomen
+                                                          - $partner_inkomen
+                                                      - $drempelinkomen_toeslagpartner
+                                                  - $afbouwpercentage_boven_drempel
+                                          default: 0
+                        default:
+                          operation: SUBTRACT
+                          values:
+                            - operation: MULTIPLY
+                              values:
+                                - $standaardpremie
+                                - 2
+                            - operation: ADD
+                              values:
+                                - operation: MULTIPLY
+                                  values:
+                                    - $percentage_drempelinkomen_met_partner
+                                    - operation: MIN
+                                      values:
+                                        - operation: ADD
+                                          values:
+                                            - $inkomen
+                                            - $partner_inkomen
+                                        - $drempelinkomen_toeslagpartner
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: GREATER_THAN
+                                        subject:
+                                          operation: ADD
+                                          values:
+                                            - $inkomen
+                                            - $partner_inkomen
+                                        value: $drempelinkomen_toeslagpartner
+                                      then:
+                                        operation: MULTIPLY
+                                        values:
+                                          - operation: SUBTRACT
+                                            values:
+                                              - operation: ADD
+                                                values:
+                                                  - $inkomen
+                                                  - $partner_inkomen
+                                              - $drempelinkomen_toeslagpartner
+                                          - $afbouwpercentage_boven_drempel
+                                  default: 0
+                default:
+                  operation: IF
+                  cases:
+                    - when:
+                        operation: GREATER_THAN
+                        subject: $inkomen
+                        value: $drempelinkomen_alleenstaande
+                      then: 0
+                    - when:
+                        operation: GREATER_THAN
+                        subject: $vermogen
+                        value: $vermogensgrens_alleenstaande
+                      then: 0
+                  default:
+                    operation: SUBTRACT
+                    values:
+                      - $standaardpremie
+                      - operation: ADD
+                        values:
+                          - operation: MULTIPLY
+                            values:
+                              - $percentage_drempelinkomen_alleenstaand
+                              - operation: MIN
+                                values:
+                                  - $inkomen
+                                  - $drempelinkomen_alleenstaande
+                          - operation: IF
+                            cases:
+                              - when:
+                                  operation: GREATER_THAN
+                                  subject: $inkomen
+                                  value: $drempelinkomen_alleenstaande
+                                then:
+                                  operation: MULTIPLY
+                                  values:
+                                    - operation: SUBTRACT
+                                      values:
+                                        - $inkomen
+                                        - $drempelinkomen_alleenstaande
+                                    - $afbouwpercentage_minimum
+                            default: 0
+            legal_basis:
+              law: Zorgtoeslagwet
+              bwb_id: BWBR0018451
+              article: '2'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0018451/2025-01-01/0/Artikel2
+              juriconnect: >-
+                jci1.3:c:BWBR0018451&artikel=2&lid=1&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                Artikel 2 lid 1 bepaalt dat hoogte zorgtoeslag afhangt van verschil tussen standaardpremie
+                en normpremie, waarbij onderscheid wordt gemaakt tussen alleenstaanden en partners
+  - number: '4'
+    text: >-
+      Onze Minister stelt jaarlijks, uiterlijk 22 dagen voorafgaande aan het berekeningsjaar,
+      bij regeling de standaardpremie voor dat berekeningsjaar vast.
+    url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel4
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          description: De standaardpremie, bedoeld in artikel 4

@@ -1,0 +1,278 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: omgevingswet/werkgebonden_personenmobiliteit/gegevens
+regulatory_layer: WET
+publication_date: '2024-07-01'
+valid_from: '2024-07-01'
+name: WPM Gegevensverzameling
+bwb_id: BWBR0041330
+url: https://wetten.overheid.nl/BWBR0041330/2024-07-01
+service: RVO
+uuid: 9c5d8e7a-4b2f-4d6e-8a1c-3e5b7d9a2f4c
+discoverable: BUSINESS
+articles:
+  - number: '18.14'
+    text: >-
+      1 De emissie in de lucht van kooldioxide door woon-werkmobiliteit of zakelijke mobiliteit
+      in kalenderjaargemiddelde per reizigerskilometer wordt berekend door de emissie in de
+      lucht van kooldioxide door woon-werkmobiliteit of zakelijke mobiliteit in het kalenderjaar
+      te delen door het aantal reizigerskilometers voor woon-werkmobiliteit respectievelijk
+      zakelijke mobiliteit in het kalenderjaar.
+
+      2 De emissie in de lucht van kooldioxide door woon-werkmobiliteit of zakelijke mobiliteit,
+      bedoeld in het eerste lid, wordt berekend door voor elke reismodaliteit het aantal in het
+      kalenderjaar gereisde kilometers voor woon-werkmobiliteit respectievelijk zakelijke
+      mobiliteit te vermenigvuldigen met de bij ministeriële regeling vastgestelde emissiefactor
+      voor die reismodaliteit en de uitkomsten bij elkaar op te tellen.
+    url: >-
+      https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel18.14
+    machine_readable:
+      definitions:
+        co2_factor_auto_benzine: 170
+        co2_factor_auto_diesel: 150
+        co2_factor_openbaar_vervoer: 30
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+        input:
+          - name: woon_werk_auto_benzine
+            type: number
+            source: {}
+          - name: woon_werk_auto_diesel
+            type: number
+            source: {}
+          - name: zakelijk_auto_benzine
+            type: number
+            source: {}
+          - name: zakelijk_auto_diesel
+            type: number
+            source: {}
+          - name: woon_werk_openbaar_vervoer
+            type: number
+            source: {}
+        output:
+          - name: woon_werk_auto_benzine
+            type: number
+          - name: woon_werk_auto_diesel
+            type: number
+          - name: zakelijk_auto_benzine
+            type: number
+          - name: zakelijk_auto_diesel
+            type: number
+          - name: woon_werk_openbaar_vervoer
+            type: number
+          - name: co2_uitstoot_totaal
+            type: number
+          - name: emissie_per_reizigerskilometer_woon_werk
+            type: number
+          - name: emissie_per_reizigerskilometer_zakelijk
+            type: number
+        actions:
+          # Art. 18.14 lid 2 kent geen voorwaarde: het lid schrijft alleen voor
+          # hoe de emissie wordt berekend (kilometers x emissiefactor, opgeteld).
+          # De verwijderde output "voldoet_aan_voorwaarden" was AND(EQUALS true
+          # true), een constante zonder grondslag in de tekst.
+          - output: woon_werk_auto_benzine
+            value: $woon_werk_auto_benzine
+            legal_basis:
+              law: Besluit activiteiten leefomgeving
+              bwb_id: BWBR0041330
+              article: '18.14'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0041330/2024-07-01#Hoofdstuk18_Afdeling18.1_Paragraaf18.1.2_Artikel18.14
+              juriconnect: >-
+                jci1.3:c:BWBR0041330&artikel=18.14&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: Woon-werkverkeer benzine kilometers voor CO2-berekening
+          - output: woon_werk_auto_diesel
+            value: $woon_werk_auto_diesel
+            legal_basis:
+              law: Besluit activiteiten leefomgeving
+              bwb_id: BWBR0041330
+              article: '18.14'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0041330/2024-07-01#Hoofdstuk18_Afdeling18.1_Paragraaf18.1.2_Artikel18.14
+              juriconnect: >-
+                jci1.3:c:BWBR0041330&artikel=18.14&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: Woon-werkverkeer diesel kilometers voor CO2-berekening
+          - output: zakelijk_auto_benzine
+            value: $zakelijk_auto_benzine
+            legal_basis:
+              law: Besluit activiteiten leefomgeving
+              bwb_id: BWBR0041330
+              article: '18.14'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0041330/2024-07-01#Hoofdstuk18_Afdeling18.1_Paragraaf18.1.2_Artikel18.14
+              juriconnect: >-
+                jci1.3:c:BWBR0041330&artikel=18.14&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: Zakelijk verkeer benzine kilometers voor CO2-berekening
+          - output: zakelijk_auto_diesel
+            value: $zakelijk_auto_diesel
+            legal_basis:
+              law: Besluit activiteiten leefomgeving
+              bwb_id: BWBR0041330
+              article: '18.14'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0041330/2024-07-01#Hoofdstuk18_Afdeling18.1_Paragraaf18.1.2_Artikel18.14
+              juriconnect: >-
+                jci1.3:c:BWBR0041330&artikel=18.14&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: Zakelijk verkeer diesel kilometers voor CO2-berekening
+          - output: woon_werk_openbaar_vervoer
+            value: $woon_werk_openbaar_vervoer
+            legal_basis:
+              law: Besluit activiteiten leefomgeving
+              bwb_id: BWBR0041330
+              article: '18.14'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0041330/2024-07-01#Hoofdstuk18_Afdeling18.1_Paragraaf18.1.2_Artikel18.14
+              juriconnect: >-
+                jci1.3:c:BWBR0041330&artikel=18.14&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: Openbaar vervoer kilometers voor CO2-berekening
+          - output: co2_uitstoot_totaal
+            value:
+              operation: ADD
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $woon_werk_auto_benzine
+                    - $co2_factor_auto_benzine
+                - operation: MULTIPLY
+                  values:
+                    - $woon_werk_auto_diesel
+                    - $co2_factor_auto_diesel
+                - operation: MULTIPLY
+                  values:
+                    - $zakelijk_auto_benzine
+                    - $co2_factor_auto_benzine
+                - operation: MULTIPLY
+                  values:
+                    - $zakelijk_auto_diesel
+                    - $co2_factor_auto_diesel
+                - operation: MULTIPLY
+                  values:
+                    - $woon_werk_openbaar_vervoer
+                    - $co2_factor_openbaar_vervoer
+            legal_basis:
+              law: Besluit activiteiten leefomgeving
+              bwb_id: BWBR0041330
+              article: '18.14'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0041330/2024-07-01#Hoofdstuk18_Afdeling18.1_Paragraaf18.1.2_Artikel18.14
+              juriconnect: >-
+                jci1.3:c:BWBR0041330&artikel=18.14&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: >-
+                Totale CO2-uitstoot wordt berekend door kilometers te vermenigvuldigen met emissiefactoren
+                per vervoermiddel
+          # Art. 18.14 lid 1: emissie per reizigerskilometer woon-werkmobiliteit
+          # = CO2-uitstoot woon-werk (lid 2) gedeeld door het aantal
+          # reizigerskilometers woon-werk. Bij nul kilometer bestaat er geen
+          # gemiddelde per kilometer; de tekst voorziet niet in een vervangende
+          # waarde, dus wordt hier "geen kilometers, geen deling" gemodelleerd
+          # met een guard die 0 teruggeeft in plaats van een deling door nul.
+          - output: emissie_per_reizigerskilometer_woon_werk
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject:
+                      operation: ADD
+                      values:
+                        - $woon_werk_auto_benzine
+                        - $woon_werk_auto_diesel
+                        - $woon_werk_openbaar_vervoer
+                    value: 0
+                  then: 0
+              default:
+                operation: DIVIDE
+                values:
+                  - operation: ADD
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - $woon_werk_auto_benzine
+                          - $co2_factor_auto_benzine
+                      - operation: MULTIPLY
+                        values:
+                          - $woon_werk_auto_diesel
+                          - $co2_factor_auto_diesel
+                      - operation: MULTIPLY
+                        values:
+                          - $woon_werk_openbaar_vervoer
+                          - $co2_factor_openbaar_vervoer
+                  - operation: ADD
+                    values:
+                      - $woon_werk_auto_benzine
+                      - $woon_werk_auto_diesel
+                      - $woon_werk_openbaar_vervoer
+            legal_basis:
+              law: Besluit activiteiten leefomgeving
+              bwb_id: BWBR0041330
+              article: '18.14'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0041330/2024-07-01#Hoofdstuk18_Afdeling18.1_Paragraaf18.1.2_Artikel18.14
+              juriconnect: >-
+                jci1.3:c:BWBR0041330&artikel=18.14&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: >-
+                Emissie per reizigerskilometer woon-werkmobiliteit is de CO2-uitstoot
+                woon-werk (lid 2) gedeeld door het aantal reizigerskilometers
+                woon-werk; bij nul kilometer levert de tekst geen deling op
+          # Art. 18.14 lid 1: emissie per reizigerskilometer zakelijke
+          # mobiliteit, analoog aan woon-werk hierboven maar over de zakelijke
+          # kilometers en de bijbehorende CO2-uitstoot uit lid 2.
+          - output: emissie_per_reizigerskilometer_zakelijk
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject:
+                      operation: ADD
+                      values:
+                        - $zakelijk_auto_benzine
+                        - $zakelijk_auto_diesel
+                    value: 0
+                  then: 0
+              default:
+                operation: DIVIDE
+                values:
+                  - operation: ADD
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - $zakelijk_auto_benzine
+                          - $co2_factor_auto_benzine
+                      - operation: MULTIPLY
+                        values:
+                          - $zakelijk_auto_diesel
+                          - $co2_factor_auto_diesel
+                  - operation: ADD
+                    values:
+                      - $zakelijk_auto_benzine
+                      - $zakelijk_auto_diesel
+            legal_basis:
+              law: Besluit activiteiten leefomgeving
+              bwb_id: BWBR0041330
+              article: '18.14'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0041330/2024-07-01#Hoofdstuk18_Afdeling18.1_Paragraaf18.1.2_Artikel18.14
+              juriconnect: >-
+                jci1.3:c:BWBR0041330&artikel=18.14&lid=1&z=2024-07-01&g=2024-07-01
+              explanation: >-
+                Emissie per reizigerskilometer zakelijke mobiliteit is de
+                CO2-uitstoot zakelijk (lid 2) gedeeld door het aantal
+                zakelijke reizigerskilometers; bij nul kilometer levert de
+                tekst geen deling op

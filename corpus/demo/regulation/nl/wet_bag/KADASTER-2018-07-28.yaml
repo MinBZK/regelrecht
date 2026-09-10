@@ -1,0 +1,149 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: wet_bag
+regulatory_layer: WET
+publication_date: '2018-07-28'
+valid_from: '2018-07-28'
+name: Bepalen BAG gegevens
+bwb_id: BWBR0023466
+url: https://wetten.overheid.nl/BWBR0023466/2018-07-28
+service: KADASTER
+uuid: 9c4e8f2a-7d3b-4e1f-8a5c-6f9d2e3a7b4c
+articles:
+  - number: '1'
+    text: >-
+      In deze wet en de daarop berustende bepalingen wordt verstaan onder:
+        a. adres: door het bevoegde gemeentelijke orgaan aan een verblijfsobject, een
+      standplaats
+      of een ligplaats toegekende benaming, bestaande uit een combinatie van de naam van een
+      openbare ruimte, een nummeraanduiding en de naam van een woonplaats;
+        b. authentiek gegeven: in een basisregistratie opgenomen gegeven dat bij of krachtens
+      de wet als authentiek is aangemerkt;
+        e. basisregistratie: basisregistratie adressen en gebouwen als bedoeld in artikel
+      2;
+        d. brondocument: document in welke vorm dan ook waarin rechtsfeiten en andere voor
+      de registraties relevante feiten zijn neergelegd;
+        e. Dienst: Dienst voor het kadaster en de openbare registers, genoemd in artikel
+      2 van de Organisatiewet Kadaster;
+        f. landelijke voorziening: landelijke voorziening als bedoeld in artikel 26;
+        g. ligplaats: door het bevoegde gemeentelijke orgaan als zodanig aangewezen plaats
+      in het water al dan niet aangevuld met een op de oever aanwezig terrein of een gedeelte
+      daarvan, die bestemd is voor het permanent afmeren van een voor woon-, bedrijfsmatige of
+      recreatieve doeleinden geschikt drijvend object;
+        h. nummeraanduiding: door het bevoegde gemeentelijke orgaan als zodanig toegekende
+      aanduiding van een verblijfsobject, een standplaats of een ligplaats;
+        i. Onze Minister: Onze Minister van Infrastructuur en Milieu;
+        j. openbare ruimte: door het bevoegde gemeentelijke orgaan als zodanig aangewezen
+      en van een naam voorziene buitenruimte die binnen één woonplaats is gelegen;
+        k. pand: kleinste bij de totstandkoming functioneel en bouwkundig-constructief
+      zelfstandige eenheid die direct en duurzaam met de aarde is verbonden en betreedbaar en
+      afsluitbaar is;
+        l. standplaats: door het bevoegde gemeentelijke orgaan als zodanig aangewezen terrein
+      of gedeelte daarvan dat bestemd is voor het permanent plaatsen van een niet direct en niet
+      duurzaam met de aarde verbonden en voor woon-, bedrijfsmatige, of recreatieve doeleinden
+      geschikte ruimte;
+        m. verblijfsobject: kleinste binnen één of meer panden gelegen en voor woon-,
+      bedrijfsmatige,
+      of recreatieve doeleinden geschikte eenheid van gebruik die ontsloten wordt via een eigen
+      afsluitbare toegang vanaf de openbare weg, een erf of een gedeelde verkeersruimte,
+      onderwerp kan zijn van goederenrechtelijke rechtshandelingen en in functioneel opzicht
+      zelfstandig is;
+        n. woonplaats: door het bevoegde gemeentelijke orgaan als zodanig aangewezen en
+      van een naam voorzien gedeelte van het grondgebied van de gemeente.
+    url: https://wetten.overheid.nl/BWBR0023466/2018-07-28#Artikel1
+    machine_readable:
+      definitions:
+        woon_gebruiksdoelen:
+          - woonfunctie
+        niet_woon_gebruiksdoelen:
+          - bijeenkomstfunctie
+          - celfunctie
+          - gezondheidszorgfunctie
+          - industriefunctie
+          - kantoorfunctie
+          - logiesfunctie
+          - onderwijsfunctie
+          - sportfunctie
+          - winkelfunctie
+          - overige gebruiksfunctie
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: adres
+            type: string
+            required: true
+        input:
+          - name: verblijfsobject
+            type: object
+            nullable: true
+            source: {}
+        output:
+          - name: gebruiksdoel
+            type: string
+            nullable: true
+          - name: oppervlakte
+            type: number
+            nullable: true
+            type_spec:
+              precision: 0
+              min: 1
+          - name: status
+            type: string
+            nullable: true
+          - name: is_woonfunctie
+            type: boolean
+        actions:
+          # Geen voldoet_aan_voorwaarden: de Wet bag beslist niets, de registratie wordt bevraagd op
+          # een opgegeven adres (art. 2 Wet bag). De POC-toets "adres aanwezig" kon nooit onwaar
+          # zijn: het adres is een verplichte parameter, een aanroeper zonder BRP-adres slaat deze
+          # wet over en een afwezig adres op het hoogste niveau wordt aan de grens geweigerd
+          # (RFC-007/RFC-036).
+          - output: gebruiksdoel
+            value: $verblijfsobject.gebruiksdoel
+            legal_basis:
+              law: Wet basisregistratie adressen en gebouwen
+              bwb_id: BWBR0023466
+              article: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0023466/2018-07-28#Paragraaf1_Artikel1
+              juriconnect: jci1.3:c:BWBR0023466&artikel=1&z=2018-07-28&g=2018-07-28
+              explanation: Artikel 1 bepaalt registratie van gebruiksdoel
+          - output: oppervlakte
+            value: $verblijfsobject.oppervlakte
+            legal_basis:
+              law: Wet basisregistratie adressen en gebouwen
+              bwb_id: BWBR0023466
+              article: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0023466/2018-07-28#Paragraaf1_Artikel1
+              juriconnect: jci1.3:c:BWBR0023466&artikel=1&z=2018-07-28&g=2018-07-28
+              explanation: Artikel 1 bepaalt registratie van oppervlakte
+          - output: status
+            value: $verblijfsobject.status
+            legal_basis:
+              law: Wet basisregistratie adressen en gebouwen
+              bwb_id: BWBR0023466
+              article: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0023466/2018-07-28#Paragraaf1_Artikel1
+              juriconnect: jci1.3:c:BWBR0023466&artikel=1&z=2018-07-28&g=2018-07-28
+              explanation: Artikel 1 bepaalt registratie van status
+          - output: is_woonfunctie
+            # Art. 2 jo. art. 21 Wet bag: het gebruiksdoel is een gegeven van het verblijfsobject. Is er op
+            # het adres geen verblijfsobject geregistreerd, dan is er geen woonfunctie (RFC-036).
+            value:
+              operation: IN
+              subject: $verblijfsobject.gebruiksdoel
+              value: $woon_gebruiksdoelen
+            legal_basis:
+              law: Wet basisregistratie adressen en gebouwen
+              bwb_id: BWBR0023466
+              article: '2'
+              url: >-
+                https://wetten.overheid.nl/BWBR0023466/2018-07-28#Paragraaf1_Artikel2
+              juriconnect: jci1.3:c:BWBR0023466&artikel=2&z=2018-07-28&g=2018-07-28
+              explanation: >-
+                Artikel 2 verplicht gebruik BAG-gegevens voor bepaling woonfunctie

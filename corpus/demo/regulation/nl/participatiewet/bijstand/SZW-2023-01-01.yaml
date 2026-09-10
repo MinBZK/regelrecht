@@ -1,0 +1,441 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: participatiewet/bijstand
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+name: Bepalen recht op bijstand landelijk
+bwb_id: BWBR0015703
+url: https://wetten.overheid.nl/BWBR0015703/2025-01-01
+service: SZW
+uuid: c00f6a8b-b387-45d0-ab15-6f5aa34b7287
+articles:
+  - number: '11'
+    text: >-
+      1 Iedere in Nederland woonachtige Nederlander die hier te lande in zodanige omstandigheden
+      verkeert of dreigt te geraken dat hij niet over de middelen beschikt om in de
+      noodzakelijke kosten van bestaan te voorzien, heeft recht op bijstand van overheidswege.
+
+      2 Met de Nederlander, bedoeld in het eerste lid, wordt gelijkgesteld de hier te lande
+      woonachtige vreemdeling die rechtmatig in Nederland verblijf houdt in de zin van artikel
+      8, onderdelen a tot en met e en l, van de Vreemdelingenwet 2000, met uitzondering van de
+      gevallen, bedoeld in artikel 24, tweede lid, van Richtlijn 2004/38/EG.
+
+      3 Bij algemene maatregel van bestuur kunnen andere hier te lande woonachtige vreemdelingen
+      dan de in het tweede lid bedoelde voor de toepassing van deze wet met een Nederlander
+      gelijk worden gesteld:
+        a. ter uitvoering van een verdrag dan wel van een besluit van een volkenrechtelijke
+      organisatie, of
+        b. indien zij, na rechtmatig verblijf te hebben gehouden in de zin van artikel
+      8, onderdelen a tot en met e en l, van de Vreemdelingenwet 2000, rechtmatig in Nederland
+      verblijf hebben als bedoeld in artikel 8, onderdeel g of h, van die wet en zij aan de in
+      die algemene maatregel van bestuur gestelde voorwaarden voldoen. 4 Het recht op bijstand
+      komt de echtgenoten gezamenlijk toe, tenzij een van de echtgenoten geen recht op bijstand
+      heeft.
+    url: https://wetten.overheid.nl/BWBR0015703/2025-01-01#Artikel11
+    machine_readable:
+      # Art. 11 lid 3: bij AMvB kunnen andere vreemdelingen dan lid 2 met een
+      # Nederlander gelijk worden gesteld. Welke categorieën dat zijn, staat
+      # niet in deze wettekst maar in de nog te wijzen AMvB; een open_term
+      # (i.p.v. de vaste definitie geldige_verblijfsvergunningen) volgt daarmee
+      # het IoC-patroon (regel 3): leeg totdat een AMvB dit implementeert.
+      # Schema staat alleen scalaire typen toe voor open_terms (geen lijst),
+      # dus dit modelleert één extra vergunningtype; een AMvB die meerdere
+      # categorieën toevoegt implementeert het per categorie met een eigen
+      # `implements`-verwijzing zodra die AMvB in de corpus staat.
+      open_terms:
+        - id: aanvullend_gelijkgestelde_verblijfsvergunning
+          type: string
+          required: false
+          delegated_to: kroon
+          delegation_type: AMVB
+          legal_basis: artikel 11 lid 3 Participatiewet
+          # Geen AMvB in de corpus die dit lid invult: leeg totdat die er is
+          # (RFC-012-achtig, maar wel als open_term omdat de wet zelf naar een
+          # AMvB delegeert, niet omdat de tekst onvertaalbaar is).
+          default:
+            actions:
+              - output: aanvullend_gelijkgestelde_verblijfsvergunning
+                value: ''
+      definitions:
+        minimum_leeftijd: 18
+        basisbedrag_alleenstaand_21_plus: 108900
+        basisbedrag_partners_21_plus: 155600
+        geldige_verblijfsvergunningen:
+          - PERMANENT
+          - EU
+          - FAMILY_REUNIFICATION
+        vermogensgrens_alleenstaand: 750000
+        vermogensgrens_partner: 1500000
+        # Art. 22a lid 1 (tekst niet in dit bestand): factoren voor 1 t/m 4
+        # kostendelende personen (belanghebbende, echtgenoot indien gehuwd, en
+        # medebewoners samen). De IF-keten in de kostendelersnorm-actie
+        # verwijst naar deze vier definities in plaats van literals te
+        # herhalen (regel 1 van de opdracht). Geen vijfde factor: die staat in
+        # geen bekende bron.
+        kostendelersnorm_factor_1: 1.0
+        kostendelersnorm_factor_2: 0.5
+        kostendelersnorm_factor_3: 0.43
+        kostendelersnorm_factor_4: 0.4
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: leeftijd
+            type: number
+            source:
+              regulation: wet_brp
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: geboortedatum
+            type: date
+            source:
+              regulation: wet_brp
+              output: geboortedatum
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: point_in_time
+          - name: pensioenleeftijd
+            type: number
+            source:
+              regulation: algemene_ouderdomswet/leeftijdsbepaling
+              output: pensioenleeftijd
+              parameters:
+                geboortedatum: $geboortedatum
+                bsn: $bsn
+          - name: heeft_nederlandse_nationaliteit
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_nederlandse_nationaliteit
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: verblijfsvergunning_type
+            type: string
+            nullable: true
+            source:
+              regulation: vreemdelingenwet
+              output: verblijfsvergunning_type
+              parameters:
+                bsn: $bsn
+          - name: verblijfsadres
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: verblijfsadres
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: maandelijks_inkomen
+              parameters:
+                bsn: $bsn
+          - name: bedrijfsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: bedrijfsinkomen
+              parameters:
+                bsn: $bsn
+          - name: bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: bezittingen
+              parameters:
+                bsn: $bsn
+          - name: heeft_partner
+            type: boolean
+            source:
+              regulation: wet_brp
+              output: heeft_partner
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: partner_inkomen
+            type: amount
+            nullable: true
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: maandelijks_inkomen
+              parameters:
+                bsn: $partner_bsn
+          - name: partner_bezittingen
+            type: amount
+            nullable: true
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: bezittingen
+              parameters:
+                bsn: $partner_bsn
+          - name: huishoudleden
+            type: number
+            source:
+              regulation: wet_brp
+              output: huishoudgrootte
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: is_student
+            type: boolean
+            source:
+              regulation: wet_studiefinanciering
+              output: is_student
+              parameters:
+                bsn: $bsn
+          - name: ontvangt_studiefinanciering
+            type: boolean
+            source:
+              regulation: wet_studiefinanciering
+              output: ontvangt_studiefinanciering
+              parameters:
+                bsn: $bsn
+          - name: is_gedetineerde
+            type: boolean
+            source:
+              regulation: penitentiaire_beginselenwet
+              output: is_gedetineerd
+              parameters:
+                bsn: $bsn
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_gerechtigd
+            type: boolean
+          - name: basisbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: kostendelersnorm
+            type: number
+            # Nullable: art. 22a lid 1 (tekst niet in dit bestand) geeft factoren
+            # voor huishoudens van 1 t/m 4 personen via de kostendelersnorm_factor_*
+            # definities. Voor 5 of meer personen staat in geen bekende bron (dit
+            # bestand, noch corpus/regulation) een factor; een IF zonder default op
+            # dat geval geeft null, wat hier de bedoelde afwezigheidstoets is in
+            # plaats van een verzonnen getal (regel 2).
+            nullable: true
+            type_spec:
+              precision: 2
+              min: 0
+              max: 1
+        actions:
+          - output: voldoet_aan_voorwaarden
+            # Art. 11 lid 2 en 3 Pw: een vreemdeling is gelijkgesteld naar zijn verblijfsvergunning; zonder
+            # vastgesteld vergunningtype geldt alleen de nationaliteit. Art. 32 en 34 Pw: inkomen en
+            # vermogen van de partner tellen mee als er een partner is; een inkomen of vermogen dat de
+            # partner niet heeft (geen registerrij) telt voor 0. Het register levert de partnergegevens
+            # alleen als er een partner is (RFC-036).
+            value:
+              operation: AND
+              conditions:
+                - subject: $leeftijd
+                  operation: GREATER_THAN_OR_EQUAL
+                  value: $minimum_leeftijd
+                - subject: $leeftijd
+                  operation: LESS_THAN
+                  value: $pensioenleeftijd
+                - operation: OR
+                  # Lid 2 gelijkstelling via geldige_verblijfsvergunningen, plus
+                  # lid 3 gelijkstelling via de AMvB die aanvullend_gelijkgestelde_
+                  # verblijfsvergunning invult (open_term, regel 3); leeg
+                  # (default '') matcht per definitie geen verblijfsvergunning_type.
+                  conditions:
+                    - subject: $heeft_nederlandse_nationaliteit
+                      operation: EQUALS
+                      value: true
+                    - operation: IN
+                      subject: $verblijfsvergunning_type
+                      value: $geldige_verblijfsvergunningen
+                    - subject: $verblijfsvergunning_type
+                      operation: EQUALS
+                      value: $aanvullend_gelijkgestelde_verblijfsvergunning
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $verblijfsadres
+                    value: null
+                - operation: OR
+                  conditions:
+                    - subject: $is_student
+                      operation: EQUALS
+                      value: false
+                    - subject: $ontvangt_studiefinanciering
+                      operation: EQUALS
+                      value: false
+                - subject: $is_gedetineerde
+                  operation: EQUALS
+                  value: false
+                - operation: IF
+                  cases:
+                    - when:
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
+                      then:
+                        operation: LESS_THAN
+                        subject:
+                          operation: ADD
+                          values:
+                            - $bezittingen
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_bezittingen
+                                    value: null
+                                  then: 0
+                              default: $partner_bezittingen
+                        value: $vermogensgrens_partner
+                  default:
+                    operation: LESS_THAN
+                    subject: $bezittingen
+                    value: $vermogensgrens_alleenstaand
+                - operation: IF
+                  cases:
+                    - when:
+                        subject: $heeft_partner
+                        operation: EQUALS
+                        value: true
+                      then:
+                        operation: LESS_THAN
+                        subject:
+                          operation: ADD
+                          values:
+                            - $inkomen
+                            - $bedrijfsinkomen
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_inkomen
+                                    value: null
+                                  then: 0
+                              default: $partner_inkomen
+                        value: $basisbedrag_partners_21_plus
+                  default:
+                    operation: LESS_THAN
+                    subject:
+                      operation: ADD
+                      values:
+                        - $inkomen
+                        - $bedrijfsinkomen
+                    value: $basisbedrag_alleenstaand_21_plus
+          - output: is_gerechtigd
+            value: true
+            legal_basis:
+              law: Participatiewet
+              bwb_id: BWBR0015703
+              article: '11'
+              url: >-
+                https://wetten.overheid.nl/BWBR0015703/2025-01-01#Hoofdstuk2_Paragraaf2.2_Artikel11
+              juriconnect: jci1.3:c:BWBR0015703&artikel=11&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                Als aan alle voorwaarden is voldaan, is men gerechtigd tot bijstand volgens artikel 11 dat
+                bepaalt wie recht heeft op algemene bijstand
+          - output: basisbedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_partner
+                    value: true
+                  then: $basisbedrag_partners_21_plus
+              default: $basisbedrag_alleenstaand_21_plus
+            legal_basis:
+              law: Participatiewet
+              bwb_id: BWBR0015703
+              article: '20'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0015703/2025-01-01#Hoofdstuk3_Paragraaf3.1_Artikel20
+              juriconnect: >-
+                jci1.3:c:BWBR0015703&artikel=20&lid=1&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                Artikel 20 lid 1 bepaalt de hoogte van de bijstandsnorm voor personen van 21 jaar en ouder
+                afhankelijk van de leefsituatie
+          - output: kostendelersnorm
+            # Factoren komen uit de kostendelersnorm_factor_* definities (art. 22a
+            # lid 1) in plaats van herhaalde literals. Geen default: voor 5 of
+            # meer personen geeft de wettekst in dit bestand geen factor, dus dat
+            # geval geeft null (afwezigheidstoets, regel 2) in plaats van een
+            # verzonnen waarde.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudleden
+                    value: 1
+                  then: $kostendelersnorm_factor_1
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudleden
+                    value: 2
+                  then: $kostendelersnorm_factor_2
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudleden
+                    value: 3
+                  then: $kostendelersnorm_factor_3
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudleden
+                    value: 4
+                  then: $kostendelersnorm_factor_4
+            legal_basis:
+              law: Participatiewet
+              bwb_id: BWBR0015703
+              article: 22a
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0015703/2025-01-01#Hoofdstuk3_Paragraaf3.1_Artikel22a
+              juriconnect: >-
+                jci1.3:c:BWBR0015703&artikel=22a&lid=1&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                Artikel 22a lid 1 bepaalt dat de bijstandsnorm wordt verlaagd wanneer belanghebbende zijn
+                woning deelt met een of meer meerderjarigen (kostendelersnorm)

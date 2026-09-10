@@ -10,7 +10,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Re-export the canonical document-model value types from the law-model crate.
-pub use regelrecht_law_model::{Operation, ParameterType, RegulatoryLayer, Value};
+pub use regelrecht_law_model::{
+    MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, Value,
+};
 
 /// How the engine handles articles with `untranslatables` annotations (RFC-012).
 ///
@@ -114,6 +116,10 @@ pub enum ResolveType {
     DataSource,
     /// Value resolved via open term implementation (IoC)
     OpenTerm,
+    /// The delegating law's default for an open term, taken because the
+    /// implementing regulation returned null for this case (RFC-036: the
+    /// implementation is silent, no deviation was granted)
+    OpenTermSilent,
     /// Value resolved via lifecycle hook (RFC-007)
     Hook,
     /// Value resolved via lex specialis override (RFC-007)

@@ -1,0 +1,40 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_null_semantics_strikt
+name: Testwet afwezig en onbekend (strikt)
+regulatory_layer: WET
+bwb_id: BWBR9999911
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_null_semantics_strikt
+
+articles:
+  - number: '1'
+    url: https://example.com/test_null_semantics_strikt/1
+    text: >-
+      Het geboortejaar is het geboortejaar, bedoeld in artikel 1 van de
+      Testwet afwezig en onbekend (bron).
+    machine_readable:
+      # Bewust fout: de aanroep geeft de verplichte parameter `bsn` van de
+      # bron niet mee. Alleen een optionele parameter mag ontbreken en wordt
+      # dan onbekend; een verplichte die ontbreekt is en blijft een fout, zodat
+      # een verschreven sleutel nooit stil een onbekende uitkomst wordt
+      # (RFC-036).
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: geboortejaar
+            type: number
+            source:
+              regulation: test_null_semantics_bron
+              output: geboortejaar
+        output:
+          - name: geboortejaar
+            type: number
+        actions:
+          - output: geboortejaar
+            value: $geboortejaar

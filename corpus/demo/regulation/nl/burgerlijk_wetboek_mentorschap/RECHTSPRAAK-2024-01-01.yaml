@@ -1,0 +1,254 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: burgerlijk_wetboek_mentorschap
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bepalen mentorschap en vertegenwoordigingsbevoegdheid mentor
+bwb_id: BWBR0002656
+url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
+service: RECHTSPRAAK
+uuid: 0c6a4f3c-8a49-4f76-a109-265c0b7a05dc
+discoverable: DELEGATION_PROVIDER
+articles:
+  - number: '450'
+    text: >-
+      1 Indien een meerderjarige als gevolg van zijn geestelijke of lichamelijke toestand
+      tijdelijk of duurzaam niet in staat is of bemoeilijkt wordt zijn belangen van
+      niet-vermogensrechtelijke aard zelf behoorlijk waar te nemen, kan de kantonrechter te
+      zijnen behoeve een mentorschap instellen.
+
+      2 Indien te verwachten is dat een minderjarige op het tijdstip waarop hij meerderjarig zal
+      worden, in de in het eerste lid bedoelde toestand zal verkeren, kan het mentorschap reeds
+      voor de meerderjarigheid worden ingesteld.
+
+      3 Het mentorschap kan eveneens worden ingesteld, indien te verwachten is dat een
+      meerderjarige binnen afzienbare tijd in de in het eerste lid bedoelde toestand zal
+      verkeren.
+
+      4 De rechter bij wie een verzoek tot het verlenen van een rechterlijke machtiging als
+      bedoeld in de Wet zorg en dwang psychogeriatrische en verstandelijk gehandicapte cliënten
+      dan wel een zorgmachtiging of een machtiging tot voorzetting van de crisismaatregel als
+      bedoeld in de Wet verplichte geestelijke gezondheidszorg aanhangig is, is tevens bevoegd
+      tot kennisneming van een verzoek tot instelling van een mentorschap.
+    url: https://wetten.overheid.nl/BWBR0002656/2024-01-01#Artikel450
+    machine_readable:
+      definitions:
+        mentor_rechten:
+          - LEZEN
+          - CLAIMS_INDIENEN
+          - BESLUITEN_ONTVANGEN
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: mentorschap_registraties
+            type: array
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: heeft_delegaties
+            type: boolean
+          - name: subject_ids
+            type: array
+          - name: subject_names
+            type: array
+          - name: subject_types
+            type: array
+          - name: delegation_types
+            type: array
+          - name: permissions
+            type: array
+          - name: valid_from_dates
+            type: array
+          - name: valid_until_dates
+            type: array
+        actions:
+          - output: voldoet_aan_voorwaarden
+        # POC: EXISTS op lijst $mentorschap_registraties (uitvoer voldoet_aan_voorwaarden) betekende 'niet leeg';
+        # expliciet als telling (RFC-016)
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $mentorschap_registraties
+                body: 1
+                combine: ADD
+              value: 0
+          - output: actief_mentorschap
+            value:
+              operation: FOREACH
+              collection: $mentorschap_registraties
+              filter:
+                operation: AND
+                conditions:
+                  - operation: EQUALS
+                    subject: $current.status
+                    value: ACTIEF
+                  - operation: OR
+                    conditions:
+                  # Art. 1:462 BW: ontbrekende einddatum is afwezig (null), geen lege tekst; POC-tak verwijderd.
+                      - operation: EQUALS
+                        subject: $current.datum_einde
+                        value: null
+                      - operation: GREATER_THAN
+                        subject: $current.datum_einde
+                        value: $referencedate
+              body: $current
+              as: current
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '462'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling3_Artikel462
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=462&z=2024-01-01&g=2024-01-01
+              explanation: >
+                Alleen actieve mentorschap-registraties geven vertegenwoordigingsbevoegdheid. Mentorschap
+                kan worden opgeheven (Art. 1:462 BW).
+          - output: heeft_delegaties
+        # POC: EXISTS op lijst $actief_mentorschap (uitvoer heeft_delegaties) betekende 'niet leeg'; expliciet als
+        # telling (RFC-016)
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $actief_mentorschap
+                body: 1
+                combine: ADD
+              value: 0
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '453'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling2_Artikel453
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=453&z=2024-01-01&g=2024-01-01
+              explanation: |
+                Art. 1:453 BW bepaalt dat de mentor de betrokkene kan vertegenwoordigen.
+          - output: subject_ids
+        # POC: impliciete map over een lijst ($actief_mentorschap.bsn_betrokkene); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actief_mentorschap
+              as: item
+              body: $item.bsn_betrokkene
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '452'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling1_Artikel452
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=452&z=2024-01-01&g=2024-01-01
+              explanation: BSN nummers van betrokkenen uit CCBR registratie
+          - output: subject_names
+        # POC: impliciete map over een lijst ($actief_mentorschap.naam_betrokkene); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actief_mentorschap
+              as: item
+              body: $item.naam_betrokkene
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '452'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling1_Artikel452
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=452&z=2024-01-01&g=2024-01-01
+              explanation: Namen van betrokkenen uit CCBR registratie
+          - output: subject_types
+            value:
+              operation: FOREACH
+              collection: $actief_mentorschap
+              body: CITIZEN
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '450'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling1_Artikel450
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=450&z=2024-01-01&g=2024-01-01
+              explanation: Mentorschap is alleen voor meerderjarigen, altijd CITIZEN
+          - output: delegation_types
+            value:
+              operation: FOREACH
+              collection: $actief_mentorschap
+              body: MENTOR
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '452'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling1_Artikel452
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=452&z=2024-01-01&g=2024-01-01
+              explanation: Type delegatie is MENTOR voor mentorschap
+          - output: permissions
+            value:
+              operation: FOREACH
+              collection: $actief_mentorschap
+              body: $mentor_rechten
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '453'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling2_Artikel453
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=453&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >
+                Art. 1:453 lid 1 BW: De mentor vertegenwoordigt de betrokkene in aangelegenheden
+                betreffende verzorging, verpleging, behandeling en begeleiding.
+          - output: valid_from_dates
+        # POC: impliciete map over een lijst ($actief_mentorschap.datum_ingang); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actief_mentorschap
+              as: item
+              body: $item.datum_ingang
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '451'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling1_Artikel451
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=451&z=2024-01-01&g=2024-01-01
+              explanation: Ingangsdatum mentorschap uit CCBR registratie
+          - output: valid_until_dates
+        # POC: impliciete map over een lijst ($actief_mentorschap.datum_einde); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actief_mentorschap
+              as: item
+              body: $item.datum_einde
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '462'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel20_Afdeling3_Artikel462
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=462&z=2024-01-01&g=2024-01-01
+              explanation: Einddatum mentorschap, null indien nog actief
+      untranslatables:
+        - construct: iteratie over variabel aantal mentorschap-registraties
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal actieve mentorschap-registraties is
+            dynamisch en kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal registraties tot een vast maximum
+          accepted: true

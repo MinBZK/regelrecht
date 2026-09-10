@@ -25,7 +25,7 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, MachineReadable};
+use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, Input, MachineReadable};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
@@ -36,8 +36,8 @@ use crate::priority;
 use crate::resolver::{RuleResolver, SelectionReason};
 use crate::trace::TraceBuilder;
 use crate::types::{
-    Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
-    Value,
+    Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType,
+    UntranslatableMode, Value,
 };
 use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
@@ -257,6 +257,76 @@ fn cache_key(law_id: &str, output_name: &str, params: &BTreeMap<String, Value>) 
     hasher.finish()
 }
 
+/// The first parameter `article` declares as required (`required` absent or
+/// `true`) that `parameters` does not carry, if any.
+///
+/// Used to tell "nobody has this fact" (Unknown, RFC-036) apart from "the
+/// register was never asked about anybody": a `source: {}` input cannot be
+/// resolved without its lookup key, and that is the caller's omission, not a
+/// missing fact.
+fn required_parameter_not_passed(
+    article: &Article,
+    parameters: &BTreeMap<String, Value>,
+) -> Option<String> {
+    article
+        .get_execution_spec()
+        .and_then(|exec| exec.parameters.as_ref())
+        .and_then(|declared| {
+            declared
+                .iter()
+                .find(|p| p.required != Some(false) && !parameters.contains_key(&p.name))
+                .map(|p| p.name.clone())
+        })
+}
+
+/// The first parameter of `article` that `parameters` carries as a `null`
+/// the declaration does not allow, or as an unknown while the parameter is
+/// required, with the word for how it was left empty (`"null"` or
+/// `"unknown"`).
+///
+/// At the top level that is the caller's error (RFC-036): a law cannot be
+/// evaluated for nobody, and letting the register be asked about nobody would
+/// report its every input as an unknown fact, or produce a `null` that a
+/// downstream operation then blames on the law. Whether `null` is allowed is
+/// decided by the type (`nullable`), not by `required`: a nullable parameter
+/// passed as `null` is an absence the law tests for. Unknown is not governed
+/// by `nullable`; there the `required` flag decides, as before. Across laws a
+/// `null` required parameter is the skip rule in
+/// `resolve_external_input_internal`, so this is checked at depth 0 only.
+fn required_parameter_for_nobody(
+    article: &Article,
+    parameters: &BTreeMap<String, Value>,
+) -> Option<(String, &'static str)> {
+    article
+        .get_parameters()
+        .iter()
+        .find_map(|p| match parameters.get(&p.name) {
+            Some(Value::Null) if !p.is_nullable() => Some((p.name.clone(), "null")),
+            Some(Value::Unknown(_)) if p.required != Some(false) => {
+                Some((p.name.clone(), "unknown"))
+            }
+            _ => None,
+        })
+}
+
+/// The error for a `null` that reached `input` of `law` although the input is
+/// not declared nullable (RFC-036), naming where the null came from.
+fn null_for_non_nullable(law: &ArticleBasedLaw, input: &Input, origin: String) -> EngineError {
+    EngineError::NullForNonNullable {
+        law_id: law.id.clone(),
+        field: input.name.clone(),
+        origin,
+    }
+}
+
+/// How a cross-law reference was resolved: whether the target ran, or was
+/// skipped because a required parameter named nobody (RFC-036). The caller
+/// needs the distinction to name the origin of a `null` it may not accept.
+struct ExternalResolution {
+    value: Value,
+    skipped: bool,
+}
+
 /// Hash a Value for cache key purposes.
 fn hash_value(value: &Value, hasher: &mut impl Hasher) {
     std::mem::discriminant(value).hash(hasher);
@@ -286,6 +356,14 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
         Value::Untranslatable { article, construct } => {
             article.hash(hasher);
             construct.hash(hasher);
+        }
+        Value::Unknown(missing) => {
+            missing.len().hash(hasher);
+            for fact in missing {
+                fact.law.hash(hasher);
+                fact.name.hash(hasher);
+                std::mem::discriminant(&fact.kind).hash(hasher);
+            }
         }
     }
 }
@@ -443,6 +521,14 @@ impl LawExecutionService {
     /// `Ok(())` on success, `Err` if the maximum number of laws would be exceeded.
     pub fn load_law_struct(&mut self, law: ArticleBasedLaw) -> Result<()> {
         self.resolver.load_law(law)
+    }
+
+    /// Load a law without the static type check, for tests of the run-time
+    /// boundary checks that a well-typed set cannot reach (RFC-036 defence in
+    /// depth).
+    #[cfg(test)]
+    fn load_law_unchecked(&mut self, yaml: &str) -> Result<String> {
+        self.resolver.load_law_unchecked(yaml)
     }
 
     /// Load a law from YAML string and record its source provenance.
@@ -1530,9 +1616,33 @@ impl LawExecutionService {
             Vec::new()
         };
 
+        // A required parameter the caller passed as null or unknown names
+        // nobody. At the top level (depth 0) that is the caller's error, not a
+        // missing fact and not an absence to decide on (RFC-036); a cross-law
+        // call in the same situation was already turned into a skip by
+        // `resolve_external_input_internal`, so it never gets here with a
+        // deeper depth.
+        if res_ctx.depth == 0 {
+            if let Some((name, value)) = required_parameter_for_nobody(article, &parameters) {
+                return Err(EngineError::MissingParameter {
+                    law_id: law.id.clone(),
+                    name,
+                    value: value.to_string(),
+                });
+            }
+        }
+
         // Create execution context — pass parameters by reference, only clone
         // into combined_params below when we need ownership.
         let mut context = RuleContext::new(parameters.clone(), res_ctx.calculation_date)?;
+        // The optional parameters this caller left out resolve to Unknown for
+        // lack of them (RFC-036), also while cross-law parameters are built
+        // from this context: `bsn: $partner_bsn` with no partner_bsn passed
+        // hands the target an Unknown, not an error.
+        context.set_law_scope(
+            &law.id,
+            crate::engine::unpassed_optional_parameters(article, &parameters),
+        );
 
         // Attach trace builder if available
         if let Some(ref tb) = res_ctx.trace {
@@ -1670,7 +1780,10 @@ impl LawExecutionService {
     /// For each open term:
     /// 1. Look up implementations in the resolver's implements_index
     /// 2. If found: execute the implementing article to get the value
-    /// 3. If not found + has default: execute the default actions
+    /// 3. If not found + has default: execute the default actions. The same
+    ///    when the implementation yields `null` for this case: an implementing
+    ///    regulation that is silent has not deviated, so the delegating law's
+    ///    own rule (its default) applies (RFC-003, RFC-036).
     /// 4. If not found + required + no default: error
     /// 5. If not found + not required + no default: skip
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, law, context, res_ctx), fields(law_id = %law.id, article = %article.number)))]
@@ -1747,7 +1860,15 @@ impl LawExecutionService {
                 }
             };
 
-            if let Some((impl_law, impl_article)) = implementations.first() {
+            // Whether an implementation filled the term for this case, and
+            // which implementations were silent for it (null). The candidates
+            // come winner first (priority resolution); the first one that
+            // fills the term decides, and a silent one is passed over for
+            // the next, so a filling implementation wins over a silent one
+            // whatever their order.
+            let mut filled = false;
+            let mut silent: Vec<String> = Vec::new();
+            for (impl_law, impl_article) in &implementations {
                 // Validate that the implementing regulation's layer matches the
                 // delegation_type declared on the open term (if specified).
                 if let Some(ref expected_type) = term.delegation_type {
@@ -1797,12 +1918,25 @@ impl LawExecutionService {
                 };
 
                 if let Some(value) = result.outputs.get(&term.id) {
-                    res_ctx.trace_set_result(value.clone());
-                    res_ctx.trace_set_message(format!(
-                        "Open term '{}' implemented by {} article {}",
-                        term.id, impl_law.id, impl_article.number
-                    ));
-                    resolved.insert(term.id.clone(), value.clone());
+                    if value.is_null() && term.default.is_some() {
+                        // The verordening says nothing for this case ("de APV
+                        // zwijgt"): no deviation was allowed, so the rule of
+                        // the delegating law applies, which is its default.
+                        // An implementation cannot express "there is none"
+                        // for a term that has a default; RFC-036 accepts
+                        // that, and the trace and the log say what happened,
+                        // since a typo in the implementation looks the same.
+                        silent.push(format!("{} article {}", impl_law.id, impl_article.number));
+                    } else {
+                        res_ctx.trace_set_result(value.clone());
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}' implemented by {} article {}",
+                            term.id, impl_law.id, impl_article.number
+                        ));
+                        resolved.insert(term.id.clone(), value.clone());
+                        filled = true;
+                        break;
+                    }
                 } else {
                     // Implementation executed but didn't produce the expected output
                     res_ctx.trace_set_message(format!(
@@ -1815,11 +1949,16 @@ impl LawExecutionService {
                         impl_law.id, impl_article.number, term.id, term.id
                     )));
                 }
-            } else if let Some(ref default) = term.default {
-                // No implementation found — execute default actions
+            }
+            if filled {
+                res_ctx.leave(&ot_key);
+                continue;
+            }
+            if let Some(ref default) = term.default {
+                // No implementation found, or a silent one — execute default actions
                 tracing::debug!(
                     open_term = %term.id,
-                    "No implementation found, using default"
+                    "No implementation filled the term, using default"
                 );
 
                 if let Some(ref actions) = default.actions {
@@ -1882,8 +2021,28 @@ impl LawExecutionService {
                         .unwrap_or(Value::Null);
 
                     res_ctx.trace_set_result(default_value.clone());
-                    res_ctx
-                        .trace_set_message(format!("Open term '{}' using default value", term.id));
+                    if silent.is_empty() {
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}' using default value",
+                            term.id
+                        ));
+                    } else {
+                        let implementations = silent.join(", ");
+                        tracing::warn!(
+                            law_id = %law.id,
+                            article = %article.number,
+                            open_term = %term.id,
+                            implementations = %implementations,
+                            "Implementation returned null for an open term with a default: \
+                             the delegating law's default applies"
+                        );
+                        res_ctx.trace_set_resolve_type(ResolveType::OpenTermSilent);
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}' using default value: implementation {implementations} \
+                             is silent for this case (null)",
+                            term.id
+                        ));
+                    }
                     resolved.insert(term.id.clone(), default_value);
                 } else {
                     // Default exists but has no actions — treat as null
@@ -1938,19 +2097,34 @@ impl LawExecutionService {
         let inputs = article.get_inputs();
 
         for input in inputs {
+            // A value handed in under the input's name bypasses its source,
+            // not its declaration: a null for an input that is never absent
+            // is refused at this boundary like a null cell would be, whoever
+            // passed it (a top-level caller, a Gherkin parameter, an editor
+            // form). Otherwise it would surface three operations later as an
+            // absent operand without an origin (RFC-036).
+            if let Some(value) = parameters.get(&input.name) {
+                if value.is_null() && !input.is_nullable() {
+                    return Err(null_for_non_nullable(
+                        law,
+                        input,
+                        "parameter from caller".to_string(),
+                    ));
+                }
+                continue;
+            }
+
             let source = match &input.source {
                 Some(s) => s,
                 None => continue,
             };
 
-            // Check if already provided as parameter
-            if parameters.contains_key(&input.name) {
-                continue;
-            }
-
             // Check DataSourceRegistry before cross-law resolution.
             // An empty registry resolves to None, so no separate guard is needed.
-            if let Some(data_match) = self.data_registry.resolve(&input.name, parameters) {
+            if let Some(data_match) =
+                self.data_registry
+                    .resolve_for_law(&input.name, parameters, Some(&law.id))
+            {
                 tracing::debug!(
                     input = %input.name,
                     source = %data_match.source_name,
@@ -1968,6 +2142,18 @@ impl LawExecutionService {
                     ));
                 }
 
+                // An explicit null cell is the register's claim that there is
+                // none. The law's declaration says whether that is a value this
+                // input can take; if not, the two contradict each other and the
+                // data is wrong at the boundary (RFC-036).
+                if data_match.value.is_null() && !input.is_nullable() {
+                    return Err(null_for_non_nullable(
+                        law,
+                        input,
+                        format!("source {}", data_match.source_name),
+                    ));
+                }
+
                 context.set_resolved_input(&input.name, data_match.value);
                 continue;
             }
@@ -1977,7 +2163,7 @@ impl LawExecutionService {
 
             if let Some(regulation) = &source.regulation {
                 // External reference
-                let value = self.resolve_external_input_internal(
+                let resolution = self.resolve_external_input_detailed(
                     regulation,
                     output_name,
                     source.parameters.as_ref(),
@@ -1985,7 +2171,20 @@ impl LawExecutionService {
                     res_ctx,
                 )?;
 
-                context.set_resolved_input(&input.name, value);
+                // The other law said "none" (its output was null), or it was
+                // not run because a required parameter named nobody. Either
+                // way the value is an absence, and this input has to be
+                // declared able to take one (RFC-036).
+                if resolution.value.is_null() && !input.is_nullable() {
+                    let origin = if resolution.skipped {
+                        format!("skipped call to {regulation}")
+                    } else {
+                        format!("{regulation}.{output_name}")
+                    };
+                    return Err(null_for_non_nullable(law, input, origin));
+                }
+
+                context.set_resolved_input(&input.name, resolution.value);
             } else if source.output.is_some() {
                 // Internal reference (same-law) with output specified.
                 // Resolve through the service layer so cross-law inputs of the
@@ -2078,6 +2277,15 @@ impl LawExecutionService {
 
                 if let Some(value) = result.outputs.get(output_name) {
                     res_ctx.trace_set_result(value.clone());
+                    // Same rule as across laws: an absent output of another
+                    // article only fits an input that may be absent (RFC-036).
+                    if value.is_null() && !input.is_nullable() {
+                        return Err(null_for_non_nullable(
+                            law,
+                            input,
+                            format!("{}.{output_name}", law.id),
+                        ));
+                    }
                     context.set_resolved_input(&input.name, value.clone());
                 } else {
                     // The referenced article ran but produced no such output
@@ -2096,13 +2304,74 @@ impl LawExecutionService {
                     });
                 }
             } else {
-                // Empty source (source: {}) — resolved from DataSourceRegistry only.
-                // If DataSourceRegistry didn't match above, leave unresolved.
+                // Empty source (source: {}) — resolved from DataSourceRegistry
+                // only, and no source had a value: no matching row, or a row
+                // without this field. The fact exists but nobody has it, so the
+                // input is Unknown for lack of exactly this fact (RFC-036). An
+                // explicit null cell never reaches here: the source answered
+                // "none", and that is absence, a value.
+                //
+                // Unless the register was never asked about anybody: a required
+                // parameter of this article (the lookup key, typically `bsn`)
+                // that the caller did not pass. Then nothing is known about
+                // the fact because the question was malformed, not because
+                // nobody has the answer, and the input stays unresolved as it
+                // did before RFC-036. A reference to it fails, so a forgotten
+                // or misspelled required parameter never becomes an unknown
+                // outcome.
                 let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                // Nor when the register could not be asked at all: a source
+                // that holds this field keys on a parameter that is unknown
+                // (nobody knows yet whose record to read) or null (there is
+                // nobody to read about). Then the input is that same unknown,
+                // so the outcome names the key and not the field, or that same
+                // null, mirroring the cross-law skip rule (RFC-036).
+                if let Some(blocked) = self.data_registry.blocked_lookup_for_law(
+                    &input.name,
+                    parameters,
+                    Some(&law.id),
+                ) {
+                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                    res_ctx.trace_set_result(blocked.clone());
+                    res_ctx.trace_set_message(if blocked.is_unknown() {
+                        format!(
+                            "Input '{}' cannot be looked up, the key is unknown: input is unknown for the same reason",
+                            input.name
+                        )
+                    } else {
+                        format!(
+                            "Input '{}' cannot be looked up, the key is null (nobody to look up): input is null",
+                            input.name
+                        )
+                    });
+                    // Asked about nobody, the register answers with an absence;
+                    // the input has to be declared able to take one (RFC-036).
+                    if blocked.is_null() && !input.is_nullable() {
+                        return Err(null_for_non_nullable(
+                            law,
+                            input,
+                            "lookup keyed on null".to_string(),
+                        ));
+                    }
+                    context.set_resolved_input(&input.name, blocked);
+                    continue;
+                }
+                if let Some(missing) = required_parameter_not_passed(article, parameters) {
+                    res_ctx.trace_set_message(format!(
+                        "Input '{}' has empty source and no data source match; left unresolved \
+                         because required parameter '{}' was not passed",
+                        input.name, missing
+                    ));
+                    continue;
+                }
+                let unknown = Value::unknown(&law.id, &input.name, MissingKind::NoData);
+                res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                res_ctx.trace_set_result(unknown.clone());
                 res_ctx.trace_set_message(format!(
-                    "Input '{}' has empty source and no data source match, left unresolved",
+                    "Input '{}' has no value in any data source: unknown",
                     input.name
                 ));
+                context.set_resolved_input(&input.name, unknown);
             }
         }
 
@@ -2118,6 +2387,26 @@ impl LawExecutionService {
         context: &RuleContext,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<Value> {
+        self.resolve_external_input_detailed(
+            regulation,
+            output,
+            source_parameters,
+            context,
+            res_ctx,
+        )
+        .map(|resolution| resolution.value)
+    }
+
+    /// [`Self::resolve_external_input_internal`], also reporting whether the
+    /// target was skipped for a required parameter that named nobody.
+    fn resolve_external_input_detailed(
+        &self,
+        regulation: &str,
+        output: &str,
+        source_parameters: Option<&BTreeMap<String, String>>,
+        context: &RuleContext,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<ExternalResolution> {
         // Check for circular reference before proceeding
         let key = format!("{}#{}", regulation, output);
         if res_ctx.is_visited(&key) {
@@ -2141,6 +2430,107 @@ impl LawExecutionService {
                 return Err(e);
             }
         };
+
+        // The target's declared parameters and whether each is required. A
+        // parameter is required unless it says `required: false`; the flag is
+        // what makes the two rules below safe (RFC-036). Only a law the engine
+        // knows can be skipped for nobody; a call to a law that is not loaded
+        // keeps its LawNotFound error further down. `target_params` holds
+        // exactly what the caller passed: an optional parameter the caller
+        // omits is not filled in here, the target resolves it as Unknown for
+        // lack of that parameter when one of its actions asks for it.
+        let law_known = self.get_law(regulation).is_some();
+        let target_article = self
+            .get_law(regulation)
+            .and_then(|law| law.find_article_by_output(output));
+        let declared: &[crate::article::Parameter] = target_article
+            .map(|article| article.get_parameters())
+            .unwrap_or(&[]);
+        let declared_parameter = |name: &str| declared.iter().find(|p| p.name == name);
+        let is_required =
+            |name: &str| declared_parameter(name).is_none_or(|p| p.required != Some(false));
+        let is_nullable = |name: &str| declared_parameter(name).is_some_and(|p| p.is_nullable());
+
+        // A null value for a required parameter means there is nobody to look
+        // up: a partner's age when there is no partner, a child's data when
+        // there is no child. The referenced law cannot be executed for nobody,
+        // and failing here would fail the whole calculation for a person to
+        // whom that branch does not apply. The input resolves to null instead
+        // and the law's own absence checks decide what that means. Unless the
+        // target declares that parameter nullable: then it said it can decide
+        // on nobody, and it is run with the null, the same as at the top
+        // level (RFC-036).
+        //
+        // An unknown value for a required parameter means nobody knows yet who
+        // to look up: the partner's BSN is a fact the register has not
+        // delivered. The referenced law is not executed either, and the input
+        // is unknown for the same facts, so the outcome still names them.
+        // `nullable` says nothing about unknown.
+        //
+        // An optional parameter that is null or unknown is passed through: the
+        // target declared it knows how to do without.
+        //
+        // With more than one such parameter the outcome does not depend on
+        // their order: if any is unknown, the input is unknown for the union
+        // of their facts (a null among them adds nothing to ask for); only
+        // when all are null is the input null. The trace names every one.
+        let empty_required: Vec<(&String, &Value)> = target_params
+            .iter()
+            .filter(|(name, v)| {
+                law_known
+                    && is_required(name)
+                    && (v.is_unknown() || (v.is_null() && !is_nullable(name)))
+            })
+            .collect();
+        if !empty_required.is_empty() {
+            let names = empty_required
+                .iter()
+                .map(|(name, _)| format!("'{name}'"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let (noun, verb) = if empty_required.len() == 1 {
+                ("Parameter", "is")
+            } else {
+                ("Parameters", "are")
+            };
+            if let Some(unknown) = Value::merge_unknown(empty_required.iter().map(|(_, v)| *v)) {
+                res_ctx.trace_set_message(format!(
+                    "{noun} {names} {verb} unknown, so {regulation} is not executed; input is unknown for the same reason",
+                ));
+                res_ctx.trace_set_result(unknown.clone());
+                return Ok(ExternalResolution {
+                    value: unknown,
+                    skipped: true,
+                });
+            }
+            res_ctx.trace_set_message(format!(
+                "{noun} {names} {verb} null, so {regulation} is not executed; input resolves to null",
+            ));
+            res_ctx.trace_set_result(Value::Null);
+            return Ok(ExternalResolution {
+                value: Value::Null,
+                skipped: true,
+            });
+        }
+
+        // An optional parameter passed as null is passed through (the target
+        // declared it knows how to do without), but only if the target also
+        // declared that "none" is a value it takes. Otherwise the caller
+        // hands the target an absence its type rules out, and that is caught
+        // here at the boundary rather than inside the target (RFC-036).
+        if let Some(parameter) = declared.iter().find(|p| {
+            p.required == Some(false)
+                && !p.is_nullable()
+                && target_params.get(&p.name).is_some_and(Value::is_null)
+        }) {
+            let error = EngineError::NullForNonNullable {
+                law_id: regulation.to_string(),
+                field: parameter.name.clone(),
+                origin: format!("parameter from {}", context.law_id()),
+            };
+            res_ctx.trace_set_message(format!("Failed to build parameters: {error}"));
+            return Err(error);
+        }
 
         // Enter cross-law resolution scope
         res_ctx.enter(key.clone());
@@ -2174,7 +2564,10 @@ impl LawExecutionService {
         // Complete trace node
         res_ctx.trace_set_result(value.clone());
 
-        Ok(value)
+        Ok(ExternalResolution {
+            value,
+            skipped: false,
+        })
     }
 
     /// Filter execution parameters to only those declared by the target article.
@@ -2397,6 +2790,35 @@ impl LawExecutionService {
         }
     }
 
+    /// Register a dictionary data source that answers only for one law.
+    ///
+    /// The caller has resolved the external data for `law_id` outside the
+    /// YAML (the `source: {}` contract) and hands it over per record key, one
+    /// field per input name. Because the source is bound to `law_id`, a raw
+    /// register value can never shadow a same-named cross-law input of another
+    /// law. `priority` orders competing sources for the same law: a set of
+    /// citizen corrections registered above the register data overrides it.
+    pub fn register_dict_source_for_law(
+        &mut self,
+        law_id: &str,
+        name: &str,
+        key_field: &str,
+        records: Vec<BTreeMap<String, Value>>,
+        priority: i32,
+    ) -> Result<()> {
+        match DictDataSource::from_records(name, priority, key_field, records) {
+            Some(source) => {
+                self.data_registry
+                    .add_source(Box::new(source.with_law_scope(law_id)));
+                Ok(())
+            }
+            None => Err(EngineError::DataSourceError(format!(
+                "Key field '{}' not found in records for source '{}' (law '{}')",
+                key_field, name, law_id
+            ))),
+        }
+    }
+
     /// Get the number of registered data sources.
     pub fn data_source_count(&self) -> usize {
         self.data_registry.source_count()
@@ -2457,6 +2879,7 @@ impl ServiceProvider for LawExecutionService {
 mod tests {
     use super::*;
     use crate::article::LawLoad;
+    use crate::types::MissingFact;
 
     fn make_base_law() -> &'static str {
         r#"
@@ -3682,6 +4105,684 @@ articles:
     }
 
     #[test]
+    fn test_cross_law_call_leaves_an_omitted_optional_parameter_unknown() {
+        // The tax law asks the permit law for "heeft_vergunning" and passes only
+        // kvk_nummer; the permit law also declares an optional application-form
+        // parameter it uses in another action. That action resolves to unknown
+        // for lack of the form field (RFC-036), and the asked-for output still
+        // comes back.
+        let (permit, tax) = fill_laws("required: false");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output(
+                "fill_belasting",
+                "belastingplichtig",
+                params.clone(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("belastingplichtig"),
+            Some(&Value::Bool(true))
+        );
+
+        // The same call for the output that needs the form field: unknown, and
+        // it says which fact of which law is missing.
+        let tax = tax.replace("heeft_vergunning", "past_oppervlakte");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        let outcome = result.outputs.get("belastingplichtig").unwrap();
+        assert_eq!(
+            outcome.missing_facts(),
+            &[MissingFact {
+                law: "fill_vergunning".to_string(),
+                name: "terras_oppervlakte".to_string(),
+                kind: MissingKind::NotPassed,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_top_level_call_leaves_an_omitted_optional_parameter_unknown() {
+        // Not only across laws: a caller that evaluates the permit law itself
+        // without the optional form field gets unknown for lack of it, with the
+        // same provenance.
+        let (permit, _) = fill_laws("required: false");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        register_fill_permit(&mut service);
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output("fill_vergunning", "past_oppervlakte", params, "2025-01-01")
+            .unwrap();
+        let outcome = result.outputs.get("past_oppervlakte").unwrap();
+        assert_eq!(
+            outcome.missing_facts(),
+            &[MissingFact {
+                law: "fill_vergunning".to_string(),
+                name: "terras_oppervlakte".to_string(),
+                kind: MissingKind::NotPassed,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_cross_law_call_missing_required_parameter_still_fails() {
+        // The same call, but the permit law insists on the form field. The
+        // engine must not invent a null for it: a caller that forgets (or
+        // misspells) a required parameter gets the error, not an unknown.
+        let (permit, tax) = fill_laws("required: true");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service.evaluate_law_output(
+            "fill_belasting",
+            "belastingplichtig",
+            params,
+            "2025-01-01",
+        );
+        assert!(
+            matches!(result, Err(EngineError::VariableNotFound(_))),
+            "expected VariableNotFound, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_cross_law_call_optional_parameter_taken_from_law_data() {
+        // The permit law's form field was answered earlier and kept as data
+        // bound to that law. That data is *not* consulted for a parameter the
+        // caller omits (RFC-036): a parameter is what the caller passes, and
+        // an omitted optional one is unknown for lack of exactly that
+        // parameter, so the decision process can ask for it. Filling it from
+        // the target's own data would answer a question the caller never
+        // asked, with a value the caller never saw.
+        let (permit, tax) = fill_laws("required: false");
+        let tax = tax.replace("heeft_vergunning", "past_oppervlakte");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+        let mut answers = BTreeMap::new();
+        answers.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        answers.insert("terras_oppervlakte".to_string(), Value::Int(30));
+        service
+            .register_dict_source_for_law(
+                "fill_vergunning",
+                "aanvraag",
+                "kvk_nummer",
+                vec![answers],
+                100,
+            )
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        let outcome = result.outputs.get("belastingplichtig").unwrap();
+        assert_eq!(
+            outcome.missing_facts(),
+            &[MissingFact {
+                law: "fill_vergunning".to_string(),
+                name: "terras_oppervlakte".to_string(),
+                kind: MissingKind::NotPassed,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_cross_law_call_passes_null_optional_parameter_through() {
+        // The tax law passes the form field along, but its own register holds
+        // no value for it (null). Null for an *optional* parameter is passed
+        // through, so the permit law still runs and answers; only a null
+        // *required* parameter stops the call. The permit law tests for the
+        // absence before it compares (RFC-036), so `past_oppervlakte` is a
+        // definite false, not an error.
+        let (permit, tax) = fill_laws("required: false");
+        let tax = tax
+            .replace(
+                "        input:\n          - name: heeft_vergunning",
+                "        input:\n          - name: onbekende_oppervlakte\n            type: number\n            nullable: true\n            source: {}\n          - name: heeft_vergunning",
+            )
+            .replace(
+                "                kvk_nummer: $kvk_nummer",
+                "                kvk_nummer: $kvk_nummer\n                terras_oppervlakte: $onbekende_oppervlakte",
+            );
+        assert!(
+            tax.contains("terras_oppervlakte: $onbekende_oppervlakte"),
+            "test law not rewritten"
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+        let mut record = BTreeMap::new();
+        record.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        record.insert("onbekende_oppervlakte".to_string(), Value::Null);
+        service
+            .register_dict_source_for_law(
+                "fill_belasting",
+                "aanvraag",
+                "kvk_nummer",
+                vec![record.clone()],
+                10,
+            )
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        let result = service
+            .evaluate_law_output(
+                "fill_belasting",
+                "belastingplichtig",
+                params.clone(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("belastingplichtig"),
+            Some(&Value::Bool(true))
+        );
+
+        // The absent form field reached the permit law: its absence test
+        // answers "past niet", where an omitted parameter would be unknown.
+        let tax = tax.replace("heeft_vergunning", "past_oppervlakte");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service.load_law(&tax).unwrap();
+        register_fill_permit(&mut service);
+        service
+            .register_dict_source_for_law(
+                "fill_belasting",
+                "aanvraag",
+                "kvk_nummer",
+                vec![record],
+                10,
+            )
+            .unwrap();
+        let result = service
+            .evaluate_law_output("fill_belasting", "belastingplichtig", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("belastingplichtig"),
+            Some(&Value::Bool(false))
+        );
+    }
+
+    fn register_fill_permit(service: &mut LawExecutionService) {
+        let mut record = BTreeMap::new();
+        record.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        record.insert(
+            "vergunning_status".to_string(),
+            Value::String("ACTIEF".to_string()),
+        );
+        service
+            .register_dict_source_for_law(
+                "fill_vergunning",
+                "gemeente",
+                "kvk_nummer",
+                vec![record],
+                10,
+            )
+            .unwrap();
+    }
+
+    /// A permit law with a form parameter (`required` as given) and a tax law
+    /// that asks it for "heeft_vergunning" with only the KVK number.
+    /// The permit article of `fill_laws`, for the parameter helpers.
+    fn fill_permit_article(form_param_required: &str) -> Article {
+        let (permit, _) = fill_laws(form_param_required);
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        service
+            .get_law("fill_vergunning")
+            .unwrap()
+            .find_article_by_output("past_oppervlakte")
+            .unwrap()
+            .clone()
+    }
+
+    fn params(pairs: &[(&str, Value)]) -> BTreeMap<String, Value> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn required_parameter_not_passed_names_only_a_required_parameter_that_is_absent() {
+        // RFC-036: a forgotten required parameter keeps the register
+        // unasked. A parameter that is passed, whatever its value, and an
+        // optional one that is left out, do not trigger it.
+        let kvk = ("kvk_nummer", Value::String("85234567".to_string()));
+        let article = fill_permit_article("required: true");
+        assert_eq!(
+            required_parameter_not_passed(&article, &params(&[kvk.clone()])),
+            Some("terras_oppervlakte".to_string())
+        );
+        assert_eq!(
+            required_parameter_not_passed(
+                &article,
+                &params(&[kvk.clone(), ("terras_oppervlakte", Value::Null)])
+            ),
+            None
+        );
+        assert_eq!(
+            required_parameter_not_passed(&article, &BTreeMap::new()),
+            Some("kvk_nummer".to_string())
+        );
+        // `required` absent means required (schema v0.5.8); `required: false`
+        // means the caller may leave it out.
+        let implicit = fill_permit_article("");
+        assert_eq!(
+            required_parameter_not_passed(&implicit, &params(&[kvk.clone()])),
+            Some("terras_oppervlakte".to_string())
+        );
+        let optional = fill_permit_article("required: false");
+        assert_eq!(
+            required_parameter_not_passed(&optional, &params(&[kvk])),
+            None
+        );
+    }
+
+    /// An article with one parameter `oppervlakte` carrying the given
+    /// attribute lines, for the parameter helpers. The parameter is only
+    /// compared with EQUALS, so the law type-checks whatever its nullability.
+    fn parameter_article(attributes: &str) -> Article {
+        let yaml = format!(
+            r#"
+$id: param_wet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Oppervlakte
+    machine_readable:
+      execution:
+        parameters:
+          - name: oppervlakte
+            type: number
+            {attributes}
+        output:
+          - name: is_twaalf
+            type: boolean
+        actions:
+          - output: is_twaalf
+            operation: EQUALS
+            subject: $oppervlakte
+            value: 12
+"#
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&yaml).unwrap();
+        service
+            .get_law("param_wet")
+            .unwrap()
+            .find_article_by_output("is_twaalf")
+            .unwrap()
+            .clone()
+    }
+
+    #[test]
+    fn required_parameter_for_nobody_lets_the_type_decide_for_null_and_required_for_unknown() {
+        // RFC-036: `null` is allowed exactly where the declaration says so
+        // (`nullable: true`), whether the parameter is required or not.
+        // Unknown is not governed by `nullable`: a required parameter that is
+        // unknown names nobody, an optional one is a fact the law can do
+        // without.
+        let unknown = Value::unknown("param_wet", "oppervlakte", MissingKind::NotPassed);
+        let null = || params(&[("oppervlakte", Value::Null)]);
+        let unk = || params(&[("oppervlakte", unknown.clone())]);
+        let some = || params(&[("oppervlakte", Value::Int(12))]);
+        let hit = |word: &'static str| Some(("oppervlakte".to_string(), word));
+
+        // Required and not nullable: neither empty form is allowed.
+        let article = parameter_article("required: true");
+        assert_eq!(
+            required_parameter_for_nobody(&article, &null()),
+            hit("null")
+        );
+        assert_eq!(
+            required_parameter_for_nobody(&article, &unk()),
+            hit("unknown")
+        );
+        assert_eq!(required_parameter_for_nobody(&article, &some()), None);
+
+        // Required and nullable: null is an absence the law decides on;
+        // unknown still names nobody.
+        let article = parameter_article(
+            "required: true
+            nullable: true",
+        );
+        assert_eq!(required_parameter_for_nobody(&article, &null()), None);
+        assert_eq!(
+            required_parameter_for_nobody(&article, &unk()),
+            hit("unknown")
+        );
+
+        // Optional and not nullable: the caller may leave it out (unknown),
+        // but may not pass an absence the type rules out.
+        let article = parameter_article("required: false");
+        assert_eq!(
+            required_parameter_for_nobody(&article, &null()),
+            hit("null")
+        );
+        assert_eq!(required_parameter_for_nobody(&article, &unk()), None);
+
+        // Optional and nullable: both empty forms are allowed.
+        let article = parameter_article(
+            "required: false
+            nullable: true",
+        );
+        assert_eq!(required_parameter_for_nobody(&article, &null()), None);
+        assert_eq!(required_parameter_for_nobody(&article, &unk()), None);
+    }
+
+    fn fill_laws(form_param_required: &str) -> (String, String) {
+        let permit = format!(
+            r#"
+$id: fill_vergunning
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Vergunning
+    machine_readable:
+      execution:
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+          - name: terras_oppervlakte
+            type: number
+            nullable: true
+            {form_param_required}
+        input:
+          - name: vergunning_status
+            type: string
+            source: {{}}
+        output:
+          - name: heeft_vergunning
+            type: boolean
+          - name: past_oppervlakte
+            type: boolean
+        actions:
+          - output: heeft_vergunning
+            operation: EQUALS
+            subject: $vergunning_status
+            value: ACTIEF
+          # The form field may be absent (null): the law tests for that before
+          # it compares, as RFC-036 requires of an ordered comparison.
+          - output: past_oppervlakte
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $terras_oppervlakte
+                    value: null
+                  then: false
+              default:
+                operation: LESS_THAN
+                subject: $terras_oppervlakte
+                value: 50
+"#
+        );
+        let tax = r#"
+$id: fill_belasting
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Belasting
+    machine_readable:
+      execution:
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+        input:
+          - name: heeft_vergunning
+            type: boolean
+            source:
+              regulation: fill_vergunning
+              output: heeft_vergunning
+              parameters:
+                kvk_nummer: $kvk_nummer
+        output:
+          - name: belastingplichtig
+            type: boolean
+        actions:
+          - output: belastingplichtig
+            value: $heeft_vergunning
+"#;
+        (permit, tax.to_string())
+    }
+
+    #[test]
+    fn test_cross_law_call_with_null_parameter_resolves_to_null() {
+        // A partner's age when there is no partner: the caller passes
+        // `bsn: $partner_bsn`, which is null. The referenced law is not run and
+        // the input is null, so the caller's own null check can decide.
+        let brp = r#"
+$id: null_brp
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: BRP
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: geboortedatum
+            type: date
+            source: {}
+        output:
+          - name: geboortedatum
+            type: date
+        actions:
+          - output: geboortedatum
+            value: $geboortedatum
+"#;
+        let caller = r#"
+$id: null_caller
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Caller
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: partner_bsn
+            type: string
+            required: false
+            nullable: true
+        input:
+          - name: partner_geboortedatum
+            type: date
+            nullable: true
+            source:
+              regulation: null_brp
+              output: geboortedatum
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: heeft_partner_geboortedatum
+            type: boolean
+        actions:
+          - output: heeft_partner_geboortedatum
+            operation: NOT
+            value:
+              operation: EQUALS
+              subject: $partner_geboortedatum
+              value: null
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(brp).unwrap();
+        service.load_law(caller).unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("123".to_string()));
+        params.insert("partner_bsn".to_string(), Value::Null);
+        let result = service
+            .evaluate_law_output(
+                "null_caller",
+                "heeft_partner_geboortedatum",
+                params,
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("heeft_partner_geboortedatum"),
+            Some(&Value::Bool(false))
+        );
+    }
+
+    #[test]
+    fn test_scoped_data_source_does_not_shadow_other_law() {
+        // wet_bron computes `inkomen` from a raw register column that happens to
+        // carry the same name. wet_afnemer takes `inkomen` cross-law from
+        // wet_bron. The register source is bound to wet_bron, so wet_afnemer's
+        // input must still come from the computed output (raw * 2), not from
+        // the raw column.
+        let bron = r#"
+$id: wet_bron
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bron
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: number
+            source: {}
+        output:
+          - name: inkomen
+            type: number
+        actions:
+          - output: inkomen
+            operation: MULTIPLY
+            values:
+              - $inkomen
+              - 2
+"#;
+        let afnemer = r#"
+$id: wet_afnemer
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Afnemer
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: number
+            source:
+              regulation: wet_bron
+              output: inkomen
+              parameters:
+                bsn: $bsn
+        output:
+          - name: resultaat
+            type: number
+        actions:
+          - output: resultaat
+            value: $inkomen
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(bron).unwrap();
+        service.load_law(afnemer).unwrap();
+
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("123".to_string()));
+        record.insert("inkomen".to_string(), Value::Int(500));
+        service
+            .register_dict_source_for_law("wet_bron", "register", "bsn", vec![record], 10)
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("123".to_string()));
+        let result = service
+            .evaluate_law_output("wet_afnemer", "resultaat", params.clone(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("resultaat"), Some(&Value::Int(1000)));
+
+        // A higher-priority scoped source (a citizen correction) overrides the
+        // register for the same law.
+        let mut claim = BTreeMap::new();
+        claim.insert("bsn".to_string(), Value::String("123".to_string()));
+        claim.insert("inkomen".to_string(), Value::Int(700));
+        service
+            .register_dict_source_for_law("wet_bron", "claims", "bsn", vec![claim], 100)
+            .unwrap();
+        let result = service
+            .evaluate_law_output("wet_afnemer", "resultaat", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("resultaat"), Some(&Value::Int(1400)));
+    }
+
+    #[test]
     fn test_data_registry_fallback_to_cross_law() {
         // Registry has no matching field → cross-law resolution should still work
         let mut service = LawExecutionService::new();
@@ -3842,6 +4943,362 @@ articles:
             result.outputs.get("standaardpremie"),
             Some(&Value::Int(1928))
         );
+    }
+
+    #[test]
+    fn test_ioc_unknown_implementation_output_does_not_take_the_default() {
+        // The default of an open term stands in for an absent deviation (no
+        // verordening, or one that says nothing for this case). It never
+        // stands in for a deviation nobody has yet: an implementation whose
+        // own register value is unknown leaves the term unknown, so the
+        // caller asks for the missing fact instead of silently applying the
+        // statutory value (RFC-036).
+        let bw = r#"
+$id: bw_afstand_u
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '42'
+    text: Afstand
+    machine_readable:
+      open_terms:
+        - id: gemeentelijke_afstand_cm
+          type: number
+          required: false
+          delegation_type: GEMEENTELIJKE_VERORDENING
+          default:
+            actions:
+              - output: gemeentelijke_afstand_cm
+                value: 200
+      execution:
+        parameters:
+          - name: gemeente_code
+            type: string
+            required: true
+        output:
+          - name: minimale_afstand_cm
+            type: number
+        actions:
+          - output: minimale_afstand_cm
+            value: $gemeentelijke_afstand_cm
+"#;
+        let apv = r#"
+$id: apv_afstand_u
+regulatory_layer: GEMEENTELIJKE_VERORDENING
+publication_date: '2025-01-01'
+gemeente_code: GM0363
+articles:
+  - number: '2.75'
+    text: Afstand uit het beleid
+    machine_readable:
+      implements:
+        - law: bw_afstand_u
+          article: '42'
+          open_term: gemeentelijke_afstand_cm
+      execution:
+        parameters:
+          - name: gemeente_code
+            type: string
+            required: true
+        input:
+          - name: afstand_uit_beleid
+            type: number
+            source: {}
+        output:
+          - name: gemeentelijke_afstand_cm
+            type: number
+        actions:
+          - output: gemeentelijke_afstand_cm
+            value: $afstand_uit_beleid
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(bw).unwrap();
+        service.load_law(apv).unwrap();
+        // No data source holds the policy distance: the implementation's
+        // output is unknown for lack of it.
+        let result = service
+            .evaluate_law_output_with_trace(
+                "bw_afstand_u",
+                "minimale_afstand_cm",
+                params(&[("gemeente_code", Value::String("GM0363".to_string()))]),
+                "2025-01-01",
+            )
+            .unwrap();
+        let outcome = result.outputs.get("minimale_afstand_cm").unwrap();
+        assert!(outcome.is_unknown(), "expected unknown, got {outcome:?}");
+        assert_eq!(outcome.missing_facts()[0].name, "afstand_uit_beleid");
+        assert!(!trace_resolves_by(
+            result.trace.as_ref().unwrap(),
+            &ResolveType::OpenTermSilent
+        ));
+    }
+
+    #[test]
+    fn test_ioc_silent_implementation_falls_back_to_the_default() {
+        // BW 5:42: the statutory distance applies "tenzij ingevolge een
+        // verordening een kleinere afstand is toegelaten". The Amsterdam APV
+        // allows one for hedges and says nothing about trees: for a tree its
+        // output is absent, no deviation was allowed, and the open term takes
+        // the delegating law's default. Without a verordening at all the
+        // default applies as well.
+        let bw = r#"
+$id: bw_afstand
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '42'
+    text: Afstand
+    machine_readable:
+      open_terms:
+        - id: gemeentelijke_afstand_cm
+          type: number
+          required: false
+          delegation_type: GEMEENTELIJKE_VERORDENING
+          default:
+            actions:
+              - output: gemeentelijke_afstand_cm
+                value:
+                  operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $type_beplanting
+                        value: boom
+                      then: 200
+                  default: 50
+      execution:
+        parameters:
+          - name: gemeente_code
+            type: string
+            required: true
+          - name: type_beplanting
+            type: string
+            required: true
+        output:
+          - name: minimale_afstand_cm
+            type: number
+        actions:
+          - output: minimale_afstand_cm
+            value: $gemeentelijke_afstand_cm
+"#;
+        let apv = r#"
+$id: apv_afstand
+regulatory_layer: GEMEENTELIJKE_VERORDENING
+publication_date: '2025-01-01'
+gemeente_code: GM0363
+articles:
+  - number: '2.75'
+    text: Heggen
+    machine_readable:
+      implements:
+        - law: bw_afstand
+          article: '42'
+          open_term: gemeentelijke_afstand_cm
+      execution:
+        parameters:
+          - name: type_beplanting
+            type: string
+            required: true
+        output:
+          - name: gemeentelijke_afstand_cm
+            type: number
+            nullable: true
+        actions:
+          - output: gemeentelijke_afstand_cm
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $type_beplanting
+                    value: heg
+                  then: 30
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(bw).unwrap();
+        service.load_law(apv).unwrap();
+        let distance = |gemeente: &str, beplanting: &str| {
+            let params = params(&[
+                ("gemeente_code", Value::String(gemeente.to_string())),
+                ("type_beplanting", Value::String(beplanting.to_string())),
+            ]);
+            service
+                .evaluate_law_output_with_trace(
+                    "bw_afstand",
+                    "minimale_afstand_cm",
+                    params,
+                    "2025-01-01",
+                )
+                .unwrap()
+        };
+        // The verordening deviates for hedges.
+        assert_eq!(
+            distance("GM0363", "heg").outputs.get("minimale_afstand_cm"),
+            Some(&Value::Int(30))
+        );
+        // It is silent for trees: the default applies, and the trace says why.
+        let tree = distance("GM0363", "boom");
+        assert_eq!(
+            tree.outputs.get("minimale_afstand_cm"),
+            Some(&Value::Int(200))
+        );
+        assert!(trace_mentions(
+            tree.trace.as_ref().unwrap(),
+            "using default value: implementation apv_afstand article 2.75 is silent for this case"
+        ));
+        // No verordening in this municipality: the default applies too.
+        assert_eq!(
+            distance("GM9999", "heg").outputs.get("minimale_afstand_cm"),
+            Some(&Value::Int(50))
+        );
+        // The trace marks the silent case distinctly from an implemented one
+        // and from a plain default.
+        assert!(trace_resolves_by(
+            tree.trace.as_ref().unwrap(),
+            &ResolveType::OpenTermSilent
+        ));
+        let hedge = distance("GM0363", "heg");
+        assert!(!trace_resolves_by(
+            hedge.trace.as_ref().unwrap(),
+            &ResolveType::OpenTermSilent
+        ));
+        let elsewhere = distance("GM9999", "heg");
+        assert!(!trace_resolves_by(
+            elsewhere.trace.as_ref().unwrap(),
+            &ResolveType::OpenTermSilent
+        ));
+    }
+
+    #[test]
+    fn test_ioc_a_filling_implementation_wins_over_a_silent_one_whatever_the_order() {
+        // Two verordeningen of one municipality implement the same term. The
+        // newer one (lex posterior, first candidate) is silent for trees, the
+        // older one has a rule for them: the older one's value applies, not
+        // the delegating law's default. With the ages swapped the outcome is
+        // the same.
+        let bw = r#"
+$id: bw_twee
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '42'
+    text: Afstand
+    machine_readable:
+      open_terms:
+        - id: afstand_cm
+          type: number
+          required: false
+          delegation_type: GEMEENTELIJKE_VERORDENING
+          default:
+            actions:
+              - output: afstand_cm
+                value: 200
+      execution:
+        parameters:
+          - name: gemeente_code
+            type: string
+            required: true
+          - name: type_beplanting
+            type: string
+            required: true
+        output:
+          - name: minimale_afstand_cm
+            type: number
+        actions:
+          - output: minimale_afstand_cm
+            value: $afstand_cm
+"#;
+        let apv = |id: &str, valid_from: &str, case: &str, value: i32| {
+            format!(
+                r#"
+$id: {id}
+regulatory_layer: GEMEENTELIJKE_VERORDENING
+publication_date: '2024-01-01'
+valid_from: '{valid_from}'
+gemeente_code: GM0363
+articles:
+  - number: '1'
+    text: Afstand
+    machine_readable:
+      implements:
+        - law: bw_twee
+          article: '42'
+          open_term: afstand_cm
+      execution:
+        parameters:
+          - name: type_beplanting
+            type: string
+            required: true
+        output:
+          - name: afstand_cm
+            type: number
+            nullable: true
+        actions:
+          - output: afstand_cm
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $type_beplanting
+                    value: {case}
+                  then: {value}
+"#
+            )
+        };
+        for (hedges_from, trees_from) in
+            [("2025-01-01", "2024-06-01"), ("2024-06-01", "2025-01-01")]
+        {
+            let mut service = LawExecutionService::new();
+            service.load_law(bw).unwrap();
+            service
+                .load_law(&apv("apv_heggen", hedges_from, "heg", 30))
+                .unwrap();
+            service
+                .load_law(&apv("apv_bomen", trees_from, "boom", 100))
+                .unwrap();
+            let distance = |beplanting: &str| {
+                service
+                    .evaluate_law_output(
+                        "bw_twee",
+                        "minimale_afstand_cm",
+                        params(&[
+                            ("gemeente_code", Value::String("GM0363".to_string())),
+                            ("type_beplanting", Value::String(beplanting.to_string())),
+                        ]),
+                        "2025-06-01",
+                    )
+                    .unwrap()
+            };
+            assert_eq!(
+                distance("boom").outputs.get("minimale_afstand_cm"),
+                Some(&Value::Int(100)),
+                "hedges from {hedges_from}, trees from {trees_from}"
+            );
+            assert_eq!(
+                distance("heg").outputs.get("minimale_afstand_cm"),
+                Some(&Value::Int(30))
+            );
+            // Both silent: the default, and the trace names both.
+            let result = service
+                .evaluate_law_output_with_trace(
+                    "bw_twee",
+                    "minimale_afstand_cm",
+                    params(&[
+                        ("gemeente_code", Value::String("GM0363".to_string())),
+                        ("type_beplanting", Value::String("struik".to_string())),
+                    ]),
+                    "2025-06-01",
+                )
+                .unwrap();
+            assert_eq!(
+                result.outputs.get("minimale_afstand_cm"),
+                Some(&Value::Int(200))
+            );
+            let trace = result.trace.as_ref().unwrap();
+            assert!(trace_mentions(trace, "apv_heggen article 1"));
+            assert!(trace_mentions(trace, "apv_bomen article 1"));
+        }
     }
 
     #[test]
@@ -5114,6 +6571,1196 @@ articles:
                 );
             }
             other => panic!("expected LawNotYetInForce, got {other:?}"),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Required parameters passed as null or unknown (RFC-036, review findings 3 and 4)
+    // -------------------------------------------------------------------------
+
+    /// Whether any node of the trace carries a message containing `needle`.
+    /// Whether any node of the trace was resolved the given way.
+    fn trace_resolves_by(node: &crate::trace::PathNode, resolve_type: &ResolveType) -> bool {
+        node.resolve_type.as_ref() == Some(resolve_type)
+            || node
+                .children
+                .iter()
+                .any(|child| trace_resolves_by(child, resolve_type))
+    }
+
+    fn trace_mentions(node: &crate::trace::PathNode, needle: &str) -> bool {
+        node.message.as_deref().is_some_and(|m| m.contains(needle))
+            || node.children.iter().any(|c| trace_mentions(c, needle))
+    }
+
+    #[test]
+    fn test_top_level_null_or_unknown_required_parameter_is_the_callers_error() {
+        // Review probe P2: `bsn: null` at the top level used to make every
+        // register input unknown "for lack of huur", as if the register had
+        // been asked and had nothing. It was asked about nobody. That is the
+        // caller's error, and it names the law and the parameter.
+        let (permit, _) = fill_laws("required: false");
+        let mut service = LawExecutionService::new();
+        service.load_law(&permit).unwrap();
+        register_fill_permit(&mut service);
+
+        for (value, word) in [
+            (Value::Null, "null"),
+            (
+                Value::unknown("elders", "kvk_nummer", MissingKind::NoData),
+                "unknown",
+            ),
+        ] {
+            let mut params = BTreeMap::new();
+            params.insert("kvk_nummer".to_string(), value);
+            let err = service
+                .evaluate_law_output("fill_vergunning", "heeft_vergunning", params, "2025-01-01")
+                .unwrap_err();
+            match &err {
+                EngineError::MissingParameter {
+                    law_id,
+                    name,
+                    value,
+                } => {
+                    assert_eq!(law_id, "fill_vergunning");
+                    assert_eq!(name, "kvk_nummer");
+                    assert_eq!(value, word);
+                }
+                other => panic!("expected MissingParameter, got {other:?}"),
+            }
+            assert!(
+                err.to_string().contains("cannot be evaluated for nobody"),
+                "got {err}"
+            );
+        }
+
+        // An optional parameter passed as null is a value, not this error: the
+        // law tests for the absence and decides.
+        let mut params = BTreeMap::new();
+        params.insert(
+            "kvk_nummer".to_string(),
+            Value::String("85234567".to_string()),
+        );
+        params.insert("terras_oppervlakte".to_string(), Value::Null);
+        let result = service
+            .evaluate_law_output("fill_vergunning", "past_oppervlakte", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("past_oppervlakte"),
+            Some(&Value::Bool(false))
+        );
+    }
+
+    /// A target law with two required parameters and a caller that feeds both
+    /// from its own register, so either can be null or unknown independently.
+    fn two_key_laws() -> (&'static str, &'static str) {
+        let target = r#"
+$id: two_keys
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Doel
+    machine_readable:
+      execution:
+        parameters:
+          - name: eerste
+            type: string
+            required: true
+          - name: tweede
+            type: string
+            required: true
+        input:
+          - name: waarde
+            type: number
+            source: {}
+        output:
+          - name: waarde
+            type: number
+        actions:
+          - output: waarde
+            value: $waarde
+"#;
+        let caller = r#"
+$id: two_caller
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Aanroeper
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: eerste
+            type: string
+            nullable: true
+            source: {}
+          - name: tweede
+            type: string
+            nullable: true
+            source: {}
+          - name: waarde
+            type: number
+            nullable: true
+            source:
+              regulation: two_keys
+              output: waarde
+              parameters:
+                eerste: $eerste
+                tweede: $tweede
+        output:
+          - name: waarde
+            type: number
+            nullable: true
+        actions:
+          - output: waarde
+            value: $waarde
+"#;
+        (target, caller)
+    }
+
+    /// Evaluate `two_caller` with the given register row for bsn 1, with trace.
+    fn two_caller_result(row: Vec<(&str, Value)>) -> ArticleResult {
+        let (target, caller) = two_key_laws();
+        let mut service = LawExecutionService::new();
+        service.load_law(target).unwrap();
+        service.load_law(caller).unwrap();
+        let mut record: BTreeMap<String, Value> =
+            row.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        record.insert("bsn".to_string(), Value::String("1".to_string()));
+        service
+            .register_dict_source_for_law("two_caller", "register", "bsn", vec![record], 10)
+            .unwrap();
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("1".to_string()));
+        service
+            .evaluate_law_output_with_trace("two_caller", "waarde", params, "2025-01-01")
+            .unwrap()
+    }
+
+    #[test]
+    fn test_cross_law_skip_with_several_empty_required_parameters_is_deterministic() {
+        // Two required parameters, one null and one unknown: the skip used to
+        // return whichever sorted first. Now an unknown among them wins (the
+        // outcome still has something to ask for), whichever it is, and the
+        // trace names them all.
+        let fact = |name: &str| MissingFact {
+            law: "two_caller".to_string(),
+            name: name.to_string(),
+            kind: MissingKind::NoData,
+        };
+
+        // eerste null, tweede unknown (no cell).
+        let result = two_caller_result(vec![("eerste", Value::Null)]);
+        assert_eq!(
+            result.outputs.get("waarde").unwrap().missing_facts(),
+            &[fact("tweede")]
+        );
+        assert!(trace_mentions(
+            result.trace.as_ref().unwrap(),
+            "Parameters 'eerste', 'tweede' are unknown, so two_keys is not executed"
+        ));
+
+        // eerste unknown, tweede null: the same rule, the other way round.
+        let result = two_caller_result(vec![("tweede", Value::Null)]);
+        assert_eq!(
+            result.outputs.get("waarde").unwrap().missing_facts(),
+            &[fact("eerste")]
+        );
+
+        // Both unknown: the union.
+        let result = two_caller_result(vec![]);
+        assert_eq!(
+            result.outputs.get("waarde").unwrap().missing_facts(),
+            &[fact("eerste"), fact("tweede")]
+        );
+
+        // Both null: nobody to look up, the input is null.
+        let result = two_caller_result(vec![("eerste", Value::Null), ("tweede", Value::Null)]);
+        assert_eq!(result.outputs.get("waarde"), Some(&Value::Null));
+        assert!(trace_mentions(
+            result.trace.as_ref().unwrap(),
+            "Parameters 'eerste', 'tweede' are null, so two_keys is not executed"
+        ));
+
+        // One empty parameter keeps the singular wording.
+        let result = two_caller_result(vec![
+            ("eerste", Value::String("a".to_string())),
+            ("tweede", Value::Null),
+        ]);
+        assert_eq!(result.outputs.get("waarde"), Some(&Value::Null));
+        assert!(trace_mentions(
+            result.trace.as_ref().unwrap(),
+            "Parameter 'tweede' is null, so two_keys is not executed"
+        ));
+    }
+
+    /// The review's probe laws P4/P5: the caller passes `bsn: $partner_bsn` to
+    /// a source law whose `bsn` is optional, so the unknown or null key is
+    /// passed through and reaches the register lookup.
+    fn optional_key_laws() -> (&'static str, &'static str) {
+        let bron = r#"
+$id: probe_bron
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bron met optionele sleutel
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: false
+            nullable: true
+        input:
+          - name: geboortejaar
+            type: number
+            nullable: true
+            source: {}
+        output:
+          - name: geboortejaar
+            type: number
+            nullable: true
+        actions:
+          - output: geboortejaar
+            value: $geboortejaar
+"#;
+        let caller = r#"
+$id: probe
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Partner
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {}
+          - name: partner_geboortejaar
+            type: number
+            nullable: true
+            source:
+              regulation: probe_bron
+              output: geboortejaar
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: partner_geboortejaar
+            type: number
+            nullable: true
+        actions:
+          - output: partner_geboortejaar
+            value: $partner_geboortejaar
+"#;
+        (bron, caller)
+    }
+
+    fn optional_key_result(partner_bsn: Option<Value>) -> ArticleResult {
+        let (bron, caller) = optional_key_laws();
+        let mut service = LawExecutionService::new();
+        service.load_law(bron).unwrap();
+        service.load_law(caller).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        if let Some(partner) = partner_bsn {
+            row.insert("partner_bsn".to_string(), partner);
+        }
+        service
+            .register_dict_source_for_law("probe", "register", "bsn", vec![row], 10)
+            .unwrap();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("2".to_string()));
+        record.insert("geboortejaar".to_string(), Value::Int(1980));
+        service
+            .register_dict_source_for_law("probe_bron", "bron", "bsn", vec![record], 10)
+            .unwrap();
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("1".to_string()));
+        service
+            .evaluate_law_output_with_trace("probe", "partner_geboortejaar", params, "2025-01-01")
+            .unwrap()
+    }
+
+    #[test]
+    fn test_register_lookup_with_an_unknown_key_keeps_the_keys_provenance() {
+        // Probe P4/P4b: the register cannot be read for a partner nobody has
+        // named. The outcome used to say "unknown for lack of geboortejaar",
+        // sending the portal to the register for a birth year; it names the
+        // partner instead.
+        let result = optional_key_result(None);
+        assert_eq!(
+            result
+                .outputs
+                .get("partner_geboortejaar")
+                .unwrap()
+                .missing_facts(),
+            &[MissingFact {
+                law: "probe".to_string(),
+                name: "partner_bsn".to_string(),
+                kind: MissingKind::NoData,
+            }]
+        );
+        assert!(trace_mentions(
+            result.trace.as_ref().unwrap(),
+            "Input 'geboortejaar' cannot be looked up, the key is unknown"
+        ));
+
+        // A known partner still reads the record.
+        let result = optional_key_result(Some(Value::String("2".to_string())));
+        assert_eq!(
+            result.outputs.get("partner_geboortejaar"),
+            Some(&Value::Int(1980))
+        );
+    }
+
+    #[test]
+    fn test_register_lookup_with_a_null_key_is_absent() {
+        // Probe P5: there is no partner, so there is no partner's birth year.
+        // Asked about nobody, the register answers with an absence, the same
+        // as the cross-law skip rule for a null required parameter.
+        let result = optional_key_result(Some(Value::Null));
+        assert_eq!(
+            result.outputs.get("partner_geboortejaar"),
+            Some(&Value::Null)
+        );
+        assert!(trace_mentions(
+            result.trace.as_ref().unwrap(),
+            "Input 'geboortejaar' cannot be looked up, the key is null"
+        ));
+    }
+
+    // -------------------------------------------------------------------------
+    // Nullability as a property of the type (RFC-036, `nullable`)
+    // -------------------------------------------------------------------------
+
+    /// A register law whose `huur` input carries the given attribute lines, a
+    /// `bron` law it calls for the partner's birth year, and a caller of the
+    /// bron's optional parameter. The outputs are chosen so that every action
+    /// type-checks for either nullability of `huur`.
+    fn nullable_laws(huur_attributes: &str) -> (String, &'static str) {
+        let register = format!(
+            r#"
+$id: nul_register
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Huur
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: huur
+            type: number
+            {huur_attributes}
+            source: {{}}
+        output:
+          - name: huur_bekend
+            type: boolean
+        actions:
+          - output: huur_bekend
+            operation: EQUALS
+            subject: $huur
+            value: 650
+  - number: '2'
+    text: Partner
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {{}}
+          - name: partner_geboortejaar
+            type: number
+            nullable: true
+            source:
+              regulation: nul_bron
+              output: geboortejaar
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: partner_geboortejaar
+            type: number
+            nullable: true
+        actions:
+          - output: partner_geboortejaar
+            value: $partner_geboortejaar
+  - number: '3'
+    text: Toeslag
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: toeslag
+            type: number
+            nullable: true
+            source: {{}}
+          - name: toeslagen
+            type: array
+            source: {{}}
+        output:
+          - name: toeslagklasse
+            type: string
+            nullable: true
+          - name: toeslag_strikt
+            type: number
+        actions:
+          - output: toeslagklasse
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $toeslag
+                    value: 650
+                  then: gewoon
+          - output: toeslag_strikt
+            value:
+              operation: FOREACH
+              collection: $toeslagen
+              as: t
+              body: $t
+              combine: MAX
+"#
+        );
+        let bron = r#"
+$id: nul_bron
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bron
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: aanvraag_bedrag
+            type: number
+            required: false
+        input:
+          - name: geboortejaar
+            type: number
+            source: {}
+        output:
+          - name: geboortejaar
+            type: number
+          - name: past_aanvraag
+            type: boolean
+        actions:
+          - output: geboortejaar
+            value: $geboortejaar
+          - output: past_aanvraag
+            operation: EQUALS
+            subject: $aanvraag_bedrag
+            value: 100
+"#;
+        (register, bron)
+    }
+
+    /// A service with both laws loaded and a register row for bsn 1 holding
+    /// the given cells.
+    fn nullable_service(huur_attributes: &str, cells: &[(&str, Value)]) -> LawExecutionService {
+        let (register, bron) = nullable_laws(huur_attributes);
+        let mut service = LawExecutionService::new();
+        service.load_law(&register).unwrap();
+        service.load_law(bron).unwrap();
+        let mut row = params(cells);
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        service
+            .register_dict_source_for_law("nul_register", "huurregister", "bsn", vec![row], 10)
+            .unwrap();
+        service
+    }
+
+    fn bsn_one() -> BTreeMap<String, Value> {
+        params(&[("bsn", Value::String("1".to_string()))])
+    }
+
+    #[test]
+    fn test_null_cell_for_a_non_nullable_input_is_a_data_error_at_the_boundary() {
+        // The register says "there is no rent"; the law declared that a rent
+        // is always there. The contradiction names the source, the field and
+        // the law, and is raised before any action runs.
+        let service = nullable_service("", &[("huur", Value::Null)]);
+        let err = service
+            .evaluate_law_output("nul_register", "huur_bekend", bsn_one(), "2025-01-01")
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => {
+                assert_eq!(law_id, "nul_register");
+                assert_eq!(field, "huur");
+                assert_eq!(origin, "source huurregister");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+        assert!(
+            err.to_string().contains("declares as never absent"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn test_null_cell_for_a_nullable_input_is_a_value_the_law_tests() {
+        let service = nullable_service("nullable: true", &[("huur", Value::Null)]);
+        let result = service
+            .evaluate_law_output("nul_register", "huur_bekend", bsn_one(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("huur_bekend"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_unknown_is_not_governed_by_nullable() {
+        // No cell at all: nobody has the fact. That is an unknown whatever the
+        // declaration says, and it propagates as before.
+        for attributes in ["", "nullable: true"] {
+            let service = nullable_service(attributes, &[]);
+            let result = service
+                .evaluate_law_output("nul_register", "huur_bekend", bsn_one(), "2025-01-01")
+                .unwrap();
+            assert!(
+                result.outputs.get("huur_bekend").unwrap().is_unknown(),
+                "attributes {attributes:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_skipped_cross_law_call_into_a_non_nullable_input_names_the_skip() {
+        // There is no partner, so the bron is not run and the input would be
+        // null; the caller declared it never absent. No well-typed set reaches
+        // this: the static skip rule (N5) refuses such a caller, in either
+        // load order (RFC-037). The run-time check stays as defence in depth
+        // and is tested through the unchecked loader.
+        let (register, bron) = nullable_laws("");
+        let strict = register.replacen(
+            "          - name: partner_geboortejaar\n            type: number\n            nullable: true\n            source:",
+            "          - name: partner_geboortejaar\n            type: number\n            source:",
+            1,
+        );
+        assert_ne!(strict, register);
+        let mut service = LawExecutionService::new();
+        service.load_law(bron).unwrap();
+        assert!(service.load_law(&strict).is_err());
+        service.load_law_unchecked(&strict).unwrap();
+        let mut row = params(&[("huur", Value::Int(650)), ("partner_bsn", Value::Null)]);
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        service
+            .register_dict_source_for_law("nul_register", "huurregister", "bsn", vec![row], 10)
+            .unwrap();
+        let err = service
+            .evaluate_law_output(
+                "nul_register",
+                "partner_geboortejaar",
+                bsn_one(),
+                "2025-01-01",
+            )
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable { field, origin, .. } => {
+                assert_eq!(field, "partner_geboortejaar");
+                assert_eq!(origin, "skipped call to nul_bron");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_null_output_of_another_law_into_a_non_nullable_input_names_the_output() {
+        // The bron runs and its output is null (the bron's `geboortejaar` is a
+        // nullable pass-through of a null register cell). The caller's input
+        // is not nullable, so the null is refused at the caller's boundary.
+        let bron = r#"
+$id: leeg_bron
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bron
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: geboortejaar
+            type: number
+            nullable: true
+            source: {}
+        output:
+          - name: geboortejaar
+            type: number
+            nullable: true
+        actions:
+          - output: geboortejaar
+            value: $geboortejaar
+"#;
+        let caller = r#"
+$id: leeg_afnemer
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Afnemer
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: geboortejaar
+            type: number
+            source:
+              regulation: leeg_bron
+              output: geboortejaar
+              parameters:
+                bsn: $bsn
+        output:
+          - name: geboortejaar
+            type: number
+        actions:
+          - output: geboortejaar
+            value: $geboortejaar
+"#;
+        // No well-typed set reaches this boundary: with the bron in view the
+        // static check (N5) refuses the caller, and a bron arriving later is
+        // refused for making the caller ill-typed (RFC-037). The run-time
+        // check stays as defence in depth, so the caller is loaded unchecked
+        // here to test it directly.
+        let mut service = LawExecutionService::new();
+        service.load_law(bron).unwrap();
+        service.load_law_unchecked(caller).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        row.insert("geboortejaar".to_string(), Value::Null);
+        service
+            .register_dict_source_for_law("leeg_bron", "brp", "bsn", vec![row], 10)
+            .unwrap();
+        let err = service
+            .evaluate_law_output("leeg_afnemer", "geboortejaar", bsn_one(), "2025-01-01")
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => {
+                assert_eq!(law_id, "leeg_afnemer");
+                assert_eq!(field, "geboortejaar");
+                assert_eq!(origin, "leeg_bron.geboortejaar");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_null_output_of_the_same_law_into_a_non_nullable_input_names_the_article() {
+        // The same rule one article further in: an input that reads another
+        // article of its OWN law (`source.output` without a `regulation`) is
+        // held to its declaration too. Article 1 says "no partner" through a
+        // nullable output; article 2 reads it into an input that promised a
+        // value, and the null is refused at that boundary with the law's own
+        // id as the origin — not carried in to fail three operations later.
+        let law = r#"
+$id: intern_nul
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Partner
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {}
+        output:
+          - name: partner
+            type: string
+            nullable: true
+        actions:
+          - output: partner
+            value: $partner_bsn
+  - number: '2'
+    text: Toeslag
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner
+            type: string
+            source:
+              output: partner
+        output:
+          - name: heeft_partner
+            type: boolean
+        actions:
+          - output: heeft_partner
+            operation: EQUALS
+            subject: $partner
+            value: '2'
+"#;
+        // No well-typed law reaches this boundary: N5 refuses an input that
+        // takes a nullable output, within a law just as across laws (RFC-037).
+        // The run-time check stays as defence in depth, so the law is loaded
+        // unchecked here to test it directly.
+        let mut service = LawExecutionService::new();
+        assert!(service.load_law(law).is_err());
+        service.load_law_unchecked(law).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        row.insert("partner_bsn".to_string(), Value::Null);
+        service
+            .register_dict_source_for_law("intern_nul", "brp", "bsn", vec![row], 10)
+            .unwrap();
+        let err = service
+            .evaluate_law_output("intern_nul", "heeft_partner", bsn_one(), "2025-01-01")
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => {
+                assert_eq!(law_id, "intern_nul");
+                assert_eq!(field, "partner");
+                assert_eq!(origin, "intern_nul.partner");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+        // A partner present is a value, and the same reference runs.
+        let mut service = LawExecutionService::new();
+        service.load_law_unchecked(law).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        row.insert("partner_bsn".to_string(), Value::String("2".to_string()));
+        service
+            .register_dict_source_for_law("intern_nul", "brp", "bsn", vec![row], 10)
+            .unwrap();
+        let result = service
+            .evaluate_law_output("intern_nul", "heeft_partner", bsn_one(), "2025-01-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("heeft_partner"),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    #[test]
+    fn test_non_nullable_output_that_evaluates_to_null_is_an_error() {
+        // Article 3 takes the highest of a list the register delivers empty.
+        // The highest of nothing is absent, which the static check cannot see
+        // (RFC-037: MIN/MAX over a collection make no claim); the output is
+        // what breaks the law's promise, and the run-time check says so.
+        let service = nullable_service("", &[("toeslagen", Value::Array(vec![]))]);
+        let err = service
+            .evaluate_law_output("nul_register", "toeslag_strikt", bsn_one(), "2025-01-01")
+            .unwrap_err();
+        match &err {
+            EngineError::NullOutput { law_id, output } => {
+                assert_eq!(law_id, "nul_register");
+                assert_eq!(output, "toeslag_strikt");
+            }
+            other => panic!("expected NullOutput, got {other:?}"),
+        }
+        assert!(err.to_string().contains("not declared nullable"), "{err}");
+        // The trace records the failure on the output's own node.
+        let err = service
+            .evaluate_law_output_with_trace(
+                "nul_register",
+                "toeslag_strikt",
+                bsn_one(),
+                "2025-01-01",
+            )
+            .unwrap_err();
+        match err {
+            EngineError::TracedError { trace, .. } => {
+                assert!(trace_mentions(
+                    trace.as_deref().unwrap(),
+                    "evaluated to null (absent)"
+                ));
+            }
+            other => panic!("expected TracedError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_nullable_output_may_evaluate_to_null() {
+        // The IF without default matches nothing for 700: the nullable output
+        // is absent, and the highest of a non-empty list is a value.
+        let service = nullable_service(
+            "",
+            &[
+                ("toeslag", Value::Int(700)),
+                ("toeslagen", Value::Array(vec![Value::Int(700)])),
+            ],
+        );
+        let result = service
+            .evaluate_law_output("nul_register", "toeslagklasse", bsn_one(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("toeslagklasse"), Some(&Value::Null));
+        assert_eq!(result.outputs.get("toeslag_strikt"), Some(&Value::Int(700)));
+    }
+
+    #[test]
+    fn test_null_for_an_optional_non_nullable_parameter_is_refused_at_the_call() {
+        // The caller hands the bron `aanvraag_bedrag: null`. The bron declared
+        // the parameter optional (the caller may leave it out) but not
+        // nullable, so an absence is not a value it takes.
+        let (register, bron) = nullable_laws("nullable: true");
+        let caller = r#"
+$id: nul_aanvrager
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Aanvrager
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: bedrag
+            type: number
+            nullable: true
+        input:
+          - name: past
+            type: boolean
+            source:
+              regulation: nul_bron
+              output: past_aanvraag
+              parameters:
+                bsn: $bsn
+                aanvraag_bedrag: $bedrag
+        output:
+          - name: past
+            type: boolean
+        actions:
+          - output: past
+            value: $past
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(&register).unwrap();
+        service.load_law(bron).unwrap();
+        service.load_law(caller).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        row.insert("geboortejaar".to_string(), Value::Int(1980));
+        service
+            .register_dict_source_for_law("nul_bron", "brp", "bsn", vec![row], 10)
+            .unwrap();
+        let mut params = bsn_one();
+        params.insert("bedrag".to_string(), Value::Null);
+        let err = service
+            .evaluate_law_output("nul_aanvrager", "past", params, "2025-01-01")
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => {
+                assert_eq!(law_id, "nul_bron");
+                assert_eq!(field, "aanvraag_bedrag");
+                assert_eq!(origin, "parameter from nul_aanvrager");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+        // Passed as a value, the same call runs.
+        let mut params = bsn_one();
+        params.insert("bedrag".to_string(), Value::Int(100));
+        let result = service
+            .evaluate_law_output("nul_aanvrager", "past", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("past"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_a_parameter_that_overrides_a_non_nullable_input_may_not_be_null() {
+        // A caller hands `huur` in directly, under the input's name. The
+        // source is bypassed; the declaration is not, and the null is refused
+        // at the boundary with the caller as its origin, not three operations
+        // later as an absent operand.
+        let service = nullable_service("", &[("huur", Value::Int(650))]);
+        let mut params = bsn_one();
+        params.insert("huur".to_string(), Value::Null);
+        let err = service
+            .evaluate_law_output("nul_register", "huur_bekend", params, "2025-01-01")
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => {
+                assert_eq!(law_id, "nul_register");
+                assert_eq!(field, "huur");
+                assert_eq!(origin, "parameter from caller");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+        // A nullable input takes the null and the law decides on it.
+        let service = nullable_service("nullable: true", &[("huur", Value::Int(650))]);
+        let mut params = bsn_one();
+        params.insert("huur".to_string(), Value::Null);
+        let result = service
+            .evaluate_law_output("nul_register", "huur_bekend", params, "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("huur_bekend"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_a_required_parameter_the_target_declares_nullable_is_run_with_null() {
+        // The bron declares `bsn` required and nullable and decides on its
+        // absence. Across laws the null is passed, not skipped on: the target
+        // said it can decide on nobody, so the flag means the same thing on
+        // both paths (RFC-036).
+        let bron = r#"
+$id: klasse_bron
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Klasse
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            nullable: true
+        output:
+          - name: klasse
+            type: string
+        actions:
+          - output: klasse
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $bsn
+                    value: null
+                  then: niemand
+              default: iemand
+"#;
+        let caller = r#"
+$id: klasse_afnemer
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Partner
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {}
+          - name: partner_klasse
+            type: string
+            source:
+              regulation: klasse_bron
+              output: klasse
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: partner_klasse
+            type: string
+        actions:
+          - output: partner_klasse
+            value: $partner_klasse
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(bron).unwrap();
+        // The caller's input is not nullable, and the static check agrees:
+        // the call is not skipped, so the input is never null.
+        service.load_law(caller).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        row.insert("partner_bsn".to_string(), Value::Null);
+        service
+            .register_dict_source_for_law("klasse_afnemer", "register", "bsn", vec![row], 10)
+            .unwrap();
+        let result = service
+            .evaluate_law_output_with_trace(
+                "klasse_afnemer",
+                "partner_klasse",
+                bsn_one(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("partner_klasse"),
+            Some(&Value::String("niemand".to_string()))
+        );
+        assert!(!trace_mentions(
+            result.trace.as_ref().unwrap(),
+            "is not executed"
+        ));
+    }
+
+    #[test]
+    fn test_nullable_parameter_passed_as_null_at_the_top_level_runs() {
+        // `bedrag` is declared nullable and is only compared with EQUALS, so
+        // the caller may pass an absence and the law decides on it.
+        let law = r#"
+$id: nul_param
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bedrag
+    machine_readable:
+      execution:
+        parameters:
+          - name: bedrag
+            type: number
+            required: true
+            nullable: true
+        output:
+          - name: geen_bedrag
+            type: boolean
+        actions:
+          - output: geen_bedrag
+            value:
+              operation: EQUALS
+              subject: $bedrag
+              value: null
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "nul_param",
+                "geen_bedrag",
+                params(&[("bedrag", Value::Null)]),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(result.outputs.get("geen_bedrag"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_null_key_cell_for_a_non_nullable_input_is_refused_at_the_register() {
+        // `probe` with its partner key declared never absent: the register's
+        // null cell for it contradicts the law, and is refused where it is
+        // read, before the bron is asked about nobody.
+        let (bron, caller) = optional_key_laws();
+        let caller = caller.replacen(
+            "          - name: partner_bsn\n            type: string\n            nullable: true\n",
+            "          - name: partner_bsn\n            type: string\n",
+            1,
+        );
+        assert_eq!(caller.matches("nullable: true").count(), 2, "{caller}");
+        let mut service = LawExecutionService::new();
+        service.load_law(bron).unwrap();
+        service.load_law(caller.as_str()).unwrap();
+        let mut row = BTreeMap::new();
+        row.insert("bsn".to_string(), Value::String("1".to_string()));
+        row.insert("partner_bsn".to_string(), Value::Null);
+        service
+            .register_dict_source_for_law("probe", "register", "bsn", vec![row], 10)
+            .unwrap();
+        let err = service
+            .evaluate_law_output("probe", "partner_geboortejaar", bsn_one(), "2025-01-01")
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => {
+                assert_eq!(law_id, "probe");
+                assert_eq!(field, "partner_bsn");
+                assert_eq!(origin, "source register");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_register_that_cannot_be_asked_about_nobody_refuses_a_non_nullable_input() {
+        // The bron's key `bsn` is nullable and passed as null: the register is
+        // asked about nobody and answers with an absence. Its `geboortejaar`
+        // input, made non-nullable here, does not take one.
+        let (bron, _) = optional_key_laws();
+        let bron = bron.replacen(
+            "            type: number\n            nullable: true\n            source: {}",
+            "            type: number\n            source: {}",
+            1,
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(&bron).unwrap();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("2".to_string()));
+        record.insert("geboortejaar".to_string(), Value::Int(1980));
+        service
+            .register_dict_source_for_law("probe_bron", "bron", "bsn", vec![record], 10)
+            .unwrap();
+        let err = service
+            .evaluate_law_output(
+                "probe_bron",
+                "geboortejaar",
+                params(&[("bsn", Value::Null)]),
+                "2025-01-01",
+            )
+            .unwrap_err();
+        match &err {
+            EngineError::NullForNonNullable {
+                law_id,
+                field,
+                origin,
+            } => {
+                assert_eq!(law_id, "probe_bron");
+                assert_eq!(field, "geboortejaar");
+                assert_eq!(origin, "lookup keyed on null");
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
         }
     }
 }

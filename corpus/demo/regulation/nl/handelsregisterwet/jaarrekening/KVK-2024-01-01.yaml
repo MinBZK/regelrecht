@@ -1,0 +1,219 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: handelsregisterwet/jaarrekening
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Handelsregisterwet - Jaarrekening Deponeringsplicht
+bwb_id: BWBR0003045
+url: https://wetten.overheid.nl/BWBR0003045/2024-01-01
+service: KVK
+uuid: f3b2d5e8-1a4c-4f9b-a6d7-8e3f2b4a0c19
+discoverable: BUSINESS
+articles:
+  - number: '394'
+    text: >-
+      1 De rechtspersoon is verplicht tot openbaarmaking van de jaarrekening binnen acht dagen
+      na de vaststelling. De openbaarmaking geschiedt door deponering van de volledig in de
+      Nederlandse taal gestelde jaarrekening of, als die niet is vervaardigd, de jaarrekening in
+      het Frans, Duits of Engels, bij het handelsregister, indien van toepassing op de wijze als
+      voorgeschreven bij of krachtens artikel 19a van de Handelsregisterwet 2007. De dag van
+      vaststelling moet zijn vermeld.
+
+      2 Is de jaarrekening niet binnen twee maanden na afloop van de voor het opmaken
+      voorgeschreven termijn overeenkomstig de wettelijke voorschriften vastgesteld, dan maakt
+      het bestuur onverwijld de opgemaakte jaarrekening op de in lid 1 voorgeschreven wijze
+      openbaar; op de jaarrekening wordt vermeld dat zij nog niet is vastgesteld. Binnen twee
+      maanden na gerechtelijke vernietiging van een jaarrekening moet de rechtspersoon een
+      afschrift van de in de uitspraak opgenomen bevelen met betrekking tot de jaarrekening
+      deponeren bij het handelsregister, met vermelding van de uitspraak.
+
+      3 Uiterlijk twaalf maanden na afloop van het boekjaar moet de rechtspersoon de
+      jaarrekening op de in lid 1 voorgeschreven wijze openbaar hebben gemaakt.
+
+      4 Gelijktijdig met en op dezelfde wijze als de jaarrekening worden het bestuursverslag en
+      de overige in artikel 392 bedoelde gegevens in het Nederlands of in een van de andere in
+      het eerste lid genoemde talen openbaar gemaakt. Het voorafgaande geldt, behalve voor de in
+      artikel 392 lid 1 onder a en e genoemde gegevens, niet, indien de stukken ten kantore van
+      de rechtspersoon ter inzage van een ieder worden gehouden en op verzoek een volledig of
+      gedeeltelijk afschrift daarvan ten hoogste tegen de kostprijs wordt verstrekt; hiervan
+      doet de rechtspersoon opgaaf ter inschrijving in het handelsregister.
+
+      5 De vorige leden gelden niet, indien Onze Minister van Economische Zaken de in artikel
+      58, artikel 101 of artikel 210 genoemde ontheffing heeft verleend; alsdan wordt een
+      afschrift van die ontheffing bij het handelsregister gedeponeerd.
+
+      6 De in de vorige leden bedoelde bescheiden worden gedurende zeven jaren bewaard. De Kamer
+      van Koophandel mag de op deze bescheiden geplaatste gegevens overbrengen op andere
+      gegevensdragers, die zij in hun plaats in het handelsregister bewaart, mits die
+      overbrenging geschiedt met juiste en volledige weergave der gegevens en deze gegevens
+      gedurende de volledige bewaartijd beschikbaar zijn en binnen redelijke tijd leesbaar
+      kunnen worden gemaakt.
+
+      7 Iedere belanghebbende kan van de rechtspersoon nakoming van de in de leden 1-5
+      omschreven verplichtingen vorderen.
+
+      8 Een vennootschap waarvan effecten zijn toegelaten tot de handel op een gereglementeerde
+      markt als bedoeld in de Wet op het financieel toezicht wordt geacht te hebben voldaan aan:
+        a. lid 1, indien zij de vastgestelde jaarrekening op grond van artikel 5:25o, eerste
+      lid, van die wet heeft toegezonden aan de Stichting Autoriteit Financiële Markten;
+        b. lid 2, eerste volzin, indien zij mededeling heeft gedaan op grond van artikel
+      5:25o, tweede lid, van die wet aan de Stichting Autoriteit Financiële Markten;
+        c. vierde lid, eerste volzin, indien zij het bestuursverslag en de overige in artikel
+      392 bedoelde gegevens op grond van artikel 5:25o, vierde lid, van de Wet op het financieel
+      toezicht heeft toegezonden aan de Stichting Autoriteit Financiële Markten.
+    url: https://wetten.overheid.nl/BWBR0003045/2024-01-01#Artikel394
+    # Vermelding (audit): lid 2 (nog niet vastgestelde jaarrekening / gerechtelijke
+    # vernietiging), lid 4 (bestuursverslag en art. 392-gegevens, met de ter-inzage-
+    # uitzondering), lid 6 (bewaartermijn/gegevensdragers) en lid 7 (vorderingsrecht
+    # belanghebbende) zijn niet gemodelleerd; deze regeling beperkt zich tot de
+    # deponeringsplicht, -termijn en -vrijstelling van lid 1, 3, 5 en 8.
+    machine_readable:
+      definitions:
+        deponeringsplichtige_rechtsvormen:
+          - BV
+          - NV
+          - COOPERATIE
+          - ONDERLINGE_WAARBORGMAATSCHAPPIJ
+          - STICHTING
+          - VERENIGING
+        rapportage_methode: SBR/XBRL via KVK (kvk.nl/deponeren)
+        deponerings_termijn_maanden: 12
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+        input:
+          - name: rechtsvorm
+            type: string
+            nullable: true
+            source: {}
+          - name: laatste_boekjaar_einde
+            type: date
+            nullable: true
+            source: {}
+          # Art. 2:394 lid 5: geen bron voor de ontheffing van art. 58/101/210 BW2 in deze
+          # demo; de binding levert bij afwezigheid onbekend (absent: unknown), geen null en
+          # geen verzonnen "nee", dus het veld is niet nullable.
+          - name: ontheffing_verleend
+            type: boolean
+            source: {}
+          # Art. 2:394 lid 8: geen bron voor de toezending aan de AFM op grond van art.
+          # 5:25o Wft in deze demo; zelfde reden als ontheffing_verleend.
+          - name: afm_toezending_gedaan
+            type: boolean
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: heeft_deponeringsplicht
+            type: boolean
+          - name: rapportage_methode
+            type: string
+          - name: volgende_deadline
+            type: date
+            nullable: true
+          - name: reden_vrijstelling
+            type: string
+        actions:
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - subject: $rechtsvorm
+                  operation: IN
+                  value: $deponeringsplichtige_rechtsvormen
+          - output: heeft_deponeringsplicht
+            # Art. 2:394 lid 1: de deponeringsplicht geldt voor de rechtspersoon die aan de
+            # voorwaarden (rechtsvorm) voldoet, niet onvoorwaardelijk voor iedereen. Was
+            # hardcoded op true, ook voor rechtsvormen waarvoor voldoet_aan_voorwaarden
+            # false is; getrouwe vorm neemt die uitkomst over (audit).
+            value: $voldoet_aan_voorwaarden
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 2
+              bwb_id: BWBR0003045
+              article: '394'
+              url: >-
+                https://wetten.overheid.nl/BWBR0003045/2024-01-01#Boek2_Titeldeel9_Afdeling10_Artikel394
+              juriconnect: >-
+                jci1.3:c:BWBR0003045&boek=2&artikel=394&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                De organisatie is een rechtspersoon; de deponeringsplicht is van toepassing
+          - output: rapportage_methode
+            value: $rapportage_methode
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 2
+              bwb_id: BWBR0003045
+              article: '394'
+              url: >-
+                https://wetten.overheid.nl/BWBR0003045/2024-01-01#Boek2_Titeldeel9_Afdeling10_Artikel394
+              juriconnect: >-
+                jci1.3:c:BWBR0003045&boek=2&artikel=394&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                De jaarrekening wordt digitaal gedeponeerd via SBR in XBRL-formaat
+          - output: volgende_deadline
+            # Art. 2:394 lid 3: "uiterlijk twaalf maanden na afloop van het boekjaar";
+            # was $laatste_boekjaar_einde zelf, met deponerings_termijn_maanden ongebruikt
+            # in de definities (audit). Getrouwe vorm telt de termijn bij het boekjaareinde
+            # op.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $laatste_boekjaar_einde
+                    value: null
+                  then: null
+              default:
+                operation: DATE_ADD
+                date: $laatste_boekjaar_einde
+                months: $deponerings_termijn_maanden
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 2
+              bwb_id: BWBR0003045
+              article: '394'
+              paragraph: '3'
+              url: >-
+                https://wetten.overheid.nl/BWBR0003045/2024-01-01#Boek2_Titeldeel9_Afdeling10_Artikel394
+              juriconnect: >-
+                jci1.3:c:BWBR0003045&boek=2&artikel=394&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                De deadline is uiterlijk 12 maanden na het einde van het boekjaar
+          - output: reden_vrijstelling
+            # Art. 2:394 lid 5 en 8: was een lege string met legal_basis art. 360 (dat
+            # over de omvang van de vrijstellingscriteria gaat, niet over deze twee
+            # vrijstellingsgronden); lid 5/8 werden nooit getoetst (audit). Getrouwe vorm
+            # test de twee bronnen die de tekst noemt: de ministeriële ontheffing
+            # (lid 5, art. 58/101/210 BW2) en de AFM-toezending (lid 8, art. 5:25o Wft).
+            # Beide inputs hebben geen bron in deze demo (absent: unknown, niet nullable), dus
+            # zonder registergegeven blijft de reden onbekend in plaats van "geen vrijstelling".
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $ontheffing_verleend
+                    value: true
+                  then: 'Lid 5: ministeriële ontheffing verleend (art. 58/101/210 BW2)'
+                - when:
+                    operation: EQUALS
+                    subject: $afm_toezending_gedaan
+                    value: true
+                  then: 'Lid 8: toezending aan AFM op grond van art. 5:25o Wft'
+              default: ''
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 2
+              bwb_id: BWBR0003045
+              article: '394'
+              paragraph: 5, 8
+              url: >-
+                https://wetten.overheid.nl/BWBR0003045/2024-01-01#Boek2_Titeldeel9_Afdeling10_Artikel394
+              juriconnect: >-
+                jci1.3:c:BWBR0003045&boek=2&artikel=394&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Vrijstelling van deponering bij ministeriële ontheffing (lid 5) of AFM-toezending (lid 8)

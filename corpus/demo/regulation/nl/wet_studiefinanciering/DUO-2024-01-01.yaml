@@ -1,0 +1,501 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: wet_studiefinanciering
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bepalen studiefinanciering 2024
+bwb_id: BWBR0011453
+url: https://wetten.overheid.nl/BWBR0011453/2024-01-01
+service: DUO
+uuid: e3bb489c-b7d1-49dd-985c-a3cde1ab0ad3
+articles:
+  - number: '3.1'
+    text: >-
+      1 Studiefinanciering bestaat voor een opleiding in het beroepsonderwijs uit een
+      basisbeurs, een basislening en een aanvullende beurs of aanvullende lening, en kan geheel
+      of gedeeltelijk worden toegekend in de vorm van:
+        a. een gift;
+        b. een prestatiebeurs; of
+        c. een lening.
+      2 Studiefinanciering bestaat voor een opleiding in het hoger onderwijs uit een
+      basisbeurs, een basislening, een aanvullende beurs of aanvullende lening en
+      collegegeldkrediet, en kan geheel of gedeeltelijk worden toegekend in de vorm van:
+        a. een gift;
+        b. een prestatiebeurs; of
+        c. een lening.
+      3 Indien een student geen aanspraak heeft op studiefinanciering als bedoeld in het eerste
+      of tweede lid bestaat studiefinanciering uit levenlanglerenkrediet.
+
+      4 De hoogte van de studiefinanciering wordt vastgesteld op basis van een budget voor een
+      kalendermaand.
+
+      5 In afwijking van het vierde lid kan de hoogte van de studiefinanciering ook worden
+      vastgesteld op een tegemoetkoming in de kosten van de toegang tot het onderwijs.
+    url: https://wetten.overheid.nl/BWBR0011453/2024-01-01#Artikel3.1
+    machine_readable:
+      definitions:
+        basisbeurs_wo_uit: 28800
+        basisbeurs_wo_thuis: 10300
+        basisbeurs_hbo_uit: 28800
+        basisbeurs_hbo_thuis: 10300
+        basisbeurs_mbo_uit: 28800
+        basisbeurs_mbo_thuis: 10300
+        max_aanvullende_beurs_wo: 41900
+        max_aanvullende_beurs_hbo: 41900
+        max_aanvullende_beurs_mbo: 41900
+        inkomen_grens_geen_beurs: 7000000
+        inkomensdrempel_basis: 3400000
+        verhoging_drempel_per_kind: 350000
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: woonsituatie
+            type: string
+            source:
+              regulation: wet_brp
+              output: woonsituatie
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: period
+              period_type: month
+          - name: ouder1_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: ouder2_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: point_in_time
+          - name: partner_woonsituatie
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: woonsituatie
+              parameters:
+                bsn: $partner_bsn
+                referentiedatum: $referencedate
+            temporal:
+              type: period
+              period_type: month
+          - name: partner_ouder1_inkomen
+            type: amount
+            nullable: true
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $partner_bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: partner_ouder2_inkomen
+            type: amount
+            nullable: true
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $partner_bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: onderwijstype
+            type: string
+            nullable: true
+            source: {}
+          - name: aantal_studerend_gezin
+            type: number
+            source: {}
+          - name: partner_onderwijstype
+            type: string
+            nullable: true
+            source: {}
+          - name: partner_aantal_studerend_gezin
+            type: number
+            nullable: true
+            source: {}
+        output:
+          - name: studiefinanciering
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: partner_studiefinanciering
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: is_student
+            type: boolean
+          - name: ontvangt_studiefinanciering
+            type: boolean
+        actions:
+          - output: studiefinanciering
+            # De keuzes per onderwijstype hieronder hebben `default: 0`: art. 2.1 jo. 3.1 WSF 2000
+            # kennen alleen aan mbo, hbo en wo een basisbeurs en een aanvullende beurs toe, een ander
+            # onderwijstype geeft 0. De aanvullende beurs heeft eveneens `default: 0`: boven de
+            # inkomensgrens van art. 3.9 WSF 2000 bestaat er geen recht op. Zonder default leverde
+            # zo'n keuze binnen een optelling een afwezige waarde op waarmee niet gerekend kan worden
+            # (RFC-036).
+            value:
+              # Artikel 2.1 WSF 2000: alleen wie is ingeschreven voor een opleiding (onderwijstype
+              # bekend) heeft recht op studiefinanciering. Zonder inschrijving is het bedrag 0; de
+              # keuze per onderwijstype hieronder kent dan geen geval en zou een afwezige waarde
+              # opleveren waarmee niet gerekend kan worden (RFC-036).
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $onderwijstype
+                      value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $onderwijstype
+                              value: WO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_wo_uit
+                              default: $basisbeurs_wo_thuis
+                          - when:
+                              operation: EQUALS
+                              subject: $onderwijstype
+                              value: HBO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_hbo_uit
+                              default: $basisbeurs_hbo_thuis
+                          - when:
+                              operation: EQUALS
+                              subject: $onderwijstype
+                              value: MBO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_mbo_uit
+                              default: $basisbeurs_mbo_thuis
+                        default: 0
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: LESS_THAN
+                              subject:
+                                operation: ADD
+                                values:
+                                  - $ouder1_inkomen
+                                  - $ouder2_inkomen
+                              value: $inkomen_grens_geen_beurs
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $onderwijstype
+                                        value: WO
+                                      then: $max_aanvullende_beurs_wo
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $onderwijstype
+                                        value: HBO
+                                      then: $max_aanvullende_beurs_hbo
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $onderwijstype
+                                        value: MBO
+                                      then: $max_aanvullende_beurs_mbo
+                                  default: 0
+                                - operation: SUBTRACT
+                                  values:
+                                    - 1
+                                    - operation: DIVIDE
+                                      values:
+                                        - operation: SUBTRACT
+                                          values:
+                                            - operation: ADD
+                                              values:
+                                                - $ouder1_inkomen
+                                                - $ouder2_inkomen
+                                            - $inkomensdrempel_basis
+                                            - operation: MULTIPLY
+                                              values:
+                                                - $aantal_studerend_gezin
+                                                - $verhoging_drempel_per_kind
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $inkomen_grens_geen_beurs
+                                            - $inkomensdrempel_basis
+                        default: 0
+              default: 0
+            legal_basis:
+              law: Wet studiefinanciering 2000
+              bwb_id: BWBR0011453
+              article: '3.1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0011453/2024-01-01#Hoofdstuk3_Paragraaf3.1_Artikel3.1
+              juriconnect: jci1.3:c:BWBR0011453&artikel=3.1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 3.1 bepaalt dat studiefinanciering bestaat uit de som van basisbeurs en
+                aanvullende beurs.
+          - output: partner_studiefinanciering
+            # Art. 3.9 WSF 2000: de aanvullende beurs hangt af van het inkomen van de ouders en het aantal
+            # studerende kinderen in het gezin. Een ouderinkomen dat er niet is (één ouder, geen rij bij
+            # de Belastingdienst) telt voor 0, net als een gezin zonder andere studerende kinderen;
+            # zonder partner is er geen partner op te zoeken en geldt de inschrijvingsvoorwaarde hieronder
+            # (RFC-036).
+            value:
+              # Artikel 2.1 WSF 2000, voor de partner: geen inschrijving, geen studiefinanciering (0).
+              # Zie de toelichting bij studiefinanciering (RFC-036).
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $partner_onderwijstype
+                      value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_onderwijstype
+                              value: WO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_wo_uit
+                              default: $basisbeurs_wo_thuis
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_onderwijstype
+                              value: HBO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_hbo_uit
+                              default: $basisbeurs_hbo_thuis
+                          - when:
+                              operation: EQUALS
+                              subject: $partner_onderwijstype
+                              value: MBO
+                            then:
+                              operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $partner_woonsituatie
+                                    value: UIT
+                                  then: $basisbeurs_mbo_uit
+                              default: $basisbeurs_mbo_thuis
+                        default: 0
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: LESS_THAN
+                              subject:
+                                operation: ADD
+                                values:
+                                  - operation: IF
+                                    cases:
+                                      - when:
+                                          operation: EQUALS
+                                          subject: $partner_ouder1_inkomen
+                                          value: null
+                                        then: 0
+                                    default: $partner_ouder1_inkomen
+                                  - operation: IF
+                                    cases:
+                                      - when:
+                                          operation: EQUALS
+                                          subject: $partner_ouder2_inkomen
+                                          value: null
+                                        then: 0
+                                    default: $partner_ouder2_inkomen
+                              value: $inkomen_grens_geen_beurs
+                            then:
+                              operation: MULTIPLY
+                              values:
+                                - operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $partner_onderwijstype
+                                        value: WO
+                                      then: $max_aanvullende_beurs_wo
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $partner_onderwijstype
+                                        value: HBO
+                                      then: $max_aanvullende_beurs_hbo
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $partner_onderwijstype
+                                        value: MBO
+                                      then: $max_aanvullende_beurs_mbo
+                                  default: 0
+                                - operation: SUBTRACT
+                                  values:
+                                    - 1
+                                    - operation: DIVIDE
+                                      values:
+                                        - operation: SUBTRACT
+                                          values:
+                                            - operation: ADD
+                                              values:
+                                                - operation: IF
+                                                  cases:
+                                                    - when:
+                                                        operation: EQUALS
+                                                        subject: $partner_ouder1_inkomen
+                                                        value: null
+                                                      then: 0
+                                                  default: $partner_ouder1_inkomen
+                                                - operation: IF
+                                                  cases:
+                                                    - when:
+                                                        operation: EQUALS
+                                                        subject: $partner_ouder2_inkomen
+                                                        value: null
+                                                      then: 0
+                                                  default: $partner_ouder2_inkomen
+                                            - $inkomensdrempel_basis
+                                            - operation: MULTIPLY
+                                              values:
+                                                - operation: IF
+                                                  cases:
+                                                    - when:
+                                                        operation: EQUALS
+                                                        subject: $partner_aantal_studerend_gezin
+                                                        value: null
+                                                      then: 0
+                                                  default: $partner_aantal_studerend_gezin
+                                                - $verhoging_drempel_per_kind
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $inkomen_grens_geen_beurs
+                                            - $inkomensdrempel_basis
+                        default: 0
+              default: 0
+            legal_basis:
+              law: Wet studiefinanciering 2000
+              bwb_id: BWBR0011453
+              article: '3.1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0011453/2024-01-01#Hoofdstuk3_Paragraaf3.1_Artikel3.1
+              juriconnect: jci1.3:c:BWBR0011453&artikel=3.1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 3.1 bepaalt dat studiefinanciering voor partners bestaat uit de som van basisbeurs
+                en aanvullende beurs.
+          - output: is_student
+            value:
+              operation: NOT
+              value:
+                operation: EQUALS
+                subject: $onderwijstype
+                value: null
+            legal_basis:
+              law: Wet studiefinanciering 2000
+              bwb_id: BWBR0011453
+              article: '2.1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0011453/2024-01-01#Hoofdstuk2_Artikel2.1
+              juriconnect: jci1.3:c:BWBR0011453&artikel=2.1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.1 vereist dat de studerende is ingeschreven voor een opleiding om recht te
+                hebben op studiefinanciering.
+          - output: ontvangt_studiefinanciering
+            value:
+              operation: GREATER_THAN
+              subject: $studiefinanciering
+              value: 0
+            legal_basis:
+              law: Wet studiefinanciering 2000
+              bwb_id: BWBR0011453
+              article: '2.2'
+              url: >-
+                https://wetten.overheid.nl/BWBR0011453/2024-01-01#Hoofdstuk2_Artikel2.2
+              juriconnect: jci1.3:c:BWBR0011453&artikel=2.2&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.2 bepaalt dat een studerende recht heeft op studiefinanciering als het berekende
+                bedrag groter is dan nul.

@@ -1,0 +1,280 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: faillissementswet_curator
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: >-
+  Bepalen faillissementscurator en vertegenwoordigingsbevoegdheid curator boedel
+bwb_id: BWBR0001860
+url: https://wetten.overheid.nl/BWBR0001860/2024-01-01
+service: RECHTSPRAAK
+uuid: e1199fc0-2fbc-4bc7-aab5-e4f3790a5cc7
+discoverable: DELEGATION_PROVIDER
+articles:
+  - number: '68'
+    text: >-
+      1 De curator is belast met het beheer en de vereffening van de failliete boedel.
+
+      2 De curator:
+        a. beziet bij het beheer en de vereffening van de failliete boedel of er sprake
+      is van onregelmatigheden die het faillissement, althans mede, hebben veroorzaakt, de
+      vereffening van de failliete boedel bemoeilijken of het tekort in het faillissement hebben
+      vergroot;
+        b. informeert hierover de rechter-commissaris vertrouwelijk; en
+        c. doet, zo hij of de rechter-commissaris dit nodig acht, melding of aangifte van
+      onregelmatigheden bij de bevoegde instanties. 3 Alvorens in rechte op te treden, behalve
+      waar het verificatiegeschillen betreft, alsmede in de gevallen van de artikelen 37, 39,
+      40, 58, tweede lid, 60, tweede en derde lid, en 60a, eerste lid, behoeft de curator
+      machtiging van de rechter-commissaris.
+
+      4 Ingeval in Nederland geen secundaire insolventieprocedure is geopend, wordt de
+      machtiging tot beëindiging van arbeidsovereenkomsten, bedoeld in artikel 13 van de in
+      artikel 5, derde lid, genoemde verordening op verzoek van de insolventiefunctionaris in de
+      hoofdinsolventieprocedure verleend door de rechter-commissaris van de rechtbank,
+      aangewezen in artikel 2. De rechtbank benoemt de rechter-commissaris binnen vijf werkdagen
+      na ontvangst van dit machtigingsverzoek.
+    url: https://wetten.overheid.nl/BWBR0001860/2024-01-01#Artikel68
+    machine_readable:
+      definitions:
+        curator_boedel_rechten:
+          - LEZEN
+          - CLAIMS_INDIENEN
+          - BESLUITEN_ONTVANGEN
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: faillissement_registraties
+            type: array
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: heeft_delegaties
+            type: boolean
+          - name: subject_ids
+            type: array
+          - name: subject_names
+            type: array
+          - name: subject_types
+            type: array
+          - name: delegation_types
+            type: array
+          - name: permissions
+            type: array
+          - name: valid_from_dates
+            type: array
+          - name: valid_until_dates
+            type: array
+        actions:
+          - output: actieve_faillissementen
+            value:
+              operation: FOREACH
+              collection: $faillissement_registraties
+              filter:
+                operation: AND
+                conditions:
+                  - operation: EQUALS
+                    subject: $current.status
+                    value: ACTIEF
+                  - operation: OR
+                    conditions:
+                  # Art. 193 Fw: ontbrekende einddatum is afwezig (null), geen lege tekst; POC-tak verwijderd.
+                      - operation: EQUALS
+                        subject: $current.datum_einde
+                        value: null
+                      - operation: GREATER_THAN
+                        subject: $current.datum_einde
+                        value: $referencedate
+              body: $current
+              as: current
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '193'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel193
+              juriconnect: jci1.3:c:BWBR0001860&artikel=193&z=2024-01-01&g=2024-01-01
+              explanation: >
+                Alleen actieve faillissementen geven curatorbevoegdheid. Art. 193 Fw: faillissement
+                eindigt bij vereffening of opheffing.
+          - output: voldoet_aan_voorwaarden
+        # Audit: telde eerder alle registraties, ook beëindigde. Art. 68 jo. 193 Fw: curatorbevoegdheid
+        # bestaat alleen zolang het faillissement actief is, dus telling over $actieve_faillissementen
+        # (gelijk aan heeft_delegaties).
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $actieve_faillissementen
+                body: 1
+                combine: ADD
+              value: 0
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '68'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel68
+              juriconnect: jci1.3:c:BWBR0001860&artikel=68&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Art. 68 jo. 193 Fw: curatorbevoegdheid geldt zolang het faillissement actief is.
+          - output: heeft_delegaties
+        # POC: EXISTS op lijst $actieve_faillissementen (uitvoer heeft_delegaties) betekende 'niet leeg'; expliciet als
+        # telling (RFC-016)
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $actieve_faillissementen
+                body: 1
+                combine: ADD
+              value: 0
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '68'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel68
+              juriconnect: jci1.3:c:BWBR0001860&artikel=68&z=2024-01-01&g=2024-01-01
+              explanation: |
+                Art. 68 Fw bepaalt dat de curator de failliete boedel beheert.
+          - output: subject_ids
+        # POC: impliciete map over een lijst ($actieve_faillissementen.gefailleerde_id); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actieve_faillissementen
+              as: item
+              body: $item.gefailleerde_id
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '19'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel19
+              juriconnect: jci1.3:c:BWBR0001860&artikel=19&z=2024-01-01&g=2024-01-01
+              explanation: Identifiers van gefailleerden uit CIR registratie
+          - output: subject_names
+            value:
+              operation: FOREACH
+              collection: $actieve_faillissementen
+              body:
+                operation: ADD
+                values:
+                  - 'Boedel '
+                  - $current.gefailleerde_naam
+              as: current
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '68'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel68
+              juriconnect: jci1.3:c:BWBR0001860&artikel=68&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Namen met 'Boedel' prefix om boedelvertegenwoordiging aan te geven
+          - output: subject_types
+        # Audit: default CITIZEN als vangnet voor alles wat niet RECHTSPERSOON is, was een geraden
+        # waarde. Art. 1 Fw noemt alleen natuurlijke persoon en rechtspersoon; twee expliciete cases,
+        # geen default. Een niet-matchende $current.gefailleerde_type levert null in het item (de
+        # afwezigheidstoets die de tekst bedoelt); het schema kent nog geen nullable op array-items
+        # (zie AUDIT_GETROUWHEID.md), dus dat blijft ongedeclareerd op het item-niveau.
+            value:
+              operation: FOREACH
+              collection: $actieve_faillissementen
+              body:
+                operation: IF
+                cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $current.gefailleerde_type
+                      value: RECHTSPERSOON
+                    then: BUSINESS
+                  - when:
+                      operation: EQUALS
+                      subject: $current.gefailleerde_type
+                      value: NATUURLIJK_PERSOON
+                    then: CITIZEN
+              as: current
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel1
+              juriconnect: jci1.3:c:BWBR0001860&artikel=1&z=2024-01-01&g=2024-01-01
+              explanation: Type afhankelijk van gefailleerde (persoon of rechtspersoon)
+          - output: delegation_types
+            value:
+              operation: FOREACH
+              collection: $actieve_faillissementen
+              body: CURATOR_BOEDEL
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '68'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel68
+              juriconnect: jci1.3:c:BWBR0001860&artikel=68&z=2024-01-01&g=2024-01-01
+              explanation: Type delegatie is CURATOR_BOEDEL voor faillissementscurator
+          - output: permissions
+            value:
+              operation: FOREACH
+              collection: $actieve_faillissementen
+              body: $curator_boedel_rechten
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '68'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel68
+              juriconnect: >-
+                jci1.3:c:BWBR0001860&artikel=68&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: |
+                Art. 68 lid 1 Fw: De curator beheert en vereffent de failliete boedel.
+          - output: valid_from_dates
+        # POC: impliciete map over een lijst ($actieve_faillissementen.datum_uitspraak); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actieve_faillissementen
+              as: item
+              body: $item.datum_uitspraak
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '14'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel14
+              juriconnect: jci1.3:c:BWBR0001860&artikel=14&z=2024-01-01&g=2024-01-01
+              explanation: Datum faillietverklaring uit CIR
+          - output: valid_until_dates
+        # POC: impliciete map over een lijst ($actieve_faillissementen.datum_einde); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actieve_faillissementen
+              as: item
+              body: $item.datum_einde
+            legal_basis:
+              law: Faillissementswet
+              bwb_id: BWBR0001860
+              article: '193'
+              url: >-
+                https://wetten.overheid.nl/BWBR0001860/2024-01-01#TiteldeelI_Artikel193
+              juriconnect: jci1.3:c:BWBR0001860&artikel=193&z=2024-01-01&g=2024-01-01
+              explanation: Einddatum faillissement, null indien nog actief
+      untranslatables:
+        - construct: iteratie over variabel aantal faillissement-registraties
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal actieve faillissementen is dynamisch
+            en kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal registraties tot een vast maximum
+          accepted: true

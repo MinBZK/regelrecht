@@ -98,6 +98,25 @@ exclude_re = [
     # niet willen vastpinnen.
     'data_source\.rs.*impl std::fmt::Debug for DataSourceRegistry',
 
+    # --- typecheck.rs ------------------------------------------------------
+
+    # `Facts::is_empty` wordt op één plek gelezen: `check_action` besluit
+    # ermee of een outputnaam zijn Derived in de kaart krijgt of eruit gaat.
+    # Met `false` valt de conditie terug op `first_assignment` alleen, en dat
+    # is zwakker dan het origineel: de mutant kan alleen extra invoegingen
+    # doen, nooit een invoeging weglaten. Wat hij extra invoegt is per
+    # definitie een lege Derived, en de enige lezer (`derived_facts`, via
+    # `facts_when_true`/`facts_when_false`) doet er `out.extend(&…)` mee. Een
+    # lege Facts erbij optellen verandert niets, dus `Some(&leeg)` en `None`
+    # geven dezelfde uitkomst. De `remove` in de else-tak kan bij
+    # `first_assignment` nooit een bestaande sleutel treffen, want een naam
+    # komt alleen in `derived` terecht op de doorgang waarop `assigned.insert`
+    # true teruggaf. Geen invoer kan de twee dus uit elkaar houden.
+    #
+    # De variant met `true` en de `&&` in `is_empty` zelf zijn dat niet en
+    # worden wel gedood.
+    'typecheck\.rs.*replace Facts::is_empty -> bool with false',
+
     # --- error.rs ----------------------------------------------------------
 
     # `impl From<EngineError> for JsValue` is één regel
@@ -149,4 +168,16 @@ exclude_re = [
     'engine/src/wasm\.rs.*WasmEngine::resolve_note\b',
     'engine/src/wasm\.rs.*WasmEngine::resolve_notes',
     'engine/src/wasm\.rs.*WasmEngine::register_data_source',
+
+    # RFC-036: parse_records, parse_parameters en strip_undefined_deep lopen
+    # met js_sys over een JsValue (Array::is_array, Object::entries,
+    # Reflect::set) om `undefined`-properties weg te laten voordat serde er
+    # `null` van maakt. Elke aanraking van een JsValue aborteert buiten wasm32,
+    # dus ook deze drie zijn native niet uit te voeren. Wat er daarna met een
+    # weggelaten sleutel gebeurt (onbekend, niet afwezig) wordt in service.rs
+    # en context.rs gemuteerd en gedood; het JS-contract ligt vast in de tests
+    # van de aanroepers (frontend-shared, frontend-demo).
+    'engine/src/wasm\.rs.*parse_records',
+    'engine/src/wasm\.rs.*parse_parameters',
+    'engine/src/wasm\.rs.*strip_undefined_deep',
 ]

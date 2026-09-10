@@ -26,7 +26,7 @@ use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 /// Provenance of an output value: how it was produced during execution.
@@ -95,6 +95,31 @@ pub struct ArticleEngine<'a> {
     /// Declared units for this article's symbols (RFC-023). Empty/all-unknown
     /// for un-annotated articles, which then skip unit checking entirely.
     symbols: crate::units::SymbolUnits,
+}
+
+/// The parameters `article` declares with `required: false` that `parameters`
+/// does not carry (RFC-036).
+///
+/// A reference to one of these resolves to an Unknown for lack of that
+/// parameter: the article said it can do without, so the caller leaving it out
+/// is not an error, but the fact is missing and the outcome has to say so. A
+/// required parameter is never in this set; a misspelled key in `parameters:`
+/// stays the `VariableNotFound` it always was.
+pub(crate) fn unpassed_optional_parameters(
+    article: &Article,
+    parameters: &BTreeMap<String, Value>,
+) -> BTreeSet<String> {
+    article
+        .get_execution_spec()
+        .and_then(|exec| exec.parameters.as_ref())
+        .map(|declared| {
+            declared
+                .iter()
+                .filter(|p| p.required == Some(false) && !parameters.contains_key(&p.name))
+                .map(|p| p.name.clone())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 impl<'a> ArticleEngine<'a> {
@@ -182,6 +207,10 @@ impl<'a> ArticleEngine<'a> {
 
         // Create execution context
         let mut context = RuleContext::new(parameters.clone(), calculation_date)?;
+        context.set_law_scope(
+            &self.law.id,
+            unpassed_optional_parameters(self.article, &parameters),
+        );
 
         // Attach trace builder if provided
         if let Some(ref tb) = trace {
@@ -312,6 +341,28 @@ impl<'a> ArticleEngine<'a> {
                 context.trace_set_result(value.clone());
             }
 
+            // An absence is a value only where the law declared it one. An
+            // output that is not nullable and still came out `null` (an IF
+            // with no matching case and no default, a MIN/MAX over nothing, a
+            // null input passed through) is the law saying nothing where it
+            // claimed to always say something (RFC-036).
+            if value.is_null()
+                && self
+                    .article
+                    .find_output(output_name)
+                    .is_some_and(|output| !output.is_nullable())
+            {
+                let err = EngineError::NullOutput {
+                    law_id: self.law.id.clone(),
+                    output: output_name.clone(),
+                };
+                if tracing_active {
+                    context.trace_set_message(format!("Action failed: {}", err));
+                    context.trace_pop();
+                }
+                return Err(err);
+            }
+
             tracing::debug!("Output {} = {}", output_name, value);
             context.set_output(output_name, value.clone());
 
@@ -358,168 +409,14 @@ impl<'a> ArticleEngine<'a> {
 
     /// Convert an Action to an ActionOperation for execution.
     ///
-    /// This is needed because actions can have operations specified inline
-    /// rather than as nested ActionValue::Operation.
-    ///
-    /// Only comparison, arithmetic, aggregate, and logical operations are supported
-    /// at the action level because the `Action` struct only has `subject`, `value`,
-    /// `values`, and `conditions` fields. IF, date operations, and LIST must be
-    /// nested inside `value` as an `ActionValue::Operation`.
+    /// See [`action_to_operation`]; kept as a method so the call site reads
+    /// as before.
     fn action_to_operation(
         &self,
         action: &Action,
         operation: &crate::types::Operation,
     ) -> Result<ActionOperation> {
-        use crate::types::Operation;
-
-        let require_subject = |op: &Operation| {
-            action.subject.clone().ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'subject' at action level",
-                    op.name()
-                ))
-            })
-        };
-        let require_value = |op: &Operation| {
-            action.value.clone().ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'value' at action level",
-                    op.name()
-                ))
-            })
-        };
-        let require_values = |op: &Operation| {
-            action.values.clone().ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'values' at action level",
-                    op.name()
-                ))
-            })
-        };
-        let require_conditions = |op: &Operation| {
-            action.conditions.clone().ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'conditions' at action level",
-                    op.name()
-                ))
-            })
-        };
-        let require_precision = |op: &Operation| {
-            action.precision.ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "{} requires 'precision' at action level",
-                    op.name()
-                ))
-            })
-        };
-
-        match operation {
-            // Comparison operations (subject + value)
-            Operation::Equals => Ok(ActionOperation::Equals {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::NotEquals => Ok(ActionOperation::NotEquals {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::GreaterThan => Ok(ActionOperation::GreaterThan {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::LessThan => Ok(ActionOperation::LessThan {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::GreaterThanOrEqual => Ok(ActionOperation::GreaterThanOrEqual {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-            Operation::LessThanOrEqual => Ok(ActionOperation::LessThanOrEqual {
-                subject: require_subject(operation)?,
-                value: require_value(operation)?,
-            }),
-
-            // Arithmetic operations (values)
-            Operation::Add => Ok(ActionOperation::Add {
-                values: require_values(operation)?,
-            }),
-            Operation::Subtract => Ok(ActionOperation::Subtract {
-                values: require_values(operation)?,
-            }),
-            Operation::Multiply => Ok(ActionOperation::Multiply {
-                values: require_values(operation)?,
-            }),
-            Operation::Divide => Ok(ActionOperation::Divide {
-                values: require_values(operation)?,
-            }),
-
-            // Aggregate operations (values)
-            Operation::Max => Ok(ActionOperation::Max {
-                values: require_values(operation)?,
-            }),
-            Operation::Min => Ok(ActionOperation::Min {
-                values: require_values(operation)?,
-            }),
-
-            // Rounding operations (unary value + precision; RFC-024)
-            Operation::Round => Ok(ActionOperation::Round {
-                value: require_value(operation)?,
-                precision: require_precision(operation)?,
-            }),
-            Operation::Ceil => Ok(ActionOperation::Ceil {
-                value: require_value(operation)?,
-                precision: require_precision(operation)?,
-            }),
-            Operation::Floor => Ok(ActionOperation::Floor {
-                value: require_value(operation)?,
-                precision: require_precision(operation)?,
-            }),
-
-            // Logical operations
-            Operation::And => Ok(ActionOperation::And {
-                conditions: require_conditions(operation)?,
-            }),
-            Operation::Or => Ok(ActionOperation::Or {
-                conditions: require_conditions(operation)?,
-            }),
-            Operation::Not => Ok(ActionOperation::Not {
-                value: require_value(operation)?,
-            }),
-
-            // Null check operations (subject only)
-            Operation::IsNull => Ok(ActionOperation::IsNull {
-                subject: require_subject(operation)?,
-            }),
-            Operation::NotNull => Ok(ActionOperation::NotNull {
-                subject: require_subject(operation)?,
-            }),
-
-            // Collection: IN/NOT_IN (subject + value/values)
-            Operation::In => Ok(ActionOperation::In {
-                subject: require_subject(operation)?,
-                value: action.value.clone(),
-                values: action.values.clone(),
-            }),
-            Operation::NotIn => Ok(ActionOperation::NotIn {
-                subject: require_subject(operation)?,
-                value: action.value.clone(),
-                values: action.values.clone(),
-            }),
-
-            // Operations not supported at action level
-            Operation::If
-            | Operation::List
-            | Operation::ForEach
-            | Operation::Age
-            | Operation::DateAdd
-            | Operation::Date
-            | Operation::DayOfWeek
-            | Operation::DateDiff => Err(EngineError::InvalidOperation(format!(
-                "{} must be nested inside 'value', not used directly at action level",
-                operation.name()
-            ))),
-        }
+        action_to_operation(action, operation)
     }
 
     /// Get actions from the article's execution spec.
@@ -528,6 +425,170 @@ impl<'a> ArticleEngine<'a> {
             .get_execution_spec()
             .and_then(|exec| exec.actions.as_deref())
             .unwrap_or(&[])
+    }
+}
+
+/// Convert an inline action (`operation:` next to `subject`/`value`/
+/// `values`/`conditions`) to the nested [`ActionOperation`] form the
+/// evaluator and the static type check both work on.
+///
+/// This is needed because actions can have operations specified inline
+/// rather than as nested `ActionValue::Operation`.
+///
+/// Only comparison, arithmetic, aggregate, and logical operations are supported
+/// at the action level because the `Action` struct only has `subject`, `value`,
+/// `values`, and `conditions` fields. IF, date operations, and LIST must be
+/// nested inside `value` as an `ActionValue::Operation`.
+pub(crate) fn action_to_operation(
+    action: &Action,
+    operation: &crate::types::Operation,
+) -> Result<ActionOperation> {
+    use crate::types::Operation;
+
+    let require_subject = |op: &Operation| {
+        action.subject.clone().ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{} requires 'subject' at action level",
+                op.name()
+            ))
+        })
+    };
+    let require_value = |op: &Operation| {
+        action.value.clone().ok_or_else(|| {
+            EngineError::InvalidOperation(format!("{} requires 'value' at action level", op.name()))
+        })
+    };
+    let require_values = |op: &Operation| {
+        action.values.clone().ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{} requires 'values' at action level",
+                op.name()
+            ))
+        })
+    };
+    let require_conditions = |op: &Operation| {
+        action.conditions.clone().ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{} requires 'conditions' at action level",
+                op.name()
+            ))
+        })
+    };
+    let require_precision = |op: &Operation| {
+        action.precision.ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{} requires 'precision' at action level",
+                op.name()
+            ))
+        })
+    };
+
+    match operation {
+        // Comparison operations (subject + value)
+        Operation::Equals => Ok(ActionOperation::Equals {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::NotEquals => Ok(ActionOperation::NotEquals {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::GreaterThan => Ok(ActionOperation::GreaterThan {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::LessThan => Ok(ActionOperation::LessThan {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::GreaterThanOrEqual => Ok(ActionOperation::GreaterThanOrEqual {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+        Operation::LessThanOrEqual => Ok(ActionOperation::LessThanOrEqual {
+            subject: require_subject(operation)?,
+            value: require_value(operation)?,
+        }),
+
+        // Arithmetic operations (values)
+        Operation::Add => Ok(ActionOperation::Add {
+            values: require_values(operation)?,
+        }),
+        Operation::Subtract => Ok(ActionOperation::Subtract {
+            values: require_values(operation)?,
+        }),
+        Operation::Multiply => Ok(ActionOperation::Multiply {
+            values: require_values(operation)?,
+        }),
+        Operation::Divide => Ok(ActionOperation::Divide {
+            values: require_values(operation)?,
+        }),
+
+        // Aggregate operations (values)
+        Operation::Max => Ok(ActionOperation::Max {
+            values: require_values(operation)?,
+        }),
+        Operation::Min => Ok(ActionOperation::Min {
+            values: require_values(operation)?,
+        }),
+
+        // Rounding operations (unary value + precision; RFC-024)
+        Operation::Round => Ok(ActionOperation::Round {
+            value: require_value(operation)?,
+            precision: require_precision(operation)?,
+        }),
+        Operation::Ceil => Ok(ActionOperation::Ceil {
+            value: require_value(operation)?,
+            precision: require_precision(operation)?,
+        }),
+        Operation::Floor => Ok(ActionOperation::Floor {
+            value: require_value(operation)?,
+            precision: require_precision(operation)?,
+        }),
+
+        // Logical operations
+        Operation::And => Ok(ActionOperation::And {
+            conditions: require_conditions(operation)?,
+        }),
+        Operation::Or => Ok(ActionOperation::Or {
+            conditions: require_conditions(operation)?,
+        }),
+        Operation::Not => Ok(ActionOperation::Not {
+            value: require_value(operation)?,
+        }),
+
+        // Null check operations (subject only)
+        Operation::IsNull => Ok(ActionOperation::IsNull {
+            subject: require_subject(operation)?,
+        }),
+        Operation::NotNull => Ok(ActionOperation::NotNull {
+            subject: require_subject(operation)?,
+        }),
+
+        // Collection: IN/NOT_IN (subject + value/values)
+        Operation::In => Ok(ActionOperation::In {
+            subject: require_subject(operation)?,
+            value: action.value.clone(),
+            values: action.values.clone(),
+        }),
+        Operation::NotIn => Ok(ActionOperation::NotIn {
+            subject: require_subject(operation)?,
+            value: action.value.clone(),
+            values: action.values.clone(),
+        }),
+
+        // Operations not supported at action level
+        Operation::If
+        | Operation::List
+        | Operation::ForEach
+        | Operation::Age
+        | Operation::DateAdd
+        | Operation::Date
+        | Operation::DayOfWeek
+        | Operation::DateDiff => Err(EngineError::InvalidOperation(format!(
+            "{} must be nested inside 'value', not used directly at action level",
+            operation.name()
+        ))),
     }
 }
 
@@ -578,6 +639,63 @@ articles:
               default: "minor"
 "#;
         ArticleBasedLaw::from_yaml_str(yaml).unwrap()
+    }
+
+    #[test]
+    fn test_unpassed_optional_parameters_lists_only_omitted_optional_ones() {
+        // RFC-036: an optional parameter the caller omits resolves to unknown,
+        // a required one it omits stays an error, and a passed one is a value.
+        let yaml = r#"
+$id: optioneel
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Test
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: aanvraag_bedrag
+            type: number
+            required: false
+          - name: toelichting
+            type: string
+            required: false
+          - name: zonder_vlag
+            type: string
+        output:
+          - name: past
+            type: boolean
+        actions:
+          - output: past
+            value:
+              operation: GREATER_THAN
+              subject: $aanvraag_bedrag
+              value: 100
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        let article = law.find_article_by_output("past").unwrap();
+        let mut params = BTreeMap::new();
+        params.insert("toelichting".to_string(), Value::String("ja".to_string()));
+
+        let unpassed = unpassed_optional_parameters(article, &params);
+        assert_eq!(unpassed, BTreeSet::from(["aanvraag_bedrag".to_string()]));
+
+        // Executing the article then yields an unknown that names the fact.
+        let engine = ArticleEngine::new(article, &law);
+        let result = engine.evaluate(params, "2025-01-01").unwrap();
+        let past = result.outputs.get("past").unwrap();
+        assert_eq!(
+            past.missing_facts(),
+            &[crate::types::MissingFact {
+                law: "optioneel".to_string(),
+                name: "aanvraag_bedrag".to_string(),
+                kind: crate::types::MissingKind::NotPassed,
+            }]
+        );
     }
 
     fn make_arithmetic_law() -> ArticleBasedLaw {
@@ -694,6 +812,76 @@ articles:
         assert_eq!(result.article_number, "1");
         assert_eq!(result.law_id, "test_law");
         assert_eq!(result.outputs.get("is_adult"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_an_undeclared_output_that_evaluates_to_null_is_not_an_error() {
+        // The null-output rule (RFC-036) holds a declared output to its
+        // promise. An action whose output is not in the `output:` list made
+        // no promise, so its null passes; only a declared non-nullable output
+        // is refused.
+        let yaml = r#"
+$id: ongedeclareerd
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        parameters:
+          - name: n
+            type: number
+            required: true
+        output:
+          - name: klasse
+            type: string
+        actions:
+          - output: tussenstap
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $n
+                    value: 5
+                  then: hoog
+          - output: klasse
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $tussenstap
+                    value: hoog
+                  then: hoog
+              default: laag
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+        let mut params = BTreeMap::new();
+        params.insert("n".to_string(), Value::Int(1));
+        let result = engine.evaluate(params, "2025-01-01").unwrap();
+        assert_eq!(
+            result.outputs.get("klasse"),
+            Some(&Value::String("laag".to_string()))
+        );
+        // Declared, the same null is refused.
+        let declared = yaml.replace(
+            "          - name: klasse\n",
+            "          - name: tussenstap\n            type: string\n          - name: klasse\n",
+        );
+        let law = ArticleBasedLaw::from_yaml_str(&declared).unwrap();
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+        let mut params = BTreeMap::new();
+        params.insert("n".to_string(), Value::Int(1));
+        let err = engine.evaluate(params, "2025-01-01").unwrap_err();
+        assert!(
+            matches!(&err, crate::error::EngineError::NullOutput { output, .. } if output == "tussenstap"),
+            "{err:?}"
+        );
     }
 
     #[test]

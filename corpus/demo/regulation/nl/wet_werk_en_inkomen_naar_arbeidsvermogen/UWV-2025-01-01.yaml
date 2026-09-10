@@ -1,0 +1,53 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: wet_werk_en_inkomen_naar_arbeidsvermogen
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+name: WIA uitkering status
+bwb_id: BWBR0019057
+url: https://wetten.overheid.nl/BWBR0019057/2025-01-01
+service: UWV
+uuid: 4c8e1f6a-9d2b-4e3a-8b5c-1d9f8e2a6c4b
+articles:
+  - number: '54'
+    text: >-
+      1 Recht op een WGA-uitkering ontstaat voor de verzekerde die ziek wordt indien:
+        a. hij de wachttijd heeft doorlopen;
+        b. hij gedeeltelijk arbeidsgeschikt is; en
+        c. er op hem geen uitsluitingsgrond van toepassing is.
+      2 Het recht op een WGA-uitkering ontstaat niet eerder dan op de eerste dag na afloop van
+      de wachttijd of indien op die dag de uitsluitingsgrond, bedoeld in artikel 43, onderdeel
+      b, van toepassing is, op de dag dat zich die uitsluitingsgrond niet meer voordoet.
+
+      3 De WGA-uitkering bestaat voor de verzekerde die voldoet aan de referte-eis, bedoeld in
+      artikel 58 uit een loongerelateerde uitkering en na afloop hiervan uit een
+      loonaanvullingsuitkering of een vervolguitkering.
+
+      4 De WGA-uitkering bestaat voor de verzekerde die niet voldoet aan de referte-eis, bedoeld
+      in artikel 58 uit een loonaanvullingsuitkering of een vervolguitkering.
+    url: https://wetten.overheid.nl/BWBR0019057/2025-01-01#Artikel54
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: wia_uitkering_status
+            type: object
+            nullable: true
+            source: {}
+        output:
+          - name: heeft_wia_uitkering
+            type: boolean
+        actions:
+          - output: heeft_wia_uitkering
+            value:
+              operation: EQUALS
+              subject: $wia_uitkering_status.status
+              value: ACTIEF

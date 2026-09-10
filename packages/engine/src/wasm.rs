@@ -102,6 +102,74 @@ fn wasm_error(msg: &str) -> JsValue {
     JsValue::from_str(msg)
 }
 
+/// Parse a JavaScript array of record objects into engine records, dropping
+/// every property whose value is `undefined` first, at any depth.
+///
+/// `serde-wasm-bindgen` deserializes `undefined` and `null` both as `None`,
+/// so a record `{ bsn: '1', huur: undefined }` would come out with `huur:
+/// Null`. Under RFC-036 that is a different statement: `null` says the
+/// register is authoritative that there is no rent (absence), a missing
+/// property says nobody has the value (unknown). Stripping `undefined` before
+/// deserializing keeps the second from silently turning into the first. An
+/// explicit `null` property is kept and becomes `Value::Null`. The same holds
+/// inside a nested record (`beschikking: { status: undefined }`) and inside
+/// arrays of records, so the walk is recursive.
+///
+/// This cannot be unit-tested natively: every `JsValue` operation aborts
+/// outside wasm32 and the crate has no `wasm-bindgen-test` setup, so the
+/// contract is documented here and pinned by the JS callers' tests instead.
+fn parse_records(records: JsValue) -> Result<Vec<BTreeMap<String, Value>>, JsValue> {
+    let records = strip_undefined_deep(records)?;
+    serde_wasm_bindgen::from_value(records)
+        .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))
+}
+
+/// Parse the JavaScript parameters object of an `execute*` call, dropping
+/// every `undefined`-valued property first, at any depth (see
+/// [`parse_records`] for why).
+///
+/// A parameter that is `undefined` is a parameter the caller did not pass:
+/// an optional one then resolves to unknown for lack of it, a required one is
+/// the caller's error, exactly as when the key is absent. Deserialized as
+/// `null` it would instead count as passed and state an absence the caller
+/// never made, which an operation downstream then rejects (`AbsentOperand`)
+/// or a cross-law call turns into "there is nobody".
+fn parse_parameters(parameters: JsValue) -> Result<BTreeMap<String, Value>, JsValue> {
+    let parameters = strip_undefined_deep(parameters)?;
+    serde_wasm_bindgen::from_value(parameters)
+        .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))
+}
+
+/// Rebuild a JavaScript value without its `undefined`-valued object
+/// properties, recursively through arrays and plain objects. An `undefined`
+/// array *element* is kept (it is a position, not a property, and the
+/// deserializer reports it as it always did). Anything that is not an array
+/// or a plain object is passed through untouched, so a shape error is still
+/// reported by the deserializer.
+fn strip_undefined_deep(value: JsValue) -> Result<JsValue, JsValue> {
+    if js_sys::Array::is_array(&value) {
+        let stripped = js_sys::Array::new();
+        for element in js_sys::Array::from(&value).iter() {
+            stripped.push(&strip_undefined_deep(element)?);
+        }
+        return Ok(stripped.into());
+    }
+    if !value.is_object() {
+        return Ok(value);
+    }
+    let clean = js_sys::Object::new();
+    for entry in js_sys::Object::entries(&value.into()).iter() {
+        let pair = js_sys::Array::from(&entry);
+        let key = pair.get(0);
+        let property = pair.get(1);
+        if property.is_undefined() {
+            continue;
+        }
+        js_sys::Reflect::set(&clean, &key, &strip_undefined_deep(property)?)?;
+    }
+    Ok(clean.into())
+}
+
 /// Convert internal EngineError to user-friendly WASM error.
 fn engine_error_to_wasm(err: EngineError) -> JsValue {
     match err {
@@ -236,8 +304,7 @@ impl WasmEngine {
         parameters: JsValue,
         calculation_date: &str,
     ) -> Result<JsValue, JsValue> {
-        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
-            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+        let params = parse_parameters(parameters)?;
 
         let result = self
             .service
@@ -282,8 +349,7 @@ impl WasmEngine {
         parameters: JsValue,
         calculation_date: &str,
     ) -> Result<JsValue, JsValue> {
-        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
-            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+        let params = parse_parameters(parameters)?;
 
         // Use untimed trace builder to avoid Instant::now() JS FFI calls
         // that cause RefCell aliasing panics in wasm-bindgen.
@@ -369,8 +435,7 @@ impl WasmEngine {
         let names: Vec<String> = serde_wasm_bindgen::from_value(output_names)
             .map_err(|e| wasm_error(&format!("Failed to parse output_names: {}", e)))?;
         let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
-            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+        let params = parse_parameters(parameters)?;
 
         let result = self
             .service
@@ -410,8 +475,7 @@ impl WasmEngine {
         let names: Vec<String> = serde_wasm_bindgen::from_value(output_names)
             .map_err(|e| wasm_error(&format!("Failed to parse output_names: {}", e)))?;
         let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
-            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+        let params = parse_parameters(parameters)?;
 
         match self.service.evaluate_law_with_trace_builder(
             law_id,
@@ -671,6 +735,10 @@ impl WasmEngine {
     /// * `key_field` - Field name used as record key (e.g., "bsn")
     /// * `records` - JavaScript array of objects, each representing a record
     ///
+    /// A property that is `undefined` is dropped from the record (the fact is
+    /// unknown); a property that is `null` is kept (the register says there is
+    /// none). See RFC-036.
+    ///
     /// # Example (JavaScript)
     /// ```javascript
     /// engine.registerDataSource('personal_data', 'bsn', [
@@ -684,12 +752,57 @@ impl WasmEngine {
         key_field: &str,
         records: JsValue,
     ) -> Result<(), JsValue> {
-        let parsed: Vec<BTreeMap<String, Value>> = serde_wasm_bindgen::from_value(records)
-            .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))?;
+        let parsed = parse_records(records)?;
 
         self.service
             .register_dict_source(name, key_field, parsed)
             .map_err(engine_error_to_wasm)
+    }
+
+    /// Register a tabular data source that answers only for one law.
+    ///
+    /// The records carry the law's `source: {}` inputs by name, keyed by
+    /// `key_field` (typically `bsn` or `kvk_nummer`). Bound to `law_id`, the
+    /// source is consulted only while that law's inputs are resolved, so a raw
+    /// register column can never shadow a same-named cross-law input elsewhere.
+    /// `priority` orders sources for the same law (higher wins); omit it for
+    /// the default of 10. Citizen corrections go in as a second, higher-priority
+    /// source for the same law.
+    ///
+    /// A property that is `undefined` is dropped from the record (the fact is
+    /// unknown); a property that is `null` is kept (the register says there is
+    /// none: `partner_bsn: null` below is a person without a partner). See
+    /// RFC-036.
+    ///
+    /// # Example (JavaScript)
+    /// ```javascript
+    /// engine.registerDataSourceForLaw('wet_brp', 'RvIG', 'bsn', [
+    ///     { bsn: '999993653', geboortedatum: '2000-01-01', partner_bsn: null }
+    /// ]);
+    /// engine.registerDataSourceForLaw('wet_brp', 'claims', 'bsn', [
+    ///     { bsn: '999993653', geboortedatum: '1999-12-31' }
+    /// ], 100);
+    /// ```
+    #[wasm_bindgen(js_name = registerDataSourceForLaw)]
+    pub fn register_data_source_for_law(
+        &mut self,
+        law_id: &str,
+        name: &str,
+        key_field: &str,
+        records: JsValue,
+        priority: Option<i32>,
+    ) -> Result<(), JsValue> {
+        let parsed = parse_records(records)?;
+
+        self.service
+            .register_dict_source_for_law(law_id, name, key_field, parsed, priority.unwrap_or(10))
+            .map_err(engine_error_to_wasm)
+    }
+
+    /// Remove a data source by name (every law scope it was registered under).
+    #[wasm_bindgen(js_name = removeDataSource)]
+    pub fn remove_data_source(&mut self, name: &str) -> bool {
+        self.service.remove_data_source(name)
     }
 
     /// Remove all registered data sources.
@@ -815,6 +928,27 @@ articles:
 
         assert_eq!(engine.version(), env!("CARGO_PKG_VERSION"));
         assert!(!engine.version().is_empty());
+    }
+
+    #[test]
+    fn test_wasm_engine_remove_data_source_reports_whether_it_existed() {
+        let mut engine = WasmEngine::new();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("1".to_string()));
+        record.insert("inkomen".to_string(), Value::Int(100));
+        engine
+            .service
+            .register_dict_source("bron", "bsn", vec![record])
+            .unwrap();
+        assert!(
+            engine.remove_data_source("bron"),
+            "a registered source is removed"
+        );
+        assert!(
+            !engine.remove_data_source("bron"),
+            "removing it again reports that nothing was there"
+        );
+        assert!(!engine.remove_data_source("onbekend"));
     }
 
     #[test]

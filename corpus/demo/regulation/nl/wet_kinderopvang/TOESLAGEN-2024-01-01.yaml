@@ -1,0 +1,310 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: wet_kinderopvang
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Bepalen kinderopvangtoeslag
+bwb_id: BWBR0017017
+url: https://wetten.overheid.nl/BWBR0017017/2024-01-01
+service: TOESLAGEN
+uuid: f8e7d6c5-4321-4f0f-bbbb-123456789abc
+discoverable: CITIZEN
+articles:
+  - number: '1.5'
+    text: >-
+      1 Een ouder heeft aanspraak op een kinderopvangtoeslag in de door hem of zijn partner
+      betaalde kosten, indien het betreft:
+        a. kinderopvang in een geregistreerd kindercentrum; of
+        b. gastouderopvang in een geregistreerde voorziening voor gastouderopvang.
+      2 Indien het ouderparticipatieopvang in een ouderparticipatiecrèche betreft, heeft de
+      ouder in de aanloopperiode, bedoeld in artikel 1.60b, in afwijking van het eerste lid,
+      geen aanspraak op kinderopvangtoeslag.
+
+      3 Een ouder en diens partner die tevens ouder is worden voor de toepassing van deze wet
+      geacht gezamenlijk één aanspraak te hebben.
+    url: https://wetten.overheid.nl/BWBR0017017/2024-01-01#Artikel1.5
+    machine_readable:
+      definitions:
+        max_uurtarief_dagopvang: 902
+        max_uurtarief_bso: 766
+        max_hours_per_year: 2760
+        inkomensdrempel_1: 3500000
+        inkomensdrempel_2: 7000000
+        percentage_1: 0.96
+        percentage_2: 0.8
+        percentage_3: 0.33
+        min_hours_partner: 1040
+        min_hours_per_week: 20
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source:
+              regulation: wet_brp
+              output: partner_bsn
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: partner_inkomen
+            type: amount
+            nullable: true
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $partner_bsn
+          - name: kinderen_bsns
+            type: array
+            source:
+              regulation: wet_brp
+              output: kinderen_bsns
+              parameters:
+                bsn: $bsn
+                referentiedatum: $referencedate
+          - name: gewerkte_uren
+            type: number
+            # Art. 1.5: niet nullable. wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+            # berekent gewerkte_uren als FOREACH/MULTIPLY over dienstverbandperiodes, een
+            # array-input (bindings.yaml, kind: table) die zonder rijen leeg is (0 dienstverbanden),
+            # niet null/unknown; array-inputs dragen geen `absent` (bindings.yaml regel 24-25).
+            # Voor de eigen bsn levert de bron dus altijd een getal (0 als er geen dienstverband is).
+            source:
+              regulation: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+              output: gewerkte_uren
+              parameters:
+                bsn: $bsn
+          - name: partner_gewerkte_uren
+            type: number
+            nullable: true
+            source:
+              regulation: wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
+              output: gewerkte_uren
+              parameters:
+                bsn: $partner_bsn
+          - name: kinderopvang_kvk
+            type: string
+            required: true
+            source: {}
+          - name: is_geregistreerd
+            type: boolean
+            required: true
+            # Art. 1.5 lid 1: aanspraak bestaat alleen als het gaat om kinderopvang in een
+            # geregistreerd kindercentrum of gastouderopvang in een geregistreerde voorziening
+            # (LRK). De demo heeft geen LRK-bron; de ouder claimt de registratie zelf
+            # (bindings.yaml, kind: claim, dus onbeantwoord = unknown, geen 0/false-default).
+            source: {}
+          - name: aangegeven_uren
+            type: array
+            required: true
+            source: {}
+          - name: aanvraag_soort_opvang
+            type: string
+            required: true
+            # Art. 1.5 lid 2: nodig om ouderparticipatieopvang te onderscheiden van de overige
+            # opvangvormen die wel aanspraak geven. Eigen naam (niet "soort_opvang"): dat veld
+            # bestaat al per kind binnen aangegeven_uren (art. 1.6-berekening) en zou daarin
+            # aangewezen worden door de FOREACH-body als het dezelfde naam kreeg.
+            source: {}
+          - name: binnen_aanloopperiode
+            type: boolean
+            required: true
+            # Art. 1.5 lid 2: de aanloopperiode van art. 1.60b is in deze wet niet zelf
+            # gemodelleerd (geen eigen berekening in dit bestand); de vraag of de aanvraag
+            # in die periode valt is een claim van de ouder.
+            source: {}
+          - name: verwachte_partner_uren
+            type: number
+            required: true
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_gerechtigd
+            type: boolean
+          - name: jaarbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: voldoet_aan_voorwaarden
+            # Art. 1.6 lid 1 en 3 Wko: met partner bestaat het recht als ook de partner werkt of een
+            # traject volgt. Zonder partner is er geen partnervoorwaarde; de gewerkte uren van de partner
+            # komen uit het UWV-register en zijn afwezig zonder partner (RFC-036).
+            # Art. 1.5 lid 1: aanspraak vereist geregistreerde opvang (LRK); zonder registratiebron in
+            # de demo is dit de claim van de ouder, EQUALS true zodat "unknown" (nog niet geclaimd)
+            # geen aanspraak geeft.
+            # Art. 1.5 lid 2: "in afwijking van het eerste lid" - een ouderparticipatiecrèche in de
+            # aanloopperiode (art. 1.60b) heeft geen aanspraak, ook als aan lid 1 is voldaan. AND-conditie
+            # naast lid 1, met eigen legal_basis lid 2.
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $is_geregistreerd
+                  value: true
+                  legal_basis:
+                    law: Wet kinderopvang
+                    bwb_id: BWBR0017017
+                    article: '1.5'
+                    paragraph: '1'
+                    url: https://wetten.overheid.nl/BWBR0017017/2024-01-01#Artikel1.5
+                    juriconnect: jci1.3:c:BWBR0017017&artikel=1.5&lid=1&z=2024-01-01&g=2024-01-01
+                    explanation: >-
+                      Artikel 1.5 lid 1 Wet kinderopvang: aanspraak bestaat alleen bij opvang in een
+                      geregistreerd kindercentrum of een geregistreerde voorziening voor
+                      gastouderopvang.
+                - operation: NOT
+                  value:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $aanvraag_soort_opvang
+                        value: OUDERPARTICIPATIECRECHE
+                      - operation: EQUALS
+                        subject: $binnen_aanloopperiode
+                        value: true
+                  legal_basis:
+                    law: Wet kinderopvang
+                    bwb_id: BWBR0017017
+                    article: '1.5'
+                    paragraph: '2'
+                    url: https://wetten.overheid.nl/BWBR0017017/2024-01-01#Artikel1.5
+                    juriconnect: jci1.3:c:BWBR0017017&artikel=1.5&lid=2&z=2024-01-01&g=2024-01-01
+                    explanation: >-
+                      Artikel 1.5 lid 2 Wet kinderopvang: bij ouderparticipatieopvang in een
+                      ouderparticipatiecrèche is er in de aanloopperiode van art. 1.60b, in afwijking
+                      van het eerste lid, geen aanspraak op kinderopvangtoeslag.
+                - operation: OR
+                  conditions:
+                    - operation: EQUALS
+                      subject: $partner_bsn
+                      value: null
+                    - operation: OR
+                      conditions:
+                        - operation: AND
+                          conditions:
+                            - operation: NOT
+                              value:
+                                operation: EQUALS
+                                subject: $partner_gewerkte_uren
+                                value: null
+                            - subject: $partner_gewerkte_uren
+                              operation: GREATER_THAN_OR_EQUAL
+                              value: $min_hours_partner
+                        - subject: $verwachte_partner_uren
+                          operation: GREATER_THAN_OR_EQUAL
+                          value: $min_hours_per_week
+                - subject: $gewerkte_uren
+                  operation: GREATER_THAN
+                  value: 0
+          - output: is_gerechtigd
+        # POC: uitvoer werd alleen berekend als aan de voorwaarden was voldaan, dus
+        # is_gerechtigd was None (gelezen als false) voor wie niet voldeed; de engine
+        # berekent elke uitvoer, daarom expliciet aan voldoet_aan_voorwaarden gekoppeld.
+            value: $voldoet_aan_voorwaarden
+          - output: jaarbedrag
+            # Art. 1.7 Wko jo. art. 7 Awir: het gezamenlijke toetsingsinkomen omvat dat van de partner als
+            # er een partner is. Het partnerinkomen is afwezig zonder partner (de aanroep van de Wet IB
+            # wordt dan overgeslagen), dus de toets staat op het partnerinkomen zelf (RFC-036).
+            value:
+              operation: FOREACH
+              collection: $aangegeven_uren
+              body:
+                operation: MULTIPLY
+                values:
+                  - operation: MIN
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $soort_opvang
+                              value: DAGOPVANG
+                            then: $max_uurtarief_dagopvang
+                        default: $max_uurtarief_bso
+                      - $uurtarief
+                  - operation: MIN
+                    values:
+                      - $uren_per_jaar
+                      - $max_hours_per_year
+                  - operation: IF
+                    cases:
+                      - when:
+                          operation: LESS_THAN
+                          subject:
+                            operation: ADD
+                            values:
+                              - $inkomen
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: NOT
+                                      value:
+                                        operation: EQUALS
+                                        subject: $partner_inkomen
+                                        value: null
+                                    then: $partner_inkomen
+                                default: 0
+                          value: $inkomensdrempel_1
+                        then: $percentage_1
+                      - when:
+                          operation: LESS_THAN
+                          subject:
+                            operation: ADD
+                            values:
+                              - $inkomen
+                              - operation: IF
+                                cases:
+                                  - when:
+                                      operation: NOT
+                                      value:
+                                        operation: EQUALS
+                                        subject: $partner_inkomen
+                                        value: null
+                                    then: $partner_inkomen
+                                default: 0
+                          value: $inkomensdrempel_2
+                        then: $percentage_2
+                    default: $percentage_3
+              combine: ADD
+            legal_basis:
+              law: Wet kinderopvang
+              bwb_id: BWBR0017017
+              article: '1.6'
+              url: >-
+                https://wetten.overheid.nl/BWBR0017017/2024-12-11#Hoofdstuk1_Afdeling1_Paragraaf4_Artikel1.6
+              juriconnect: jci1.3:c:BWBR0017017&artikel=1.6&z=2024-12-11&g=2024-12-11
+              explanation: >-
+                Artikel 1.6 Wet kinderopvang bepaalt optelling toeslag voor alle kinderen
+      untranslatables:
+        - construct: >-
+            iteratie over variabel aantal kinderen voor toeslagberekening
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal aangegeven kinderopvanguren per kind
+            is dynamisch en kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal kinderen tot een vast maximum
+          accepted: true

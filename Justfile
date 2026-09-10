@@ -33,6 +33,8 @@ wasm-build:
     # python3 dependency) needed, and it works with or without dev-setup.
     cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
     wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+    # The demo runs the same engine in the browser; keep the two copies identical.
+    mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
 
 # --- Quality checks ---
 
@@ -59,6 +61,17 @@ build-check:
 # Validate regulation YAML files
 validate *FILES:
     script/validate.sh {{FILES}}
+
+# Validate the demo corpus (schema + type check, RFC-036/RFC-037)
+#
+# `validate` without arguments walks corpus/regulation only, so the eighty demo
+# laws would be seen by the pre-commit hook and by nothing else. This recipe
+# hands them to the same binary, so a law that stops type-checking is caught by
+# `just demo` and not first by a red scenario run.
+[doc("Validate the demo corpus (schema + type check)")]
+validate-demo:
+    find corpus/demo/regulation -name '*.yaml' ! -name '.*' -print0 \
+        | sort -z | xargs -0 script/validate.sh
 
 # Validate note sidecar files (RFC-005, RFC-016)
 # Orphaned/ambiguous notes and unknown tags are warnings, not errors.
@@ -189,6 +202,44 @@ test-db:
 # Run Rust BDD tests
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
+
+# Bucket A over the demo corpus: REGULATION_PATH points laws and scenarios at corpus/demo
+bdd-demo:
+    cd packages/engine && {{ci_flags}} BDD_BUCKET=corpus REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+
+# Start the demo and open it. One command for anyone who just wants to see it:
+# it builds the engine to WASM, starts Vite and opens the browser on the
+# presentation. Stop it with ctrl-c.
+[doc("Start the demo and open it in a browser")]
+demo: wasm-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Vite's own --open races the server on a cold start and lands on an error
+    # page, so wait for the port to answer before opening the browser.
+    ( until curl -sf -o /dev/null http://127.0.0.1:7400/; do sleep 0.3; done
+      case "$(uname -s)" in
+        Darwin) open http://127.0.0.1:7400/ ;;
+        *) xdg-open http://127.0.0.1:7400/ >/dev/null 2>&1 || true ;;
+      esac ) &
+    cd frontend-demo && npx vite --port 7400 --strictPort --host 0.0.0.0
+
+# Run the demo frontend locally without opening a browser (same server as `demo`)
+dev-demo: wasm-build
+    cd frontend-demo && npx vite --port 7400 --strictPort --host 0.0.0.0
+
+# Everything the demo consists of, in the order a failure is cheapest to read:
+# the laws themselves, then what they compute, then the app around them.
+#
+# The demo is a corpus plus a frontend plus the engine compiled to WASM, and
+# each of the three used to be checked by a different command. Running them
+# separately meant a law could be schema-valid, its scenarios green, and the
+# app still broken on a stale WASM build. This is the one command to run before
+# pushing anything demo-related; CI runs the same four steps in its own jobs.
+[doc("Check the whole demo: laws, scenarios, frontend tests, WASM and build")]
+demo-check: validate-demo bdd-demo
+    cd frontend-demo && npx vitest run
+    just wasm-build
+    cd frontend-demo && npx vite build
 
 # Regenerate all BDD step bindings from bdd/grammar.yaml
 bdd-codegen:

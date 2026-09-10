@@ -1,0 +1,263 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: burgerlijk_wetboek_beschermingsbewind
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: >-
+  Bepalen beschermingsbewind en vertegenwoordigingsbevoegdheid bewindvoerder
+bwb_id: BWBR0002656
+url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
+service: RECHTSPRAAK
+uuid: 970f63e4-eed1-4884-a1ee-9050733eb2e1
+discoverable: DELEGATION_PROVIDER
+articles:
+  - number: '431'
+    text: >-
+      1 De kantonrechter kan een bewind instellen over één of meer van de goederen die een
+      meerderjarige als rechthebbende toebehoren of zullen toebehoren
+        a. voor een bepaalde of onbepaalde tijdsduur indien de meerderjarige tijdelijk
+      of duurzaam niet in staat is ten volle zijn vermogensrechtelijke belangen behoorlijk waar
+      te nemen als gevolg van zijn lichamelijke of geestelijke toestand, dan wel
+        b. voor een bepaalde tijdsduur indien de meerderjarige tijdelijk niet in staat
+      is ten volle zijn vermogensrechtelijke belangen behoorlijk waar te nemen als gevolg van
+      verkwisting of het hebben van problematische schulden. 2 Indien te verwachten is dat een
+      minderjarige op het tijdstip waarop hij meerderjarig zal worden, in de in het vorige lid
+      bedoelde toestand zal verkeren, kan het bewind reeds voor de meerderjarigheid worden
+      ingesteld.
+
+      3 Het bewind kan eveneens worden ingesteld indien te verwachten is dat de rechthebbende
+      binnen afzienbare tijd in de in het eerste lid bedoelde toestand zal verkeren.
+
+      4 De rechter bij wie een verzoek tot het verlenen van een rechterlijke machtiging als
+      bedoeld in de Wet zorg en dwang psychogeriatrische en verstandelijk gehandicapte cliënten
+      dan wel een zorgmachtiging of een machtiging tot voorzetting van de crisismaatregel als
+      bedoeld in de Wet verplichte geestelijke gezondheidszorg aanhangig is, is tevens bevoegd
+      tot de kennisneming van een verzoek tot instelling van het bewind.
+
+      5 Onder aan de meerderjarige toebehorende goederen zijn in deze titel begrepen goederen
+      die behoren tot zijn huwelijksgemeenschap of gemeenschap van geregistreerd partnerschap en
+      die niet uitsluitend onder het bestuur van zijn echtgenoot dan wel geregistreerd partner
+      staan.
+    url: https://wetten.overheid.nl/BWBR0002656/2024-01-01#Artikel431
+    machine_readable:
+      definitions:
+        bewindvoerder_rechten:
+          - LEZEN
+          - CLAIMS_INDIENEN
+          - BESLUITEN_ONTVANGEN
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: bewind_registraties
+            type: array
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: heeft_delegaties
+            type: boolean
+          - name: subject_ids
+            type: array
+          - name: subject_names
+            type: array
+          - name: subject_types
+            type: array
+          - name: delegation_types
+            type: array
+          - name: permissions
+            type: array
+          - name: valid_from_dates
+            type: array
+          - name: valid_until_dates
+            type: array
+        actions:
+          - output: voldoet_aan_voorwaarden
+        # POC: EXISTS op lijst $bewind_registraties (uitvoer voldoet_aan_voorwaarden) betekende 'niet leeg'; expliciet
+        # als telling (RFC-016)
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $bewind_registraties
+                body: 1
+                combine: ADD
+              value: 0
+          - output: actief_bewind
+            value:
+              operation: FOREACH
+              collection: $bewind_registraties
+              filter:
+                operation: AND
+                conditions:
+                  - operation: EQUALS
+                    subject: $current.status
+                    value: ACTIEF
+                  - operation: OR
+                    conditions:
+                  # Art. 1:449 BW: ontbrekende einddatum is afwezig (null), geen lege tekst; POC-tak verwijderd.
+                      - operation: EQUALS
+                        subject: $current.datum_einde
+                        value: null
+                      - operation: GREATER_THAN
+                        subject: $current.datum_einde
+                        value: $referencedate
+              body: $current
+              as: current
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '449'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel449
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=449&z=2024-01-01&g=2024-01-01
+              explanation: >
+                Alleen actieve bewind-registraties geven vertegenwoordigingsbevoegdheid. Bewind kan worden
+                opgeheven (Art. 1:449 BW).
+          - output: heeft_delegaties
+        # POC: EXISTS op lijst $actief_bewind (uitvoer heeft_delegaties) betekende 'niet leeg'; expliciet als telling
+        # (RFC-016)
+            value:
+              operation: GREATER_THAN
+              subject:
+                operation: FOREACH
+                collection: $actief_bewind
+                body: 1
+                combine: ADD
+              value: 0
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '441'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel441
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=441&z=2024-01-01&g=2024-01-01
+              explanation: |
+                Art. 1:441 BW bepaalt dat de bewindvoerder de rechthebbende vertegenwoordigt.
+          - output: subject_ids
+        # POC: impliciete map over een lijst ($actief_bewind.bsn_rechthebbende); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actief_bewind
+              as: item
+              body: $item.bsn_rechthebbende
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '436'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel436
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=436&z=2024-01-01&g=2024-01-01
+              explanation: BSN nummers van rechthebbenden uit CCBR registratie
+          - output: subject_names
+        # POC: impliciete map over een lijst ($actief_bewind.naam_rechthebbende); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actief_bewind
+              as: item
+              body: $item.naam_rechthebbende
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '436'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel436
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=436&z=2024-01-01&g=2024-01-01
+              explanation: Namen van rechthebbenden uit CCBR registratie
+          - output: subject_types
+            value:
+              operation: FOREACH
+              collection: $actief_bewind
+              body: CITIZEN
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '431'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel431
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=431&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Beschermingsbewind is alleen voor meerderjarigen, altijd CITIZEN
+          - output: delegation_types
+            value:
+              operation: FOREACH
+              collection: $actief_bewind
+              body: BEWINDVOERDER
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '435'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel435
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=435&z=2024-01-01&g=2024-01-01
+              explanation: Type delegatie is BEWINDVOERDER voor beschermingsbewind
+          - output: permissions
+            value:
+              operation: FOREACH
+              collection: $actief_bewind
+              body: $bewindvoerder_rechten
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '441'
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel441
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=441&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >
+                Art. 1:441 lid 1 BW: De bewindvoerder vertegenwoordigt bij beheer van onder bewind staande
+                goederen. Volledige rechten voor financiele zaken.
+          - output: valid_from_dates
+        # POC: impliciete map over een lijst ($actief_bewind.datum_ingang); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actief_bewind
+              as: item
+              body: $item.datum_ingang
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '432'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel432
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=432&z=2024-01-01&g=2024-01-01
+              explanation: Ingangsdatum bewind uit CCBR registratie
+          - output: valid_until_dates
+        # POC: impliciete map over een lijst ($actief_bewind.datum_einde); expliciet als FOREACH (RFC-016)
+            value:
+              operation: FOREACH
+              collection: $actief_bewind
+              as: item
+              body: $item.datum_einde
+            legal_basis:
+              law: Burgerlijk Wetboek Boek 1
+              bwb_id: BWBR0002656
+              article: '449'
+              url: >-
+                https://wetten.overheid.nl/BWBR0002656/2024-01-01#Boek1_Titeldeel19_Afdeling5_Artikel449
+              juriconnect: >-
+                jci1.3:c:BWBR0002656&boek=1&artikel=449&z=2024-01-01&g=2024-01-01
+              explanation: Einddatum bewind, null indien nog actief
+      untranslatables:
+        - construct: iteratie over variabel aantal bewind-registraties
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal actieve
+            beschermingsbewind-registraties is dynamisch en kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal registraties tot een vast maximum
+          accepted: true

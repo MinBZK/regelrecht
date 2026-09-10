@@ -27,7 +27,7 @@ use crate::error::{EngineError, Result};
 use crate::priority::{self, Candidate};
 use crate::types::Value;
 use chrono::NaiveDate;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 /// Why a law version could not be selected for a reference date.
 ///
@@ -123,6 +123,37 @@ impl Default for RuleResolver {
     }
 }
 
+/// `1 finding` or `n findings`, for a load error.
+fn count_findings(count: usize) -> String {
+    format!("{count} finding{}", if count == 1 { "" } else { "s" })
+}
+
+/// The findings of a load error, one per line, indented.
+fn list_findings(findings: &[crate::typecheck::Finding]) -> String {
+    findings
+        .iter()
+        .map(|finding| format!("  {finding}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Whether `law` reads `law_id`: an input that takes one of its outputs, or
+/// an article that implements one of its open terms. These are the places
+/// where the type check consults another law (RFC-037, N5).
+fn references_law(law: &ArticleBasedLaw, law_id: &str) -> bool {
+    law.articles.iter().any(|article| {
+        article.get_inputs().iter().any(|input| {
+            input
+                .source
+                .as_ref()
+                .and_then(|source| source.regulation.as_deref())
+                == Some(law_id)
+        }) || article
+            .get_implements()
+            .is_some_and(|implements| implements.iter().any(|i| i.law == law_id))
+    })
+}
+
 impl RuleResolver {
     /// Create a new empty resolver.
     pub fn new() -> Self {
@@ -152,6 +183,78 @@ impl RuleResolver {
     ///
     /// Enforces [`config::MAX_LOADED_LAWS`] to prevent memory exhaustion.
     pub fn load_law(&mut self, law: ArticleBasedLaw) -> Result<()> {
+        // RFC-036: an unknown is produced by resolution, never written by a
+        // law. Refuse a document that carries the serialized sentinel.
+        crate::load_check::reject_unknown_literals(&law)?;
+
+        // RFC-036/RFC-037: hold the law to its own declarations before it can
+        // run, so the editor sees the same findings as `just validate`. The
+        // cross-law rule (N5) is checked against the laws already loaded, with
+        // this law standing in for its own id.
+        let lookup = |id: &str| {
+            if id == law.id {
+                Some(&law)
+            } else {
+                self.get_law(id)
+            }
+        };
+        let findings = crate::typecheck::check_law(&law, &lookup);
+        if !findings.is_empty() {
+            return Err(EngineError::LoadError(format!(
+                "law '{}' fails the type check ({}):\n{}",
+                law.id,
+                count_findings(findings.len()),
+                list_findings(&findings)
+            )));
+        }
+
+        // RFC-037: the loaded set is well-typed whatever the order the laws
+        // arrived in. A law already loaded that reads this one (an input with
+        // `source.regulation`, or an `implements` of one of its terms) could
+        // not be held against it before; it is checked again now, and a
+        // finding refuses this law and names the consumer.
+        let mut consumer_findings = Vec::new();
+        for consumer in self
+            .all_law_versions()
+            .filter(|consumer| consumer.id != law.id && references_law(consumer, &law.id))
+        {
+            consumer_findings.extend(crate::typecheck::check_law(consumer, &lookup));
+        }
+        if !consumer_findings.is_empty() {
+            let consumers: BTreeSet<&str> = consumer_findings
+                .iter()
+                .map(|finding| finding.law_id.as_str())
+                .collect();
+            return Err(EngineError::LoadError(format!(
+                "loading law '{}' makes {} ill-typed ({}):\n{}",
+                law.id,
+                consumers
+                    .iter()
+                    .map(|id| format!("'{id}'"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                count_findings(consumer_findings.len()),
+                list_findings(&consumer_findings)
+            )));
+        }
+
+        self.insert_law(law)
+    }
+
+    /// [`Self::load_law`] without the type check: the run-time boundary checks
+    /// of RFC-036 stay in place as defence in depth for what a well-typed set
+    /// can no longer reach, and their tests need a set the loader would
+    /// refuse.
+    #[cfg(test)]
+    pub(crate) fn load_law_unchecked(&mut self, yaml: &str) -> Result<String> {
+        let law = ArticleBasedLaw::from_yaml_str(yaml)?;
+        let law_id = law.id.clone();
+        self.insert_law(law)?;
+        Ok(law_id)
+    }
+
+    /// Put a checked law into the version list and the indexes.
+    fn insert_law(&mut self, law: ArticleBasedLaw) -> Result<()> {
         let law_id = law.id.clone();
         let valid_from = law.valid_from.clone();
 
@@ -1376,6 +1479,412 @@ articles:
             100,
         ));
         assert!(matches!(result, Err(EngineError::LoadError(_))));
+    }
+
+    #[test]
+    fn test_resolver_rejects_a_law_that_fails_the_type_check() {
+        // The loader runs the static type check (RFC-036/RFC-037), so a law
+        // the validator refuses cannot be loaded into the editor either. The
+        // error lists every finding.
+        let mut resolver = RuleResolver::new();
+        let law = r#"
+$id: getypeerd
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        input:
+          - name: huur
+            type: amount
+            source: {}
+        output:
+          - name: geen_huur
+            type: boolean
+          - name: klasse
+            type: string
+        actions:
+          - output: geen_huur
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null
+          - output: klasse
+            value:
+              operation: IF
+              cases:
+                - when: true
+                  then: 5
+"#;
+        let err = resolver.load_from_yaml(law).unwrap_err();
+        let message = err.to_string();
+        assert!(matches!(err, EngineError::LoadError(_)), "{err:?}");
+        assert!(
+            message.contains("fails the type check (2 findings)"),
+            "{message}"
+        );
+        assert!(message.contains("[N1]"), "{message}");
+        assert!(message.contains("[T4]"), "{message}");
+        assert!(!resolver.has_law("getypeerd"));
+
+        // Declared as the law behaves, it loads.
+        let fixed = law
+            .replace(
+                "type: amount\n",
+                "type: amount\n            nullable: true\n",
+            )
+            .replace("then: 5", "then: vijf");
+        resolver.load_from_yaml(&fixed).unwrap();
+        assert!(resolver.has_law("getypeerd"));
+        // One finding is one finding.
+        let mut resolver = RuleResolver::new();
+        let one = law.replace("then: 5", "then: vijf");
+        let message = resolver.load_from_yaml(&one).unwrap_err().to_string();
+        assert!(message.contains("(1 finding):"), "{message}");
+    }
+
+    /// A law whose input `k` takes `klasse` from `doel`, declared with the
+    /// given attribute lines, and `doel` with a nullable `klasse`.
+    fn consumer_and_target(input_attributes: &str) -> (String, &'static str) {
+        let consumer = format!(
+            r#"
+$id: afnemer
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: k
+            type: string
+            {input_attributes}
+            source:
+              regulation: doel
+              output: klasse
+              parameters:
+                bsn: $bsn
+        output:
+          - name: y
+            type: boolean
+        actions:
+          - output: y
+            value:
+              operation: EQUALS
+              subject: $k
+              value: a
+"#
+        );
+        let target = r#"
+$id: doel
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: klasse
+            type: string
+            nullable: true
+        actions:
+          - output: klasse
+            value: null
+"#;
+        (consumer, target)
+    }
+
+    #[test]
+    fn test_the_loaded_set_is_well_typed_whatever_the_load_order() {
+        // Target first: the consumer is refused for taking a nullable output
+        // into a non-nullable input (N5). Consumer first: the target is
+        // refused for making the consumer ill-typed, and the error names the
+        // consumer. Either way the set that stays loaded is well-typed.
+        let (consumer, target) = consumer_and_target("");
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(target).unwrap();
+        let err = resolver.load_from_yaml(&consumer).unwrap_err().to_string();
+        assert!(err.contains("law 'afnemer' fails the type check"), "{err}");
+        assert!(!resolver.has_law("afnemer"));
+
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(&consumer).unwrap();
+        let err = resolver.load_from_yaml(target).unwrap_err().to_string();
+        assert!(
+            err.contains("loading law 'doel' makes 'afnemer' ill-typed (1 finding):"),
+            "{err}"
+        );
+        assert!(
+            err.contains(
+                "afnemer article 1 input 'k': [N5] 'k' takes 'klasse' from doel, which may be null"
+            ),
+            "{err}"
+        );
+        assert!(!resolver.has_law("doel"));
+        assert!(resolver.has_law("afnemer"));
+
+        // With the input declared nullable both orders load.
+        let (consumer, target) = consumer_and_target("nullable: true");
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(&consumer).unwrap();
+        resolver.load_from_yaml(target).unwrap();
+        assert!(resolver.has_law("doel") && resolver.has_law("afnemer"));
+
+        // A consumer that does not reference the new law is not the new law's
+        // concern: an unrelated ill-typed law never gets loaded, and a
+        // well-typed one is not re-checked into a finding.
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(&consumer).unwrap();
+        resolver
+            .load_from_yaml(
+                &consumer
+                    .replace("$id: afnemer", "$id: ander")
+                    .replace("regulation: doel", "regulation: elders"),
+            )
+            .unwrap();
+        resolver.load_from_yaml(target).unwrap();
+    }
+
+    /// A law that references nothing and fails its own type check (N1: an
+    /// absence test on a non-nullable field). Only the unchecked loader takes
+    /// it, which is the point: it is a law the checked loader would never have
+    /// let in.
+    const ILL_TYPED_STRANGER: &str = r#"
+$id: vreemde
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        input:
+          - name: huur
+            type: amount
+            source: {}
+        output:
+          - name: geen_huur
+            type: boolean
+        actions:
+          - output: geen_huur
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null
+"#;
+
+    #[test]
+    fn test_a_law_that_does_not_reference_the_new_one_is_not_re_checked() {
+        // The re-check on load is scoped to the laws that actually read the
+        // arriving law. Scoping it is not only about work: a law already in the
+        // resolver that the new one has nothing to do with must not be dragged
+        // into the new law's load. Here `vreemde` is ill-typed and references
+        // nothing, so re-checking it would produce findings and refuse `doel`
+        // for a defect `doel` neither caused nor could fix — with the error
+        // saying that loading 'doel' makes 'vreemde' ill-typed, which is false.
+        let (_, target) = consumer_and_target("");
+        let mut resolver = RuleResolver::new();
+        assert!(resolver.load_from_yaml(ILL_TYPED_STRANGER).is_err());
+        resolver.load_law_unchecked(ILL_TYPED_STRANGER).unwrap();
+        resolver.load_from_yaml(target).unwrap();
+        assert!(resolver.has_law("doel"));
+    }
+
+    #[test]
+    fn test_an_earlier_version_of_the_arriving_law_itself_is_not_a_consumer() {
+        // A law that reads its own id is a consumer of every law but itself.
+        // The arriving version already stands in for its own id in `check_law`
+        // above, so its own older versions stay out of the consumer sweep: an
+        // ill-typed v1 is superseded by v2, not something to hold v2 against.
+        // Sweeping it in would make a law that repairs its own defect
+        // unloadable, leaving only the broken version in the resolver.
+        //
+        // The self-reference is what makes this a test and not a tautology: it
+        // makes v1 look like a consumer of `zelf` to everything except the
+        // check on the id.
+        let self_reader = r#"
+$id: zelf
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        output:
+          - name: klasse
+            type: string
+            nullable: true
+        actions:
+          - output: klasse
+            value: null
+  - number: '2'
+    text: t
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: k
+            type: string
+            source:
+              regulation: zelf
+              output: klasse
+              parameters:
+                bsn: $bsn
+        output:
+          - name: y
+            type: boolean
+        actions:
+          - output: y
+            value:
+              operation: EQUALS
+              subject: $k
+              value: a
+"#;
+        // v1 takes its own nullable output into a non-nullable input (N5), so
+        // only the unchecked loader seats it.
+        let mut resolver = RuleResolver::new();
+        assert!(resolver.load_from_yaml(self_reader).is_err());
+        resolver.load_law_unchecked(self_reader).unwrap();
+        // v2 declares that input nullable and is well-typed. It carries the
+        // same id, so the broken v1 is not one of its consumers.
+        let v2 = self_reader
+            .replace(
+                "publication_date: '2025-01-01'\nvalid_from: '2025-01-01'",
+                "publication_date: '2026-01-01'\nvalid_from: '2026-01-01'",
+            )
+            .replace(
+                "          - name: k\n            type: string\n",
+                "          - name: k\n            type: string\n            nullable: true\n",
+            );
+        assert_ne!(v2, self_reader);
+        resolver.load_from_yaml(&v2).unwrap();
+        assert_eq!(resolver.version_count(), 2);
+    }
+
+    #[test]
+    fn test_a_new_version_of_a_law_is_held_against_its_consumers() {
+        // The consumer was fine against version 1 (non-nullable output). A
+        // version 2 that makes the output nullable would make the consumer
+        // ill-typed, and is refused.
+        let (consumer, target) = consumer_and_target("");
+        let v1 = target
+            .replace("            nullable: true\n", "")
+            .replace("value: null", "value: a")
+            .replace(
+                "publication_date: '2025-01-01'",
+                "publication_date: '2025-01-01'\nvalid_from: '2025-01-01'",
+            );
+        let v2 = target.replace(
+            "publication_date: '2025-01-01'",
+            "publication_date: '2026-01-01'\nvalid_from: '2026-01-01'",
+        );
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(&v1).unwrap();
+        resolver.load_from_yaml(&consumer).unwrap();
+        let err = resolver.load_from_yaml(&v2).unwrap_err().to_string();
+        assert!(err.contains("makes 'afnemer' ill-typed"), "{err}");
+        assert_eq!(resolver.version_count(), 2);
+    }
+
+    #[test]
+    fn test_a_delegating_law_is_held_against_its_implementations() {
+        // The implementation, loaded first, declares its output nullable. The
+        // delegating law then arrives with the term required and without a
+        // default: loading it would leave an implementation that can hand the
+        // term a null, so it is refused and the implementation is named.
+        let implementing = r#"
+$id: regeling
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      implements:
+        - law: wet
+          article: '4'
+          open_term: premie
+      execution:
+        output:
+          - name: premie
+            type: number
+            nullable: true
+        actions:
+          - output: premie
+            value: null
+"#;
+        let delegating = r#"
+$id: wet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: t
+    machine_readable:
+      open_terms:
+        - id: premie
+          type: number
+          required: true
+      execution:
+        output:
+          - name: premie
+            type: number
+        actions:
+          - output: premie
+            value: $premie
+"#;
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(implementing).unwrap();
+        let err = resolver.load_from_yaml(delegating).unwrap_err().to_string();
+        assert!(
+            err.contains("loading law 'wet' makes 'regeling' ill-typed"),
+            "{err}"
+        );
+        assert!(
+            err.contains("[N5] 'premie' implements the required term 'premie' of wet article 4"),
+            "{err}"
+        );
+        // The other way round the implementation is refused itself.
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(delegating).unwrap();
+        let err = resolver
+            .load_from_yaml(implementing)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("law 'regeling' fails the type check"), "{err}");
+    }
+
+    #[test]
+    fn test_load_law_unchecked_skips_the_type_check() {
+        // The test-only loader exists for the run-time boundary tests; it must
+        // load what the checked loader refuses.
+        let (consumer, target) = consumer_and_target("");
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(target).unwrap();
+        assert!(resolver.load_from_yaml(&consumer).is_err());
+        assert_eq!(resolver.load_law_unchecked(&consumer).unwrap(), "afnemer");
+        assert!(resolver.has_law("afnemer"));
     }
 
     #[test]

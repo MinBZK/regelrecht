@@ -47,6 +47,7 @@ jobs:
       grafana: ${{ steps.filter.outputs.grafana }}
       lawmaking: ${{ steps.filter.outputs.lawmaking }}
       docs: ${{ steps.filter.outputs.docs }}
+      demo: ${{ steps.filter.outputs.demo }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -248,11 +249,26 @@ jobs:
       cache-scope: docs
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
+  # De demo bouwt de engine als WASM in de image zelf (frontend-demo/Dockerfile),
+  # dus deze bouwt langer dan de andere frontends.
+  build-demo:
+    needs: [changes, ci-green]
+    if: github.event.action != 'closed' && needs.changes.outputs.demo == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image-name: minbzk/regelrecht-demo
+      dockerfile: frontend-demo/Dockerfile
+      cache-scope: demo
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
+
   # -- Deploy preview --
   deploy-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-lawmaking, build-docs, changes]
+    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-lawmaking, build-docs, build-demo, changes]
     if: >-
       always() &&
       github.event_name == 'pull_request' && github.event.action != 'closed' &&
@@ -264,6 +280,7 @@ jobs:
         needs.build-enrich-worker.result == 'success' ||
         needs.build-pipeline-api.result == 'success' ||
         needs.build-lawmaking.result == 'success' ||
+        needs.build-demo.result == 'success' ||
         needs.build-docs.result == 'success'
       )
     permissions:
@@ -291,6 +308,7 @@ jobs:
           ENRICH_WORKER: ${{ needs.build-enrich-worker.result }}
           PIPELINE_API: ${{ needs.build-pipeline-api.result }}
           LAWMAKING: ${{ needs.build-lawmaking.result }}
+          DEMO: ${{ needs.build-demo.result }}
           DOCS: ${{ needs.build-docs.result }}
         run: |
           set -euo pipefail
@@ -308,6 +326,7 @@ jobs:
           if [ "$ENRICH_WORKER" = success ]; then add enrichworker regelrecht-enrich-worker; fi
           if [ "$PIPELINE_API" = success ]; then add pipelineapi regelrecht-pipeline-api; fi
           if [ "$LAWMAKING" = success ]; then add lawmaking regelrecht-lawmaking; fi
+          if [ "$DEMO" = success ]; then add demo regelrecht-demo; fi
           if [ "$DOCS" = success ]; then add docs regelrecht-docs; fi
 
           jq -r '.[] | "  \(.name): \(.image)"' <<<"$COMPONENTS"
@@ -353,7 +372,7 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-grafana, build-lawmaking, build-docs]
+    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-grafana, build-lawmaking, build-docs, build-demo]
     if: >-
       always() &&
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
@@ -366,6 +385,7 @@ jobs:
         needs.build-pipeline-api.result == 'success' ||
         needs.build-grafana.result == 'success' ||
         needs.build-lawmaking.result == 'success' ||
+        needs.build-demo.result == 'success' ||
         needs.build-docs.result == 'success'
       )
     permissions:
@@ -394,6 +414,7 @@ jobs:
             ${{ needs.build-harvester-worker.result }} ${{ needs.build-enrich-worker.result }}
             ${{ needs.build-pipeline-api.result }} ${{ needs.build-grafana.result }}
             ${{ needs.build-lawmaking.result }} ${{ needs.build-docs.result }}
+            ${{ needs.build-demo.result }}
         run: |
           case " $RESULTS " in
             *" failure "*|*" cancelled "*)
@@ -421,6 +442,7 @@ jobs:
           PIPELINE_API: ${{ needs.build-pipeline-api.result }}
           GRAFANA: ${{ needs.build-grafana.result }}
           LAWMAKING: ${{ needs.build-lawmaking.result }}
+          DEMO: ${{ needs.build-demo.result }}
           DOCS: ${{ needs.build-docs.result }}
         run: |
           set -euo pipefail
@@ -440,6 +462,7 @@ jobs:
           # Grafana bouwt alleen op main, dus alleen productie kent deze regel.
           if [ "$GRAFANA" = success ]; then add grafana regelrecht-grafana; fi
           if [ "$LAWMAKING" = success ]; then add lawmaking regelrecht-lawmaking; fi
+          if [ "$DEMO" = success ]; then add demo regelrecht-demo; fi
           if [ "$DOCS" = success ]; then add docs regelrecht-docs; fi
 
           jq -r '.[] | "  \(.name): \(.image)"' <<<"$COMPONENTS"
@@ -523,6 +546,7 @@ jobs:
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-enrich-worker", "tag": "pr-${{ github.event.pull_request.number }}"},
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-pipeline-api", "tag": "pr-${{ github.event.pull_request.number }}"},
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-lawmaking", "tag": "pr-${{ github.event.pull_request.number }}"},
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-demo", "tag": "pr-${{ github.event.pull_request.number }}"},
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-docs", "tag": "pr-${{ github.event.pull_request.number }}"}
             ]
           github-token: ${{ secrets.GITHUB_TOKEN }}

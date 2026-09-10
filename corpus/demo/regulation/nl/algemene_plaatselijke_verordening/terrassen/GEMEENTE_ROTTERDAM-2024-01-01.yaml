@@ -1,0 +1,613 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: algemene_plaatselijke_verordening/terrassen
+regulatory_layer: GEMEENTELIJKE_VERORDENING
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Terrasvergunning APV Rotterdam 2024
+gemeente_code: GM0599
+officiele_titel: Terrasvergunning APV Rotterdam 2024
+url: https://lokaleregelgeving.overheid.nl/CVDR373493/11
+service: GEMEENTE_ROTTERDAM
+uuid: 3e7f9b2a-5d8c-4a1e-9f6b-8c2d4e7a3b1f
+discoverable: BUSINESS
+articles:
+  - number: 2:30b
+    text: >-
+      Artikel 2:30b Terrassen 1. Ingeval van een exploitatievergunningaanvraag die tevens van
+      toepassing is voor een of meer bij de openbare inrichting behorende terrassen, beslist de
+      burgemeester – gelet op de openbare orde en veiligheid ter plaatse hetgeen mede omvat de
+      kwaliteit en het uiterlijk aanzien van de terrassen – tevens omtrent de ingebruikneming
+      van de openbare weg. 2. Onverminderd het bepaalde in de artikelen 1:6, 1:8 en 2:28, kan de
+      burgemeester de in het eerste lid bedoelde ingebruikneming van de openbare weg weigeren of
+      verbieden indien het de verwachting is dat het gebruik: a. schade toebrengt aan de weg dan
+      wel gevaar kan veroorzaken voor de bruikbaarheid van de weg of voor het doelmatig en
+      veilig gebruik daarvan; b. een belemmering vormt voor het doelmatig beheer en onderhoud
+      van de weg; c. afbreuk doet aan andere publieke functies van de openbare ruimte, inclusief
+      de bescherming van het uiterlijk aanzien daarvan. 3. Als voor het uitvoeren van openbare
+      werken of om enigerlei andere reden verwijdering van het terras noodzakelijk is, is de
+      exploitant van de openbare inrichting verplicht dit binnen de door het bevoegde
+      bestuursorgaan gestelde termijn, te verwijderen. 4. Het is verboden dranken of eetwaren
+      voor gebruik ter plaatse te verstrekken buiten dat deel van de weg waarvan het gebruik
+      ingevolge het eerste lid is toegestaan. 5. De exploitant of de beheerder is verplicht te
+      zorgen dat dagelijks, uiterlijk een uur na sluiting van de openbare inrichting, doch in
+      ieder geval onverwijld op eerste aanzegging van een ambtenaar, belast met het toezicht op
+      de naleving van het bepaalde in dit artikel, in de nabijheid van het terras op de weg
+      achtergebleven stoffen of voorwerpen, voor zover kennelijk uit of van dat terras
+      afkomstig, worden verwijderd. <section class="section-chapter js-scrollSection"
+    url: >-
+      https://lokaleregelgeving.overheid.nl/CVDR373493/11#artikel_2:30b
+    machine_readable:
+      definitions:
+        minimale_obstakelvrije_ruimte: 1.8
+        toegestane_gebruiksdoelen:
+          - bijeenkomstfunctie
+          - celfunctie
+          - winkelfunctie
+          - overige gebruiksfunctie
+        toegestane_bgt_functies:
+          - voetpad
+          - voetgangersgebied
+          - woonerf
+          - inrit
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+          - name: terras_locatie
+            type: string
+            required: false
+            type_spec:
+              enum:
+                - voor
+                - zij
+                - achter
+              enum_labels:
+                voor: Voor het pand
+                zij: Aan de zijkant
+                achter: Achter het pand
+          - name: terras_oppervlakte
+            type: number
+            required: false
+            type_spec:
+              precision: 2
+              min: 0
+          - name: obstakelvrije_ruimte
+            type: number
+            required: false
+            type_spec:
+              precision: 2
+              min: 0
+          - name: seizoen
+            type: string
+            required: false
+            type_spec:
+              enum:
+                - jaarrond
+                - zomer
+                - winter
+              enum_labels:
+                jaarrond: Jaarrond
+                zomer: Zomerseizoen (1 maart - 1 november)
+                winter: Winterseizoen (1 november - 1 maart)
+          - name: gewenste_openingstijd
+            type: string
+            required: false
+            type_spec:
+              enum:
+                - 6
+                - 7
+                - 8
+                - 9
+                - 10
+                - 11
+                - 12
+                - 13
+                - 14
+                - 15
+                - 16
+                - 17
+                - 18
+              enum_labels:
+                6: 06:00
+                7: 07:00
+                8: 08:00
+                9: 09:00
+                10: 10:00
+                11: 11:00
+                12: 12:00
+                13: 13:00
+                14: 14:00
+                15: 15:00
+                16: 16:00
+                17: 17:00
+                18: 18:00
+          - name: gewenste_sluitingstijd_doordeweeks
+            # Sluitingstijd als uur geteld vanaf het begin van de exploitatiedag, zodat de tijden op
+            # één schaal geordend zijn: 24 is middernacht, 25 is 01:00. Het terrassenbeleid
+            # (max_sluitingstijd_*) gebruikt dezelfde schaal; alleen zo is "later dan toegestaan" een
+            # getalsvergelijking. De POC declareerde een string en een 1 voor 01:00, die kleiner is
+            # dan elke avondtijd (RFC-037, T1).
+            type: number
+            required: false
+            type_spec:
+              enum:
+                - 13
+                - 14
+                - 15
+                - 16
+                - 17
+                - 18
+                - 19
+                - 20
+                - 21
+                - 22
+                - 23
+                - 24
+                - 25
+              enum_labels:
+                13: 13:00
+                14: 14:00
+                15: 15:00
+                16: 16:00
+                17: 17:00
+                18: 18:00
+                19: 19:00
+                20: 20:00
+                21: 21:00
+                22: 22:00
+                23: 23:00
+                24: 00:00
+                25: 01:00 (maximum)
+          - name: gewenste_sluitingstijd_weekend
+            # Dezelfde schaal als doordeweeks: 24 is middernacht, 25 is 01:00, 26 is 02:00.
+            type: number
+            required: false
+            type_spec:
+              enum:
+                - 13
+                - 14
+                - 15
+                - 16
+                - 17
+                - 18
+                - 19
+                - 20
+                - 21
+                - 22
+                - 23
+                - 24
+                - 25
+                - 26
+              enum_labels:
+                13: 13:00
+                14: 14:00
+                15: 15:00
+                16: 16:00
+                17: 17:00
+                18: 18:00
+                19: 19:00
+                20: 20:00
+                21: 21:00
+                22: 22:00
+                23: 23:00
+                24: 00:00
+                25: 01:00
+                26: 02:00 (maximum)
+        input:
+          - name: heeft_exploitatievergunning
+            type: boolean
+            nullable: true
+            source:
+              regulation: algemene_plaatselijke_verordening/exploitatievergunning
+              output: heeft_actieve_vergunning
+              parameters:
+                kvk_nummer: $kvk_nummer
+            temporal:
+              type: point_in_time
+          - name: vestigingsadres
+            type: string
+            nullable: true
+            source:
+              regulation: handelsregisterwet/bedrijfsgegevens
+              output: vestigingsadres
+              parameters:
+                kvk_nummer: $kvk_nummer
+            temporal:
+              type: point_in_time
+          - name: bag_gebruiksdoel
+            type: string
+            nullable: true
+            source:
+              regulation: wet_bag
+              output: gebruiksdoel
+              parameters:
+                adres: $vestigingsadres
+            temporal:
+              type: point_in_time
+          - name: schenkt_alcohol
+            type: boolean
+            nullable: true
+            source:
+              regulation: algemene_plaatselijke_verordening/exploitatievergunning
+              output: verstrekt_alcoholhoudende_dranken
+              parameters:
+                kvk_nummer: $kvk_nummer
+            temporal:
+              type: point_in_time
+          - name: heeft_alcoholvergunning
+            type: boolean
+            nullable: true
+            source: {}
+          - name: beschikbare_oppervlakte
+            type: number
+            nullable: true
+            source: {}
+          - name: functie_oppervlak
+            type: string
+            nullable: true
+            source: {}
+          - name: is_openbare_weg
+            type: boolean
+            nullable: true
+            source: {}
+          - name: terrassenbeleid_gebied
+            type: object
+            nullable: true
+            source: {}
+          - name: max_sluitingstijd_doordeweeks
+            type: number
+            nullable: true
+            source: {}
+          - name: max_sluitingstijd_weekend
+            type: number
+            nullable: true
+            source: {}
+          - name: tarief_per_m2
+            type: number
+            nullable: true
+            source: {}
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: heeft_recht_op_terrasvergunning
+            type: boolean
+          - name: weigeringsgrond
+            type: string
+          - name: heeft_actieve_vergunning
+            type: boolean
+          - name: vergunde_oppervlakte
+            type: number
+          - name: vergunde_sluitingstijd_doordeweeks
+            type: number
+            nullable: true
+          - name: vergunde_sluitingstijd_weekend
+            type: number
+            nullable: true
+          - name: precariobelasting_per_jaar
+            type: number
+          - name: precariobelasting_verschuldigd
+            type: boolean
+            nullable: true
+        actions:
+          - output: voldoet_aan_voorwaarden
+            # Art. 2:28 jo. 2:30b APV Rotterdam: de terrasvergunning geldt voor een inrichting op een
+            # vestigingsadres. Zonder inschrijving in het handelsregister is er geen adres en dus geen
+            # BGT-terraslocatie en geen terrassenbeleidsgebied op te zoeken; de oppervlakte en de
+            # sluitingstijden zijn dan afwezig en aan de voorwaarden is niet voldaan (RFC-036).
+            value:
+              operation: AND
+              conditions:
+                - subject: $heeft_exploitatievergunning
+                  operation: EQUALS
+                  value: true
+                - subject: $bag_gebruiksdoel
+                  operation: IN
+                  value: $toegestane_gebruiksdoelen
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $obstakelvrije_ruimte
+                  value: $minimale_obstakelvrije_ruimte
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $beschikbare_oppervlakte
+                    value: null
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $terras_oppervlakte
+                  value: $beschikbare_oppervlakte
+                - subject: $functie_oppervlak
+                  operation: IN
+                  value: $toegestane_bgt_functies
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_doordeweeks
+                    value: null
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $gewenste_sluitingstijd_doordeweeks
+                  value: $max_sluitingstijd_doordeweeks
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_weekend
+                    value: null
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $gewenste_sluitingstijd_weekend
+                  value: $max_sluitingstijd_weekend
+                - operation: OR
+                  conditions:
+                    - subject: $schenkt_alcohol
+                      operation: EQUALS
+                      value: false
+                    - subject: $heeft_alcoholvergunning
+                      operation: EQUALS
+                      value: true
+          - output: heeft_recht_op_terrasvergunning
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $heeft_exploitatievergunning
+                  value: true
+                - operation: IN
+                  subject: $bag_gebruiksdoel
+                  value: $toegestane_gebruiksdoelen
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $obstakelvrije_ruimte
+                  value: $minimale_obstakelvrije_ruimte
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $beschikbare_oppervlakte
+                    value: null
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $terras_oppervlakte
+                  value: $beschikbare_oppervlakte
+                - operation: IN
+                  subject: $functie_oppervlak
+                  value: $toegestane_bgt_functies
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_doordeweeks
+                    value: null
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $gewenste_sluitingstijd_doordeweeks
+                  value: $max_sluitingstijd_doordeweeks
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_weekend
+                    value: null
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $gewenste_sluitingstijd_weekend
+                  value: $max_sluitingstijd_weekend
+                - operation: OR
+                  conditions:
+                    - operation: EQUALS
+                      subject: $schenkt_alcohol
+                      value: false
+                    - operation: EQUALS
+                      subject: $heeft_alcoholvergunning
+                      value: true
+            legal_basis:
+              law: Algemene plaatselijke verordening Rotterdam 2012
+              article: 2:30b
+              url: https://lokaleregelgeving.overheid.nl/CVDR373493/11
+              explanation: >-
+                Alle voorwaarden moeten worden vervuld voor een terrasvergunning
+          - output: heeft_actieve_vergunning
+            value: true
+            legal_basis:
+              law: Algemene plaatselijke verordening Rotterdam 2012
+              article: 2:30b
+              url: https://lokaleregelgeving.overheid.nl/CVDR373493/11
+              explanation: >-
+                Een actieve vergunning wordt verleend wanneer aan alle voorwaarden is voldaan
+          - output: weigeringsgrond
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_exploitatievergunning
+                    value: false
+                  then: Geen geldige exploitatievergunning
+                - when:
+                    operation: NOT
+                    value:
+                      operation: IN
+                      subject: $bag_gebruiksdoel
+                      value: $toegestane_gebruiksdoelen
+                  then: Pand heeft geen horecagerelateerd gebruiksdoel
+                - when:
+                    operation: LESS_THAN
+                    subject: $obstakelvrije_ruimte
+                    value: $minimale_obstakelvrije_ruimte
+                  then: Obstakelvrije ruimte is minder dan 1,8 meter
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $beschikbare_oppervlakte
+                          value: null
+                      - operation: GREATER_THAN
+                        subject: $terras_oppervlakte
+                        value: $beschikbare_oppervlakte
+                  then: Gevraagde oppervlakte groter dan beschikbare ruimte
+                - when:
+                    operation: NOT
+                    value:
+                      operation: IN
+                      subject: $functie_oppervlak
+                      value: $toegestane_bgt_functies
+                  then: Locatie niet geschikt voor terras (verkeerde BGT-functie)
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $max_sluitingstijd_doordeweeks
+                          value: null
+                      - operation: GREATER_THAN
+                        subject: $gewenste_sluitingstijd_doordeweeks
+                        value: $max_sluitingstijd_doordeweeks
+                  then: >-
+                    Gevraagde sluitingstijd doordeweeks (zo-do) later dan toegestaan in dit gebied
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $max_sluitingstijd_weekend
+                          value: null
+                      - operation: GREATER_THAN
+                        subject: $gewenste_sluitingstijd_weekend
+                        value: $max_sluitingstijd_weekend
+                  then: >-
+                    Gevraagde sluitingstijd weekend (vr-za) later dan toegestaan in dit gebied
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $schenkt_alcohol
+                        value: true
+                      - operation: EQUALS
+                        subject: $heeft_alcoholvergunning
+                        value: false
+                  then: Geen alcoholvergunning terwijl alcohol wordt geschonken
+              default: ''
+            legal_basis:
+              law: Algemene plaatselijke verordening Rotterdam 2012
+              article: 2:30b
+              url: https://lokaleregelgeving.overheid.nl/CVDR373493/11
+              explanation: >-
+                De burgemeester weigert de vergunning indien niet aan de voorwaarden wordt voldaan
+          - output: vergunde_oppervlakte
+            # Zonder BGT-terraslocatie op het vestigingsadres is er geen beschikbare ruimte en wordt geen
+            # oppervlakte vergund (0 m2) (RFC-036).
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $beschikbare_oppervlakte
+                    value: null
+                  then: 0
+              default:
+                operation: MIN
+                values:
+                  - $terras_oppervlakte
+                  - $beschikbare_oppervlakte
+            legal_basis:
+              law: Algemene plaatselijke verordening Rotterdam 2012
+              article: 2:30b
+              url: https://lokaleregelgeving.overheid.nl/CVDR373493/11
+              explanation: >-
+                De vergunde oppervlakte is het minimum van de aangevraagde en beschikbare oppervlakte
+          - output: vergunde_sluitingstijd_doordeweeks
+            # Zonder terrassenbeleid voor het gebied is er geen toegestane sluitingstijd en dus geen
+            # vergunde sluitingstijd (afwezig) (RFC-036).
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_doordeweeks
+                    value: null
+                  then: null
+              default:
+                operation: MIN
+                values:
+                  - $gewenste_sluitingstijd_doordeweeks
+                  - $max_sluitingstijd_doordeweeks
+            legal_basis:
+              law: Terrassenbeleid Rotterdam 2023
+              article: '5'
+              url: https://lokaleregelgeving.overheid.nl/CVDR717301/1
+              explanation: >-
+                De vergunde sluitingstijd doordeweeks (zo-do) is het minimum van de aangevraagde en
+                maximaal toegestane tijd
+          - output: vergunde_sluitingstijd_weekend
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $max_sluitingstijd_weekend
+                    value: null
+                  then: null
+              default:
+                operation: MIN
+                values:
+                  - $gewenste_sluitingstijd_weekend
+                  - $max_sluitingstijd_weekend
+            legal_basis:
+              law: Terrassenbeleid Rotterdam 2023
+              article: '5'
+              url: https://lokaleregelgeving.overheid.nl/CVDR717301/1
+              explanation: >-
+                De vergunde sluitingstijd weekend (vr-za) is het minimum van de aangevraagde en maximaal
+                toegestane tijd
+          - output: precariobelasting_verschuldigd
+            value: $is_openbare_weg
+            legal_basis:
+              law: Verordening precariobelasting Rotterdam 2024
+              article: '2'
+              url: https://lokaleregelgeving.overheid.nl/CVDR719500/1
+              explanation: >-
+                Precariobelasting is verschuldigd indien het terras op openbare gemeentegrond staat
+          - output: precariobelasting_per_jaar
+            # Art. 2 jo. 5 Verordening precariobelasting Rotterdam: belasting voor het terras op openbare
+            # gemeentegrond, naar de vergunde oppervlakte en het tarief van het gebied. Zonder BGT-locatie
+            # of tariefrij is er niets te heffen (RFC-036).
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $is_openbare_weg
+                        value: true
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $beschikbare_oppervlakte
+                          value: null
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $tarief_per_m2
+                          value: null
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - operation: MAX
+                        values:
+                          - operation: SUBTRACT
+                            values:
+                              - operation: MIN
+                                values:
+                                  - $terras_oppervlakte
+                                  - $beschikbare_oppervlakte
+                              - 50
+                          - 0
+                      - $tarief_per_m2
+              default: 0
+            legal_basis:
+              law: Verordening precario- en reclamebelasting Rotterdam 2024
+              article: '5'
+              url: https://lokaleregelgeving.overheid.nl/CVDR704478/1
+              explanation: >-
+                De eerste 50 m² van een terras is vrijgesteld; voor elke m² daarboven geldt het tarief per
+                m² per jaar

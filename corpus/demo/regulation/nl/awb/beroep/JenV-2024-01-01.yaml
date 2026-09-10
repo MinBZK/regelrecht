@@ -1,0 +1,341 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: awb/beroep
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Algemene wet bestuursrecht - Beroepmogelijkheid en Termijnen
+bwb_id: BWBR0005537
+url: https://wetten.overheid.nl/BWBR0005537/2024-01-01
+service: JenV
+uuid: c4fda809-15f2-454a-9e9b-f645b905ca12
+articles:
+  - number: 8:1
+    text: >-
+      Een belanghebbende kan tegen een besluit beroep instellen bij de bestuursrechter.
+    url: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel8:1
+    machine_readable:
+      definitions:
+        excluded_decision_types:
+          - ALGEMEEN_VERBINDEND_VOORSCHRIFT
+          - BELEIDSREGEL
+          - VOORBEREIDINGSBESLUIT
+          - ANDERE_HANDELING
+        required_legal_character:
+          - BESCHIKKING
+          - BESLUIT_VAN_ALGEMENE_STREKKING
+        default_termijn_beroep_weken: 6
+        # Art. 8:6: type_rechter is altijd een categorie (RECHTBANK, GERECHTSHOF, CRVB, CBB),
+        # nooit een concrete rechtbanknaam; de concrete naam volgt pas uit art. 8:7 lid 1 in
+        # bevoegde_rechtbank. Zie audit "Awb beroep JenV": categorie en naam waren vermengd.
+        default_court_type: RECHTBANK
+        default_court: RECHTBANK_DEN_HAAG
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        input:
+          # Art. 8:1/8:3: de acties lezen $zaak.status en $zaak.approved (of er al een
+          # afwijzende beslissing op bezwaar ligt); zaak was nergens als input gedeclareerd,
+          # waardoor de typechecker deze velden niet zag (audit "Awb beroep JenV"). Zie
+          # bindings.yaml voor de binding (kind: cases).
+          - name: zaak
+            type: object
+            source: {}
+          - name: wet
+            type: object
+            source: {}
+          - name: adres
+            type: object
+            nullable: true
+            source: {}
+          - name: jurisdictie
+            type: object
+            source: {}
+          - name: gebeurtenissen
+            type: object
+            source: {}
+        output:
+          - name: beroep_mogelijk
+            type: boolean
+          - name: reden_niet_mogelijk
+            type: string
+            nullable: true
+          - name: beroepstermijn
+            type: number
+            type_spec:
+              unit: weeks
+              precision: 0
+              min: 0
+          - name: direct_beroep
+            type: boolean
+          - name: reden_direct_beroep
+            type: string
+            nullable: true
+          - name: bevoegde_rechtbank
+            type: string
+          - name: type_rechter
+            type: string
+        actions:
+          - output: type_rechter
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $wet.name
+                    value: wet_studiefinanciering
+                  then: CENTRALE_RAAD_VAN_BEROEP
+                - when:
+                    operation: EQUALS
+                    subject: $wet.name
+                    value: wet_inkomstenbelasting
+                  then: GERECHTSHOF
+                - when:
+                    operation: EQUALS
+                    subject: $wet.name
+                    value: vreemdelingenwet
+                  # Art. 8:6: vreemdelingenzaken lopen via de rechtbank (categorie), niet via een
+                  # vaste rechtbanknaam; welke rechtbank concreet bevoegd is, volgt uit art. 8:7
+                  # lid 1 in bevoegde_rechtbank.
+                  then: $default_court_type
+                - when:
+                    operation: EQUALS
+                    subject: $wet.name
+                    value: wet_marktordening_gezondheidszorg
+                  then: COLLEGE_VAN_BEROEP_BEDRIJFSLEVEN
+              default: $default_court_type
+            legal_basis:
+              law: Algemene wet bestuursrecht
+              bwb_id: BWBR0005537
+              article: 8:6
+              url: >-
+                https://wetten.overheid.nl/BWBR0005537/2024-01-01#Hoofdstuk8_Titeldeel8.1_Afdeling8.1.2_Artikel8:6
+              juriconnect: jci1.3:c:BWBR0005537&artikel=8:6&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 8:6 Awb bepaalt de absolute bevoegdheid van rechters voor verschillende wetten
+          - output: bevoegde_rechtbank
+            # Art. 8:6 levert alleen de categorie op (type_rechter); welke rechtbank concreet
+            # bevoegd is, staat hier los daarvan in art. 8:7 lid 1. Voor GERECHTSHOF- en
+            # CRVB/CBB-zaken kent de wet zelf de bevoegde instantie toe (wet.competent_court);
+            # daar is geen "relatieve bevoegdheid van rechtbanken" te bepalen. Geen
+            # compensatietak meer nodig sinds type_rechter nooit meer een concrete
+            # rechtbanknaam bevat (audit "Awb beroep JenV").
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $type_rechter
+                    value: RECHTBANK
+                  then:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: NOT
+                          value:
+                            operation: EQUALS
+                            subject: $adres
+                            value: null
+                        then: $jurisdictie.rechtbank
+                    default: $default_court
+              default: $wet.competent_court
+            legal_basis:
+              law: Algemene wet bestuursrecht
+              bwb_id: BWBR0005537
+              article: 8:7
+              paragraph: '1'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005537/2024-01-01#Hoofdstuk8_Titeldeel8.1_Afdeling8.1.2_Artikel8:7
+              juriconnect: >-
+                jci1.3:c:BWBR0005537&artikel=8:7&lid=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 8:7 lid 1 Awb bepaalt de relatieve bevoegdheid van rechtbanken
+          - output: beroep_mogelijk
+            # Het aantal gebeurtenissen van een soort wordt geteld met een filter en een telling van 1 per
+            # gebeurtenis (RFC-016). De POC telde de waarheidswaarden zelf op (RFC-037, T1).
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value:
+                    operation: IN
+                    subject: $wet.decision_type
+                    value: $excluded_decision_types
+                - operation: IN
+                  subject: $wet.legal_character
+                  value: $required_legal_character
+                - operation: OR
+                  conditions:
+                    - operation: EQUALS
+                      subject: $wet.voorbereidingsprocedure
+                      value: UITGEBREID
+                    - operation: AND
+                      conditions:
+                        - operation: GREATER_THAN
+                          subject:
+                            operation: FOREACH
+                            collection: $gebeurtenissen
+                            filter:
+                              operation: EQUALS
+                              subject: $event_type
+                              value: Objected
+                            body: 1
+                            combine: ADD
+                          value: 0
+                        - operation: AND
+                          conditions:
+                            - operation: EQUALS
+                              subject: $zaak.status
+                              value: DECIDED
+                            - operation: EQUALS
+                              subject: $zaak.approved
+                              value: false
+            legal_basis:
+              law: Algemene wet bestuursrecht
+              bwb_id: BWBR0005537
+              article: 8:1
+              url: >-
+                https://wetten.overheid.nl/BWBR0005537/2024-01-01#Hoofdstuk8_Titeldeel8.1_Artikel8:1
+              juriconnect: jci1.3:c:BWBR0005537&artikel=8:1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 8:1 Awb bepaalt of beroep mogelijk is tegen een besluit
+          - output: reden_niet_mogelijk
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: IN
+                    subject: $wet.decision_type
+                    value: $excluded_decision_types
+                  then: tegen dit type besluit is geen beroep mogelijk
+                - when:
+                    operation: NOT
+                    value:
+                      operation: IN
+                      subject: $wet.legal_character
+                      value: $required_legal_character
+                  then: dit is geen besluit in de zin van de AWB
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $wet.voorbereidingsprocedure
+                          value: UITGEBREID
+                      - operation: EQUALS
+                        subject:
+                          operation: FOREACH
+                          collection: $gebeurtenissen
+                          filter:
+                            operation: EQUALS
+                            subject: $event_type
+                            value: Objected
+                          body: 1
+                          combine: ADD
+                        value: 0
+                  then: er moet eerst bezwaar worden gemaakt
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: GREATER_THAN
+                        subject:
+                          operation: FOREACH
+                          collection: $gebeurtenissen
+                          filter:
+                            operation: EQUALS
+                            subject: $event_type
+                            value: Objected
+                          body: 1
+                          combine: ADD
+                        value: 0
+                      - operation: OR
+                        conditions:
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $zaak.status
+                              value: DECIDED
+                          - operation: NOT
+                            value:
+                              operation: EQUALS
+                              subject: $zaak.approved
+                              value: false
+                  then: er is nog geen afwijzende beslissing op bezwaar
+            legal_basis:
+              law: Algemene wet bestuursrecht
+              bwb_id: BWBR0005537
+              article: 8:3
+              url: >-
+                https://wetten.overheid.nl/BWBR0005537/2024-01-01#Hoofdstuk8_Titeldeel8.1_Artikel8:3
+              juriconnect: jci1.3:c:BWBR0005537&artikel=8:3&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 8:3 Awb bepaalt redenen waarom beroep niet mogelijk is
+          - output: beroepstermijn
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $wet.beroepstermijn_weken
+                      value: null
+                  then: $wet.beroepstermijn_weken
+              default: $default_termijn_beroep_weken
+            legal_basis:
+              law: Algemene wet bestuursrecht
+              bwb_id: BWBR0005537
+              article: 6:7
+              url: >-
+                https://wetten.overheid.nl/BWBR0005537/2024-01-01#Hoofdstuk6_Afdeling6.2_Artikel6:7
+              juriconnect: jci1.3:c:BWBR0005537&artikel=6:7&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 6:7 Awb bepaalt de termijn voor het indienen van beroep
+          - output: direct_beroep
+            value:
+              operation: EQUALS
+              subject: $wet.voorbereidingsprocedure
+              value: UITGEBREID
+            legal_basis:
+              law: Algemene wet bestuursrecht
+              bwb_id: BWBR0005537
+              article: 3:11
+              paragraph: '2'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005537/2024-01-01#Hoofdstuk3_Afdeling3.3_Artikel3:11
+              juriconnect: >-
+                jci1.3:c:BWBR0005537&artikel=3:11&lid=2&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 3:11 lid 2 Awb bepaalt dat bij uitgebreide voorbereidingsprocedure direct beroep
+                mogelijk is
+          - output: reden_direct_beroep
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $wet.voorbereidingsprocedure
+                    value: UITGEBREID
+                  then: besluit is voorbereid met uitgebreide procedure
+            legal_basis:
+              law: Algemene wet bestuursrecht
+              bwb_id: BWBR0005537
+              article: 3:11
+              paragraph: '2'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005537/2024-01-01#Hoofdstuk3_Afdeling3.3_Artikel3:11
+              juriconnect: >-
+                jci1.3:c:BWBR0005537&artikel=3:11&lid=2&z=2024-01-01&g=2024-01-01
+              explanation: Artikel 3:11 lid 2 Awb bepaalt de reden voor direct beroep
+      untranslatables:
+        - construct: >-
+            iteratie over variabel aantal gebeurtenissen voor beroepscheck
+          reason: >-
+            FOREACH niet beschikbaar in v0.5.1 schema; het aantal zaakgebeurtenissen is dynamisch en
+            kan niet vooraf worden uitgerold
+          suggestion: >-
+            Voeg FOREACH toe aan het schema of beperk het aantal gebeurtenissen tot een vast maximum
+          accepted: true

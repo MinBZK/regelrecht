@@ -43,12 +43,21 @@ articles:
             description: Type beplanting - "boom" of "heg_of_heester"
           - name: postcode
             type: number
-            required: true
+            # Art. 2.75 lid 2 (heggen/heesters) geldt voor heel Amsterdam en
+            # heeft geen postcode nodig; alleen lid 1 (bomen in het centrum)
+            # gebruikt hem. Kleene-AND: bij afwezige postcode faalt de
+            # centrum-voorwaarde van lid 1 en valt de uitkomst terug op lid 2
+            # of null, dus de uitkomst verandert niet.
+            required: false
             description: Postcodegebied van de locatie (4-cijferig)
 
         output:
           - name: gemeentelijke_afstand_cm
             type: number
+            # Art. 2.75 noemt alleen bomen in het centrum (lid 1) en heggen (lid 2).
+            # Voor andere beplanting zwijgt de APV: de waarde is dan afwezig en
+            # BW 5:42 lid 2 valt terug op de wettelijke afstand (RFC-036).
+            nullable: true
             description: Gemeentelijke afstand tot erfgrens in centimeters
 
         actions:

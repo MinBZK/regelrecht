@@ -1,0 +1,179 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: wet_inkomstenbelasting/toetsingsinkomen
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '2020-01-01'
+name: Bepalen toetsingsinkomen
+bwb_id: BWBR0011353
+url: https://wetten.overheid.nl/BWBR0011353/2020-01-01
+service: UWV
+uuid: 06c43099-444f-415d-a98a-cb686954ed24
+articles:
+  - number: '2.11'
+    text: Vervallen
+    url: >-
+      https://wetten.overheid.nl/BWBR0011353/2020-01-01#Artikel2.11
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: box1_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: box1_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: box2_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: box2_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: box3_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: box3_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: buitenlands_inkomen
+            # Art. 2.17 Wet IB 2001: het eigen buitenlands inkomen van de belastingplichtige is
+            # niet nullable (bindings.yaml: absent: 0) - geen rij betekent geen buitenlands
+            # inkomen, dus geen EQUALS-null-guard nodig.
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: buitenlands_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: partner_box1_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: partner_box1_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: partner_box2_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: partner_box2_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: partner_box3_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: partner_box3_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+          - name: partner_buitenlands_inkomen
+            # Art. 2.17 Wet IB 2001: dit veld is nullable met een EQUALS-null-guard hieronder
+            # (geen partner, of partner zonder buitenlands inkomen); bindings.yaml gebruikt
+            # daarom absent: null, niet absent: 0.
+            type: amount
+            nullable: true
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: partner_buitenlands_inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+        output:
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+          - name: partner_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: inkomen
+            value:
+              operation: ADD
+              values:
+                - $box1_inkomen
+                - $box2_inkomen
+                - $box3_inkomen
+                - $buitenlands_inkomen
+          - output: partner_inkomen
+            # Het buitenlandse inkomen van de partner telt mee als er een partner is (art. 2.17 Wet IB
+            # 2001); zonder partner is het afwezig en telt 0 (RFC-036).
+            value:
+              operation: ADD
+              values:
+                - $partner_box1_inkomen
+                - $partner_box2_inkomen
+                - $partner_box3_inkomen
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $partner_buitenlands_inkomen
+                          value: null
+                      then: $partner_buitenlands_inkomen
+                  default: 0
