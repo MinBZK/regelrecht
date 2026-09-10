@@ -77,6 +77,7 @@ export const PACKAGES = [
   'regelrecht-grafana',
   'regelrecht-lawmaking',
   'regelrecht-docs',
+  'regelrecht-demo',
 ];
 
 // Tags die een versie onaanraakbaar maken, wat er verder ook op zit. Dit is de

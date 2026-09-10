@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
-- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, population simulation, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; target domain `demo.regelrecht.rijks.app` (not wired into deploy.yml yet)
+- `frontend-demo/` - The RegelRecht demo (Vue/Vite + the engine as WASM in the browser, no backend): presentation, law browser, dependency graph, scenario runner, population simulation, citizen/entrepreneur portal and case system, over the demo corpus in `corpus/demo/`. Successor of the separate poc-machine-law repository; target domain `demo.regelrecht.rijks.app` (wired into deploy.yml; the ZAD component still has to be created)
 - `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
 - `corpus/demo/` - The demo corpus: 80 laws migrated from the POC (`regulation/nl/`, schema v0.5.8, `source: {}` for external data), their scenarios (`**/scenarios/*.feature`, canonical grammar, run with `just bdd-demo`), `bindings.yaml` (which register table/column feeds which `source: {}` input; the demo materialises persona data from it), `profiles.yaml` (fictitious personas), `demo-config.yaml` and `services.yaml`. `tools/` holds the one-off migration and conversion scripts
@@ -472,7 +472,7 @@ de job staat in het workflowbestand dat de PR meebrengt.
 | enrichworker | `regelrecht-enrich-worker` | (no web UI) |
 | pipeline-api | `regelrecht-pipeline-api` | (internal) |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
-| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` (image and ZAD component still to be wired) |
+| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` (ZAD component still to be created) |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
