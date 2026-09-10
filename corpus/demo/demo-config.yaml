@@ -401,16 +401,16 @@ slides:
     overline: Ook buiten Nederland
     lines:
       - Dezelfde engine
-      - werkt voor **andere jurisdicties**
-      - hier: **Luxemburg**
+      - 'werkt voor **andere jurisdicties**'
+      - 'hier: **Luxemburg**'
   - kind: demo
     overline: Luxemburg
     title: Vliegbelasting, machine-uitvoerbaar
     lead: Een LU-demo-wet met Engelse scenario's — dezelfde engine als de Nederlandse wetten.
     bullets:
-      - Klimaatneutraal én (binnenlands of korter dan 500 km) geeft **50% korting**.
-      - Scenario's staan in het **Engels** voor internationale demos.
-      - In de graaf kies je deze wet **los** bij; hij zit niet in het Merijn-verhaal.
+      - 'Klimaatneutraal én (binnenlands of korter dan 500 km) geeft **50% korting**.'
+      - 'Scenario''s staan in het **Engels** voor internationale demos.'
+      - 'In de graaf kies je deze wet **los** bij; hij zit niet in het Merijn-verhaal.'
     route: /scenarios
   - kind: closing
     overline: Demo RegelRecht
