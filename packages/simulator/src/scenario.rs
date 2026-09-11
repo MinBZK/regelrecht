@@ -164,6 +164,10 @@ pub struct ScenarioRun {
     pub name: String,
     /// Waar de logische klok na de run staat.
     pub clock: NaiveDate,
+    /// Hoeveel vastleggingen niet afgegaan zijn omdat hun moment ná de klok
+    /// ligt. De runner loopt de tijd af tot de laatste vraag, dus een fixture
+    /// verder in de toekomst gebeurt in deze run niet.
+    pub pending_triggers: usize,
     /// De uitkomsten van de vragen van een consument, in scenariovolgorde.
     pub outcomes: Vec<QueryOutcome>,
     /// De uitkomsten van de vragen over een celgrens, in scenariovolgorde.
@@ -240,6 +244,16 @@ impl ScenarioRun {
         }
 
         let _ = writeln!(out, "  klok staat op {}", self.clock);
+        // Een fixture waar de klok nooit aan toe komt, is een regel in het
+        // bestand die niets doet. Dat mag, maar het hoort niet stil te zijn:
+        // wie hem als startstand bedoelde, ziet hier dat hij niet meedeed.
+        if self.pending_triggers > 0 {
+            let _ = writeln!(
+                out,
+                "  {} vastlegging(en) gingen niet af: hun moment ligt ná de klok",
+                self.pending_triggers
+            );
+        }
         out
     }
 }
@@ -382,6 +396,7 @@ impl Scenario {
         Ok(ScenarioRun {
             name: self.name.clone(),
             clock: world.now(),
+            pending_triggers: world.pending_triggers(),
             outcomes,
             transport_outcomes,
         })
@@ -626,10 +641,39 @@ query_via_transport:
     /// elkaar te vallen. In de kernassertie over tijd staat dezelfde vraag twee
     /// keer, vóór en ná een vastlegging; zonder de omschrijving zijn dat twee
     /// identieke regels en zegt het verslag niet welke welke is.
+    fn moment() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2024, 6, 1)
+            .unwrap_or_else(|| panic!("2024-06-01 moet een geldige datum zijn"))
+    }
+
+    /// Een vastlegging waar de klok niet aan toe kwam, hoort in het verslag te
+    /// staan. Zij is geldig bevonden bij het optuigen en doet daarna niets; dat
+    /// stil laten betekent dat een regel in het wereldbestand niets bewijst
+    /// zonder dat iemand het merkt.
+    #[test]
+    fn het_verslag_meldt_vastleggingen_die_niet_afgingen() {
+        let run = |pending_triggers| ScenarioRun {
+            name: "tijd".to_string(),
+            clock: moment(),
+            pending_triggers,
+            outcomes: Vec::new(),
+        };
+
+        assert!(
+            run(2).report().contains("2 vastlegging(en) gingen niet af"),
+            "het verslag hoort te melden dat er nog iets wachtte; kreeg:\n{}",
+            run(2).report()
+        );
+        assert!(
+            !run(0).report().contains("gingen niet af"),
+            "zonder wachtende vastleggingen hoort die regel weg te blijven; kreeg:\n{}",
+            run(0).report()
+        );
+    }
+
     #[test]
     fn het_verslag_onderscheidt_twee_gelijke_vragen_aan_hun_omschrijving() {
-        let moment = NaiveDate::from_ymd_opt(2024, 6, 1)
-            .unwrap_or_else(|| panic!("2024-06-01 moet een geldige datum zijn"));
+        let moment = moment();
         let outcome = |description: &str| QueryOutcome {
             description: Some(description.to_string()),
             cell: "toeslagen".to_string(),
@@ -645,6 +689,7 @@ query_via_transport:
         let run = ScenarioRun {
             name: "tijd".to_string(),
             clock: moment,
+            pending_triggers: 0,
             outcomes: vec![outcome("vóór de vastlegging"), outcome("erna, ongewijzigd")],
         };
 

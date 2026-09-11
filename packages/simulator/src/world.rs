@@ -21,7 +21,7 @@ use crate::error::{Result, SimulatorError};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
 
 /// De logische klok van een wereld, zoals het wereldbestand haar opgeeft.
@@ -112,7 +112,12 @@ pub struct World {
     /// Wat er nog moet gebeuren, oplopend op datum. Bij een gelijke datum
     /// beslist de volgorde waarin de triggers zijn opgegeven; de sortering is
     /// stabiel, dus dat is een vastgelegde eigenschap en geen toeval.
-    pending: Vec<(NaiveDate, Trigger)>,
+    ///
+    /// Oplopend is een **invariant**, niet een toestand: [`World::fire_due`]
+    /// leest alleen de kop. Wie hier later iets bij zet — een trigger die een
+    /// volgende trigger inplant — moet dat op datumpositie doen en niet
+    /// achteraan, anders gaat wat erbij komt te laat af of helemaal niet.
+    pending: VecDeque<(NaiveDate, Trigger)>,
 }
 
 impl World {
@@ -166,7 +171,7 @@ impl World {
         let mut world = Self {
             cells,
             clock: clock.start,
-            pending,
+            pending: pending.into(),
         };
         world.fire_due(clock.start)?;
         Ok(world)
@@ -244,11 +249,16 @@ impl World {
     /// Laat alles afgaan wat op of vóór `tot` valt, in datumvolgorde.
     ///
     /// De klok schuift mee naar het moment van de trigger die afgaat, zodat een
-    /// trigger die zelf iets vastlegt of straks iets nieuws inplant, dat op zijn
-    /// eigen moment doet.
+    /// trigger die zelf iets vastlegt dat op zijn eigen moment doet.
+    ///
+    /// Eén voor één van de kop af, en niet een hele kop in één keer weggehaald:
+    /// valt een trigger om, dan blijven de triggers ná hem gewoon staan in
+    /// plaats van met de fout te verdwijnen. Vandaag kan een trigger niet
+    /// omvallen — [`World::new`] toetst elke fixture met dezelfde toets die het
+    /// vastleggen gebruikt — maar dat is een eigenschap van de enige
+    /// trigger-soort die er nu is, geen eigenschap van de lus.
     fn fire_due(&mut self, tot: NaiveDate) -> Result<()> {
-        let due = self.pending.partition_point(|(at, _)| *at <= tot);
-        for (at, trigger) in self.pending.drain(..due).collect::<Vec<_>>() {
+        while let Some((at, trigger)) = self.next_due(tot) {
             self.clock = self.clock.max(at);
             match trigger {
                 Trigger::Record(recording) => {
@@ -263,6 +273,27 @@ impl World {
             }
         }
         Ok(())
+    }
+
+    /// De volgende trigger die op of vóór `tot` valt, van de kop van de lijst.
+    ///
+    /// De kop is genoeg omdat [`Self::pending`] oplopend is; is de eerste nog
+    /// niet vervallen, dan is geen van de volgende dat.
+    fn next_due(&mut self, tot: NaiveDate) -> Option<(NaiveDate, Trigger)> {
+        let at = self.pending.front().map(|(at, _)| *at)?;
+        if at > tot {
+            return None;
+        }
+        self.pending.pop_front()
+    }
+
+    /// Hoeveel triggers nog niet afgegaan zijn.
+    ///
+    /// Voor het verslag van een run: een vastlegging die op geen enkel moment
+    /// gevraagd wordt, gebeurt nooit, en dat hoort te zien te zijn in plaats van
+    /// stil te blijven.
+    pub fn pending_triggers(&self) -> usize {
+        self.pending.len()
     }
 }
 
@@ -383,6 +414,40 @@ lexostatus_definitions:
             Value::Bool(true),
             "de vastlegging kreeg 2024-07-01 als moment, dus het beeld van \
              2024-01-01 blijft gelijk"
+        );
+    }
+
+    /// Een trigger die nog moet afgaan mag de klok niet meenemen.
+    ///
+    /// Dit is de test die de lus vastpint in plaats van de tijdreductie. Elke
+    /// andere assertie over de tijdlijn loopt via een reductie, en die filtert
+    /// zelf al op `op_moment`, dus ze blijft ook groen als *elke* fixture
+    /// meteen bij het optuigen wordt vastgelegd — de klok volledig negerend.
+    /// Waar dat verschil wél zichtbaar wordt, is de stand van de klok: die
+    /// bepaalt tot waar er gereduceerd mag worden, en een wereld die haar
+    /// toekomst al heeft vastgelegd zou een antwoord geven op een moment
+    /// waarover nog niets vaststaat.
+    #[test]
+    fn een_trigger_die_nog_moet_afgaan_zet_de_klok_niet_vooruit() {
+        let world = world("2024-01-01", &[fixture("2024-07-01", "relaties", "GEEN")]);
+        assert_eq!(
+            world.now(),
+            date("2024-01-01"),
+            "de klok hoort op haar startmoment te staan, niet op dat van een \
+             trigger die nog moet afgaan"
+        );
+
+        let err = world
+            .reduce(
+                "toeslagen",
+                "toeslagpartnerschap",
+                &bsn(),
+                date("2024-07-01"),
+            )
+            .expect_err("het moment van een trigger die nog niet afging ligt ná de klok");
+        assert!(
+            matches!(err, SimulatorError::MomentAfterClock { .. }),
+            "verwachtte MomentAfterClock, kreeg {err}"
         );
     }
 

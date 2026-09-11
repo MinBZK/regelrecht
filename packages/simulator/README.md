@@ -361,6 +361,12 @@ Wie een scenario draait, hoeft `advance` niet zelf aan te roepen: de runner loop
 de vragen af in de volgorde van het bestand en zet de klok vooruit tot het moment
 van de volgende vraag. Een vraag over een eerder moment kan altijd.
 
+De vragen bepalen daarmee hoe ver de tijd loopt, dus een fixture met een datum
+voorbij de laatste vraag gaat in die run niet af. Dat mag — "dit feit landt in
+2030 en doet nu dus niet mee" is een geldige bewering — maar het verslag sluit af
+met hoeveel vastleggingen bleven wachten, zodat een fixture die niemand ooit
+bereikt geen stille regel in het bestand is.
+
 ## Het wereldbestand
 
 Een wereld is één YAML-bestand: `clock` (de tijdlijn), `cells` (wie er zijn),
