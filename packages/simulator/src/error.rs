@@ -266,6 +266,69 @@ pub enum SimulatorError {
         op_moment: String,
     },
 
+    /// Een vastlegging staat op naam van een andere cel dan die haar houdt.
+    ///
+    /// Een kroniek is het eigen journaal van de celbeheerder (RFC-022 §1.3):
+    /// wat de cel zelf overkwam, door haar vastgelegd. Een vastlegging op naam
+    /// van een ander is geen feit maar een aanname over een ander.
+    #[error(
+        "cel '{cell}': vastlegging van {op_moment} in stroom '{stream}' staat op naam van \
+         '{recording_actor}', maar een kroniek houdt alleen de eigen vastleggingen van de cel"
+    )]
+    ForeignRecordingActor {
+        /// De cel die de stroom houdt.
+        cell: String,
+        /// De stroom waarin de vastlegging staat.
+        stream: String,
+        /// De actor die de vastlegging opgeeft.
+        recording_actor: String,
+        /// Het moment van de vastlegging.
+        op_moment: String,
+    },
+
+    /// Er wordt vastgelegd in een stroom die de cel niet houdt.
+    #[error("cel '{cell}' houdt geen kroniekstroom '{stream}' (wel: {known})")]
+    UnknownChronicleStream {
+        /// De cel waarin vastgelegd werd.
+        cell: String,
+        /// De gevraagde stroomnaam.
+        stream: String,
+        /// Komma-gescheiden lijst van stromen die de cel wél houdt.
+        known: String,
+    },
+
+    /// De klok van de wereld zou achteruit moeten lopen.
+    ///
+    /// Een logische klok gaat één kant op. Wie het beeld van een eerder moment
+    /// wil, vraagt dat op met `op_moment`; daarvoor hoeft de wereld niet terug.
+    #[error("de klok van de wereld staat op {clock} en loopt niet terug naar {to}")]
+    ClockRunsBackwards {
+        /// Waar de klok nu staat.
+        clock: String,
+        /// Het moment waarnaar gevraagd werd.
+        to: String,
+    },
+
+    /// Er wordt gereduceerd over een moment dat nog niet gebeurd is.
+    ///
+    /// De wereld weet niet wat er na haar klok gebeurt: triggers die nog moeten
+    /// afgaan hebben niets vastgelegd. Een antwoord "op" zo'n moment zou een
+    /// voorspelling zijn die zich voordoet als een reductie.
+    #[error(
+        "cel '{cell}': reductie van '{lexostatus}' op {op_moment} vraagt een moment ná de klok \
+         van de wereld ({clock})"
+    )]
+    MomentAfterClock {
+        /// De bevraagde cel.
+        cell: String,
+        /// De gevraagde lexostatus.
+        lexostatus: String,
+        /// Het gevraagde moment.
+        op_moment: String,
+        /// Waar de klok staat.
+        clock: String,
+    },
+
     /// Twee kroniekstromen met dezelfde naam in één cel.
     ///
     /// De stroomnaam is tevens de naam van de databron in de engine. Twee

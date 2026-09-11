@@ -1,0 +1,101 @@
+---
+name: de tijdlijn verandert het heden en laat het verleden staan
+description: >-
+  De kernassertie over tijd. De wereld heeft één logische klok; een feit landt
+  op zijn eigen moment en verandert daarmee het beeld vanaf dat moment. Wat
+  eerder gevraagd werd, blijft exact hetzelfde antwoord geven: een kroniek
+  groeit, ze wordt niet herschreven. Dezelfde vraag staat daarom twee keer in
+  dit bestand, vóór en ná de vastlegging die ertussen landt — zonder dat paar is
+  het geen assertie maar een bewering.
+
+clock:
+  # De wereld begint hier. De vastlegging van 2023-01-01 ligt ervóór en staat
+  # bij het optuigen al in de kroniek; die van 2024-07-01 ligt erna en landt
+  # pas wanneer de klok hem passeert.
+  start: 2024-01-01
+
+cells:
+  - id: toeslagen
+    laws:
+      - algemene_wet_inkomensafhankelijke_regelingen
+
+    # De stroom wordt hier leeg opgetuigd: de inhoud is startstand, en die
+    # staat onder `fixtures` met een moment erbij. Een cel declareert welke
+    # kronieken ze houdt; wat erin komt, brengt de tijd.
+    chronicles:
+      - stream: relaties
+        key: bsn
+
+    lexostatus_definitions:
+      - name: toeslagpartnerschap
+        doc: >-
+          Of deze persoon op het gevraagde moment een toeslagpartner had (AWIR
+          art. 3), op de relatiefeiten die deze cel kent.
+        inputs:
+          - name: bsn
+            type: string
+        reduction:
+          regulation: algemene_wet_inkomensafhankelijke_regelingen
+          output: heeft_toeslagpartner
+          parameters:
+            bsn: $bsn
+
+fixtures:
+  # Wat de cel overkwam: er werd haar een relatiewijziging geleverd, en zij
+  # legde die vast. `recording_actor` staat er niet bij — dat is `cell`.
+  - at: 2023-01-01
+    record:
+      cell: toeslagen
+      chronicle: relaties
+      name: relatie_gewijzigd
+      intake: levering
+      grondslag: melding uit de basisregistratie personen
+      fields:
+        bsn: '999993653'
+        partnerschap_type: HUWELIJK
+
+  - at: 2024-07-01
+    record:
+      cell: toeslagen
+      chronicle: relaties
+      name: relatie_gewijzigd
+      intake: levering
+      grondslag: melding uit de basisregistratie personen
+      fields:
+        bsn: '999993653'
+        partnerschap_type: GEEN
+
+queries:
+  # T1, vóór de tweede vastlegging. De klok staat op 2024-06-01 als deze vraag
+  # gesteld wordt; het feit van 2024-07-01 bestaat nog niet.
+  - description: op T1 gold de vastlegging van 2023-01-01
+    cell: toeslagen
+    lexostatus: toeslagpartnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      heeft_toeslagpartner: true
+
+  # T2. De klok loopt hierheen, dus de vastlegging van 2024-07-01 gaat onderweg
+  # af en verandert het antwoord.
+  - description: op T2 is de vastlegging van 2024-07-01 geland
+    cell: toeslagen
+    lexostatus: toeslagpartnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2024-08-01
+    expect:
+      heeft_toeslagpartner: false
+
+  # T1 opnieuw, met de klok inmiddels op T2. Exact dezelfde vraag als de eerste,
+  # en daarom exact hetzelfde antwoord: een gram dat later landde, verandert het
+  # beeld van toen niet.
+  - description: T1 blijft na de vastlegging precies hetzelfde antwoord geven
+    cell: toeslagen
+    lexostatus: toeslagpartnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      heeft_toeslagpartner: true

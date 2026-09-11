@@ -109,7 +109,10 @@ chronicles:
   - stream: relaties
     key: bsn
     events:
-      - op_moment: 2023-03-01
+      - name: relatie_gewijzigd
+        intake: levering
+        recording_actor: {id}
+        op_moment: 2023-03-01
         fields:
           bsn: '999993653'
           partnerschap_type: HUWELIJK
@@ -128,7 +131,7 @@ lexostatus_definitions:
         );
         let config: CellConfig =
             serde_yaml_ng::from_str(&yaml).expect("de testconfiguratie hoort te lezen");
-        Cell::from_config(&config, Path::new("/bestaat-niet"))
+        Cell::from_config(&config, Path::new("/bestaat-niet"), &BTreeMap::new())
             .expect("een bron-cel heeft geen corpus nodig")
     }
 

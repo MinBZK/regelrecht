@@ -5,6 +5,12 @@
 //! vastlegging draagt het moment waarop het feit feit werd — de as waarop een
 //! reductie ordent (RFC-022 §4.1).
 //!
+//! Een kroniek bevat **alleen wat de cel zelf overkwam**: een aanvraag die
+//! binnenkwam, een levering die ze ontving, een betaling die ze deed, een
+//! besluit dat ze zelf nam. Geen schaduwboekhouding van waarden die ze elders
+//! ophaalde — dat zou het totaalbeeld dat volgens RFC-022 nergens bestaat
+//! alsnog in één cel leggen.
+//!
 //! De store is bewust *niet* publiek bereikbaar vanaf een cel: zie
 //! [`crate::cell::Cell`].
 
@@ -15,10 +21,50 @@ use regelrecht_engine::Value;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Eén vastlegging in een kroniekstroom.
+/// Het kanaal waarlangs een feit de cel binnenkwam of in de cel ontstond.
+///
+/// RFC-022 §1.3 noemt dit `intake` en houdt het vocabulaire open. Hier is het
+/// een enum, want een typfout in een kanaalnaam mag niet stil doorgaan: dan
+/// staat er een vastlegging in de kroniek waarvan niemand meer kan zeggen
+/// waarlangs ze binnenkwam. Een kanaal erbij is één regel — het is
+/// platformvocabulaire, geen casusdata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Intake {
+    /// Iemand vroeg iets aan bij deze cel.
+    Aanvraag,
+    /// Een andere partij leverde een feit aan deze cel.
+    Levering,
+    /// Er werd door of aan deze cel betaald.
+    Betaling,
+    /// De cel nam zelf een besluit en legde dat vast.
+    EigenBesluit,
+}
+
+/// Eén vastlegging in een kroniekstroom: één executogram.
+///
+/// De vorm komt uit RFC-022 §1.3, die vraagt dat per vastlegging vier dingen
+/// vaststaan: *wat* ([`Self::name`] en [`Self::fields`]), *door wie*
+/// ([`Self::recording_actor`]), op *welke grondslag* ([`Self::grondslag`]) en
+/// op *welk moment* ([`Self::op_moment`]). [`Self::intake`] vult dat aan met
+/// *waarlangs*. Een vastlegging die alleen een veldwaarde en een datum draagt,
+/// laat de helft van die vragen onbeantwoord.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChronicleEvent {
+    /// Wat er gebeurde, in de woorden van de cel: `inkomenslevering`,
+    /// `aanvraag_ontvangen`, `relatie_gewijzigd`.
+    pub name: String,
+    /// Het kanaal waarlangs dit feit de cel bereikte.
+    pub intake: Intake,
+    /// Wie vastlegde: het id van de cel zelf (RFC-022 §1.3 — de celbeheerder,
+    /// niet de `competent_authority`, want een executogram is een feit en geen
+    /// besluit). Een cel kan dus niet beweren dat een ander haar kroniek
+    /// bijhield.
+    pub recording_actor: String,
+    /// Op welke grondslag dit feit vastgelegd wordt; vrije tekst, mag leeg.
+    #[serde(default)]
+    pub grondslag: String,
     /// Het moment waarop dit feit in deze cel feit werd.
     pub op_moment: NaiveDate,
     /// De vastgelegde velden. Veldnamen komen overeen met de `input`-namen van
@@ -75,17 +121,7 @@ impl ChronicleStore {
                 });
             }
             for event in &stream.events {
-                if !event
-                    .fields
-                    .keys()
-                    .any(|f| f.eq_ignore_ascii_case(&stream.key))
-                {
-                    return Err(SimulatorError::ChronicleEventWithoutKey {
-                        stream: stream.stream.clone(),
-                        key: stream.key.clone(),
-                        op_moment: event.op_moment.to_string(),
-                    });
-                }
+                check_event(cell, &stream.stream, &stream.key, event)?;
             }
         }
         Ok(Self { streams })
@@ -149,6 +185,68 @@ impl ChronicleStore {
             .max_by_key(|event| event.op_moment)
     }
 
+    /// Zou deze vastlegging in deze stroom mogen?
+    ///
+    /// Zodat een wereld een vastlegging kan afkeuren bij het optuigen in plaats
+    /// van halverwege de tijdlijn. Dezelfde toets als bij het vastleggen zelf,
+    /// zodat er geen fixture is die het optuigen haalt en later alsnog omvalt.
+    /// Geeft niets prijs over wat er al in de stroom staat.
+    pub(crate) fn check_recording(
+        &self,
+        cell: &str,
+        stream: &str,
+        event: &ChronicleEvent,
+    ) -> Result<()> {
+        self.checked_index(cell, stream, event).map(|_| ())
+    }
+
+    /// De plaats van de stroom waarin deze vastlegging mag, of de fout die haar
+    /// tegenhoudt.
+    ///
+    /// Eén plek voor de toets, zodat het optuigen en het vastleggen niet uit
+    /// elkaar kunnen lopen.
+    fn checked_index(&self, cell: &str, stream: &str, event: &ChronicleEvent) -> Result<usize> {
+        let Some(index) = self.index_of(stream) else {
+            return Err(self.unknown_stream(cell, stream));
+        };
+        let target = &self.streams[index];
+        check_event(cell, &target.stream, &target.key, event)?;
+        Ok(index)
+    }
+
+    /// De plaats van een stroom in de store, op naam.
+    fn index_of(&self, stream: &str) -> Option<usize> {
+        self.streams.iter().position(|s| s.stream == stream)
+    }
+
+    /// De fout voor een stroom die deze cel niet houdt, met wat ze wél houdt.
+    fn unknown_stream(&self, cell: &str, stream: &str) -> SimulatorError {
+        SimulatorError::UnknownChronicleStream {
+            cell: cell.to_string(),
+            stream: stream.to_string(),
+            known: self
+                .streams
+                .iter()
+                .map(|s| s.stream.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+        }
+    }
+
+    /// Voeg één vastlegging achteraan een stroom toe.
+    ///
+    /// Toevoegen is het enige dat kan: een bestaande vastlegging wordt nooit
+    /// gewijzigd of verwijderd. Een kroniek groeit, en een reductie over een
+    /// eerder moment blijft daardoor exact hetzelfde antwoord geven.
+    ///
+    /// Achteraan, en niet op datumpositie: bij een gelijk moment beslist de
+    /// volgorde van vastlegging, en [`Self::reduce_to`] sorteert stabiel.
+    pub(crate) fn record(&mut self, cell: &str, stream: &str, event: ChronicleEvent) -> Result<()> {
+        let index = self.checked_index(cell, stream, &event)?;
+        self.streams[index].events.push(event);
+        Ok(())
+    }
+
     /// De feiten zoals ze op `op_moment` in deze cel bekend waren.
     ///
     /// Dit is de tijdreductie: vastleggingen ná `op_moment` bestaan voor deze
@@ -208,6 +306,33 @@ pub(crate) fn field<'a>(fields: &'a BTreeMap<String, Value>, name: &str) -> Opti
         .map(|(_, value)| value)
 }
 
+/// Mag deze vastlegging in deze stroom van deze cel?
+///
+/// Twee dingen moeten kloppen, en bij het vastleggen net zo goed als bij het
+/// optuigen: de vastlegging moet het sleutelveld van haar stroom dragen (anders
+/// valt niet vast te stellen over welk onderwerp het feit gaat), en ze moet op
+/// naam van de cel zelf staan. Dat laatste is de kern van RFC-022 §1.3: een
+/// kroniek is het eigen journaal van de celbeheerder, dus een vastlegging op
+/// naam van een ander is geen feit maar een aanname over een ander.
+fn check_event(cell: &str, stream: &str, key: &str, event: &ChronicleEvent) -> Result<()> {
+    if !event.fields.keys().any(|f| f.eq_ignore_ascii_case(key)) {
+        return Err(SimulatorError::ChronicleEventWithoutKey {
+            stream: stream.to_string(),
+            key: key.to_string(),
+            op_moment: event.op_moment.to_string(),
+        });
+    }
+    if event.recording_actor != cell {
+        return Err(SimulatorError::ForeignRecordingActor {
+            cell: cell.to_string(),
+            stream: stream.to_string(),
+            recording_actor: event.recording_actor.clone(),
+            op_moment: event.op_moment.to_string(),
+        });
+    }
+    Ok(())
+}
+
 /// Heeft deze vastlegging dit veld, met deze waarde?
 ///
 /// Een veld dat de vastlegging niet heeft, voldoet niet: "onbekend" is geen
@@ -235,6 +360,10 @@ mod tests {
 
     fn event(op_moment: &str, fields: &[(&str, Value)]) -> ChronicleEvent {
         ChronicleEvent {
+            name: "relatie_gewijzigd".to_string(),
+            intake: Intake::Levering,
+            recording_actor: "toeslagen".to_string(),
+            grondslag: String::new(),
             op_moment: date(op_moment),
             fields: fields
                 .iter()
@@ -351,6 +480,78 @@ mod tests {
             matches!(err, SimulatorError::DuplicateStream { .. }),
             "verwachtte DuplicateStream, kreeg {err}"
         );
+    }
+
+    #[test]
+    fn vastlegging_op_naam_van_een_ander_wordt_geweigerd() {
+        let mut foreign = event("2024-01-01", &[("bsn", Value::String("1".to_string()))]);
+        foreign.recording_actor = "belastingdienst".to_string();
+        let err = ChronicleStore::from_streams(
+            "toeslagen",
+            vec![ChronicleStream {
+                stream: "relatie".to_string(),
+                key: "bsn".to_string(),
+                events: vec![foreign],
+            }],
+        )
+        .expect_err("een vastlegging op naam van een andere cel hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ForeignRecordingActor { .. }),
+            "verwachtte ForeignRecordingActor, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn vastleggen_voegt_toe_en_wijzigt_niets() {
+        let mut store = store(vec![event(
+            "2024-01-01",
+            &[
+                ("bsn", Value::String("1".to_string())),
+                ("partnerschap_type", Value::String("GEEN".to_string())),
+            ],
+        )]);
+
+        store
+            .record(
+                "toeslagen",
+                "relatie",
+                event(
+                    "2024-06-01",
+                    &[
+                        ("bsn", Value::String("1".to_string())),
+                        ("partnerschap_type", Value::String("HUWELIJK".to_string())),
+                    ],
+                ),
+            )
+            .unwrap_or_else(|e| panic!("vastleggen in een eigen stroom moet lukken: {e}"));
+
+        let before = store.reduce_to(date("2024-03-01"));
+        assert_eq!(
+            before[0].records[0].get("partnerschap_type"),
+            Some(&Value::String("GEEN".to_string())),
+            "een latere vastlegging mag het beeld van een eerder moment niet raken"
+        );
+        let after = store.reduce_to(date("2024-07-01"));
+        assert_eq!(
+            after[0].records[0].get("partnerschap_type"),
+            Some(&Value::String("HUWELIJK".to_string()))
+        );
+    }
+
+    #[test]
+    fn vastleggen_in_een_onbekende_stroom_wordt_geweigerd() {
+        let mut store = store(vec![]);
+        let err = store
+            .record(
+                "toeslagen",
+                "betalingen",
+                event("2024-01-01", &[("bsn", Value::String("1".to_string()))]),
+            )
+            .expect_err("een stroom die de cel niet houdt hoort te falen");
+        let SimulatorError::UnknownChronicleStream { known, .. } = &err else {
+            panic!("verwachtte UnknownChronicleStream, kreeg {err}");
+        };
+        assert_eq!(known, "relatie");
     }
 
     #[test]

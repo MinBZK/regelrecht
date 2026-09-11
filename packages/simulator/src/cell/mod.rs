@@ -10,7 +10,7 @@
 mod chronicle;
 mod config;
 
-pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream};
+pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
 pub use config::{CellConfig, LexostatusDefinition, LexostatusInput, ParameterType, Reduction};
 
 use crate::corpus;
@@ -112,7 +112,18 @@ impl Cell {
     ///
     /// `laws: []` is geldig: dan komt er geen engine, en houdt de cel het bij
     /// vastleggen en reduceren over haar eigen kronieken.
-    pub fn from_config(config: &CellConfig, regulation_root: &Path) -> Result<Self> {
+    ///
+    /// `fixture_fields` telt de veldnamen mee die de wereld via een `fixture`
+    /// aan een stroom van deze cel toevoegt. Een stroom mag leeg opgetuigd
+    /// worden en haar inhoud pas via `fixtures` krijgen — zie
+    /// `scenarios/toeslagen_tijdlijn.yaml` — en dan zou `declared_fields()`
+    /// alleen het sleutelveld kennen. Een kroniekfilter dat over zo'n veld
+    /// praat, zou dan onterecht als typfout afgekeurd worden.
+    pub fn from_config(
+        config: &CellConfig,
+        regulation_root: &Path,
+        fixture_fields: &BTreeMap<String, BTreeSet<String>>,
+    ) -> Result<Self> {
         let chronicles = ChronicleStore::from_streams(&config.id, config.chronicles.clone())?;
 
         let service = if config.laws.is_empty() {
@@ -127,13 +138,21 @@ impl Cell {
             Some(service)
         };
 
+        let mut streams = chronicles.declared_fields();
+        for (stream, fields) in fixture_fields {
+            streams
+                .entry(stream.clone())
+                .or_default()
+                .extend(fields.iter().cloned());
+        }
+
         let surface = CellSurface {
             laws: &config.laws,
             outputs: service
                 .as_ref()
                 .map(outputs_per_regulation)
                 .unwrap_or_default(),
-            streams: chronicles.declared_fields(),
+            streams,
         };
 
         let mut published: BTreeMap<String, LexostatusDefinition> = BTreeMap::new();
@@ -156,6 +175,29 @@ impl Cell {
             chronicles,
             published,
         })
+    }
+
+    /// Leg één executogram vast in een eigen kroniekstroom.
+    ///
+    /// `pub(crate)` en niet `pub`: het is de eigen kroniek van de cel, dus net
+    /// zomin als een consument eruit kan lezen mag hij erin schrijven. In deze
+    /// crate legt alleen [`crate::World`] vast, op een moment dat de klok
+    /// passeert.
+    ///
+    /// Vastleggen voegt toe. Een bestaand gram wordt nooit gewijzigd, dus een
+    /// reductie over een eerder moment blijft na dit vastleggen exact hetzelfde.
+    pub(crate) fn record(&mut self, stream: &str, event: ChronicleEvent) -> Result<()> {
+        self.chronicles.record(&self.id, stream, event)
+    }
+
+    /// Zou deze vastlegging in deze stroom van deze cel mogen?
+    ///
+    /// Alleen zodat een wereld een vastlegging bij het optuigen kan afkeuren in
+    /// plaats van halverwege de tijdlijn: dezelfde toets als
+    /// [`Self::record`] doet, zonder iets vast te leggen. Geeft niets prijs over
+    /// de inhoud van de kroniek.
+    pub(crate) fn check_recording(&self, stream: &str, event: &ChronicleEvent) -> Result<()> {
+        self.chronicles.check_recording(&self.id, stream, event)
     }
 
     /// Reduceer over de eigen feiten en lever de gevraagde lexostatus.
@@ -400,6 +442,12 @@ mod tests {
         serde_yaml_ng::from_str(yaml).unwrap_or_else(|e| panic!("testconfig moet parsen: {e}"))
     }
 
+    /// Geen fixtures: deze tests tuigen een cel rechtstreeks op, buiten een
+    /// wereld om, dus er is niets dat een stroom extra velden aanreikt.
+    fn no_fixtures() -> BTreeMap<String, BTreeSet<String>> {
+        BTreeMap::new()
+    }
+
     fn toeslagen() -> Cell {
         let config = config(
             r"
@@ -410,7 +458,10 @@ chronicles:
   - stream: relaties
     key: bsn
     events:
-      - op_moment: 2024-01-01
+      - name: relatie_gewijzigd
+        intake: levering
+        recording_actor: toeslagen
+        op_moment: 2024-01-01
         fields:
           bsn: '999993653'
           partnerschap_type: GEEN
@@ -426,7 +477,7 @@ lexostatus_definitions:
         bsn: $bsn
 ",
         );
-        Cell::from_config(&config, &regulation_root())
+        Cell::from_config(&config, &regulation_root(), &no_fixtures())
             .unwrap_or_else(|e| panic!("cel moet op te tuigen zijn: {e}"))
     }
 
@@ -505,10 +556,14 @@ laws:
   - algemene_wet_inkomensafhankelijke_regelingen
   - regeling_standaardpremie
 chronicles:
-  - stream: intake
+  - stream: inkomensleveringen
     key: bsn
     events:
-      - op_moment: 2024-11-15
+      - name: inkomenslevering
+        intake: levering
+        recording_actor: toeslagen
+        grondslag: jaarlijkse inkomenslevering
+        op_moment: 2024-11-15
         fields:
           bsn: '999993653'
           partnerschap_type: GEEN
@@ -533,7 +588,7 @@ lexostatus_definitions:
 
     #[test]
     fn een_niet_gepubliceerde_uitkomst_blijft_binnen_de_cel() {
-        let cell = Cell::from_config(&zorgtoeslag(""), &regulation_root())
+        let cell = Cell::from_config(&zorgtoeslag(""), &regulation_root(), &no_fixtures())
             .unwrap_or_else(|e| panic!("cel moet op te tuigen zijn: {e}"));
         let answer = cell
             .reduce("zorgtoeslag_rechtstoestand", &bsn(), moment())
@@ -556,6 +611,7 @@ lexostatus_definitions:
         let cell = Cell::from_config(
             &zorgtoeslag("    outputs:\n      - hoogte_zorgtoeslag"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .unwrap_or_else(|e| panic!("cel moet op te tuigen zijn: {e}"));
         let answer = cell
@@ -574,6 +630,7 @@ lexostatus_definitions:
         let err = Cell::from_config(
             &zorgtoeslag("    outputs:\n      - hoogte_huurtoeslag"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .expect_err("een uitkomst die de regeling niet kent hoort te falen");
         assert!(
@@ -598,12 +655,18 @@ chronicles:
   - stream: relaties
     key: bsn
     events:
-      - op_moment: 2023-03-01
+      - name: relatie_gewijzigd
+        intake: levering
+        recording_actor: brp
+        op_moment: 2023-03-01
         fields:
           bsn: '999993653'
           partnerschap_type: HUWELIJK
           partner_bsn: '999993756'
-      - op_moment: 2024-07-01
+      - name: relatie_gewijzigd
+        intake: levering
+        recording_actor: brp
+        op_moment: 2024-07-01
         fields:
           bsn: '999993653'
           partnerschap_type: GEEN
@@ -627,7 +690,7 @@ lexostatus_definitions:
       latest: true";
 
     fn source_cell(definition: &str) -> Cell {
-        Cell::from_config(&brp(definition), &regulation_root())
+        Cell::from_config(&brp(definition), &regulation_root(), &no_fixtures())
             .unwrap_or_else(|e| panic!("een bron-cel moet op te tuigen zijn: {e}"))
     }
 
@@ -740,11 +803,17 @@ chronicles:
   - stream: relaties
     key: bsn
     events:
-      - op_moment: 2023-03-01
+      - name: relatie_gewijzigd
+        intake: levering
+        recording_actor: brp
+        op_moment: 2023-03-01
         fields:
           bsn: '999993653'
           partnerschap_type: HUWELIJK
-      - op_moment: 2024-07-01
+      - name: relatie_gewijzigd
+        intake: levering
+        recording_actor: brp
+        op_moment: 2024-07-01
         fields:
           bsn: '999993653'
 lexostatus_definitions:
@@ -760,6 +829,7 @@ lexostatus_definitions:
 ",
             ),
             &regulation_root(),
+            &no_fixtures(),
         )
         .unwrap_or_else(|e| panic!("een bron-cel moet op te tuigen zijn: {e}"));
 
@@ -785,6 +855,7 @@ lexostatus_definitions:
       chronicle: relatis
       key: bsn"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .expect_err("een typfout in de stroomnaam hoort te falen");
         assert!(
@@ -800,6 +871,7 @@ lexostatus_definitions:
       chronicle: relaties
       key: bsn"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .expect_err("een kroniekfilter zonder `outputs` hoort te falen");
         assert!(
@@ -817,6 +889,7 @@ lexostatus_definitions:
       chronicle: relaties
       key: bsn"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .expect_err("een uitkomst die geen vastlegging draagt hoort te falen");
         assert!(
@@ -836,6 +909,7 @@ lexostatus_definitions:
       where:
         partnerschaptype: HUWELIJK"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .expect_err("een `where` op een onbekend veld hoort te falen");
         assert!(
@@ -855,6 +929,7 @@ lexostatus_definitions:
       where:
         partner_bsn: $bsn"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .expect_err("`where` kent geen `$`-verwijzingen, dus dit hoort te falen");
         assert!(
@@ -872,6 +947,7 @@ lexostatus_definitions:
       chronicle: relaties
       key: partner_bsn"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .expect_err("een sleutel die de consument niet kan meegeven hoort te falen");
         assert!(
@@ -889,6 +965,7 @@ lexostatus_definitions:
       parameters:
         bsn: $bsn"),
             &regulation_root(),
+            &no_fixtures(),
         )
         .expect_err("zonder geladen regeling hoort een wetsvorm te falen");
         assert!(
@@ -912,7 +989,7 @@ lexostatus_definitions:
       output: rendementsgrondslag
 ",
         );
-        let err = Cell::from_config(&config, &regulation_root())
+        let err = Cell::from_config(&config, &regulation_root(), &no_fixtures())
             .expect_err("een reductie over een vreemde regeling hoort te falen");
         assert!(
             matches!(err, SimulatorError::ForeignRegulation { .. }),

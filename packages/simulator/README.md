@@ -26,10 +26,9 @@ van paper naar code:
   versiebestand onder `laws`. De map met `valid_from`-versies van een regeling
   *is* de lexogram-kroniek; de engine kiest daarin op `op_moment`. Niemand
   noemde dat hier eerder zo, maar het is precies wat RFC-022 §1.1 beschrijft.
-- **Executogram** — de vastgelegde vaststelling van een feit. Dat is wat een
-  `ChronicleEvent` wil worden: een veldwaarde op een moment. Wat er nog aan
-  ontbreekt is de procesrelatieve kant (wie stelde het vast, op welke
-  grondslag, in welke intake).
+- **Executogram** — de vastgelegde vaststelling van een feit. Dat is een
+  `ChronicleEvent`, en sinds de tijdlijn erin zit heeft die de vorm die
+  RFC-022 §1.3 vraagt: zie [De executogram-vorm](#de-executogram-vorm).
 - **Decretogram** — individueel en operationeel: het besluit. Dat wordt hier
   nog nergens vastgelegd; zie [Wat hier nog niet staat](#wat-hier-nog-niet-staat).
 
@@ -47,6 +46,22 @@ Een cel is een *containment- en autonomiedomein*, en verder niets:
 - ze laadt haar eigen **regelingen**;
 - ze **reduceert** over die eigen feiten tot een **lexostatus**: de
   rechtstoestand vanuit een gevraagd perspectief, op de feiten die zij kent.
+
+En één regel die bepaalt wat er in zo'n kroniek terecht mag komen:
+
+> **Een kroniek bevat alleen wat de cel zelf overkwam.**
+
+Een aanvraag die binnenkwam, een levering die ze ontving, een betaling die ze
+deed, een besluit dat ze zelf nam. Wat een cel elders *opvroeg* hoort er niet
+in: dat zou een schaduwboekhouding zijn van andermans feiten, en dan ligt het
+totaalbeeld dat volgens RFC-022 nergens bestaat alsnog in één cel. Een
+opgehaalde waarde die meedeed in een besluit hoort in het decretogram van dat
+besluit, met bron en moment erbij — niet als los feit in een kroniek.
+
+Daarom draagt elke vastlegging de naam van de cel zelf als `recording_actor`, en
+weigert de loader een vastlegging op naam van een ander. Niet omdat een cel
+nooit iets van buiten te weten krijgt, maar omdat ze dan vastlegt wat *haar*
+overkwam: `intake: levering` zegt dat het geleverd werd.
 
 ## Een bron-cel
 
@@ -201,7 +216,8 @@ met `expect_not_established: true`; dat is een volwaardige verwachting en sluit
 
 `op_moment` is het moment waarop gevraagd wordt, altijd expliciet en nooit de
 wandklok. Feiten die pas later in de cel zijn vastgelegd, bestaan voor dat
-antwoord niet, en de engine kiest op datzelfde moment de regelingversie.
+antwoord niet, en de engine kiest op datzelfde moment de regelingversie. Een
+moment ná de klok van de wereld is een fout; zie [De tijdlijn](#de-tijdlijn).
 
 ## Over een celgrens
 
@@ -303,16 +319,68 @@ De invarianten-gate die het gedeclareerde vraaggraf met het feitelijke vergelijk
 (I3) staat er nog niet. Dit is het instrument waar die op gaat rusten, en daar
 hoort die volledigheidseis dan ook thuis.
 
-## Scenarioformaat
+## De tijdlijn
 
-Een scenario is één YAML-bestand met `cells` (de wereld) en twee soorten vraag:
-`queries` (een consument bevraagt een cel) en `query_via_transport` (een cel
-bevraagt een andere cel). Beide dragen hun eigen verwachting; de assertie hoort
-bij het scenario en niet bij Rust, dus een nieuw testgeval is een nieuw bestand.
+Tijd is een eigenschap van de **wereld**, niet van een vraag. Eén logische klok
+per wereld — een datum, nooit de wandklok — en `World::advance(tot)` zet haar
+vooruit:
+
+```rust,ignore
+let mut world = scenario.world(&regulation_root())?;   // klok op clock.start
+world.advance(NaiveDate::from_ymd_opt(2024, 8, 1)...)?; // triggers gaan onderweg af
+world.reduce("toeslagen", "toeslagpartnerschap", &params, moment)?;
+```
+
+Vier eigenschappen, en ze hangen samen:
+
+- **De klok woont in de wereld, niet in een cel.** Een cel kent alleen de
+  momenten die haar aangereikt worden. Zij houdt geen klok, net zoals ze geen
+  sleutels en geen bevoegdheid houdt (RFC-022 §2).
+- **`advance` loopt de triggers af in datumvolgorde**, en tijdens een trigger
+  staat de klok op het moment van die trigger. Een vastlegging krijgt dus haar
+  eigen datum als `op_moment`, niet de eindstand van de sprong. De lus is
+  generiek — een gesorteerde lijst van `(datum, trigger)` — zodat vervallende
+  verplichtingen en gemiste termijnen er later naast passen. Vandaag bestaat er
+  één soort: een `fixture` die bij het passeren wordt vastgelegd.
+- **Een trigger voegt toe en wijzigt nooit een bestaand gram.** Daarom verandert
+  het beeld van een eerder moment niet doordat de wereld verder loopt. Dat is de
+  kernassertie, en ze staat als scenario in
+  [`scenarios/toeslagen_tijdlijn.yaml`](scenarios/toeslagen_tijdlijn.yaml): een
+  feit dat op T2 landt verandert de reductie op T2, terwijl dezelfde vraag over
+  T1 exact hetzelfde antwoord blijft geven. Dezelfde vraag staat er twee keer in,
+  vóór en ná de vastlegging — zonder dat paar is het geen assertie.
+- **Vooruitkijken kan niet, terugkijken wel.** Een reductie op een moment ná de
+  klok is een fout: wat na de klok gebeurt heeft nog niets vastgelegd, dus een
+  antwoord zou een voorspelling zijn die zich voordoet als een reductie. Een
+  moment ervóór levert het beeld van toen. De klok loopt zelf nooit terug.
+
+De dag blijft de fijnste korrel. Twee vastleggingen op dezelfde dag ordent de
+tijdas niet; dan beslist de volgorde van vastlegging, en de laatste wint.
+
+Wie een scenario draait, hoeft `advance` niet zelf aan te roepen: de runner loopt
+de vragen af in de volgorde van het bestand en zet de klok vooruit tot het moment
+van de volgende vraag. Een vraag over een eerder moment kan altijd.
+
+De vragen bepalen daarmee hoe ver de tijd loopt, dus een fixture met een datum
+voorbij de laatste vraag gaat in die run niet af. Dat mag — "dit feit landt in
+2030 en doet nu dus niet mee" is een geldige bewering — maar het verslag sluit af
+met hoeveel vastleggingen bleven wachten, zodat een fixture die niemand ooit
+bereikt geen stille regel in het bestand is.
+
+## Het wereldbestand
+
+Een wereld is één YAML-bestand: `clock` (de tijdlijn), `cells` (wie er zijn),
+`fixtures` (de startstand) en twee soorten vraag: `queries` (een consument
+bevraagt een cel) en `query_via_transport` (een cel bevraagt een andere cel).
+Beide dragen hun eigen verwachting. De assertie hoort bij het bestand, niet bij
+Rust: een nieuw testgeval is een nieuw bestand.
 
 ```yaml
 name: korte naam van het scenario
 description: waarom dit scenario bestaat        # optioneel
+
+clock:
+  start: 2024-01-01                             # waar de klok begint; verplicht
 
 cells:
   - id: toeslagen                               # het cel-id
@@ -323,15 +391,15 @@ cells:
     chronicles:                                 # de eigen feiten van de cel
       - stream: relaties                        # naam van de kroniekstroom
         key: bsn                                # veld waarop gegroepeerd wordt
-        events:
-          - op_moment: 2023-01-01               # wanneer dit feit feit werd
+        events:                                 # mag leeg: zie `fixtures`
+          - name: relatie_gewijzigd             # wat er gebeurde
+            intake: levering                    # waarlangs het binnenkwam
+            recording_actor: toeslagen          # wie vastlegde: de cel zelf
+            grondslag: melding uit de brp       # op welke grondslag; mag leeg
+            op_moment: 2023-01-01               # wanneer dit feit feit werd
             fields:                             # veldnamen = input-namen in de wet
               bsn: '999993653'
               partnerschap_type: HUWELIJK
-          - op_moment: 2024-07-01               # latere vastlegging wint
-            fields:
-              bsn: '999993653'
-              partnerschap_type: GEEN
 
     lexostatus_definitions:                     # wat de cel publiceert
       - name: toeslagpartnerschap
@@ -358,6 +426,18 @@ cells:
           chronicle: relaties                   # een eigen stroom
           key: bsn                              # sleutel = naam van een input
           latest: true                          # de enige modus; mag weg
+
+fixtures:                                       # de startstand van de wereld
+  - at: 2024-07-01                              # het moment van de vastlegging
+    record:
+      cell: toeslagen                           # bij wie het gram landt, en
+      chronicle: relaties                       # in welke stroom
+      name: relatie_gewijzigd
+      intake: levering
+      grondslag: melding uit de brp
+      fields:
+        bsn: '999993653'
+        partnerschap_type: GEEN
 
 queries:
   - description: vrije omschrijving             # optioneel
@@ -402,7 +482,61 @@ Onbekende velden worden geweigerd, zodat een typfout niet stil verdwijnt. Elke
 vraag heeft minstens één verwachting: een vraag zonder `expect` en zonder
 `expect_not_established` slaagt altijd en zou als `ok` in het verslag komen, wat
 op bewijs lijkt en het niet is. De loader weigert zo'n scenario, en ook een vraag
-die beide verwachtingen tegelijk stelt — die kan nooit uitkomen.
+die beide verwachtingen tegelijk stelt — die kan nooit uitkomen. `clock.start` is
+verplicht: een wereld zonder startmoment zou op de wandklok moeten terugvallen,
+en dan is dezelfde run morgen een andere run.
+
+### De executogram-vorm
+
+Een vastlegging is een executogram, en die draagt de vorm van RFC-022 §1.3. Vier
+vragen moeten per gram beantwoord zijn, plus één:
+
+| veld | vraag |
+|---|---|
+| `name` + `fields` | **wat** is er vastgelegd |
+| `recording_actor` | **door wie** — het cel-id; de celbeheerder, niet de `competent_authority`, want een executogram is een feit en geen besluit |
+| `grondslag` | op **welke grondslag** — vrije tekst, mag leeg |
+| `op_moment` | op **welk moment** |
+| `intake` | **waarlangs** het de cel bereikte: `aanvraag`, `levering`, `betaling` of `eigen_besluit` |
+
+Een vastlegging die alleen een veldwaarde en een datum draagt, laat de helft van
+die vragen onbeantwoord — en zonder `intake` en `grondslag` valt van een feit in
+een kroniek niet meer te zeggen hoe het daar kwam.
+
+`intake` is hier een enum en geen vrije tekst, terwijl RFC-022 het vocabulaire
+open houdt. Dat is een bewuste afwijking: een typfout in een kanaalnaam mag niet
+stil doorgaan. Een kanaal erbij is één regel Rust — het is platformvocabulaire,
+geen casusdata. De vier namen zijn ook niet die van het voorbeeld in de RFC
+(`external_intake`): dit zijn de kanalen waarlangs een cel iets *overkomt*.
+Aansluiten op een breder vocabulaire is later een hernoeming, geen herontwerp.
+
+`recording_actor` moet de cel zijn die de stroom houdt; een vastlegging op naam
+van een ander wordt geweigerd bij het optuigen. Zie [Wat een cel
+is](#wat-een-cel-is): een kroniek is het eigen journaal van de cel.
+
+In een `fixture` staat `recording_actor` niet, want dat is `record.cell`, en `at`
+geeft het moment. Die twee kunnen niet uiteenlopen en hoeven dus niet twee keer
+opgeschreven.
+
+### Startstand: `fixtures`
+
+Een startstand is data, geen opbouwcode. Een fixture is een vastlegging met een
+moment:
+
+- **op of vóór `clock.start`** — staat bij het optuigen al in de kroniek; de klok
+  staat op `start`, dus wat toen al gebeurd was, is gebeurd;
+- **erna** — is een trigger, en landt zodra `advance` die datum passeert.
+
+Een fixture wordt bij het optuigen getoetst zoals ze bij het vastleggen getoetst
+wordt: een onbekende cel, een onbekende stroom of een ontbrekend sleutelveld
+faalt daar, ook als haar datum nog jaren weg is. Een typfout in een startstand
+hoort niet halverwege een tijdlijn op te duiken, en of dat gebeurt mag niet
+afhangen van hoe ver die datum weg ligt.
+
+Eenzelfde feit kan dus twee kanten op geschreven worden — als `events` in de
+celconfiguratie of als `fixture` met een `at` — en dat is geen dubbelop. Het
+eerste is wat de cel al bijhield toen de wereld begon, het tweede is wat er
+tijdens de run gebeurt.
 
 ### Kroniekstromen en tijd
 
@@ -424,10 +558,11 @@ de engine records als databron wil. De paper legt de nadruk op het omgekeerde �
 niet de resulterende toestand opslaan, maar de procesrelatieve vaststelling ("op
 moment T heeft actor X vastgesteld dat …") en bij hergebruik expliciet
 herinterpreteren. Wat samen ontstond hoort samen te blijven; wat apart ontstond
-hoort niet stil samengevoegd te worden. De echte vorm kan pas als een
-vastlegging `recording_actor`, `grondslag`, `intake` en een moment draagt
-(RFC-022 §1.3) en de reductie daarover filtert en aggregeert in plaats van
-alleen te overschrijven.
+hoort niet stil samengevoegd te worden. De vastlegging draagt inmiddels wél
+`recording_actor`, `grondslag`, `intake`, een naam en een moment (zie [De
+executogram-vorm](#de-executogram-vorm)); wat nog mist is een reductie die
+daarover filtert en aggregeert in plaats van alleen te overschrijven. De
+gegevens zijn er dus al voordat de reductie ze gebruikt.
 
 Het kroniekfilter van een bron-cel doet dat al niet: dat kiest één vastlegging en
 geeft die in haar geheel terug. Die vorm kan hier omdat er geen engine tussen zit
@@ -467,10 +602,11 @@ Het corpus wordt standaard naast de crate gezocht (`corpus/regulation`);
 
 ## Wat hier nog niet staat
 
-**De cel legt nooit zelf iets vast.** Haar kroniekstore wordt bij het optuigen
-gevuld en daarna alleen gelezen; alles hierboven is de leeshelft. In
-chronolexografie is vastleggen juist de *productieve* activiteit, en de lus is
-informeren → concluderen → **vastleggen**. Een reductie die
+**De cel besluit nog niets.** Er wordt inmiddels vastgelegd — een trigger op de
+klok legt een executogram in een kroniek — maar alleen wat de startstand
+voorschrijft. De cel zelf concludeert nog niks. In chronolexografie is
+vastleggen juist de *productieve* activiteit, en de lus is informeren →
+concluderen → **vastleggen**. Een reductie die
 `heeft_recht_op_zorgtoeslag: true` oplevert is een besluit, en dat hoort als
 decretogram (BESCHIKKING, met moment en `zaakkenmerk`) in de eigen kroniek te
 landen (RFC-022 §1.2), zodat een latere vraag *op dat moment* het besluit
@@ -478,10 +614,9 @@ terugvindt in plaats van het opnieuw uit te rekenen onder een mogelijk andere
 wetsversie. Precies dat verschil — decretogram tegenover lexogram — is wat deze
 opstelling wil laten zien, en zonder vastleggen valt het niet te demonstreren;
 "een besluit van een andere bevoegde organisatie accepteren" heeft er evengoed
-een vastgelegd besluit voor nodig. De eerstvolgende stap is daarom een
-**vastleg-pad naast `reduce`**, alleen aanroepbaar door de cel zelf: het is
-haar eigen kroniek, dus geen consument mag erin schrijven, net zomin als eruit
-lezen.
+een vastgelegd besluit voor nodig. Het vastleg-pad dat daarvoor nodig is, staat
+er nu: `Cell::record` is `pub(crate)`, dus geen consument kan erin schrijven,
+net zomin als eruit lezen. Wat mist is de trigger die een besluit *neemt*.
 
 Aan de kant van de celgrens ontbreken nog drie dingen. **Accepteren in plaats van
 narekenen** (I5): het bewijsstuk van de veiligheidscontext heeft de vorm die een

@@ -4,7 +4,7 @@
 //! dat elk bestand draait en dat geen enkele verwachting mist. Een nieuw
 //! testgeval is dus een nieuw YAML-bestand, geen nieuwe Rust.
 
-use regelrecht_simulator::{regulation_root, Scenario};
+use regelrecht_simulator::{regulation_root, Scenario, ScenarioRun};
 use std::path::{Path, PathBuf};
 
 fn scenario_files() -> Vec<PathBuf> {
@@ -39,6 +39,64 @@ fn alle_scenarios_voldoen_aan_hun_eigen_verwachtingen() {
         assert!(
             run.proved_something(),
             "{}: een scenario zonder vragen bewijst niets",
+            path.display()
+        );
+    }
+}
+
+/// Elk antwoord van een run, ook de uitkomsten waarover geen `expect` gaat.
+///
+/// Het verslag noemt bij een geslaagde vraag alleen `ok`, dus twee runs die
+/// dezelfde verwachtingen halen met verschillende waarden eronder zouden op het
+/// verslag alleen identiek lijken. Determinisme gaat over de waarden zelf.
+fn answers(run: &ScenarioRun) -> Vec<String> {
+    run.outcomes
+        .iter()
+        .map(|outcome| {
+            format!(
+                "{}.{} op {}: {:?}",
+                outcome.cell,
+                outcome.lexostatus,
+                outcome.lexostatus_value.op_moment,
+                outcome.lexostatus_value.outcome
+            )
+        })
+        .collect()
+}
+
+/// Twee runs van hetzelfde bestand geven hetzelfde verslag én dezelfde waarden.
+///
+/// De klok van een wereld is logisch en de tijdlijn staat in het bestand, dus
+/// een run mag nergens van de wandklok of van een willekeurige volgorde
+/// afhangen. Dat is niet per scenario te beweren — het is een eigenschap van de
+/// opstelling — dus staat het hier en niet in een YAML-verwachting.
+#[test]
+fn twee_runs_geven_hetzelfde_verslag() {
+    for path in scenario_files() {
+        let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let first = scenario
+            .run(&regulation_root())
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let second = scenario
+            .run(&regulation_root())
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+
+        assert_eq!(
+            first.report(),
+            second.report(),
+            "{}: twee runs horen identiek te zijn",
+            path.display()
+        );
+        assert_eq!(
+            answers(&first),
+            answers(&second),
+            "{}: twee runs horen dezelfde waarden op te leveren",
+            path.display()
+        );
+        assert_eq!(
+            first.clock,
+            second.clock,
+            "{}: de klok hoort na elke run op hetzelfde moment te staan",
             path.display()
         );
     }
