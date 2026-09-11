@@ -97,6 +97,7 @@ fn product_crates_present() {
     let expected: std::collections::BTreeSet<String> = [
         "admin",
         "auth",
+        "chrono-poc-web",
         "corpus",
         "editor-api",
         "engine",

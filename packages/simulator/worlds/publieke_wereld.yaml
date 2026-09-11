@@ -1,0 +1,350 @@
+---
+# De publieke wereld: het wereldbestand waarmee de HTTP-laag lokaal draait.
+#
+# Een **wereldbestand** is wat een wereld *is* — een klok, de cellen, de
+# instellingen, de startstand, de acties en de termijnen — en niets van wat een
+# scenario eroverheen legt (`act`, `decide`, `queries`, `query_graph`,
+# `expect_*`). Een scenariobestand draagt zijn wereld in dezelfde velden inline,
+# want een scenario is een run en niet een app; dit bestand is het omgekeerde:
+# een wereld zonder run, om door een mens bespeeld te worden.
+#
+# De inhoud is die van `scenarios/toeslagen_volledig_verhaal.yaml`, met één cel
+# erbij (`brp`) en zonder de stappen: aanvraag → besluit → betalingen → tweede
+# besluit, allemaal aan te sturen via `actions`. Wat er in deze wereld gebeurt,
+# gebeurt dus doordat iemand een actie kiest of de klok vooruit zet — precies
+# waarvoor `packages/chrono-poc-web` bestaat.
+#
+# Er staat geen casus in Rust en geen casus in de frontend: elk label hieronder
+# is data. Een andere casus is een ander bestand.
+
+clock:
+  start: 2024-01-01
+
+settings:
+  # Beleid en geen wet: de besluit-definitie verwijst ernaar met
+  # `$betalingsritme` in plaats van een ritme voor te schrijven. Zodra het
+  # besluit genomen is, staat deze instelling vast — het gram legt vast waarop
+  # besloten is, en `PUT /api/settings` weigert haar daarna.
+  betalingsritme: kwartaal
+
+cells:
+  # De aanvrager. Een bron-cel: geen wetten, geen engine. Wat zij houdt is haar
+  # eigen journaal van wat zij indiende.
+  - id: burger
+    laws: []
+    chronicles:
+      - stream: aanvragen
+        key: bsn
+
+    lexostatus_definitions:
+      - name: ingediende_aanvraag
+        doc: wat deze aanvrager zelf indiende, en wanneer
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - jaar
+        reduction:
+          chronicle: aanvragen
+          key: bsn
+          latest: true
+
+  # Het register. Ook een bron-cel: ze legt vast en reduceert, en heeft geen
+  # engine nodig om een gepubliceerde lexostatus te kunnen geven. Ze staat hier
+  # zodat er in deze wereld één cel te bevragen is die niets berekent —
+  # `GET /api/cells/brp/lexostatus/partnerschap` is het eenvoudigste antwoord
+  # dat de opstelling kan geven, inclusief "niets vastgesteld" vóór 2023-03-01.
+  - id: brp
+    laws: []
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+              # Uitdrukkelijk leeg: het register is hier gezaghebbend en zegt
+              # dat er geen partner is. Dat is een waarde, geen ontbrekend feit.
+              partner_bsn: null
+
+    lexostatus_definitions:
+      - name: partnerschap
+        doc: >-
+          De relatievorm van één persoon op één moment, zoals deze cel die
+          vastlegde. Geen berekening: de laatste vastlegging op of vóór het
+          gevraagde moment.
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+          - partner_bsn
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  # De cel die het toetsingsinkomen vaststelt, en die later de verplichtingen
+  # nakomt. Twee aanslagen: de tweede corrigeert de eerste, en dat verschil is
+  # wat een tweede besluit zichtbaar maakt.
+  - id: belastingdienst
+    laws: []
+    chronicles:
+      - stream: aanslagen
+        key: bsn
+        events:
+          - name: aanslag_vastgesteld
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-03-01
+            fields:
+              bsn: '999993653'
+              toetsingsinkomen: 81000
+              competent_authority: Belastingdienst
+
+          - name: aanslag_herzien
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-12-01
+            fields:
+              bsn: '999993653'
+              toetsingsinkomen: 85000
+              competent_authority: Belastingdienst
+
+      - stream: betalingen
+        key: zaakkenmerk
+
+    lexostatus_definitions:
+      - name: toetsingsinkomen
+        doc: >-
+          Het vastgestelde toetsingsinkomen op het gevraagde moment, met het
+          bevoegd gezag erbij. Een consument die hierop leunt, hoort te kunnen
+          zien wiens vaststelling dit is.
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - toetsingsinkomen
+          - competent_authority
+        reduction:
+          chronicle: aanslagen
+          key: bsn
+          latest: true
+
+      - name: betaald_tot_nu_toe
+        doc: wat deze cel op deze zaak betaald heeft, opgeteld
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+  - id: toeslagen
+    laws:
+      - wet_op_de_zorgtoeslag
+      - algemene_wet_inkomensafhankelijke_regelingen
+      - regeling_standaardpremie
+
+    chronicles:
+      # De kroniek waarin de levering van de burger landt. Leeg opgetuigd: wat
+      # erin komt, komt van een actie.
+      - stream: aanvragen
+        key: bsn
+
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+              vermogen: 0
+
+      # De besluitende cel houdt zelf ook een betalingsstroom: zij legt vast dat
+      # haar gemeld is dat er betaald is.
+      - stream: betalingen
+        key: zaakkenmerk
+
+    besluit_definitions:
+      - name: zorgtoeslag_toekenning
+        doc: >-
+          Het eerste besluit over de zaak: recht en hoogte, met een
+          betalingsverplichting eraan. Het toetsingsinkomen wordt geaccepteerd
+          van de cel die het vaststelde en hier niet nagerekend (invariant I5).
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+          toetsingsinkomen:
+            accept_from: belastingdienst
+            lexostatus: toetsingsinkomen
+            field: toetsingsinkomen
+            params:
+              bsn: $bsn
+        obligations:
+          - amount: $hoogte_zorgtoeslag
+            payer: belastingdienst
+            schedule: $betalingsritme
+
+      - name: zorgtoeslag_vaststelling
+        doc: >-
+          Het tweede besluit over dezelfde zaak. Hetzelfde zaakkenmerk, dus het
+          ligt in dezelfde kroniek van dezelfde cel — en het gaat opnieuw naar de
+          bron voor het toetsingsinkomen, want er is nergens een kopie van het
+          eerste antwoord.
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+          toetsingsinkomen:
+            accept_from: belastingdienst
+            lexostatus: toetsingsinkomen
+            field: toetsingsinkomen
+            params:
+              bsn: $bsn
+
+    lexostatus_definitions:
+      - name: ontvangen_aanvraag
+        doc: wat deze cel over deze persoon geleverd kreeg
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - jaar
+        reduction:
+          chronicle: aanvragen
+          key: bsn
+          latest: true
+
+      - name: zorgtoeslagbeschikking
+        doc: wat deze cel over deze zaak besloten heeft, op het gevraagde moment
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - heeft_recht_op_zorgtoeslag
+          - hoogte_zorgtoeslag
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+      - name: betaald_tot_nu_toe
+        doc: >-
+          Wat er op deze zaak betaald is, voor zover deze cel dat weet: een som
+          over haar eigen meldingen, en dus een reductie — geen saldo dat naast
+          de kroniek wordt bijgehouden.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+actions:
+  - id: burger.aanvraag
+    actor: burger
+    label: Aanvraag zorgtoeslag indienen
+    doc: >-
+      De aanvrager legt vast wat zij indient, en levert hetzelfde feit aan de
+      uitvoerder. Twee grammen, elk in een eigen kroniek.
+    records:
+      cell: burger
+      chronicle: aanvragen
+      name: aanvraag_ingediend
+      intake: aanvraag
+      grondslag: Awir art. 15
+      fields:
+        - name: bsn
+          type: string
+        - name: jaar
+          type: number
+      delivers_to:
+        cell: toeslagen
+        chronicle: aanvragen
+        name: aanvraag_ontvangen
+        intake: aanvraag
+
+  - id: toeslagen.toekenning
+    actor: toeslagen
+    label: Beslis op de aanvraag
+    doc: Kan pas als er een aanvraag ligt.
+    decides:
+      cell: toeslagen
+      besluit: zorgtoeslag_toekenning
+    available_when:
+      cell: toeslagen
+      chronicle: aanvragen
+      field: jaar
+      equals: 2024
+
+  - id: toeslagen.vaststelling
+    actor: toeslagen
+    label: Stel de zorgtoeslag definitief vast
+    doc: Kan pas als er een toekenning ligt.
+    decides:
+      cell: toeslagen
+      besluit: zorgtoeslag_vaststelling
+    available_when:
+      cell: toeslagen
+      chronicle: beschikkingen
+      field: besluit
+      equals: zorgtoeslag_toekenning
+
+deadlines:
+  - label: aanvraag ontvangen vóór 1 maart
+    at: 2024-03-01
+    warn_if_missing:
+      cell: toeslagen
+      chronicle: aanvragen
+      name: aanvraag_ontvangen

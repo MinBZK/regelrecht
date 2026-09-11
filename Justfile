@@ -96,6 +96,20 @@ conformance:
 simulate SCENARIO='packages/simulator/scenarios/toeslagen_zorgtoeslag.yaml':
     cd packages && cargo run -q -p regelrecht-simulator --bin run-scenario -- {{justfile_directory()}}/{{SCENARIO}}
 
+# Start de chronolexografie-PoC lokaal, met de login UIT, op de publieke wereld.
+#
+# Poort 7160 en niet 8000: 8000 is wat de container binnen het cluster gebruikt,
+# 7100-7300 is wat de dev-container naar de host doorzet. Het corpus komt uit deze
+# checkout (REGULATION_PATH of `corpus/regulation`), de wereld uit
+# packages/simulator/worlds/. Een andere wereld is een ander pad in
+# CHRONO_POC_WORLD_SOURCE; een privécorpus is een `github:`-bron plus een token.
+# Zie packages/chrono-poc-web/README.md.
+[doc("Start de chronolexografie-PoC lokaal op http://localhost:7160")]
+chrono-poc WORLD='packages/simulator/worlds/publieke_wereld.yaml' PORT='7160':
+    cd packages && CHRONO_POC_PORT={{PORT}} \
+        CHRONO_POC_WORLD_SOURCE=local:{{justfile_directory()}}/{{WORLD}} \
+        cargo run -p regelrecht-chrono-poc-web --bin chrono-poc-web
+
 # Pins the deploy filters against the real cargo graph. Node's built-in test
 # runner, so no dependency for one file. Needs `cargo metadata`, not a build.
 [doc("Check the deploy filters against the real cargo dependency graph")]

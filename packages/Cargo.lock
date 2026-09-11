@@ -1170,6 +1170,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "6.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1880,6 +1894,12 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
+
+[[package]]
+name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 
 [[package]]
 name = "hashbrown"
@@ -4029,6 +4049,36 @@ dependencies = [
  "tower-sessions-memory-store",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "regelrecht-chrono-poc-web"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "dashmap",
+ "flate2",
+ "http-body-util",
+ "regelrecht-auth",
+ "regelrecht-corpus",
+ "regelrecht-github",
+ "regelrecht-shared",
+ "regelrecht-simulator",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http 0.7.1",
+ "tower-sessions",
+ "tower-sessions-memory-store",
+ "tracing",
+ "uuid",
+ "wiremock",
 ]
 
 [[package]]
