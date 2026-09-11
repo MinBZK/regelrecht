@@ -37,7 +37,7 @@ fn alle_scenarios_voldoen_aan_hun_eigen_verwachtingen() {
 
         assert!(run.passed(), "{}:\n{}", path.display(), run.report());
         assert!(
-            !run.outcomes.is_empty(),
+            run.proved_something(),
             "{}: een scenario zonder vragen bewijst niets",
             path.display()
         );

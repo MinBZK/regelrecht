@@ -4,12 +4,17 @@ Testopstelling voor chronolexografie ([RFC-022](../../docs/src/content/rfcs/rfc-
 De crate simuleert een wereld van **cellen** en laat een scenario die wereld
 optuigen en bevragen.
 
-Deze eerste versie is bewust krap: één cel per scenario, geen verkeer tussen
-cellen. Wat er wel al staat, is de grens — en die is met opzet een taalgrens en
-geen afspraak.
+Deze versie is bewust krap, maar de grens staat er wel al — en die is met opzet
+een taalgrens en geen afspraak.
 
 Wetten zijn optioneel. Een cel met `laws: []` is een **bron-cel**: ze legt vast
 en reduceert, zonder engine. Zie [Een bron-cel](#een-bron-cel).
+
+Gaat een vraag over een celgrens, dan loopt hij langs de **veiligheidscontext**
+van de vragende cel naar het **transport**, en dat is de enige weg. Zie
+[Over een celgrens](#over-een-celgrens). Wat daar langs gaat is te meten met het
+**observatielog**, een test-only instrument dat met opzet buiten de band staat:
+[Het observatielog](#het-observatielog-buiten-de-band).
 
 ## De drie chronolexogrammen, en waar ze hier zitten
 
@@ -82,7 +87,7 @@ Precies de drie dingen die er in de praktijk bij gedacht worden (RFC-022 §2):
 - **Geen synthese.** Een reductie raakt uitsluitend de eigen kronieken.
   Combineren over cellen heen doet een consument, nooit een cel.
 
-Twee dingen dwingen dat af in code in plaats van in proza:
+Drie dingen dwingen dat af in code in plaats van in proza:
 
 1. `Cell` houdt haar `ChronicleStore` in een **privéveld** zonder accessor. Er
    is geen `pub fn store()` en die komt er ook niet: dat een andere cel niet bij
@@ -90,6 +95,10 @@ Twee dingen dwingen dat af in code in plaats van in proza:
 2. De reductie mag alleen een regeling gebruiken die de cel zélf laadt. Een
    definitie die naar een vreemde regeling wijst, wordt geweigerd bij het
    optuigen van de cel — niet pas bij de eerste vraag.
+3. `Cell` heeft **geen veld en geen parameter** voor een transport of een
+   veiligheidscontext. `Cell::reduce` kan de grens dus niet bereiken; dat is een
+   compileerfout en geen afspraak. Een test grept `src/cell/` erop, zodat ook een
+   latere toevoeging die de weg zou openen meteen rood wordt.
 
 ## De publieke ingang
 
@@ -194,11 +203,103 @@ met `expect_not_established: true`; dat is een volwaardige verwachting en sluit
 wandklok. Feiten die pas later in de cel zijn vastgelegd, bestaan voor dat
 antwoord niet, en de engine kiest op datzelfde moment de regelingversie.
 
+## Over een celgrens
+
+Een cel bevraagt nooit zelf een andere cel. De vraag gaat langs twee dingen die
+een cel *niet* is (RFC-022 §2):
+
+```rust,ignore
+let transport = InProcessTransport::over(&cells);
+let context = SecurityContext::new(Identity::for_cell("toeslagen"), &transport);
+let signed = context.query("brp", "partnerschap", &params, op_moment)?;
+```
+
+- **`SecurityContext`** — identiteit, ondertekening, transportkeuze. Gebonden aan
+  precies één cel, en de **enige** die het transport aanroept.
+- **`CellTransport`** — de naad: `query(cel, lexostatus, params, op_moment)`.
+  Exact de vorm van de publieke ingang van een cel en met opzet niets meer; een
+  transport dat een reductie of een filter kon meesturen, zou de autonomie van de
+  bevraagde cel omzeilen. In-process nu (`InProcessTransport`), HTTP later, en dat
+  verschil mag `Cell` geen enkele wijziging kosten.
+
+Wat de context teruggeeft is geen antwoord maar een **bewijsstuk**
+(`SignedAnswer`): wie vroeg, ondertekend door welke identiteit, met welke
+parameters, en wat de peer antwoordde. Dat is geen gemak. Een cel die straks een
+waarde van een andere cel *accepteert* in plaats van narekent, moet precies dat in
+haar decretogram vastleggen (RFC-013 `accepted_values`), en het observatielog wil
+hetzelfde weten.
+
+Een vraag aan de eigen cel wordt geweigerd: voor eigen feiten is er een reductie.
+Zonder die weigering zou een cel haar eigen kroniek als cross-cel-contact in het
+log krijgen en daarmee het vraaggraf vervuilen.
+
+### Ondertekening is gesimuleerd
+
+De ondertekening is een **placeholder**, en dat staat in de waarde zelf:
+`GESIMULEERDE-ONDERTEKENING door cel:toeslagen`. Er zit geen sleutel achter en er
+valt niets aan te verifiëren. `Signature::is_simulated()` is daarom waar, en de
+test die dat vastlegt wordt rood op de dag dat er echt ondertekend wordt — wat de
+bedoeling is. Echte sleutels en trust material (Blauwe Knop/FCID, FSC) zijn buiten
+scope. Wat er wél is, is de vorm: een vraag die de grens over gaat draagt de
+identiteit die hem stuurde, en het log laat zien dat en door wie er ondertekend is.
+
+### Twee open vragen in de RFC, en wat wij hier kiezen
+
+Beide keuzes zijn een **standpunt in een open vraag**, geen implementatiedetail.
+Ze komen niet uit de RFC en horen niet als vaststaand gelezen te worden.
+
+- **Open Question 4 — twee transports, of één mechanisme met twee soorten peer?**
+  Wij lezen het als **één mechanisme met twee soorten peer**. Er is één
+  `CellTransport`-trait; wie er aan de andere kant staat (een cel of een
+  burger-client) is een eigenschap van de peer en niet van het mechanisme. Dat
+  standpunt is te falsifiëren: zodra cel↔burger een veld, een methode of een eigen
+  trait blijkt te vragen die cel↔cel niet gebruikt, was de andere lezing de juiste.
+  Vandaag bestaat alleen de cel↔cel-kant, dus het bewijs is nog niet geleverd.
+- **Open Question 2 — waaraan bindt de veiligheidscontext?** Onbeslist in de RFC.
+  Hier: één context per cel, met één identiteit die de cel zélf is
+  (`cel:toeslagen`). Geen medewerker, geen zaak, geen mandaat, geen autorisatie.
+  Dat is de dunste vorm die de vraag openhoudt; komt er een fijnere binding, dan
+  krijgt `Identity` velden en verandert er aan de aanroepers niets.
+
+## Het observatielog (buiten de band)
+
+`ObservationLog` legt per cross-cel-vraag vast: de vrager, de bevraagde cel, de
+lexostatus, de parameters, het moment, de (gesimuleerde) ondertekening en wat er
+terugkwam. Daarmee kan een run het feitelijke vraaggraf *laten zien* in plaats van
+beweren dat het klopt.
+
+Het log staat **niet in de RFC**. Die beweert autonomie, maar zegt nergens hoe je
+die meet; dit is toegevoegd meetgereedschap. En het hoort nooit een
+runtimecomponent te worden, om precies de reden die de opstelling wil bewijzen:
+het log ziet álles, dus wie het houdt kent de unie van wat over de grenzen ging —
+het totaalbeeld waarvan wij zeggen dat het nergens bestaat.
+
+Drie regels, en de eerste twee zijn afgedwongen in plaats van afgesproken:
+
+1. **Geen productiepad verwijst ernaar.** [`src/observation.rs`](src/observation.rs)
+   wordt door geen enkel ander bestand in `src/` geïmporteerd en staat niet in de
+   re-exports van de crate-wortel. Een test in
+   [`tests/observation_log.rs`](tests/observation_log.rs) grept `src/` en wordt
+   rood zodra iemand het toch doet.
+2. **`Cell` komt er niet in voor.** Het log leest wat een vraag opleverde; het kan
+   geen cel bevragen en geen kroniek bereiken. Ook dat is een grep-poort.
+3. **Passief.** `record` geeft niets terug en kan niet falen. Een meetinstrument
+   dat een run kan laten struikelen of een beslissing kan beïnvloeden, meet die
+   run niet meer.
+
+Het log bewaart het bewijsstuk van de veiligheidscontext ongewijzigd; er komt geen
+kopie-met-andere-namen naast. Wat in het log staat, is exact wat over de grens
+ging.
+
+De invarianten-gate die het gedeclareerde vraaggraf met het feitelijke vergelijkt
+(I3) staat er nog niet. Dit is het instrument waar die op gaat rusten.
+
 ## Scenarioformaat
 
-Een scenario is één YAML-bestand met twee blokken: `cells` (de wereld) en
-`queries` (de vragen plus wat ze moeten opleveren). De assertie hoort bij het
-scenario, niet bij Rust: een nieuw testgeval is een nieuw bestand.
+Een scenario is één YAML-bestand met `cells` (de wereld) en twee soorten vraag:
+`queries` (een consument bevraagt een cel) en `query_via_transport` (een cel
+bevraagt een andere cel). Beide dragen hun eigen verwachting; de assertie hoort
+bij het scenario en niet bij Rust, dus een nieuw testgeval is een nieuw bestand.
 
 ```yaml
 name: korte naam van het scenario
@@ -267,7 +368,26 @@ queries:
     op_moment: 2020-01-01
     expect_not_established: true                # verwacht dat er op dit moment
                                                 # niets vastgesteld was
+
+query_via_transport:                            # vragen over een celgrens
+  - description: vrije omschrijving             # optioneel
+    from: toeslagen                             # de vragende cel; haar
+                                                # veiligheidscontext ondertekent
+    cell: brp                                   # de bevraagde cel
+    lexostatus: partnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2024-01-01
+    expect:                                     # zelfde verwachtingen als bij
+      partnerschap_type: HUWELIJK               # een gewone vraag
 ```
+
+`query_via_transport` is een **test-only stap, en dat is tijdelijk**. In de
+opstelling die we bouwen stelt een cel zo'n vraag uitsluitend vanuit haar
+besluit-pad: ze heeft een input nodig die een andere organisatie vaststelt. Dat
+pad bestaat nog niet — een cel kan nog niets vastleggen en dus niets accepteren —
+en tot die tijd is dit de enige manier om het verkeer te laten zien en erop te
+asserteren. Zodra het besluit-pad er is, verhuist de aanroep daarheen.
 
 Onbekende velden worden geweigerd, zodat een typfout niet stil verdwijnt. Elke
 vraag heeft minstens één verwachting: een vraag zonder `expect` en zonder
@@ -310,8 +430,11 @@ bestand, en de laatste wint. Wie ze wél wil ordenen heeft een fijnere tijdas
 nodig, geen andere schrijfvolgorde.
 
 Feiten die in de echte wereld van een andere organisatie komen, staan hier als
-binnengekomen feit in de eigen kroniek. Zolang er geen transport tussen cellen
-is, is dat het eerlijke model: de cel kan niets ophalen wat ze niet zelf heeft.
+binnengekomen feit in de eigen kroniek. Dat blijft zo, ook nu er een transport is:
+een **reductie** kan geen andere cel bereiken, want de cel houdt geen transport en
+`Cell::reduce` heeft er geen weg naartoe. Over de grens gaat alleen wat langs de
+veiligheidscontext gaat, en die wordt vandaag alleen door een scenario-stap
+aangeroepen (zie [Over een celgrens](#over-een-celgrens)).
 Vraag je een moment op waarop een binnengekomen feit nog niet vastlag, dan faalt
 de reductie: bij een input met een `source` naar een regeling die deze cel niet
 laadt met "Law not found", en anders met "Variable not found". Beide zeggen
@@ -351,8 +474,18 @@ een vastgelegd besluit voor nodig. De eerstvolgende stap is daarom een
 haar eigen kroniek, dus geen consument mag erin schrijven, net zomin als eruit
 lezen.
 
-Verkeer tussen cellen (`CellTransport`), de veiligheidscontext, het
-observatielog, meerdere cellen in één scenario en asynchrone intake met een
-echte tijdlijn volgen apart. De indeling anticipeert erop: de reductielogica
-woont in [`src/cell/`](src/cell/) en niet in de scenario-runner, zodat een
-latere `packages/cell` een verplaatsing is en geen herschrijving.
+Aan de kant van de celgrens ontbreken nog drie dingen. **Accepteren in plaats van
+narekenen** (I5): het bewijsstuk van de veiligheidscontext heeft de vorm die een
+decretogram ervoor nodig heeft, maar er is nog geen decretogram om het in te
+leggen. De **invarianten-gate** die het gedeclareerde vraaggraf uit het scenario
+vergelijkt met het feitelijke uit het observatielog (I3). En **autorisatie**: de
+veiligheidscontext kent identiteit en ondertekening, en beslist nog niets over wat
+mag.
+
+Ook een **HTTP-transport** is er niet; dat is het punt van de trait. Komt het er,
+dan is dat een tweede implementatie naast `InProcessTransport` en geen wijziging in
+`Cell` — en als dat laatste wél nodig blijkt, was de naad op de verkeerde plek
+gelegd. Asynchrone intake met een echte tijdlijn volgt apart. De indeling
+anticipeert erop: de reductielogica woont in [`src/cell/`](src/cell/) en niet in de
+scenario-runner, zodat een latere `packages/cell` een verplaatsing is en geen
+herschrijving.

@@ -8,9 +8,15 @@
 //! vastlegt en reduceert zonder engine, en dat is de toets dat het
 //! lexostatus-contract engine-onafhankelijk is.
 //!
-//! Deze eerste versie kent één cel per scenario en geen verkeer tussen cellen.
-//! De grens ligt er wel al: een cel bezit haar [`ChronicleStore`] privé, en
-//! [`Cell::reduce`] is de enige publieke ingang voor een consument.
+//! De grens tussen cellen is een taalgrens en geen afspraak: een cel bezit haar
+//! [`ChronicleStore`] privé, en [`Cell::reduce`] is de enige publieke ingang voor
+//! een consument. Gaat een vraag over een celgrens, dan loopt hij langs
+//! [`SecurityContext`] (identiteit en ondertekening) naar [`CellTransport`] (de
+//! naad: in-process nu, HTTP later). Een cel houdt zelf geen van beide.
+//!
+//! Het [`observation`]-log is het meetinstrument daarnaast: test-only, passief en
+//! met opzet buiten de band, want een observator die álles ziet kent wél het
+//! totaalbeeld waarvan deze opstelling zegt dat het nergens bestaat.
 //!
 //! ```no_run
 //! use regelrecht_simulator::{regulation_root, Scenario};
@@ -29,7 +35,13 @@
 pub mod cell;
 mod corpus;
 pub mod error;
+// Meetinstrument, geen onderdeel van de opstelling: zie de moduledocs. Met opzet
+// geen re-export hieronder — wie hem gebruikt, noemt hem bij zijn volle naam, en
+// geen ander bestand in `src/` mag dat doen.
+pub mod observation;
 pub mod scenario;
+pub mod security;
+pub mod transport;
 mod values;
 
 pub use cell::{
@@ -38,4 +50,9 @@ pub use cell::{
 };
 pub use corpus::regulation_root;
 pub use error::{Result, SimulatorError};
-pub use scenario::{ExpectationFailure, Query, QueryOutcome, Scenario, ScenarioRun};
+pub use scenario::{
+    ExpectationFailure, Query, QueryOutcome, Scenario, ScenarioRun, TransportOutcome,
+    TransportQuery,
+};
+pub use security::{Identity, SecurityContext, Signature, SignedAnswer};
+pub use transport::{CellTransport, InProcessTransport};

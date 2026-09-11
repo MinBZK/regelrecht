@@ -328,6 +328,35 @@ pub enum SimulatorError {
         cell: String,
     },
 
+    /// Het transport kent de aangewezen peer niet.
+    ///
+    /// Eigen variant naast [`SimulatorError::UnknownCell`]: dit is geen fout in
+    /// een scenariobestand maar een vraag die de grens over wilde naar iets wat
+    /// er niet is. Een transport verzint geen antwoord.
+    #[error("transport kent geen cel '{cell}' (wel: {known})")]
+    UnknownPeer {
+        /// Het onbekende cel-id.
+        cell: String,
+        /// Komma-gescheiden lijst van cellen die het transport wél bereikt.
+        known: String,
+    },
+
+    /// Een cel bevraagt zichzelf via het transport.
+    ///
+    /// Voor de eigen feiten is er een reductie; het transport is er voor peers.
+    /// Zonder deze weigering zou een cel haar eigen kroniek als cross-cel-contact
+    /// in het observatielog krijgen en daarmee het vraaggraf vervuilen.
+    #[error(
+        "cel '{cell}' vraagt '{lexostatus}' via het transport aan zichzelf; \
+         voor eigen feiten is er een reductie"
+    )]
+    TransportToSelf {
+        /// De cel die zichzelf bevroeg.
+        cell: String,
+        /// De gevraagde lexostatus.
+        lexostatus: String,
+    },
+
     /// Het scenariobestand kon niet gelezen worden.
     #[error("kon scenario '{path}' niet lezen: {source}")]
     ScenarioRead {
