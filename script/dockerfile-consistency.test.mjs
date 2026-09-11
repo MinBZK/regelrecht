@@ -20,6 +20,7 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 
 const DOCKERFILES = [
   'packages/admin/Dockerfile',
+  'packages/chrono-poc-web/Dockerfile',
   'packages/pipeline/Dockerfile',
   'frontend/Dockerfile',
   'frontend-demo/Dockerfile',
@@ -92,7 +93,7 @@ function binTargets() {
 test('elke bouwtrap die knipt is ook gevonden', () => {
   // Zonder deze ondergrens zou een stukgelopen parser als een groene test
   // langskomen: nul trappen halen elke assertie hieronder vacuüm.
-  assert.ok(STAGES.length >= 4, `slechts ${STAGES.length} knippende bouwtrappen gevonden`);
+  assert.ok(STAGES.length >= 5, `slechts ${STAGES.length} knippende bouwtrappen gevonden`);
   assert.ok(MEMBERS.length >= 12, `slechts ${MEMBERS.length} members gelezen`);
 });
 
@@ -130,7 +131,7 @@ test('de rust-tag van elk basisimage volgt rust-toolchain.toml', () => {
       );
     }
   }
-  assert.ok(seen >= 3, `slechts ${seen} rust-basisimages gevonden`);
+  assert.ok(seen >= 4, `slechts ${seen} rust-basisimages gevonden`);
 });
 
 test('elke BIN-build-arg in deploy.yml bestaat als bin-target', () => {
@@ -152,5 +153,5 @@ test('elk binary-pad dat een runtime-trap kopieert bestaat als bin-target', () =
       assert.ok(bins.has(bin), `${path}: kopieert ${bin}, maar dat is geen bin-target van de workspace`);
     }
   }
-  assert.ok(seen >= 4, `slechts ${seen} binary-kopieën gevonden`);
+  assert.ok(seen >= 5, `slechts ${seen} binary-kopieën gevonden`);
 });

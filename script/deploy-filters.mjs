@@ -54,6 +54,18 @@ export const COMPONENTS = {
     crate: 'regelrecht-pipeline',
     paths: ['packages/pipeline/Dockerfile'],
   },
+  // De testopstelling: één image met het axum-binary en zijn eigen Vue-bundel.
+  // De crate trekt de simulator, de engine en auth via de graaf mee; wat er met
+  // de hand bij moet is de Dockerfile, de frontend en het gedeelde
+  // frontend-pakket.
+  'chrono-poc': {
+    crate: 'regelrecht-chrono-poc-web',
+    paths: [
+      'packages/chrono-poc-web/Dockerfile',
+      'frontend-chrono-poc/',
+      'packages/frontend-shared/',
+    ],
+  },
   grafana: { crate: null, paths: ['packages/grafana/'] },
   lawmaking: {
     crate: null,

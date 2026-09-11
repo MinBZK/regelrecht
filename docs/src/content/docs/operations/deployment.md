@@ -41,6 +41,7 @@ The preview deployment and its GHCR images are cleaned up automatically.
 | Harvester Worker | `regelrecht-harvester-worker` | (no web UI) |
 | Enrich Worker | `regelrecht-enrich-worker` | (no web UI) |
 | Pipeline API | `regelrecht-pipeline-api` | (no public URL; reached in-cluster) |
+| Chronolexography test rig | `regelrecht-chrono-poc` | `chrono-poc.regelrecht.rijks.app` |
 | Lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | Demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` (ZAD-component nog aanmaken, zie hieronder) |
 | Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
@@ -73,6 +74,64 @@ De demo (`frontend-demo/`, doel `demo.regelrecht.rijks.app`) is in `deploy.yml` 
 5. **Merge naar main** rolt de demo productie in; de tabel hierboven en `CLAUDE.md` krijgen dan de definitieve regel zonder "still to be wired". Het image valt vanzelf onder `scheduled-cleanup.yml`, dat op `sha-`-tags en de draaiende deployment toetst.
 
 De demo heeft geen backend en geen secrets nodig; de bouw duurt langer dan de andere frontends door de Rust-naar-WASM-stap (de `wasm-builder`-stage is gepind op de Rust-versie uit `rust-toolchain.toml` en de `wasm-bindgen`-versie uit `packages/Cargo.lock`, en faalt luid als die uit elkaar lopen).
+
+## De chronolexografie-testopstelling (`chrono-poc`)
+
+Het image `regelrecht-chrono-poc` bevat twee dingen: het axum-binary uit
+`packages/chrono-poc-web/` en de Vue-bundel uit `frontend-chrono-poc/`
+(gebouwd in dezelfde Dockerfile, op `/app/static`). Wat het **niet** bevat is een
+wereld: geen wetten, geen kronieken, geen startstand. Die haalt het proces bij het
+starten op uit de bron die de omgeving noemt, en daarom is dit image publiek te
+publiceren ook als de wereld die het draait dat niet is.
+
+Het opstarten faalt luid. Ontbreekt de bron, is het wereldbestand onleesbaar, of
+noemt het een regeling die niet in de opgehaalde map staat, dan stopt het proces
+met de reden in plaats van op te komen en op elk verzoek dezelfde fout te geven.
+
+### Instellingen
+
+| variabele | wat |
+|---|---|
+| `CHRONO_POC_WORLD_SOURCE` | **verplicht.** Waar het wereldbestand staat: `local:<pad>` of `github:<owner>/<repo>@<ref>:<pad>` |
+| `CHRONO_POC_CORPUS_SOURCE` | waar de regelingen staan, in dezelfde twee vormen. Afwezig: `REGULATION_PATH`, anders het corpus in de checkout |
+| `CHRONO_POC_AUTH_REF` | de sleutel waaronder het GitHub-token opgezocht wordt; standaard de reponaam uit de bron |
+| `CHRONO_POC_REQUIRED_ROLE` | de rol waarachter `/api/*` staat; standaard `editor-reader`, zodat de bestaande login volstaat |
+| `CHRONO_POC_PORT` | de poort; standaard `8000`, wat de container ook publiceert |
+| `CORPUS_AUTH_<SLUG>_TOKEN` | het GitHub-token voor een bron die niet publiek is. Dezelfde conventie als de rest van de workspace; de opzoeking is strikt, dus het gedeelde `CORPUS_GIT_TOKEN` gaat nooit naar een repo die deze app aanwijst |
+| `OIDC_*`, `BASE_URL` | de login, gelezen door `packages/auth`. In ZAD komt `OIDC_DISCOVERY_URL` (plus client-id en -secret) van de `keycloak`-service op de component; die hoeven dus niet met de hand gezet te worden. Zonder `OIDC_CLIENT_ID` staat de login **uit** en is elke route open — alleen lokaal |
+
+`STATIC_DIR` staat al in het image en hoeft niet gezet te worden.
+
+### De ZAD-component
+
+Eenmalig, met de hand, door iemand met `RIG_API_KEY`, en **nadat het eerste image
+bestaat**: `deploy-production` zet alle componenten in één taak, dus een component
+die ZAD niet kent laat die hele taak falen. De volgorde is daarom: PR labelen met
+`deploy:preview` zodat `build-chrono-poc` een `pr-<N>`-tag publiceert, dan de
+component registreren op die tag, dan de preview opnieuw laten draaien.
+
+```bash
+zad component add chrono-poc \
+    --image ghcr.io/minbzk/regelrecht-chrono-poc:pr-<N> \
+    --deployment regelrecht \
+    --port 8000 \
+    --service publish-on-web \
+    --service keycloak \
+    -e CHRONO_POC_WORLD_SOURCE=... \
+    -e CHRONO_POC_CORPUS_SOURCE=...
+```
+
+Er is geen `zad component edit`: de env-variabelen gaan mee bij `add` (of via de
+deploy-action). Daarna de hostnaam `chrono-poc.regelrecht.rijks.app` aan de
+component koppelen, zoals bij `lawmaking`. Previews erven de instellingen via
+`clone-from: regelrecht`, dus een preview-URL van de vorm
+`chrono-poc-pr<N>-<project>.rig.prd1.gn2.quattro.rijksapps.nl` draait dezelfde
+wereld als productie.
+
+Loopt een preview-deploy op "Task did not complete within 300s", lees dan
+`zad logs pr<N>`. Een timeout hier is bijna altijd een applicatiefout bij het
+starten — een bron die niet bestaat, een ref zonder die wet, een ontbrekend token
+— en niet iets wat een tweede poging oplost.
 
 ## ZAD CLI
 

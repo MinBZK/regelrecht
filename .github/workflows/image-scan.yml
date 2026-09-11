@@ -35,13 +35,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Dezelfde acht als de image-name-regels in deploy.yml.
+        # De image-name-regels uit deploy.yml, op demo na: die heeft nog geen
+        # `latest` op GHCR en zou dus alleen een niet-bestaande tag scannen.
         image:
           - regelrecht-editor
           - regelrecht-admin
           - regelrecht-harvester-worker
           - regelrecht-enrich-worker
           - regelrecht-pipeline-api
+          - regelrecht-chrono-poc
           - regelrecht-grafana
           - regelrecht-lawmaking
           - regelrecht-docs

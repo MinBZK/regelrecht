@@ -32,6 +32,8 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 | [packages/github/](packages/github/) | Shared GitHub REST client |
 | [packages/shared/](packages/shared/) | Shared domain types across crates |
 | [packages/arch-extract/](packages/arch-extract/) | Derives the architecture model from the code (`just arch-explore`) |
+| [packages/simulator/](packages/simulator/) | The chronolexography test rig: cells with a private chronicle store, lexostatus reductions, and a single transport across every cell boundary |
+| [packages/chrono-poc-web/](packages/chrono-poc-web/) | HTTP layer over the test rig: one world per browser session, the world API as JSON |
 | [packages/tui/](packages/tui/) | Terminal dashboard (Ratatui) |
 
 ### Frontends and sites
@@ -40,6 +42,7 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 |-----------|-------------|
 | [frontend/](frontend/) | Law editor UI (Vue 3 + Vite) |
 | [frontend-lawmaking/](frontend-lawmaking/) | Law-making process visualization (Vue 3 + Vite) |
+| [frontend-chrono-poc/](frontend-chrono-poc/) | The chronolexography test rig in the browser (Vue 3 + Vite on the world API): a column per cell, a timeline, the actions of the moment, and where every value came from |
 | [packages/frontend-shared/](packages/frontend-shared/) | Shared frontend primitives (auth, colour scheme, API fetch) |
 | [docs/](docs/) | Astro site: landing page + documentation |
 
@@ -82,6 +85,7 @@ editor sessions; they are not meant to be read directly.
 | Documentation | https://docs.regelrecht.rijks.app |
 | Law-making | https://lawmaking.regelrecht.rijks.app |
 | Harvester admin | https://harvester-admin.regelrecht.rijks.app |
+| Chronolexography test rig | https://chrono-poc.regelrecht.rijks.app |
 | Grafana | https://grafana.regelrecht.rijks.app |
 
 The pipeline API and the harvester and enrich workers deploy alongside these but have no web UI of their own.

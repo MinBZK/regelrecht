@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# De cargo-chef-pin (versie + beide checksums) staat in drie Dockerfiles.
+# De cargo-chef-pin (versie + beide checksums) staat in elk van de Dockerfiles
+# hieronder.
 # Uiteenlopen is stil: de build die de verkeerde pin heeft faalt pas als iemand
 # dat image toevallig koud bouwt, en dan met een checksum-fout zonder oorzaak.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-files=(frontend/Dockerfile packages/admin/Dockerfile packages/pipeline/Dockerfile)
+files=(frontend/Dockerfile packages/admin/Dockerfile packages/chrono-poc-web/Dockerfile packages/pipeline/Dockerfile)
 reference=""
 status=0
 

@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/editor-api/` - Rust backend API for the editor frontend
 - `packages/corpus/` - Shared library for working with YAML regulation files
 - `packages/shared/` - Common types/utilities across packages
-- `packages/chrono-poc-web/` - HTTP-laag om de simulator: axum + OIDC, één `World` per browsersessie in geheugen, de wereld-API als JSON, geen database
+- `packages/chrono-poc-web/` - HTTP-laag om de simulator: axum + OIDC, één `World` per browsersessie in geheugen, de wereld-API als JSON, geen database. `packages/chrono-poc-web/Dockerfile` bakt dit binary samen met de `frontend-chrono-poc`-bundel tot het image `regelrecht-chrono-poc`, doeldomein `chrono-poc.regelrecht.rijks.app`. De wereld en de regelingen zitten **niet** in het image: die komen bij het starten uit `CHRONO_POC_WORLD_SOURCE`/`CHRONO_POC_CORPUS_SOURCE`, zodat het image publiek kan zijn ook als de wereld die het draait dat niet is
 - `packages/simulator/` - Chronolexografie testopstelling (RFC-022): cellen met een privé kroniekstore, lexostatus-reducties, een veiligheidscontext plus `CellTransport` als enige weg over een celgrens, het test-only observatielog en een scenario-loader
 - `packages/tui/` - Terminal UI dashboard
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
@@ -87,8 +87,9 @@ merge). The format is **Conventional Commits**: `type(scope): subject`, where
 - **Allowed types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
   `test`, `chore`, `build`, `ci`.
 - **Allowed scopes** (optional): `engine`, `admin`, `pipeline`, `harvester`,
-  `editor`, `corpus`, `github`, `frontend`, `lawmaking`, `demo`, `docs`, `grafana`,
-  `ci`, `schema`, `deps`, `dev`. An unlisted scope fails the lint.
+  `editor`, `corpus`, `github`, `frontend`, `lawmaking`, `demo`, `chrono-poc`,
+  `docs`, `grafana`, `ci`, `schema`, `deps`, `dev`. An unlisted scope fails the
+  lint.
 - **The subject MUST start with a lowercase letter** (`subjectPattern:
   ^[a-z].*$`). This is the easiest rule to trip on: `docs: RFC-…` fails because
   "RFC" is uppercase — write `docs: verwijzingen naar RFC's …` instead. Editing
@@ -474,6 +475,7 @@ de job staat in het workflowbestand dat de PR meebrengt.
 | harvester-worker | `regelrecht-harvester-worker` | (no web UI) |
 | enrichworker | `regelrecht-enrich-worker` | (no web UI) |
 | pipeline-api | `regelrecht-pipeline-api` | (internal) |
+| chrono-poc | `regelrecht-chrono-poc` | `chrono-poc.regelrecht.rijks.app` |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` (ZAD component still to be created) |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
