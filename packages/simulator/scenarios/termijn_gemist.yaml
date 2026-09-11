@@ -1,0 +1,136 @@
+---
+name: een gemiste termijn waarschuwt en blokkeert niets
+description: >-
+  Een termijn in het wereldbestand zegt wanneer een feit er hoort te liggen. Ligt
+  het er op dat moment niet, dan komt er een **waarschuwing** naast de wereld —
+  en verder niets. De aanvraag kan alsnog binnenkomen, en ze landt gewoon: de wet
+  zegt wat de termijn was, niet dat er daarna niets meer mag.
+
+  Waarom dat een standpunt is en geen gemak: een termijn die de actie blokkeert,
+  zou de opstelling laten beweren dat een te late aanvraag niet bestaat. Ze
+  bestaat wel, en wat er met de te late aanvraag gebeurt, is een besluit van het
+  bestuursorgaan en geen eigenschap van de simulator.
+
+  De tweede assertie is de tijdreductie eronder: op het moment van de termijn was
+  er níets vastgesteld, en dat blijft het antwoord op dat moment, ook nu de
+  aanvraag er ligt. Zou de waarschuwing pas aan het eind van de run uitgerekend
+  worden, dan zou ze nooit vallen — want dán ligt de aanvraag er.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  # Twee bron-cellen. Geen wetten, geen engine: een termijn en een levering zijn
+  # geen berekening, en dit scenario hoort dat niet nodig te hebben.
+  - id: burger
+    laws: []
+    chronicles:
+      - stream: aanvragen
+        key: bsn
+
+    lexostatus_definitions:
+      - name: ingediende_aanvraag
+        doc: wat deze aanvrager zelf indiende
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - jaar
+        reduction:
+          chronicle: aanvragen
+          key: bsn
+          latest: true
+
+  - id: toeslagen
+    laws: []
+    chronicles:
+      - stream: aanvragen
+        key: bsn
+
+    lexostatus_definitions:
+      - name: ontvangen_aanvraag
+        doc: wat deze cel geleverd kreeg
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - jaar
+        reduction:
+          chronicle: aanvragen
+          key: bsn
+          latest: true
+
+actions:
+  - id: burger.aanvraag
+    actor: burger
+    label: Aanvraag indienen
+    records:
+      cell: burger
+      chronicle: aanvragen
+      name: aanvraag_ingediend
+      intake: aanvraag
+      grondslag: Awir art. 15
+      fields:
+        - name: bsn
+          type: string
+        - name: jaar
+          type: number
+      delivers_to:
+        cell: toeslagen
+        chronicle: aanvragen
+        name: aanvraag_ontvangen
+        intake: aanvraag
+
+deadlines:
+  - label: aanvraag ontvangen vóór 1 februari
+    at: 2024-02-01
+    warn_if_missing:
+      cell: toeslagen
+      chronicle: aanvragen
+      name: aanvraag_ontvangen
+
+act:
+  - description: >-
+      De aanvraag komt een maand ná de termijn binnen. Ze wordt vastgelegd en
+      geleverd; de weigering die er niet is, is het punt.
+    action: burger.aanvraag
+    values:
+      bsn: '999993653'
+      jaar: 2024
+    op_moment: 2024-03-01
+
+queries:
+  - description: >-
+      Op het moment van de termijn lag er niets, en dat blijft het antwoord op dat
+      moment — ook nu de klok een maand verder staat en de aanvraag er ligt.
+    cell: toeslagen
+    lexostatus: ontvangen_aanvraag
+    params:
+      bsn: '999993653'
+    op_moment: 2024-02-01
+    expect_not_established: true
+
+  - description: >-
+      En de te late aanvraag ligt er gewoon, met haar eigen moment. Een
+      waarschuwing houdt niets tegen.
+    cell: toeslagen
+    lexostatus: ontvangen_aanvraag
+    params:
+      bsn: '999993653'
+    op_moment: 2024-03-01
+    expect:
+      jaar: 2024
+
+  - description: >-
+      De aanvrager weet wat zij indiende, uit haar eigen kroniek. Ook bij een te
+      late aanvraag zijn het twee grammen en geen gedeelde staat.
+    cell: burger
+    lexostatus: ingediende_aanvraag
+    params:
+      bsn: '999993653'
+    op_moment: 2024-03-01
+    expect:
+      jaar: 2024
+
+expect_warnings:
+  - aanvraag ontvangen vóór 1 februari

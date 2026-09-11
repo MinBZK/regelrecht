@@ -1,0 +1,114 @@
+---
+name: een actie lokt een besluit uit dat over een celgrens vraagt zonder declaratie
+description: >-
+  **Negatieve fixture: dit scenario hoort te falen.** Hij staat in
+  `scenarios/negatief/` en wordt door `tests/invarianten.rs` gedraaid, dat
+  controleert dát hij faalt en waarop — niet door de gewone scenariosuite, die
+  van elk bestand verwacht dat het groen is.
+
+  Wat er mis is: hetzelfde als in `niet_gedeclareerde_call.yaml`, maar het besluit
+  wordt hier niet rechtstreeks genomen. Een **actie** start het besluit-pad, en
+  dat besluit haalt de relatievorm bij `brp` omdat haar eigen wet daarom vraagt.
+  Het bestand declareert geen enkel vraaggraf, en dan is de bewering "er gaat
+  niets over een celgrens".
+
+  Waarom dat een eigen fixture verdient: een actie is een tweede weg naar het
+  besluit-pad, en de gate leest de besluiten van een run. Zouden de besluiten die
+  een actie uitlokt daar niet in meekomen, dan zou een wereldbestand elke
+  celgrens over kunnen door de actie ervoor te zetten — en dan meet de gate
+  alleen nog de weg die niemand meer gebruikt.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: brp
+    laws: []
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+
+    lexostatus_definitions:
+      - name: partnerschap
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  - id: toeslagen
+    laws:
+      - test_partnerschapstoets
+
+    accepts_from:
+      - cell: brp
+        output: partnerschap
+        lexostatus: partnerschap
+        field: partnerschap_type
+
+    besluit_definitions:
+      - name: partnerschapstoets
+        regulation: test_partnerschapstoets
+        output: is_gehuwd
+        zaakkenmerk: partnerschapstoets/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: partnerschapsbeschikking
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - is_gehuwd
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+actions:
+  - id: toeslagen.partnerschapstoets
+    actor: toeslagen
+    label: Beslis op de partnerschapstoets
+    decides:
+      cell: toeslagen
+      besluit: partnerschapstoets
+
+# Hier hoort een `query_graph` te staan met de tak toeslagen -> brp.partnerschap.
+# Hij staat er niet, en dat is de schending.
+
+act:
+  - description: de actie start het besluit-pad, en dat vraagt over de celgrens
+    action: toeslagen.partnerschapstoets
+    values:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      is_gehuwd: true
+
+queries:
+  - cell: toeslagen
+    lexostatus: partnerschapsbeschikking
+    params:
+      zaakkenmerk: partnerschapstoets/999993653
+    op_moment: 2024-06-01
+    expect:
+      is_gehuwd: true

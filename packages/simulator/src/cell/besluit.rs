@@ -96,6 +96,15 @@ const FIXED_FIELDS: [&str; 9] = [
     RECEIPT,
 ];
 
+/// De vaste velden van een decretogram, in de volgorde waarin ze hierboven staan.
+///
+/// Voor het beeld van de wereld: alleen wie deze namen kent, kan van elk veld van
+/// een decretogram zeggen of het een uitkomst van het besluit is of een vast veld
+/// van het gram zelf — en dus waar de waarde vandaan komt.
+pub(crate) fn fixed_fields() -> &'static [&'static str] {
+    &FIXED_FIELDS
+}
+
 /// Veld met het bedrag van één betalingstermijn.
 pub const BEDRAG: &str = "bedrag";
 /// Veld met het volgnummer van een termijn binnen één verplichting.
@@ -1060,6 +1069,20 @@ impl BesluitDefinition {
             obligation.schedule(cell, &self.name, settings)?;
         }
         Ok(())
+    }
+
+    /// De instellingen van het wereldbestand waarop dit besluit leunt.
+    ///
+    /// Vandaag is dat alleen het ritme van een verplichting (`schedule:
+    /// $naam`). Wat het oplevert, is wat vast komt te staan zodra dit besluit
+    /// genomen is: het gram legt vast waarop besloten is, dus een instelling die
+    /// er daarna onder vandaan geschoven wordt, laat het gram iets anders zeggen
+    /// dan er gebeurd is (zie [`crate::World::update_settings`]).
+    pub fn settings_used(&self) -> BTreeSet<&str> {
+        self.obligations
+            .iter()
+            .filter_map(|obligation| obligation.schedule.strip_prefix('$'))
+            .collect()
     }
 
     /// De cellen die een verplichting van dit besluit moeten dragen.

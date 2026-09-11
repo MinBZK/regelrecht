@@ -33,7 +33,16 @@ pub use besluit::{
     AcceptanceRequest, BesluitDefinition, BesluitInput, Decretogram, DecretogramInput, InputOrigin,
     ObligationDefinition, ObligationDue, Schedule, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
 };
+// De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
+// uitkomst van een besluit van een vast veld kunnen onderscheiden om de herkomst
+// van elke waarde te kunnen noemen. `pub(crate)`, want het is geen contract naar
+// buiten — wat een gram draagt, staat in [`Decretogram`].
+pub(crate) use besluit::{fixed_fields, INPUTS, RECEIPT, REGULATION};
+// Het formulier van een actie wordt tegen dezelfde toets gehouden als de
+// parameters van een lexostatus of een besluit: precies wat gedocumenteerd is,
+// niets erbij en niets van het verkeerde type.
 pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
+pub(crate) use config::check_documented_params;
 pub use config::{
     AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition,
     ParameterType, Reduction,
@@ -42,6 +51,7 @@ pub use config::{
 use crate::corpus;
 use crate::error::{Result, SimulatorError, Subject};
 use crate::values::amount;
+use chronicle::ChronicleView;
 use chrono::NaiveDate;
 use config::{engine_parameters, CellSurface};
 use regelrecht_engine::article::CompetentAuthority;
@@ -55,7 +65,12 @@ use std::rc::Rc;
 
 /// Het antwoord van een cel: de rechtstoestand vanuit een gevraagd perspectief,
 /// op de feiten die in die cel bekend zijn.
-#[derive(Debug, Clone)]
+///
+/// `Serialize` hoort erbij omdat een antwoord over een celgrens in het beeld van
+/// de wereld komt te staan (zie [`crate::Snapshot`]) en daar precies zo hoort te
+/// verschijnen als de cel het gaf — inclusief "niets vastgesteld", dat een
+/// antwoord is en geen leeg antwoord.
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Lexostatus {
     /// De cel die geantwoord heeft.
     pub cell: String,
@@ -73,7 +88,13 @@ pub struct Lexostatus {
 /// feit had, heeft niet gefaald en is niet stuk; ze heeft een antwoord dat een
 /// consument moet kunnen onderscheiden van een antwoord met waarden. Een lege
 /// map zou dat onderscheid verstoppen, want die lijkt op een antwoord.
-#[derive(Debug, Clone)]
+///
+/// Geserialiseerd blijven de twee daarom uit elkaar: `{"established": {…}}`
+/// tegenover `{"not_established": {"reason": "…"}}`. Een vorm waarin ze
+/// samenvallen — een lege map, een `null` — zou het onderscheid dat deze
+/// opstelling maakt precies bij de grens naar buiten weer weggooien.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum LexostatusOutcome {
     /// Er was een feit, en dit is wat de cel erover publiceert.
     ///
@@ -116,6 +137,12 @@ impl Lexostatus {
 pub struct Cell {
     /// Het cel-id, alleen voor foutmeldingen en herkomst in het antwoord.
     id: String,
+    /// De regelingen die deze cel laadt, bij `$id`.
+    ///
+    /// Niet om er iets mee te doen — daarvoor is er een engine — maar omdat het
+    /// beeld van de wereld hoort te laten zien welk recht waar geladen is. Een
+    /// cel met een lege lijst is een bron-cel, en dat is te zien.
+    laws: Vec<String>,
     /// Engine met uitsluitend de eigen wetten van deze cel geladen — of geen
     /// engine, bij een bron-cel (`laws: []`).
     ///
@@ -141,6 +168,15 @@ pub struct Cell {
     besluit_service: Option<RefCell<LawExecutionService>>,
     /// De eigen feiten. Privé, en dat is het punt.
     chronicles: ChronicleStore,
+    /// Per kroniekstroom de veldnamen die deze cel van die stroom kent, zoals bij
+    /// het optuigen vastgesteld.
+    ///
+    /// Dezelfde kennis waarmee de definities van de cel getoetst zijn, bewaard
+    /// zodat de wereld haar **acties** en **termijnen** er langs dezelfde weg
+    /// tegen kan toetsen (zie [`Self::check_stream_field`]). Zou de wereld een
+    /// eigen lijstje bijhouden, dan zou een veldnaam die de cel afwijst in een
+    /// actie stil goedgekeurd worden.
+    streams: config::StreamFields,
     /// De gepubliceerde lexostatussen, op naam.
     published: BTreeMap<String, LexostatusDefinition>,
     /// De besluiten die deze cel kan nemen, op naam.
@@ -284,14 +320,147 @@ impl Cell {
 
         Ok(Self {
             id: config.id.clone(),
+            laws: config.laws.clone(),
             service: service.map(RefCell::new),
             besluit_service: besluit_service.map(RefCell::new),
             chronicles,
+            streams: surface.streams,
             published,
             besluiten,
             accepts_from,
             foreign_sources,
         })
+    }
+
+    /// Het cel-id.
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// De regelingen die deze cel laadt, bij `$id`.
+    pub(crate) fn laws(&self) -> &[String] {
+        &self.laws
+    }
+
+    /// De namen die deze cel publiceert, in alfabetische volgorde.
+    pub(crate) fn published_names(&self) -> Vec<&str> {
+        self.published.keys().map(String::as_str).collect()
+    }
+
+    /// De besluiten die deze cel kan nemen, in alfabetische volgorde.
+    pub(crate) fn besluit_names(&self) -> Vec<&str> {
+        self.besluiten.keys().map(String::as_str).collect()
+    }
+
+    /// Kent deze cel deze stroom, en kent die stroom dit veld?
+    ///
+    /// `pub(crate)`, en alleen om iets te kunnen **afkeuren**: de wereld toetst er
+    /// de voorwaarde van een actie mee bij het optuigen. Het antwoord zegt niets
+    /// over wat er in de stroom staat — alleen dat een veldnaam met die naam
+    /// erin kan voorkomen — en het loopt langs precies dezelfde toets als de
+    /// definities van de cel.
+    pub(crate) fn check_stream_field(
+        &self,
+        subject: Subject,
+        name: &str,
+        stream: &str,
+        field: &str,
+    ) -> Result<()> {
+        config::check_stream_field(&self.streams, &self.id, subject, name, stream, field)
+    }
+
+    /// Houdt deze cel deze stroom?
+    ///
+    /// Dezelfde weigering als [`Self::check_stream_field`], zonder een veld: een
+    /// termijn wijst een stroom en een gram-naam aan, en een naam is geen veld.
+    pub(crate) fn check_stream(&self, subject: Subject, name: &str, stream: &str) -> Result<()> {
+        config::fields_of_stream(&self.streams, &self.id, subject, name, stream).map(|_| ())
+    }
+
+    /// Ligt er op of vóór `op_moment` een feit in deze stroom met dit veld op
+    /// deze waarde?
+    ///
+    /// Ja of nee, nooit een waarde. Hiermee beantwoordt de wereld de vraag "is het
+    /// verhaal zover?" voor een actie die pas mag als er iets gebeurd is (zie
+    /// [`crate::world::Availability`]). Dat is geen reductie en geen synthese: er
+    /// komt geen feit naar buiten, en geen andere cel kan hier bij.
+    pub(crate) fn has_fact(
+        &self,
+        stream: &str,
+        field: &str,
+        value: &Value,
+        op_moment: NaiveDate,
+    ) -> bool {
+        !self
+            .chronicles
+            .recordings(stream, field, value, &BTreeMap::new(), op_moment)
+            .is_empty()
+    }
+
+    /// Ligt er op of vóór `op_moment` een gram met deze naam in deze stroom?
+    ///
+    /// Voor een termijn die waarschuwt als een feit ontbreekt: dat is een vraag
+    /// over de naam van het gram, niet over een veldwaarde.
+    pub(crate) fn has_recording_named(
+        &self,
+        stream: &str,
+        name: &str,
+        op_moment: NaiveDate,
+    ) -> bool {
+        self.chronicles.contains_named(stream, name, op_moment)
+    }
+
+    /// Kan deze cel op eigen naam een feit met deze velden in deze stroom leggen?
+    ///
+    /// De toets van [`Self::record`], vooruitgeschoven naar het optuigen: een
+    /// actie noemt haar formulier en haar stroom, en dan staat hier al vast of het
+    /// gram dat eruit komt ooit kan landen. Een actie die pas bij de eerste klik
+    /// omvalt, is een typfout die op het verkeerde moment boven water komt.
+    ///
+    /// Geeft de reden als tekst en niet als [`SimulatorError`]: *waarom* het niet
+    /// kan weet de cel, *welke actie* het was weet de wereld, en die twee horen in
+    /// één melding samen te komen (zie [`SimulatorError::ActionRecording`]).
+    pub(crate) fn check_recordable(
+        &self,
+        stream: &str,
+        fields: &BTreeSet<String>,
+    ) -> std::result::Result<(), String> {
+        if stream == BESCHIKKINGEN {
+            return Err(format!(
+                "'{BESCHIKKINGEN}' is voorbehouden aan het besluit-pad; daar ontstaat een \
+                 gram door te besluiten en niet door het vast te leggen"
+            ));
+        }
+        let Some(key) = self.chronicles.key_of(stream) else {
+            return Err(format!(
+                "die cel houdt geen stroom met die naam (wel: {})",
+                self.chronicles.stream_names().join(", ")
+            ));
+        };
+        if !fields.iter().any(|field| field.eq_ignore_ascii_case(key)) {
+            return Err(format!(
+                "die stroom groepeert op veld '{key}', en dat veld staat niet in het \
+                 formulier (wel: {})",
+                fields
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        Ok(())
+    }
+
+    /// De kronieken zoals ze erbij liggen, geleend voor het beeld van de wereld.
+    ///
+    /// Dit is de enige weg naar de inhoud van een kroniek buiten een reductie om,
+    /// en hij bestaat voor precies één doel: de wereld toont wat waar ligt (zie
+    /// [`crate::Snapshot`]). Dat is een inspectiebeeld, zoals het observatielog
+    /// een meetinstrument is — en het is met opzet `pub(crate)`, want een cel die
+    /// het kon aanroepen zou de kroniek van een ander lezen, en dan is invariant
+    /// I1 een afspraak in plaats van een compileerfout.
+    pub(crate) fn inspect(&self) -> Vec<ChronicleView<'_>> {
+        self.chronicles.view()
     }
 
     /// De cel-bronnen die de wetten van deze cel aanwijzen (tier 3).
@@ -820,6 +989,17 @@ impl Cell {
         definition.check_params(&self.id, params)?;
         definition.zaakkenmerk(&self.id, params)?;
         Ok(definition.acceptance_requests(params))
+    }
+
+    /// Eén besluit-definitie van deze cel, of een nette fout die opsomt wat de
+    /// cel wél kan besluiten.
+    ///
+    /// `pub(crate)`: een actie die een besluit-pad start, moet bij het optuigen
+    /// kunnen vaststellen dat dat besluit bestaat, en moet het formulier ervan
+    /// kunnen tonen — de gedocumenteerde parameters van het besluit. Een tweede
+    /// lijst parameters in de actie zou uiteen gaan lopen met de eerste.
+    pub(crate) fn besluit_definition(&self, besluit: &str) -> Result<BesluitDefinition> {
+        self.definition(besluit)
     }
 
     /// Eén besluit-definitie van deze cel, of een nette fout die opsomt wat de

@@ -20,6 +20,10 @@ pub enum Subject {
     Lexostatus,
     /// Een besluit-definitie: een wetsuitvoering die vastgelegd wordt.
     Besluit,
+    /// Een actie van een actor op de tijdlijn.
+    Actie,
+    /// Een termijn die waarschuwt als een feit ontbreekt.
+    Termijn,
 }
 
 impl fmt::Display for Subject {
@@ -27,6 +31,8 @@ impl fmt::Display for Subject {
         f.write_str(match self {
             Self::Lexostatus => "lexostatus",
             Self::Besluit => "besluit",
+            Self::Actie => "actie",
+            Self::Termijn => "termijn",
         })
     }
 }
@@ -1130,6 +1136,100 @@ pub enum SimulatorError {
         cell: String,
         /// De gevraagde lexostatus.
         lexostatus: String,
+    },
+
+    /// Er is een actie aangeroepen die het wereldbestand niet kent.
+    #[error("de wereld kent geen actie '{action}' (wel: {known})")]
+    UnknownAction {
+        /// De aangeroepen actie.
+        action: String,
+        /// Komma-gescheiden lijst van de acties die er wél zijn.
+        known: String,
+    },
+
+    /// Het wereldbestand declareert twee acties met hetzelfde id.
+    ///
+    /// De tweede zou de eerste stil schaduwen: een actie wordt op haar id
+    /// aangeroepen, dus dan zou er één zijn die niemand meer kan doen.
+    #[error("de wereld declareert actie '{action}' twee keer")]
+    DuplicateAction {
+        /// Het dubbele actie-id.
+        action: String,
+    },
+
+    /// Een actie kan op dit moment niet: het verhaal is nog niet zover.
+    ///
+    /// Geen vergissing van de aanroeper maar een stand van de wereld, en daarom
+    /// een leesbare weigering: wát er nog niet vastligt staat erin.
+    #[error("actie '{action}' kan nu niet: {reason}")]
+    ActionNotAvailable {
+        /// De actie die niet kan.
+        action: String,
+        /// Waarom niet, in woorden.
+        reason: String,
+    },
+
+    /// Een actie legt vast in een stroom die dat niet kan dragen.
+    ///
+    /// Blijkt bij het optuigen en niet bij de eerste aanroep: een actie noemt haar
+    /// formulier en haar stroom, dus of het gram dat eruit komt ooit kan landen,
+    /// staat dan al vast.
+    #[error(
+        "actie '{action}': cel '{cell}' kan geen feit vastleggen in kroniekstroom \
+         '{stream}': {reason}"
+    )]
+    ActionRecording {
+        /// De actie uit het wereldbestand.
+        action: String,
+        /// De cel waarin vastgelegd zou worden.
+        cell: String,
+        /// De stroom die het niet kan dragen.
+        stream: String,
+        /// Waarom niet, in de woorden van de cel.
+        reason: String,
+    },
+
+    /// Een actie levert een feit aan de cel die het zelf vastlegt.
+    ///
+    /// Dan zou hetzelfde gram twee keer in dezelfde kroniek landen. Een levering
+    /// gaat van de ene organisatie naar de andere; aan jezelf leveren wat je net
+    /// zelf vastlegde, is geen tweede feit.
+    #[error("actie '{action}' levert aan cel '{cell}', maar die legt het feit zelf al vast")]
+    DeliveryToSelf {
+        /// De actie uit het wereldbestand.
+        action: String,
+        /// De cel die beide kanten zou zijn.
+        cell: String,
+    },
+
+    /// Er is een instelling gewijzigd die het wereldbestand niet kent.
+    ///
+    /// Een instelling bijzetten die nergens gebruikt wordt, zou een knop zijn die
+    /// niets doet; een typfout in een naam zou er precies zo uitzien.
+    #[error("de wereld kent geen instelling '{setting}' (wel: {known})")]
+    UnknownWorldSetting {
+        /// De naam die gewijzigd zou worden.
+        setting: String,
+        /// Komma-gescheiden lijst van de instellingen die er wél zijn.
+        known: String,
+    },
+
+    /// Een instelling die al door een besluit gebruikt is, wordt gewijzigd.
+    ///
+    /// Een besluit legt vast waarop besloten is. Een instelling die eronder
+    /// vandaan geschoven wordt, laat het gram iets anders zeggen dan er gebeurd
+    /// is — en precies dat is wat een decretogram onmogelijk hoort te maken.
+    #[error(
+        "instelling '{setting}' is al gebruikt door besluit '{besluit}' van cel '{cell}' \
+         en staat daarmee vast; wie haar wil wijzigen, begint een nieuwe wereld"
+    )]
+    SettingInUse {
+        /// De instelling die vast staat.
+        setting: String,
+        /// De cel die het besluit nam.
+        cell: String,
+        /// Het besluit dat haar gebruikte.
+        besluit: String,
     },
 
     /// Het scenariobestand kon niet gelezen worden.

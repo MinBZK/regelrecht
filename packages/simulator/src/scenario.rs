@@ -12,9 +12,12 @@ use crate::invariant::{
     Traffic,
 };
 use crate::security::{Identity, SecurityContext, SignedAnswer};
+use crate::snapshot::Snapshot;
 use crate::transport::InProcessTransport;
 use crate::values::equivalent;
-use crate::world::{Clock, Fixture, World};
+use crate::world::{
+    ActionDefinition, Clock, Deadline, Events, Fixture, Warning, World, WorldDefinition,
+};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
@@ -48,11 +51,28 @@ pub struct Scenario {
     /// klok die datum passeert.
     #[serde(default)]
     pub fixtures: Vec<Fixture>,
-    /// De besluiten die in deze run genomen worden, elk op een moment.
+    /// Wat de actoren in deze wereld op de tijdlijn kunnen doen.
+    #[serde(default)]
+    pub actions: Vec<ActionDefinition>,
+    /// De termijnen die waarschuwen als een feit ontbreekt.
+    #[serde(default)]
+    pub deadlines: Vec<Deadline>,
+    /// De acties die in deze run gedaan worden, elk op een moment.
     ///
-    /// Dit is de aansturing van het besluit-pad zolang een cel nog geen actie
-    /// van een actor kent: het scenario zegt wie wanneer waarover besluit. Ze
-    /// gaan vóór de vragen, en dat is de volgorde die past bij wat ze zijn — een
+    /// Dit is het verhaal van de wereld zoals een actor het afspeelt: een aanvraag
+    /// indienen, een besluit nemen, een verantwoording insturen. Ze gaan vóór de
+    /// besluiten uit [`Self::decide`], want een actie is de aansturing die het
+    /// wereldbestand zelf kent en `decide` is de rechtstreekse.
+    #[serde(default)]
+    pub act: Vec<Act>,
+    /// De besluiten die in deze run rechtstreeks genomen worden, elk op een moment.
+    ///
+    /// De aansturing naast een actie: het scenario zegt wie wanneer waarover
+    /// besluit, zonder dat er een actie in het wereldbestand voor hoeft te staan.
+    /// Handig om een besluit-pad los te beproeven; het verhaal van een wereld
+    /// hoort langs [`Self::act`] te lopen.
+    ///
+    /// Ze gaan vóór de vragen, en dat is de volgorde die past bij wat ze zijn — een
     /// besluit is een gebeurtenis op de tijdlijn, een vraag kijkt erop terug. Wie
     /// een vraag over een moment *vóór* een besluit stelt, krijgt nog altijd het
     /// beeld van toen: de reductie filtert zelf op `op_moment`.
@@ -91,6 +111,50 @@ pub struct Scenario {
     /// als de vraag netjes gesteld wordt.
     #[serde(default)]
     pub query_graph: Vec<DeclaredQuery>,
+    /// De labels van de termijnen die deze run moet melden, in alfabetische
+    /// volgorde vergeleken.
+    ///
+    /// Een lege lijst is een volwaardige verwachting: ze zegt dat er geen enkele
+    /// termijn gemist is. Daarom wordt de lijst altijd afgerekend, ook als hij niet
+    /// in het bestand staat — een waarschuwing die niemand verwacht, hoort een run
+    /// te laten falen in plaats van stil in het verslag te belanden.
+    #[serde(default)]
+    pub expect_warnings: Vec<String>,
+}
+
+/// Eén actie die een actor in deze run doet.
+///
+/// De tegenhanger van een [`Decision`], en een stap hoger: niet "deze cel besluit
+/// hierover" maar "deze actor doet dit". Wat er dan gebeurt, staat in het
+/// wereldbestand en niet in deze stap — een actie legt een feit vast, levert het
+/// eventueel aan een ander, of start een besluit-pad.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Act {
+    /// Vrije omschrijving, verschijnt in het verslag.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// De actie uit het wereldbestand.
+    pub action: String,
+    /// Het ingevulde formulier van de actie.
+    #[serde(default)]
+    pub values: BTreeMap<String, Value>,
+    /// Het moment waarop de actor dit doet. De klok gaat er eerst naartoe.
+    pub op_moment: NaiveDate,
+    /// De verwachte uitkomsten, als deze actie een besluit start.
+    ///
+    /// Mag leeg blijven, net als bij een [`Decision`]: een actie legt iets vast,
+    /// dus ze bewijst ook zonder verwachting dat de vragen erna iets te vinden
+    /// hebben.
+    #[serde(default)]
+    pub expect: BTreeMap<String, Value>,
+    /// Waarden die het besluit van deze actie **geaccepteerd** moet hebben, op
+    /// naam, met de cel die haar vaststelde (invariant I5).
+    #[serde(default)]
+    pub expect_accepted: BTreeMap<String, String>,
+    /// Waarden die het besluit van deze actie **zelf** moet hebben vastgesteld.
+    #[serde(default)]
+    pub expect_computed: Vec<String>,
 }
 
 /// Eén vraag van een consument aan één cel.
@@ -223,6 +287,13 @@ pub enum ExpectationFailure {
         /// Wat er over haar herkomst mis is.
         reason: String,
     },
+    /// De run meldde andere gemiste termijnen dan het scenario verwachtte.
+    Warnings {
+        /// De labels die het scenario verwachtte.
+        expected: Vec<String>,
+        /// De labels die de run meldde.
+        actual: Vec<String>,
+    },
 }
 
 /// Het resultaat van één vraag.
@@ -270,6 +341,19 @@ pub struct DecisionOutcome {
     pub failures: Vec<ExpectationFailure>,
 }
 
+/// Het resultaat van één actie.
+#[derive(Debug, Clone)]
+pub struct ActOutcome {
+    /// De omschrijving uit het scenario, als die er stond.
+    pub description: Option<String>,
+    /// De actie die gedaan is.
+    pub action: String,
+    /// Wat er door deze actie gebeurde.
+    pub events: Events,
+    /// De verwachtingen die niet uitkwamen; leeg is goed.
+    pub failures: Vec<ExpectationFailure>,
+}
+
 /// Het resultaat van een hele run.
 #[derive(Debug, Clone)]
 pub struct ScenarioRun {
@@ -281,7 +365,9 @@ pub struct ScenarioRun {
     /// ligt. De runner loopt de tijd af tot de laatste vraag, dus een fixture
     /// verder in de toekomst gebeurt in deze run niet.
     pub pending_triggers: usize,
-    /// De besluiten die genomen zijn, in scenariovolgorde.
+    /// De acties die gedaan zijn, in scenariovolgorde.
+    pub acts: Vec<ActOutcome>,
+    /// De besluiten die rechtstreeks genomen zijn, in scenariovolgorde.
     pub decisions: Vec<DecisionOutcome>,
     /// De uitkomsten van de vragen van een consument, in scenariovolgorde.
     pub outcomes: Vec<QueryOutcome>,
@@ -294,12 +380,24 @@ pub struct ScenarioRun {
     /// invariant is wat elk scenario moet halen. Ze staan dus niet bij één vraag
     /// en niet bij één besluit — ze gaan over de run als geheel.
     pub invariant_failures: Vec<InvariantFailure>,
+    /// De termijnen die verstreken zonder dat het feit er lag, in volgorde.
+    pub warnings: Vec<Warning>,
+    /// Verwachtingen over de run als geheel die niet uitkwamen; leeg is goed.
+    pub failures: Vec<ExpectationFailure>,
+    /// Het beeld van de wereld na de run.
+    ///
+    /// Hoort bij de run omdat het de stand is die eruit volgde, en niet iets wat
+    /// er los naast staat: een test die het contract naar een frontend vastpint,
+    /// hoort dat te kunnen doen op de wereld die een scenario heeft afgespeeld.
+    pub snapshot: Snapshot,
 }
 
 impl ScenarioRun {
     /// Kwamen alle verwachtingen uit, en haalde de run haar invarianten?
     pub fn passed(&self) -> bool {
-        self.decisions.iter().all(|o| o.failures.is_empty())
+        self.failures.is_empty()
+            && self.acts.iter().all(|o| o.failures.is_empty())
+            && self.decisions.iter().all(|o| o.failures.is_empty())
             && self.outcomes.iter().all(|o| o.failures.is_empty())
             && self
                 .transport_outcomes
@@ -315,16 +413,27 @@ impl ScenarioRun {
     /// meetinstrument aangereikt krijgt: dezelfde bewijsstukken, in dezelfde
     /// volgorde. Publiek, zodat een test de twee tegen elkaar kan houden in
     /// plaats van te moeten geloven dat ze hetzelfde zien.
+    ///
+    /// **Elk** besluit van de run zit erin, of het door een actie is uitgelokt of
+    /// rechtstreeks genomen. Die twee horen hier niet uit elkaar te vallen: een
+    /// besluit dat via een actie over de celgrens reikt, doet dat langs dezelfde
+    /// weg als een besluit uit `decide`, en zou de gate anders ontglippen. In
+    /// runvolgorde: eerst de acties, dan de rechtstreekse besluiten, dan de sondes.
     pub fn traffic(&self) -> Traffic<'_> {
+        let from_acts = self
+            .acts
+            .iter()
+            .flat_map(|act| &act.events.decisions)
+            .map(|record| DecisionTraffic {
+                decretogram: &record.decretogram,
+                crossings: &record.crossings,
+            });
+        let direct = self.decisions.iter().map(|decision| DecisionTraffic {
+            decretogram: &decision.decretogram,
+            crossings: &decision.crossings,
+        });
         Traffic {
-            decisions: self
-                .decisions
-                .iter()
-                .map(|decision| DecisionTraffic {
-                    decretogram: &decision.decretogram,
-                    crossings: &decision.crossings,
-                })
-                .collect(),
+            decisions: from_acts.chain(direct).collect(),
             probes: self
                 .transport_outcomes
                 .iter()
@@ -351,6 +460,20 @@ impl ScenarioRun {
     /// Leesbaar verslag van de run, geschikt voor een terminal of een testfout.
     pub fn report(&self) -> String {
         let mut out = format!("scenario '{}':\n", self.name);
+        for act in &self.acts {
+            let mark = if act.failures.is_empty() {
+                "ok"
+            } else {
+                "FOUT"
+            };
+            let _ = writeln!(out, "  [{mark}] actie '{}'", act.action);
+            if let Some(description) = &act.description {
+                let _ = writeln!(out, "        {description}");
+            }
+            out.push_str(&act.events.describe());
+            write_failures(&mut out, &act.failures);
+        }
+
         for decision in &self.decisions {
             let mark = if decision.failures.is_empty() {
                 "ok"
@@ -485,6 +608,13 @@ impl ScenarioRun {
         for failure in &self.invariant_failures {
             let _ = writeln!(out, "        {}", failure.describe());
         }
+        // De waarschuwingen staan bij elkaar en niet bij de stap waar ze vielen:
+        // een gemiste termijn is geen gevolg van een actie maar van wat er níet
+        // gebeurde, en dat is aan het eind pas te overzien.
+        for warning in &self.warnings {
+            let _ = writeln!(out, "  waarschuwing: {}", warning.describe());
+        }
+        write_failures(&mut out, &self.failures);
 
         let _ = writeln!(out, "  klok staat op {}", self.clock);
         // Een fixture waar de klok nooit aan toe komt, is een regel in het
@@ -544,6 +674,12 @@ fn write_failures(out: &mut String, failures: &[ExpectationFailure]) {
             ExpectationFailure::Provenance { value, reason } => {
                 writeln!(out, "        herkomst van '{value}': {reason}")
             }
+            ExpectationFailure::Warnings { expected, actual } => writeln!(
+                out,
+                "        verwachtte gemiste termijnen [{}], kreeg [{}]",
+                expected.join(", "),
+                actual.join(", ")
+            ),
         };
     }
 }
@@ -661,16 +797,29 @@ impl Scenario {
         Self::from_yaml(&text)
     }
 
+    /// De wereld waarin dit scenario zich afspeelt, los van zijn stappen.
+    ///
+    /// Het scenariobestand draagt de velden van een wereldbestand plus de stappen
+    /// erop, en die twee zijn hier niet samengevoegd tot één serde-vorm: een
+    /// geflatten veld verdraagt geen `deny_unknown_fields`, en dan zou een typfout
+    /// in een scenario stil verdwijnen. De prijs is deze kopie; de winst is dat
+    /// een wereldbestand en een scenario dezelfde vorm hebben en dat een typfout
+    /// in geen van beide doorglipt.
+    pub fn definition(&self) -> WorldDefinition {
+        WorldDefinition {
+            clock: self.clock,
+            cells: self.cells.clone(),
+            settings: self.settings.clone(),
+            fixtures: self.fixtures.clone(),
+            actions: self.actions.clone(),
+            deadlines: self.deadlines.clone(),
+        }
+    }
+
     /// Tuig de wereld op: de cellen, de klok op haar startmoment en de
     /// startstand die op dat moment al gebeurd was.
     pub fn world(&self, regulation_root: &Path) -> Result<World> {
-        World::new(
-            &self.cells,
-            self.clock,
-            &self.fixtures,
-            &self.settings,
-            regulation_root,
-        )
+        World::from_definition(&self.definition(), regulation_root)
     }
 
     /// Tuig de wereld op, laat de tijd lopen en stel alle vragen.
@@ -689,6 +838,7 @@ impl Scenario {
     pub fn run(&self, regulation_root: &Path) -> Result<ScenarioRun> {
         let mut world = self.world(regulation_root)?;
 
+        let acts = self.do_acts(&mut world)?;
         let decisions = self.take_decisions(&mut world)?;
 
         let mut outcomes = Vec::with_capacity(self.queries.len());
@@ -715,15 +865,20 @@ impl Scenario {
         }
 
         let transport_outcomes = self.run_via_transport(&mut world)?;
+        let warnings = world.warnings().to_vec();
 
         let mut run = ScenarioRun {
             name: self.name.clone(),
             clock: world.now(),
             pending_triggers: world.pending_triggers(),
+            acts,
             decisions,
             outcomes,
             transport_outcomes,
             invariant_failures: Vec::new(),
+            failures: check_warnings(&self.expect_warnings, &warnings),
+            warnings,
+            snapshot: world.snapshot(),
         };
         // De gate draait als laatste en over de hele run: hij vergelijkt het
         // gedeclareerde vraaggraf met wat er werkelijk over de grenzen ging, en
@@ -733,6 +888,50 @@ impl Scenario {
         let failures = check_invariants(&self.query_graph, &self.cells, &run.traffic());
         run.invariant_failures = failures;
         Ok(run)
+    }
+
+    /// Laat de actoren hun acties doen, elk op zijn eigen moment.
+    ///
+    /// De klok gaat eerst naar dat moment, en dan doet de actor het: een actie
+    /// heeft geen eigen moment mee te geven, ze gebeurt op de stand van de
+    /// wereld. Zo landt een levering of een vervallen termijn die ertussen valt
+    /// eerst — en dat is wat een actie die op zo'n feit wacht, nodig heeft.
+    ///
+    /// De klok gaat er **altijd** naartoe, ook als hij er al voorbij is. Anders
+    /// dan een `decide`, die zijn moment zelf meegeeft, kan een actie het hare
+    /// niet dragen: zou de klok blijven staan, dan landt het gram op een andere
+    /// dag dan het bestand noemt, en dan liegt die regel zonder dat iemand het
+    /// merkt. Nu levert ze de fout die erbij hoort — de klok loopt niet terug.
+    fn do_acts(&self, world: &mut World) -> Result<Vec<ActOutcome>> {
+        let mut acts = Vec::with_capacity(self.act.len());
+        for step in &self.act {
+            world.advance(step.op_moment)?;
+
+            let events = world.act(&step.action, &step.values)?;
+
+            // Een actie die een besluit start, wordt op datzelfde besluit
+            // afgerekend — verwachtingen én de herkomstgate van I5. Een actie die
+            // vastlegt, heeft geen besluit, en dan is er niets om op te rekenen.
+            let mut failures = Vec::new();
+            for record in &events.decisions {
+                let gram = &record.decretogram;
+                failures.extend(check_values(&step.expect, &gram.outputs));
+                failures.extend(check_provenance(gram));
+                failures.extend(check_origins(
+                    &step.expect_accepted,
+                    &step.expect_computed,
+                    gram,
+                ));
+            }
+
+            acts.push(ActOutcome {
+                description: step.description.clone(),
+                action: step.action.clone(),
+                events,
+                failures,
+            });
+        }
+        Ok(acts)
     }
 
     /// Laat de cellen hun besluiten nemen, elk op zijn eigen moment.
@@ -760,7 +959,11 @@ impl Scenario {
             // zegt: een invariant die je moet aanzetten, is een invariant die
             // iemand vergeet.
             failures.extend(check_provenance(&decretogram));
-            failures.extend(check_expected_origins(decision, &decretogram));
+            failures.extend(check_origins(
+                &decision.expect_accepted,
+                &decision.expect_computed,
+                &decretogram,
+            ));
 
             decisions.push(DecisionOutcome {
                 description: decision.description.clone(),
@@ -905,11 +1108,15 @@ pub fn check_provenance(gram: &Decretogram) -> Vec<ExpectationFailure> {
 /// van een bepaalde cel komt, `expect_computed` dat een waarde hier is
 /// vastgesteld. Alleen de eerste zou bewijzen dat de opstelling waarden kán
 /// accepteren, niet dat ze het onderscheid máákt.
-fn check_expected_origins(decision: &Decision, gram: &Decretogram) -> Vec<ExpectationFailure> {
+fn check_origins(
+    expect_accepted: &BTreeMap<String, String>,
+    expect_computed: &[String],
+    gram: &Decretogram,
+) -> Vec<ExpectationFailure> {
     let accepted = gram.accepted_values();
     let mut failures = Vec::new();
 
-    for (value, expected) in &decision.expect_accepted {
+    for (value, expected) in expect_accepted {
         match accepted.get(value.as_str()) {
             Some(cell) if cell == expected => {}
             Some(cell) => failures.push(ExpectationFailure::Provenance {
@@ -927,7 +1134,7 @@ fn check_expected_origins(decision: &Decision, gram: &Decretogram) -> Vec<Expect
         }
     }
 
-    for value in &decision.expect_computed {
+    for value in expect_computed {
         if let Some(cell) = accepted.get(value.as_str()) {
             failures.push(ExpectationFailure::Provenance {
                 value: value.clone(),
@@ -963,6 +1170,29 @@ fn describe_origin(gram: &Decretogram, value: &str) -> String {
         }
         None => String::new(),
     }
+}
+
+/// Reken de run af op de termijnen die ze miste.
+///
+/// Altijd, ook als het scenario er niets over zegt: dan is de verwachting "geen
+/// enkele". Een waarschuwing die niemand verwachtte hoort een run te laten falen —
+/// ze zegt dat er iets níet gebeurd is wat er hoorde te gebeuren, en dat is
+/// precies het soort stilte waar een scenario voor bestaat.
+fn check_warnings(expected: &[String], actual: &[Warning]) -> Vec<ExpectationFailure> {
+    let mut found: Vec<String> = actual
+        .iter()
+        .map(|warning| warning.label.clone())
+        .collect::<Vec<_>>();
+    found.sort();
+    let mut wanted = expected.to_vec();
+    wanted.sort();
+    if wanted == found {
+        return Vec::new();
+    }
+    vec![ExpectationFailure::Warnings {
+        expected: wanted,
+        actual: found,
+    }]
 }
 
 /// Vergelijk de verwachtingen van een vraag met wat de reductie opleverde.
@@ -1068,6 +1298,56 @@ queries:
         assert!(
             matches!(err, SimulatorError::ContradictoryExpectation { .. }),
             "verwachtte ContradictoryExpectation, kreeg {err}"
+        );
+    }
+
+    /// Een actie op een moment dat de klok al voorbij is, hoort te falen.
+    ///
+    /// Een actie gebeurt op de stand van de klok; zij draagt haar moment niet mee
+    /// het gram in. Bleef de klok staan, dan zou de vastlegging op een andere dag
+    /// landen dan het bestand noemt — een regel die iets anders doet dan ze zegt,
+    /// en dat is precies de stilte waar deze opstelling tegen bedoeld is.
+    #[test]
+    fn een_actie_op_een_moment_voor_de_klok_wordt_geweigerd() {
+        let yaml = r"
+name: twee acties in de verkeerde volgorde
+clock: { start: 2024-01-01 }
+cells:
+  - id: burger
+    laws: []
+    chronicles:
+      - stream: aanvragen
+        key: bsn
+actions:
+  - id: burger.aanvraag
+    actor: burger
+    label: Aanvraag indienen
+    records:
+      cell: burger
+      chronicle: aanvragen
+      name: aanvraag_ingediend
+      intake: aanvraag
+      fields:
+        - name: bsn
+          type: string
+act:
+  - action: burger.aanvraag
+    values:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+  - action: burger.aanvraag
+    values:
+      bsn: '999993654'
+    op_moment: 2024-03-01
+";
+        let scenario =
+            Scenario::from_yaml(yaml).unwrap_or_else(|e| panic!("het scenario moet lezen: {e}"));
+        let err = scenario
+            .run(&crate::regulation_root())
+            .expect_err("een actie vóór de klok hoort te falen en niet stil op te schuiven");
+        assert!(
+            matches!(err, SimulatorError::ClockRunsBackwards { .. }),
+            "verwachtte ClockRunsBackwards, kreeg {err}"
         );
     }
 
@@ -1281,21 +1561,47 @@ query_via_transport:
             .unwrap_or_else(|| panic!("2024-06-01 moet een geldige datum zijn"))
     }
 
+    /// Een leeg beeld, voor de tests die over het **verslag** gaan.
+    ///
+    /// Die bouwen met opzet geen wereld op: wat ze controleren is wat er in de
+    /// tekst staat, en een wereld eronder zou daar niets aan toevoegen behalve
+    /// tijd.
+    fn empty_snapshot() -> Snapshot {
+        Snapshot {
+            clock: moment(),
+            settings: BTreeMap::new(),
+            locked_settings: BTreeMap::new(),
+            cells: Vec::new(),
+            actions: Vec::new(),
+            crossings: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Een resultaat zonder run eronder, voor de verslagtests.
+    fn report_of(pending_triggers: usize, outcomes: Vec<QueryOutcome>) -> ScenarioRun {
+        ScenarioRun {
+            name: "tijd".to_string(),
+            clock: moment(),
+            pending_triggers,
+            acts: Vec::new(),
+            decisions: Vec::new(),
+            outcomes,
+            transport_outcomes: Vec::new(),
+            invariant_failures: Vec::new(),
+            warnings: Vec::new(),
+            failures: Vec::new(),
+            snapshot: empty_snapshot(),
+        }
+    }
+
     /// Een vastlegging waar de klok niet aan toe kwam, hoort in het verslag te
     /// staan. Zij is geldig bevonden bij het optuigen en doet daarna niets; dat
     /// stil laten betekent dat een regel in het wereldbestand niets bewijst
     /// zonder dat iemand het merkt.
     #[test]
     fn het_verslag_meldt_vastleggingen_die_niet_afgingen() {
-        let run = |pending_triggers| ScenarioRun {
-            name: "tijd".to_string(),
-            clock: moment(),
-            pending_triggers,
-            decisions: Vec::new(),
-            outcomes: Vec::new(),
-            transport_outcomes: Vec::new(),
-            invariant_failures: Vec::new(),
-        };
+        let run = |pending_triggers| report_of(pending_triggers, Vec::new());
 
         assert!(
             run(2).report().contains("2 vastlegging(en) gingen niet af"),
@@ -1317,17 +1623,7 @@ query_via_transport:
     /// gedraaid heeft, en dat is de stilte waar deze opstelling tegen bedoeld is.
     #[test]
     fn het_verslag_meldt_de_invarianten_ook_als_er_niets_te_melden_was() {
-        let run = ScenarioRun {
-            name: "niets over een grens".to_string(),
-            clock: moment(),
-            pending_triggers: 0,
-            decisions: Vec::new(),
-            outcomes: Vec::new(),
-            transport_outcomes: Vec::new(),
-            invariant_failures: Vec::new(),
-        };
-
-        let verslag = run.report();
+        let verslag = report_of(0, Vec::new()).report();
         assert!(
             verslag.contains("[ok] invarianten: 0 contact(en) over een celgrens"),
             "een run zonder bevindingen hoort de gate alsnog te melden; kreeg:\n{verslag}"
@@ -1349,15 +1645,10 @@ query_via_transport:
             },
             failures: Vec::new(),
         };
-        let run = ScenarioRun {
-            name: "tijd".to_string(),
-            clock: moment,
-            pending_triggers: 0,
-            decisions: Vec::new(),
-            outcomes: vec![outcome("vóór de vastlegging"), outcome("erna, ongewijzigd")],
-            transport_outcomes: Vec::new(),
-            invariant_failures: Vec::new(),
-        };
+        let run = report_of(
+            0,
+            vec![outcome("vóór de vastlegging"), outcome("erna, ongewijzigd")],
+        );
 
         let report = run.report();
         assert!(

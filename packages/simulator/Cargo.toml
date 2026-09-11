@@ -19,6 +19,12 @@ serde_yaml_ng.workspace = true
 thiserror.workspace = true
 walkdir.workspace = true
 
+[dev-dependencies]
+# Alleen voor de snapshot-fixture: het contract naar een frontend is JSON, dus de
+# test die het vastpint schrijft JSON. De crate zelf serialiseert niets naar JSON
+# — `Snapshot` is `Serialize` en laat de vorm aan de aanroeper.
+serde_json.workspace = true
+
 [[bin]]
 name = "run-scenario"
 path = "src/bin/run_scenario.rs"
