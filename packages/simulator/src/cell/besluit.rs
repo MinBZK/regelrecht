@@ -21,8 +21,8 @@
 //!   wetsversie.
 
 use crate::cell::config::{
-    check_documented_params, documents, parameter_listing, published_outputs, CellSurface,
-    DocumentedParameter,
+    binding_name, check_documented_params, documents, engine_parameters, parameter_listing,
+    published_outputs, CellSurface, DocumentedParameter,
 };
 use crate::cell::{ChronicleEvent, Intake};
 use crate::error::{Result, SimulatorError, Subject};
@@ -105,12 +105,20 @@ pub struct BesluitDefinition {
     /// Wat het besluit aan de engine aanlevert, op inputnaam.
     ///
     /// De naam is die van een parameter of input van de regeling; de waarde
-    /// zegt waar hij vandaan komt. In deze versie zijn dat de eigen kronieken
-    /// van de cel en de parameters van het besluit; een waarde van een andere
-    /// cel accepteren volgt apart.
+    /// zegt waar hij vandaan komt: uit een eigen kroniek van de cel, uit de
+    /// parameters van het besluit, of **geaccepteerd** van een andere cel
+    /// (`accept_from`).
     #[serde(default)]
     pub inputs: BTreeMap<String, BesluitInput>,
 }
+
+/// De drie vormen die een input van een besluit kan hebben, voor foutmeldingen.
+///
+/// Eén tekst, want elke weigering hieronder somt ze op: wie er twee door elkaar
+/// haalt, hoort in dezelfde melding te lezen wat de keuze was.
+const INPUT_FORMS: &str = "een input komt uit een eigen kroniek (`from_chronicle` + `field`), \
+                           uit een parameter (`param`), of van een andere cel \
+                           (`accept_from` + `lexostatus` + `field`)";
 
 /// Waar één input van een besluit vandaan komt.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -132,9 +140,46 @@ pub enum BesluitInput {
         /// De gedocumenteerde parameter die de waarde levert.
         param: String,
     },
+    /// **Geaccepteerd** van een andere cel: die cel stelt de waarde vast, deze
+    /// cel rekent haar niet na (RFC-009 beslisboom stap 4, invariant I5).
+    ///
+    /// De vraag gaat niet vanuit de cel: ze gaat langs de veiligheidscontext
+    /// van de besluitende cel naar het transport, en die twee houdt een cel
+    /// niet (RFC-022 §2). Wat de cel hier declareert is dus een *verzoek* —
+    /// [`AcceptanceRequest`] — en wie het inwilligt staat buiten de cel.
+    ///
+    /// Wat terugkomt gaat als parameter de engine in en met haar herkomst het
+    /// decretogram in ([`InputOrigin::Accepted`]); nergens anders. Een volgend
+    /// besluit vraagt opnieuw.
+    AcceptFrom {
+        /// De cel die de waarde vaststelt.
+        cell: String,
+        /// De lexostatus die daar opgevraagd wordt.
+        lexostatus: String,
+        /// De uitkomst van die lexostatus die de waarde draagt.
+        field: String,
+        /// De parameters van die vraag, op de naam die de bevraagde cel
+        /// documenteert. Een waarde `$naam` verwijst naar een gedocumenteerde
+        /// parameter van dít besluit; elke andere waarde is letterlijke tekst —
+        /// dezelfde vorm als de parameters van een reductie.
+        params: BTreeMap<String, String>,
+    },
 }
 
-/// Het YAML-oppervlak van een input: alle velden van beide vormen, los.
+impl BesluitInput {
+    /// De cel waarvan deze input geaccepteerd wordt, als dat er een is.
+    ///
+    /// Voor wie de afspraken van buiten wil nalopen — de wereld toetst ermee of
+    /// de peer bestaat — zonder de vorm van de variant na te bouwen.
+    pub fn accepts_from(&self) -> Option<&str> {
+        match self {
+            Self::AcceptFrom { cell, .. } => Some(cell),
+            Self::FromChronicle { .. } | Self::Param { .. } => None,
+        }
+    }
+}
+
+/// Het YAML-oppervlak van een input: alle velden van alle vormen, los.
 ///
 /// Zelfde keuze als bij [`crate::Reduction`]: de vorm valt hieronder en niet in
 /// serde, zodat er in de foutmelding staat wat er mis is in plaats van "data did
@@ -145,44 +190,120 @@ struct BesluitInputFields {
     from_chronicle: Option<String>,
     field: Option<String>,
     param: Option<String>,
+    accept_from: Option<String>,
+    lexostatus: Option<String>,
+    params: Option<BTreeMap<String, String>>,
 }
 
 impl TryFrom<BesluitInputFields> for BesluitInput {
     type Error = String;
 
     fn try_from(fields: BesluitInputFields) -> std::result::Result<Self, Self::Error> {
-        match (fields.from_chronicle, fields.param) {
-            (Some(chronicle), Some(param)) => Err(format!(
-                "input noemt zowel kroniekstroom '{chronicle}' als parameter '{param}'; \
-                 een input komt óf uit een eigen kroniek (`from_chronicle` + `field`) \
-                 óf uit een parameter (`param`)"
-            )),
-            (Some(chronicle), None) => {
+        // Precies één van de drie ankers wijst de vorm aan. Twee ankers is geen
+        // vorm met een extraatje maar een input waarvan niemand kan zeggen waar
+        // ze vandaan komt, dus de melding noemt ze beide bij hun waarde.
+        let anchors: Vec<(&str, &str)> = [
+            ("from_chronicle", fields.from_chronicle.as_deref()),
+            ("param", fields.param.as_deref()),
+            ("accept_from", fields.accept_from.as_deref()),
+        ]
+        .into_iter()
+        .filter_map(|(key, value)| value.map(|value| (key, value)))
+        .collect();
+
+        let (kind, value) = match anchors.as_slice() {
+            [] => return Err(format!("input noemt geen bron: {INPUT_FORMS}")),
+            [single] => *single,
+            named => {
+                let listed = named
+                    .iter()
+                    .map(|(key, value)| format!("`{key}` '{value}'"))
+                    .collect::<Vec<_>>()
+                    .join(" en ");
+                return Err(format!("input noemt {listed}; {INPUT_FORMS}"));
+            }
+        };
+
+        match kind {
+            "from_chronicle" => {
+                reject_unused(kind, fields.lexostatus.is_some(), "`lexostatus`")?;
+                reject_unused(kind, fields.params.is_some(), "`params`")?;
                 let field = fields.field.ok_or_else(|| {
                     format!(
-                        "input uit kroniekstroom '{chronicle}' mist `field`: zonder veld \
+                        "input uit kroniekstroom '{value}' mist `field`: zonder veld \
                          weet de cel niet welke waarde van de vastlegging ze bedoelt"
                     )
                 })?;
-                Ok(Self::FromChronicle { chronicle, field })
+                Ok(Self::FromChronicle {
+                    chronicle: value.to_string(),
+                    field,
+                })
             }
-            (None, Some(param)) => {
-                if fields.field.is_some() {
-                    return Err(format!(
-                        "`field` hoort bij een input uit een kroniekstroom \
-                         (`from_chronicle`), niet bij parameter '{param}'"
-                    ));
-                }
-                Ok(Self::Param { param })
+            "accept_from" => {
+                let lexostatus = fields.lexostatus.ok_or_else(|| {
+                    format!(
+                        "input die van cel '{value}' geaccepteerd wordt mist `lexostatus`: \
+                         een cel is alleen te bevragen langs een naam die ze publiceert"
+                    )
+                })?;
+                let field = fields.field.ok_or_else(|| {
+                    format!(
+                        "input die van cel '{value}' geaccepteerd wordt mist `field`: \
+                         een lexostatus levert de uitkomsten die ze publiceert, en \
+                         zonder veld weet de cel niet welke daarvan ze bedoelt"
+                    )
+                })?;
+                Ok(Self::AcceptFrom {
+                    cell: value.to_string(),
+                    lexostatus,
+                    field,
+                    params: fields.params.unwrap_or_default(),
+                })
             }
-            (None, None) => Err(
-                "input noemt geen `from_chronicle` en geen `param`: een input komt uit \
-                 een eigen kroniek (`from_chronicle` + `field`) of uit een parameter \
-                 (`param`)"
-                    .to_string(),
-            ),
+            // Onbereikbaar: de lijst hierboven kent geen vierde anker.
+            _ => {
+                reject_unused(kind, fields.field.is_some(), "`field`")?;
+                reject_unused(kind, fields.lexostatus.is_some(), "`lexostatus`")?;
+                reject_unused(kind, fields.params.is_some(), "`params`")?;
+                Ok(Self::Param {
+                    param: value.to_string(),
+                })
+            }
         }
     }
+}
+
+/// Weiger een veld dat bij een andere vorm hoort dan de gekozen.
+///
+/// Stil laten liggen zou erger zijn dan streng zijn: een `lexostatus` naast een
+/// `param` leest als een vraag over de celgrens en is er geen.
+fn reject_unused(kind: &str, present: bool, field: &str) -> std::result::Result<(), String> {
+    if present {
+        return Err(format!(
+            "{field} hoort niet bij een input met `{kind}`; {INPUT_FORMS}"
+        ));
+    }
+    Ok(())
+}
+
+/// Eén waarde die een besluit bij een andere cel gaat ophalen.
+///
+/// De cel stelt dit verzoek samen en zet het **niet** zelf door: ze houdt geen
+/// veiligheidscontext en geen transport (RFC-022 §2). Wie het inwilligt — in
+/// deze opstelling [`crate::World::decide`] — geeft de waarde met haar herkomst
+/// terug aan het besluit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AcceptanceRequest {
+    /// De input van het besluit die met deze waarde gevuld wordt.
+    pub input: String,
+    /// De cel aan wie gevraagd wordt.
+    pub cell: String,
+    /// De lexostatus die daar opgevraagd wordt.
+    pub lexostatus: String,
+    /// De uitkomst van die lexostatus die de waarde draagt.
+    pub field: String,
+    /// De parameters van de vraag, met de verwijzingen al ingevuld.
+    pub params: BTreeMap<String, Value>,
 }
 
 /// Waar één waarde in een decretogram vandaan kwam.
@@ -208,6 +329,27 @@ pub enum InputOrigin {
     Parameter {
         /// De parameter die de waarde leverde.
         parameter: String,
+    },
+    /// **Geaccepteerd** van een andere cel, en dus niet hier uitgerekend
+    /// (invariant I5).
+    ///
+    /// Dit is het bewijsstuk van die ene vraag, uitgeschreven in gewone velden:
+    /// bij wie, onder welke naam, op welk moment, en ondertekend door wie. Niet
+    /// als geleend type uit de veiligheidscontext — een cel kent die niet — maar
+    /// als wat het gram draagt en een lezer later nakijkt.
+    Accepted {
+        /// De cel die de waarde vaststelde.
+        cell: String,
+        /// De lexostatus waaronder ze dat publiceert.
+        lexostatus: String,
+        /// De uitkomst van die lexostatus die de waarde droeg.
+        field: String,
+        /// Het moment waarop het antwoord geldt.
+        op_moment: NaiveDate,
+        /// De identiteit die de vraag stelde en ondertekende.
+        asked_by: String,
+        /// De (gesimuleerde) ondertekening van die vraag.
+        signature: String,
     },
 }
 
@@ -238,6 +380,41 @@ impl InputOrigin {
                 ),
                 ("parameter".to_string(), Value::String(parameter.clone())),
             ])),
+            Self::Accepted {
+                cell,
+                lexostatus,
+                field,
+                op_moment,
+                asked_by,
+                signature,
+            } => Value::Object(BTreeMap::from([
+                (
+                    "herkomst".to_string(),
+                    Value::String("geaccepteerd".to_string()),
+                ),
+                ("cell".to_string(), Value::String(cell.clone())),
+                ("lexostatus".to_string(), Value::String(lexostatus.clone())),
+                ("field".to_string(), Value::String(field.clone())),
+                (
+                    "op_moment".to_string(),
+                    Value::String(op_moment.to_string()),
+                ),
+                ("asked_by".to_string(), Value::String(asked_by.clone())),
+                ("signature".to_string(), Value::String(signature.clone())),
+            ])),
+        }
+    }
+
+    /// Is deze waarde van een andere cel geaccepteerd in plaats van hier
+    /// uitgerekend?
+    ///
+    /// Het onderscheid van invariant I5, op één plek: een scenario, een verslag
+    /// en de invarianten-gate stellen alle drie deze vraag, en ze horen hem niet
+    /// elk op hun eigen manier te stellen.
+    pub fn accepted_from(&self) -> Option<&str> {
+        match self {
+            Self::Accepted { cell, .. } => Some(cell),
+            Self::OwnChronicle { .. } | Self::Parameter { .. } => None,
         }
     }
 
@@ -250,6 +427,17 @@ impl InputOrigin {
                 recorded_op_moment,
             } => format!("eigen kroniek '{chronicle}.{field}', vastgelegd {recorded_op_moment}"),
             Self::Parameter { parameter } => format!("parameter '{parameter}'"),
+            Self::Accepted {
+                cell,
+                lexostatus,
+                field,
+                op_moment,
+                asked_by,
+                signature,
+            } => format!(
+                "geaccepteerd van cel '{cell}' ({lexostatus}.{field} op {op_moment}), \
+                 gevraagd door {asked_by} [{signature}]"
+            ),
         }
     }
 }
@@ -304,6 +492,28 @@ pub struct Decretogram {
 }
 
 impl Decretogram {
+    /// Elke waarde in dit gram die van een andere cel **geaccepteerd** is, op
+    /// naam, met de cel die haar vaststelde.
+    ///
+    /// Twee wegen komen hier samen, en dat is met opzet één lijst: een input die
+    /// de besluit-definitie met `accept_from` vulde, en een waarde die de
+    /// *regeling* via een `source.regulation` naar een cel haalde (tier 3, die
+    /// de engine in `accepted_values` van het receipt zet). Voor de vraag van
+    /// invariant I5 — is dit narekenen of accepteren? — zijn ze hetzelfde, en
+    /// wie ze apart houdt, controleert er straks maar één.
+    pub fn accepted_values(&self) -> BTreeMap<&str, &str> {
+        let from_inputs = self
+            .inputs
+            .iter()
+            .filter_map(|(name, input)| Some((name.as_str(), input.origin.accepted_from()?)));
+        let from_receipt = self
+            .receipt
+            .accepted_values
+            .iter()
+            .map(|accepted| (accepted.output.as_str(), accepted.authority.as_str()));
+        from_inputs.chain(from_receipt).collect()
+    }
+
     /// Het decretogram als kroniekgebeurtenis.
     ///
     /// Een gewoon executogram met `intake: eigen_besluit`, zodat de tijdreductie
@@ -559,7 +769,69 @@ impl BesluitDefinition {
                     reference: param.clone(),
                 })
             }
+            BesluitInput::AcceptFrom {
+                cell: peer, params, ..
+            } => {
+                // De eigen cel is geen peer. Voor eigen feiten is er een
+                // kroniek of een eigen wet; wie zichzelf over de grens
+                // bevraagt, zet een cross-cel-contact in het vraaggraf dat er
+                // niet hoort en zou bij de veiligheidscontext alsnog stuklopen
+                // — beter hier, bij het optuigen.
+                if peer == cell {
+                    return Err(SimulatorError::AcceptFromSelf {
+                        cell: cell.to_string(),
+                        besluit: self.name.clone(),
+                        input: input.to_string(),
+                    });
+                }
+                for reference in params.values().filter_map(|binding| binding_name(binding)) {
+                    if !documents(&self.params, reference) {
+                        return Err(SimulatorError::UnknownReference {
+                            cell: cell.to_string(),
+                            subject: Subject::Besluit,
+                            name: self.name.clone(),
+                            reference: reference.to_string(),
+                        });
+                    }
+                }
+                // Of de peer bestaat en deze naam publiceert, weet de cel niet:
+                // ze kent geen andere cel. Dat valt bij de wereld (die de peers
+                // kent) en anders bij het transport.
+                Ok(())
+            }
         }
+    }
+
+    /// De waarden die dit besluit bij een andere cel moet ophalen.
+    ///
+    /// Aanroepen ná [`Self::check_params`]: de verwijzingen in `params` zijn bij
+    /// het optuigen aan gedocumenteerde parameters gebonden, en die zijn dan
+    /// aanwezig.
+    ///
+    /// Leeg is het normale geval: een besluit dat alles zelf weet, vraagt
+    /// niemand iets.
+    pub(crate) fn acceptance_requests(
+        &self,
+        params: &BTreeMap<String, Value>,
+    ) -> Vec<AcceptanceRequest> {
+        self.inputs
+            .iter()
+            .filter_map(|(input, origin)| match origin {
+                BesluitInput::AcceptFrom {
+                    cell,
+                    lexostatus,
+                    field,
+                    params: bindings,
+                } => Some(AcceptanceRequest {
+                    input: input.clone(),
+                    cell: cell.clone(),
+                    lexostatus: lexostatus.clone(),
+                    field: field.clone(),
+                    params: engine_parameters(bindings, params),
+                }),
+                BesluitInput::FromChronicle { .. } | BesluitInput::Param { .. } => None,
+            })
+            .collect()
     }
 
     /// Het zaakkenmerk-sjabloon: sluitende accolades, minstens één verwijzing,
@@ -809,11 +1081,159 @@ mod tests {
     }
 
     #[test]
-    fn een_input_zonder_vorm_noemt_de_twee_vormen() {
+    fn een_input_zonder_vorm_noemt_de_drie_vormen() {
         let err = input("{}\n").expect_err("een input zonder vorm hoort te falen");
         assert!(
-            err.contains("`from_chronicle`") && err.contains("`param`"),
-            "de melding moet vertellen welke twee vormen er zijn, kreeg: {err}"
+            err.contains("`from_chronicle`")
+                && err.contains("`param`")
+                && err.contains("`accept_from`"),
+            "de melding moet vertellen welke vormen er zijn, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn een_input_die_van_een_andere_cel_geaccepteerd_wordt_wordt_gelezen() {
+        let parsed = input(
+            "accept_from: belastingdienst\nlexostatus: toetsingsinkomen\n\
+             field: toetsingsinkomen\nparams:\n  bsn: $bsn\n",
+        )
+        .unwrap_or_else(|e| panic!("de accepteervorm moet gelezen worden: {e}"));
+        assert_eq!(
+            parsed,
+            BesluitInput::AcceptFrom {
+                cell: "belastingdienst".to_string(),
+                lexostatus: "toetsingsinkomen".to_string(),
+                field: "toetsingsinkomen".to_string(),
+                params: BTreeMap::from([("bsn".to_string(), "$bsn".to_string())]),
+            }
+        );
+        assert_eq!(parsed.accepts_from(), Some("belastingdienst"));
+    }
+
+    #[test]
+    fn accepteren_zonder_lexostatus_wordt_geweigerd() {
+        // Een cel is alleen te bevragen langs een naam die ze publiceert; zonder
+        // die naam is er geen vraag om te stellen.
+        let err = input("accept_from: belastingdienst\nfield: toetsingsinkomen\n")
+            .expect_err("zonder `lexostatus` hoort het te falen");
+        assert!(
+            err.contains("`lexostatus`") && err.contains("belastingdienst"),
+            "de melding moet zeggen wat er mist en bij wie, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn accepteren_zonder_veld_wordt_geweigerd() {
+        let err = input("accept_from: belastingdienst\nlexostatus: toetsingsinkomen\n")
+            .expect_err("zonder `field` hoort het te falen");
+        assert!(
+            err.contains("`field`"),
+            "de melding moet `field` noemen, kreeg: {err}"
+        );
+    }
+
+    /// Een `lexostatus` naast een `param` leest als een vraag over de celgrens en
+    /// is er geen. Stil laten liggen zou een input opleveren die iets anders doet
+    /// dan er staat.
+    #[test]
+    fn een_veld_van_een_andere_vorm_wordt_geweigerd() {
+        let err = input("param: bsn\nlexostatus: toetsingsinkomen\n")
+            .expect_err("een veld van een andere vorm hoort te falen");
+        assert!(
+            err.contains("`lexostatus`") && err.contains("param"),
+            "de melding moet zeggen welk veld niet bij welke vorm hoort, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn accepteren_van_de_eigen_cel_wordt_geweigerd() {
+        let mut definition = definition("zorgtoeslag/{bsn}");
+        definition.inputs.insert(
+            "toetsingsinkomen".to_string(),
+            BesluitInput::AcceptFrom {
+                cell: "toeslagen".to_string(),
+                lexostatus: "toetsingsinkomen".to_string(),
+                field: "toetsingsinkomen".to_string(),
+                params: BTreeMap::new(),
+            },
+        );
+
+        let err = definition
+            .validate_input(
+                "toeslagen",
+                &surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag"),
+                "toetsingsinkomen",
+                &definition.inputs["toetsingsinkomen"],
+            )
+            .expect_err("de eigen cel is geen peer");
+        assert!(
+            matches!(err, SimulatorError::AcceptFromSelf { .. }),
+            "verwachtte AcceptFromSelf, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_verwijzing_in_de_parameters_van_een_accepteervraag_moet_gedocumenteerd_zijn() {
+        let definition = definition("zorgtoeslag/{bsn}");
+        let origin = BesluitInput::AcceptFrom {
+            cell: "belastingdienst".to_string(),
+            lexostatus: "toetsingsinkomen".to_string(),
+            field: "toetsingsinkomen".to_string(),
+            params: BTreeMap::from([("bsn".to_string(), "$burgerservicenummer".to_string())]),
+        };
+
+        let err = definition
+            .validate_input(
+                "toeslagen",
+                &surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag"),
+                "toetsingsinkomen",
+                &origin,
+            )
+            .expect_err("een verwijzing zonder gedocumenteerde parameter hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownReference { .. }),
+            "verwachtte UnknownReference, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn de_verzoeken_van_een_besluit_vullen_hun_verwijzingen_in() {
+        let mut definition = definition("zorgtoeslag/{bsn}");
+        definition.inputs.insert(
+            "toetsingsinkomen".to_string(),
+            BesluitInput::AcceptFrom {
+                cell: "belastingdienst".to_string(),
+                lexostatus: "toetsingsinkomen".to_string(),
+                field: "toetsingsinkomen".to_string(),
+                params: BTreeMap::from([("bsn".to_string(), "$bsn".to_string())]),
+            },
+        );
+        definition.inputs.insert(
+            "is_verzekerde".to_string(),
+            BesluitInput::Param {
+                param: "bsn".to_string(),
+            },
+        );
+
+        let params = BTreeMap::from([
+            ("bsn".to_string(), Value::String("999993653".to_string())),
+            ("jaar".to_string(), Value::String("2024".to_string())),
+        ]);
+        let requests = definition.acceptance_requests(&params);
+
+        assert_eq!(
+            requests,
+            vec![AcceptanceRequest {
+                input: "toetsingsinkomen".to_string(),
+                cell: "belastingdienst".to_string(),
+                lexostatus: "toetsingsinkomen".to_string(),
+                field: "toetsingsinkomen".to_string(),
+                params: BTreeMap::from([(
+                    "bsn".to_string(),
+                    Value::String("999993653".to_string())
+                )]),
+            }],
+            "alleen de accepteervorm levert een verzoek, met de waarde erin"
         );
     }
 

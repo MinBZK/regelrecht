@@ -1,0 +1,244 @@
+---
+name: accepteren versus narekenen, in twee besluiten naast elkaar
+description: >-
+  Invariant I5, en het tegenbewijs erbij. Het toetsingsinkomen is vastgesteld
+  door een andere organisatie, met een eigen bevoegd gezag. De cel `toeslagen`
+  rekent dat niet na: ze vraagt het op bij de cel die het vaststelde, legt in
+  haar decretogram vast bij wie ze het ophaalde en op welk moment, en rekent
+  daarmee verder. Dat is stap 4 van de RFC-009-beslisboom — een beschikking van
+  een ander bevoegd gezag opnieuw uitrekenen is dat gezag overrulen.
+
+  Het tweede besluit is het tegenbewijs, en zonder dat bewijst het eerste niets:
+  daar komt hetzelfde getal uit de **eigen** kroniek van `toeslagen`, en dan is
+  het berekend en niet geaccepteerd. De twee cijfers verschillen met opzet, dus
+  de uitkomsten van de twee besluiten verschillen ook: haalde het eerste besluit
+  stilletjes zijn eigen feit op, dan zou het exact het tweede antwoord geven.
+
+  Wat er níet gebeurt: de opgehaalde waarde belandt nergens in een kroniek van
+  `toeslagen`. Ze zit in het decretogram, met haar herkomst, en een volgend
+  besluit vraagt opnieuw bij de bron.
+
+clock:
+  # Alle vastleggingen staan als `events` in de celconfiguraties en liggen vóór
+  # dit moment; de besluiten hieronder liggen erna en nemen de klok mee.
+  start: 2024-01-01
+
+cells:
+  # De bron-cel. Geen engine: wat zij publiceert is een vastlegging, geen
+  # berekening. Haar kroniek is beschikking-achtig — ze legde vast wat ze zelf
+  # vaststelde, met haar eigen bevoegd gezag erbij — en dat gezag is een ander
+  # dan dat van de cel die hieronder besluit. Precies daarom mag `toeslagen` het
+  # getal niet overdoen.
+  - id: belastingdienst
+    laws: []
+
+    chronicles:
+      - stream: aanslagen
+        key: bsn
+        events:
+          - name: aanslag_vastgesteld
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-03-01
+            fields:
+              bsn: '999993653'
+              toetsingsinkomen: 81000
+              competent_authority: Belastingdienst
+
+    lexostatus_definitions:
+      - name: toetsingsinkomen
+        doc: >-
+          Het vastgestelde toetsingsinkomen van één persoon op één moment, zoals
+          deze cel het vaststelde. Het bevoegd gezag staat erbij: een consument
+          die hierop leunt, hoort te kunnen zien wiens vaststelling dit is.
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - toetsingsinkomen
+          - competent_authority
+        reduction:
+          chronicle: aanslagen
+          key: bsn
+          latest: true
+
+  - id: toeslagen
+    laws:
+      - wet_op_de_zorgtoeslag
+      - algemene_wet_inkomensafhankelijke_regelingen
+      - regeling_standaardpremie
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+
+      # Wat de cel zelf over deze persoon vastlegde. Let op het
+      # `toetsingsinkomen`: dat is een ander getal dan de belastingdienst
+      # vaststelde, en dat verschil is de hele assertie. Een besluit dat zegt te
+      # accepteren maar stiekem dit veld pakt, valt door de mand op het bedrag.
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+              toetsingsinkomen: 79547
+              vermogen: 0
+
+    besluit_definitions:
+      - name: zorgtoeslag_vaststelling
+        doc: >-
+          Het besluit dat accepteert. Het toetsingsinkomen komt van de cel die
+          het vaststelde; de rest komt uit eigen feiten en uit de eigen wet.
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+          # De kern van dit scenario. De vraag gaat niet van cel naar cel: de
+          # veiligheidscontext van `toeslagen` ondertekent hem en het transport
+          # brengt hem bij de publieke ingang van `belastingdienst`. Wat
+          # terugkomt gaat als parameter de engine in en met bron, naam, moment
+          # en ondertekening het decretogram in.
+          toetsingsinkomen:
+            accept_from: belastingdienst
+            lexostatus: toetsingsinkomen
+            field: toetsingsinkomen
+            params:
+              bsn: $bsn
+
+      - name: zorgtoeslag_vaststelling_eigen_inkomen
+        doc: >-
+          Het tegenbewijs: exact hetzelfde besluit, maar met het
+          toetsingsinkomen uit de eigen kroniek. Niets wordt hier geaccepteerd,
+          en er gaat geen enkele vraag over een celgrens.
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag-eigen/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+          toetsingsinkomen:
+            from_chronicle: inkomensleveringen
+            field: toetsingsinkomen
+
+    lexostatus_definitions:
+      - name: zorgtoeslagbeschikking
+        doc: wat deze cel over deze zaak besloten heeft, op het gevraagde moment
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - heeft_recht_op_zorgtoeslag
+          - hoogte_zorgtoeslag
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+decide:
+  - description: >-
+      Accepteren. Het toetsingsinkomen komt van de belastingdienst, en het gram
+      zegt van wie en van wanneer.
+    cell: toeslagen
+    besluit: zorgtoeslag_vaststelling
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      heeft_recht_op_zorgtoeslag: true
+      # Berekend op 81000 — het getal van de belastingdienst. Het bedrag van het
+      # besluit hieronder is een ander, en dat is het bewijs dat er geaccepteerd
+      # is en niet stilletjes een eigen feit gepakt.
+      hoogte_zorgtoeslag: 197178.01
+    expect_accepted:
+      toetsingsinkomen: belastingdienst
+    expect_computed:
+      # Alles wat deze cel zelf vaststelde, blijft eigen werk — anders zou
+      # "geaccepteerd" een etiket zijn dat overal op past.
+      - is_verzekerde
+      - heeft_recht_op_zorgtoeslag
+      - hoogte_zorgtoeslag
+
+  - description: >-
+      Narekenen. Zelfde wet, zelfde persoon, zelfde moment; alleen komt het
+      toetsingsinkomen nu uit de eigen kroniek. Er gaat niets over een celgrens.
+    cell: toeslagen
+    besluit: zorgtoeslag_vaststelling_eigen_inkomen
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      heeft_recht_op_zorgtoeslag: true
+      # Berekend op 79547 — het eigen getal, en dus een ander bedrag.
+      hoogte_zorgtoeslag: 197205.31187
+    expect_computed:
+      - toetsingsinkomen
+
+queries:
+  - description: >-
+      Het geaccepteerde besluit terugvragen: een gewone reductie over de eigen
+      kroniek, die het gram van toen oplevert.
+    cell: toeslagen
+    lexostatus: zorgtoeslagbeschikking
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-06-01
+    expect:
+      hoogte_zorgtoeslag: 197178.01
+
+  - description: >-
+      En het nagerekende besluit, onder zijn eigen zaakkenmerk. Twee zaken, twee
+      grammen, twee bedragen — in dezelfde kroniek van dezelfde cel.
+    cell: toeslagen
+    lexostatus: zorgtoeslagbeschikking
+    params:
+      zaakkenmerk: zorgtoeslag-eigen/999993653
+    op_moment: 2024-06-01
+    expect:
+      hoogte_zorgtoeslag: 197205.31187
+
+  - description: >-
+      De bron-cel zelf, rechtstreeks bevraagd: dit is wat zij vaststelde, en
+      onder wiens gezag. Dat gezag is niet dat van `toeslagen`, en dat is de
+      reden dat het getal geaccepteerd hoort te worden.
+    cell: belastingdienst
+    lexostatus: toetsingsinkomen
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      toetsingsinkomen: 81000
+      competent_authority: Belastingdienst

@@ -1,0 +1,58 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_partnerschapstoets
+name: Testregeling partnerschapstoets
+regulatory_layer: WET
+bwb_id: BWBR9999901
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_partnerschapstoets
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont is tier 3 van RFC-022 §4.2: `source.regulation` noemt hier
+# geen regeling maar een **cel** (`brp`). De besluit-engine heeft daar een
+# resolver voor en lost het op langs de veiligheidscontext en het transport; de
+# reduce-engine heeft die resolver niet en komt op dezelfde regel niet verder
+# dan "niets vastgesteld". Dat verschil is met een echte corpuswet niet te laten
+# zien zonder die wet te verbouwen, en een wet verbouwen voor een testopstelling
+# is precies wat je niet wilt.
+articles:
+  - number: '1'
+    url: https://example.com/test_partnerschapstoets#Artikel1
+    text: >-
+      De uitkomst is waar indien de relatievorm van de betrokkene een huwelijk
+      is, zoals de basisregistratie personen die vaststelt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          # De verwijzing waar het om gaat. `brp` is geen regeling die deze cel
+          # laadt, dus dit is geen cross-law-vraag maar een vraag aan een andere
+          # organisatie. Welke lexostatus daar gevraagd wordt, staat niet hier —
+          # dat is een afspraak tussen twee organisaties en geen recht — maar in
+          # `accepts_from` van de cel.
+          - name: partnerschap_type
+            type: string
+            source:
+              regulation: brp
+              output: partnerschap
+              parameters:
+                bsn: $bsn
+        output:
+          - name: is_gehuwd
+            type: boolean
+        actions:
+          - output: is_gehuwd
+            value:
+              operation: EQUALS
+              subject: $partnerschap_type
+              value: HUWELIJK
