@@ -1,0 +1,33 @@
+/* De enige eigen CSS van deze app: het document zelf. Elke visuele waarde komt
+ * uit @nldd/design-system (geïmporteerd in src/main.js) en elk stuk UI uit een
+ * nldd-*-component. Staat er hier ooit een regel bij die een component nabouwt
+ * of overschrijft, dan is dat een voorstel voor het ontwerpsysteem en niet een
+ * regel in dit bestand.
+ *
+ * Dezelfde drie blokken als frontend/css/main.css, om dezelfde redenen. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* De app vult het venster; de split views binnen nldd-app-view meten zich
+ * daaraan af en de panelen scrollen zelf. */
+#app {
+  height: 100%;
+}
+
+body {
+  /* Basisfont voor platte tekst die niet binnen een nldd-component staat (een
+   * geslotte span in een lijstrij bijvoorbeeld). Het ontwerpsysteem definieert
+   * het token en de @font-face, maar zet zelf geen font op body. */
+  font-family: var(--primitives-font-family-body);
+}
