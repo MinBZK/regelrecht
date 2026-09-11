@@ -598,6 +598,9 @@ impl Cell {
 
     /// Eén input uit een eigen kroniek: de laatste vastlegging op of vóór het
     /// moment van het besluit, over het onderwerp dat de parameters aanwijzen.
+    ///
+    /// Nooit uit [`BESCHIKKINGEN`]: `validate` weigert die stroom als bron bij
+    /// het optuigen, want daar liggen besluiten en geen feiten.
     fn read_own_chronicle(
         &self,
         definition: &BesluitDefinition,
@@ -1700,6 +1703,38 @@ besluit_definitions:
         assert!(
             matches!(err, SimulatorError::UnknownRegulationInput { .. }),
             "verwachtte UnknownRegulationInput, kreeg {err}"
+        );
+    }
+
+    /// Een besluit leest geen besluit.
+    ///
+    /// Zodra een cel besluit-definities heeft, is `beschikkingen` een gewone
+    /// stroom met gewone velden, en zou een tweede besluit een veld van een
+    /// eerder decretogram als "eigen feit" kunnen binnenhalen. Dat is dezelfde
+    /// schaduwboekhouding die `register_own_facts` aan de kant van de engine al
+    /// buiten de deur houdt, langs de andere weg.
+    #[test]
+    fn een_besluit_kan_geen_eerder_besluit_als_input_lezen() {
+        let err = Cell::from_config(
+            &besluitende_cel(
+                "    regulation: wet_op_de_zorgtoeslag
+    output: heeft_recht_op_zorgtoeslag
+    zaakkenmerk: 'zorgtoeslag/{bsn}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      is_verzekerde:
+        from_chronicle: beschikkingen
+        field: heeft_recht_op_zorgtoeslag",
+            ),
+            &regulation_root(),
+            &no_fixtures(),
+        )
+        .expect_err("een besluit dat uit de beschikkingen leest hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::DecretogramAsBesluitInput { .. }),
+            "verwachtte DecretogramAsBesluitInput, kreeg {err}"
         );
     }
 

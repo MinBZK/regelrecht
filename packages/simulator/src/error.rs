@@ -396,6 +396,31 @@ pub enum SimulatorError {
         known: String,
     },
 
+    /// Een besluit wil een input uit de stroom met decretogrammen halen.
+    ///
+    /// Dan zou het nieuwe besluit leunen op een veld van een eerder besluit, en
+    /// is niet meer te zeggen of er gerekend of overgeschreven is — dezelfde
+    /// schaduwboekhouding die de stroom al buiten de databronnen van de engine
+    /// houdt, langs de andere weg. Terugzien doe je met een reductie over deze
+    /// stroom; leunen op een eerder besluit is een eigen stap en geen input.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' haalt input '{input}' uit kroniekstroom \
+         '{stream}' (veld '{field}'), maar daar liggen besluiten en geen feiten; \
+         een besluit leest geen besluit"
+    )]
+    DecretogramAsBesluitInput {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit dat uit de verkeerde stroom leest.
+        besluit: String,
+        /// De input die eruit zou komen.
+        input: String,
+        /// De voorbehouden stroomnaam.
+        stream: String,
+        /// Het veld dat gelezen zou worden.
+        field: String,
+    },
+
     /// Een besluit kan een van zijn inputs op dit moment niet ophalen.
     ///
     /// Geen "niets vastgesteld" zoals bij een reductie, maar een fout: een

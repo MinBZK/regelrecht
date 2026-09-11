@@ -244,12 +244,18 @@ gebeurt, in deze volgorde:
    die toen gold;
 4. de uitkomst gaat als één gram de stroom `beschikkingen` in.
 
-Die stroom is **voorbehouden**: ze wordt automatisch aangemaakt zodra een cel
-besluit-definities heeft, een configuratie die haar zelf declareert wordt
-geweigerd, en een `fixture` kan er niets in zetten. Alleen besluiten legt er iets
-in. Zou een wereldbestand er een gram in mogen schrijven, dan lag er een
-"besluit" zonder receipt en zonder herkomst tussen de echte, en kon een reductie
-de twee niet onderscheiden — dan bewijst het kernscenario hieronder niets meer.
+Die stroom is **voorbehouden**, aan drie kanten:
+
+- een configuratie die haar zelf declareert wordt geweigerd; ze wordt automatisch
+  aangemaakt zodra een cel besluit-definities heeft;
+- een `fixture` kan er niets in zetten. Zou een wereldbestand er een gram in
+  mogen schrijven, dan lag er een "besluit" zonder receipt en zonder herkomst
+  tussen de echte, en kon een reductie de twee niet onderscheiden — dan bewijst
+  het kernscenario hieronder niets meer;
+- een besluit kan er geen input uit halen (`from_chronicle: beschikkingen`).
+  Daar liggen besluiten en geen feiten: een besluit leest geen besluit.
+
+Alleen besluiten legt er iets in, en alleen een reductie haalt er iets uit.
 
 ### Twee paden, twee engines
 

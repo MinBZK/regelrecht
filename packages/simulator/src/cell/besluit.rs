@@ -497,22 +497,39 @@ impl BesluitDefinition {
                         .join(", "),
                 });
             }
-            self.validate_input(cell, surface, origin)?;
+            self.validate_input(cell, surface, input, origin)?;
         }
 
         self.validate_zaakkenmerk(cell)
     }
 
-    /// Eén input: bestaat de stroom, kent ze het veld, en is haar sleutel
-    /// aan te leveren? Of, bij een parameter: is die gedocumenteerd?
+    /// Eén input: is de stroom er een om feiten uit te lezen, bestaat ze, kent
+    /// ze het veld, en is haar sleutel aan te leveren? Of, bij een parameter: is
+    /// die gedocumenteerd?
     fn validate_input(
         &self,
         cell: &str,
         surface: &CellSurface<'_>,
+        input: &str,
         origin: &BesluitInput,
     ) -> Result<()> {
         match origin {
             BesluitInput::FromChronicle { chronicle, field } => {
+                // Een besluit leest geen besluit. De stroom met decretogrammen is
+                // een gewone stroom zodra een cel besluit-definities heeft, dus
+                // zonder deze weigering kan een besluit een veld van een eerder
+                // decretogram als "eigen feit" binnenhalen — dezelfde
+                // schaduwboekhouding die `register_own_facts` aan de kant van de
+                // engine al buiten de deur houdt, langs de andere weg.
+                if chronicle == BESCHIKKINGEN {
+                    return Err(SimulatorError::DecretogramAsBesluitInput {
+                        cell: cell.to_string(),
+                        besluit: self.name.clone(),
+                        input: input.to_string(),
+                        stream: chronicle.clone(),
+                        field: field.clone(),
+                    });
+                }
                 surface.check_stream_field(cell, Subject::Besluit, &self.name, chronicle, field)?;
                 // Onbereikbaar leeg: `check_stream_field` heeft de stroom
                 // hierboven al gevonden, en elke stroom declareert een sleutel.
