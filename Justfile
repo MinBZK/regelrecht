@@ -250,6 +250,45 @@ demo-check: validate-demo bdd-demo
     just wasm-build
     cd frontend-demo && npx vite build
 
+# --- Chronolexografie-testopstelling ---
+
+# De frontend van de testopstelling met Vite, en /api + /health naar de server.
+#
+# De poort zit in het bereik dat de dev-container naar buiten doorlaat en bindt op
+# 0.0.0.0, want anders is de pagina buiten de container onbereikbaar. De server
+# draait naast deze opdracht (poort 8000; API_PORT verzet de proxy).
+[doc("Start de frontend van de testopstelling met een proxy naar de server")]
+dev-chrono-poc:
+    cd frontend-chrono-poc && npx vite --port 7250 --strictPort --host 0.0.0.0
+
+# De bundel die de server statisch uitdeelt.
+[doc("Bouw de frontend van de testopstelling")]
+build-chrono-poc:
+    cd frontend-chrono-poc && npx vite build
+
+# Serveer de gebouwde frontend via de server: eerst de bundel, dan de server die
+# hem uitdeelt. De serverkant landt met zijn eigen wijziging; tot die er is zegt
+# deze opdracht wat er ontbreekt in plaats van een onleesbare cargo-fout.
+[doc("Serveer de gebouwde frontend van de testopstelling via de server")]
+chrono-poc: build-chrono-poc
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d packages/chrono-poc-web ]; then
+        printf "De bundel staat in frontend-chrono-poc/dist.\n"
+        printf "De server (packages/chrono-poc-web) staat nog niet in deze boom; draai\n"
+        printf "ondertussen 'just dev-chrono-poc' voor de frontend met een proxy.\n"
+        exit 1
+    fi
+    cd packages && cargo run -p regelrecht-chrono-poc-web
+
+# Alles wat de frontend van de testopstelling is: tests, de import-guard van het
+# ontwerpsysteem, en de bundel. Eén opdracht om te draaien voor je hem pusht.
+[doc("Check de frontend van de testopstelling: tests, ontwerpsysteem-imports en bundel")]
+chrono-poc-check:
+    cd frontend-chrono-poc && npx vitest run
+    node script/check-nldd-imports.mjs frontend-chrono-poc/src frontend-chrono-poc/src/nldd-components.js
+    cd frontend-chrono-poc && npx vite build
+
 # Regenerate all BDD step bindings from bdd/grammar.yaml
 bdd-codegen:
     node bdd/codegen/gen-js.mjs

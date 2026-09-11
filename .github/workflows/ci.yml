@@ -42,6 +42,7 @@ jobs:
               - frontend/**
               - frontend-lawmaking/**
               - frontend-demo/**
+              - frontend-chrono-poc/**
               - packages/frontend-shared/**
               - bdd/**
               - corpus/regulation/**
@@ -611,6 +612,7 @@ jobs:
         run: |
           node script/check-nldd-imports.mjs frontend/src frontend/src/nldd-components.js
           node script/check-nldd-imports.mjs docs/src docs/src/nldd-components.js
+          node script/check-nldd-imports.mjs frontend-chrono-poc/src frontend-chrono-poc/src/nldd-components.js
 
   frontend-tests:
     name: Frontend tests
@@ -657,6 +659,9 @@ jobs:
       - name: Run demo tests
         run: npm test -w frontend-demo
 
+      - name: Run chronolexografie-frontend tests
+        run: npm test -w frontend-chrono-poc
+
       # packages/arch-extract/ui is geen workspace-member (eigen package.json en
       # lockfile), dus `npm test -w` bereikt het niet en de test die er ligt
       # draaide nergens.
@@ -688,6 +693,11 @@ jobs:
       # de bundel zonder engine: het gaat om de Vue-build en de corpuskopie.
       - name: Build demo bundle
         run: npm run build -w frontend-demo
+
+      # De frontend van de testopstelling heeft geen corpus of WASM nodig; dit is
+      # de Vue-build en niets meer.
+      - name: Build chronolexografie-frontend bundle
+        run: npm run build -w frontend-chrono-poc
 
   # Verplichte check op main. De benen hierboven dragen nieuwe namen en mogen
   # dus van vorm veranderen; deze naam moet blijven bestaan, want een required

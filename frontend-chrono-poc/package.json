@@ -1,0 +1,27 @@
+{
+  "name": "regelrecht-frontend-chrono-poc",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Vue-frontend op de wereld-API van de chronolexografie-testopstelling: cellen met kronieken, tijdlijn, acties en de herkomst van elke waarde",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
+    "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
+  },
+  "dependencies": {
+    "@nldd/design-system": "^0.8.83",
+    "@regelrecht/frontend-shared": "*",
+    "vue": "^3.5.42"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/test-utils": "^2.5.0",
+    "happy-dom": "^20.14.0",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
+  }
+}
