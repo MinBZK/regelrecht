@@ -19,8 +19,33 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::Result;
 use crate::types::Value;
+
+/// A value a cell answered and this engine accepted (RFC-022 §4.2).
+///
+/// The question is part of the fact, not just the answer. Two questions that
+/// happen to come back with the same answer are two facts — a nil balance for
+/// the applicant and a nil balance for a partner are about two people, and a
+/// receipt that counted them as one would understate what the decision leant
+/// on. Only a fact identical in every field is the same fact, recorded once.
+///
+/// `parameters` is what makes that distinction possible and stays inside the
+/// execution: RFC-013's `accepted_values` records the answer and who gave it,
+/// not the lookup key it was asked with.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AcceptedCellValue {
+    /// The cell that answered, i.e. the `source.regulation` value.
+    pub cell: String,
+    /// The output that was asked for.
+    pub output: String,
+    /// The arguments the question was put with.
+    pub parameters: BTreeMap<String, Value>,
+    /// The answer.
+    pub value: Value,
+}
 
 /// Resolves a `source.regulation` that names a cell instead of a loaded
 /// regulation (tier 3 of RFC-022 §4.2).

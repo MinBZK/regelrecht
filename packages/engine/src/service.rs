@@ -26,7 +26,7 @@
 //! ```
 
 use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, Input, MachineReadable};
-use crate::cell::CellResolver;
+use crate::cell::{AcceptedCellValue, CellResolver};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
@@ -34,7 +34,6 @@ use crate::engine::{ArticleEngine, ArticleResult, InputProvenance, OutputProvena
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
-use crate::receipt::AcceptedValue;
 use crate::resolver::{RuleResolver, SelectionReason};
 use crate::trace::TraceBuilder;
 use crate::types::{
@@ -112,7 +111,7 @@ struct ResolutionContext<'a> {
     /// is a fact about the *execution*, not about one result: the decision
     /// leans on it however deep the call that accepted it, and no receipt that
     /// leaves it out can be read back (RFC-013).
-    accepted_values: Vec<AcceptedValue>,
+    accepted_values: Vec<AcceptedCellValue>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -160,26 +159,28 @@ impl<'a> ResolutionContext<'a> {
 
     /// Record a value accepted from a cell (RFC-022 §4.2).
     ///
-    /// The same fact asked for twice in one execution is one acceptance: the
-    /// receipt states which values came from elsewhere, not how often the
-    /// engine happened to look them up.
-    fn record_accepted(&mut self, cell: &str, output: &str, value: &Value) {
-        let accepted = AcceptedValue {
+    /// The same fact — same question, same answer — counts once however often
+    /// the engine happened to look it up; the receipt states what the decision
+    /// leant on, not how the engine got there. Anything that differs is another
+    /// fact: two questions with the same answer are two (a nil balance for the
+    /// applicant and a nil balance for a partner are two facts about two
+    /// people), and one question answered differently in a later stage of the
+    /// same procedure is two as well (the earlier stage decided on the earlier
+    /// answer, and that is what it leant on).
+    fn record_accepted(
+        &mut self,
+        cell: &str,
+        output: &str,
+        parameters: &BTreeMap<String, Value>,
+        value: &Value,
+    ) {
+        let accepted = AcceptedCellValue {
+            cell: cell.to_string(),
             output: output.to_string(),
+            parameters: parameters.clone(),
             value: value.clone(),
-            authority: cell.to_string(),
-            engine: None,
-            engine_version: None,
-            regulation_id: None,
-            regulation_hash: None,
-            trace_id: None,
-            signed: None,
         };
-        if !self.accepted_values.iter().any(|existing| {
-            existing.authority == accepted.authority
-                && existing.output == accepted.output
-                && existing.value == accepted.value
-        }) {
+        if !self.accepted_values.contains(&accepted) {
             self.accepted_values.push(accepted);
         }
     }
@@ -577,6 +578,16 @@ pub struct StageState {
     pub accumulated_outputs: BTreeMap<String, Value>,
     /// Original parameters from the initial execution
     pub parameters: BTreeMap<String, Value>,
+    /// Values accepted from a cell in the stages run so far (RFC-022 §4.2).
+    ///
+    /// Every stage gets a fresh resolution context, so without carrying these
+    /// along a value an earlier stage leant on would be missing from the final
+    /// result and unrecoverable — the receipt of a multi-stage decision would
+    /// then state that nothing was accepted from anybody (RFC-013). Defaulted
+    /// on deserialization so state persisted before this field existed still
+    /// loads.
+    #[serde(default)]
+    pub accepted_values: Vec<AcceptedCellValue>,
 }
 
 /// Outcome of a stage-aware execution step.
@@ -816,8 +827,24 @@ impl LawExecutionService {
         // carry it: without it the decision cannot be read back, because
         // nothing here reproduces it (RFC-013). The execution collected them
         // as they were accepted, so a value a nested regulation or a sibling
-        // article leaned on is in there too.
-        let accepted_values = result.accepted_values.clone();
+        // article leaned on is in there too. The lookup key the question was
+        // put with stays behind: RFC-013 records the answer and the authority
+        // that gave it, and the key is nobody else's business.
+        let accepted_values: Vec<AcceptedValue> = result
+            .accepted_values
+            .iter()
+            .map(|accepted| AcceptedValue {
+                output: accepted.output.clone(),
+                value: accepted.value.clone(),
+                authority: accepted.cell.clone(),
+                engine: None,
+                engine_version: None,
+                regulation_id: None,
+                regulation_hash: None,
+                trace_id: None,
+                signed: None,
+            })
+            .collect();
 
         let sources: Vec<ReceiptSource> = self
             .source_info
@@ -1158,6 +1185,7 @@ impl LawExecutionService {
                     current_stage: first_stage.name.clone(),
                     accumulated_outputs: BTreeMap::new(),
                     parameters: parameters.clone(),
+                    accepted_values: Vec::new(),
                 }
             }
         };
@@ -1212,6 +1240,10 @@ impl LawExecutionService {
             ResolutionContext::new(calculation_date)?
         };
         res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
+        // What earlier stages accepted from a cell is part of this decision too,
+        // and this context is a fresh one: hand it over before the stage runs so
+        // the result carries the whole procedure, not just its last stage.
+        res_ctx.accepted_values = stage_state.accepted_values.clone();
 
         // Execute the article with stage-aware hook firing.
         let result = self.evaluate_article_with_service(
@@ -1227,6 +1259,8 @@ impl LawExecutionService {
         for (k, v) in &result.outputs {
             stage_state.accumulated_outputs.insert(k.clone(), v.clone());
         }
+        // And back again, for the next stage or for whoever resumes this one.
+        stage_state.accepted_values = res_ctx.accepted_values.clone();
 
         // Advance to next stage
         if stage_idx + 1 < procedure.stages.len() {
@@ -2784,7 +2818,7 @@ impl LawExecutionService {
         tracing::debug!(cell = %cell_id, output = %output, "Accepted value from cell");
         res_ctx.trace_set_result(value.clone());
         res_ctx.trace_set_message(format!("Accepted '{output}' from cell '{cell_id}'"));
-        res_ctx.record_accepted(cell_id, output, &value);
+        res_ctx.record_accepted(cell_id, output, &parameters, &value);
         Ok(CellResolution::Answered(value))
     }
 
@@ -8874,5 +8908,229 @@ articles:
         );
 
         assert_eq!(receipt.accepted_values.len(), 1);
+    }
+
+    /// A cell that answers a different value on every call, so a test can tell
+    /// which call an accepted value came from.
+    struct CountingCell {
+        calls: RefCell<usize>,
+    }
+
+    impl CountingCell {
+        fn new() -> Rc<Self> {
+            Rc::new(Self {
+                calls: RefCell::new(0),
+            })
+        }
+    }
+
+    impl CellResolver for CountingCell {
+        fn resolve(
+            &self,
+            _cell_id: &str,
+            _output: &str,
+            _parameters: &BTreeMap<String, Value>,
+            _reference_date: &str,
+        ) -> Result<Option<Value>> {
+            let mut calls = self.calls.borrow_mut();
+            *calls += 1;
+            Ok(Some(Value::Int(100 * i64::try_from(*calls).unwrap_or(0))))
+        }
+    }
+
+    /// One regulation asking the same cell the same question about two people.
+    fn cell_law_asking_about_two_people() -> &'static str {
+        r#"
+$id: cell_consumer_two_people
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Counts what another organisation holds on both partners
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+          - name: partner_bsn
+            type: string
+        input:
+          - name: eigen_vorderingen
+            type: number
+            source:
+              regulation: cjib
+              output: openstaande_vorderingen_totaal
+              parameters:
+                bsn: $bsn
+          - name: partner_vorderingen
+            type: number
+            source:
+              regulation: cjib
+              output: openstaande_vorderingen_totaal
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: samen
+            type: number
+        actions:
+          - output: samen
+            operation: ADD
+            values:
+              - $eigen_vorderingen
+              - $partner_vorderingen
+"#
+    }
+
+    #[test]
+    fn two_questions_with_the_same_answer_are_two_accepted_values() {
+        // Both partners happen to owe nothing. That is two facts about two
+        // people, and a receipt that folded them into one would understate what
+        // the decision leant on (RFC-013).
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(cell_law_asking_about_two_people())
+            .unwrap();
+        service
+            .set_cell_resolver(["cjib"], RecordingCell::answering(Value::Int(0)))
+            .unwrap();
+
+        let mut given = cell_consumer_params();
+        given.insert(
+            "partner_bsn".to_string(),
+            Value::String("999992958".to_string()),
+        );
+        let result = service
+            .evaluate_law_output(
+                "cell_consumer_two_people",
+                "samen",
+                given.clone(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &given,
+            "2025-01-01",
+            &["samen".to_string()],
+        );
+
+        assert_eq!(result.outputs.get("samen"), Some(&Value::Int(0)));
+        assert_eq!(
+            receipt.accepted_values.len(),
+            2,
+            "two people is two facts, got {:?}",
+            receipt.accepted_values
+        );
+    }
+
+    /// A procedure-bearing law whose one article leans on a cell, with a second
+    /// stage that waits for an external input.
+    fn staged_cell_law() -> &'static str {
+        r#"
+$id: stage_cell_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+procedure:
+  - id: test_procedure
+    default: true
+    applies_to:
+      legal_character: TEST_BESCHIKKING
+    stages:
+      - name: AANVRAAG
+      - name: BESLUIT
+        requires:
+          - name: besluit_datum
+            type: string
+articles:
+  - number: '1'
+    text: Neemt een beschikking op wat een andere organisatie meldt
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TEST_BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+        input:
+          - name: openstaande_vorderingen
+            type: number
+            source:
+              regulation: cjib
+              output: openstaande_vorderingen_totaal
+              parameters:
+                bsn: $bsn
+        output:
+          - name: toekenning
+            type: number
+        actions:
+          - output: toekenning
+            value: $openstaande_vorderingen
+"#
+    }
+
+    #[test]
+    fn a_value_an_earlier_stage_accepted_survives_to_the_final_result() {
+        // Every stage gets a fresh resolution context, so the decision state has
+        // to carry what earlier stages accepted. The cell answers differently on
+        // its second call, which is how this test can tell: without the
+        // carry-over the final result would know only the later answer, and the
+        // stage that decided on the earlier one would have no record of it.
+        let mut service = LawExecutionService::new();
+        service.load_law(staged_cell_law()).unwrap();
+        service
+            .set_cell_resolver(["cjib"], CountingCell::new())
+            .unwrap();
+
+        let outcome = service
+            .execute_stage(
+                "stage_cell_law",
+                "toekenning",
+                None,
+                cell_consumer_params(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let state = match outcome {
+            ExecutionOutcome::Yielded { state, .. } => state,
+            other => panic!("expected a yield on the second stage's input, got {other:?}"),
+        };
+        assert_eq!(
+            state.accepted_values.len(),
+            1,
+            "the first stage's acceptance must travel with the decision state"
+        );
+        assert_eq!(state.accepted_values[0].value, Value::Int(100));
+
+        let mut resumed = cell_consumer_params();
+        resumed.insert(
+            "besluit_datum".to_string(),
+            Value::String("2025-02-01".to_string()),
+        );
+        let outcome = service
+            .execute_stage(
+                "stage_cell_law",
+                "toekenning",
+                Some(state),
+                resumed.clone(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let result = match outcome {
+            ExecutionOutcome::Complete(result) => result,
+            other => panic!("expected the procedure to complete, got {other:?}"),
+        };
+
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &resumed,
+            "2025-01-01",
+            &["toekenning".to_string()],
+        );
+        let values: Vec<&Value> = receipt.accepted_values.iter().map(|a| &a.value).collect();
+        assert_eq!(
+            values,
+            vec![&Value::Int(100), &Value::Int(200)],
+            "both stages' acceptances belong in the receipt"
+        );
     }
 }

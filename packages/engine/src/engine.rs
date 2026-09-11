@@ -20,10 +20,10 @@
 //! ```
 
 use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
+use crate::cell::AcceptedCellValue;
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
-use crate::receipt::AcceptedValue;
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
@@ -99,9 +99,11 @@ pub struct ArticleResult {
     /// to carry them whoever asked for them (RFC-013 `accepted_values`).
     ///
     /// Unlike `input_provenance`, which describes *this* result's own inputs,
-    /// this is a fact about the whole execution. Empty for an article evaluated
-    /// by [`ArticleEngine`] alone, which resolves no sources.
-    pub accepted_values: Vec<AcceptedValue>,
+    /// this is a fact about the whole execution, and for a procedure executed
+    /// stage by stage (RFC-008) about every stage of it, carried along in
+    /// [`StageState`](crate::StageState). Empty for an article evaluated by
+    /// [`ArticleEngine`] alone, which resolves no sources.
+    pub accepted_values: Vec<AcceptedCellValue>,
     /// Article number that was executed
     pub article_number: String,
     /// Law ID containing the article

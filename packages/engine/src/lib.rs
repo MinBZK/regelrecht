@@ -68,7 +68,7 @@ pub use article::{
     HookDeclaration, HookFilter, HookPoint, LawLoad, MachineReadable, OverrideDeclaration,
     ProcedureDefinition, Source, Stage, UntranslatableEntry,
 };
-pub use cell::CellResolver;
+pub use cell::{AcceptedCellValue, CellResolver};
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
     MAX_YAML_SIZE,
