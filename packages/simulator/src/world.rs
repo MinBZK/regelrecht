@@ -15,9 +15,16 @@
 //! die bij het passeren wordt vastgelegd. De lus is generiek — een gesorteerde
 //! lijst van `(datum, trigger)` — zodat vervallende verplichtingen en gemiste
 //! termijnen er later naast passen zonder dat de klok verandert.
+//!
+//! De wereld is ook de enige die een cel kan laten **besluiten**
+//! ([`World::decide`]). Dat is geen trigger op de klok maar een aansturing van
+//! buiten: in deze opstelling zegt het scenario wie wanneer waarover besluit,
+//! omdat een actie van een actor nog niet bestaat. De wereld houdt zelf geen
+//! register van wat er besloten is; het decretogram ligt in de kroniek van de
+//! cel die besloot.
 
-use crate::cell::{Cell, CellConfig, ChronicleEvent, Intake, Lexostatus};
-use crate::error::{Result, SimulatorError};
+use crate::cell::{Cell, CellConfig, ChronicleEvent, Decretogram, Intake, Lexostatus};
+use crate::error::{Result, SimulatorError, Subject};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
@@ -251,7 +258,8 @@ impl World {
         if op_moment > self.clock {
             return Err(SimulatorError::MomentAfterClock {
                 cell: cell.to_string(),
-                lexostatus: lexostatus.to_string(),
+                subject: Subject::Lexostatus,
+                name: lexostatus.to_string(),
                 op_moment: op_moment.to_string(),
                 clock: self.clock.to_string(),
             });
@@ -262,6 +270,43 @@ impl World {
                 cell: cell.to_string(),
             })?
             .reduce(lexostatus, params, op_moment)
+    }
+
+    /// Laat één cel een besluit nemen, op één moment.
+    ///
+    /// De enige weg naar `Cell::decide`: net als vastleggen is besluiten iets
+    /// dat een cel zelf doet, niet iets dat een consument bij haar bestelt. De
+    /// wereld is hier de aansturing die er in de opstelling nog niet is — een
+    /// actie op de tijdlijn, een verplichting die vervalt — en verder niets: ze
+    /// kiest de cel op, geeft het moment door en houdt zelf geen register bij
+    /// van wat er besloten is. Het decretogram ligt in de kroniek van de cel die
+    /// besloot, en nergens anders.
+    ///
+    /// `op_moment` mag niet ná de klok liggen, om dezelfde reden als bij
+    /// [`World::reduce`]: een besluit "op" een moment dat nog niet gebeurd is,
+    /// zou een gram in de toekomst leggen.
+    pub fn decide(
+        &mut self,
+        cell: &str,
+        besluit: &str,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<Decretogram> {
+        if op_moment > self.clock {
+            return Err(SimulatorError::MomentAfterClock {
+                cell: cell.to_string(),
+                subject: Subject::Besluit,
+                name: besluit.to_string(),
+                op_moment: op_moment.to_string(),
+                clock: self.clock.to_string(),
+            });
+        }
+        self.cells
+            .get_mut(cell)
+            .ok_or_else(|| SimulatorError::UnknownCell {
+                cell: cell.to_string(),
+            })?
+            .decide(besluit, params, op_moment)
     }
 
     /// Laat alles afgaan wat op of vóór `tot` valt, in datumvolgorde.
@@ -612,6 +657,68 @@ record:
         assert!(
             matches!(err, SimulatorError::UnknownChronicleStream { .. }),
             "verwachtte UnknownChronicleStream, kreeg {err}"
+        );
+    }
+
+    /// De stroom met decretogrammen is niet met een `fixture` te vullen.
+    ///
+    /// Dat de configuratie haar niet mag declareren is niet genoeg: zodra een cel
+    /// besluit-definities heeft, bestáát de stroom, en zonder deze poort zou een
+    /// wereldbestand er een "besluit" in kunnen zetten dat nooit langs een engine
+    /// kwam — zonder receipt, zonder herkomst, met een `intake` naar keuze. Een
+    /// reductie erover zou dat niet van een echt besluit kunnen onderscheiden, en
+    /// dan bewijst het kernscenario niets meer.
+    #[test]
+    fn een_fixture_kan_geen_decretogram_verzinnen() {
+        let config: CellConfig = serde_yaml_ng::from_str(
+            r"
+id: toeslagen
+laws:
+  - wet_op_de_zorgtoeslag
+  - algemene_wet_inkomensafhankelijke_regelingen
+  - regeling_standaardpremie
+besluit_definitions:
+  - name: zorgtoeslag_vaststelling
+    regulation: wet_op_de_zorgtoeslag
+    output: heeft_recht_op_zorgtoeslag
+    zaakkenmerk: 'zorgtoeslag/{bsn}'
+    params:
+      - name: bsn
+        type: string
+",
+        )
+        .unwrap_or_else(|e| panic!("testconfig moet parsen: {e}"));
+
+        let verzonnen = Fixture {
+            at: date("2024-06-01"),
+            record: Recording {
+                cell: "toeslagen".to_string(),
+                chronicle: crate::cell::BESCHIKKINGEN.to_string(),
+                name: "zorgtoeslag_vaststelling".to_string(),
+                intake: Intake::Levering,
+                grondslag: String::new(),
+                fields: BTreeMap::from([
+                    (
+                        "zaakkenmerk".to_string(),
+                        Value::String("zorgtoeslag/999993653".to_string()),
+                    ),
+                    ("heeft_recht_op_zorgtoeslag".to_string(), Value::Bool(true)),
+                ]),
+            },
+        };
+
+        let err = World::new(
+            &[config],
+            Clock {
+                start: date("2024-01-01"),
+            },
+            &[verzonnen],
+            &regulation_root(),
+        )
+        .expect_err("een verzonnen decretogram hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ReservedStreamRecording { .. }),
+            "verwachtte ReservedStreamRecording, kreeg {err}"
         );
     }
 

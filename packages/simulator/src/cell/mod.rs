@@ -6,18 +6,35 @@
 //!
 //! De reductielogica woont hier, niet in de scenario-runner. De runner leest
 //! configuratie en stelt vragen; wat een reductie inhoudt, weet alleen de cel.
+//!
+//! Twee paden, en ze zijn met opzet ongelijk:
+//!
+//! - **reduceren** ([`Cell::reduce`]) is publiek en zuiver: een filter of een
+//!   berekening over de eigen kronieken met de eigen wetten, zonder enige weg
+//!   naar een andere cel;
+//! - **besluiten** (`Cell::decide`) is intern: de cel voert een eigen regeling
+//!   uit en legt de uitkomst vast als decretogram. Dit is het pad waar straks
+//!   een waarde van een andere cel binnenkomt, en het enige.
+//!
+//! Zie [`Decretogram`] voor wat een besluit vastlegt, en waarom dat het
+//! RFC-013 Execution Receipt is en geen eigen formaat ernaast.
 
+mod besluit;
 mod chronicle;
 mod config;
 
+pub use besluit::{
+    BesluitDefinition, BesluitInput, Decretogram, DecretogramInput, InputOrigin, BESCHIKKINGEN,
+};
 pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
-pub use config::{CellConfig, LexostatusDefinition, LexostatusInput, ParameterType, Reduction};
+pub use config::{CellConfig, DocumentedParameter, LexostatusDefinition, ParameterType, Reduction};
 
 use crate::corpus;
-use crate::error::{Result, SimulatorError};
+use crate::error::{Result, SimulatorError, Subject};
 use chrono::NaiveDate;
 use config::{engine_parameters, CellSurface};
-use regelrecht_engine::{LawExecutionService, Value};
+use regelrecht_engine::article::CompetentAuthority;
+use regelrecht_engine::{ArticleBasedLaw, LawExecutionService, Value};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -97,10 +114,26 @@ pub struct Cell {
     /// In een `RefCell`, omdat elke reductie de zichtbare feiten opnieuw op het
     /// gevraagde moment zet; naar buiten toe blijft bevragen een leesactie.
     service: Option<RefCell<LawExecutionService>>,
+    /// De **tweede** engine over dezelfde wetten: die van het besluit-pad.
+    ///
+    /// Twee instanties en niet één, omdat ze niet hetzelfde mogen. De engine van
+    /// [`Self::reduce`] krijgt nooit een `CellResolver` en kan de celgrens dus
+    /// niet over: een cross-cel-pull vanuit een reductie is daarmee een
+    /// ontbrekende capability en geen afspraak (RFC-022 §4.2, tier 3). Deze is
+    /// de enige die er ooit een mag krijgen. Vandaag heeft ook zij er geen — het
+    /// accepteren van een waarde van een andere cel volgt apart — dus het
+    /// verschil is nu een *belofte over wie wat mag*, en de plek waar die
+    /// belofte waargemaakt wordt, staat klaar.
+    ///
+    /// Alleen aanwezig als de cel besluit-definities heeft: een cel die niet
+    /// besluit, heeft aan één engine genoeg.
+    besluit_service: Option<RefCell<LawExecutionService>>,
     /// De eigen feiten. Privé, en dat is het punt.
     chronicles: ChronicleStore,
     /// De gepubliceerde lexostatussen, op naam.
     published: BTreeMap<String, LexostatusDefinition>,
+    /// De besluiten die deze cel kan nemen, op naam.
+    besluiten: BTreeMap<String, BesluitDefinition>,
 }
 
 impl Cell {
@@ -124,26 +157,50 @@ impl Cell {
         regulation_root: &Path,
         fixture_fields: &BTreeMap<String, BTreeSet<String>>,
     ) -> Result<Self> {
-        let chronicles = ChronicleStore::from_streams(&config.id, config.chronicles.clone())?;
+        let mut streams = config.chronicles.clone();
+        if let Some(reserved) = streams
+            .iter()
+            .find(|stream| stream.stream == BESCHIKKINGEN)
+            .map(|stream| stream.stream.clone())
+        {
+            return Err(SimulatorError::ReservedStream {
+                cell: config.id.clone(),
+                stream: reserved,
+            });
+        }
+        if !config.besluit_definitions.is_empty() {
+            streams.push(ChronicleStream {
+                stream: BESCHIKKINGEN.to_string(),
+                key: besluit::ZAAKKENMERK.to_string(),
+                events: Vec::new(),
+            });
+        }
+        let chronicles = ChronicleStore::from_streams(&config.id, streams)?;
 
-        let service = if config.laws.is_empty() {
+        let laws = load_laws(&config.laws, regulation_root)?;
+        // Twee engines over precies dezelfde wetten; zie `besluit_service`. Ze
+        // worden apart opgebouwd en niet gekloond, want een `LawExecutionService`
+        // draagt haar databronnen en straks haar cel-resolver met zich mee, en
+        // dat is nu juist wat de twee uit elkaar houdt.
+        let service = build_service(&laws)?;
+        let besluit_service = if config.besluit_definitions.is_empty() {
             None
         } else {
-            let mut service = LawExecutionService::new();
-            for law in &config.laws {
-                for document in corpus::regulation_versions(regulation_root, law)? {
-                    service.load_law(&document)?;
-                }
-            }
-            Some(service)
+            build_service(&laws)?
         };
 
-        let mut streams = chronicles.declared_fields();
+        let mut declared = chronicles.declared_fields();
         for (stream, fields) in fixture_fields {
-            streams
+            declared
                 .entry(stream.clone())
                 .or_default()
                 .extend(fields.iter().cloned());
+        }
+        if !config.besluit_definitions.is_empty() {
+            declared
+                .entry(BESCHIKKINGEN.to_string())
+                .or_default()
+                .extend(besluit::declared_fields(&config.besluit_definitions));
         }
 
         let surface = CellSurface {
@@ -152,7 +209,12 @@ impl Cell {
                 .as_ref()
                 .map(outputs_per_regulation)
                 .unwrap_or_default(),
-            streams,
+            regulation_inputs: service
+                .as_ref()
+                .map(inputs_per_regulation)
+                .unwrap_or_default(),
+            stream_keys: chronicles.declared_keys(),
+            streams: declared,
         };
 
         let mut published: BTreeMap<String, LexostatusDefinition> = BTreeMap::new();
@@ -169,11 +231,27 @@ impl Cell {
             }
         }
 
+        let mut besluiten: BTreeMap<String, BesluitDefinition> = BTreeMap::new();
+        for definition in &config.besluit_definitions {
+            definition.validate(&config.id, &surface)?;
+            if besluiten
+                .insert(definition.name.clone(), definition.clone())
+                .is_some()
+            {
+                return Err(SimulatorError::DuplicateBesluit {
+                    cell: config.id.clone(),
+                    name: definition.name.clone(),
+                });
+            }
+        }
+
         Ok(Self {
             id: config.id.clone(),
             service: service.map(RefCell::new),
+            besluit_service: besluit_service.map(RefCell::new),
             chronicles,
             published,
+            besluiten,
         })
     }
 
@@ -186,7 +264,19 @@ impl Cell {
     ///
     /// Vastleggen voegt toe. Een bestaand gram wordt nooit gewijzigd, dus een
     /// reductie over een eerder moment blijft na dit vastleggen exact hetzelfde.
+    ///
+    /// De stroom [`BESCHIKKINGEN`] kan hier niet in: daar ontstaat een gram door
+    /// te *besluiten*. Zie [`Self::check_not_a_decretogram`].
     pub(crate) fn record(&mut self, stream: &str, event: ChronicleEvent) -> Result<()> {
+        self.check_not_a_decretogram(stream, &event)?;
+        self.record_own(stream, event)
+    }
+
+    /// Vastleggen zonder de poort op [`BESCHIKKINGEN`].
+    ///
+    /// Privé, en alleen voor [`Self::decide`]: dat is het enige pad dat een
+    /// decretogram mág maken.
+    fn record_own(&mut self, stream: &str, event: ChronicleEvent) -> Result<()> {
         self.chronicles.record(&self.id, stream, event)
     }
 
@@ -197,7 +287,29 @@ impl Cell {
     /// [`Self::record`] doet, zonder iets vast te leggen. Geeft niets prijs over
     /// de inhoud van de kroniek.
     pub(crate) fn check_recording(&self, stream: &str, event: &ChronicleEvent) -> Result<()> {
+        self.check_not_a_decretogram(stream, event)?;
         self.chronicles.check_recording(&self.id, stream, event)
+    }
+
+    /// Weiger een vastlegging van buiten het besluit-pad in de stroom met
+    /// decretogrammen.
+    ///
+    /// Dat de configuratie die stroom niet zelf mag declareren, is niet genoeg:
+    /// zodra een cel besluit-definities heeft, bestaat de stroom en zou een
+    /// `fixture` er een gram in kunnen zetten dat nooit langs een engine kwam —
+    /// zonder receipt, zonder herkomst, en met een `intake` naar keuze. Een
+    /// reductie erover zou dat niet van een besluit kunnen onderscheiden, en
+    /// precies dat onderscheid is wat deze stroom waard maakt.
+    fn check_not_a_decretogram(&self, stream: &str, event: &ChronicleEvent) -> Result<()> {
+        if stream != BESCHIKKINGEN {
+            return Ok(());
+        }
+        Err(SimulatorError::ReservedStreamRecording {
+            cell: self.id.clone(),
+            stream: stream.to_string(),
+            name: event.name.clone(),
+            op_moment: event.op_moment.to_string(),
+        })
     }
 
     /// Reduceer over de eigen feiten en lever de gevraagde lexostatus.
@@ -278,16 +390,14 @@ impl Cell {
         let Some(service) = &self.service else {
             return Err(SimulatorError::ForeignRegulation {
                 cell: self.id.clone(),
-                lexostatus: definition.name.clone(),
+                subject: Subject::Lexostatus,
+                name: definition.name.clone(),
                 regulation: regulation.to_string(),
             });
         };
 
         let mut service = service.borrow_mut();
-        service.clear_data_sources();
-        for stream in self.chronicles.reduce_to(op_moment) {
-            service.register_dict_source(&stream.stream, &stream.key, stream.records)?;
-        }
+        self.register_own_facts(&mut service, op_moment)?;
 
         let result = service.evaluate_law_output(
             regulation,
@@ -299,6 +409,29 @@ impl Cell {
         Ok(LexostatusOutcome::Established(
             definition.project(result.outputs),
         ))
+    }
+
+    /// Zet de eigen feiten zoals ze op dit moment waren klaar als databron.
+    ///
+    /// De stroom met decretogrammen blijft er met opzet buiten. Een besluit is
+    /// geen feit om op te rekenen maar een uitkomst om terug te lezen; zou ze
+    /// als databron meedoen, dan zou een volgende uitvoering stil op de eigen
+    /// uitkomst van een eerder besluit kunnen leunen, en dan weet niemand meer
+    /// of er gerekend of overgeschreven is. Terugzien doe je met een reductie
+    /// over die stroom (`Cell::reduce`), en die komt niet langs de engine.
+    fn register_own_facts(
+        &self,
+        service: &mut LawExecutionService,
+        op_moment: NaiveDate,
+    ) -> Result<()> {
+        service.clear_data_sources();
+        for stream in self.chronicles.reduce_to(op_moment) {
+            if stream.stream == BESCHIKKINGEN {
+                continue;
+            }
+            service.register_dict_source(&stream.stream, &stream.key, stream.records)?;
+        }
+        Ok(())
     }
 
     /// Het kroniekfilter: lees de laatste vastlegging over dit onderwerp.
@@ -324,7 +457,8 @@ impl Cell {
             .get(key)
             .ok_or_else(|| SimulatorError::MissingParameter {
                 cell: self.id.clone(),
-                lexostatus: definition.name.clone(),
+                subject: Subject::Lexostatus,
+                name: definition.name.clone(),
                 parameter: key.to_string(),
             })?;
 
@@ -361,6 +495,288 @@ impl Cell {
 
         Ok(LexostatusOutcome::Established(values))
     }
+
+    /// Neem een besluit: voer een eigen regeling uit en leg de uitkomst vast.
+    ///
+    /// Dit is het derde deel van de lus — informeren, concluderen, **vastleggen**
+    /// — en het enige pad in deze cel dat een gram *maakt* in plaats van er een
+    /// terug te lezen. Wat er gebeurt, in deze volgorde:
+    ///
+    /// 1. de gedocumenteerde parameters worden gecontroleerd, net als bij een vraag;
+    /// 2. de inputs worden verzameld: uit de eigen kronieken zoals ze op
+    ///    `op_moment` waren, en uit de parameters van het besluit;
+    /// 3. de **besluit-engine** voert de regeling uit op dat moment, dus op de
+    ///    wetsversie die toen gold;
+    /// 4. de uitkomst wordt als decretogram vastgelegd in de eigen stroom
+    ///    [`BESCHIKKINGEN`] — één gram, met alle uitkomsten samen (RFC-022 §1.2).
+    ///
+    /// `pub(crate)` en niet `pub`, net als [`Self::record`]: een consument kan een
+    /// cel niet laten besluiten. Dat doet de cel zelf, in deze opstelling
+    /// aangestuurd door [`crate::World`] op een moment dat de klok heeft bereikt.
+    ///
+    /// Een input die op dit moment niet op te halen is, is een fout en geen
+    /// "niets vastgesteld": een besluit dat een feit mist, hoort niet met een gat
+    /// verder te rekenen en al helemaal niet vast te leggen.
+    pub(crate) fn decide(
+        &mut self,
+        besluit: &str,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<Decretogram> {
+        let definition = self
+            .besluiten
+            .get(besluit)
+            .ok_or_else(|| SimulatorError::UnknownBesluit {
+                cell: self.id.clone(),
+                requested: besluit.to_string(),
+                defined: self
+                    .besluiten
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            })?
+            .clone();
+
+        definition.check_params(&self.id, params)?;
+        // Vóór het ophalen en het rekenen: een zaak waarvan het kenmerk niet
+        // eenduidig is, hoort er helemaal niet te komen — en dan hoeft de engine
+        // er ook niet voor te draaien.
+        let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
+
+        let inputs = self.collect_inputs(&definition, params, op_moment)?;
+        let decretogram = self.execute(&definition, zaakkenmerk, inputs, op_moment)?;
+
+        let event = decretogram.event()?;
+        self.record_own(BESCHIKKINGEN, event)?;
+
+        Ok(decretogram)
+    }
+
+    /// Verzamel de inputs van een besluit, elk met de herkomst erbij.
+    ///
+    /// De herkomst is geen versiering: ze gaat mee in het decretogram, zodat
+    /// later te lezen is waarop besloten is en van wanneer dat feit was. Wat hier
+    /// opgehaald wordt, wordt nergens anders opgeslagen — een volgend besluit
+    /// haalt het opnieuw op (RFC-022: geen schaduwboekhouding).
+    fn collect_inputs(
+        &self,
+        definition: &BesluitDefinition,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<BTreeMap<String, DecretogramInput>> {
+        let mut collected: BTreeMap<String, DecretogramInput> = BTreeMap::new();
+        for (input, origin) in &definition.inputs {
+            let gathered = match origin {
+                BesluitInput::Param { param } => {
+                    // Onbereikbaar: `validate` bindt elke `param` aan een
+                    // gedocumenteerde parameter, en `check_params` eist dat elke
+                    // gedocumenteerde parameter meekomt.
+                    let value = params.get(param).cloned().ok_or_else(|| {
+                        SimulatorError::MissingParameter {
+                            cell: self.id.clone(),
+                            subject: Subject::Besluit,
+                            name: definition.name.clone(),
+                            parameter: param.clone(),
+                        }
+                    })?;
+                    DecretogramInput {
+                        value,
+                        origin: InputOrigin::Parameter {
+                            parameter: param.clone(),
+                        },
+                    }
+                }
+                BesluitInput::FromChronicle { chronicle, field } => {
+                    self.read_own_chronicle(definition, input, chronicle, field, params, op_moment)?
+                }
+            };
+            collected.insert(input.clone(), gathered);
+        }
+        Ok(collected)
+    }
+
+    /// Eén input uit een eigen kroniek: de laatste vastlegging op of vóór het
+    /// moment van het besluit, over het onderwerp dat de parameters aanwijzen.
+    ///
+    /// Nooit uit [`BESCHIKKINGEN`]: `validate` weigert die stroom als bron bij
+    /// het optuigen, want daar liggen besluiten en geen feiten.
+    fn read_own_chronicle(
+        &self,
+        definition: &BesluitDefinition,
+        input: &str,
+        chronicle: &str,
+        field: &str,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<DecretogramInput> {
+        // Onbereikbaar: `validate` eist dat de stroom bestaat en dat haar
+        // sleutelveld een gedocumenteerde parameter is; `check_params` eist dat
+        // die parameter meekomt.
+        let key = self.chronicles.key_of(chronicle).unwrap_or_default();
+        let missing = |reason: String| SimulatorError::BesluitInputMissing {
+            cell: self.id.clone(),
+            besluit: definition.name.clone(),
+            input: input.to_string(),
+            reason,
+        };
+        let key_value = params
+            .get(key)
+            .ok_or_else(|| missing(format!("parameter '{key}' ontbreekt in de vraag")))?;
+
+        let no_conditions = BTreeMap::new();
+        let event = self
+            .chronicles
+            .latest_recording(chronicle, key, key_value, &no_conditions, op_moment)
+            .ok_or_else(|| {
+                missing(nothing_established(
+                    chronicle,
+                    key,
+                    key_value,
+                    &no_conditions,
+                    op_moment,
+                ))
+            })?;
+
+        let value = chronicle::field(&event.fields, field)
+            .cloned()
+            .ok_or_else(|| {
+                missing(format!(
+                    "kroniekstroom '{chronicle}' heeft voor {key} '{key_value}' wel een \
+                     vastlegging (van {}), maar die draagt veld '{field}' niet",
+                    event.op_moment
+                ))
+            })?;
+
+        Ok(DecretogramInput {
+            value,
+            origin: InputOrigin::OwnChronicle {
+                chronicle: chronicle.to_string(),
+                field: field.to_string(),
+                recorded_op_moment: event.op_moment,
+            },
+        })
+    }
+
+    /// Voer de regeling uit op het moment van het besluit en maak het decretogram.
+    ///
+    /// De verzamelde inputs gaan als engine-parameters mee: een waarde onder de
+    /// naam van een input vervangt daar haar `source`, dus het besluit leunt
+    /// aantoonbaar op precies de feiten die het verzamelde. De rest van wat de
+    /// regeling nodig heeft, komt uit de eigen kronieken als databron — dezelfde
+    /// weg als bij een reductie, want dat is nog altijd tier 1.
+    fn execute(
+        &self,
+        definition: &BesluitDefinition,
+        zaakkenmerk: String,
+        inputs: BTreeMap<String, DecretogramInput>,
+        op_moment: NaiveDate,
+    ) -> Result<Decretogram> {
+        // Onbereikbaar: `validate` weigert een besluit over een regeling die de
+        // cel niet zelf laadt, en een cel zonder engine laadt er geen enkele.
+        let Some(service) = &self.besluit_service else {
+            return Err(SimulatorError::ForeignRegulation {
+                cell: self.id.clone(),
+                subject: Subject::Besluit,
+                name: definition.name.clone(),
+                regulation: definition.regulation.clone(),
+            });
+        };
+
+        let mut service = service.borrow_mut();
+        self.register_own_facts(&mut service, op_moment)?;
+
+        let engine_params: BTreeMap<String, Value> = inputs
+            .iter()
+            .map(|(name, input)| (name.clone(), input.value.clone()))
+            .collect();
+        let calculation_date = op_moment.format("%Y-%m-%d").to_string();
+        let recorded: Vec<&str> = definition.recorded_outputs().into_iter().collect();
+        let result = service.evaluate_law(
+            &definition.regulation,
+            &recorded,
+            engine_params.clone(),
+            &calculation_date,
+        )?;
+
+        let requested: Vec<String> = recorded.iter().map(|name| (*name).to_string()).collect();
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &engine_params,
+            &calculation_date,
+            &requested,
+        );
+
+        let resolver = service.resolver();
+        let law = resolver.get_law_for_date(&definition.regulation, Some(op_moment));
+        // Het rechtskarakter hoort bij het artikel dat de aansturende uitkomst
+        // voortbrengt: díe uitkomst *is* het besluit. Een uitkomst die erbij
+        // meegaat kan uit een ander artikel komen, en dat artikel zegt niets
+        // over het karakter van dit besluit.
+        let legal_character = resolver
+            .get_article_by_output(&definition.regulation, &definition.output, Some(op_moment))
+            .and_then(regelrecht_engine::Article::get_execution_spec)
+            .and_then(|execution| execution.produces.as_ref())
+            .and_then(|produces| produces.legal_character.clone());
+
+        Ok(Decretogram {
+            cell: self.id.clone(),
+            besluit: definition.name.clone(),
+            zaakkenmerk,
+            op_moment,
+            regulation: definition.regulation.clone(),
+            regulation_valid_from: result.regulation_valid_from.clone(),
+            competent_authority: law.and_then(competent_authority),
+            legal_character,
+            outputs: definition
+                .recorded_outputs()
+                .into_iter()
+                .filter_map(|name| {
+                    result
+                        .outputs
+                        .get(name)
+                        .map(|value| (name.to_string(), value.clone()))
+                })
+                .collect(),
+            inputs,
+            receipt,
+        })
+    }
+}
+
+/// Het bevoegd gezag dat een regelingversie noemt (RFC-002).
+///
+/// Twee vormen in het schema, en een derde die eruitziet als de eerste: een
+/// naam die met `#` begint is een **verwijzing** naar een uitkomst van de
+/// regeling zelf (`competent_authority: '#bevoegd_gezag'`). Die uitkomst is niet
+/// altijd als `output` gedeclareerd — vaak zet één actie haar rechtstreeks — dus
+/// ze is niet via de engine op te vragen; het geladen law-model is de plek waar
+/// ze wél staat.
+fn competent_authority(law: &ArticleBasedLaw) -> Option<String> {
+    match law.competent_authority.as_ref()? {
+        CompetentAuthority::Structured { name } => Some(name.clone()),
+        CompetentAuthority::String(text) => match text.strip_prefix('#') {
+            Some(reference) => resolve_reference(law, reference),
+            None => Some(text.clone()),
+        },
+    }
+}
+
+/// De letterlijke waarde die een regeling aan een eigen uitkomst toekent.
+///
+/// Zo werkt een `#`-verwijzing in het schema, en zo leest de rest van de
+/// codebase hem ook (zie `regelrecht_corpus::source_map`): zoek de actie die
+/// deze uitkomst zet en neem haar waarde.
+fn resolve_reference(law: &ArticleBasedLaw, reference: &str) -> Option<String> {
+    law.articles
+        .iter()
+        .filter_map(|article| article.get_execution_spec())
+        .flat_map(|execution| execution.actions.iter().flatten())
+        .find(|action| action.output.as_deref() == Some(reference))
+        .and_then(|action| match action.value.as_ref()? {
+            regelrecht_engine::ActionValue::Literal(Value::String(text)) => Some(text.clone()),
+            _ => None,
+        })
 }
 
 /// Waarom het kroniekfilter niets vond, zo precies dat het na te lopen is.
@@ -409,6 +825,60 @@ fn nothing_published(
          (van {recorded}), maar die draagt geen van de gepubliceerde uitkomsten \
          ({published})"
     )
+}
+
+/// Lees elke versie van elke regeling die deze cel laadt, als YAML-tekst.
+///
+/// Eén keer van schijf, want er worden twee engines mee opgebouwd (zie
+/// [`Cell::besluit_service`]) en die moeten per definitie dezelfde wetten
+/// hebben. Twee keer lezen zou dat tot een toevalligheid maken.
+fn load_laws(laws: &[String], regulation_root: &Path) -> Result<Vec<String>> {
+    let mut documents = Vec::new();
+    for law in laws {
+        documents.extend(corpus::regulation_versions(regulation_root, law)?);
+    }
+    Ok(documents)
+}
+
+/// Bouw een engine met deze wetten, of geen engine als er geen wetten zijn.
+///
+/// `laws: []` levert `None`: een bron-cel draait geen engine, en dat is de vorm
+/// van RFC-022 §2 — de engine is een component dat in een cel kán draaien.
+fn build_service(documents: &[String]) -> Result<Option<LawExecutionService>> {
+    if documents.is_empty() {
+        return Ok(None);
+    }
+    let mut service = LawExecutionService::new();
+    for document in documents {
+        service.load_law(document)?;
+    }
+    Ok(Some(service))
+}
+
+/// De namen die een regeling als parameter of input declareert, over alle
+/// geladen versies heen.
+///
+/// Hiermee valt bij het optuigen te toetsen of een besluit de engine iets
+/// aanlevert dat de regeling ook echt vraagt. Alle versies tellen mee, om
+/// dezelfde reden als bij [`outputs_per_regulation`]: een besluit over een
+/// ouder moment landt op een oudere versie.
+fn inputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTreeSet<String>> {
+    let mut per_regulation: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for law in service.resolver().all_law_versions() {
+        let known = per_regulation.entry(law.id.clone()).or_default();
+        for article in &law.articles {
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            for parameter in execution.parameters.iter().flatten() {
+                known.insert(parameter.name.clone());
+            }
+            for input in execution.input.iter().flatten() {
+                known.insert(input.name.clone());
+            }
+        }
+    }
+    per_regulation
 }
 
 /// De uitkomstnamen per regeling, over alle geladen versies heen.
@@ -994,6 +1464,372 @@ lexostatus_definitions:
         assert!(
             matches!(err, SimulatorError::ForeignRegulation { .. }),
             "verwachtte ForeignRegulation, kreeg {err}"
+        );
+    }
+
+    /// Een cel die één besluit kan nemen over haar eigen zorgtoeslagwet.
+    ///
+    /// `besluit` wordt letterlijk ingeplakt, zodat elke test hieronder alleen
+    /// het blok varieert waar ze over gaat. De inkomenslevering ligt op
+    /// 2024-11-15: een besluit dáárvoor mist zijn input, en dat is waar de
+    /// tijdas in dit pad zichtbaar wordt.
+    fn besluitende_cel(besluit: &str) -> CellConfig {
+        config(&format!(
+            r"
+id: toeslagen
+laws:
+  - wet_op_de_zorgtoeslag
+  - algemene_wet_inkomensafhankelijke_regelingen
+  - regeling_standaardpremie
+chronicles:
+  - stream: inkomensleveringen
+    key: bsn
+    events:
+      - name: inkomenslevering
+        intake: levering
+        recording_actor: toeslagen
+        op_moment: 2024-11-15
+        fields:
+          bsn: '999993653'
+          partnerschap_type: GEEN
+          is_verzekerde: true
+          verzamelinkomen: 79547
+          buitenlands_inkomen: 0
+          vermogen: 0
+besluit_definitions:
+  - name: zorgtoeslag_vaststelling
+{besluit}
+"
+        ))
+    }
+
+    /// Het besluit zoals de meeste tests hieronder het bedoelen.
+    const VASTSTELLING: &str = "    regulation: wet_op_de_zorgtoeslag
+    output: heeft_recht_op_zorgtoeslag
+    outputs:
+      - hoogte_zorgtoeslag
+    zaakkenmerk: 'zorgtoeslag/{bsn}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      bsn:
+        param: bsn
+      is_verzekerde:
+        from_chronicle: inkomensleveringen
+        field: is_verzekerde";
+
+    fn besluitende_toeslagen(besluit: &str) -> Cell {
+        Cell::from_config(
+            &besluitende_cel(besluit),
+            &regulation_root(),
+            &no_fixtures(),
+        )
+        .unwrap_or_else(|e| panic!("een besluitende cel moet op te tuigen zijn: {e}"))
+    }
+
+    /// Eén besluit is één gram, met alles wat samen ontstond erin.
+    ///
+    /// Dat is de elementariteit van RFC-022 §1.2: wat tegelijk ontstaat, wordt
+    /// samen vastgelegd. Twee grammen — één per uitkomst — zou van één besluit
+    /// twee besluiten maken, en dan is niet meer te zeggen welk bedrag bij welk
+    /// recht hoorde.
+    #[test]
+    fn een_besluit_legt_precies_een_decretogram_vast() {
+        let mut cell = besluitende_toeslagen(VASTSTELLING);
+        let gram = cell
+            .decide("zorgtoeslag_vaststelling", &bsn(), moment())
+            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+
+        assert_eq!(
+            cell.chronicles.len_of(BESCHIKKINGEN),
+            Some(1),
+            "één besluit hoort precies één gram vast te leggen"
+        );
+        assert_eq!(gram.zaakkenmerk, "zorgtoeslag/999993653");
+        assert_eq!(gram.op_moment, moment());
+        assert_eq!(
+            gram.outputs.keys().collect::<Vec<_>>(),
+            ["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"],
+            "beide uitkomsten horen in hetzelfde gram te staan"
+        );
+        assert_eq!(
+            gram.legal_character.as_deref(),
+            Some("BESCHIKKING"),
+            "het rechtskarakter komt uit de wet, niet uit de cel"
+        );
+        assert_eq!(
+            gram.competent_authority.as_deref(),
+            Some("Dienst Toeslagen"),
+            "een `#`-verwijzing naar een eigen uitkomst hoort opgelost te worden"
+        );
+        assert_eq!(
+            gram.regulation_valid_from.as_deref(),
+            Some("2025-01-01"),
+            "de versie die op het moment van het besluit (2025-01-01) gold"
+        );
+    }
+
+    /// Het gram draagt zijn eigen inputs, met de herkomst erbij.
+    ///
+    /// Zonder die herkomst is een besluit niet terug te lezen: dan staat er wel
+    /// een waarde in, maar niet van wanneer ze was of wie haar leverde.
+    #[test]
+    fn het_decretogram_draagt_zijn_inputs_met_herkomst() {
+        let mut cell = besluitende_toeslagen(VASTSTELLING);
+        let gram = cell
+            .decide("zorgtoeslag_vaststelling", &bsn(), moment())
+            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+
+        let uit_de_kroniek = gram
+            .inputs
+            .get("is_verzekerde")
+            .unwrap_or_else(|| panic!("de input uit de kroniek hoort in het gram te staan"));
+        assert_eq!(uit_de_kroniek.value, Value::Bool(true));
+        assert_eq!(
+            uit_de_kroniek.origin,
+            InputOrigin::OwnChronicle {
+                chronicle: "inkomensleveringen".to_string(),
+                field: "is_verzekerde".to_string(),
+                recorded_op_moment: date("2024-11-15"),
+            },
+            "de herkomst noemt de stroom, het veld en het moment van de vastlegging"
+        );
+
+        let uit_de_vraag = gram
+            .inputs
+            .get("bsn")
+            .unwrap_or_else(|| panic!("de parameter hoort in het gram te staan"));
+        assert_eq!(
+            uit_de_vraag.origin,
+            InputOrigin::Parameter {
+                parameter: "bsn".to_string()
+            }
+        );
+    }
+
+    /// Een besluit dat een feit niet heeft, rekent niet door en legt niets vast.
+    ///
+    /// Anders dan een reductie: "niets vastgesteld" is een geldig *antwoord*,
+    /// maar geen geldige grondslag om op te besluiten.
+    #[test]
+    fn een_besluit_zonder_zijn_feiten_faalt_en_legt_niets_vast() {
+        let mut cell = besluitende_toeslagen(VASTSTELLING);
+        let err = cell
+            .decide("zorgtoeslag_vaststelling", &bsn(), date("2024-01-01"))
+            .expect_err("vóór de levering is er geen feit om op te besluiten");
+        assert!(
+            matches!(err, SimulatorError::BesluitInputMissing { .. }),
+            "verwachtte BesluitInputMissing, kreeg {err}"
+        );
+        assert_eq!(
+            cell.chronicles.len_of(BESCHIKKINGEN),
+            Some(0),
+            "een besluit dat niet doorging, hoort geen gram achter te laten"
+        );
+    }
+
+    /// Twee besluiten op één dag over dezelfde zaak: beide grammen blijven, en
+    /// het laatstgenomen besluit is wat een reductie oplevert.
+    ///
+    /// De dag is de fijnste korrel van deze tijdas, dus op de tijdas zelf zijn ze
+    /// niet uit elkaar te houden; de volgorde van vastleggen beslist dan. Dat een
+    /// kroniek groeit en niets vervangt, blijft daarbij overeind: het eerste gram
+    /// staat er nog.
+    #[test]
+    fn twee_besluiten_op_een_dag_leveren_het_laatstgenomen_besluit() {
+        let mut cell = besluitende_toeslagen(VASTSTELLING);
+        for _ in 0..2 {
+            cell.decide("zorgtoeslag_vaststelling", &bsn(), moment())
+                .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+        }
+
+        assert_eq!(
+            cell.chronicles.len_of(BESCHIKKINGEN),
+            Some(2),
+            "een tweede besluit vervangt het eerste niet; de kroniek groeit"
+        );
+
+        let laatste = cell
+            .chronicles
+            .latest_recording(
+                BESCHIKKINGEN,
+                besluit::ZAAKKENMERK,
+                &Value::String("zorgtoeslag/999993653".to_string()),
+                &BTreeMap::new(),
+                moment(),
+            )
+            .unwrap_or_else(|| panic!("er liggen twee grammen over deze zaak"));
+        let laatst_vastgelegd = cell
+            .chronicles
+            .last_recording(BESCHIKKINGEN)
+            .unwrap_or_else(|| panic!("de stroom heeft vastleggingen"));
+        assert!(
+            std::ptr::eq(laatste, laatst_vastgelegd),
+            "op één dag beslist de volgorde van vastleggen, en de laatste wint"
+        );
+    }
+
+    #[test]
+    fn een_onbekend_besluit_noemt_wat_de_cel_wel_kent() {
+        let err = besluitende_toeslagen(VASTSTELLING)
+            .decide("zorgtoeslag_terugvordering", &bsn(), moment())
+            .expect_err("een besluit dat niet gedefinieerd is hoort te falen");
+        let SimulatorError::UnknownBesluit { defined, .. } = &err else {
+            panic!("verwachtte UnknownBesluit, kreeg {err}");
+        };
+        assert_eq!(defined, "zorgtoeslag_vaststelling");
+    }
+
+    #[test]
+    fn een_input_die_de_regeling_niet_declareert_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &besluitende_cel(
+                "    regulation: wet_op_de_zorgtoeslag
+    output: heeft_recht_op_zorgtoeslag
+    zaakkenmerk: 'zorgtoeslag/{bsn}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      is_verzekert:
+        from_chronicle: inkomensleveringen
+        field: is_verzekerde",
+            ),
+            &regulation_root(),
+            &no_fixtures(),
+        )
+        .expect_err("een input die de regeling niet kent hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownRegulationInput { .. }),
+            "verwachtte UnknownRegulationInput, kreeg {err}"
+        );
+    }
+
+    /// Een besluit leest geen besluit.
+    ///
+    /// Zodra een cel besluit-definities heeft, is `beschikkingen` een gewone
+    /// stroom met gewone velden, en zou een tweede besluit een veld van een
+    /// eerder decretogram als "eigen feit" kunnen binnenhalen. Dat is dezelfde
+    /// schaduwboekhouding die `register_own_facts` aan de kant van de engine al
+    /// buiten de deur houdt, langs de andere weg.
+    #[test]
+    fn een_besluit_kan_geen_eerder_besluit_als_input_lezen() {
+        let err = Cell::from_config(
+            &besluitende_cel(
+                "    regulation: wet_op_de_zorgtoeslag
+    output: heeft_recht_op_zorgtoeslag
+    zaakkenmerk: 'zorgtoeslag/{bsn}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      is_verzekerde:
+        from_chronicle: beschikkingen
+        field: heeft_recht_op_zorgtoeslag",
+            ),
+            &regulation_root(),
+            &no_fixtures(),
+        )
+        .expect_err("een besluit dat uit de beschikkingen leest hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::DecretogramAsBesluitInput { .. }),
+            "verwachtte DecretogramAsBesluitInput, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn de_stroom_voor_decretogrammen_is_voorbehouden() {
+        let err = Cell::from_config(
+            &config(
+                r"
+id: toeslagen
+laws: []
+chronicles:
+  - stream: beschikkingen
+    key: zaakkenmerk
+",
+            ),
+            &regulation_root(),
+            &no_fixtures(),
+        )
+        .expect_err("de stroom van het besluit-pad hoort niet zelf gedeclareerd te worden");
+        assert!(
+            matches!(err, SimulatorError::ReservedStream { .. }),
+            "verwachtte ReservedStream, kreeg {err}"
+        );
+    }
+
+    /// Een decretogram is geen feit om op te rekenen.
+    ///
+    /// De stroom met besluiten gaat niet als databron naar de engine. Zou ze dat
+    /// wel doen, dan zou een volgende uitvoering stil op de uitkomst van een
+    /// eerder besluit kunnen leunen — en dan is niet meer te zeggen of er
+    /// gerekend of overgeschreven is.
+    #[test]
+    fn de_eigen_besluiten_gaan_niet_als_databron_naar_de_engine() {
+        let mut cell = besluitende_toeslagen(VASTSTELLING);
+        cell.decide("zorgtoeslag_vaststelling", &bsn(), moment())
+            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+
+        let Some(service) = &cell.service else {
+            panic!("deze cel laadt wetten en heeft dus een engine");
+        };
+        let mut service = service.borrow_mut();
+        cell.register_own_facts(&mut service, date("2025-01-01"))
+            .unwrap_or_else(|e| panic!("de eigen feiten moeten klaargezet kunnen worden: {e}"));
+        assert!(
+            !service.list_data_sources().contains(&BESCHIKKINGEN),
+            "de stroom met decretogrammen hoort geen databron te zijn, kreeg {:?}",
+            service.list_data_sources()
+        );
+    }
+
+    /// Een resolver die niets weet; hij hoeft alleen te bestaan.
+    struct GeenPeers;
+
+    impl regelrecht_engine::CellResolver for GeenPeers {
+        fn resolve(
+            &self,
+            _cell_id: &str,
+            _output: &str,
+            _parameters: &BTreeMap<String, Value>,
+            _reference_date: &str,
+        ) -> regelrecht_engine::Result<Option<Value>> {
+            Ok(None)
+        }
+    }
+
+    /// De haak voor tier 3 zit op de besluit-engine, en nergens anders.
+    ///
+    /// Vandaag heeft geen van beide engines een resolver — accepteren van een
+    /// waarde van een andere cel volgt apart — en dit is de test die vastlegt
+    /// waar die ooit terechtkomt. Dat de twee losse instanties zijn, is wat het
+    /// verschil afdwingbaar maakt: een resolver op de ene raakt de andere niet.
+    #[test]
+    fn alleen_de_besluit_engine_kan_de_celgrens_over() {
+        let cell = besluitende_toeslagen(VASTSTELLING);
+        let (Some(reduce), Some(besluit)) = (&cell.service, &cell.besluit_service) else {
+            panic!("een besluitende cel met wetten heeft beide engines");
+        };
+        assert!(
+            reduce.borrow().cell_ids().is_empty() && besluit.borrow().cell_ids().is_empty(),
+            "zonder resolver bestaat tier 3 niet, voor geen van beide engines"
+        );
+
+        besluit
+            .borrow_mut()
+            .set_cell_resolver(["brp"], std::rc::Rc::new(GeenPeers))
+            .unwrap_or_else(|e| panic!("de besluit-engine hoort een resolver te accepteren: {e}"));
+
+        assert_eq!(
+            besluit.borrow().cell_ids(),
+            ["brp"],
+            "de besluit-engine is de plek waar de celgrens open kan"
+        );
+        assert!(
+            reduce.borrow().cell_ids().is_empty(),
+            "en de reduce-engine blijft daar buiten: een reductie raakt geen andere cel"
         );
     }
 }
