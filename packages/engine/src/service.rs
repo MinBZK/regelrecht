@@ -34,6 +34,7 @@ use crate::engine::{ArticleEngine, ArticleResult, InputProvenance, OutputProvena
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
+use crate::receipt::AcceptedValue;
 use crate::resolver::{RuleResolver, SelectionReason};
 use crate::trace::TraceBuilder;
 use crate::types::{
@@ -103,6 +104,15 @@ struct ResolutionContext<'a> {
     /// The law that initiated the current execution chain (for override scoping).
     /// Overrides only apply when declared by this law.
     contextual_law_id: Option<String>,
+    /// Every value accepted from a cell during this execution (RFC-022 §4.2),
+    /// wherever it was accepted: by the article that produced the result, by a
+    /// sibling article, by a regulation it called, by a hook or an override.
+    ///
+    /// It is collected here rather than per article because an accepted value
+    /// is a fact about the *execution*, not about one result: the decision
+    /// leans on it however deep the call that accepted it, and no receipt that
+    /// leaves it out can be read back (RFC-013).
+    accepted_values: Vec<AcceptedValue>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -144,7 +154,43 @@ impl<'a> ResolutionContext<'a> {
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
+            accepted_values: Vec::new(),
         })
+    }
+
+    /// Record a value accepted from a cell (RFC-022 §4.2).
+    ///
+    /// The same fact asked for twice in one execution is one acceptance: the
+    /// receipt states which values came from elsewhere, not how often the
+    /// engine happened to look them up.
+    fn record_accepted(&mut self, cell: &str, output: &str, value: &Value) {
+        let accepted = AcceptedValue {
+            output: output.to_string(),
+            value: value.clone(),
+            authority: cell.to_string(),
+            engine: None,
+            engine_version: None,
+            regulation_id: None,
+            regulation_hash: None,
+            trace_id: None,
+            signed: None,
+        };
+        if !self.accepted_values.iter().any(|existing| {
+            existing.authority == accepted.authority
+                && existing.output == accepted.output
+                && existing.value == accepted.value
+        }) {
+            self.accepted_values.push(accepted);
+        }
+    }
+
+    /// Hand the execution's accepted values to a result on its way out.
+    ///
+    /// Called wherever an [`ArticleResult`] is produced. Nested calls run to
+    /// completion before the result that contains them is finished, so the
+    /// outermost call is the last to assign and its result carries them all.
+    fn attach_accepted(&self, result: &mut ArticleResult) {
+        result.accepted_values = self.accepted_values.clone();
     }
 
     /// Create a new resolution context with trace builder.
@@ -328,6 +374,84 @@ struct ExternalResolution {
     skipped: bool,
 }
 
+/// What the cell tier (RFC-022 §4.2) made of a `source.regulation`.
+enum CellResolution {
+    /// Not a cell question at all: no resolver was granted, or the id is not
+    /// one it answers for. The tiers that follow get their turn.
+    NotACell,
+    /// A cell, but not asked, because a parameter that says who the question is
+    /// about named nobody (RFC-036). The input inherits that absence; nothing
+    /// was accepted, so nothing goes in the receipt.
+    NotAsked(Value),
+    /// The cell answered, and the value was accepted.
+    Answered(Value),
+}
+
+/// Why a call is not made, and what the input inherits instead (RFC-036).
+struct AbsentSubject {
+    /// The parameters that name nobody, quoted and joined, for the trace.
+    names: String,
+    /// `Parameter`/`Parameters` and `is`/`are`, agreeing with `names`.
+    noun: &'static str,
+    verb: &'static str,
+    /// Unknown for the union of the missing facts, or null when all are null.
+    value: Value,
+    /// Whether `value` is that union (as opposed to null).
+    unknown: bool,
+}
+
+/// The parameters that say *who* a call is about, and whether any of them names
+/// nobody (RFC-036).
+///
+/// A null for a required parameter means there is nobody to look up: a
+/// partner's age when there is no partner. An unknown means nobody knows yet
+/// who to look up: a partner's BSN the register has not delivered. Either way
+/// the call is not made, and the input inherits the absence — unknown for the
+/// union of the missing facts if any is unknown (a null among them adds nothing
+/// to ask for), null only when they are all null. The outcome does not depend
+/// on the order of the parameters.
+///
+/// `is_required`/`is_nullable` come from the target's own declarations where the
+/// engine has them. A cell declares nothing here: its `source.parameters` *are*
+/// the question's key, so every one of them is held to the strictest reading.
+fn absent_subject(
+    target_params: &BTreeMap<String, Value>,
+    is_required: impl Fn(&str) -> bool,
+    is_nullable: impl Fn(&str) -> bool,
+) -> Option<AbsentSubject> {
+    let empty: Vec<(&String, &Value)> = target_params
+        .iter()
+        .filter(|(name, v)| {
+            is_required(name) && (v.is_unknown() || (v.is_null() && !is_nullable(name)))
+        })
+        .collect();
+    if empty.is_empty() {
+        return None;
+    }
+
+    let names = empty
+        .iter()
+        .map(|(name, _)| format!("'{name}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let (noun, verb) = if empty.len() == 1 {
+        ("Parameter", "is")
+    } else {
+        ("Parameters", "are")
+    };
+    let (value, unknown) = match Value::merge_unknown(empty.iter().map(|(_, v)| *v)) {
+        Some(unknown) => (unknown, true),
+        None => (Value::Null, false),
+    };
+    Some(AbsentSubject {
+        names,
+        noun,
+        verb,
+        value,
+        unknown,
+    })
+}
+
 /// Hash a Value for cache key purposes.
 fn hash_value(value: &Value, hasher: &mut impl Hasher) {
     std::mem::discriminant(value).hash(hasher);
@@ -393,9 +517,12 @@ pub trait ServiceProvider {
     /// Get a law by ID.
     fn get_law(&self, law_id: &str) -> Option<&ArticleBasedLaw>;
 
-    /// Resolve an external input source.
+    /// Resolve an external input source against a loaded regulation.
     ///
-    /// This is the main entry point for resolving `source.regulation` references.
+    /// This is tier 2 of the resolution order on its own (RFC-007). The full
+    /// order of RFC-022 §4.2 — data sources first, the cell tier after tier 2
+    /// declines — lives in the service's input resolution; a caller that comes
+    /// in here has already decided the value names a regulation.
     ///
     /// # Arguments
     /// * `regulation` - The target regulation ID
@@ -684,32 +811,13 @@ impl LawExecutionService {
             })
             .collect();
 
-        // Every input that came in over the cell tier (RFC-022 §4.2) is a
-        // value this engine accepted instead of computing, so the receipt has
-        // to carry it: without it the decision cannot be read back, because
-        // nothing here reproduces it (RFC-013).
-        let accepted_values: Vec<AcceptedValue> = result
-            .input_provenance
-            .values()
-            .filter_map(|provenance| match provenance {
-                InputProvenance::Cell {
-                    cell,
-                    output,
-                    value,
-                } => Some(AcceptedValue {
-                    output: output.clone(),
-                    value: value.clone(),
-                    authority: cell.clone(),
-                    engine: None,
-                    engine_version: None,
-                    regulation_id: None,
-                    regulation_hash: None,
-                    trace_id: None,
-                    signed: None,
-                }),
-                _ => None,
-            })
-            .collect();
+        // Everything that came in over the cell tier (RFC-022 §4.2) is a value
+        // this engine accepted instead of computing, so the receipt has to
+        // carry it: without it the decision cannot be read back, because
+        // nothing here reproduces it (RFC-013). The execution collected them
+        // as they were accepted, so a value a nested regulation or a sibling
+        // article leaned on is in there too.
+        let accepted_values = result.accepted_values.clone();
 
         let sources: Vec<ReceiptSource> = self
             .source_info
@@ -1244,6 +1352,11 @@ impl LawExecutionService {
         // causally-entailed outputs (hooks, overrides). A beschikking is legally
         // indivisible per AWB 1:3 — its consequences cannot be stripped.
 
+        // Every article has run by now, so this is the complete set of values
+        // the execution accepted from elsewhere (RFC-022 §4.2) — including the
+        // ones an article other than the one this result was merged from asked
+        // for, which the merge above does not carry.
+        res_ctx.attach_accepted(&mut result);
         Ok(result)
     }
 
@@ -1283,6 +1396,7 @@ impl LawExecutionService {
                     output_provenance: cached.output_provenance.clone(),
                     resolved_inputs: BTreeMap::new(),
                     input_provenance: BTreeMap::new(),
+                    accepted_values: res_ctx.accepted_values.clone(),
                     article_number: String::new(),
                     law_id: law_id.to_string(),
                     law_uuid: None,
@@ -1373,6 +1487,8 @@ impl LawExecutionService {
             },
         );
 
+        // `evaluate_article_with_service` already attached the execution's
+        // accepted values; nothing is accepted between there and here.
         Ok(result)
     }
 
@@ -1906,6 +2022,7 @@ impl LawExecutionService {
             }
         }
 
+        res_ctx.attach_accepted(&mut result);
         Ok(result)
     }
 
@@ -2312,31 +2429,39 @@ impl LawExecutionService {
                 // regulation answers to. Shadowing is refused at load time, so
                 // the two tiers can never both apply; the check is here anyway
                 // because the order is the guarantee, not a side effect of the
-                // load-time rule.
-                if !self.resolver.has_law(regulation) {
-                    if let Some(value) = self.resolve_cell_input(
+                // load-time rule. Without a resolver there is no tier 3 and
+                // this path does no work at all, not even the lookup.
+                if self.cells.is_some() && !self.resolver.has_law(regulation) {
+                    let resolution = self.resolve_cell_input(
                         regulation,
                         output_name,
                         source.parameters.as_ref(),
                         context,
                         res_ctx,
-                    )? {
-                        // A cell that answers "none" is an absence like any
-                        // other: this input has to be declared able to take
-                        // one (RFC-036).
+                    )?;
+                    let (value, asked) = match resolution {
+                        CellResolution::NotACell => (None, false),
+                        CellResolution::NotAsked(value) => (Some(value), false),
+                        CellResolution::Answered(value) => (Some(value), true),
+                    };
+                    if let Some(value) = value {
+                        // A cell that answers "none", or was not asked because
+                        // the question was about nobody, is an absence like any
+                        // other: this input has to be declared able to take one
+                        // (RFC-036).
                         if value.is_null() && !input.is_nullable() {
-                            return Err(null_for_non_nullable(
-                                law,
-                                input,
-                                format!("cell {regulation}.{output_name}"),
-                            ));
+                            let origin = if asked {
+                                format!("cell {regulation}.{output_name}")
+                            } else {
+                                format!("skipped query to cell {regulation}")
+                            };
+                            return Err(null_for_non_nullable(law, input, origin));
                         }
                         provenance.insert(
                             input.name.clone(),
                             InputProvenance::Cell {
                                 cell: regulation.clone(),
                                 output: output_name.to_string(),
-                                value: value.clone(),
                             },
                         );
                         context.set_resolved_input(&input.name, value);
@@ -2578,10 +2703,6 @@ impl LawExecutionService {
 
     /// Tier 3 of RFC-022 §4.2: ask a cell for `output`.
     ///
-    /// `Ok(None)` means this was not a cell question at all — no resolver was
-    /// granted, or `cell_id` is not one of the ids it answers for — and the
-    /// caller falls through to the tiers that follow.
-    ///
     /// # Errors
     /// The resolver's own error, or [`EngineError::ResolutionError`] when a
     /// declared cell has no answer: nothing follows the cell tier but step 4
@@ -2593,9 +2714,9 @@ impl LawExecutionService {
         source_parameters: Option<&BTreeMap<String, String>>,
         context: &RuleContext,
         res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<Option<Value>> {
+    ) -> Result<CellResolution> {
         let Some(cells) = self.cells.as_ref().filter(|c| c.ids.contains(cell_id)) else {
-            return Ok(None);
+            return Ok(CellResolution::NotACell);
         };
 
         let _guard = res_ctx.trace_guard(
@@ -2613,6 +2734,33 @@ impl LawExecutionService {
                 return Err(e);
             }
         };
+
+        // A query about nobody is not asked. Leaving this out would be worse
+        // here than one tier up: the question leaves the engine, so an unknown
+        // key would put an engine-internal sentinel on the wire and bring back
+        // an answer about somebody else, which the decision would then treat as
+        // this person's (RFC-036). The cell declares nothing about its
+        // parameters, so every one it was given has to name somebody.
+        if let Some(absent) = absent_subject(&parameters, |_| true, |_| false) {
+            let AbsentSubject {
+                names,
+                noun,
+                verb,
+                value,
+                unknown,
+            } = absent;
+            let word = if unknown { "unknown" } else { "null" };
+            let inherits = if unknown {
+                "input is unknown for the same reason"
+            } else {
+                "input resolves to null"
+            };
+            res_ctx.trace_set_message(format!(
+                "{noun} {names} {verb} {word}, so cell '{cell_id}' is not asked; {inherits}",
+            ));
+            res_ctx.trace_set_result(value.clone());
+            return Ok(CellResolution::NotAsked(value));
+        }
 
         let answer =
             match cells
@@ -2636,7 +2784,8 @@ impl LawExecutionService {
         tracing::debug!(cell = %cell_id, output = %output, "Accepted value from cell");
         res_ctx.trace_set_result(value.clone());
         res_ctx.trace_set_message(format!("Accepted '{output}' from cell '{cell_id}'"));
-        Ok(Some(value))
+        res_ctx.record_accepted(cell_id, output, &value);
+        Ok(CellResolution::Answered(value))
     }
 
     /// Internal method for external input resolution with depth tracking.
@@ -2735,41 +2884,29 @@ impl LawExecutionService {
         // their order: if any is unknown, the input is unknown for the union
         // of their facts (a null among them adds nothing to ask for); only
         // when all are null is the input null. The trace names every one.
-        let empty_required: Vec<(&String, &Value)> = target_params
-            .iter()
-            .filter(|(name, v)| {
-                law_known
-                    && is_required(name)
-                    && (v.is_unknown() || (v.is_null() && !is_nullable(name)))
-            })
-            .collect();
-        if !empty_required.is_empty() {
-            let names = empty_required
-                .iter()
-                .map(|(name, _)| format!("'{name}'"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let (noun, verb) = if empty_required.len() == 1 {
-                ("Parameter", "is")
-            } else {
-                ("Parameters", "are")
-            };
-            if let Some(unknown) = Value::merge_unknown(empty_required.iter().map(|(_, v)| *v)) {
+        if let Some(absent) = law_known
+            .then(|| absent_subject(&target_params, is_required, is_nullable))
+            .flatten()
+        {
+            let AbsentSubject {
+                names,
+                noun,
+                verb,
+                value,
+                unknown,
+            } = absent;
+            if unknown {
                 res_ctx.trace_set_message(format!(
                     "{noun} {names} {verb} unknown, so {regulation} is not executed; input is unknown for the same reason",
                 ));
-                res_ctx.trace_set_result(unknown.clone());
-                return Ok(ExternalResolution {
-                    value: unknown,
-                    skipped: true,
-                });
+            } else {
+                res_ctx.trace_set_message(format!(
+                    "{noun} {names} {verb} null, so {regulation} is not executed; input resolves to null",
+                ));
             }
-            res_ctx.trace_set_message(format!(
-                "{noun} {names} {verb} null, so {regulation} is not executed; input resolves to null",
-            ));
-            res_ctx.trace_set_result(Value::Null);
+            res_ctx.trace_set_result(value.clone());
             return Ok(ExternalResolution {
-                value: Value::Null,
+                value,
                 skipped: true,
             });
         }
@@ -8161,7 +8298,6 @@ articles:
             Some(&InputProvenance::Cell {
                 cell: "cjib".to_string(),
                 output: "openstaande_vorderingen_totaal".to_string(),
-                value: Value::Int(21),
             })
         );
     }
@@ -8347,6 +8483,17 @@ articles:
             !service.has_law("base_law"),
             "a refused law must not stay loaded"
         );
+        // Not half-loaded either: the indexes the load built are gone with it,
+        // or the refusal would leave a regulation that can still be reached by
+        // one of its outputs.
+        assert!(
+            service
+                .resolver()
+                .get_article_by_output("base_law", "base_value", None)
+                .is_none(),
+            "a refused law must leave no index entry behind"
+        );
+        assert!(service.list_laws().is_empty());
     }
 
     #[test]
@@ -8416,5 +8563,316 @@ articles:
         );
 
         assert!(receipt.accepted_values.is_empty());
+    }
+
+    /// Two articles of one regulation: article '2' asks the cell, article '1'
+    /// builds on what '2' produced. A caller that asks only for '1' never sees
+    /// article '2' in the result, but the decision rests on what the cell said.
+    fn cell_law_with_two_articles() -> &'static str {
+        r#"
+$id: cell_consumer_chain
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Builds on the doubled amount
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        input:
+          - name: dubbel
+            type: number
+            source:
+              output: dubbel
+        output:
+          - name: viervoud
+            type: number
+        actions:
+          - output: viervoud
+            operation: MULTIPLY
+            values:
+              - $dubbel
+              - 2
+  - number: '2'
+    text: Counts what another organisation says it holds
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        input:
+          - name: openstaande_vorderingen
+            type: number
+            source:
+              regulation: cjib
+              output: openstaande_vorderingen_totaal
+              parameters:
+                bsn: $bsn
+        output:
+          - name: dubbel
+            type: number
+        actions:
+          - output: dubbel
+            operation: MULTIPLY
+            values:
+              - $openstaande_vorderingen
+              - 2
+"#
+    }
+
+    /// A regulation whose only input comes from `cell_consumer`, which asks the
+    /// cell: the cell tier one call deeper than the result the caller holds.
+    fn cell_consumer_caller_law() -> &'static str {
+        r#"
+$id: cell_consumer_caller
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Builds on another regulation that consults a cell
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        input:
+          - name: dubbel
+            type: number
+            source:
+              regulation: cell_consumer
+              output: dubbel
+              parameters:
+                bsn: $bsn
+        output:
+          - name: viervoud
+            type: number
+        actions:
+          - output: viervoud
+            operation: MULTIPLY
+            values:
+              - $dubbel
+              - 2
+"#
+    }
+
+    #[test]
+    fn a_value_a_sibling_article_accepted_is_in_the_receipt() {
+        // The caller asks for an output of article '1'; article '2' is what
+        // consulted the cell. A receipt that leaves that out states that this
+        // decision accepted nothing from anybody, which is the opposite of
+        // what happened (RFC-013).
+        let mut service = LawExecutionService::new();
+        service.load_law(cell_law_with_two_articles()).unwrap();
+        service
+            .set_cell_resolver(["cjib"], RecordingCell::answering(Value::Int(21)))
+            .unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "cell_consumer_chain",
+                "viervoud",
+                cell_consumer_params(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &cell_consumer_params(),
+            "2025-01-01",
+            &["viervoud".to_string()],
+        );
+
+        assert_eq!(result.outputs.get("viervoud"), Some(&Value::Int(84)));
+        assert_eq!(receipt.accepted_values.len(), 1);
+        assert_eq!(receipt.accepted_values[0].authority, "cjib");
+        assert_eq!(receipt.accepted_values[0].value, Value::Int(21));
+        // The provenance of *this* result still only describes its own input.
+        assert_eq!(
+            result.input_provenance.get("dubbel"),
+            Some(&InputProvenance::Regulation {
+                regulation: "cell_consumer_chain".to_string(),
+                output: "dubbel".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_value_a_called_regulation_accepted_is_in_the_receipt() {
+        // Same reason one call deeper: the regulation that leant on the cell is
+        // not the one the caller asked for, and the decision still rests on it.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&cell_consumer_law("output: openstaande_vorderingen_totaal"))
+            .unwrap();
+        service.load_law(cell_consumer_caller_law()).unwrap();
+        service
+            .set_cell_resolver(["cjib"], RecordingCell::answering(Value::Int(21)))
+            .unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "cell_consumer_caller",
+                "viervoud",
+                cell_consumer_params(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &cell_consumer_params(),
+            "2025-01-01",
+            &["viervoud".to_string()],
+        );
+
+        assert_eq!(result.outputs.get("viervoud"), Some(&Value::Int(84)));
+        assert_eq!(receipt.accepted_values.len(), 1);
+        assert_eq!(receipt.accepted_values[0].authority, "cjib");
+        assert_eq!(
+            receipt.accepted_values[0].output,
+            "openstaande_vorderingen_totaal"
+        );
+    }
+
+    /// A law whose cell query is keyed on `partner_bsn`: a fact that may be
+    /// absent, so by the time the cell would be asked the key can name nobody.
+    fn cell_law_keyed_on_a_partner() -> &'static str {
+        r#"
+$id: cell_consumer_keyed
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Counts what another organisation holds on a partner
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        input:
+          - name: partner_bsn
+            type: string
+            nullable: true
+            source: {}
+          - name: openstaande_vorderingen
+            type: number
+            source:
+              regulation: cjib
+              output: openstaande_vorderingen_totaal
+              parameters:
+                bsn: $partner_bsn
+        output:
+          - name: dubbel
+            type: number
+        actions:
+          - output: dubbel
+            operation: MULTIPLY
+            values:
+              - $openstaande_vorderingen
+              - 2
+"#
+    }
+
+    #[test]
+    fn a_cell_is_not_asked_when_the_key_is_unknown() {
+        // The query leaves this engine, so an unknown key would put an
+        // engine-internal sentinel on the wire and bring back an answer about
+        // somebody else, which the decision would then treat as this person's.
+        // A loaded regulation is not executed in this position either; the cell
+        // is not asked, and the input is unknown for the same missing fact
+        // (RFC-036).
+        let mut service = LawExecutionService::new();
+        service.load_law(cell_law_keyed_on_a_partner()).unwrap();
+        let cell = RecordingCell::answering(Value::Int(21));
+        service.set_cell_resolver(["cjib"], cell.clone()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "cell_consumer_keyed",
+                "dubbel",
+                cell_consumer_params(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert!(
+            cell.calls().is_empty(),
+            "a query about nobody must not leave the engine, got {:?}",
+            cell.calls().as_slice()
+        );
+        assert!(
+            result.outputs.get("dubbel").is_some_and(Value::is_unknown),
+            "the outcome must stay unknown, got {:?}",
+            result.outputs.get("dubbel")
+        );
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &cell_consumer_params(),
+            "2025-01-01",
+            &["dubbel".to_string()],
+        );
+        assert!(
+            receipt.accepted_values.is_empty(),
+            "nothing was accepted, so nothing belongs in the receipt"
+        );
+    }
+
+    #[test]
+    fn a_cell_is_not_asked_when_the_key_is_null() {
+        // There is no partner, so there is nobody to ask about. The input is
+        // null, and this one is not declared able to take one: the error names
+        // the query that was skipped rather than an answer that never came.
+        let mut service = LawExecutionService::new();
+        service.load_law(cell_law_keyed_on_a_partner()).unwrap();
+        let cell = RecordingCell::answering(Value::Int(21));
+        service.set_cell_resolver(["cjib"], cell.clone()).unwrap();
+
+        let mut given = cell_consumer_params();
+        given.insert("partner_bsn".to_string(), Value::Null);
+        let err = service
+            .evaluate_law_output("cell_consumer_keyed", "dubbel", given, "2025-01-01")
+            .unwrap_err();
+
+        assert!(cell.calls().is_empty(), "the cell must not be asked");
+        match &err {
+            EngineError::NullForNonNullable { field, origin, .. } => {
+                assert_eq!(field, "openstaande_vorderingen");
+                assert!(
+                    origin.contains("cjib"),
+                    "origin must name the cell: {origin}"
+                );
+            }
+            other => panic!("expected NullForNonNullable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn one_fact_asked_of_one_cell_is_one_accepted_value() {
+        // Two articles reading the same fact is one acceptance: the receipt
+        // states which values came from elsewhere, not how often the engine
+        // looked them up.
+        let mut service = LawExecutionService::new();
+        service.load_law(cell_law_with_two_articles()).unwrap();
+        service
+            .set_cell_resolver(["cjib"], RecordingCell::answering(Value::Int(21)))
+            .unwrap();
+
+        let result = service
+            .evaluate_law(
+                "cell_consumer_chain",
+                &["viervoud", "dubbel"],
+                cell_consumer_params(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &cell_consumer_params(),
+            "2025-01-01",
+            &["viervoud".to_string(), "dubbel".to_string()],
+        );
+
+        assert_eq!(receipt.accepted_values.len(), 1);
     }
 }

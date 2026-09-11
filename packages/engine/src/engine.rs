@@ -23,6 +23,7 @@ use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
+use crate::receipt::AcceptedValue;
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
@@ -64,13 +65,14 @@ pub enum InputProvenance {
     Regulation { regulation: String, output: String },
     /// Accepted from a cell (tier 3, RFC-022 §4.2): a value this engine did
     /// not compute and cannot reproduce, so it travels with the decision
-    /// instead of being recomputed — hence the value is carried here and ends
-    /// up in the receipt's `accepted_values` (RFC-013).
-    Cell {
-        cell: String,
-        output: String,
-        value: Value,
-    },
+    /// instead of being recomputed — it is carried in
+    /// [`ArticleResult::accepted_values`] and lands in the receipt's
+    /// `accepted_values` (RFC-013).
+    ///
+    /// Recorded for the tier that answered, as with a regulation: when the
+    /// cell was not asked because a parameter that says *who* the question is
+    /// about named nobody, the value is that absence, not an accepted one.
+    Cell { cell: String, output: String },
 }
 
 /// Result of article execution
@@ -87,8 +89,19 @@ pub struct ArticleResult {
     /// article(s) this result was produced by, not those of the regulations
     /// they called in turn — each of those has its own result. Empty for an
     /// article evaluated by [`ArticleEngine`] alone, which resolves no
-    /// sources.
+    /// sources. An input that no tier answered — left unknown for lack of any
+    /// data source — carries no entry.
     pub input_provenance: BTreeMap<String, InputProvenance>,
+    /// Every value accepted from a cell (tier 3, RFC-022 §4.2) during the
+    /// execution this result concludes, including the ones a nested regulation,
+    /// a sibling article, a hook or an override accepted: the decision leans on
+    /// all of them, and this engine reproduces none of them, so the receipt has
+    /// to carry them whoever asked for them (RFC-013 `accepted_values`).
+    ///
+    /// Unlike `input_provenance`, which describes *this* result's own inputs,
+    /// this is a fact about the whole execution. Empty for an article evaluated
+    /// by [`ArticleEngine`] alone, which resolves no sources.
+    pub accepted_values: Vec<AcceptedValue>,
     /// Article number that was executed
     pub article_number: String,
     /// Law ID containing the article
@@ -285,6 +298,7 @@ impl<'a> ArticleEngine<'a> {
             resolved_inputs: context.resolved_inputs().clone(),
             // Filled in by the service layer, which is where sources resolve.
             input_provenance: BTreeMap::new(),
+            accepted_values: Vec::new(),
             article_number: self.article.number.clone(),
             law_id: self.law.id.clone(),
             law_uuid: self.law.uuid.clone(),

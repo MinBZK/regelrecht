@@ -38,7 +38,10 @@ pub trait CellResolver {
     /// * `output` — the requested output, `source.output` or, when that is
     ///   absent, the input's own name.
     /// * `parameters` — the arguments built from `source.parameters`, exactly
-    ///   as a cross-law call would receive them.
+    ///   as a cross-law call would receive them. Every one of them names
+    ///   somebody: a query whose key is null or unknown is not made at all, the
+    ///   same way a loaded regulation is not executed for nobody (RFC-036), so
+    ///   no engine-internal absence ever reaches a resolver.
     /// * `reference_date` — the date the execution reasons about
     ///   (`YYYY-MM-DD`), the same one that selects regulation versions.
     ///
