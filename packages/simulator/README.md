@@ -744,7 +744,7 @@ Elke melding is geschreven voor iemand die het scenario niet kent: welke
 invariant, welke actoren, welk moment. Bijvoorbeeld:
 
 ```text
-[FOUT] invarianten: 1 contact(en) over een celgrens
+[FOUT] invarianten: 1 contact(en) over een celgrens, 1 tak(ken) in het vraaggraf
      I3 (definities): cel 'toeslagen' vroeg 'belastingdienst.toetsingsinkomen' op
      2024-06-01, maar haar eigen wetten en besluit-definities vragen daar niet om
      (haar definities vragen: toeslagen -> brp.partnerschap); een cel bevraagt
@@ -1065,6 +1065,16 @@ zie [Accepteren in plaats van narekenen](#accepteren-in-plaats-van-narekenen-i5)
 Wat deze stap overhoudt, is één vraag los kunnen stellen en op haar antwoord
 asserteren zonder er een besluit omheen te bouwen: handig om de naad zelf te
 beproeven, en verder niets.
+
+Wat een sonde **niet** overslaat, is invariant I3. De gate houdt haar aan dezelfde
+definities als een besluit, dus de vragende cel heeft een reden nodig om te vragen:
+een eigen wet die de peer via `source.regulation` aanwijst, plus de
+`accepts_from`-afspraak die zegt onder welke gepubliceerde naam de waarde daar te
+halen is. Zonder die twee faalt het scenario, ook als de tak in `query_graph`
+staat. Dat is met opzet — een sonde die buiten I3 viel, zou in elk scenario een weg
+om de invariant heen openzetten — maar het betekent dat een nieuwe sonde niet
+alleen een identiteit vraagt. Zie
+[De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder).
 
 De stappen lopen in deze volgorde: eerst de besluiten, dan de vragen van een
 consument, dan die over een celgrens. Dat past bij wat ze zijn — een besluit is

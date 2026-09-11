@@ -8,7 +8,8 @@
 use crate::cell::{CellConfig, Decretogram, Lexostatus, LexostatusOutcome};
 use crate::error::{Result, SimulatorError};
 use crate::invariant::{
-    check_invariants, observed_graph, DecisionTraffic, DeclaredQuery, InvariantFailure, Traffic,
+    check_invariants, observed_graph, DecisionTraffic, DeclaredQuery, InvariantFailure, QueryEdge,
+    Traffic,
 };
 use crate::security::{Identity, SecurityContext, SignedAnswer};
 use crate::transport::InProcessTransport;
@@ -590,11 +591,17 @@ impl Scenario {
 
     /// Controleer het gedeclareerde vraaggraf op zichzelf.
     ///
-    /// Bij het lezen en niet pas na een run, want elk van deze drie zou anders
-    /// als een falende invariant naar buiten komen terwijl er een schrijffout in
-    /// het bestand staat. Een tak naar een cel die niet bestaat, wordt nooit
-    /// gesteld en zou als "gedeclareerde vraag die uitbleef" verschijnen — een
-    /// melding die de lezer naar de run stuurt in plaats van naar de typfout.
+    /// Bij het lezen en niet pas na een run, want een schrijffout in het bestand
+    /// hoort niet als uitslag van de gate naar buiten te komen. Een tak naar een
+    /// cel die niet bestaat wordt nooit gesteld en zou als "gedeclareerde vraag
+    /// die uitbleef" verschijnen — een melding die de lezer naar de run stuurt in
+    /// plaats van naar de typfout; een tak van een cel naar zichzelf net zo, want
+    /// de veiligheidscontext laat die vraag niet over een grens.
+    ///
+    /// De dubbele tak staat er om de omgekeerde reden: die zou de gate juist
+    /// *niets* laten zeggen. Een graf is een verzameling, dus de tweede regel
+    /// wordt stil opgeslokt, en dan staat er een regel in het bestand die niets
+    /// doet.
     fn validate_query_graph(&self) -> Result<()> {
         let known = || {
             self.cells
@@ -603,7 +610,10 @@ impl Scenario {
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        let mut seen: BTreeSet<String> = BTreeSet::new();
+        // Op de tak zelf en niet op haar tekst: de `Display`-vorm plakt cel en
+        // lexostatus met een punt aan elkaar, en dan zou een lexostatus met een
+        // punt erin twee verschillende takken als dubbel kunnen aanmerken.
+        let mut seen: BTreeSet<QueryEdge> = BTreeSet::new();
 
         for declared in &self.query_graph {
             let edge = declared.edge();
@@ -623,10 +633,11 @@ impl Scenario {
                     edge: edge.to_string(),
                 });
             }
-            if !seen.insert(edge.to_string()) {
+            let melding = edge.to_string();
+            if !seen.insert(edge) {
                 return Err(SimulatorError::DuplicateQueryGraphEdge {
                     scenario: self.name.clone(),
-                    edge: edge.to_string(),
+                    edge: melding,
                 });
             }
         }
@@ -1111,6 +1122,106 @@ query_via_transport:
         );
     }
 
+    /// Een wereld met twee cellen, waar een vraaggraf bij te schrijven is.
+    ///
+    /// De cellen zijn bron-cellen zonder kroniek: deze tests gaan over wat er bij
+    /// het *lezen* van het bestand geweigerd wordt, en komen nooit aan een run
+    /// toe.
+    fn met_vraaggraf(query_graph: &str) -> Result<Scenario> {
+        Scenario::from_yaml(&format!(
+            "
+name: twee cellen en een vraaggraf
+clock: {{ start: 2025-01-01 }}
+cells:
+  - id: toeslagen
+    laws: []
+  - id: brp
+    laws: []
+query_graph:
+{query_graph}"
+        ))
+    }
+
+    #[test]
+    fn een_vraaggraf_naar_een_onbekende_cel_wordt_geweigerd() {
+        let err = met_vraaggraf(
+            "  - from: toeslagen
+    to: kiesraad
+    lexostatus: zetels
+",
+        )
+        .expect_err(
+            "een tak naar een cel die het scenario niet heeft, zou na de run als \
+             'gedeclareerde vraag die uitbleef' verschijnen en de lezer naar de run sturen \
+             in plaats van naar de typfout",
+        );
+        assert!(
+            matches!(err, SimulatorError::QueryGraphUnknownCell { .. }),
+            "verwachtte QueryGraphUnknownCell, kreeg {err}"
+        );
+        let melding = err.to_string();
+        assert!(
+            melding.contains("kiesraad") && melding.contains("toeslagen, brp"),
+            "de melding hoort de onbekende cel te noemen en de cellen die er wél zijn, \
+             kreeg: {melding}"
+        );
+    }
+
+    #[test]
+    fn een_vraaggraf_waarin_een_cel_zichzelf_bevraagt_wordt_geweigerd() {
+        let err = met_vraaggraf(
+            "  - from: toeslagen
+    to: toeslagen
+    lexostatus: partnerschap
+",
+        )
+        .expect_err("een cel komt voor eigen feiten niet over een celgrens");
+        assert!(
+            matches!(err, SimulatorError::QueryGraphToSelf { .. }),
+            "verwachtte QueryGraphToSelf, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn dezelfde_tak_twee_keer_in_het_vraaggraf_wordt_geweigerd() {
+        let err = met_vraaggraf(
+            "  - from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+  - doc: dezelfde tak, andere toelichting
+    from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+",
+        )
+        .expect_err(
+            "een graf is een verzameling, dus de tweede regel wordt stil opgeslokt — \
+             en dan staat er een regel in het bestand die niets doet",
+        );
+        assert!(
+            matches!(err, SimulatorError::DuplicateQueryGraphEdge { .. }),
+            "verwachtte DuplicateQueryGraphEdge, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn twee_takken_naar_dezelfde_cel_op_verschillende_lexostatussen_mogen() {
+        assert!(
+            met_vraaggraf(
+                "  - from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+  - from: toeslagen
+    to: brp
+    lexostatus: woonplaats
+",
+            )
+            .is_ok(),
+            "wat een cel publiceert zijn losse namen, dus twee lexostatussen bij één peer \
+             zijn twee takken en niet een dubbele"
+        );
+    }
+
     #[test]
     fn onbekend_veld_in_een_vraag_over_de_celgrens_wordt_geweigerd() {
         // `from` staat naast de gewone velden van een vraag, en die combinatie is
@@ -1195,6 +1306,31 @@ query_via_transport:
             !run(0).report().contains("gingen niet af"),
             "zonder wachtende vastleggingen hoort die regel weg te blijven; kreeg:\n{}",
             run(0).report()
+        );
+    }
+
+    /// Het verslag meldt de gate ook als hij niets vond.
+    ///
+    /// Dat staat in de moduledocs als eigenschap en is precies het soort regel dat
+    /// bij een opschoning weggehaald wordt zonder dat er iets rood wordt: een
+    /// verslag zonder die regel is niet te onderscheiden van een gate die niet
+    /// gedraaid heeft, en dat is de stilte waar deze opstelling tegen bedoeld is.
+    #[test]
+    fn het_verslag_meldt_de_invarianten_ook_als_er_niets_te_melden_was() {
+        let run = ScenarioRun {
+            name: "niets over een grens".to_string(),
+            clock: moment(),
+            pending_triggers: 0,
+            decisions: Vec::new(),
+            outcomes: Vec::new(),
+            transport_outcomes: Vec::new(),
+            invariant_failures: Vec::new(),
+        };
+
+        let verslag = run.report();
+        assert!(
+            verslag.contains("[ok] invarianten: 0 contact(en) over een celgrens"),
+            "een run zonder bevindingen hoort de gate alsnog te melden; kreeg:\n{verslag}"
         );
     }
 

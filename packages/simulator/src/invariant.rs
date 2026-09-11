@@ -561,10 +561,13 @@ fn check_visibility(
 /// Het eerste moment waarop deze tak gevraagd werd.
 ///
 /// Een tak kan meer dan één keer gesteld zijn; de melding noemt het eerste
-/// voorval, want dat is het moment waarop de schending begon. Zonder contact
-/// valt er niets te noemen — dat kan niet gebeuren voor een tak die uit de
-/// contacten is afgeleid, en dan is de eerste dag van de jaartelling een
-/// zichtbaar onzinnige uitkomst in plaats van een stille aanname.
+/// voorval, want dat is het moment waarop de schending begon.
+///
+/// Zonder contact valt er niets te noemen, en dat kan bij beide aanroepers niet
+/// gebeuren: die geven alleen takken mee die uit `entries` zijn afgeleid. Blijft
+/// er toch niets over, dan komt `NaiveDate::default()` eruit — 1 januari 1970,
+/// een datum die in een wereld die op een `clock.start` begint niet te verwarren
+/// is met een moment uit de run.
 fn first_moment(entries: &[&SignedAnswer], edge: &QueryEdge) -> NaiveDate {
     entries
         .iter()

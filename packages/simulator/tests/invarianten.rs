@@ -28,32 +28,57 @@ type Expected = fn(&InvariantFailure) -> bool;
 
 /// Elke negatieve fixture, met de melding die hij moet opleveren.
 ///
+/// Vier kolommen: het bestand, de invariant waar hij over gaat, welke melding dat
+/// is, en **hoeveel** meldingen het bestand in totaal oplevert. Die laatste staat
+/// erbij omdat "de bedoelde melding zit erbij" niet uitsluit dat er nog iets
+/// anders bij zit: een fixture die er een tweede schending bij krijgt, of een gate
+/// die te veel meldt, blijft dan groen. Waar een fixture meer dan één melding
+/// heeft, staat in zijn eigen `description` welke en waarom.
+///
 /// De tabel staat in Rust en niet in de bestanden zelf, en dat is met opzet: een
 /// scenario dat zijn eigen falen verwacht, zou `passed()` van binnenuit kunnen
 /// omdraaien, en dan is "dit scenario is groen" geen uitspraak meer. Wat er wél
 /// afgedwongen wordt, is dat de tabel volledig is — zie
 /// [`elke_negatieve_fixture_staat_in_de_tabel`].
-const FIXTURES: [(&str, &str, Expected); 5] = [
-    ("niet_gedeclareerde_call.yaml", "I3", |failure| {
-        matches!(failure, InvariantFailure::UndeclaredCall { .. })
-    }),
-    ("gedeclareerde_call_bleef_uit.yaml", "I3", |failure| {
-        matches!(failure, InvariantFailure::CallDidNotHappen { .. })
-    }),
+const FIXTURES: [(&str, &str, Expected, usize); 5] = [
+    (
+        "niet_gedeclareerde_call.yaml",
+        "I3",
+        |failure| matches!(failure, InvariantFailure::UndeclaredCall { .. }),
+        1,
+    ),
+    (
+        "gedeclareerde_call_bleef_uit.yaml",
+        "I3",
+        |failure| matches!(failure, InvariantFailure::CallDidNotHappen { .. }),
+        1,
+    ),
     (
         "cel_bevraagt_cel_buiten_haar_definities.yaml",
         "I3",
         |failure| matches!(failure, InvariantFailure::CallOutsideDefinitions { .. }),
+        // Plus de declaratie die uit de pas loopt met de definities: het bestand
+        // declareert de vraag die het niet mag stellen.
+        2,
     ),
-    ("declaratie_buiten_de_definities.yaml", "I3", |failure| {
-        matches!(
-            failure,
-            InvariantFailure::DeclarationOutsideDefinitions { .. }
-        )
-    }),
-    ("reductie_combineert_twee_cellen.yaml", "I4", |failure| {
-        matches!(failure, InvariantFailure::SynthesisOutsideBesluit { .. })
-    }),
+    (
+        "declaratie_buiten_de_definities.yaml",
+        "I3",
+        |failure| {
+            matches!(
+                failure,
+                InvariantFailure::DeclarationOutsideDefinitions { .. }
+            )
+        },
+        // Plus de gedeclareerde vraag die uitbleef: ze wordt hier nooit gesteld.
+        2,
+    ),
+    (
+        "reductie_combineert_twee_cellen.yaml",
+        "I4",
+        |failure| matches!(failure, InvariantFailure::SynthesisOutsideBesluit { .. }),
+        1,
+    ),
 ];
 
 fn negatief_dir() -> PathBuf {
@@ -86,7 +111,7 @@ fn elke_negatieve_fixture_staat_in_de_tabel() {
         .collect();
     let tabel: BTreeSet<String> = FIXTURES
         .iter()
-        .map(|(name, _, _)| (*name).to_string())
+        .map(|(name, ..)| (*name).to_string())
         .collect();
 
     // Beide kanten. Een fixture zonder tabelregel wordt nooit gedraaid en is dus
@@ -109,13 +134,22 @@ fn er_zijn_minstens_drie_negatieve_fixtures() {
 
 #[test]
 fn elke_negatieve_fixture_faalt_op_de_invariant_die_hij_meet() {
-    for (name, invariant, expected) in FIXTURES {
+    for (name, invariant, expected, meldingen) in FIXTURES {
         let path = negatief_dir().join(name);
         let run = run(&path);
 
         assert!(
             !run.passed(),
             "{name}: deze fixture hoort te falen, maar de run is groen:\n{}",
+            run.report()
+        );
+        // Precies de meldingen uit de tabel en geen meldingen erbij. Een fixture
+        // die er ongemerkt een tweede schending bij krijgt, meet niet meer wat hij
+        // zegt te meten — ook niet als de bedoelde melding er nog bij zit.
+        assert_eq!(
+            run.invariant_failures.len(),
+            meldingen,
+            "{name}: verwachtte precies {meldingen} melding(en):\n{}",
             run.report()
         );
         let failure = run
@@ -162,7 +196,7 @@ fn elke_negatieve_fixture_faalt_op_de_invariant_die_hij_meet() {
 /// even rood zijn, en dan zou de suite groen blijven terwijl de gate niets deed.
 #[test]
 fn de_negatieve_fixtures_halen_hun_gewone_verwachtingen_wel() {
-    for (name, _, _) in FIXTURES {
+    for (name, ..) in FIXTURES {
         let path = negatief_dir().join(name);
         let run = run(&path);
 
