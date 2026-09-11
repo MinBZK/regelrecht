@@ -216,6 +216,49 @@ pub enum SimulatorError {
         stream: String,
     },
 
+    /// Een som publiceert iets anders dan het veld waarover ze sommeert.
+    ///
+    /// Een som levert precies één waarde op: het totaal van dat ene veld. Een
+    /// `outputs` met iets anders erin belooft een uitkomst die nooit in het
+    /// antwoord komt, en die belofte hoort bij het optuigen te sneuvelen.
+    #[error(
+        "cel '{cell}': '{lexostatus}' sommeert veld '{field}', dus `outputs` hoort \
+         precies dat veld te noemen (nu: {outputs})"
+    )]
+    SumOutputMismatch {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// De lexostatus met de som.
+        lexostatus: String,
+        /// Het veld waarover gesommeerd wordt.
+        field: String,
+        /// Komma-gescheiden lijst van wat er nu in `outputs` staat.
+        outputs: String,
+    },
+
+    /// Een som stuit op een vastlegging zonder getal in het veld.
+    ///
+    /// Een som die zo'n vastlegging overslaat, valt stil te laag uit, en dan is
+    /// "betaald tot nu toe" een getal dat er goed uitziet en niet klopt. Een
+    /// stroom die zich niet laat sommeren is een fout in de wereld, niet een
+    /// reden om te gokken.
+    #[error(
+        "cel '{cell}': '{lexostatus}' sommeert '{field}', maar de vastlegging van \
+         {op_moment} heeft daar {found}"
+    )]
+    SumOfNonNumber {
+        /// Cel waaraan gevraagd werd.
+        cell: String,
+        /// De lexostatus met de som.
+        lexostatus: String,
+        /// Stroom en veld die een getal moesten leveren, als `stroom.veld`.
+        field: String,
+        /// Het moment van de vastlegging die niet meekon.
+        op_moment: String,
+        /// Wat er in plaats van een getal stond.
+        found: String,
+    },
+
     /// Een definitie sleutelt, filtert of leest op een veld dat de stroom niet kent.
     ///
     /// Zo'n filter zou stil "niets vastgesteld" antwoorden op elke vraag, en dat
@@ -458,6 +501,141 @@ pub enum SimulatorError {
         output: String,
         /// Komma-gescheiden lijst van de vaste velden.
         fixed: String,
+    },
+
+    /// Een verplichting noemt een bedrag dat geen uitkomst van haar besluit is.
+    ///
+    /// Wat betaald moet worden, komt uit de wet die het besluit uitvoert. Een
+    /// letterlijk bedrag of een parameter zou naast die uitkomst gaan leven, en
+    /// dan zegt het gram twee dingen over hetzelfde geld.
+    #[error(
+        "cel '{cell}': verplichting van besluit '{besluit}' noemt bedrag '{amount}'; \
+         dat moet een uitkomst van dit besluit zijn, als $naam (uitkomsten: {outputs})"
+    )]
+    ObligationAmount {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// Wat er als bedrag stond.
+        amount: String,
+        /// Komma-gescheiden lijst van de uitkomsten die het besluit vastlegt.
+        outputs: String,
+    },
+
+    /// De uitkomst waarnaar een verplichting verwijst is geen bedrag.
+    ///
+    /// Bij het besluit, niet bij het optuigen: dat de uitkomst bestaat is daar al
+    /// getoetst, maar welke waarde ze heeft blijkt pas als de engine gedraaid
+    /// heeft. Een schema uit een ontbrekende of niet-numerieke uitkomst zou een
+    /// betaling van "niets" opleveren.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' kan geen betalingsschema maken, want \
+         uitkomst '{output}' is {found}"
+    )]
+    ObligationAmountValue {
+        /// Cel die besloot.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// De uitkomst die het bedrag moest leveren.
+        output: String,
+        /// Wat er in plaats van een bedrag stond.
+        found: String,
+    },
+
+    /// Een verplichting noemt een ritme dat de simulator niet kent.
+    #[error(
+        "cel '{cell}': verplichting van besluit '{besluit}' noemt ritme '{schedule}' \
+         (bekend: {known})"
+    )]
+    UnknownSchedule {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// Het onbekende ritme.
+        schedule: String,
+        /// Komma-gescheiden lijst van de ritmes die wél bestaan.
+        known: String,
+    },
+
+    /// Een verplichting verwijst naar een instelling die het wereldbestand niet
+    /// heeft.
+    #[error(
+        "cel '{cell}': verplichting van besluit '{besluit}' verwijst naar instelling \
+         '{setting}', maar die staat niet in `settings` van het wereldbestand \
+         (wel: {known})"
+    )]
+    UnknownSetting {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// De instelling waarnaar verwezen wordt.
+        setting: String,
+        /// Komma-gescheiden lijst van de instellingen die er wél zijn.
+        known: String,
+    },
+
+    /// De `from` van een verplichting levert geen datum op.
+    #[error(
+        "cel '{cell}': verplichting van besluit '{besluit}' begint bij '{template}', \
+         maar {reason}"
+    )]
+    MalformedObligationDate {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// Het sjabloon zoals het in de configuratie staat.
+        template: String,
+        /// Wat er mis is.
+        reason: String,
+    },
+
+    /// Een verplichting zou vervallen vóór het besluit dat haar schept.
+    ///
+    /// Een termijn met een datum in het verleden zou bij het nakomen een
+    /// vastlegging op dat eerdere moment opleveren, en dan verandert het beeld van
+    /// toen doordat de wereld verder loopt — precies wat een kroniek niet doet.
+    #[error(
+        "cel '{cell}': verplichting van besluit '{besluit}' vervalt op {from}, \
+         vóór het besluit van {op_moment}; een verplichting kan niet vervallen \
+         vóór het besluit waaruit ze volgt"
+    )]
+    ObligationBeforeDecision {
+        /// Cel die besluit.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// De uitgerekende startdatum.
+        from: String,
+        /// Het moment van het besluit.
+        op_moment: String,
+    },
+
+    /// Een cel die een verplichting moet dragen houdt geen betalingsstroom.
+    ///
+    /// Beide kanten van een verplichting leggen vast: de betalende cel dat ze
+    /// betaalde, de besluitende dat het haar gemeld is. Dat kan alleen in een
+    /// stroom die er is, met de sleutel waarop een zaak terug te vinden is — en
+    /// dat hoort bij het optuigen te blijken en niet op de eerste vervaldatum.
+    #[error(
+        "cel '{cell}': verplichting van besluit '{besluit}' vraagt dat cel '{holder}' \
+         {expected} houdt, maar {found}"
+    )]
+    ObligationStream {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit met de verplichting.
+        besluit: String,
+        /// De cel die de stroom zou moeten houden.
+        holder: String,
+        /// De stroom met de sleutel die het platform verwacht.
+        expected: String,
+        /// Wat er in plaats daarvan is.
+        found: String,
     },
 
     /// Het zaakkenmerk-sjabloon heeft een accolade die niet sluit.

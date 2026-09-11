@@ -11,10 +11,13 @@
 //! haar aangereikt worden. Zij houdt geen klok, precies zoals ze geen sleutels
 //! en geen bevoegdheid houdt (RFC-022 §2).
 //!
-//! In deze versie bestaat één trigger-soort: een [`Fixture`] met een `at`-datum
-//! die bij het passeren wordt vastgelegd. De lus is generiek — een gesorteerde
-//! lijst van `(datum, trigger)` — zodat vervallende verplichtingen en gemiste
-//! termijnen er later naast passen zonder dat de klok verandert.
+//! Er zijn twee trigger-soorten. Een [`Fixture`] met een `at`-datum wordt bij
+//! het passeren vastgelegd, en een **vervallende verplichting** laat de cel die
+//! haar draagt betalen. De lus is generiek — een gesorteerde lijst van
+//! `(datum, trigger)` — zodat een soort erbij een variant erbij is en geen
+//! andere klok. Dat de lijst gesorteerd blijft is een invariant en geen
+//! toestand: een besluit tijdens de run plant nieuwe vervaldata, en die horen op
+//! datumpositie en niet achteraan (zie [`World::plan`]).
 //!
 //! De wereld is ook de enige die een cel kan laten **besluiten**
 //! ([`World::decide`]). Dat is geen trigger op de klok maar een aansturing van
@@ -31,7 +34,10 @@
 //! zien zonder dat een cel het kent.
 
 use crate::accept::CellBridge;
-use crate::cell::{Cell, CellConfig, ChronicleEvent, Decretogram, Intake, Lexostatus};
+use crate::cell::{
+    Cell, CellConfig, ChronicleEvent, Decretogram, Intake, Lexostatus, ObligationDue, BETALINGEN,
+    ZAAKKENMERK,
+};
 use crate::error::{Result, SimulatorError, Subject};
 use crate::security::{Identity, SignedAnswer};
 use chrono::NaiveDate;
@@ -107,12 +113,19 @@ impl Recording {
 
 /// Wat er gebeurt als de klok een moment passeert.
 ///
-/// Eén soort in deze versie. De lus die ze afloopt is generiek, dus een soort
-/// erbij is een variant erbij en geen andere klok.
+/// De lus die ze afloopt is generiek, dus een soort erbij is een variant erbij
+/// en geen andere klok.
 #[derive(Debug, Clone)]
 enum Trigger {
     /// Er wordt een executogram vastgelegd.
     Record(Recording),
+    /// Een termijn van een verplichting vervalt en wordt nagekomen.
+    ///
+    /// Anders dan een [`Fixture`] staat deze niet in het wereldbestand: hij
+    /// ontstaat tíjdens de run, op het moment dat een besluit de verplichting
+    /// oplegt. Dat is meteen de reden dat [`World::pending`] gesorteerd moet
+    /// blijven bij het bijzetten.
+    Obligation(ObligationDue),
 }
 
 /// Wat één besluit opleverde: het gram, en wat ervoor over de celgrens ging.
@@ -141,6 +154,13 @@ pub struct DecisionRecord {
 pub struct World {
     /// De cellen, op id.
     cells: BTreeMap<String, Cell>,
+    /// De instellingen van deze wereld: casusdata die geen wet is.
+    ///
+    /// Een betalingsritme is doorgaans beleid en geen wet, en beleid hoort niet
+    /// in een besluit-definitie vast te staan alsof de wet het voorschrijft.
+    /// Daarom staan ze hier, bij de wereld, en niet in een cel: een cel leest ze
+    /// niet, ze krijgt ze aangereikt bij het besluit dat erop leunt.
+    settings: BTreeMap<String, Value>,
     /// Waar de logische klok staat.
     clock: NaiveDate,
     /// Wat er nog moet gebeuren, oplopend op datum. Bij een gelijke datum
@@ -167,10 +187,16 @@ impl World {
     /// haar datum nog jaren weg is. Een typfout in een startstand hoort niet
     /// halverwege een tijdlijn op te duiken, en of dat gebeurt mag niet afhangen
     /// van hoe ver die datum weg ligt.
+    ///
+    /// De verplichtingen van elk besluit worden hier ook getoetst, en om dezelfde
+    /// reden: of een instelling bestaat en of de betalende cel een
+    /// betalingsstroom houdt, is niet iets om op de eerste vervaldatum achter te
+    /// komen. Zie [`check_obligations`].
     pub fn new(
         configs: &[CellConfig],
         clock: Clock,
         fixtures: &[Fixture],
+        settings: &BTreeMap<String, Value>,
         regulation_root: &Path,
     ) -> Result<Self> {
         // Per cel, per stroom: de veldnamen die een `fixture` erin zet. Een
@@ -215,6 +241,7 @@ impl World {
         }
 
         check_peers_exist(configs, &cells)?;
+        check_obligations(configs, &cells, settings)?;
 
         let mut pending: Vec<(NaiveDate, Trigger)> = fixtures
             .iter()
@@ -224,6 +251,7 @@ impl World {
 
         let mut world = Self {
             cells,
+            settings: settings.clone(),
             clock: clock.start,
             pending: pending.into(),
         };
@@ -357,7 +385,14 @@ impl World {
             std::mem::take(&mut self.cells),
         ));
 
-        let outcome = Self::accept_and_decide(&bridge, &mut deciding, besluit, params, op_moment);
+        let outcome = Self::accept_and_decide(
+            &bridge,
+            &mut deciding,
+            besluit,
+            params,
+            &self.settings,
+            op_moment,
+        );
 
         // Ook als het besluit omviel: de wereld krijgt haar cellen terug zoals ze
         // waren. Een mislukt besluit legt niets vast, maar het mag al helemaal
@@ -372,8 +407,25 @@ impl World {
         // die er een foutantwoord van maakt), dan mist het log precies de vragen
         // van de besluiten die niet lukten, en dat is de gevaarlijke kant op: dan
         // horen de contacten met de fout mee naar buiten.
+        let decretogram = outcome?;
+
+        // De verplichtingen uit dit besluit worden triggers. Een termijn die nu
+        // al vervalt — en de eerste termijn valt op het moment van het besluit,
+        // tenzij `from` anders zegt — gaat meteen af: de klok staat er al, dus
+        // wachten zou hem tot de volgende `advance` laten liggen en dan pas met
+        // terugwerkende kracht laten vastleggen.
+        //
+        // Dit moet ná het herstel van `self.cells` hierboven: `settle` zoekt
+        // zowel de betalende als de besluitende cel op via `self.cells`, en de
+        // besluitende cel stond tot dat herstel nog niet terug, en de rest zat
+        // nog in de brug.
+        for due in &decretogram.obligations {
+            self.plan(due.vervaldatum, Trigger::Obligation(due.clone()));
+        }
+        self.fire_due(self.clock)?;
+
         Ok(DecisionRecord {
-            decretogram: outcome?,
+            decretogram,
             crossings: bridge.crossings(),
         })
     }
@@ -390,13 +442,33 @@ impl World {
         deciding: &mut Cell,
         besluit: &str,
         params: &BTreeMap<String, Value>,
+        settings: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
     ) -> Result<Decretogram> {
         let requests = deciding.acceptance_requests(besluit, params)?;
         let accepted = bridge.accept_all(&requests, op_moment)?;
         let shared: Rc<CellBridge> = Rc::clone(bridge);
         let resolver: Rc<dyn CellResolver> = shared;
-        deciding.decide(besluit, params, op_moment, &accepted, Some(resolver))
+        deciding.decide(
+            besluit,
+            params,
+            settings,
+            op_moment,
+            &accepted,
+            Some(resolver),
+        )
+    }
+
+    /// Zet een trigger op zijn datumpositie in de wachtrij.
+    ///
+    /// [`Self::pending`] is oplopend, en dat is een invariant: [`Self::fire_due`]
+    /// leest alleen de kop. Achteraan bijzetten zou een vervaldatum die vóór een
+    /// al wachtende trigger valt te laat of helemaal niet laten afgaan. Bij een
+    /// gelijke datum komt de nieuwe achter de bestaande — dezelfde regel als
+    /// overal: wie later vastlegt, legt later vast.
+    fn plan(&mut self, at: NaiveDate, trigger: Trigger) {
+        let position = self.pending.partition_point(|(pending, _)| *pending <= at);
+        self.pending.insert(position, (at, trigger));
     }
 
     /// Laat alles afgaan wat op of vóór `tot` valt, in datumvolgorde.
@@ -406,10 +478,7 @@ impl World {
     ///
     /// Eén voor één van de kop af, en niet een hele kop in één keer weggehaald:
     /// valt een trigger om, dan blijven de triggers ná hem gewoon staan in
-    /// plaats van met de fout te verdwijnen. Vandaag kan een trigger niet
-    /// omvallen — [`World::new`] toetst elke fixture met dezelfde toets die het
-    /// vastleggen gebruikt — maar dat is een eigenschap van de enige
-    /// trigger-soort die er nu is, geen eigenschap van de lus.
+    /// plaats van met de fout te verdwijnen.
     fn fire_due(&mut self, tot: NaiveDate) -> Result<()> {
         while let Some((at, trigger)) = self.next_due(tot) {
             self.clock = self.clock.max(at);
@@ -423,8 +492,41 @@ impl World {
                     })?;
                     cell.record(&recording.chronicle, event)?;
                 }
+                Trigger::Obligation(due) => self.settle(&due)?,
             }
         }
+        Ok(())
+    }
+
+    /// Laat een vervallen termijn nakomen, aan beide kanten.
+    ///
+    /// De betalende cel legt vast dat zij betaalde, de besluitende dat het haar
+    /// gemeld is. Twee vastleggingen, elk in de eigen kroniek van de cel die ze
+    /// deed: niemand kopieert andermans staat, en beide kanten weten wat er
+    /// gebeurde.
+    ///
+    /// Lag de betaling er al, dan gebeurt er niets — ook niet aan de andere kant.
+    /// Dat is de idempotentie per volgnummer: dezelfde zaak met hetzelfde
+    /// volgnummer is dezelfde termijn, en die wordt één keer nagekomen. Is de
+    /// betaler de besluitende cel zelf, dan blijft het bij de betaling: een
+    /// melding aan jezelf over wat je zelf deed is geen tweede feit.
+    fn settle(&mut self, due: &ObligationDue) -> Result<()> {
+        let payer = self
+            .cells
+            .get_mut(&due.payer)
+            .ok_or_else(|| SimulatorError::UnknownCell {
+                cell: due.payer.clone(),
+            })?;
+        if !payer.pay_obligation(due)? {
+            return Ok(());
+        }
+
+        self.cells
+            .get_mut(&due.decided_by)
+            .ok_or_else(|| SimulatorError::UnknownCell {
+                cell: due.decided_by.clone(),
+            })?
+            .note_obligation_paid(due)?;
         Ok(())
     }
 
@@ -498,6 +600,68 @@ fn check_peers_exist(configs: &[CellConfig], cells: &BTreeMap<String, Cell>) -> 
     Ok(())
 }
 
+/// Toets de verplichtingen van elk besluit tegen de wereld waarin ze staan.
+///
+/// Wat een cel zelf kan nakijken — is het bedrag een eigen uitkomst, bestaat dit
+/// ritme, levert `from` een datum op — is bij het optuigen van de cel al
+/// gebeurd. Wat er hier bij komt, weet alleen de wereld:
+///
+/// - verwijst `schedule: $naam` naar een instelling die bestaat, en is die een
+///   ritme;
+/// - bestaat de betalende cel;
+/// - houden de betalende én de besluitende cel een stroom [`BETALINGEN`] met
+///   [`ZAAKKENMERK`] als sleutel? Beide leggen op een vervaldatum vast, en een
+///   stroom die er niet is zou dat op de eerste vervaldatum laten omvallen —
+///   halverwege de tijdlijn, in plaats van hier.
+fn check_obligations(
+    configs: &[CellConfig],
+    cells: &BTreeMap<String, Cell>,
+    settings: &BTreeMap<String, Value>,
+) -> Result<()> {
+    for config in configs {
+        for definition in &config.besluit_definitions {
+            definition.check_settings(&config.id, settings)?;
+
+            let payers = definition.payers();
+            if payers.is_empty() {
+                continue;
+            }
+
+            // De besluitende cel legt de melding vast dat er betaald is, dus zij
+            // heeft de stroom net zo goed nodig als de betaler.
+            for holder in payers
+                .iter()
+                .copied()
+                .chain(std::iter::once(config.id.as_str()))
+            {
+                let found = match cells.get(holder) {
+                    None => {
+                        return Err(SimulatorError::UnknownCell {
+                            cell: holder.to_string(),
+                        })
+                    }
+                    Some(cell) => cell.stream_key(BETALINGEN),
+                };
+                let reason = match found {
+                    Some(key) if key == ZAAKKENMERK => continue,
+                    Some(key) => format!("die stroom heeft sleutel '{key}'"),
+                    None => "die cel houdt geen stroom met die naam".to_string(),
+                };
+                return Err(SimulatorError::ObligationStream {
+                    cell: config.id.clone(),
+                    besluit: definition.name.clone(),
+                    holder: holder.to_string(),
+                    expected: format!(
+                        "een kroniekstroom '{BETALINGEN}' met sleutel '{ZAAKKENMERK}'"
+                    ),
+                    found: reason,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,6 +724,7 @@ lexostatus_definitions:
                 start: date(clock_start),
             },
             fixtures,
+            &no_settings(),
             &regulation_root(),
         )
         .unwrap_or_else(|e| panic!("wereld moet op te tuigen zijn: {e}"))
@@ -567,6 +732,11 @@ lexostatus_definitions:
 
     fn bsn() -> BTreeMap<String, Value> {
         BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))])
+    }
+
+    /// Een wereld zonder instellingen, voor elke test die geen verplichting kent.
+    fn no_settings() -> BTreeMap<String, Value> {
+        BTreeMap::new()
     }
 
     fn partner(world: &World, op_moment: &str) -> Value {
@@ -789,6 +959,7 @@ record:
                 start: date("2024-01-01"),
             },
             &[fixture("2030-01-01", "betalingen", "GEEN")],
+            &no_settings(),
             &regulation_root(),
         )
         .expect_err("een stroom die de cel niet houdt hoort te falen");
@@ -851,6 +1022,7 @@ besluit_definitions:
                 start: date("2024-01-01"),
             },
             &[verzonnen],
+            &no_settings(),
             &regulation_root(),
         )
         .expect_err("een verzonnen decretogram hoort te falen");
@@ -870,6 +1042,7 @@ besluit_definitions:
                 start: date("2024-01-01"),
             },
             &[elders],
+            &no_settings(),
             &regulation_root(),
         )
         .expect_err("een cel die de wereld niet kent hoort te falen");
@@ -895,6 +1068,7 @@ besluit_definitions:
                     start: date("2024-01-01"),
                 },
                 &[zonder_sleutel],
+                &no_settings(),
                 &regulation_root(),
             )
             .expect_err("een vastlegging zonder sleutelveld hoort te falen");
@@ -943,6 +1117,7 @@ lexostatus_definitions:
                 start: date("2024-01-01"),
             },
             &[fixture("2023-01-01", "relaties", "HUWELIJK")],
+            &no_settings(),
             &regulation_root(),
         )
         .unwrap_or_else(|e| panic!("een wereld met dit kroniekfilter moet op te tuigen zijn: {e}"));
@@ -957,6 +1132,382 @@ lexostatus_definitions:
                 .get("partnerschap_type"),
             Some(&Value::String("HUWELIJK".to_string())),
             "de fixture-waarde hoort in het antwoord van het kroniekfilter"
+        );
+    }
+
+    /// Een wereld waarin één besluit een verplichting oplegt.
+    ///
+    /// `schedule` wordt letterlijk ingeplakt, zodat elke test hieronder alleen
+    /// varieert waar ze over gaat. De betalende cel is een bron-cel zonder
+    /// wetten: een verplichting nakomen vraagt geen engine.
+    fn verplichting_configs(schedule: &str, betaler_houdt_betalingen: bool) -> Vec<CellConfig> {
+        // Zonder stroom valt er ook niets over te reduceren: de lexostatus gaat
+        // dan mee weg, anders struikelt de cel over haar eigen definitie voordat
+        // de wereld aan de verplichting toekomt.
+        let betaler_streams = if betaler_houdt_betalingen {
+            "chronicles:
+  - stream: betalingen
+    key: zaakkenmerk
+lexostatus_definitions:
+  - name: betaald
+    inputs:
+      - name: zaakkenmerk
+        type: string
+    outputs:
+      - bedrag
+    reduction:
+      chronicle: betalingen
+      key: zaakkenmerk
+      sum: bedrag
+"
+        } else {
+            "chronicles: []\n"
+        };
+        let parse = |yaml: &str| -> CellConfig {
+            serde_yaml_ng::from_str(yaml)
+                .unwrap_or_else(|e| panic!("testconfig moet parsen: {e}\n{yaml}"))
+        };
+        vec![
+            parse(&format!(
+                r"
+id: toeslagen
+laws:
+  - wet_op_de_zorgtoeslag
+  - algemene_wet_inkomensafhankelijke_regelingen
+  - regeling_standaardpremie
+chronicles:
+  - stream: inkomensleveringen
+    key: bsn
+    events:
+      - name: inkomenslevering
+        intake: levering
+        recording_actor: toeslagen
+        op_moment: 2023-11-15
+        fields:
+          bsn: '999993653'
+          partnerschap_type: GEEN
+          is_verzekerde: true
+          verzamelinkomen: 79547
+          buitenlands_inkomen: 0
+          vermogen: 0
+  - stream: betalingen
+    key: zaakkenmerk
+besluit_definitions:
+  - name: zorgtoeslag_vaststelling
+    regulation: wet_op_de_zorgtoeslag
+    output: heeft_recht_op_zorgtoeslag
+    outputs:
+      - hoogte_zorgtoeslag
+    zaakkenmerk: 'zorgtoeslag/{{bsn}}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      bsn:
+        param: bsn
+      is_verzekerde:
+        from_chronicle: inkomensleveringen
+        field: is_verzekerde
+    obligations:
+{schedule}
+lexostatus_definitions:
+  - name: betaald
+    inputs:
+      - name: zaakkenmerk
+        type: string
+    outputs:
+      - bedrag
+    reduction:
+      chronicle: betalingen
+      key: zaakkenmerk
+      sum: bedrag
+"
+            )),
+            parse(&format!(
+                r"
+id: belastingdienst
+laws: []
+{betaler_streams}"
+            )),
+        ]
+    }
+
+    /// De gewone verplichting van de tests hieronder: vier kwartaaltermijnen.
+    const KWARTAAL: &str = "      - amount: $hoogte_zorgtoeslag
+        payer: belastingdienst
+        schedule: kwartaal";
+
+    fn verplichting_wereld(schedule: &str, settings: &BTreeMap<String, Value>) -> Result<World> {
+        World::new(
+            &verplichting_configs(schedule, true),
+            Clock {
+                start: date("2024-01-01"),
+            },
+            &[],
+            settings,
+            &regulation_root(),
+        )
+    }
+
+    /// Wat er op `op_moment` betaald is volgens deze cel; `None` is "niets
+    /// vastgesteld".
+    fn betaald(world: &World, cell: &str, op_moment: &str) -> Option<Value> {
+        let params = BTreeMap::from([(
+            "zaakkenmerk".to_string(),
+            Value::String("zorgtoeslag/999993653".to_string()),
+        )]);
+        world
+            .reduce(cell, "betaald", &params, date(op_moment))
+            .unwrap_or_else(|e| panic!("de som moet te maken zijn: {e}"))
+            .values()
+            .and_then(|values| values.get("bedrag").cloned())
+    }
+
+    fn beslis(world: &mut World) -> Decretogram {
+        world
+            .decide(
+                "toeslagen",
+                "zorgtoeslag_vaststelling",
+                &bsn(),
+                date("2024-01-01"),
+            )
+            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"))
+            .decretogram
+    }
+
+    /// De eerste termijn vervalt op het moment van het besluit, dus ze wordt
+    /// meteen nagekomen. Zou ze blijven wachten tot de volgende `advance`, dan
+    /// werd ze dáár met terugwerkende kracht vastgelegd — en dan verandert het
+    /// beeld van een moment dat al geweest is.
+    #[test]
+    fn de_eerste_termijn_gaat_af_op_het_moment_van_het_besluit() {
+        let mut world = verplichting_wereld(KWARTAAL, &no_settings())
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        let gram = beslis(&mut world);
+
+        assert_eq!(gram.obligations.len(), 4, "kwartaal kent vier termijnen");
+        assert_eq!(gram.obligations[0].vervaldatum, date("2024-01-01"));
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2024-01-01"),
+            Some(Value::Int(49301))
+        );
+        assert_eq!(
+            betaald(&world, "toeslagen", "2024-01-01"),
+            Some(Value::Int(49301)),
+            "de besluitende cel legt vast dat het haar gemeld is, in haar eigen kroniek"
+        );
+    }
+
+    /// De klok mag in zo kleine stappen langskomen als ze wil: elke termijn
+    /// wordt één keer nagekomen. Zonder deze test zou een `advance` die een
+    /// vervaldatum twee keer passeert er twee betalingen van maken, en dan telt
+    /// de som dubbel.
+    #[test]
+    fn kleine_stappen_leveren_niet_meer_betalingen_op() {
+        let mut world = verplichting_wereld(KWARTAAL, &no_settings())
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        beslis(&mut world);
+
+        let mut dag = date("2024-01-01");
+        let eind = date("2024-12-31");
+        while dag <= eind {
+            world
+                .advance(dag)
+                .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+            dag = dag
+                .succ_opt()
+                .unwrap_or_else(|| panic!("{dag} moet een volgende dag hebben"));
+        }
+
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2024-12-31"),
+            Some(Value::Decimal("197205.31187".parse().unwrap_or_default())),
+            "vier termijnen, precies het toegekende bedrag, ook na 366 stappen"
+        );
+    }
+
+    /// Twee keer hetzelfde besluit op dezelfde dag plant twee keer hetzelfde
+    /// schema. Nagekomen wordt het één keer: dezelfde zaak met hetzelfde
+    /// volgnummer is dezelfde termijn.
+    #[test]
+    fn een_tweede_besluit_op_dezelfde_dag_levert_geen_tweede_betaling() {
+        let mut world = verplichting_wereld(KWARTAAL, &no_settings())
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        beslis(&mut world);
+        beslis(&mut world);
+        world
+            .advance(date("2025-01-01"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2025-01-01"),
+            Some(Value::Decimal("197205.31187".parse().unwrap_or_default())),
+            "het bedrag is één keer toegekend, dus het wordt één keer betaald"
+        );
+    }
+
+    /// Een verplichting die tijdens de run ingepland wordt, moet vóór een al
+    /// wachtende trigger met een latere datum afgaan.
+    ///
+    /// Dit is de invariant van de wachtrij, en ze is stil te breken: wie een
+    /// nieuwe trigger achteraan zet, ziet drie van de vier betalingen gewoon
+    /// gebeuren. Pas als er iets anders ná hen staat, blijkt dat ze te laat of
+    /// helemaal niet afgaan.
+    #[test]
+    fn een_verplichting_wordt_op_datumpositie_ingepland() {
+        let laat = Fixture {
+            at: date("2030-01-01"),
+            record: Recording {
+                cell: "toeslagen".to_string(),
+                chronicle: "inkomensleveringen".to_string(),
+                name: "inkomenslevering".to_string(),
+                intake: Intake::Levering,
+                grondslag: String::new(),
+                fields: BTreeMap::from([(
+                    "bsn".to_string(),
+                    Value::String("999993653".to_string()),
+                )]),
+            },
+        };
+        let mut world = World::new(
+            &verplichting_configs(KWARTAAL, true),
+            Clock {
+                start: date("2024-01-01"),
+            },
+            &[laat],
+            &no_settings(),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+
+        beslis(&mut world);
+        world
+            .advance(date("2025-01-01"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2025-01-01"),
+            Some(Value::Decimal("197205.31187".parse().unwrap_or_default())),
+            "alle vier de termijnen horen af te gaan, ook met een trigger van 2030 in de rij"
+        );
+        assert_eq!(
+            world.pending_triggers(),
+            1,
+            "alleen de fixture van 2030 hoort nog te wachten"
+        );
+    }
+
+    /// Het ritme mag een instelling van de wereld zijn; een instelling die niet
+    /// bestaat hoort bij het optuigen te vallen en niet bij het besluit dat erop
+    /// leunt.
+    #[test]
+    fn een_ritme_uit_de_instellingen_wordt_gelezen_en_een_onbekende_geweigerd() {
+        let uit_instelling = "      - amount: $hoogte_zorgtoeslag
+        payer: belastingdienst
+        schedule: $betalingsritme";
+
+        let settings = BTreeMap::from([(
+            "betalingsritme".to_string(),
+            Value::String("maand".to_string()),
+        )]);
+        let mut world = verplichting_wereld(uit_instelling, &settings)
+            .unwrap_or_else(|e| panic!("een ritme uit de instellingen moet werken: {e}"));
+        assert_eq!(
+            beslis(&mut world).obligations.len(),
+            12,
+            "de instelling zegt 'maand', dus twaalf termijnen"
+        );
+
+        let err = verplichting_wereld(uit_instelling, &no_settings())
+            .expect_err("een instelling die niet bestaat hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownSetting { .. }),
+            "verwachtte UnknownSetting, kreeg {err}"
+        );
+    }
+
+    /// Een instelling die geen ritme is, is even fout als een typfout in de
+    /// definitie zelf — en hoort op hetzelfde moment te blijken.
+    #[test]
+    fn een_instelling_die_geen_ritme_is_wordt_geweigerd() {
+        let settings = BTreeMap::from([(
+            "betalingsritme".to_string(),
+            Value::String("per_week".to_string()),
+        )]);
+        let err = verplichting_wereld(
+            "      - amount: $hoogte_zorgtoeslag
+        payer: belastingdienst
+        schedule: $betalingsritme",
+            &settings,
+        )
+        .expect_err("een instelling die geen ritme noemt hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownSchedule { .. }),
+            "verwachtte UnknownSchedule, kreeg {err}"
+        );
+    }
+
+    /// Zonder betalingsstroom bij de betaler zou de eerste vervaldatum omvallen,
+    /// halverwege de tijdlijn. Dat hoort bij het optuigen te blijken.
+    #[test]
+    fn een_betaler_zonder_betalingsstroom_faalt_bij_het_optuigen() {
+        let err = World::new(
+            &verplichting_configs(KWARTAAL, false),
+            Clock {
+                start: date("2024-01-01"),
+            },
+            &[],
+            &no_settings(),
+            &regulation_root(),
+        )
+        .expect_err("een betaler zonder betalingsstroom hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ObligationStream { .. }),
+            "verwachtte ObligationStream, kreeg {err}"
+        );
+    }
+
+    /// De betalende cel moet bestaan. Een typfout in `payer` zou anders een
+    /// verplichting opleveren die aan niemand is opgelegd.
+    #[test]
+    fn een_onbekende_betaler_faalt_bij_het_optuigen() {
+        let err = verplichting_wereld(
+            "      - amount: $hoogte_zorgtoeslag
+        payer: betaalsysteem
+        schedule: kwartaal",
+            &no_settings(),
+        )
+        .expect_err("een betaler die de wereld niet kent hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownCell { .. }),
+            "verwachtte UnknownCell, kreeg {err}"
+        );
+    }
+
+    /// Een `from` vóór het besluit zou een betaling op een moment vastleggen dat
+    /// al geweest is, en dan verandert het beeld van toen alsnog.
+    #[test]
+    fn een_verplichting_die_voor_het_besluit_vervalt_wordt_geweigerd() {
+        let mut world = verplichting_wereld(
+            "      - amount: $hoogte_zorgtoeslag
+        payer: belastingdienst
+        schedule: kwartaal
+        from: '2023-01-01'",
+            &no_settings(),
+        )
+        .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+
+        let err = world
+            .decide(
+                "toeslagen",
+                "zorgtoeslag_vaststelling",
+                &bsn(),
+                date("2024-01-01"),
+            )
+            .expect_err("een termijn vóór het besluit hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ObligationBeforeDecision { .. }),
+            "verwachtte ObligationBeforeDecision, kreeg {err}"
         );
     }
 }

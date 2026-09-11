@@ -38,6 +38,13 @@
 //! transport; de reduce-engine kan geen van beide, en dat is een ontbrekende
 //! capability en geen afspraak.
 //!
+//! Een besluit laat iets achter dat later moet gebeuren. Een [`ObligationDue`]
+//! is één termijn van een verplichting uit een decretogram; [`World::advance`]
+//! laat haar op de vervaldatum nakomen, en dan legt de betalende cel een
+//! betaling vast en de besluitende cel dat het haar gemeld is. Wat er betaald is,
+//! is daarna een **reductie** over die vastleggingen (`sum: bedrag`) en geen
+//! saldo dat ernaast wordt bijgehouden.
+//!
 //! ```no_run
 //! use regelrecht_simulator::{regulation_root, Scenario};
 //! use std::path::Path;
@@ -67,10 +74,11 @@ mod values;
 pub mod world;
 
 pub use cell::{
-    AcceptanceRequest, AcceptedSource, BesluitDefinition, BesluitInput, Cell, CellConfig,
-    ChronicleEvent, ChronicleStore, ChronicleStream, Decretogram, DecretogramInput,
+    AcceptanceRequest, AcceptedSource, Aggregate, BesluitDefinition, BesluitInput, Cell,
+    CellConfig, ChronicleEvent, ChronicleStore, ChronicleStream, Decretogram, DecretogramInput,
     DocumentedParameter, InputOrigin, Intake, Lexostatus, LexostatusDefinition, LexostatusOutcome,
-    ParameterType, Reduction, BESCHIKKINGEN,
+    ObligationDefinition, ObligationDue, ParameterType, Reduction, Schedule, BESCHIKKINGEN,
+    BETALINGEN,
 };
 pub use corpus::regulation_root;
 pub use error::{Result, SimulatorError, Subject};

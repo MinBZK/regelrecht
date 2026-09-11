@@ -1,0 +1,240 @@
+---
+name: een besluit brengt verplichtingen voort die de tijd nakomt
+description: >-
+  Een beschikking die een bedrag toekent, laat iets achter dat later moet
+  gebeuren. De cel `toeslagen` besluit op T1 en legt in hetzelfde gram het
+  betalingsschema vast: vier termijnen, elk kwartaal één. Daarna doet de klok
+  het werk. Op elke vervaldatum legt `belastingdienst` vast dat zij betaalde, en
+  `toeslagen` dat het haar gemeld is — twee vastleggingen, elk in de eigen
+  kroniek van de cel die haar deed.
+
+  Wat dit scenario moet weerleggen is dat er ergens een saldo bijgehouden wordt.
+  "Betaald tot nu toe" is een **reductie over vastleggingen** (`sum: bedrag`),
+  geen teller: de vraag over een eerder moment blijft daarom exact hetzelfde
+  antwoord geven nadat er meer betaald is, en over een zaak waarover niets
+  vastligt is het antwoord "niets vastgesteld" en geen nul.
+
+clock:
+  # De feiten van deze persoon staan als `events` in de celconfiguratie en
+  # liggen allemaal vóór dit moment. Het besluit valt op het startmoment, dus
+  # de eerste termijn vervalt meteen: zonder `from` begint een verplichting bij
+  # het besluit waaruit ze volgt.
+  start: 2024-01-01
+
+settings:
+  # Een betalingsritme is beleid en geen wet. Het staat daarom hier, bij de
+  # wereld, en niet in de besluit-definitie: die zou anders zeggen dat de wet
+  # per kwartaal betaalt, en dat staat er niet.
+  betalingsritme: kwartaal
+
+cells:
+  - id: toeslagen
+    laws:
+      - wet_op_de_zorgtoeslag
+      - algemene_wet_inkomensafhankelijke_regelingen
+      - regeling_standaardpremie
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+              verzamelinkomen: 79547
+              buitenlands_inkomen: 0
+              vermogen: 0
+
+      # De besluitende cel houdt zelf ook een betalingsstroom: zij legt vast dat
+      # haar gemeld is dat er betaald is. Dat is een eigen feit — een levering —
+      # en geen kopie van de kroniek van de betaler. De stroom blijft hier leeg;
+      # wat erin komt, komt van de klok.
+      - stream: betalingen
+        key: zaakkenmerk
+
+    besluit_definitions:
+      - name: zorgtoeslag_vaststelling
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+        obligations:
+          # Het bedrag komt uit de wet, niet uit dit bestand: `$hoogte_zorgtoeslag`
+          # is de uitkomst waarop besloten is. Een letterlijk bedrag zou ernaast
+          # gaan leven, en dan zegt het gram twee dingen over hetzelfde geld.
+          - amount: $hoogte_zorgtoeslag
+            payer: belastingdienst
+            schedule: $betalingsritme
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        doc: >-
+          Wat er op deze zaak betaald is, voor zover deze cel dat weet. Een som
+          over haar eigen meldingen, en dus een reductie — geen saldo dat naast
+          de kroniek wordt bijgehouden.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+  - id: belastingdienst
+    # Een bron-cel: geen wetten, geen engine. Ze legt vast en reduceert, en dat
+    # is genoeg om een verplichting na te komen.
+    laws: []
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        doc: Wat deze cel op deze zaak betaald heeft, opgeteld.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+      - name: laatste_betaling
+        doc: >-
+          De laatste termijn die deze cel betaalde. Een gewoon kroniekfilter
+          ernaast, zodat te zien is dat de som over dezelfde vastleggingen gaat
+          als het filter dat er één uitkiest.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+          - volgnummer
+          - besluit
+          - besluit_cel
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          latest: true
+
+decide:
+  - description: >-
+      De cel kent zorgtoeslag toe en legt in hetzelfde gram vast wat er daarmee
+      betaald moet worden: vier termijnen van € 493,01, plus de rest op de
+      laatste. De som van de termijnen is exact het toegekende bedrag.
+    cell: toeslagen
+    besluit: zorgtoeslag_vaststelling
+    params:
+      bsn: '999993653'
+    op_moment: 2024-01-01
+    expect:
+      heeft_recht_op_zorgtoeslag: true
+      hoogte_zorgtoeslag: 197205.31187
+
+queries:
+  - description: >-
+      De eerste termijn vervalt op het moment van het besluit zelf, dus er is op
+      dat moment al één betaling. De besluitende cel weet dat uit haar eigen
+      kroniek: het is haar gemeld, ze heeft het niet elders opgevraagd.
+    cell: toeslagen
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-01-01
+    expect:
+      bedrag: 49301
+
+  - description: >-
+      Halverwege het jaar zijn er twee termijnen verstreken (januari en april).
+      De betalende cel telt hetzelfde op, over haar eigen betalingen — dezelfde
+      uitkomst, twee kronieken, geen gedeelde staat.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-06-15
+    expect:
+      bedrag: 98602
+
+  - description: >-
+      Op datzelfde moment is de laatste termijn die van april: volgnummer 2, met
+      de verwijzing naar het besluit waaruit ze volgt.
+    cell: belastingdienst
+    lexostatus: laatste_betaling
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-06-15
+    expect:
+      volgnummer: 2
+      bedrag: 49301
+      besluit: zorgtoeslag_vaststelling
+      besluit_cel: toeslagen
+
+  - description: >-
+      Ná het jaar zijn alle vier de termijnen verstreken, en dan is er precies
+      het toegekende bedrag betaald — inclusief de rest die op de laatste termijn
+      landde. Een verdeling die niet optelt tot de beschikking zou hier zichtbaar
+      worden.
+    cell: toeslagen
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2025-01-05
+    expect:
+      bedrag: 197205.31187
+
+  - description: >-
+      De kernassertie. Dezelfde vraag over halverwege het jaar, nu gesteld
+      terwijl de klok een jaar verder staat, geeft nog steeds twee termijnen. Een
+      saldo zou hier de eindstand melden; een reductie over vastleggingen kan dat
+      niet, want de latere betalingen dragen een later moment.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-06-15
+    expect:
+      bedrag: 98602
+
+  - description: >-
+      En over een zaak waarover niets vastligt is het antwoord "niets
+      vastgesteld" — geen nul. Een som van nul euro en een zaak die hier niet
+      bestaat zijn twee verschillende dingen, en een 0 zou ze niet uit elkaar
+      houden.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag/999993999
+    op_moment: 2025-01-05
+    expect_not_established: true

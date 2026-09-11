@@ -12,7 +12,9 @@ en reduceert, zonder engine. Zie [Een bron-cel](#een-bron-cel).
 
 Een cel met eigen wetten kan ook **besluiten**: ze voert een regeling uit en legt
 de uitkomst vast als decretogram in haar eigen kroniek. Zie
-[Het besluit-pad](#het-besluit-pad).
+[Het besluit-pad](#het-besluit-pad). Wat zo'n besluit aan **verplichtingen**
+achterlaat, komt de klok later nakomen:
+[Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat).
 
 Gaat een vraag over een celgrens, dan loopt hij langs de **veiligheidscontext**
 van de vragende cel naar het **transport**, en dat is de enige weg. Zie
@@ -37,10 +39,10 @@ kaart van paper naar code:
   nu zelf vast, in haar eigen kroniek: zie [Het besluit-pad](#het-besluit-pad).
 
 En de vierde term, de **reductie**: de huidige vormen (één uitkomst van één
-eigen regeling, of één kroniekfilter dat per sleutelwaarde de laatste
-vastlegging kiest) zijn een eerste benadering van wat de paper en RFC-022 §4.1
-bedoelen, namelijk filteren en aggregeren over kronieken. Het filteren staat er
-nu; aggregeren (som, telling) nog niet.
+eigen regeling, of een kroniekfilter dat per sleutelwaarde de laatste
+vastlegging kiest of één veld optelt) zijn een eerste benadering van wat de paper
+en RFC-022 §4.1 bedoelen, namelijk filteren en aggregeren over kronieken. Het
+filteren staat er; van het aggregeren staat de som er, en verder nog niets.
 
 ## Wat een cel is
 
@@ -162,9 +164,14 @@ reduction:                        # wetsvorm: laat een eigen regeling rekenen
 reduction:                        # kroniekfilter: lees een eigen kroniek
   chronicle: relaties
   key: bsn
-  latest: true                    # de enige modus; mag weggelaten worden
+  latest: true                    # de laatste vastlegging; mag weggelaten worden
   where:                          # optioneel, gelijkheid op velden
     partnerschap_type: HUWELIJK
+
+reduction:                        # de som over een eigen kroniek
+  chronicle: betalingen
+  key: zaakkenmerk
+  sum: bedrag                     # in plaats van `latest`, nooit samen
 ```
 
 De configuratie kiest door te noemen wat ze bedoelt; er is geen `kind`-veld dat
@@ -198,6 +205,26 @@ niet een record dat uit verschillende momenten is samengeraapt. Wat samen
 vastgelegd is, blijft samen. Een gepubliceerd veld dat déze vastlegging niet
 draagt, blijft uit het antwoord; de cel vult niets aan. Draagt ze er géén van,
 dan is er niets vastgesteld — zie hieronder.
+
+`sum: <veld>` is de andere kant: geen vastlegging maar één getal, opgeteld over
+**alle** vastleggingen die op of vóór `op_moment` aan het filter voldoen. Dat is
+de eerste aggregatie van de simulator, en ze bestaat voor één soort vraag: "hoeveel
+is er tot nu toe betaald". Vier dingen leggen dat vast:
+
+- `outputs` noemt precies het gesommeerde veld. Een som levert één waarde op, dus
+  iets anders publiceren is een belofte die nooit nagekomen wordt, en dat wordt bij
+  het optuigen geweigerd.
+- `latest` en `sum` tegelijk is een fout: het zijn twee reducties, niet twee
+  schrijfwijzen. `key` en `where` horen bij beide en betekenen hetzelfde.
+- Nul vastleggingen is **niet** nul: dan is er niets vastgesteld. Een 0 zou "er is
+  niets betaald" niet kunnen onderscheiden van "over deze zaak ligt hier niets".
+- Een vastlegging zonder getal in dat veld is een fout en geen nul. Een som die
+  zo'n vastlegging overslaat valt stil te laag uit, en dat is aan het getal niet
+  te zien.
+
+Dat dit een reductie is en geen teller, is het hele punt: "betaald tot nu toe" op
+een moment in het verleden blijft exact hetzelfde antwoord geven nadat er meer
+betaald is. Een saldo dat naast de kroniek wordt bijgehouden kan dat niet.
 
 ### "Niets vastgesteld" is een antwoord
 
@@ -245,7 +272,10 @@ gebeurt, in deze volgorde:
    waren, en uit de parameters van het besluit;
 3. de **besluit-engine** voert de regeling uit op dat moment, dus op de wetsversie
    die toen gold;
-4. de uitkomst gaat als één gram de stroom `beschikkingen` in.
+4. de verplichtingen worden uitgerekend tot een schema van termijnen, op de
+   uitkomsten waarop besloten is (zie
+   [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat));
+5. de uitkomst gaat als één gram de stroom `beschikkingen` in, met het schema erin.
 
 Die stroom is **voorbehouden**, aan drie kanten:
 
@@ -294,6 +324,7 @@ uitbreiding van RFC-013 stil achterlopen.
 | `legal_character` | wat de wet ervan maakt: `BESCHIKKING`, `TOETS`, … |
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
 | `inputs` | elke waarde waarop besloten is, **met haar herkomst** |
+| `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag en een volgnummer |
 | `receipt` | het volledige Execution Receipt |
 
 De herkomst per input is geen versiering. Zonder haar staat er wel een waarde in
@@ -306,6 +337,64 @@ cel zelf overkwam (zie [Wat een cel is](#wat-een-cel-is)).
 Eén besluit is één gram. Wat tegelijk ontstaat, wordt samen vastgelegd (RFC-022
 §1.2 — elk chronolexogram is *elementair*): het recht en het bedrag staan in
 hetzelfde gram, niet in twee.
+
+### Verplichtingen: wat een besluit achterlaat
+
+Een beschikking die een bedrag toekent, laat iets achter dat later moet gebeuren.
+Dat hoort bij het gram (RFC-022 §1.2), dus het schema wordt bij het besluit
+uitgerekend en er in vastgelegd:
+
+```yaml
+obligations:
+  - amount: $hoogte_zorgtoeslag      # een uitkomst van dít besluit
+    payer: belastingdienst           # de cel die de verplichting draagt
+    schedule: $betalingsritme        # ineens | kwartaal | maand, of een instelling
+    from: '{jaar}-02-01'             # optioneel; standaard het moment van het besluit
+```
+
+- **`amount` is een uitkomst, geen bedrag.** Wat betaald moet worden komt uit de
+  wet die het besluit uitvoert. Een letterlijk bedrag zou naast die uitkomst gaan
+  leven, en dan zegt het gram twee dingen over hetzelfde geld.
+- **Een ritme beschrijft één jaar**: `ineens` één termijn, `kwartaal` vier,
+  `maand` twaalf. Elke termijn krijgt hetzelfde bedrag in hele eenheden en het
+  restant gaat naar de laatste, dus de som van de termijnen is exact het
+  toegekende bedrag. Dat is de eigenschap waarop "betaald tot nu toe" rust.
+- **Het ritme mag een instelling zijn.** Een betalingsritme is doorgaans beleid en
+  geen wet; `schedule: $betalingsritme` leest uit `settings` van het
+  wereldbestand, zodat de besluit-definitie niet beweert dat de wet per kwartaal
+  betaalt. Een instelling die niet bestaat of geen ritme noemt, sneuvelt bij het
+  optuigen van de wereld.
+- **`from` is een sjabloon over de gedocumenteerde parameters**, net als het
+  zaakkenmerk, en wat het oplevert moet een datum zijn. Het mag niet vóór het
+  besluit liggen: een termijn in het verleden zou bij het nakomen een betaling op
+  een moment vastleggen dat al geweest is, en dan verandert het beeld van toen
+  alsnog.
+
+Nakomen doet de klok, niet het besluit. Op elke vervaldatum legt de **betalende**
+cel een executogram vast in haar eigen stroom `betalingen` (`intake: betaling`,
+met zaakkenmerk, bedrag, volgnummer en de verwijzing naar het decretogram), en de
+**besluitende** cel een levering in de hare: *betaling ontvangen gemeld*. Twee
+vastleggingen, elk in de kroniek van de cel die haar deed — beide kanten weten wat
+er gebeurde, en niemand kopieert de staat van een ander.
+
+`betalingen` is een naam van het platform, zoals `intake` platformvocabulaire is:
+beide cellen declareren een stroom met die naam en `zaakkenmerk` als sleutel, en
+een verplichting naar een cel die dat niet doet wordt bij het optuigen geweigerd —
+niet op de eerste vervaldatum, halverwege de tijdlijn. Anders dan `beschikkingen`
+is de stroom níet voorbehouden: een betaling is een gewoon feit, en een wereld mag
+er een startstand in hebben staan.
+
+**Eén termijn wordt één keer nagekomen.** Dezelfde zaak met hetzelfde volgnummer is
+dezelfde termijn: de klok mag in zo kleine stappen langskomen als ze wil, en een
+besluit dat op dezelfde dag wordt overgedaan levert geen tweede betaling. Zonder die
+regel zou de som dubbel tellen, en dat is aan het getal niet te zien.
+
+Het staat als scenario in
+[`scenarios/toeslagen_verplichtingen.yaml`](scenarios/toeslagen_verplichtingen.yaml)
+(vier kwartaaltermijnen, met de vraag over een eerder moment die ná een jaar nog
+hetzelfde antwoordt) en
+[`scenarios/toeslagen_verplichtingen_ritmes.yaml`](scenarios/toeslagen_verplichtingen_ritmes.yaml)
+(hetzelfde bedrag `ineens` en per `maand` — het ritme bepaalt wanneer, niet hoeveel).
 
 ### Het zaakkenmerk moet bij precies één zaak horen
 
@@ -385,8 +474,7 @@ en geen stage-decretogrammen, dus "de huidige stap" bestaat hier niet); `modalit
 (`is_intrekking_van`, `is_wijziging_van`); de afgeleide rechtsbeschermingsroute
 (§3.3); `decision_type` als open vocabulaire; `extensions`; en de handtekening —
 het gram wordt niet ondertekend, want er is geen sleutelmateriaal (zie
-[Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd)). Verplichtingen
-die uit een besluit volgen horen ook bij §1.2 en staan er nog niet.
+[Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd)).
 
 ## Over een celgrens
 
@@ -598,9 +686,16 @@ Vier eigenschappen, en ze hangen samen:
 - **`advance` loopt de triggers af in datumvolgorde**, en tijdens een trigger
   staat de klok op het moment van die trigger. Een vastlegging krijgt dus haar
   eigen datum als `op_moment`, niet de eindstand van de sprong. De lus is
-  generiek — een gesorteerde lijst van `(datum, trigger)` — zodat vervallende
-  verplichtingen en gemiste termijnen er later naast passen. Vandaag bestaat er
-  één soort: een `fixture` die bij het passeren wordt vastgelegd.
+  generiek — een gesorteerde lijst van `(datum, trigger)` — dus een soort erbij is
+  een variant erbij en geen andere klok. Er zijn er twee: een `fixture` die bij
+  het passeren wordt vastgelegd, en een **vervallende verplichting** die de cel
+  die haar draagt laat betalen (zie
+  [Verplichtingen](#verplichtingen-wat-een-besluit-achterlaat)).
+- **Dat de wachtrij oplopend is, is een invariant en geen toestand.** Een besluit
+  tijdens de run plant nieuwe vervaldata, en die gaan op datumpositie de rij in.
+  Achteraan bijzetten zou een termijn die vóór een al wachtende trigger valt te
+  laat of helemaal niet laten afgaan — en met alleen een fixture ná hen in de rij
+  is dat niet te zien.
 - **Een trigger voegt toe en wijzigt nooit een bestaand gram.** Daarom verandert
   het beeld van een eerder moment niet doordat de wereld verder loopt. Dat is de
   kernassertie, en ze staat als scenario in
@@ -629,11 +724,11 @@ bereikt geen stille regel in het bestand is.
 ## Het wereldbestand
 
 Een wereld is één YAML-bestand: `clock` (de tijdlijn), `cells` (wie er zijn),
-`fixtures` (de startstand), `decide` (welke cel wanneer waarover besluit) en twee
-soorten vraag: `queries` (een consument bevraagt een cel) en
-`query_via_transport` (een cel bevraagt een andere cel). Elk draagt zijn eigen
-verwachting. De assertie hoort bij het bestand, niet bij Rust: een nieuw
-testgeval is een nieuw bestand.
+`settings` (casusdata die geen wet is), `fixtures` (de startstand), `decide`
+(welke cel wanneer waarover besluit) en twee soorten vraag: `queries` (een
+consument bevraagt een cel) en `query_via_transport` (een cel bevraagt een andere
+cel). Elk draagt zijn eigen verwachting. De assertie hoort bij het bestand, niet
+bij Rust: een nieuw testgeval is een nieuw bestand.
 
 ```yaml
 name: korte naam van het scenario
@@ -641,6 +736,9 @@ description: waarom dit scenario bestaat        # optioneel
 
 clock:
   start: 2024-01-01                             # waar de klok begint; verplicht
+
+settings:                                       # instellingen van deze wereld
+  betalingsritme: kwartaal                      # waar een $naam naar verwijst
 
 cells:
   - id: toeslagen                               # het cel-id
@@ -685,7 +783,18 @@ cells:
         reduction:
           chronicle: relaties                   # een eigen stroom
           key: bsn                              # sleutel = naam van een input
-          latest: true                          # de enige modus; mag weg
+          latest: true                          # de laatste vastlegging; mag weg
+
+      - name: betaald_tot_nu_toe                # de som over een eigen stroom
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:                                # precies het gesommeerde veld
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag                           # in plaats van `latest`
 
     besluit_definitions:                        # wat de cel kan besluiten
       - name: zorgtoeslag_vaststelling
@@ -699,6 +808,8 @@ cells:
         params:                                 # de gedocumenteerde parameters
           - name: bsn
             type: string
+          - name: jaar
+            type: string
         inputs:                                 # wat de cel de engine aanlevert
           bsn:
             param: bsn                          # uit de parameters van het besluit
@@ -711,6 +822,13 @@ cells:
             field: toetsingsinkomen             # de uitkomst daarvan
             params:
               bsn: $bsn                         # $naam = parameter van dit besluit
+        obligations:                            # wat er betaald moet worden
+          - amount: $hoogte_zorgtoeslag         # een uitkomst van dit besluit
+            payer: belastingdienst              # de cel die de verplichting draagt
+            schedule: $betalingsritme           # ineens | kwartaal | maand, of
+                                                # een $instelling
+            from: '{jaar}-02-01'                # optioneel; standaard het moment
+                                                # van het besluit
 
     accepts_from:                               # wat de wétten bij een cel halen
       - cell: brp                               # het cel-id uit source.regulation
@@ -925,11 +1043,12 @@ overschaduwen.
 
 ## Wat hier nog niet staat
 
-**Een besluit trekt nog geen verplichtingen na zich aan.** Een beschikking die
-een bedrag toekent, brengt in de echte wereld betalingen voort met een
-vervaldatum; die horen bij het decretogram (RFC-022 §1.2) en worden bij het
-verstrijken van de tijd executogrammen. De trigger-lus in de wereld is er al op
-gebouwd, maar er is nog geen soort trigger voor.
+**Een verplichting kent geen rente, verrekening of terugvordering.** Een termijn
+vervalt en wordt betaald; wat er gebeurt als er te laat, te veel of niet betaald
+wordt, staat er niet. Een terugvordering is in deze opzet een gewoon besluit met
+een eigen verplichting, en dat is nog nergens uitgewerkt. Een verplichting kan ook
+niet gewijzigd of ingetrokken worden: het schema staat in het gram, en een gram
+verandert niet.
 
 **Een besluit wordt nog niet door een actie uitgelokt.** Het scenario zegt in
 `decide` wie wanneer waarover besluit; er is nog geen `World::act` waarmee een

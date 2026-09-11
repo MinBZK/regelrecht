@@ -216,11 +216,31 @@ impl ChronicleStore {
         // waarin de cel zelf vastlegt (zie [`Self::record`]) de volgorde waarin
         // dat gebeurde. Twee besluiten op één dag over dezelfde zaak leveren dus
         // het laatstgenomen besluit — de dag is hier de fijnste korrel.
+        self.recordings(stream, key, key_value, conditions, op_moment)
+            .into_iter()
+            .max_by_key(|event| event.op_moment)
+    }
+
+    /// Álle vastleggingen die op of vóór `op_moment` aan dit filter voldoen, in
+    /// de volgorde waarin ze vastgelegd zijn.
+    ///
+    /// De basis onder [`Self::latest_recording`] en onder een som: welke
+    /// vastleggingen meedoen is dezelfde vraag, of je er daarna één uitkiest of
+    /// ze allemaal optelt. Twee filters die uit elkaar lopen zouden een som
+    /// opleveren over een andere groep dan waaruit "de laatste" komt.
+    pub(crate) fn recordings(
+        &self,
+        stream: &str,
+        key: &str,
+        key_value: &Value,
+        conditions: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Vec<&ChronicleEvent> {
         self.streams
             .iter()
-            .find(|candidate| candidate.stream == stream)?
-            .events
-            .iter()
+            .find(|candidate| candidate.stream == stream)
+            .into_iter()
+            .flat_map(|found| found.events.iter())
             .filter(|event| event.op_moment <= op_moment)
             .filter(|event| field_equals(&event.fields, key, key_value))
             .filter(|event| {
@@ -228,7 +248,7 @@ impl ChronicleStore {
                     .iter()
                     .all(|(field, expected)| field_equals(&event.fields, field, expected))
             })
-            .max_by_key(|event| event.op_moment)
+            .collect()
     }
 
     /// Zou deze vastlegging in deze stroom mogen?

@@ -174,8 +174,9 @@ impl ParameterType {
 /// lexostatussen zijn filters over haar eigen vastleggingen (RFC-022 §2 — de
 /// engine is een component dat in een cel kán draaien, niet de cel zelf).
 ///
-/// Aggregeren (som, telling) over kronieken hoort in deze plek thuis en bestaat
-/// nog niet; `latest: true` is het enige filter dat er nu is.
+/// Het kroniekfilter kent twee manieren om met de gevonden vastleggingen om te
+/// gaan: `latest: true` neemt er één, `sum: <veld>` telt ze op. Zie
+/// [`Aggregate`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(try_from = "ReductionFields")]
 pub enum Reduction {
@@ -195,8 +196,8 @@ pub enum Reduction {
         /// een letterlijke tekst.
         parameters: BTreeMap<String, String>,
     },
-    /// Een filter over één eigen kroniek: per sleutelwaarde de laatste
-    /// vastlegging op of vóór het gevraagde moment.
+    /// Een filter over één eigen kroniek: de vastleggingen over één onderwerp,
+    /// zoals ze op het gevraagde moment bekend waren.
     Chronicle {
         /// De kroniekstroom waarover gefilterd wordt. Moet een stroom van
         /// dezelfde cel zijn.
@@ -207,10 +208,36 @@ pub enum Reduction {
         /// Extra gelijkheidsvoorwaarden op velden van de vastlegging (`where`).
         ///
         /// Ze bepalen wélke vastleggingen het filter in beschouwing neemt;
-        /// daarna wint de laatste. Een voorwaarde op een veld dat over tijd
-        /// verandert levert dus de laatste vastlegging die eraan voldeed, niet
-        /// de huidige stand.
+        /// daarna wint de laatste, of wordt er opgeteld. Een voorwaarde op een
+        /// veld dat over tijd verandert levert dus de laatste vastlegging die
+        /// eraan voldeed, niet de huidige stand.
         conditions: BTreeMap<String, Value>,
+        /// Wat het filter met de gevonden vastleggingen doet.
+        aggregate: Aggregate,
+    },
+}
+
+/// Wat een kroniekfilter met de vastleggingen doet die het vindt.
+///
+/// De twee zijn niet uitwisselbaar, en dat is het punt. [`Self::Latest`] levert
+/// één vastlegging in haar geheel — wat samen vastgelegd is blijft samen — en
+/// [`Self::Sum`] levert één getal over alle vastleggingen. Een reductie die "wat
+/// staat er nu vast" vraagt, hoort de eerste te zijn; een reductie die "hoeveel
+/// is er in totaal" vraagt, de tweede.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Aggregate {
+    /// De laatste vastlegging op of vóór het gevraagde moment (`latest: true`).
+    Latest,
+    /// De som van één veld over alle vastleggingen op of vóór dat moment
+    /// (`sum: <veld>`).
+    ///
+    /// De eerste aggregatie van de simulator, en met opzet de kleinste die iets
+    /// bewijst: "betaald tot nu toe" is hiermee een reductie over eigen
+    /// vastleggingen en geen los bijgehouden saldo. Een saldo zou een tweede
+    /// waarheid naast de kroniek zijn.
+    Sum {
+        /// Het veld dat opgeteld wordt.
+        field: String,
     },
 }
 
@@ -233,8 +260,10 @@ struct ReductionFields {
     chronicle: Option<String>,
     /// Zie [`Reduction::Chronicle::key`].
     key: Option<String>,
-    /// Alleen `true` heeft betekenis; zie [`Reduction`].
+    /// Alleen `true` heeft betekenis; zie [`Aggregate::Latest`].
     latest: Option<bool>,
+    /// Het veld waarover gesommeerd wordt; zie [`Aggregate::Sum`].
+    sum: Option<String>,
     /// Zie [`Reduction::Chronicle::conditions`].
     #[serde(rename = "where")]
     conditions: Option<BTreeMap<String, Value>>,
@@ -251,10 +280,14 @@ impl TryFrom<ReductionFields> for Reduction {
                  óf een kroniekfilter (`chronicle` + `key`)"
             )),
             (Some(regulation), None) => {
-                if fields.key.is_some() || fields.latest.is_some() || fields.conditions.is_some() {
+                if fields.key.is_some()
+                    || fields.latest.is_some()
+                    || fields.sum.is_some()
+                    || fields.conditions.is_some()
+                {
                     return Err(format!(
-                        "`key`, `latest` en `where` horen bij een kroniekfilter (`chronicle`), \
-                         niet bij de reductie over regeling '{regulation}'"
+                        "`key`, `latest`, `sum` en `where` horen bij een kroniekfilter \
+                         (`chronicle`), niet bij de reductie over regeling '{regulation}'"
                     ));
                 }
                 let output = fields.output.ok_or_else(|| {
@@ -277,12 +310,23 @@ impl TryFrom<ReductionFields> for Reduction {
                          wat een kroniekfilter oplevert staat in `outputs`"
                     ));
                 }
-                if fields.latest == Some(false) {
-                    return Err(format!(
-                        "kroniekfilter op '{chronicle}' kent alleen `latest: true`: \
-                         aggregeren over kronieken (som, telling) bestaat nog niet"
-                    ));
-                }
+                let aggregate = match (fields.latest, fields.sum) {
+                    (Some(true), Some(sum)) => {
+                        return Err(format!(
+                            "kroniekfilter op '{chronicle}' vraagt `latest: true` én \
+                             `sum: {sum}`; dat zijn twee reducties — één vastlegging \
+                             in haar geheel, of één getal over alle vastleggingen"
+                        ))
+                    }
+                    (_, Some(field)) => Aggregate::Sum { field },
+                    (Some(false), None) => {
+                        return Err(format!(
+                            "kroniekfilter op '{chronicle}' kent `latest: true` of \
+                             `sum: <veld>`; `latest: false` is geen derde vorm"
+                        ))
+                    }
+                    (_, None) => Aggregate::Latest,
+                };
                 let key = fields.key.ok_or_else(|| {
                     format!(
                         "kroniekfilter op '{chronicle}' mist `key`: zonder sleutelveld \
@@ -293,6 +337,7 @@ impl TryFrom<ReductionFields> for Reduction {
                     chronicle,
                     key,
                     conditions: fields.conditions.unwrap_or_default(),
+                    aggregate,
                 })
             }
             (None, None) => Err(
@@ -576,7 +621,8 @@ impl LexostatusDefinition {
                 chronicle,
                 key,
                 conditions,
-            } => self.validate_chronicle(cell, surface, chronicle, key, conditions),
+                aggregate,
+            } => self.validate_chronicle(cell, surface, chronicle, key, conditions, aggregate),
         }
     }
 
@@ -623,6 +669,7 @@ impl LexostatusDefinition {
         chronicle: &str,
         key: &str,
         conditions: &BTreeMap<String, Value>,
+        aggregate: &Aggregate,
     ) -> Result<()> {
         let fields = surface.fields_of_stream(cell, Subject::Lexostatus, &self.name, chronicle)?;
 
@@ -632,6 +679,19 @@ impl LexostatusDefinition {
                 lexostatus: self.name.clone(),
                 stream: chronicle.to_string(),
             });
+        }
+
+        // Een som levert precies één waarde op. Publiceert de definitie iets
+        // anders, dan belooft ze een uitkomst die er nooit komt.
+        if let Aggregate::Sum { field } = aggregate {
+            if self.outputs.len() != 1 || !self.outputs[0].eq_ignore_ascii_case(field) {
+                return Err(SimulatorError::SumOutputMismatch {
+                    cell: cell.to_string(),
+                    lexostatus: self.name.clone(),
+                    field: field.clone(),
+                    outputs: self.outputs.join(", "),
+                });
+            }
         }
 
         for published in self.published_outputs() {
@@ -766,15 +826,45 @@ where:
             chronicle,
             key,
             conditions,
+            aggregate,
         } = parsed
         else {
             panic!("verwachtte een kroniekfilter, kreeg {parsed:?}");
         };
         assert_eq!(chronicle, "relaties");
         assert_eq!(key, "bsn");
+        assert_eq!(aggregate, Aggregate::Latest);
         assert_eq!(
             conditions.get("partnerschap_type"),
             Some(&Value::String("HUWELIJK".to_string()))
+        );
+    }
+
+    #[test]
+    fn de_som_wordt_gelezen() {
+        let parsed = reduction("chronicle: betalingen\nkey: zaakkenmerk\nsum: bedrag\n")
+            .unwrap_or_else(|e| panic!("de som moet gelezen worden: {e}"));
+        let Reduction::Chronicle { aggregate, .. } = parsed else {
+            panic!("verwachtte een kroniekfilter, kreeg {parsed:?}");
+        };
+        assert_eq!(
+            aggregate,
+            Aggregate::Sum {
+                field: "bedrag".to_string()
+            }
+        );
+    }
+
+    /// `latest` en `sum` zijn twee reducties en geen twee schrijfwijzen: de een
+    /// levert één vastlegging in haar geheel, de ander één getal over alles.
+    /// Wie ze allebei noemt, bedoelt iets dat niet bestaat.
+    #[test]
+    fn latest_en_sum_tegelijk_worden_geweigerd() {
+        let err = reduction("chronicle: betalingen\nkey: zaakkenmerk\nlatest: true\nsum: bedrag\n")
+            .expect_err("twee reducties in één filter hoort te falen");
+        assert!(
+            err.contains("`latest: true`") && err.contains("bedrag"),
+            "de melding moet beide noemen, kreeg: {err}"
         );
     }
 
@@ -836,12 +926,12 @@ where:
     }
 
     #[test]
-    fn aggregeren_bestaat_nog_niet_en_zegt_dat() {
+    fn latest_false_wijst_naar_de_som() {
         let err = reduction("chronicle: relaties\nkey: bsn\nlatest: false\n")
-            .expect_err("`latest: false` hoort te falen zolang er niets te aggregeren valt");
+            .expect_err("`latest: false` is geen derde vorm en hoort te falen");
         assert!(
-            err.contains("aggregeren"),
-            "de melding moet zeggen wat er ontbreekt, kreeg: {err}"
+            err.contains("`sum: <veld>`"),
+            "de melding moet naar de andere vorm wijzen, kreeg: {err}"
         );
     }
 
