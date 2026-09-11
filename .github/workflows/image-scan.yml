@@ -35,8 +35,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # De image-name-regels uit deploy.yml, op demo na: die heeft nog geen
-        # `latest` op GHCR en zou dus alleen een niet-bestaande tag scannen.
+        # De image-name-regels uit deploy.yml, op demo na. Dat is een gat en
+        # geen afweging: `ghcr.io/minbzk/regelrecht-demo` heeft wél een
+        # `latest` en wordt hier dus niet nagekeken.
+        #
+        # Elk image hier moet een `latest` hebben, want dat is de tag die
+        # hieronder gescand wordt, en een tag die niet bestaat zet de baan op
+        # rood. Dat komt goed uit: deze workflow draait van de default branch,
+        # en `build-image.yml` tagt `latest` alleen op main — een nieuwe naam in
+        # deze lijst gaat dus pas gelden op het moment dat de eerste
+        # productiebouw die tag publiceert.
         image:
           - regelrecht-editor
           - regelrecht-admin

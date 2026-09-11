@@ -115,7 +115,10 @@ repos:
         entry: just dockerfile-consistency-test
         language: system
         pass_filenames: false
-        files: ^(frontend/Dockerfile|packages/(admin|chrono-poc-web|pipeline)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
+        # Elke Dockerfile uit de DOCKERFILES-lijst van de test hoort hier te
+        # staan, anders knipt hij mee zonder dat het commit dat hem wijzigt de
+        # toets langsgaat. frontend-demo/Dockerfile stond er niet in.
+        files: ^(frontend/Dockerfile|frontend-demo/Dockerfile|packages/(admin|chrono-poc-web|pipeline)/Dockerfile|packages/Cargo\.toml|rust-toolchain\.toml|\.github/workflows/deploy\.yml|script/dockerfile-consistency\.test\.mjs)$
 
       - id: deploy-gate-tests
         name: Deploy-poort op een groene CI doet wat hij belooft

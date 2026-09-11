@@ -122,8 +122,10 @@ zad component add chrono-poc \
 ```
 
 Er is geen `zad component edit`: de env-variabelen gaan mee bij `add` (of via de
-deploy-action). Daarna de hostnaam `chrono-poc.regelrecht.rijks.app` aan de
-component koppelen, zoals bij `lawmaking`. Previews erven de instellingen via
+deploy-action). De hostnaam `chrono-poc.regelrecht.rijks.app` volgt uit het
+domeinformaat van de component en hoeft dus niet apart gekoppeld te worden;
+`zad deployment describe regelrecht` laat zien of hij er staat. Previews erven
+de instellingen via
 `clone-from: regelrecht`, dus een preview-URL van de vorm
 `chrono-poc-pr<N>-<project>.rig.prd1.gn2.quattro.rijksapps.nl` draait dezelfde
 wereld als productie.
