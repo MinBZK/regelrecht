@@ -45,6 +45,14 @@
 //! is daarna een **reductie** over die vastleggingen (`sum: bedrag`) en geen
 //! saldo dat ernaast wordt bijgehouden.
 //!
+//! Het eigenlijke product zijn de **invarianten**. Een scenario declareert het
+//! toegestane vraaggraf; [`invariant::check_invariants`] legt daar het
+//! feitelijke graf naast, berekent uit de celconfiguraties wat het recht van
+//! elke cel eigenlijk vraagt, en laat elk verschil het scenario laten falen. Zie
+//! de moduledocs van [`invariant`] voor wat er per invariant getoetst wordt —
+//! en voor de vermelding die er altijd bij hoort: I1 tot en met I5 en het
+//! meetinstrument eronder komen **niet** uit RFC-022.
+//!
 //! ```no_run
 //! use regelrecht_simulator::{regulation_root, Scenario};
 //! use std::path::Path;
@@ -63,6 +71,7 @@ mod accept;
 pub mod cell;
 mod corpus;
 pub mod error;
+pub mod invariant;
 // Meetinstrument, geen onderdeel van de opstelling: zie de moduledocs. Met opzet
 // geen re-export hieronder — wie hem gebruikt, noemt hem bij zijn volle naam, en
 // geen ander bestand in `src/` mag dat doen.
@@ -82,6 +91,10 @@ pub use cell::{
 };
 pub use corpus::regulation_root;
 pub use error::{Result, SimulatorError, Subject};
+pub use invariant::{
+    check_invariants, defined_graph, observed_graph, DecisionTraffic, DeclaredQuery,
+    InvariantFailure, QueryEdge, Traffic,
+};
 pub use scenario::{
     check_provenance, Decision, DecisionOutcome, ExpectationFailure, Query, QueryOutcome, Scenario,
     ScenarioRun, TransportOutcome, TransportQuery,

@@ -22,6 +22,14 @@ van de vragende cel naar het **transport**, en dat is de enige weg. Zie
 **observatielog**, een test-only instrument dat met opzet buiten de band staat:
 [Het observatielog](#het-observatielog-buiten-de-band).
 
+Het eigenlijke product zijn de **invarianten**. Een scenario declareert het
+toegestane vraaggraf, de run levert het feitelijke, en de gate berekent er zelf uit
+de celconfiguraties bij wat het recht van elke cel eigenlijk vraagt — elk verschil
+laat het scenario falen. Zie
+[De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder), inclusief de
+vermelding die er altijd bij hoort: I1 tot en met I5 en het observatielog komen
+**niet** uit RFC-022.
+
 ## De drie chronolexogrammen, en waar ze hier zitten
 
 De paper onderscheidt drie soorten chronolexogram (RFC-022 §1.1–§1.2). Deze
@@ -671,9 +679,148 @@ de runner zet ze in het log. Was dat vergeten, dan was het log stil incompleet
 geworden in plaats van rood — de gevaarlijke kant op, want het vraaggraf zou
 schoner lijken dan het is.
 
-De invarianten-gate die het gedeclareerde vraaggraf met het feitelijke vergelijkt
-(I3) staat er nog niet. Dit is het instrument waar die op gaat rusten, en daar
-hoort die volledigheidseis dan ook thuis.
+De invarianten-gate rust hierop, en hij sluit één kant van die volledigheidseis
+echt: een decretogram dat zegt een waarde van een andere cel geaccepteerd te
+hebben zonder dat er een contact met die cel is vastgelegd, laat het scenario
+falen (I2). De andere kant — een contact dat nergens wordt aangereikt — is niet te
+meten door wie alleen de aangereikte contacten ziet, en blijft dus structureel.
+Zie de sectie hieronder.
+
+## De vijf invarianten, en de gate eronder
+
+**I1 tot en met I5 en het observatielog komen niet uit RFC-022.** Dat hoort hier te
+staan voordat er één invariant genoemd wordt, want de verleiding is groot om ze als
+RFC-inhoud te lezen: ze staan in de taal van de RFC en ze gaan over wat de RFC
+beweert. De RFC beweert autonomie; ze zegt nergens hoe je die meet. Dit is
+toegevoegd meetgereedschap — van ons, falsifieerbaar, en te wijzigen zonder dat er
+een RFC aan te pas komt.
+
+| | wat de invariant zegt | hoe hij gehandhaafd wordt |
+|---|---|---|
+| **I1** | geen gedeelde state: een cel bezit haar kroniekstore privé | het **typesysteem**: geen `pub fn store()`, geen publiek veld, geen constructie die een andere cel erbij laat |
+| **I2** | volledig waarneembaar: elk cross-cel-contact loopt langs veiligheidscontext → transport → log | structureel (één weg over de grens) plus een gate-toets: een geaccepteerde waarde zónder vastgelegd contact faalt |
+| **I3** | een cel bevraagt alleen de cellen die haar eigen wetten of besluit-definities noemen | een **capability** (alleen gedeclareerde cel-ids bereiken de resolver) plus de gate, die het feitelijke gedrag toetst |
+| **I4** | synthese gebeurt nooit in een cel | de reduce-engine heeft geen cel-resolver, plus de gate: combineren buiten een besluit faalt, en wat een besluit haalde moet in zijn gram staan |
+| **I5** | narekenen versus accepteren | `check_provenance` over elk decretogram, plus `expect_accepted`/`expect_computed` per besluit — zie [Accepteren in plaats van narekenen](#accepteren-in-plaats-van-narekenen-i5) |
+
+De gate leeft in [`src/invariant.rs`](src/invariant.rs) en draait bij **elke** run,
+ook bij een scenario dat er niets over zegt. Een invariant die je moet aanzetten,
+is een invariant die iemand vergeet.
+
+### Het vraaggraf: gedeclareerd, feitelijk, toegestaan
+
+Drie grafen, en het verschil tussen de derde en de eerste is de hele pointe.
+
+- **gedeclareerd** — `query_graph` in het wereldbestand: welke cel welke andere
+  cel mag bevragen, en op welke lexostatus. De lexostatus hoort erbij; "A mag B
+  bevragen" is een blanco machtiging, en wat een cel publiceert zijn losse,
+  gedocumenteerde namen (RFC-022 §4.1).
+- **feitelijk** — afgeleid uit wat er werkelijk over de grenzen ging: de
+  bewijsstukken die de veiligheidscontext afgaf, dezelfde regels die het
+  observatielog bewaart.
+- **toegestaan** — *berekend* uit de celconfiguraties: de `accept_from`-inputs van
+  de besluit-definities van een cel, plus haar `accepts_from`-afspraken, waarmee
+  een `source.regulation` uit een van haar eigen wetten bij een lexostatus van een
+  peer uitkomt.
+
+Wat de gate daarmee doet:
+
+1. **feitelijk versus gedeclareerd, beide kanten op.** Een vraag die niet
+   gedeclareerd is faalt, en een gedeclareerde vraag die uitbleef faalt óók. Die
+   tweede is de belangrijkste: een niet-gedeclareerde vraag valt op, een vraag die
+   stilletjes wegvalt niet. Zonder die kant blijft een scenario waarin het besluit
+   verdwijnt groen terwijl het niets meer aantoont.
+2. **feitelijk versus toegestaan (I3).** Een gestelde vraag buiten de definities
+   faalt — **ook als het scenario haar declareert.** Zou een declaratie hier
+   volstaan, dan was elke schending met één regel YAML te legaliseren en hield I3
+   niets tegen dan slordigheid.
+3. **gedeclareerd versus toegestaan.** Een declaratie waar geen definitie om
+   vraagt, faalt op zichzelf, ook als de vraag nooit gesteld wordt. Een toegestaan
+   graf dat ruimer is dan het recht van de cellen vraagt, vertelt een lezer iets
+   anders dan er waar is — en zodra iemand er een vraag bij schrijft, ziet die
+   vraag er gedeclareerd en dus in orde uit.
+
+Elke melding is geschreven voor iemand die het scenario niet kent: welke
+invariant, welke actoren, welk moment. Bijvoorbeeld:
+
+```text
+[FOUT] invarianten: 1 contact(en) over een celgrens, 1 tak(ken) in het vraaggraf
+     I3 (definities): cel 'toeslagen' vroeg 'belastingdienst.toetsingsinkomen' op
+     2024-06-01, maar haar eigen wetten en besluit-definities vragen daar niet om
+     (haar definities vragen: toeslagen -> brp.partnerschap); een cel bevraagt
+     alleen de cellen die haar definities noemen, ook als het scenario de vraag
+     toestaat
+```
+
+De gate meldt zich ook als hij niets vond. Een gate die alleen bij een fout iets
+zegt, is niet te onderscheiden van een gate die niet gedraaid heeft.
+
+### I4: combineren mag, onzichtbaar combineren niet
+
+I4 zegt niet dat een cel nooit twee organisaties mag bevragen. Het zegt dat het
+combineren zichtbaar moet zijn. Twee toetsen, twee kanten van dezelfde naad:
+
+- **een cel die buiten een besluit-pad meer dan één cel bevraagt, faalt.** Buiten
+  een besluit is er geen gram, dus het totaalbeeld zou daar ontstaan zonder dat
+  iemand het kan terugzien.
+- **wat een besluit over de grens haalde, moet in zijn decretogram staan.** Een
+  contact zonder bijbehorende geaccepteerde waarde is combineren dat het gram niet
+  laat zien. En omgekeerd: een geaccepteerde waarde zonder contact betekent dat het
+  contact nergens vastligt of dat de waarde ergens anders vandaan kwam — dat is de
+  I2-toets uit de tabel hierboven.
+
+Combineren bij een **consument** blijft legitiem (RFC-022 §4.1) en is voor de gate
+onzichtbaar, omdat een consument geen celgrens overgaat: hij stelt twee gewone
+vragen. Dat is geen gat maar het onderscheid zelf.
+
+### De negatieve fixtures
+
+Een gate die nooit rood wordt, is niet van een ontbrekende gate te onderscheiden.
+In [`scenarios/negatief/`](scenarios/negatief/) staan daarom scenariobestanden die
+met opzet één invariant schenden en die **moeten** falen:
+
+| bestand | schending |
+|---|---|
+| `niet_gedeclareerde_call.yaml` | een besluit vraagt over de grens; het scenario declareert die vraag niet |
+| `gedeclareerde_call_bleef_uit.yaml` | de declaratie is in orde, maar de vraag wordt nooit gesteld |
+| `cel_bevraagt_cel_buiten_haar_definities.yaml` | een cel bevraagt een cel die haar definities niet noemen — en het scenario declareert die vraag wél (I3) |
+| `declaratie_buiten_de_definities.yaml` | het vraaggraf staat een vraag toe waar geen enkele definitie om vraagt |
+| `reductie_combineert_twee_cellen.yaml` | een cel legt buiten een besluit-pad twee celantwoorden bij elkaar (I4) |
+
+Ze vallen buiten de gewone scenariosuite, want die verwacht van elk bestand dat het
+groen is. [`tests/invarianten.rs`](tests/invarianten.rs) draait ze en rekent ze af
+op twee dingen: dát ze falen, en waaróp. Dat tweede is het eigenlijke werk — een
+fixture die om de verkeerde reden rood staat, bewijst niets over de invariant die
+hij zegt te meten. Diezelfde test dwingt af dat elk bestand in die map een regel in
+de tabel heeft en omgekeerd, zodat een fixture die niemand draait geen bestand is
+dat stil niets doet.
+
+De achterdeur waarlangs de twee gedrags-fixtures hun schending uitdrukken is
+`query_via_transport`, de sonde over de naad. In de opstelling zelf kan een cel dit
+niet: `Cell::reduce` krijgt nooit een cel-resolver, en over haar grens komt ze
+alleen vanuit een besluit. Dat de schendingen alleen via de sonde te schrijven zijn,
+is dus goed nieuws — maar een gate die de sonde zou overslaan, zou dat goede nieuws
+niet kunnen aantonen, en zou bovendien in elk scenario een weg om I3 heen
+openzetten. Daarom wordt de sonde aan dezelfde definities gehouden als een besluit.
+
+Twee toetsen zijn niet als fixture te schrijven, omdat de opstelling ze onmogelijk
+maakt: een gram dat accepteert zonder contact, en een contact dat het gram niet laat
+zien. `tests/invarianten.rs` meet ze door echte artefacten verkeerd aan elkaar te
+knopen — het gram van het ene besluit naast de contacten van het andere — in plaats
+van een wereld te bouwen waarin het kan.
+
+### Wat de gate niet doet
+
+- **Hij kan een contact dat nergens wordt aangereikt niet zien.** Volledigheid van
+  het meetinstrument is structureel, niet afgedwongen; zie
+  [Het observatielog](#het-observatielog-buiten-de-band).
+- **De contacten van een omgevallen besluit verdwijnen.** `World::decide` geeft bij
+  een fout de contacten niet mee, en een omgevallen besluit breekt de run af. Dat
+  is te verdedigen zolang die twee samen opgaan, en het staat als voorwaarde in
+  `world.rs` — maar de vragen van een besluit dat niet lukte, staan niet in het
+  graf.
+- **Hij zegt niets over prestaties en draait niet over het hele corpus.** Dat zijn
+  twee aparte vragen; deze gate is een eigenschap van een run.
 
 ## De tijdlijn
 
@@ -733,8 +880,9 @@ bereikt geen stille regel in het bestand is.
 ## Het wereldbestand
 
 Een wereld is één YAML-bestand: `clock` (de tijdlijn), `cells` (wie er zijn),
-`settings` (casusdata die geen wet is), `fixtures` (de startstand), `decide`
-(welke cel wanneer waarover besluit) en twee soorten vraag: `queries` (een
+`settings` (casusdata die geen wet is), `fixtures` (de startstand), `query_graph`
+(het toegestane vraaggraf), `decide` (welke cel wanneer waarover besluit) en twee
+soorten vraag: `queries` (een
 consument bevraagt een cel) en `query_via_transport` (een cel bevraagt een andere
 cel). Elk draagt zijn eigen verwachting. De assertie hoort bij het bestand, niet
 bij Rust: een nieuw testgeval is een nieuw bestand.
@@ -857,6 +1005,12 @@ fixtures:                                       # de startstand van de wereld
         bsn: '999993653'
         partnerschap_type: GEEN
 
+query_graph:                                    # het toegestane vraaggraf
+  - doc: waarom deze vraag mag                  # optioneel
+    from: toeslagen                             # de cel die mag vragen
+    to: belastingdienst                         # de cel aan wie
+    lexostatus: toetsingsinkomen                # en waarover
+
 decide:                                         # besluiten, elk op een moment
   - description: vrije omschrijving             # optioneel
     cell: toeslagen                             # de cel die besluit
@@ -912,6 +1066,16 @@ Wat deze stap overhoudt, is één vraag los kunnen stellen en op haar antwoord
 asserteren zonder er een besluit omheen te bouwen: handig om de naad zelf te
 beproeven, en verder niets.
 
+Wat een sonde **niet** overslaat, is invariant I3. De gate houdt haar aan dezelfde
+definities als een besluit, dus de vragende cel heeft een reden nodig om te vragen:
+een eigen wet die de peer via `source.regulation` aanwijst, plus de
+`accepts_from`-afspraak die zegt onder welke gepubliceerde naam de waarde daar te
+halen is. Zonder die twee faalt het scenario, ook als de tak in `query_graph`
+staat. Dat is met opzet — een sonde die buiten I3 viel, zou in elk scenario een weg
+om de invariant heen openzetten — maar het betekent dat een nieuwe sonde niet
+alleen een identiteit vraagt. Zie
+[De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder).
+
 De stappen lopen in deze volgorde: eerst de besluiten, dan de vragen van een
 consument, dan die over een celgrens. Dat past bij wat ze zijn — een besluit is
 een gebeurtenis op de tijdlijn, een vraag kijkt erop terug — en het maakt niets
@@ -923,6 +1087,10 @@ landt.
 Een `decide` mag zonder `expect`, anders dan een vraag: hij legt iets vast, en
 bewijst daarmee ook zonder verwachting iets — namelijk dat de vragen erna iets te
 vinden hebben.
+
+`query_graph` mag weg, en dan zegt het bestand iets: **er gaat niets over een
+celgrens.** Zie [De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder) voor
+wat ermee gebeurt.
 
 Onbekende velden worden geweigerd, zodat een typfout niet stil verdwijnt. Elke
 vraag heeft minstens één verwachting: een vraag zonder `expect` en zonder
@@ -1072,11 +1240,11 @@ nog open. Zo ook **echte ondertekening** en de RFC-009-modi als configuratie: de
 ondertekening in een geaccepteerde waarde is de placeholder uit
 [Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd).
 
-Aan de kant van de celgrens ontbreken verder de **invarianten-gate** die het
-gedeclareerde vraaggraf uit het scenario vergelijkt met het feitelijke uit het
-observatielog (I3) — de herkomstgate van I5 draait wel, bij elk besluit — en
-**autorisatie**: de veiligheidscontext kent identiteit en ondertekening, en beslist
-nog niets over wat mag.
+Aan de kant van de celgrens ontbreekt verder **autorisatie**: de
+veiligheidscontext kent identiteit en ondertekening, en beslist nog niets over wat
+mag. De invarianten-gate draait wel — zie
+[De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder) voor wat hij toetst
+en, even belangrijk, wat hij niet kan zien.
 
 Ook een **HTTP-transport** is er niet; dat is het punt van de trait. Komt het er,
 dan is dat een tweede implementatie naast `InProcessTransport` en geen wijziging in

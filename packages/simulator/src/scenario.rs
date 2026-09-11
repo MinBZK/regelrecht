@@ -7,6 +7,10 @@
 
 use crate::cell::{CellConfig, Decretogram, Lexostatus, LexostatusOutcome};
 use crate::error::{Result, SimulatorError};
+use crate::invariant::{
+    check_invariants, observed_graph, DecisionTraffic, DeclaredQuery, InvariantFailure, QueryEdge,
+    Traffic,
+};
 use crate::security::{Identity, SecurityContext, SignedAnswer};
 use crate::transport::InProcessTransport;
 use crate::values::equivalent;
@@ -14,7 +18,7 @@ use crate::world::{Clock, Fixture, World};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -68,6 +72,25 @@ pub struct Scenario {
     /// omheen te bouwen: handig om de naad zelf te beproeven, en verder niets.
     #[serde(default)]
     pub query_via_transport: Vec<TransportQuery>,
+    /// Het **toegestane vraaggraf**: welke cel welke andere cel mag bevragen, en
+    /// op welke lexostatus.
+    ///
+    /// De runner legt hier het feitelijke graf naast — afgeleid uit wat er over
+    /// de celgrenzen ging — en laat elk verschil het scenario laten falen: een
+    /// vraag die hier niet staat net zo goed als een vraag die hier wél staat en
+    /// niet gesteld werd (invariant I3).
+    ///
+    /// Weglaten mag en betekent iets: **geen enkele vraag over een celgrens**.
+    /// Dat is met opzet de default, want een gate die je moet aanzetten is een
+    /// gate die iemand vergeet — een scenario dat stilletjes over een grens
+    /// reikt, hoort rood te worden en niet te zwijgen.
+    ///
+    /// Wat hier staat is een declaratie en geen vrijbrief: de gate berekent uit
+    /// de `accept_from`-inputs en de `accepts_from`-afspraken van elke cel wat
+    /// haar eigen recht vraagt, en een declaratie die daarbuiten valt faalt ook
+    /// als de vraag netjes gesteld wordt.
+    #[serde(default)]
+    pub query_graph: Vec<DeclaredQuery>,
 }
 
 /// Eén vraag van een consument aan één cel.
@@ -264,10 +287,17 @@ pub struct ScenarioRun {
     pub outcomes: Vec<QueryOutcome>,
     /// De uitkomsten van de vragen over een celgrens, in scenariovolgorde.
     pub transport_outcomes: Vec<TransportOutcome>,
+    /// De invarianten die deze run niet haalde; leeg is goed.
+    ///
+    /// Apart van de verwachtingen per vraag, en dat is geen ordening maar een
+    /// verschil in soort: een verwachting is wat dít scenario beweert, een
+    /// invariant is wat elk scenario moet halen. Ze staan dus niet bij één vraag
+    /// en niet bij één besluit — ze gaan over de run als geheel.
+    pub invariant_failures: Vec<InvariantFailure>,
 }
 
 impl ScenarioRun {
-    /// Kwamen alle verwachtingen uit?
+    /// Kwamen alle verwachtingen uit, en haalde de run haar invarianten?
     pub fn passed(&self) -> bool {
         self.decisions.iter().all(|o| o.failures.is_empty())
             && self.outcomes.iter().all(|o| o.failures.is_empty())
@@ -275,6 +305,38 @@ impl ScenarioRun {
                 .transport_outcomes
                 .iter()
                 .all(|o| o.failures.is_empty())
+            && self.invariant_failures.is_empty()
+    }
+
+    /// Wat er in deze run over de celgrenzen ging, met de plek waar het vandaan
+    /// kwam.
+    ///
+    /// Dit is wat de invarianten-gate leest, en het is ook exact wat een
+    /// meetinstrument aangereikt krijgt: dezelfde bewijsstukken, in dezelfde
+    /// volgorde. Publiek, zodat een test de twee tegen elkaar kan houden in
+    /// plaats van te moeten geloven dat ze hetzelfde zien.
+    pub fn traffic(&self) -> Traffic<'_> {
+        Traffic {
+            decisions: self
+                .decisions
+                .iter()
+                .map(|decision| DecisionTraffic {
+                    decretogram: &decision.decretogram,
+                    crossings: &decision.crossings,
+                })
+                .collect(),
+            probes: self
+                .transport_outcomes
+                .iter()
+                .map(|outcome| &outcome.signed)
+                .collect(),
+        }
+    }
+
+    /// Elk contact over een celgrens in deze run, in de volgorde waarin het
+    /// plaatsvond.
+    pub fn crossings(&self) -> Vec<&SignedAnswer> {
+        self.traffic().entries()
     }
 
     /// Heeft deze run iets vastgelegd? Een run zonder vragen bewijst niets.
@@ -401,6 +463,29 @@ impl ScenarioRun {
             write_failures(&mut out, &outcome.failures);
         }
 
+        // De invarianten-gate staat in het verslag ook als hij niets vond. Een
+        // gate die alleen bij een fout iets zegt, is niet te onderscheiden van
+        // een gate die niet gedraaid heeft — en dat is precies het soort stilte
+        // waar deze opstelling tegen bedoeld is.
+        let contacts = self.crossings();
+        let edges = observed_graph(contacts.iter().copied()).len();
+        let mark = if self.invariant_failures.is_empty() {
+            "ok"
+        } else {
+            "FOUT"
+        };
+        // Het aantal takken staat erbij en niet alleen het aantal contacten: het
+        // graf is waar de gate over gaat, en dezelfde vraag twee keer is één tak.
+        let _ = writeln!(
+            out,
+            "  [{mark}] invarianten: {} contact(en) over een celgrens, {edges} tak(ken) \
+             in het vraaggraf",
+            contacts.len(),
+        );
+        for failure in &self.invariant_failures {
+            let _ = writeln!(out, "        {}", failure.describe());
+        }
+
         let _ = writeln!(out, "  klok staat op {}", self.clock);
         // Een fixture waar de klok nooit aan toe komt, is een regel in het
         // bestand die niets doet. Dat mag, maar het hoort niet stil te zijn:
@@ -501,6 +586,61 @@ impl Scenario {
                 });
             }
         }
+        self.validate_query_graph()
+    }
+
+    /// Controleer het gedeclareerde vraaggraf op zichzelf.
+    ///
+    /// Bij het lezen en niet pas na een run, want een schrijffout in het bestand
+    /// hoort niet als uitslag van de gate naar buiten te komen. Een tak naar een
+    /// cel die niet bestaat wordt nooit gesteld en zou als "gedeclareerde vraag
+    /// die uitbleef" verschijnen — een melding die de lezer naar de run stuurt in
+    /// plaats van naar de typfout; een tak van een cel naar zichzelf net zo, want
+    /// de veiligheidscontext laat die vraag niet over een grens.
+    ///
+    /// De dubbele tak staat er om de omgekeerde reden: die zou de gate juist
+    /// *niets* laten zeggen. Een graf is een verzameling, dus de tweede regel
+    /// wordt stil opgeslokt, en dan staat er een regel in het bestand die niets
+    /// doet.
+    fn validate_query_graph(&self) -> Result<()> {
+        let known = || {
+            self.cells
+                .iter()
+                .map(|cell| cell.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        // Op de tak zelf en niet op haar tekst: de `Display`-vorm plakt cel en
+        // lexostatus met een punt aan elkaar, en dan zou een lexostatus met een
+        // punt erin twee verschillende takken als dubbel kunnen aanmerken.
+        let mut seen: BTreeSet<QueryEdge> = BTreeSet::new();
+
+        for declared in &self.query_graph {
+            let edge = declared.edge();
+            for cell in [&declared.from, &declared.to] {
+                if !self.cells.iter().any(|config| &config.id == cell) {
+                    return Err(SimulatorError::QueryGraphUnknownCell {
+                        scenario: self.name.clone(),
+                        edge: edge.to_string(),
+                        cell: cell.clone(),
+                        known: known(),
+                    });
+                }
+            }
+            if declared.from == declared.to {
+                return Err(SimulatorError::QueryGraphToSelf {
+                    scenario: self.name.clone(),
+                    edge: edge.to_string(),
+                });
+            }
+            let melding = edge.to_string();
+            if !seen.insert(edge) {
+                return Err(SimulatorError::DuplicateQueryGraphEdge {
+                    scenario: self.name.clone(),
+                    edge: melding,
+                });
+            }
+        }
         Ok(())
     }
 
@@ -576,14 +716,23 @@ impl Scenario {
 
         let transport_outcomes = self.run_via_transport(&mut world)?;
 
-        Ok(ScenarioRun {
+        let mut run = ScenarioRun {
             name: self.name.clone(),
             clock: world.now(),
             pending_triggers: world.pending_triggers(),
             decisions,
             outcomes,
             transport_outcomes,
-        })
+            invariant_failures: Vec::new(),
+        };
+        // De gate draait als laatste en over de hele run: hij vergelijkt het
+        // gedeclareerde vraaggraf met wat er werkelijk over de grenzen ging, en
+        // dat laatste is pas compleet als alles gedraaid heeft. Hij draait bij
+        // élk scenario, ook bij eentje dat geen vraaggraf declareert — dan is
+        // het toegestane graf leeg, en dat is een even geldige bewering.
+        let failures = check_invariants(&self.query_graph, &self.cells, &run.traffic());
+        run.invariant_failures = failures;
+        Ok(run)
     }
 
     /// Laat de cellen hun besluiten nemen, elk op zijn eigen moment.
@@ -973,6 +1122,106 @@ query_via_transport:
         );
     }
 
+    /// Een wereld met twee cellen, waar een vraaggraf bij te schrijven is.
+    ///
+    /// De cellen zijn bron-cellen zonder kroniek: deze tests gaan over wat er bij
+    /// het *lezen* van het bestand geweigerd wordt, en komen nooit aan een run
+    /// toe.
+    fn met_vraaggraf(query_graph: &str) -> Result<Scenario> {
+        Scenario::from_yaml(&format!(
+            "
+name: twee cellen en een vraaggraf
+clock: {{ start: 2025-01-01 }}
+cells:
+  - id: toeslagen
+    laws: []
+  - id: brp
+    laws: []
+query_graph:
+{query_graph}"
+        ))
+    }
+
+    #[test]
+    fn een_vraaggraf_naar_een_onbekende_cel_wordt_geweigerd() {
+        let err = met_vraaggraf(
+            "  - from: toeslagen
+    to: kiesraad
+    lexostatus: zetels
+",
+        )
+        .expect_err(
+            "een tak naar een cel die het scenario niet heeft, zou na de run als \
+             'gedeclareerde vraag die uitbleef' verschijnen en de lezer naar de run sturen \
+             in plaats van naar de typfout",
+        );
+        assert!(
+            matches!(err, SimulatorError::QueryGraphUnknownCell { .. }),
+            "verwachtte QueryGraphUnknownCell, kreeg {err}"
+        );
+        let melding = err.to_string();
+        assert!(
+            melding.contains("kiesraad") && melding.contains("toeslagen, brp"),
+            "de melding hoort de onbekende cel te noemen en de cellen die er wél zijn, \
+             kreeg: {melding}"
+        );
+    }
+
+    #[test]
+    fn een_vraaggraf_waarin_een_cel_zichzelf_bevraagt_wordt_geweigerd() {
+        let err = met_vraaggraf(
+            "  - from: toeslagen
+    to: toeslagen
+    lexostatus: partnerschap
+",
+        )
+        .expect_err("een cel komt voor eigen feiten niet over een celgrens");
+        assert!(
+            matches!(err, SimulatorError::QueryGraphToSelf { .. }),
+            "verwachtte QueryGraphToSelf, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn dezelfde_tak_twee_keer_in_het_vraaggraf_wordt_geweigerd() {
+        let err = met_vraaggraf(
+            "  - from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+  - doc: dezelfde tak, andere toelichting
+    from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+",
+        )
+        .expect_err(
+            "een graf is een verzameling, dus de tweede regel wordt stil opgeslokt — \
+             en dan staat er een regel in het bestand die niets doet",
+        );
+        assert!(
+            matches!(err, SimulatorError::DuplicateQueryGraphEdge { .. }),
+            "verwachtte DuplicateQueryGraphEdge, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn twee_takken_naar_dezelfde_cel_op_verschillende_lexostatussen_mogen() {
+        assert!(
+            met_vraaggraf(
+                "  - from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+  - from: toeslagen
+    to: brp
+    lexostatus: woonplaats
+",
+            )
+            .is_ok(),
+            "wat een cel publiceert zijn losse namen, dus twee lexostatussen bij één peer \
+             zijn twee takken en niet een dubbele"
+        );
+    }
+
     #[test]
     fn onbekend_veld_in_een_vraag_over_de_celgrens_wordt_geweigerd() {
         // `from` staat naast de gewone velden van een vraag, en die combinatie is
@@ -1045,6 +1294,7 @@ query_via_transport:
             decisions: Vec::new(),
             outcomes: Vec::new(),
             transport_outcomes: Vec::new(),
+            invariant_failures: Vec::new(),
         };
 
         assert!(
@@ -1056,6 +1306,31 @@ query_via_transport:
             !run(0).report().contains("gingen niet af"),
             "zonder wachtende vastleggingen hoort die regel weg te blijven; kreeg:\n{}",
             run(0).report()
+        );
+    }
+
+    /// Het verslag meldt de gate ook als hij niets vond.
+    ///
+    /// Dat staat in de moduledocs als eigenschap en is precies het soort regel dat
+    /// bij een opschoning weggehaald wordt zonder dat er iets rood wordt: een
+    /// verslag zonder die regel is niet te onderscheiden van een gate die niet
+    /// gedraaid heeft, en dat is de stilte waar deze opstelling tegen bedoeld is.
+    #[test]
+    fn het_verslag_meldt_de_invarianten_ook_als_er_niets_te_melden_was() {
+        let run = ScenarioRun {
+            name: "niets over een grens".to_string(),
+            clock: moment(),
+            pending_triggers: 0,
+            decisions: Vec::new(),
+            outcomes: Vec::new(),
+            transport_outcomes: Vec::new(),
+            invariant_failures: Vec::new(),
+        };
+
+        let verslag = run.report();
+        assert!(
+            verslag.contains("[ok] invarianten: 0 contact(en) over een celgrens"),
+            "een run zonder bevindingen hoort de gate alsnog te melden; kreeg:\n{verslag}"
         );
     }
 
@@ -1081,6 +1356,7 @@ query_via_transport:
             decisions: Vec::new(),
             outcomes: vec![outcome("vóór de vastlegging"), outcome("erna, ongewijzigd")],
             transport_outcomes: Vec::new(),
+            invariant_failures: Vec::new(),
         };
 
         let report = run.report();

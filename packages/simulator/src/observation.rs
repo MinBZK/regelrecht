@@ -39,9 +39,22 @@
 //! Zodra een cel zelf kan besluiten, verhuist de vraag naar dat pad — en dan moet
 //! het vastleggen mee. Gebeurt dat niet, dan is het log stil incompleet in plaats
 //! van rood, en dat is de gevaarlijke kant op. Volledigheid is daarom een
-//! eigenschap van de invarianten-gate die het gedeclareerde vraaggraf met het
-//! feitelijke vergelijkt (I3), en niet van deze module: die gate hoort te falen
-//! als een cel een peer bevraagt zonder dat het log het weet.
+//! eigenschap van de invarianten-gate ([`crate::invariant`]) en niet van deze
+//! module.
+//!
+//! Die gate bestaat, en hij sluit één kant echt: een decretogram dat zegt een
+//! waarde van een andere cel geaccepteerd te hebben zonder dat er een contact met
+//! die cel is vastgelegd, laat het scenario falen (I2). De andere kant — een
+//! contact dat nergens wordt aangereikt — is niet te meten door wie alleen de
+//! aangereikte contacten ziet; die blijft structureel, want de
+//! veiligheidscontext is de enige weg over een grens en `World::decide` geeft
+//! elk contact mee. Dat hoort expliciet te staan in plaats van als afgedekt te
+//! gelden.
+//!
+//! De gate importeert deze module niet, en dat is geen omweg maar dezelfde regel
+//! als hierboven: geen productiepad verwijst hiernaar. Hij leest dezelfde
+//! bewijsstukken, en dat de twee daardoor hetzelfde graf zien is een assertie in
+//! `tests/invarianten.rs` en geen aanname.
 
 use crate::{LexostatusOutcome, SignedAnswer};
 use std::fmt::Write as _;

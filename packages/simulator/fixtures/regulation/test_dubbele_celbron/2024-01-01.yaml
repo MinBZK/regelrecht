@@ -1,0 +1,90 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_dubbele_celbron
+name: Testregeling met twee celbronnen
+regulatory_layer: WET
+bwb_id: BWBR9999902
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_dubbele_celbron
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_partnerschapstoets` voor dezelfde afweging; een echte wet hoort niet
+# verbouwd te worden omdat een testopstelling iets wil laten zien.
+#
+# Wat deze regeling toevoegt is precies één ding: ze wijst **twee** andere
+# organisaties aan (`brp` en `belastingdienst`, elk als `source.regulation` die
+# geen regeling is maar een cel-id). Daarmee is er een cel te bouwen wier eigen
+# recht twee peers vraagt — en dat is wat een scenario nodig heeft om te laten
+# zien dat het *combineren* van die twee buiten een besluit-pad een schending van
+# invariant I4 is, en niet gewoon een cel die buiten haar definities reikt. Zonder
+# twee toegestane bronnen zouden die twee fouten in één fixture door elkaar lopen.
+#
+# De twee artikelen zijn met opzet onafhankelijk: er is hier niets te rekenen dat
+# de invariant scherper maakt, en een gezamenlijke uitkomst zou alleen de vraag
+# opwerpen of de engine hem goed uitrekent.
+articles:
+  - number: '1'
+    url: https://example.com/test_dubbele_celbron#Artikel1
+    text: >-
+      De eerste uitkomst is waar indien de relatievorm van de betrokkene een
+      huwelijk is, zoals de basisregistratie personen die vaststelt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: partnerschap_type
+            type: string
+            source:
+              regulation: brp
+              output: partnerschap
+              parameters:
+                bsn: $bsn
+        output:
+          - name: is_gehuwd
+            type: boolean
+        actions:
+          - output: is_gehuwd
+            value:
+              operation: EQUALS
+              subject: $partnerschap_type
+              value: HUWELIJK
+
+  - number: '2'
+    url: https://example.com/test_dubbele_celbron#Artikel2
+    text: >-
+      De tweede uitkomst is waar indien de inkomensklasse van de betrokkene laag
+      is, zoals de belastingdienst die vaststelt.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomensklasse
+            type: string
+            source:
+              regulation: belastingdienst
+              output: inkomensklasse
+              parameters:
+                bsn: $bsn
+        output:
+          - name: inkomen_is_laag
+            type: boolean
+        actions:
+          - output: inkomen_is_laag
+            value:
+              operation: EQUALS
+              subject: $inkomensklasse
+              value: LAAG

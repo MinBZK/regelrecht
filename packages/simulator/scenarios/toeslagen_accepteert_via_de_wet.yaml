@@ -128,6 +128,19 @@ cells:
           parameters:
             bsn: $bsn
 
+# Het toegestane vraaggraf. De tak komt hier niet uit een besluit-definitie maar
+# uit de wet: `test_partnerschapstoets` vraagt om `partnerschap` bij `brp`, en
+# `accepts_from` hierboven wijst de lexostatus aan. De gate berekent dat zelf uit
+# de celconfiguratie, dus een declaratie die hier iets anders zou zeggen dan de
+# definities vragen, faalt ook als ze precies de gestelde vraag beschrijft.
+query_graph:
+  - doc: >-
+      `toeslagen` mag bij `brp` de lexostatus `partnerschap` opvragen; de wet
+      die ze uitvoert vraagt daarom.
+    from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+
 decide:
   - description: >-
       Het besluit leunt op een feit van `brp`, en het gram zegt dat ook: de

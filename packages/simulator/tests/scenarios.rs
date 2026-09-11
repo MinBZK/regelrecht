@@ -3,6 +3,12 @@
 //! De assertie staat in het scenario, niet hier: deze test controleert alleen
 //! dat elk bestand draait en dat geen enkele verwachting mist. Een nieuw
 //! testgeval is dus een nieuw YAML-bestand, geen nieuwe Rust.
+//!
+//! Eén map doet niet mee: `scenarios/negatief/` houdt de bestanden die met opzet
+//! een invariant schenden en die dus **moeten** falen. Die worden door
+//! `tests/invarianten.rs` gedraaid, dat ze op hun faalmelding afrekent. Ze onder
+//! deze suite laten vallen zou betekenen dat de hele crate rood staat zodra de
+//! gate werkt.
 
 use regelrecht_simulator::{regulation_root, Scenario, ScenarioRun};
 use std::path::{Path, PathBuf};
@@ -13,7 +19,10 @@ fn scenario_files() -> Vec<PathBuf> {
         .unwrap_or_else(|e| panic!("kan {} niet lezen: {e}", dir.display()))
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "yaml"))
+        // Alleen de bestanden in de map zelf: `read_dir` daalt niet af, en de
+        // filter op bestand houdt `negatief/` er expliciet buiten in plaats van
+        // op een toevalligheid van de extensiecontrole te leunen.
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "yaml"))
         .collect();
     files.sort();
     files

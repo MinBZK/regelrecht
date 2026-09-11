@@ -168,6 +168,18 @@ cells:
           key: zaakkenmerk
           latest: true
 
+# Het toegestane vraaggraf. Eén tak, en die hoort bij het eerste besluit: het
+# tweede rekent op eigen feiten en vraagt niemand iets. Beide kanten worden
+# afgerekend, dus dit bestand bewijst óók dat er niet méér over de grens ging —
+# en dat het nagerekende besluit werkelijk niemand bevroeg.
+query_graph:
+  - doc: >-
+      `toeslagen` mag het toetsingsinkomen opvragen bij de cel die het
+      vaststelde; haar besluit-definitie zegt dat met `accept_from`.
+    from: toeslagen
+    to: belastingdienst
+    lexostatus: toetsingsinkomen
+
 decide:
   - description: >-
       Accepteren. Het toetsingsinkomen komt van de belastingdienst, en het gram

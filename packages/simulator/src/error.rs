@@ -880,6 +880,56 @@ pub enum SimulatorError {
         lexostatus: String,
     },
 
+    /// Het gedeclareerde vraaggraf noemt een cel die het scenario niet heeft.
+    ///
+    /// Bij het lezen en niet pas na een run: zo'n tak wordt nooit gesteld en zou
+    /// anders als "gedeclareerde vraag die uitbleef" naar buiten komen — een
+    /// melding die de lezer naar de run stuurt terwijl er een typfout in het
+    /// bestand staat.
+    #[error(
+        "scenario '{scenario}': het vraaggraf declareert '{edge}', maar cel '{cell}' bestaat \
+         in dit scenario niet (wel: {known})"
+    )]
+    QueryGraphUnknownCell {
+        /// Het scenario waarin de declaratie staat.
+        scenario: String,
+        /// De gedeclareerde tak.
+        edge: String,
+        /// De cel die niet bestaat.
+        cell: String,
+        /// Komma-gescheiden lijst van cellen die het scenario wél kent.
+        known: String,
+    },
+
+    /// Een tak van het vraaggraf laat een cel zichzelf bevragen.
+    ///
+    /// Dezelfde weigering als [`SimulatorError::TransportToSelf`], een stap
+    /// eerder: zo'n tak kan nooit uitkomen, want de veiligheidscontext laat een
+    /// vraag aan de eigen cel niet over de grens.
+    #[error(
+        "scenario '{scenario}': het vraaggraf declareert '{edge}', maar een cel bevraagt \
+         zichzelf niet over een celgrens; voor eigen feiten is er een reductie"
+    )]
+    QueryGraphToSelf {
+        /// Het scenario waarin de declaratie staat.
+        scenario: String,
+        /// De gedeclareerde tak.
+        edge: String,
+    },
+
+    /// Dezelfde tak staat twee keer in het vraaggraf.
+    ///
+    /// Een graf is een verzameling, dus de tweede regel voegt niets toe. Stil
+    /// samenvoegen zou betekenen dat er een regel in het bestand staat die niets
+    /// doet, en dat is precies wat een wereldbestand niet hoort te hebben.
+    #[error("scenario '{scenario}': het vraaggraf declareert '{edge}' twee keer")]
+    DuplicateQueryGraphEdge {
+        /// Het scenario waarin de declaratie staat.
+        scenario: String,
+        /// De dubbele tak.
+        edge: String,
+    },
+
     /// Een vraag richt zich tot een cel die het scenario niet kent.
     #[error("scenario kent geen cel '{cell}'")]
     UnknownCell {

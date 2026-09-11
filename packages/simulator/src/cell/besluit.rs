@@ -470,8 +470,20 @@ impl BesluitInput {
     /// Voor wie de afspraken van buiten wil nalopen — de wereld toetst ermee of
     /// de peer bestaat — zonder de vorm van de variant na te bouwen.
     pub fn accepts_from(&self) -> Option<&str> {
+        Some(self.accepted_query()?.0)
+    }
+
+    /// De cel én de lexostatus die deze input bij een ander opvraagt.
+    ///
+    /// Eén tak van het toegestane vraaggraf, zoals de besluit-definitie hem
+    /// aanwijst (invariant I3). De lexostatus hoort erbij: wat een cel
+    /// publiceert zijn losse, gedocumenteerde namen (RFC-022 §4.1), dus "deze
+    /// cel mag die cel bevragen" is als afspraak te grof.
+    pub fn accepted_query(&self) -> Option<(&str, &str)> {
         match self {
-            Self::AcceptFrom { cell, .. } => Some(cell),
+            Self::AcceptFrom {
+                cell, lexostatus, ..
+            } => Some((cell, lexostatus)),
             Self::FromChronicle { .. } | Self::Param { .. } => None,
         }
     }
