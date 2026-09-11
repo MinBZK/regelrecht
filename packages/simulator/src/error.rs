@@ -193,6 +193,28 @@ pub enum SimulatorError {
         known: String,
     },
 
+    /// Een `where`-voorwaarde vergelijkt met een `$`-verwijzing.
+    ///
+    /// `where` kent alleen letterlijke waarden; de `$naam`-vorm van de wetsvorm
+    /// betekent hier niets. Zonder deze controle zou zo'n filter de tekst
+    /// `$naam` zoeken en op elke vraag "niets vastgesteld" antwoorden, wat niet
+    /// te onderscheiden is van een leeg verleden.
+    #[error(
+        "cel '{cell}': `where` van '{lexostatus}' vergelijkt veld '{field}' met \
+         '${reference}', maar `where` vergelijkt met letterlijke waarden; de enige \
+         plek waar een kroniekfilter een parameter gebruikt, is `key`"
+    )]
+    FilterValueReference {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// De lexostatus met de kapotte voorwaarde.
+        lexostatus: String,
+        /// Het veld waarop de voorwaarde staat.
+        field: String,
+        /// De naam waarnaar verwezen werd.
+        reference: String,
+    },
+
     /// De sleutel van een kroniekfilter is geen gedocumenteerde parameter.
     ///
     /// De consument levert de sleutelwaarde aan; staat de sleutel niet in

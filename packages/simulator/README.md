@@ -157,17 +157,23 @@ Het **kroniekfilter** levert per sleutelwaarde de laatste vastlegging op of vó�
 - `where` bepaalt **welke** vastleggingen meedoen, en pas van die groep wint de
   laatste. Een voorwaarde op een veld dat over tijd verandert levert dus de
   laatste vastlegging die eraan voldeed, niet de huidige stand — de lexostatus
-  `laatste_huwelijk` in het bron-celscenario staat er om dat te laten zien.
+  `laatste_huwelijk` in het bron-celscenario staat er om dat te laten zien. De
+  waarden in `where` zijn **letterlijk**: `key` is de enige plek waar een
+  kroniekfilter een parameter gebruikt, dus een `$naam` in `where` wordt bij het
+  optuigen geweigerd in plaats van als tekst gezocht.
 
 Het filter doet geen toestandsmerge: één vastlegging gaat er in haar geheel uit,
 niet een record dat uit verschillende momenten is samengeraapt. Wat samen
 vastgelegd is, blijft samen. Een gepubliceerd veld dat déze vastlegging niet
-draagt, blijft uit het antwoord; de cel vult niets aan.
+draagt, blijft uit het antwoord; de cel vult niets aan. Draagt ze er géén van,
+dan is er niets vastgesteld — zie hieronder.
 
 ### "Niets vastgesteld" is een antwoord
 
-Was er op `op_moment` geen feit, dan is dat geen fout en geen lege map die op een
-antwoord lijkt, maar een eigen variant met een reden:
+Dit is het antwoord van een kroniekfilter dat niets aantreft; de wetsvorm levert
+altijd de uitkomst die de engine berekent. Was er op `op_moment` geen feit, dan is
+dat geen fout en geen lege map die op een antwoord lijkt, maar een eigen variant
+met een reden:
 
 ```rust,ignore
 match answer.outcome {
@@ -177,9 +183,12 @@ match answer.outcome {
 ```
 
 De reden zegt welke stroom is nagekeken, met welke sleutelwaarde, op welk moment
-en onder welk filter, zodat een consument kan zien waar hij moet kijken. Een
-scenario legt dit antwoord vast met `expect_not_established: true`; dat is een
-volwaardige verwachting en sluit `expect` uit.
+en onder welk filter, zodat een consument kan zien waar hij moet kijken. Trof het
+filter wél een vastlegging aan maar draagt die geen enkele gepubliceerde uitkomst,
+dan zegt de reden dát, met het moment van die vastlegging erbij: dan moet de lezer
+naar de velden kijken en niet naar de tijdas. Een scenario legt dit antwoord vast
+met `expect_not_established: true`; dat is een volwaardige verwachting en sluit
+`expect` uit.
 
 `op_moment` is het moment waarop gevraagd wordt, altijd expliciet en nooit de
 wandklok. Feiten die pas later in de cel zijn vastgelegd, bestaan voor dat

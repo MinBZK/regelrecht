@@ -380,4 +380,78 @@ mod tests {
              dan beslist de volgorde in de configuratie"
         );
     }
+
+    #[test]
+    fn het_filter_volgt_bij_gelijk_moment_dezelfde_regel_als_de_tijdreductie() {
+        // `latest_recording` leunt hiervoor op de belofte van `max_by_key` dat
+        // bij gelijke sleutel het laatste element wint. Zonder deze test zou een
+        // andere formulering (`max_by`, eerst sorteren, omgekeerd doorlopen) het
+        // antwoord van een bron-cel stil omdraaien, terwijl de tijdreductie
+        // ernaast wél bewaakt blijft.
+        let store = store(vec![
+            event(
+                "2024-07-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("HUWELIJK".to_string())),
+                ],
+            ),
+            event(
+                "2024-07-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("GEEN".to_string())),
+                ],
+            ),
+        ]);
+
+        let found = store
+            .latest_recording(
+                "relatie",
+                "bsn",
+                &Value::String("1".to_string()),
+                &BTreeMap::new(),
+                date("2025-01-01"),
+            )
+            .unwrap_or_else(|| panic!("er staan twee vastleggingen, dus er is er een de laatste"));
+        assert_eq!(
+            found.fields.get("partnerschap_type"),
+            Some(&Value::String("GEEN".to_string())),
+            "het kroniekfilter moet dezelfde vastlegging kiezen als de tijdreductie"
+        );
+    }
+
+    #[test]
+    fn een_voorwaarde_op_een_veld_dat_de_vastlegging_niet_heeft_voldoet_niet() {
+        // "Onbekend" is geen gelijkheid: een vastlegging die het veld niet draagt
+        // doet niet mee, ook niet als ze op de tijdas de laatste zou zijn.
+        let store = store(vec![
+            event(
+                "2023-03-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("HUWELIJK".to_string())),
+                ],
+            ),
+            event("2024-07-01", &[("bsn", Value::String("1".to_string()))]),
+        ]);
+
+        let found = store
+            .latest_recording(
+                "relatie",
+                "bsn",
+                &Value::String("1".to_string()),
+                &BTreeMap::from([(
+                    "partnerschap_type".to_string(),
+                    Value::String("HUWELIJK".to_string()),
+                )]),
+                date("2025-01-01"),
+            )
+            .unwrap_or_else(|| panic!("de vastlegging van 2023-03-01 voldoet aan het filter"));
+        assert_eq!(
+            found.op_moment,
+            date("2023-03-01"),
+            "de latere vastlegging kent het veld niet en doet dus niet mee"
+        );
+    }
 }

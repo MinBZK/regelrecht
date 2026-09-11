@@ -263,7 +263,9 @@ impl Cell {
     ///
     /// Geen engine in zicht. Wat de vastlegging draagt en de definitie
     /// publiceert, komt in het antwoord; een gepubliceerd veld dat deze
-    /// vastlegging niet heeft, blijft eruit — de cel vult niets aan.
+    /// vastlegging niet heeft, blijft eruit — de cel vult niets aan. Draagt de
+    /// vastlegging er geen enkele, dan is er niets vastgesteld: een lege map zou
+    /// op een antwoord lijken zonder er een te zijn.
     fn filter_chronicle(
         &self,
         definition: &LexostatusDefinition,
@@ -293,7 +295,7 @@ impl Cell {
             });
         };
 
-        let values = definition
+        let values: BTreeMap<String, Value> = definition
             .published_outputs()
             .into_iter()
             .filter_map(|output| {
@@ -301,6 +303,20 @@ impl Cell {
                     .map(|value| (output.to_string(), value.clone()))
             })
             .collect();
+
+        // Draagt de vastlegging geen enkele gepubliceerde uitkomst, dan blijft er
+        // een lege map over — en dat is precies het antwoord dat op een antwoord
+        // lijkt zonder er een te zijn. Een stroom mag heterogeen zijn (het
+        // optuigen eist alleen dat elke uitkomst in één of andere vastlegging
+        // voorkomt), dus dit is bereikbaar met een geldige configuratie. De cel
+        // zegt dan wat er aan de hand is: er was wél een vastlegging, maar niet
+        // over datgene wat gevraagd werd.
+        if values.is_empty() {
+            return Ok(LexostatusOutcome::NotEstablished {
+                reason: nothing_published(definition, chronicle, key, key_value, event.op_moment),
+            });
+        }
+
         Ok(LexostatusOutcome::Established(values))
     }
 }
@@ -326,6 +342,31 @@ fn nothing_established(
         let _ = write!(reason, " die voldoet aan {filter}");
     }
     reason
+}
+
+/// Waarom een gevonden vastlegging toch niets oplevert.
+///
+/// Dit is een ander verhaal dan [`nothing_established`]: er ís vastgelegd, maar
+/// niet over wat deze lexostatus publiceert. De reden noemt beide, zodat de lezer
+/// weet dat hij naar de velden van die vastlegging moet kijken en niet naar de
+/// tijdas.
+fn nothing_published(
+    definition: &LexostatusDefinition,
+    chronicle: &str,
+    key: &str,
+    key_value: &Value,
+    recorded: NaiveDate,
+) -> String {
+    let published = definition
+        .published_outputs()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "kroniekstroom '{chronicle}' heeft voor {key} '{key_value}' wel een vastlegging \
+         (van {recorded}), maar die draagt geen van de gepubliceerde uitkomsten \
+         ({published})"
+    )
 }
 
 /// De uitkomstnamen per regeling, over alle geladen versies heen.
@@ -684,6 +725,58 @@ lexostatus_definitions:
     }
 
     #[test]
+    fn een_vastlegging_zonder_gepubliceerd_veld_levert_geen_lege_map_op() {
+        // Een stroom mag heterogeen zijn: het optuigen eist alleen dat elke
+        // gepubliceerde uitkomst in één of andere vastlegging voorkomt. De
+        // laatste vastlegging hier draagt alleen de sleutel, dus er valt niets
+        // te publiceren — en een leeg antwoord dat op een antwoord lijkt, is
+        // precies wat `LexostatusOutcome` moet voorkomen.
+        let cell = Cell::from_config(
+            &config(
+                r"
+id: brp
+laws: []
+chronicles:
+  - stream: relaties
+    key: bsn
+    events:
+      - op_moment: 2023-03-01
+        fields:
+          bsn: '999993653'
+          partnerschap_type: HUWELIJK
+      - op_moment: 2024-07-01
+        fields:
+          bsn: '999993653'
+lexostatus_definitions:
+  - name: partnerschap
+    inputs:
+      - name: bsn
+        type: string
+    outputs:
+      - partnerschap_type
+    reduction:
+      chronicle: relaties
+      key: bsn
+",
+            ),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("een bron-cel moet op te tuigen zijn: {e}"));
+
+        let answer = cell
+            .reduce("partnerschap", &bsn(), moment())
+            .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
+
+        let reason = answer.not_established().unwrap_or_else(|| {
+            panic!("verwachtte 'niets vastgesteld', kreeg {:?}", answer.outcome)
+        });
+        assert!(
+            reason.contains("2024-07-01") && reason.contains("partnerschap_type"),
+            "de reden moet de vastlegging noemen die niets publiceert, kreeg: {reason}"
+        );
+    }
+
+    #[test]
     fn een_onbekende_stroomnaam_wordt_geweigerd() {
         let err = Cell::from_config(
             &brp("    outputs:
@@ -748,6 +841,25 @@ lexostatus_definitions:
         assert!(
             matches!(err, SimulatorError::UnknownFilterField { .. }),
             "verwachtte UnknownFilterField, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_where_die_naar_een_parameter_verwijst_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &brp("    outputs:
+      - partnerschap_type
+    reduction:
+      chronicle: relaties
+      key: bsn
+      where:
+        partner_bsn: $bsn"),
+            &regulation_root(),
+        )
+        .expect_err("`where` kent geen `$`-verwijzingen, dus dit hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::FilterValueReference { .. }),
+            "verwachtte FilterValueReference, kreeg {err}"
         );
     }
 

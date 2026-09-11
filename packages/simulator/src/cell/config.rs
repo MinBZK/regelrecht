@@ -435,6 +435,21 @@ impl LexostatusDefinition {
             }
         }
 
+        // `where` vergelijkt met letterlijke waarden. Wie de `$naam`-vorm van de
+        // wetsvorm hier overneemt, krijgt anders een filter dat de tekst `$naam`
+        // zoekt en dus op elke vraag "niets vastgesteld" antwoordt — niet te
+        // onderscheiden van een leeg verleden, en daarom hier een optuigfout.
+        for (field, expected) in conditions {
+            if let Some(reference) = expected.as_str().and_then(binding_name) {
+                return Err(SimulatorError::FilterValueReference {
+                    cell: cell.to_string(),
+                    lexostatus: self.name.clone(),
+                    field: field.clone(),
+                    reference: reference.to_string(),
+                });
+            }
+        }
+
         if !self.documents(key) {
             return Err(SimulatorError::ChronicleKeyWithoutParameter {
                 cell: cell.to_string(),
