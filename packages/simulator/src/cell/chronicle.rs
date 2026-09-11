@@ -221,7 +221,7 @@ impl ChronicleStore {
 
     /// De fout voor een stroom die deze cel niet houdt, met wat ze wél houdt.
     fn unknown_stream(&self, cell: &str, stream: &str) -> SimulatorError {
-        SimulatorError::UnknownStream {
+        SimulatorError::UnknownChronicleStream {
             cell: cell.to_string(),
             stream: stream.to_string(),
             known: self
@@ -548,8 +548,8 @@ mod tests {
                 event("2024-01-01", &[("bsn", Value::String("1".to_string()))]),
             )
             .expect_err("een stroom die de cel niet houdt hoort te falen");
-        let SimulatorError::UnknownStream { known, .. } = &err else {
-            panic!("verwachtte UnknownStream, kreeg {err}");
+        let SimulatorError::UnknownChronicleStream { known, .. } = &err else {
+            panic!("verwachtte UnknownChronicleStream, kreeg {err}");
         };
         assert_eq!(known, "relatie");
     }

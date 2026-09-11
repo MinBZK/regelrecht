@@ -7,6 +7,12 @@ description: >-
   betaalsysteem, een legacy-API — evengoed een cel, en dat is de toets dat het
   lexostatus-contract niets van een engine nodig heeft.
 
+clock:
+  # Beide vastleggingen staan als `events` in de celconfiguratie, dus ze staan
+  # er al bij het optuigen; de klok begint ervoor en er is geen fixture die
+  # nog moet landen.
+  start: 2023-01-01
+
 cells:
   - id: brp
     # Geen wetten. Deze cel zou de BRP-wet kunnen laden, maar hoeft dat niet:
@@ -20,12 +26,20 @@ cells:
       - stream: relaties
         key: bsn
         events:
-          - op_moment: 2023-03-01
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
             fields:
               bsn: '999993653'
               partnerschap_type: HUWELIJK
               partner_bsn: '999993756'
-          - op_moment: 2024-07-01
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2024-07-01
             fields:
               bsn: '999993653'
               partnerschap_type: GEEN

@@ -288,7 +288,7 @@ pub enum SimulatorError {
 
     /// Er wordt vastgelegd in een stroom die de cel niet houdt.
     #[error("cel '{cell}' houdt geen kroniekstroom '{stream}' (wel: {known})")]
-    UnknownStream {
+    UnknownChronicleStream {
         /// De cel waarin vastgelegd werd.
         cell: String,
         /// De gevraagde stroomnaam.

@@ -58,7 +58,7 @@ fn answers(run: &ScenarioRun) -> Vec<String> {
                 outcome.cell,
                 outcome.lexostatus,
                 outcome.lexostatus_value.op_moment,
-                outcome.lexostatus_value.values
+                outcome.lexostatus_value.outcome
             )
         })
         .collect()

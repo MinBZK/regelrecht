@@ -21,7 +21,7 @@ use crate::error::{Result, SimulatorError};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
 
 /// De logische klok van een wereld, zoals het wereldbestand haar opgeeft.
@@ -139,6 +139,23 @@ impl World {
         fixtures: &[Fixture],
         regulation_root: &Path,
     ) -> Result<Self> {
+        // Per cel, per stroom: de veldnamen die een `fixture` erin zet. Een
+        // stroom mag leeg opgetuigd worden en haar inhoud pas via `fixtures`
+        // krijgen (zie `scenarios/toeslagen_tijdlijn.yaml`); zonder dit zou
+        // `Cell::from_config` zo'n stroom als veldloos zien en een
+        // kroniekfilter daarop onterecht als typfout afkeuren.
+        let mut fixture_fields: BTreeMap<String, BTreeMap<String, BTreeSet<String>>> =
+            BTreeMap::new();
+        for fixture in fixtures {
+            let target = &fixture.record;
+            fixture_fields
+                .entry(target.cell.clone())
+                .or_default()
+                .entry(target.chronicle.clone())
+                .or_default()
+                .extend(target.fields.keys().cloned());
+        }
+
         let mut cells: BTreeMap<String, Cell> = BTreeMap::new();
         for config in configs {
             if cells.contains_key(&config.id) {
@@ -146,9 +163,10 @@ impl World {
                     cell: config.id.clone(),
                 });
             }
+            let fields = fixture_fields.get(&config.id).cloned().unwrap_or_default();
             cells.insert(
                 config.id.clone(),
-                Cell::from_config(config, regulation_root)?,
+                Cell::from_config(config, regulation_root, &fields)?,
             );
         }
 
@@ -592,8 +610,8 @@ record:
         )
         .expect_err("een stroom die de cel niet houdt hoort te falen");
         assert!(
-            matches!(err, SimulatorError::UnknownStream { .. }),
-            "verwachtte UnknownStream, kreeg {err}"
+            matches!(err, SimulatorError::UnknownChronicleStream { .. }),
+            "verwachtte UnknownChronicleStream, kreeg {err}"
         );
     }
 
@@ -640,5 +658,60 @@ record:
                 "fixture van {at}: verwachtte ChronicleEventWithoutKey, kreeg {err}"
             );
         }
+    }
+
+    /// Een kroniekfilter op een veld dat alleen via `fixtures` in een leeg
+    /// opgetuigde stroom komt, hoort niet als typfout afgekeurd te worden.
+    ///
+    /// `declared_fields()` kent alleen wat in `chronicles[].events` van de
+    /// celconfiguratie staat; een stroom die daar leeg blijft en haar inhoud
+    /// pas via `fixtures` krijgt (zoals `scenarios/toeslagen_tijdlijn.yaml`)
+    /// zou zonder deze toets een kroniekfilter op `partnerschap_type` ten
+    /// onrechte als `UnknownFilterField` weigeren.
+    #[test]
+    fn een_kroniekfilter_op_een_veld_dat_alleen_via_fixtures_komt_wordt_niet_afgekeurd() {
+        let config: CellConfig = serde_yaml_ng::from_str(
+            r"
+id: toeslagen
+laws: []
+chronicles:
+  - stream: relaties
+    key: bsn
+lexostatus_definitions:
+  - name: partnerschap
+    inputs:
+      - name: bsn
+        type: string
+    outputs:
+      - partnerschap_type
+    reduction:
+      chronicle: relaties
+      key: bsn
+      latest: true
+",
+        )
+        .unwrap_or_else(|e| panic!("testconfig moet parsen: {e}"));
+
+        let world = World::new(
+            &[config],
+            Clock {
+                start: date("2024-01-01"),
+            },
+            &[fixture("2023-01-01", "relaties", "HUWELIJK")],
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("een wereld met dit kroniekfilter moet op te tuigen zijn: {e}"));
+
+        let answer = world
+            .reduce("toeslagen", "partnerschap", &bsn(), date("2024-01-01"))
+            .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
+        assert_eq!(
+            answer
+                .values()
+                .unwrap_or_else(|| panic!("verwachtte een vastgesteld feit"))
+                .get("partnerschap_type"),
+            Some(&Value::String("HUWELIJK".to_string())),
+            "de fixture-waarde hoort in het antwoord van het kroniekfilter"
+        );
     }
 }
