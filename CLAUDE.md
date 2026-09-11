@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/editor-api/` - Rust backend API for the editor frontend
 - `packages/corpus/` - Shared library for working with YAML regulation files
 - `packages/shared/` - Common types/utilities across packages
+- `packages/chrono-poc-web/` - HTTP-laag om de simulator: axum + OIDC, één `World` per browsersessie in geheugen, de wereld-API als JSON, geen database
 - `packages/simulator/` - Chronolexografie testopstelling (RFC-022): cellen met een privé kroniekstore, lexostatus-reducties, een veiligheidscontext plus `CellTransport` als enige weg over een celgrens, het test-only observatielog en een scenario-loader
 - `packages/tui/` - Terminal UI dashboard
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards

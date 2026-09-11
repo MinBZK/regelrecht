@@ -267,19 +267,21 @@ build-chrono-poc:
     cd frontend-chrono-poc && npx vite build
 
 # Serveer de gebouwde frontend via de server: eerst de bundel, dan de server die
-# hem uitdeelt. De serverkant landt met zijn eigen wijziging; tot die er is zegt
-# deze opdracht wat er ontbreekt in plaats van een onleesbare cargo-fout.
-[doc("Serveer de gebouwde frontend van de testopstelling via de server")]
-chrono-poc: build-chrono-poc
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ ! -d packages/chrono-poc-web ]; then
-        printf "De bundel staat in frontend-chrono-poc/dist.\n"
-        printf "De server (packages/chrono-poc-web) staat nog niet in deze boom; draai\n"
-        printf "ondertussen 'just dev-chrono-poc' voor de frontend met een proxy.\n"
-        exit 1
-    fi
-    cd packages && cargo run -p regelrecht-chrono-poc-web
+# hem uitdeelt.
+#
+# Poort 7160 en niet 8000: 8000 is wat de container binnen het cluster gebruikt,
+# 7100-7300 is wat de dev-container naar de host doorzet. Het corpus komt uit deze
+# checkout (REGULATION_PATH of `corpus/regulation`), de wereld uit
+# packages/simulator/worlds/. Een andere wereld is een ander pad in
+# CHRONO_POC_WORLD_SOURCE; een privécorpus is een `github:`-bron plus een token.
+# STATIC_DIR wijst naar de zojuist gebouwde bundel; zonder die regel zoekt de
+# server de bundel op de verkeerde plek. Zie packages/chrono-poc-web/README.md.
+[doc("Serveer de gebouwde frontend van de testopstelling via de server op http://localhost:7160")]
+chrono-poc WORLD='packages/simulator/worlds/publieke_wereld.yaml' PORT='7160': build-chrono-poc
+    cd packages && CHRONO_POC_PORT={{PORT}} \
+        CHRONO_POC_WORLD_SOURCE=local:{{justfile_directory()}}/{{WORLD}} \
+        STATIC_DIR={{justfile_directory()}}/frontend-chrono-poc/dist \
+        cargo run -p regelrecht-chrono-poc-web --bin chrono-poc-web
 
 # Alles wat de frontend van de testopstelling is: tests, de import-guard van het
 # ontwerpsysteem, en de bundel. Eén opdracht om te draaien voor je hem pusht.

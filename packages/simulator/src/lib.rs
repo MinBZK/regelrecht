@@ -106,11 +106,16 @@ pub use cell::{
     BETALINGEN,
 };
 pub use corpus::regulation_root;
+// De waarde waarin deze crate praat. Ze komt uit de engine en blijft dat, maar
+// ze staat in elke publieke signatuur hier — een actie invullen, een lexostatus
+// bevragen, een instelling wijzigen — dus een aanroeper hoort haar niet bij een
+// tweede crate te hoeven halen.
 pub use error::{Result, SimulatorError, Subject};
 pub use invariant::{
     check_invariants, defined_graph, observed_graph, DecisionTraffic, DeclaredQuery,
     InvariantFailure, QueryEdge, Traffic,
 };
+pub use regelrecht_engine::Value;
 pub use scenario::{
     check_provenance, Act, ActOutcome, Decision, DecisionOutcome, ExpectationFailure, Query,
     QueryOutcome, Scenario, ScenarioRun, TransportOutcome, TransportQuery,

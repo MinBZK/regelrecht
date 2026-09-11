@@ -1,0 +1,61 @@
+[package]
+name = "regelrecht-chrono-poc-web"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "HTTP-laag om de chronolexografie-simulator: een wereld per browsersessie, als JSON"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+homepage = "https://github.com/MinBZK/regelrecht"
+
+[lib]
+name = "regelrecht_chrono_poc_web"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chrono-poc-web"
+path = "src/main.rs"
+
+[dependencies]
+regelrecht-simulator = { path = "../simulator" }
+regelrecht-auth = { path = "../auth" }
+# Voor het ophalen van een privérepo bij het starten: de domeinlaag
+# (`github::fetch_archive_to_dir`) plus de gedeelde tokenconventie
+# (`auth::CredentialResolver`). Geen tweede GitHub-client in deze crate.
+regelrecht-corpus = { path = "../corpus" }
+regelrecht-github = { path = "../github" }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+axum.workspace = true
+chrono.workspace = true
+# Eén wereld per sessie, en die werelden worden onafhankelijk van elkaar
+# aangeraakt: een map met een slot per shard in plaats van één slot om alles.
+dashmap = "6"
+# De OIDC-kant van de workspace staat op reqwest 0.12 (openidconnect pint die
+# versie); corpus en github staan op 0.13. Zie de notitie bij `reqwest` in
+# packages/Cargo.toml — dit binary draagt, net als admin en editor-api, beide.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots-no-provider", "json"] }
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+# `util` voor `ServiceExt::oneshot`: de SPA-fallback zet de statische service als
+# handler in, precies zoals editor-api.
+tower = { workspace = true, features = ["util"] }
+tower-http = { workspace = true, features = ["fs", "trace"] }
+tower-sessions.workspace = true
+tower-sessions-memory-store.workspace = true
+tracing.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+http-body-util.workspace = true
+# Om een GitHub-tarball te máken in de test die het ophalen bij het starten
+# nabootst. Inline zoals in `corpus`, de enige andere crate die ze gebruikt: het
+# zijn geen workspace-brede deps maar het gereedschap van één pad.
+flate2 = "1"
+tar = "0.4"
+wiremock.workspace = true
+
+[lints]
+workspace = true

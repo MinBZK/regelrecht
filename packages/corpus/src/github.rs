@@ -159,6 +159,113 @@ pub async fn fetch_archive_implements(
     Ok(files)
 }
 
+/// Download a repo at `git_ref` and unpack it into `dest` — one archive
+/// request, the whole tree on disk.
+///
+/// The sibling of [`fetch_archive_implements`]: same single tarball, but the
+/// bodies are written out instead of parsed and dropped. For a consumer that
+/// needs the files *as files* rather than as an index — a regulation root the
+/// engine walks itself, for instance, where every version of every law has to
+/// be present and the Trees API's "best version per law" is the wrong answer.
+///
+/// `dest` must exist and is written into directly: the archive's single
+/// top-level `{owner}-{repo}-{sha}/` component is stripped, so `dest` ends up
+/// holding the repo's own top level. An entry that would land outside `dest`
+/// (an absolute path, or one climbing out with `..`) fails the whole unpack
+/// rather than being skipped silently — a tarball is remote input, and a
+/// traversal is the one thing that must never be forgiven halfway.
+///
+/// gunzip, untar and the writes are synchronous and IO/CPU-bound, so they run
+/// on a blocking thread off the async runtime.
+pub async fn fetch_archive_to_dir(
+    client: &GithubClient,
+    repo: &str,
+    git_ref: &str,
+    token: Option<&str>,
+    dest: &std::path::Path,
+) -> Result<()> {
+    let bytes = client.fetch_tarball(repo, git_ref, token).await?;
+    let dest = dest.to_path_buf();
+    tokio::task::spawn_blocking(move || unpack_tar_gz(bytes.as_ref(), &dest))
+        .await
+        .map_err(|e| CorpusError::Config(format!("archive unpack task panicked: {e}")))?
+}
+
+/// Unpack a gzipped tar into `dest`, stripping the archive's single top-level
+/// directory component. See [`fetch_archive_to_dir`] for the contract.
+fn unpack_tar_gz(bytes: &[u8], dest: &std::path::Path) -> Result<()> {
+    let gz = flate2::read::GzDecoder::new(bytes);
+    let mut archive = tar::Archive::new(gz);
+    let entries = archive
+        .entries()
+        .map_err(|e| CorpusError::Git(format!("failed to read archive entries: {e}")))?;
+    for entry in entries {
+        let mut entry =
+            entry.map_err(|e| CorpusError::Git(format!("failed to read archive entry: {e}")))?;
+        let path = entry
+            .path()
+            .map_err(|e| CorpusError::Git(format!("archive entry has no path: {e}")))?
+            .to_path_buf();
+        let Some(relative) = strip_top_level(&path) else {
+            continue;
+        };
+        let target = safe_join(dest, &relative)?;
+        match entry.header().entry_type() {
+            tar::EntryType::Directory => {
+                std::fs::create_dir_all(&target)?;
+            }
+            tar::EntryType::Regular => {
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                entry.unpack(&target).map_err(|e| {
+                    CorpusError::Git(format!("failed to write {}: {e}", target.display()))
+                })?;
+            }
+            // Symlinks, hardlinks and devices: a regulation corpus has none,
+            // and unpacking them is how an archive reaches outside `dest`
+            // without any component of its own path saying so.
+            other => {
+                tracing::debug!(path = %relative.display(), kind = ?other, "archive entry is not a file or directory; skipping");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Drop the archive's single top-level directory component. `None` for the
+/// top-level entry itself (nothing left to write).
+fn strip_top_level(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut components = path.components();
+    components.next()?;
+    let rest = components.as_path();
+    (!rest.as_os_str().is_empty()).then(|| rest.to_path_buf())
+}
+
+/// Join `relative` onto `dest`, refusing anything that would leave `dest`.
+///
+/// Checked component by component instead of after the fact: a
+/// `canonicalize` of a path that does not exist yet cannot answer the
+/// question, and a prefix comparison on strings is one symlink away from
+/// being wrong.
+fn safe_join(dest: &std::path::Path, relative: &std::path::Path) -> Result<std::path::PathBuf> {
+    use std::path::Component;
+    let mut target = dest.to_path_buf();
+    for component in relative.components() {
+        match component {
+            Component::Normal(part) => target.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(CorpusError::Git(format!(
+                    "archive entry {} points outside the destination directory",
+                    relative.display()
+                )));
+            }
+        }
+    }
+    Ok(target)
+}
+
 /// List YAML files under `base_path` in a repo tree via the shared client's
 /// Trees call, keeping the blob sha each entry reported. Returns `None` on a
 /// 304 (tree unchanged). Narrows the crate's blob listing to `.yaml` files
@@ -311,6 +418,100 @@ fn extract_implements_from_tar_gz(bytes: &[u8]) -> Result<Vec<(String, Vec<Strin
         // `content` dropped here — bodies never accumulate.
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod unpack_tests {
+    use super::unpack_tar_gz;
+    use std::io::Write;
+
+    /// Build a gzipped tar from `(path, body)` pairs, exactly as GitHub's
+    /// tarball endpoint does: everything under one top-level directory.
+    fn tar_gz(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(Vec::new());
+        for (path, body) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, path, body.as_bytes())
+                .expect("tar entry moet te schrijven zijn");
+        }
+        let tar = builder.into_inner().expect("tar moet af te ronden zijn");
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        gz.write_all(&tar).expect("gzip moet te schrijven zijn");
+        gz.finish().expect("gzip moet af te ronden zijn")
+    }
+
+    /// The whole tree lands on disk, the archive's `{owner}-{repo}-{sha}/`
+    /// wrapper stripped — and *every* version of a law is there. That last
+    /// part is the reason this function exists next to the Trees-API path,
+    /// which keeps one version per law: an engine that picks its version on a
+    /// moment needs all of them.
+    #[test]
+    fn unpack_strips_the_top_level_and_keeps_every_version() {
+        let archive = tar_gz(&[
+            ("owner-repo-abc123/README.md", "hoi"),
+            ("owner-repo-abc123/regulation/nl/wet/w/2024-01-01.yaml", "a"),
+            ("owner-repo-abc123/regulation/nl/wet/w/2025-01-01.yaml", "b"),
+        ]);
+        let dest = tempfile::tempdir().expect("tempdir");
+
+        unpack_tar_gz(&archive, dest.path()).expect("unpack moet slagen");
+
+        let laws = dest.path().join("regulation/nl/wet/w");
+        assert_eq!(
+            std::fs::read_to_string(laws.join("2024-01-01.yaml")).ok(),
+            Some("a".to_string())
+        );
+        assert_eq!(
+            std::fs::read_to_string(laws.join("2025-01-01.yaml")).ok(),
+            Some("b".to_string())
+        );
+        assert!(dest.path().join("README.md").is_file());
+    }
+
+    /// A tarball is remote input. An entry that climbs out of the destination,
+    /// or names an absolute path, is refused — and refused as an error, not
+    /// skipped: half an unpacked corpus is a state nobody should have to
+    /// reason about, and a write outside the temp directory is a state nobody
+    /// should have at all.
+    ///
+    /// Asserted on the guard rather than through a crafted archive, because
+    /// `tar::Builder` refuses to *write* a `..` path at all — the attack only
+    /// arrives in bytes produced elsewhere.
+    #[test]
+    fn join_refuses_a_path_that_leaves_the_destination() {
+        let dest = std::path::Path::new("/tmp/bestemming");
+        for evil in [
+            "../buiten.yaml",
+            "regulation/../../buiten.yaml",
+            "/etc/passwd",
+        ] {
+            let err = super::safe_join(dest, std::path::Path::new(evil))
+                .expect_err("{evil} moet geweigerd worden");
+            assert!(
+                err.to_string().contains("outside the destination"),
+                "verwachtte een traversal-melding voor {evil}, kreeg {err}"
+            );
+        }
+    }
+
+    /// The other half of the same guard: a plain nested path is joined as-is,
+    /// and `./` is a no-op rather than a refusal.
+    #[test]
+    fn join_keeps_a_plain_nested_path() {
+        let joined = super::safe_join(
+            std::path::Path::new("/tmp/bestemming"),
+            std::path::Path::new("./regulation/nl/wet/w/2024-01-01.yaml"),
+        )
+        .expect("een gewoon pad moet gewoon samengevoegd worden");
+        assert_eq!(
+            joined,
+            std::path::Path::new("/tmp/bestemming/regulation/nl/wet/w/2024-01-01.yaml")
+        );
+    }
 }
 
 #[cfg(test)]
