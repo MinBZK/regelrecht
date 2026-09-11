@@ -18,6 +18,9 @@ import { b } from '../basePad.js';
 export function useAssistent() {
   const available = ref(null); // null = onbekend, true/false na health-check
   const model = ref(null);
+  // Kan deze omgeving een variant opslaan? Hosted niet: dat maakt een
+  // git-branch in de casus-checkout, en die is er in de container niet.
+  const variantOpslag = ref(false);
   const streaming = ref(false);
 
   async function checkHealth() {
@@ -27,6 +30,7 @@ export function useAssistent() {
       const data = await res.json();
       available.value = !!data.ok;
       model.value = data.model ?? null;
+      variantOpslag.value = data.varianten === true;
     } catch {
       available.value = false;
     }
@@ -88,5 +92,5 @@ export function useAssistent() {
     }
   }
 
-  return { available, model, streaming, checkHealth, run, abort };
+  return { available, model, variantOpslag, streaming, checkHealth, run, abort };
 }

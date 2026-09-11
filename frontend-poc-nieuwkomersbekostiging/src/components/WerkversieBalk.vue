@@ -16,7 +16,7 @@
     <div class="wv-rechts">
       <nldd-button size="sm" text="Bekijk wijzigingen" start-icon="document" variant="neutral-transparent" :disabled="!werkversie && changeCount === 0 ? true : undefined" @click="diffOpen = true"></nldd-button>
       <nldd-button size="sm" text="Terugzetten" start-icon="undo" variant="neutral-transparent" :disabled="changeCount === 0 ? true : undefined" @click="resetChanges"></nldd-button>
-      <nldd-button size="sm" text="Bewaar als variant" start-icon="save" variant="secondary" :disabled="changeCount === 0 ? true : undefined" @click="opslaanOpen = !opslaanOpen"></nldd-button>
+      <nldd-button v-if="variantOpslag" size="sm" text="Bewaar als variant" start-icon="save" variant="secondary" :disabled="changeCount === 0 ? true : undefined" @click="opslaanOpen = !opslaanOpen"></nldd-button>
       <!-- "Terugzetten" hierboven maakt bewerkingen in de wet ongedaan; deze
            knop wist wat de browser onthoudt (kolommen, gekozen casus of
            school, populatie-instellingen) en begint de demo schoon. -->
@@ -81,12 +81,17 @@
 import { ref, computed, watch } from 'vue';
 import { useEngine } from '../engine/useEngine.js';
 import { b } from '../basePad.js';
+import { useAssistent } from '../composables/useAssistent.js';
 import { useLawStore, kortTitel } from '../engine/lawStore.js';
 import { useSimulation } from '../composables/useSimulation.js';
 import DiffSheet from './beleid/DiffSheet.vue';
 import { wisStand, heeftBewaardeStand } from '../composables/useBewaardeStand.js';
 
 const { ready } = useEngine();
+// De assistent-backend zegt of een variant hier opgeslagen kan worden.
+// checkHealth() is idempotent en gedeeld met het assistent-paneel.
+const { variantOpslag, checkHealth } = useAssistent();
+checkHealth();
 const { variants, werkversie, werkversieLabel, changeCount, setWerkversie, resetChanges, editedFilesForSave, reloadVariants } = useLawStore();
 const { selectedVariants } = useSimulation();
 

@@ -23,6 +23,8 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// Resolved upstream base URL per proxied slug.
     pub upstreams: Arc<HashMap<String, String>>,
+    /// Base URL of the beleidsassistent per slug that has one.
+    pub assistenten: Arc<HashMap<String, String>>,
     pub http: reqwest::Client,
 }
 
@@ -46,9 +48,35 @@ impl AppState {
                 ),
             }
         }
+        // De assistent draait als eigen proces per casus, op een poort die het
+        // image zelf bepaalt (POC_ASSISTENT_<SLUG>). Staat hij er niet, dan
+        // antwoordt /api met 503 en verbergt de app zijn assistent-paneel via
+        // de health-probe die hij toch al doet.
+        let mut assistenten = HashMap::new();
+        for poc in &config.registry.pocs {
+            if !poc.assistent {
+                continue;
+            }
+            let env = format!(
+                "POC_ASSISTENT_{}",
+                poc.slug.to_uppercase().replace('-', "_")
+            );
+            match std::env::var(&env) {
+                Ok(url) if !url.trim().is_empty() => {
+                    tracing::info!(slug = %poc.slug, url = %url, "beleidsassistent");
+                    assistenten.insert(poc.slug.clone(), url);
+                }
+                _ => tracing::info!(
+                    slug = %poc.slug,
+                    "geen beleidsassistent ({env} niet gezet); /api antwoordt 503"
+                ),
+            }
+        }
+
         Self {
             config: Arc::new(config),
             upstreams: Arc::new(upstreams),
+            assistenten: Arc::new(assistenten),
             http: reqwest::Client::new(),
         }
     }
@@ -113,6 +141,34 @@ async fn poc_request(State(state): State<AppState>, request: Request) -> Respons
             Html(pagina::inloggen(poc, &path, false)),
         )
             .into_response();
+    }
+
+    // De beleidsassistent draait als eigen proces naast dit portaal (hij spawnt
+    // de Claude CLI, wat niet in een request-handler thuishoort). Alleen `/api`
+    // van een poc die hem aan heeft staan gaat daarheen; de rest van de poc
+    // wordt gewoon geserveerd.
+    if poc.assistent && rest.starts_with("/api/") {
+        return match state.assistenten.get(slug) {
+            Some(base) => {
+                // Het pad zoals de assistent het kent: zonder de slug ervoor.
+                let mut parts = request.into_parts();
+                let query = parts
+                    .0
+                    .uri
+                    .query()
+                    .map(|q| format!("?{q}"))
+                    .unwrap_or_default();
+                parts.0.uri = format!("{rest}{query}")
+                    .parse::<Uri>()
+                    .unwrap_or_else(|_| Uri::from_static("/"));
+                proxy::forward(&state.http, base, Request::from_parts(parts.0, parts.1)).await
+            }
+            None => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "De beleidsassistent draait niet in deze omgeving.",
+            )
+                .into_response(),
+        };
     }
 
     match poc.soort {

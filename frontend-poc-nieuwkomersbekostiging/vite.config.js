@@ -17,16 +17,8 @@ export default defineConfig({
       },
     }),
   ],
-  test: {
-    environment: 'happy-dom',
-    include: ['src/**/*.test.js', 'tests/**/*.test.js'],
-    testTimeout: 20000,
-    server: {
-      deps: {
-        inline: [/@cucumber\//],
-      },
-    },
-  },
+  // De testconfiguratie staat in vitest.config.js: vitest 4 leest een
+  // `test`-blok hier niet meer.
   server: {
     port: 3200,
     proxy: {

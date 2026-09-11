@@ -82,6 +82,12 @@ COPY --from=wasm-builder /wasm-pkg/ frontend/public/wasm/pkg/
 RUN POC_BASE=/terugbetaalregimes/ npm run build -w poc-terugbetaalregimes
 RUN POC_BASE=/nieuwkomersbekostiging/ npm run build -w poc-nieuwkomersbekostiging
 
+# De enige runtime-dependency van de beleidsassistent. Los geïnstalleerd en niet
+# als workspace-member: hij draait naast het portaal in de runtime-trap, niet in
+# een build, en heeft met de frontends niets te maken.
+COPY packages/poc-assistent/package.json /assistent/package.json
+RUN cd /assistent && npm install --omit=dev --ignore-scripts --no-package-lock
+
 # Stage 2: chef-basis voor de Rust-kant.
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
 FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS chef
@@ -153,8 +159,31 @@ RUN find . -name '*.rs' -exec touch {} + && \
 
 # Stage 5: runtime.
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-RUN apk add --no-cache ca-certificates && \
+# nodejs voor de beleidsassistent, curl om de Claude CLI te halen.
+RUN apk add --no-cache ca-certificates nodejs curl bash && \
     addgroup -S app && adduser -S app -G app
+
+# De Claude Code CLI, waarop de beleidsassistent draait. De installer detecteert
+# musl zelf en haalt de linux-x64-musl-build, dus dit werkt op alpine.
+#
+# Gepind op een versie in plaats van `stable`: een image hoort niet stilletjes
+# van CLI-versie te wisselen tussen twee builds van dezelfde commit.
+ARG CLAUDE_CODE_VERSION=2.1.236
+# `bash -s`, niet `sh -s`: de installer is een bash-script en alpine's ash
+# valt er met een syntaxfout over.
+#
+# `install`, niet `mv`: de installer legt in ~/.local/bin een symlink naar de
+# echte binary onder /root/.local/share, en een verplaatste symlink wijst nog
+# steeds daarheen. Onder de niet-root gebruiker levert dat "Permission denied"
+# op — de CLI lijkt geïnstalleerd en is onbruikbaar.
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}" && \
+    install -m0755 "$(readlink -f /root/.local/bin/claude)" /usr/local/bin/claude && \
+    rm -rf /root/.local && \
+    claude --version
+# Het image is onveranderlijk; een zichzelf bijwerkende binary erin is ruis.
+# En geen sessie-transcripts: elke aanroep is `claude -p`, eenmalig.
+ENV DISABLE_AUTOUPDATER=1 \
+    CLAUDE_CODE_SKIP_PROMPT_HISTORY=true
 
 COPY --from=builder /build/target/release/regelrecht-poc-portal /usr/local/bin/
 # Het portaal serveert /_assets uit de wortel en elke poc uit /app/static/<slug>.
@@ -165,8 +194,16 @@ COPY --from=frontend-builder /app/frontend-poc-portal/dist /app/static/_assets
 COPY --from=frontend-builder /app/frontend-poc-terugbetaalregimes/dist /app/static/terugbetaalregimes
 COPY --from=frontend-builder /app/frontend-poc-nieuwkomersbekostiging/dist /app/static/nieuwkomersbekostiging
 
+# De beleidsassistent: één server, per casus zijn eigen MCP-tools en prompt.
+COPY packages/poc-assistent/ /app/assistent/
+COPY --from=frontend-builder /assistent/node_modules /app/assistent/node_modules
+# Het casus-corpus dat de assistent leest en bewerkt (overlays in een tmpdir).
+COPY corpus-poc/ /app/casus/
+COPY packages/poc-portal/start.sh /usr/local/bin/start-poc
+RUN chmod 0755 /usr/local/bin/start-poc
+
 WORKDIR /app
 ENV POC_STATIC_DIR=/app/static
 USER app
 EXPOSE 8000
-CMD ["regelrecht-poc-portal"]
+CMD ["start-poc"]

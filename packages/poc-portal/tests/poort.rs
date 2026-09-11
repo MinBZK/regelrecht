@@ -49,6 +49,21 @@ fn app() -> axum::Router {
     router(AppState::new(config))
 }
 
+/// Een portaal waarin alfa een beleidsassistent heeft en beta niet.
+fn app_met_assistent() -> axum::Router {
+    let register = REGISTER.replace(
+        "    bron: poc-alfa\n",
+        "    bron: poc-alfa\n    assistent: true\n",
+    );
+    std::env::set_var("POC_COOKIE_SECRET", SECRET);
+    std::env::set_var("POC_PW_ALFA", "alfa-geheim");
+    std::env::set_var("POC_PW_BETA", "beta-geheim");
+    let config = Config::from_env(&register)
+        .expect("config")
+        .met_static_root("/nonexistent");
+    router(AppState::new(config))
+}
+
 fn cookie_voor(slug: &str) -> String {
     let sleutel = gate::Sleutel::new(SECRET).expect("key");
     format!(
@@ -244,6 +259,29 @@ async fn a_poc_page_carries_the_notice_and_its_assets_do_not() {
     assert_eq!(js, "console.log(1)", "an asset must not be rewritten");
 
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
+async fn the_assistant_answers_503_when_it_is_not_running() {
+    // Niet 404: het endpoint bestaat, de assistent draait alleen niet in deze
+    // omgeving. De app doet toch al een health-probe en verbergt zijn paneel.
+    // Wel achter de poort — /api is van de poc, niet openbaar.
+    let app = app_met_assistent();
+    let (zonder, _) = get(&app, "/alfa/api/health", None).await;
+    assert_eq!(zonder, StatusCode::UNAUTHORIZED);
+
+    let (met, _) = get(&app, "/alfa/api/health", Some(&cookie_voor("alfa"))).await;
+    assert_eq!(met, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn a_poc_without_an_assistant_serves_api_as_a_normal_path() {
+    // beta heeft `assistent: false`, dus /api is voor hem een gewoon pad dat
+    // de statische bestandsdienst afhandelt (hier: 404, want de map bestaat
+    // niet). Geen 503, want er valt niets te proxyen.
+    let app = app_met_assistent();
+    let (status, _) = get(&app, "/beta/api/health", Some(&cookie_voor("beta"))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
