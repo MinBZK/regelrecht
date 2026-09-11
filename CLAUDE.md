@@ -519,6 +519,7 @@ de job staat in het workflowbestand dat de PR meebrengt.
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | poc | `regelrecht-poc` | `poc.regelrecht.rijks.app` (portaal + de statische pocs) |
+| napp | `regelrecht-poc-napp` | (geen eigen adres; alleen via het portaal op `/napp/`) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
 ### How It Works

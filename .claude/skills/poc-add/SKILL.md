@@ -68,6 +68,15 @@ login). Die draait als eigen ZAD-component zonder `publish-on-web` en is alleen
 via het portaal bereikbaar; `upstream` is dan de componentnaam. `assistent: true`
 kan alleen bij `statisch` — de assistent draait in het poc-image zelf.
 
+Een proxy-poc draagt zijn voorvoegsel zelf: het portaal stuurt `/napp/...`
+ongewijzigd door, dus de app moet zichzelf onder datzelfde pad serveren. Bouw de
+frontend met die `base` én laat de backend hem kennen (bij napp
+`NAPP_BASE_PATH`). Zet dat voorvoegsel in de **router**, niet in een
+middleware-layer die de URI herschrijft: axum matcht het pad vóór de layer
+draait, dus zo'n herschrijving komt te laat om nog een andere route te kiezen.
+`Router::nest` is het gereedschap; let dan op dat `nest` de kale wortel (`/napp/`)
+niet naar de fallback van de genestelde router stuurt.
+
 ## Een statische poc onder /<slug>/ krijgen
 
 Een losse app gaat er bijna altijd van uit dat hij op `/` staat. Vier dingen,
