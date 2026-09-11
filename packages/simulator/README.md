@@ -879,13 +879,39 @@ bereikt geen stille regel in het bestand is.
 
 ## Het wereldbestand
 
-Een wereld is één YAML-bestand: `clock` (de tijdlijn), `cells` (wie er zijn),
-`settings` (casusdata die geen wet is), `fixtures` (de startstand), `query_graph`
-(het toegestane vraaggraf), `decide` (welke cel wanneer waarover besluit) en twee
-soorten vraag: `queries` (een
-consument bevraagt een cel) en `query_via_transport` (een cel bevraagt een andere
-cel). Elk draagt zijn eigen verwachting. De assertie hoort bij het bestand, niet
+Een wereld is één YAML-bestand. Het valt in twee helften uiteen, en die scheiding
+is de kern van de opzet:
+
+**De wereld zelf** — wat er is, en wat er gedaan kan worden:
+
+| sleutel | wat |
+|---|---|
+| `clock` | waar de logische klok begint; verplicht |
+| `cells` | de organisaties, elk met `laws`, `chronicles`, `lexostatus_definitions`, `besluit_definitions` (met `obligations`) en `accepts_from` |
+| `settings` | casusdata die geen wet is, bijvoorbeeld een betalingsritme |
+| `fixtures` | de startstand: vastleggingen met een moment |
+| `actions` | wat een actor op de tijdlijn kan doen |
+| `deadlines` | termijnen die waarschuwen als een feit ontbreekt |
+
+**De stappen van een scenario** — wat er in déze run gebeurt, en wat dat moet
+opleveren:
+
+| sleutel | wat |
+|---|---|
+| `act` | een actor doet een actie, op een moment |
+| `decide` | een cel besluit rechtstreeks, op een moment |
+| `queries` | een consument bevraagt een cel |
+| `query_via_transport` | een cel bevraagt een andere cel (een sonde) |
+| `query_graph` | het toegestane vraaggraf: welke cel welke andere mag bevragen |
+| `expect_warnings` | de termijnen die deze run moet melden |
+
+Elke stap draagt zijn eigen verwachting. De assertie hoort bij het bestand, niet
 bij Rust: een nieuw testgeval is een nieuw bestand.
+
+De eerste helft is ook los te lezen — `WorldDefinition::load` — en dat is wat een
+web-laag doet: één wereldbestand, en per sessie een verse `World` eruit. Een
+scenariobestand draagt beide helften; de crate leest de eerste eruit met
+`Scenario::definition()`.
 
 ```yaml
 name: korte naam van het scenario
@@ -1005,6 +1031,63 @@ fixtures:                                       # de startstand van de wereld
         bsn: '999993653'
         partnerschap_type: GEEN
 
+actions:                                        # wat een actor kan doen
+  - id: burger.aanvraag                         # waarmee de actie aangeroepen wordt
+    actor: burger                               # de cel die haar doet
+    label: Aanvraag indienen                    # wat een lezer ziet; casusdata
+    doc: vrije toelichting                      # optioneel
+    records:                                    # óf `records`, óf `decides`
+      cell: burger                              # bij wie het gram landt
+      chronicle: aanvragen                      # in welke stroom
+      name: aanvraag_ingediend                  # hoe het gram heet
+      intake: aanvraag                          # waarlangs het binnenkomt
+      grondslag: Awir art. 15                   # optioneel
+      fields:                                   # het formulier van de actie
+        - name: bsn
+          type: string                          # string | number | boolean
+        - name: jaar
+          type: number
+      delivers_to:                              # optioneel: hetzelfde feit óók
+        cell: toeslagen                         # bij de ontvanger
+        chronicle: aanvragen
+        intake: aanvraag                        # standaard `levering`
+        name: aanvraag_ontvangen                # standaard dezelfde naam
+
+  - id: toeslagen.toekenning
+    actor: toeslagen
+    label: Beslis op de aanvraag
+    decides:                                    # start het besluit-pad van een cel
+      cell: toeslagen
+      besluit: zorgtoeslag_vaststelling         # het formulier is dat van dit
+                                                # besluit (zijn `params`)
+    available_when:                             # optioneel: pas als het verhaal
+      cell: toeslagen                           # zover is
+      chronicle: aanvragen
+      field: jaar
+      equals: 2024
+
+deadlines:                                      # termijnen die waarschuwen
+  - label: aanvraag ontvangen vóór 1 maart      # wat een lezer ziet; casusdata
+    at: 2024-03-01                              # de dag waarop de termijn verstrijkt
+    warn_if_missing:                            # het feit dat er dan hoort te liggen
+      cell: toeslagen
+      chronicle: aanvragen
+      name: aanvraag_ontvangen
+
+act:                                            # acties, elk op een moment
+  - description: vrije omschrijving             # optioneel
+    action: burger.aanvraag                     # de actie hierboven
+    values:                                     # het ingevulde formulier
+      bsn: '999993653'
+      jaar: 2024
+    op_moment: 2024-01-10                       # de klok gaat hier eerst naartoe
+    expect:                                     # optioneel, bij een `decides`-actie
+      heeft_recht_op_zorgtoeslag: true
+    expect_accepted:                            # optioneel: herkomst per waarde
+      toetsingsinkomen: belastingdienst
+    expect_computed:                            # en wat hier wél vastgesteld is
+      - is_verzekerde
+
 query_graph:                                    # het toegestane vraaggraf
   - doc: waarom deze vraag mag                  # optioneel
     from: toeslagen                             # de cel die mag vragen
@@ -1056,6 +1139,9 @@ query_via_transport:                            # vragen over een celgrens
     op_moment: 2024-01-01
     expect:                                     # zelfde verwachtingen als bij
       partnerschap_type: HUWELIJK               # een gewone vraag
+
+expect_warnings:                                # de termijnen die deze run miste
+  - aanvraag ontvangen vóór 1 maart             # leeg (of afwezig) = geen enkele
 ```
 
 `query_via_transport` is een **sonde, geen onderdeel van de opstelling**. In de
@@ -1076,17 +1162,21 @@ om de invariant heen openzetten — maar het betekent dat een nieuwe sonde niet
 alleen een identiteit vraagt. Zie
 [De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder).
 
-De stappen lopen in deze volgorde: eerst de besluiten, dan de vragen van een
-consument, dan die over een celgrens. Dat past bij wat ze zijn — een besluit is
-een gebeurtenis op de tijdlijn, een vraag kijkt erop terug — en het maakt niets
-onmogelijk: een vraag over een moment *vóór* een besluit levert nog steeds het
-beeld van toen, want de reductie filtert zelf op `op_moment`. De klok gaat vóór
-elke stap vooruit tot haar moment, zodat een levering die ertussen valt eerst
-landt.
+De stappen lopen in deze volgorde: eerst de acties, dan de besluiten, dan de
+vragen van een consument, dan die over een celgrens. Dat past bij wat ze zijn — een
+actie en een besluit zijn gebeurtenissen op de tijdlijn, een vraag kijkt erop
+terug — en het maakt niets onmogelijk: een vraag over een moment *vóór* een besluit
+levert nog steeds het beeld van toen, want de reductie filtert zelf op
+`op_moment`. De klok gaat vóór elke stap vooruit tot haar moment, zodat een
+levering of een vervallen termijn die ertussen valt eerst landt.
 
-Een `decide` mag zonder `expect`, anders dan een vraag: hij legt iets vast, en
-bewijst daarmee ook zonder verwachting iets — namelijk dat de vragen erna iets te
-vinden hebben.
+Een wereldbestand gebruikt in de praktijk `act` óf `decide`. Mengen kan, en dan
+gaan de acties voor; wie een moment kiest dat vóór de klok ligt, krijgt een fout
+("de klok loopt niet terug") en geen stilte.
+
+Een `act` en een `decide` mogen zonder `expect`, anders dan een vraag: ze leggen
+iets vast, en bewijzen daarmee ook zonder verwachting iets — namelijk dat de
+vragen erna iets te vinden hebben.
 
 `query_graph` mag weg, en dan zegt het bestand iets: **er gaat niets over een
 celgrens.** Zie [De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder) voor
@@ -1151,6 +1241,163 @@ Eenzelfde feit kan dus twee kanten op geschreven worden — als `events` in de
 celconfiguratie of als `fixture` met een `at` — en dat is geen dubbelop. Het
 eerste is wat de cel al bijhield toen de wereld begon, het tweede is wat er
 tijdens de run gebeurt.
+
+### Acties: wat een actor kan doen
+
+Een actie is de aansturing van de wereld, en ze is **data**. `World::act(id,
+waarden)` voert er één uit, op de stand van de klok — een actie draagt geen eigen
+moment, want dat is wat haar van een `fixture` onderscheidt: een startstand staat
+op een datum, een actor doet iets op het moment dat de wereld staat.
+
+Twee vormen, en precies één per actie:
+
+- **`records`** legt een executogram vast in een eigen kroniek van de actor. Het
+  formulier (`fields`) zegt wat de actor invult en van welk type; de waarden
+  worden de velden van het gram. Staat er `delivers_to`, dan landt hetzelfde feit
+  óók bij de ontvanger — als **tweede gram in zijn eigen kroniek**, op zijn eigen
+  naam, met zijn eigen kanaal. Dat is de eerlijke vorm van een aanvraag: de
+  aanvrager weet wat ze indiende, de ontvanger weet wat hem geleverd is, en geen
+  van beide leest de kroniek van de ander. Aan jezelf leveren wordt geweigerd —
+  dat zou hetzelfde gram twee keer in dezelfde kroniek zetten.
+- **`decides`** start het besluit-pad van een cel. Het formulier is dan **dat van
+  het besluit**: de `params` die de besluit-definitie al documenteert. Een tweede
+  lijst in de actie zou daarvan gaan afwijken.
+
+`available_when` is één simpele voorwaarde: *er ligt in kroniek X van cel Y een
+feit waarin veld Z de waarde W heeft.* Daarmee kan een actie wachten tot het
+verhaal zover is — beslissen pas als er een aanvraag ligt — zonder dat die
+volgorde in Rust komt te staan. Het is met opzet geen tweede reductietaal: er komt
+geen waarde naar buiten, alleen ja of nee. Kan een actie nu niet, dan is dat een
+leesbare weigering die zegt wát er nog niet ligt, en het beeld van de wereld toont
+haar met diezelfde reden erbij.
+
+Een actie ontsnapt niet aan de invarianten. Lokt ze een besluit uit dat een waarde
+van een andere cel accepteert, dan gaat dat contact over een celgrens en hoort de
+tak in `query_graph` te staan — precies zoals bij een `decide`. De gate leest álle
+besluiten van een run, of ze door een actie zijn uitgelokt of rechtstreeks genomen:
+zouden die twee uit elkaar vallen, dan zou een actie een weg om I3 heen openen.
+Zie [De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder).
+
+Alles wat een actie belooft, wordt bij het optuigen getoetst: bestaat de actor,
+bestaat de cel, houdt ze de stroom, kan die stroom haar sleutelveld uit het
+formulier krijgen, bestaat het besluit, en gaat de voorwaarde over een veld dat
+bestaat. Een actie die pas bij de eerste klik omvalt, is een typfout die op het
+verkeerde moment boven water komt. De stroom met decretogrammen
+(`beschikkingen`) is geen doel voor een actie: daar ontstaat een gram door te
+besluiten.
+
+### Termijnen: waarschuwen zonder te blokkeren
+
+Een `deadline` zegt wanneer een feit er hoort te liggen. Passeert de klok die dag
+en ligt het er niet, dan komt er een **waarschuwing** naast de wereld — en verder
+niets. De aanvraag kan alsnog binnenkomen, en ze landt gewoon.
+
+Dat is een standpunt en geen gemak. De wet zegt wat de termijn was, niet dat er
+daarna niets meer mag; wat er met een te late aanvraag gebeurt, is een besluit van
+het bestuursorgaan en geen eigenschap van de simulator. Een termijn die de actie
+tegenhoudt, zou de opstelling laten beweren dat een te late aanvraag niet bestaat.
+
+De waarschuwing valt op het moment dat de termijn passeert, en niet aan het eind
+van een run. Dat moet ook: een feit dat er een dag later wél ligt, lag er op de
+termijn niet, en een berekening achteraf zou nooit waarschuwen. `at` is daarom een
+vaste datum en geen sjabloon over `settings` — de termijnen staan bij het optuigen
+in de wachtrij, en een instelling die later wijzigt zou een termijn moeten
+verplaatsen die misschien al gepasseerd is.
+
+Een scenario rekent erop af met `expect_warnings`. Die lijst wordt **altijd**
+vergeleken, ook als hij niet in het bestand staat: dan is de verwachting "geen
+enkele". Een waarschuwing die niemand verwachtte, hoort een run te laten falen in
+plaats van stil in het verslag te belanden.
+
+### De wereld besturen
+
+Vijf ingangen, en samen zijn ze wat een web-laag nodig heeft:
+
+| aanroep | wat |
+|---|---|
+| `World::from_definition(&definition, corpus)` | tuig een wereld op uit een wereldbestand |
+| `World::act(id, waarden)` | voer een actie uit op de stand van de klok |
+| `World::advance(tot)` | zet de klok vooruit en laat de triggers onderweg afgaan |
+| `World::update_settings(wijzigingen)` | wijzig de instellingen |
+| `World::reset()` | terug naar de startstand |
+| `World::snapshot()` | het beeld van alles wat er staat |
+
+`act` en `advance` leveren `Events`: welke grammen erbij kwamen, welke besluiten
+genomen zijn en welke termijnen verstreken. Dat is geen tweede waarheid naast de
+kronieken — alles erin ligt óók in de cel waar het hoort — maar het verslag van
+één stap.
+
+`reset` is **opnieuw beginnen**, niet terugdraaien. Dat verschil is de hele reden
+dat het kan: een kroniek groeit en wijzigt nooit, dus "terug" bestaat niet; wat wél
+bestaat is een verse wereld uit hetzelfde bestand. Ook de instellingen gaan terug
+naar wat het bestand zegt — wie ze wijzigde, wijzigde de wereld en niet het
+bestand.
+
+### Instellingen komen vast te staan
+
+`update_settings` weigert een instelling te wijzigen die **al door een besluit
+gebruikt is**. Een besluit legt vast waarop besloten is; een ritme dat er achteraf
+onder vandaan geschoven wordt, laat het gram iets anders zeggen dan er gebeurd is,
+en dan is een decretogram niet meer terug te lezen. Wie het toch wil wijzigen,
+begint een nieuwe wereld.
+
+Wat "gebruikt" betekent, komt uit de besluit-definitie en niet uit het gram: het
+gram draagt het uitgerekende schema, en daaruit is niet meer te zien of het ritme
+uit een instelling kwam of letterlijk in de definitie stond. Welke instellingen
+vaststaan, staat in het beeld van de wereld (`locked_settings`) — zodat een lezer
+kan zien welke knop nog om kan zonder het te hoeven proberen.
+
+Verder is `update_settings` alles-of-niets, en het toetst de nieuwe stand met
+dezelfde controle als bij het optuigen: een instelling die geen ritme is, valt hier
+en niet bij het eerstvolgende besluit dat erop leunt.
+
+### Het beeld van de wereld
+
+`World::snapshot()` levert één doorsnede van alles wat er staat, en dat is het
+**contract naar een frontend** (`serde`-`Serialize`; `tests/fixtures/snapshot.json`
+is het vastgepinde voorbeeld):
+
+| sleutel | wat |
+|---|---|
+| `clock` | waar de logische klok staat |
+| `settings` + `locked_settings` | wat geldt, en wat vast staat en waardoor |
+| `cells` | per cel haar `laws`, wat ze publiceert, wat ze kan besluiten, en haar kronieken |
+| `cells[].chronicles[].grams` | elk gram met zijn soort (`lexogram`/`decretogram`/`executogram`), moment, kanaal, grondslag en velden |
+| `…grams[].fields[].origin` | de herkomst per waarde |
+| `actions` | elke actie met haar formulier, en of ze nu kan |
+| `crossings` | wat er over een celgrens ging |
+| `warnings` | de termijnen die verstreken zonder dat het feit er lag |
+
+Drie dingen om bij stil te staan:
+
+**Geen casusnamen.** Er staat geen naam in het contract die bij één casus hoort.
+Elk label komt uit het wereldbestand, dus een andere casus is een ander bestand en
+geen andere frontend.
+
+**Herkomst per waarde.** Bij een executogram is de herkomst de vastlegging zelf:
+langs welk kanaal, op welke grondslag. Bij een decretogram valt ze uiteen, en dat
+is het hele punt van invariant I5 — een input die van een andere cel
+**geaccepteerd** is, draagt bron, lexostatus, moment en ondertekening; een uitkomst
+draagt de regeling die haar berekende; een vast veld van het gram draagt dat het
+dat is. Een geaccepteerde waarde hoort niet op een berekende te lijken. Een gram
+dat een cel zelf vastlegde over haar eigen vaststelling — een bron-cel zonder
+engine — draagt geen receipt, en dan is de herkomst van elke waarde erin de
+vastlegging, want er heeft geen uitvoering gedraaid.
+
+**Het receipt gaat niet mee.** Een decretogram draagt het volledige RFC-013
+Execution Receipt, en dat draagt wandkloktijd. Een beeld dat per run verschilt is
+geen contract, dus het receipt blijft in de kroniek waar het hoort; wat een lezer
+eraan had, is de herkomst hierboven. Het `lexogram` in de lijst met gram-soorten
+komt in geen enkele kroniek voor: de wet is generiek en van niemand in bijzonder,
+en welk recht een cel laadt staat in `cells[].laws`. De variant staat er zodat een
+lezer één vocabulaire voor alle drie de grammen heeft.
+
+Het beeld is een **inspectiebeeld**, net zoals het observatielog een meetinstrument
+is. De wereld bezit de cellen en zij maakt het; een cel kan het niet opvragen en
+kan er dus niet de kroniek van een ander mee lezen. `crossings` is het materiaal
+van dat log, en een lezer hoort het als zodanig te labelen: wie deze lijst houdt,
+kent de unie van wat over de grenzen ging — precies het totaalbeeld waarvan geen
+enkele cel er een heeft.
 
 ### Kroniekstromen en tijd
 
@@ -1227,10 +1474,16 @@ een eigen verplichting, en dat is nog nergens uitgewerkt. Een verplichting kan o
 niet gewijzigd of ingetrokken worden: het schema staat in het gram, en een gram
 verandert niet.
 
-**Een besluit wordt nog niet door een actie uitgelokt.** Het scenario zegt in
-`decide` wie wanneer waarover besluit; er is nog geen `World::act` waarmee een
-actor (een aanvraag indienen, een opgave doen) een cel aan het werk zet. Dat is
-de reden dat `decide` een stap in het bestand is en geen gevolg van iets anders.
+**Een voorwaarde op een actie is één gelijkheid.** `available_when` kijkt naar één
+veld in één kroniek van één cel. Er is geen "en", geen "of", geen "ligt er iets"
+zonder waarde, en geen voorwaarde over een gram-naam. Wat er nu kan, is genoeg voor
+"het verhaal is zover"; een voorwaarde die meer nodig heeft, is een aanwijzing dat
+het wereldbestand een stap mist.
+
+**Een gemiste termijn heeft geen gevolg in de wereld.** Ze komt in de lijst met
+waarschuwingen en verder niets: geen gram, geen verval van een recht, geen
+herinnering die op een termijn afgaat. Wat een bestuursorgaan met een te late
+aanvraag doet, is een besluit en dus een besluit-definitie.
 
 **Onbetrouwbaar gedrag tussen cellen bestaat niet.** Een bron-cel is er altijd, ze
 antwoordt meteen, en haar antwoord is nooit verouderd of in tegenspraak met dat van

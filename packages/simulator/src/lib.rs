@@ -45,6 +45,21 @@
 //! is daarna een **reductie** over die vastleggingen (`sum: bedrag`) en geen
 //! saldo dat ernaast wordt bijgehouden.
 //!
+//! Wie de wereld aan het werk zet, is een **actor**. Een [`ActionDefinition`] in
+//! het wereldbestand zegt wat hij kan doen — een feit vastleggen en het eventueel
+//! leveren aan een ander, of een besluit-pad starten — met welk formulier, en
+//! wanneer het kan. [`World::act`] voert er één uit op de stand van de klok, en
+//! daarmee is de aansturing casusdata: een andere casus is een ander
+//! wereldbestand en geen Rust. Een [`Deadline`] waarschuwt als een feit op tijd
+//! ontbreekt, en blokkeert nooit.
+//!
+//! Naar buiten geeft [`World::snapshot`] één beeld van alles wat er staat: de
+//! klok, de instellingen, per cel haar kronieken met elk gram en de herkomst van
+//! elke waarde, de acties die nu kunnen, wat er over een celgrens ging en de
+//! waarschuwingen. Dat is het contract voor een frontend, en het kent geen casus —
+//! elk label komt uit het wereldbestand. [`World::reset`] begint opnieuw uit
+//! datzelfde bestand.
+//!
 //! Het eigenlijke product zijn de **invarianten**. Een scenario declareert het
 //! toegestane vraaggraf; [`invariant::check_invariants`] legt daar het
 //! feitelijke graf naast, berekent uit de celconfiguraties wat het recht van
@@ -78,6 +93,7 @@ pub mod invariant;
 pub mod observation;
 pub mod scenario;
 pub mod security;
+pub mod snapshot;
 pub mod transport;
 mod values;
 pub mod world;
@@ -96,9 +112,17 @@ pub use invariant::{
     InvariantFailure, QueryEdge, Traffic,
 };
 pub use scenario::{
-    check_provenance, Decision, DecisionOutcome, ExpectationFailure, Query, QueryOutcome, Scenario,
-    ScenarioRun, TransportOutcome, TransportQuery,
+    check_provenance, Act, ActOutcome, Decision, DecisionOutcome, ExpectationFailure, Query,
+    QueryOutcome, Scenario, ScenarioRun, TransportOutcome, TransportQuery,
 };
 pub use security::{Identity, SecurityContext, Signature, SignedAnswer};
+pub use snapshot::{
+    ActionEffectSnapshot, ActionSnapshot, CellSnapshot, ChronicleSnapshot, CrossingSnapshot,
+    FieldOrigin, FieldSnapshot, GramKind, GramSnapshot, LockedSetting, Snapshot,
+};
 pub use transport::{CellTransport, InProcessTransport};
-pub use world::{Clock, DecisionRecord, Fixture, Recording, World};
+pub use world::{
+    ActionDefinition, ActionEffect, Availability, Clock, Deadline, DecidesAction, DecisionRecord,
+    Delivery, Events, ExpectedFact, Fixture, RecordedFact, Recording, RecordsAction, Warning,
+    World, WorldDefinition,
+};

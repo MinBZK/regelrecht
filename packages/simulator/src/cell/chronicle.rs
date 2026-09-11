@@ -28,7 +28,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// staat er een vastlegging in de kroniek waarvan niemand meer kan zeggen
 /// waarlangs ze binnenkwam. Een kanaal erbij is één regel — het is
 /// platformvocabulaire, geen casusdata.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Intake {
     /// Iemand vroeg iets aan bij deze cel.
@@ -94,6 +94,24 @@ pub struct ChronicleStore {
     streams: Vec<ChronicleStream>,
 }
 
+/// Eén stroom zoals ze erbij ligt, geleend voor het inspectiebeeld.
+///
+/// De tegenhanger van [`ReducedStream`]: die voegt samen wat de engine als
+/// databron wil, deze houdt elk gram zoals het vastgelegd is. Dat is wat een
+/// beeld van de wereld nodig heeft — wie kijkt, hoort de grammen te zien en niet
+/// een toestand die als vastlegging nooit bestaan heeft.
+///
+/// Geleend en niet in bezit: het inspectiebeeld maakt er zijn eigen doorsnede
+/// van (zie [`crate::Snapshot`]) en kan hier niets aan veranderen.
+pub(crate) struct ChronicleView<'a> {
+    /// Naam van de stroom.
+    pub(crate) stream: &'a str,
+    /// Het sleutelveld van de stroom.
+    pub(crate) key: &'a str,
+    /// De vastleggingen, in de volgorde waarin ze vastgelegd zijn.
+    pub(crate) events: &'a [ChronicleEvent],
+}
+
 /// Eén stroom, teruggebracht tot de feiten die op een moment bekend waren.
 pub(crate) struct ReducedStream {
     /// Naam van de stroom.
@@ -152,6 +170,45 @@ impl ChronicleStore {
             .iter()
             .map(|stream| (stream.stream.clone(), stream.key.clone()))
             .collect()
+    }
+
+    /// De namen van de stromen die deze cel houdt, voor een foutmelding.
+    pub(crate) fn stream_names(&self) -> Vec<&str> {
+        self.streams
+            .iter()
+            .map(|stream| stream.stream.as_str())
+            .collect()
+    }
+
+    /// Elke stroom zoals ze erbij ligt, geleend.
+    ///
+    /// Voor het inspectiebeeld van de wereld, en voor niets anders: een cel geeft
+    /// hiermee geen weg naar een andere cel prijs (zie [`ChronicleView`]).
+    pub(crate) fn view(&self) -> Vec<ChronicleView<'_>> {
+        self.streams
+            .iter()
+            .map(|stream| ChronicleView {
+                stream: &stream.stream,
+                key: &stream.key,
+                events: &stream.events,
+            })
+            .collect()
+    }
+
+    /// Ligt er in deze stroom op of vóór `op_moment` een gram met deze naam?
+    ///
+    /// Ja of nee, nooit een waarde: dit is wat een termijn moet weten om te
+    /// kunnen zeggen dat een feit ontbrak (zie [`crate::world::Deadline`]).
+    pub(crate) fn contains_named(&self, stream: &str, name: &str, op_moment: NaiveDate) -> bool {
+        self.streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)
+            .is_some_and(|found| {
+                found
+                    .events
+                    .iter()
+                    .any(|event| event.op_moment <= op_moment && event.name == name)
+            })
     }
 
     /// Het sleutelveld van één stroom; `None` als de cel haar niet houdt.

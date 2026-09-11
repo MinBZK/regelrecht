@@ -1,0 +1,1085 @@
+{
+  "clock": "2025-02-01",
+  "settings": {
+    "betalingsritme": "kwartaal"
+  },
+  "locked_settings": {
+    "betalingsritme": {
+      "cell": "toeslagen",
+      "besluit": "zorgtoeslag_toekenning"
+    }
+  },
+  "cells": [
+    {
+      "id": "belastingdienst",
+      "laws": [],
+      "lexostatussen": [
+        "betaald_tot_nu_toe",
+        "toetsingsinkomen"
+      ],
+      "besluiten": [],
+      "chronicles": [
+        {
+          "stream": "aanslagen",
+          "key": "bsn",
+          "grams": [
+            {
+              "kind": "decretogram",
+              "name": "aanslag_vastgesteld",
+              "intake": "eigen_besluit",
+              "recording_actor": "belastingdienst",
+              "grondslag": "Wet inkomstenbelasting 2001, hoofdstuk 2",
+              "op_moment": "2024-03-01",
+              "fields": {
+                "bsn": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "eigen_besluit",
+                    "grondslag": "Wet inkomstenbelasting 2001, hoofdstuk 2"
+                  }
+                },
+                "competent_authority": {
+                  "value": "Belastingdienst",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "eigen_besluit",
+                    "grondslag": "Wet inkomstenbelasting 2001, hoofdstuk 2"
+                  }
+                },
+                "toetsingsinkomen": {
+                  "value": 81000,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "eigen_besluit",
+                    "grondslag": "Wet inkomstenbelasting 2001, hoofdstuk 2"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "decretogram",
+              "name": "aanslag_herzien",
+              "intake": "eigen_besluit",
+              "recording_actor": "belastingdienst",
+              "grondslag": "Wet inkomstenbelasting 2001, hoofdstuk 2",
+              "op_moment": "2024-12-01",
+              "fields": {
+                "bsn": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "eigen_besluit",
+                    "grondslag": "Wet inkomstenbelasting 2001, hoofdstuk 2"
+                  }
+                },
+                "competent_authority": {
+                  "value": "Belastingdienst",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "eigen_besluit",
+                    "grondslag": "Wet inkomstenbelasting 2001, hoofdstuk 2"
+                  }
+                },
+                "toetsingsinkomen": {
+                  "value": 85000,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "eigen_besluit",
+                    "grondslag": "Wet inkomstenbelasting 2001, hoofdstuk 2"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "stream": "betalingen",
+          "key": "zaakkenmerk",
+          "grams": [
+            {
+              "kind": "executogram",
+              "name": "betaling",
+              "intake": "betaling",
+              "recording_actor": "belastingdienst",
+              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4",
+              "op_moment": "2024-04-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49294,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 1,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling",
+              "intake": "betaling",
+              "recording_actor": "belastingdienst",
+              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4",
+              "op_moment": "2024-07-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49294,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 2,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling",
+              "intake": "betaling",
+              "recording_actor": "belastingdienst",
+              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4",
+              "op_moment": "2024-10-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49294,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 3,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling",
+              "intake": "betaling",
+              "recording_actor": "belastingdienst",
+              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
+              "op_moment": "2025-01-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49296.01,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 4,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "betaling",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "burger",
+      "laws": [],
+      "lexostatussen": [
+        "ingediende_aanvraag"
+      ],
+      "besluiten": [],
+      "chronicles": [
+        {
+          "stream": "aanvragen",
+          "key": "bsn",
+          "grams": [
+            {
+              "kind": "executogram",
+              "name": "aanvraag_ingediend",
+              "intake": "aanvraag",
+              "recording_actor": "burger",
+              "grondslag": "Awir art. 15",
+              "op_moment": "2024-01-10",
+              "fields": {
+                "bsn": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "aanvraag",
+                    "grondslag": "Awir art. 15"
+                  }
+                },
+                "jaar": {
+                  "value": 2024,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "aanvraag",
+                    "grondslag": "Awir art. 15"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "toeslagen",
+      "laws": [
+        "wet_op_de_zorgtoeslag",
+        "algemene_wet_inkomensafhankelijke_regelingen",
+        "regeling_standaardpremie"
+      ],
+      "lexostatussen": [
+        "betaald_tot_nu_toe",
+        "ontvangen_aanvraag",
+        "zorgtoeslagbeschikking"
+      ],
+      "besluiten": [
+        "zorgtoeslag_toekenning",
+        "zorgtoeslag_vaststelling"
+      ],
+      "chronicles": [
+        {
+          "stream": "aanvragen",
+          "key": "bsn",
+          "grams": [
+            {
+              "kind": "executogram",
+              "name": "aanvraag_ontvangen",
+              "intake": "aanvraag",
+              "recording_actor": "toeslagen",
+              "grondslag": "levering door cel 'burger' met actie 'burger.aanvraag'",
+              "op_moment": "2024-01-10",
+              "fields": {
+                "bsn": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "aanvraag",
+                    "grondslag": "levering door cel 'burger' met actie 'burger.aanvraag'"
+                  }
+                },
+                "jaar": {
+                  "value": 2024,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "aanvraag",
+                    "grondslag": "levering door cel 'burger' met actie 'burger.aanvraag'"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "stream": "relaties",
+          "key": "bsn",
+          "grams": [
+            {
+              "kind": "executogram",
+              "name": "relatie_gewijzigd",
+              "intake": "levering",
+              "recording_actor": "toeslagen",
+              "grondslag": "melding uit de basisregistratie personen",
+              "op_moment": "2023-01-01",
+              "fields": {
+                "bsn": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "melding uit de basisregistratie personen"
+                  }
+                },
+                "partnerschap_type": {
+                  "value": "GEEN",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "melding uit de basisregistratie personen"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "stream": "inkomensleveringen",
+          "key": "bsn",
+          "grams": [
+            {
+              "kind": "executogram",
+              "name": "inkomenslevering",
+              "intake": "levering",
+              "recording_actor": "toeslagen",
+              "grondslag": "jaarlijkse inkomenslevering",
+              "op_moment": "2023-11-15",
+              "fields": {
+                "bsn": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "jaarlijkse inkomenslevering"
+                  }
+                },
+                "is_verzekerde": {
+                  "value": true,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "jaarlijkse inkomenslevering"
+                  }
+                },
+                "vermogen": {
+                  "value": 0,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "jaarlijkse inkomenslevering"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "stream": "betalingen",
+          "key": "zaakkenmerk",
+          "grams": [
+            {
+              "kind": "executogram",
+              "name": "betaling_ontvangen_gemeld",
+              "intake": "levering",
+              "recording_actor": "toeslagen",
+              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4",
+              "op_moment": "2024-04-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49294,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 1,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 1 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling_ontvangen_gemeld",
+              "intake": "levering",
+              "recording_actor": "toeslagen",
+              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4",
+              "op_moment": "2024-07-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49294,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 2,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 2 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling_ontvangen_gemeld",
+              "intake": "levering",
+              "recording_actor": "toeslagen",
+              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4",
+              "op_moment": "2024-10-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49294,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 3,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 3 van 4"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "executogram",
+              "name": "betaling_ontvangen_gemeld",
+              "intake": "levering",
+              "recording_actor": "toeslagen",
+              "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4",
+              "op_moment": "2025-01-01",
+              "fields": {
+                "bedrag": {
+                  "value": 49296.01,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_cel": {
+                  "value": "toeslagen",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "besluit_op_moment": {
+                  "value": "2024-04-01",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "volgnummer": {
+                  "value": 4,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "levering",
+                    "grondslag": "verplichting uit besluit 'zorgtoeslag_toekenning' van cel 'toeslagen' (2024-04-01), termijn 4 van 4"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "stream": "beschikkingen",
+          "key": "zaakkenmerk",
+          "grams": [
+            {
+              "kind": "decretogram",
+              "name": "zorgtoeslag_toekenning",
+              "intake": "eigen_besluit",
+              "recording_actor": "toeslagen",
+              "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
+              "op_moment": "2024-04-01",
+              "fields": {
+                "besluit": {
+                  "value": "zorgtoeslag_toekenning",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "bsn": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "besluit_input",
+                    "recorded_origin": {
+                      "herkomst": "parameter",
+                      "parameter": "bsn"
+                    }
+                  }
+                },
+                "competent_authority": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "heeft_recht_op_zorgtoeslag": {
+                  "value": true,
+                  "origin": {
+                    "herkomst": "computed",
+                    "regulation": "wet_op_de_zorgtoeslag"
+                  }
+                },
+                "hoogte_zorgtoeslag": {
+                  "value": 197178.01,
+                  "origin": {
+                    "herkomst": "computed",
+                    "regulation": "wet_op_de_zorgtoeslag"
+                  }
+                },
+                "is_verzekerde": {
+                  "value": true,
+                  "origin": {
+                    "herkomst": "besluit_input",
+                    "recorded_origin": {
+                      "chronicle": "inkomensleveringen",
+                      "field": "is_verzekerde",
+                      "herkomst": "eigen_kroniek",
+                      "op_moment": "2023-11-15"
+                    }
+                  }
+                },
+                "legal_character": {
+                  "value": "BESCHIKKING",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "obligations": {
+                  "value": [
+                    {
+                      "bedrag": 49294,
+                      "payer": "belastingdienst",
+                      "schedule": "kwartaal",
+                      "vervaldatum": "2024-04-01",
+                      "volgnummer": 1
+                    },
+                    {
+                      "bedrag": 49294,
+                      "payer": "belastingdienst",
+                      "schedule": "kwartaal",
+                      "vervaldatum": "2024-07-01",
+                      "volgnummer": 2
+                    },
+                    {
+                      "bedrag": 49294,
+                      "payer": "belastingdienst",
+                      "schedule": "kwartaal",
+                      "vervaldatum": "2024-10-01",
+                      "volgnummer": 3
+                    },
+                    {
+                      "bedrag": 49296.01,
+                      "payer": "belastingdienst",
+                      "schedule": "kwartaal",
+                      "vervaldatum": "2025-01-01",
+                      "volgnummer": 4
+                    }
+                  ],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "regulation": {
+                  "value": "wet_op_de_zorgtoeslag",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "regulation_valid_from": {
+                  "value": "2024-01-01",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "toetsingsinkomen": {
+                  "value": 81000,
+                  "origin": {
+                    "herkomst": "besluit_input",
+                    "recorded_origin": {
+                      "asked_by": "cel:toeslagen",
+                      "cell": "belastingdienst",
+                      "field": "toetsingsinkomen",
+                      "herkomst": "geaccepteerd",
+                      "lexostatus": "toetsingsinkomen",
+                      "op_moment": "2024-04-01",
+                      "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
+                    }
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "decretogram",
+              "name": "zorgtoeslag_vaststelling",
+              "intake": "eigen_besluit",
+              "recording_actor": "toeslagen",
+              "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
+              "op_moment": "2024-12-15",
+              "fields": {
+                "besluit": {
+                  "value": "zorgtoeslag_vaststelling",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "bsn": {
+                  "value": "999993653",
+                  "origin": {
+                    "herkomst": "besluit_input",
+                    "recorded_origin": {
+                      "herkomst": "parameter",
+                      "parameter": "bsn"
+                    }
+                  }
+                },
+                "competent_authority": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "heeft_recht_op_zorgtoeslag": {
+                  "value": true,
+                  "origin": {
+                    "herkomst": "computed",
+                    "regulation": "wet_op_de_zorgtoeslag"
+                  }
+                },
+                "hoogte_zorgtoeslag": {
+                  "value": 197102.85,
+                  "origin": {
+                    "herkomst": "computed",
+                    "regulation": "wet_op_de_zorgtoeslag"
+                  }
+                },
+                "is_verzekerde": {
+                  "value": true,
+                  "origin": {
+                    "herkomst": "besluit_input",
+                    "recorded_origin": {
+                      "chronicle": "inkomensleveringen",
+                      "field": "is_verzekerde",
+                      "herkomst": "eigen_kroniek",
+                      "op_moment": "2023-11-15"
+                    }
+                  }
+                },
+                "legal_character": {
+                  "value": "BESCHIKKING",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "obligations": {
+                  "value": [],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "regulation": {
+                  "value": "wet_op_de_zorgtoeslag",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "regulation_valid_from": {
+                  "value": "2024-01-01",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
+                "toetsingsinkomen": {
+                  "value": 85000,
+                  "origin": {
+                    "herkomst": "besluit_input",
+                    "recorded_origin": {
+                      "asked_by": "cel:toeslagen",
+                      "cell": "belastingdienst",
+                      "field": "toetsingsinkomen",
+                      "herkomst": "geaccepteerd",
+                      "lexostatus": "toetsingsinkomen",
+                      "op_moment": "2024-12-15",
+                      "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen"
+                    }
+                  }
+                },
+                "zaakkenmerk": {
+                  "value": "zorgtoeslag/999993653",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "burger.aanvraag",
+      "actor": "burger",
+      "label": "Aanvraag zorgtoeslag indienen",
+      "doc": "De aanvrager legt vast wat zij indient, en levert hetzelfde feit aan de uitvoerder. Twee grammen, elk in een eigen kroniek.",
+      "effect": {
+        "soort": "records",
+        "cell": "burger",
+        "chronicle": "aanvragen",
+        "name": "aanvraag_ingediend",
+        "delivers_to": "toeslagen"
+      },
+      "form": [
+        {
+          "name": "bsn",
+          "type": "string"
+        },
+        {
+          "name": "jaar",
+          "type": "number"
+        }
+      ],
+      "available": true,
+      "unavailable_reason": null
+    },
+    {
+      "id": "toeslagen.toekenning",
+      "actor": "toeslagen",
+      "label": "Beslis op de aanvraag",
+      "doc": "Kan pas als er een aanvraag ligt.",
+      "effect": {
+        "soort": "decides",
+        "cell": "toeslagen",
+        "besluit": "zorgtoeslag_toekenning"
+      },
+      "form": [
+        {
+          "name": "bsn",
+          "type": "string"
+        }
+      ],
+      "available": true,
+      "unavailable_reason": null
+    },
+    {
+      "id": "toeslagen.vaststelling",
+      "actor": "toeslagen",
+      "label": "Stel de zorgtoeslag definitief vast",
+      "doc": "Kan pas als er een toekenning ligt.",
+      "effect": {
+        "soort": "decides",
+        "cell": "toeslagen",
+        "besluit": "zorgtoeslag_vaststelling"
+      },
+      "form": [
+        {
+          "name": "bsn",
+          "type": "string"
+        }
+      ],
+      "available": true,
+      "unavailable_reason": null
+    }
+  ],
+  "crossings": [
+    {
+      "asked_by": "cel:toeslagen",
+      "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
+      "params": {
+        "bsn": "999993653"
+      },
+      "answer": {
+        "cell": "belastingdienst",
+        "name": "toetsingsinkomen",
+        "op_moment": "2024-04-01",
+        "outcome": {
+          "established": {
+            "competent_authority": "Belastingdienst",
+            "toetsingsinkomen": 81000
+          }
+        }
+      }
+    },
+    {
+      "asked_by": "cel:toeslagen",
+      "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
+      "params": {
+        "bsn": "999993653"
+      },
+      "answer": {
+        "cell": "belastingdienst",
+        "name": "toetsingsinkomen",
+        "op_moment": "2024-12-15",
+        "outcome": {
+          "established": {
+            "competent_authority": "Belastingdienst",
+            "toetsingsinkomen": 85000
+          }
+        }
+      }
+    }
+  ],
+  "warnings": []
+}

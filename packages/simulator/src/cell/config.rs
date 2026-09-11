@@ -117,7 +117,12 @@ pub struct LexostatusDefinition {
 /// Dezelfde vorm voor beide, want het is dezelfde belofte: dit zijn de namen en
 /// typen die de aanroeper mag — en moet — meegeven, en alles daarbuiten wordt
 /// geweigerd.
-#[derive(Debug, Clone, Deserialize)]
+/// `Serialize` hoort erbij omdat een snapshot het **formulier** van een actie
+/// draagt (zie [`crate::Snapshot`]), en dat formulier is precies deze lijst: wat
+/// een actor moet invullen en van welk type. Twee vormen naast elkaar zouden
+/// betekenen dat het contract naar de frontend iets anders belooft dan de cel
+/// accepteert.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentedParameter {
     /// Parameternaam, waarnaar een reductie met `$naam` en een zaakkenmerk met
@@ -129,7 +134,7 @@ pub struct DocumentedParameter {
 }
 
 /// De typen die een lexostatus-parameter kan hebben.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ParameterType {
     /// Tekst, bijvoorbeeld een BSN.
@@ -364,9 +369,61 @@ pub(crate) struct CellSurface<'a> {
     /// geladen versies heen. Dit is wat een besluit aan de engine mag aanleveren.
     pub(crate) regulation_inputs: BTreeMap<String, BTreeSet<String>>,
     /// Per kroniekstroom de veldnamen die de cel van die stroom kent.
-    pub(crate) streams: BTreeMap<String, BTreeSet<String>>,
+    pub(crate) streams: StreamFields,
     /// Per kroniekstroom het sleutelveld waarop ze groepeert.
     pub(crate) stream_keys: BTreeMap<String, String>,
+}
+
+/// Per kroniekstroom de veldnamen die een cel van die stroom kent.
+///
+/// Eén type, want twee plekken dragen precies deze kennis: [`CellSurface`]
+/// tijdens het optuigen, en de cel zelf daarna (zie
+/// [`crate::cell::Cell::check_stream_field`]). De wereld toetst er haar acties en
+/// termijnen tegen, en dat hoort langs dezelfde weg te gaan als de definities van
+/// de cel — anders keurt de ene een veldnaam goed die de andere afwijst.
+pub(crate) type StreamFields = BTreeMap<String, BTreeSet<String>>;
+
+/// De velden die een cel van deze stroom kent, of de fout die zegt dat ze de
+/// stroom niet houdt.
+pub(crate) fn fields_of_stream<'a>(
+    streams: &'a StreamFields,
+    cell: &str,
+    subject: Subject,
+    name: &str,
+    stream: &str,
+) -> Result<&'a BTreeSet<String>> {
+    streams
+        .get(stream)
+        .ok_or_else(|| SimulatorError::UnknownStream {
+            cell: cell.to_string(),
+            subject,
+            name: name.to_string(),
+            stream: stream.to_string(),
+            known: listing(streams.keys()),
+        })
+}
+
+/// Kent deze stroom dit veld?
+pub(crate) fn check_stream_field(
+    streams: &StreamFields,
+    cell: &str,
+    subject: Subject,
+    name: &str,
+    stream: &str,
+    field: &str,
+) -> Result<()> {
+    let fields = fields_of_stream(streams, cell, subject, name, stream)?;
+    if contains_name(fields, field) {
+        return Ok(());
+    }
+    Err(SimulatorError::UnknownFilterField {
+        cell: cell.to_string(),
+        subject,
+        name: name.to_string(),
+        stream: stream.to_string(),
+        field: field.to_string(),
+        known: listing(fields),
+    })
 }
 
 impl CellSurface<'_> {
@@ -435,15 +492,7 @@ impl CellSurface<'_> {
         name: &str,
         stream: &str,
     ) -> Result<&BTreeSet<String>> {
-        self.streams
-            .get(stream)
-            .ok_or_else(|| SimulatorError::UnknownStream {
-                cell: cell.to_string(),
-                subject,
-                name: name.to_string(),
-                stream: stream.to_string(),
-                known: listing(self.streams.keys()),
-            })
+        fields_of_stream(&self.streams, cell, subject, name, stream)
     }
 
     /// Het sleutelveld van een stroom; `None` als de cel haar niet houdt.
@@ -460,18 +509,7 @@ impl CellSurface<'_> {
         stream: &str,
         field: &str,
     ) -> Result<()> {
-        let fields = self.fields_of_stream(cell, subject, name, stream)?;
-        if contains_name(fields, field) {
-            return Ok(());
-        }
-        Err(SimulatorError::UnknownFilterField {
-            cell: cell.to_string(),
-            subject,
-            name: name.to_string(),
-            stream: stream.to_string(),
-            field: field.to_string(),
-            known: listing(fields),
-        })
+        check_stream_field(&self.streams, cell, subject, name, stream, field)
     }
 }
 

@@ -4231,6 +4231,7 @@ dependencies = [
  "regelrecht-engine",
  "rust_decimal",
  "serde",
+ "serde_json",
  "serde_yaml_ng",
  "thiserror 2.0.20",
  "walkdir",
