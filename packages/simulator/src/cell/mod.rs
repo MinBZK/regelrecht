@@ -10,7 +10,7 @@
 mod chronicle;
 mod config;
 
-pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream};
+pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
 pub use config::{CellConfig, LexostatusDefinition, LexostatusInput, ParameterType, Reduction};
 
 use crate::corpus;
@@ -156,6 +156,27 @@ impl Cell {
             chronicles,
             published,
         })
+    }
+
+    /// Leg één executogram vast in een eigen kroniekstroom.
+    ///
+    /// `pub(crate)` en niet `pub`: het is de eigen kroniek van de cel, dus net
+    /// zomin als een consument eruit kan lezen mag hij erin schrijven. In deze
+    /// crate legt alleen [`crate::World`] vast, op een moment dat de klok
+    /// passeert.
+    ///
+    /// Vastleggen voegt toe. Een bestaand gram wordt nooit gewijzigd, dus een
+    /// reductie over een eerder moment blijft na dit vastleggen exact hetzelfde.
+    pub(crate) fn record(&mut self, stream: &str, event: ChronicleEvent) -> Result<()> {
+        self.chronicles.record(&self.id, stream, event)
+    }
+
+    /// Houdt deze cel een kroniekstroom met deze naam?
+    ///
+    /// Alleen zodat een wereld een vastlegging bij het optuigen kan afkeuren in
+    /// plaats van halverwege de tijdlijn. Geeft niets prijs over de inhoud.
+    pub(crate) fn check_chronicle(&self, stream: &str) -> Result<()> {
+        self.chronicles.check_stream(&self.id, stream)
     }
 
     /// Reduceer over de eigen feiten en lever de gevraagde lexostatus.
@@ -410,7 +431,10 @@ chronicles:
   - stream: relaties
     key: bsn
     events:
-      - op_moment: 2024-01-01
+      - name: relatie_gewijzigd
+        intake: levering
+        recording_actor: toeslagen
+        op_moment: 2024-01-01
         fields:
           bsn: '999993653'
           partnerschap_type: GEEN
@@ -505,10 +529,14 @@ laws:
   - algemene_wet_inkomensafhankelijke_regelingen
   - regeling_standaardpremie
 chronicles:
-  - stream: intake
+  - stream: inkomensleveringen
     key: bsn
     events:
-      - op_moment: 2024-11-15
+      - name: inkomenslevering
+        intake: levering
+        recording_actor: toeslagen
+        grondslag: jaarlijkse inkomenslevering
+        op_moment: 2024-11-15
         fields:
           bsn: '999993653'
           partnerschap_type: GEEN

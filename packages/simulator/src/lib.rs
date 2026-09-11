@@ -18,6 +18,10 @@
 //! met opzet buiten de band, want een observator die álles ziet kent wél het
 //! totaalbeeld waarvan deze opstelling zegt dat het nergens bestaat.
 //!
+//! Tijd hoort bij de [`World`] en niet bij een vraag: één logische klok per
+//! wereld, nooit de wandklok, en [`World::advance`] laat de tijd lopen zodat
+//! triggers op hun eigen moment vastleggen.
+//!
 //! ```no_run
 //! use regelrecht_simulator::{regulation_root, Scenario};
 //! use std::path::Path;
@@ -43,9 +47,10 @@ pub mod scenario;
 pub mod security;
 pub mod transport;
 mod values;
+pub mod world;
 
 pub use cell::{
-    Cell, CellConfig, ChronicleEvent, ChronicleStore, ChronicleStream, Lexostatus,
+    Cell, CellConfig, ChronicleEvent, ChronicleStore, ChronicleStream, Intake, Lexostatus,
     LexostatusDefinition, LexostatusInput, LexostatusOutcome, ParameterType, Reduction,
 };
 pub use corpus::regulation_root;
@@ -56,3 +61,4 @@ pub use scenario::{
 };
 pub use security::{Identity, SecurityContext, Signature, SignedAnswer};
 pub use transport::{CellTransport, InProcessTransport};
+pub use world::{Clock, Fixture, Recording, World};

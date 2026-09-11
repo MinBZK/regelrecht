@@ -43,3 +43,35 @@ fn alle_scenarios_voldoen_aan_hun_eigen_verwachtingen() {
         );
     }
 }
+
+/// Twee runs van hetzelfde bestand geven hetzelfde verslag.
+///
+/// De klok van een wereld is logisch en de tijdlijn staat in het bestand, dus
+/// een run mag nergens van de wandklok of van een willekeurige volgorde
+/// afhangen. Dat is niet per scenario te beweren — het is een eigenschap van de
+/// opstelling — dus staat het hier en niet in een YAML-verwachting.
+#[test]
+fn twee_runs_geven_hetzelfde_verslag() {
+    for path in scenario_files() {
+        let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let first = scenario
+            .run(&regulation_root())
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let second = scenario
+            .run(&regulation_root())
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+
+        assert_eq!(
+            first.report(),
+            second.report(),
+            "{}: twee runs horen identiek te zijn",
+            path.display()
+        );
+        assert_eq!(
+            first.clock,
+            second.clock,
+            "{}: de klok hoort na elke run op hetzelfde moment te staan",
+            path.display()
+        );
+    }
+}

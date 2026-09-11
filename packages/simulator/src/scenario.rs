@@ -1,15 +1,16 @@
-//! Het scenario: de cellen van een run, de vragen die gesteld worden en wat
-//! die vragen moeten opleveren.
+//! Het wereldbestand: de klok, de cellen, de startstand, de vragen die gesteld
+//! worden en wat die vragen moeten opleveren.
 //!
-//! Een scenario is data. De assertie hoort erbij: wat een run moet opleveren
-//! staat in het scenariobestand, niet in Rust. Zo blijft een testgeval een
-//! bestand dat iemand kan lezen en wijzigen zonder de crate te kennen.
+//! Een wereld is data. De assertie hoort erbij: wat een run moet opleveren
+//! staat in het bestand, niet in Rust. Zo blijft een testgeval een bestand dat
+//! iemand kan lezen en wijzigen zonder de crate te kennen.
 
-use crate::cell::{Cell, CellConfig, Lexostatus, LexostatusOutcome};
+use crate::cell::{CellConfig, Lexostatus, LexostatusOutcome};
 use crate::error::{Result, SimulatorError};
 use crate::security::{Identity, SecurityContext, SignedAnswer};
 use crate::transport::{CellTransport, InProcessTransport};
 use crate::values::equivalent;
+use crate::world::{Clock, Fixture, World};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
@@ -17,7 +18,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-/// Een volledig scenario.
+/// Een volledig wereldbestand.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Scenario {
@@ -26,8 +27,16 @@ pub struct Scenario {
     /// Waarom dit scenario bestaat; vrije tekst.
     #[serde(default)]
     pub description: Option<String>,
+    /// De logische klok van deze wereld. Verplicht en expliciet: een run mag
+    /// niet van de wandklok afhangen.
+    pub clock: Clock,
     /// De cellen in deze run.
     pub cells: Vec<CellConfig>,
+    /// De startstand: vastleggingen met een moment. Wat vóór het startmoment
+    /// van de klok valt staat er bij het optuigen al; de rest landt zodra de
+    /// klok die datum passeert.
+    #[serde(default)]
+    pub fixtures: Vec<Fixture>,
     /// De vragen die een consument stelt.
     #[serde(default)]
     pub queries: Vec<Query>,
@@ -151,6 +160,8 @@ pub struct TransportOutcome {
 pub struct ScenarioRun {
     /// De naam van het scenario dat gedraaid heeft.
     pub name: String,
+    /// Waar de logische klok na de run staat.
+    pub clock: NaiveDate,
     /// De uitkomsten van de vragen van een consument, in scenariovolgorde.
     pub outcomes: Vec<QueryOutcome>,
     /// De uitkomsten van de vragen over een celgrens, in scenariovolgorde.
@@ -220,6 +231,7 @@ impl ScenarioRun {
             write_failures(&mut out, &outcome.failures);
         }
 
+        let _ = writeln!(out, "  klok staat op {}", self.clock);
         out
     }
 }
@@ -312,7 +324,18 @@ impl Scenario {
         Self::from_yaml(&text)
     }
 
-    /// Tuig de cellen op en stel alle vragen.
+    /// Tuig de wereld op: de cellen, de klok op haar startmoment en de
+    /// startstand die op dat moment al gebeurd was.
+    pub fn world(&self, regulation_root: &Path) -> Result<World> {
+        World::new(&self.cells, self.clock, &self.fixtures, regulation_root)
+    }
+
+    /// Tuig de wereld op, laat de tijd lopen en stel alle vragen.
+    ///
+    /// De vragen lopen de tijdlijn af in de volgorde van het bestand: staat de
+    /// klok nog vóór het moment van een vraag, dan gaat de wereld eerst vooruit
+    /// en gaan onderweg de triggers af. Een vraag over een eerder moment kan
+    /// altijd; die levert het beeld van toen. Vooruitkijken kan niet.
     ///
     /// De runner combineert niets: hij geeft elk antwoord terug zoals de cel het
     /// gaf. Combineren over cellen heen is synthese en hoort bij een consument.
@@ -321,28 +344,20 @@ impl Scenario {
     /// cel. Vragen uit `query_via_transport` gaan langs de veiligheidscontext van
     /// de vragende cel naar het transport — de enige weg over een celgrens.
     pub fn run(&self, regulation_root: &Path) -> Result<ScenarioRun> {
-        let mut cells: BTreeMap<String, Cell> = BTreeMap::new();
-        for config in &self.cells {
-            if cells.contains_key(&config.id) {
-                return Err(SimulatorError::DuplicateCell {
-                    cell: config.id.clone(),
-                });
-            }
-            cells.insert(
-                config.id.clone(),
-                Cell::from_config(config, regulation_root)?,
-            );
-        }
+        let mut world = self.world(regulation_root)?;
 
         let mut outcomes = Vec::with_capacity(self.queries.len());
         for query in &self.queries {
-            let cell = cells
-                .get(&query.cell)
-                .ok_or_else(|| SimulatorError::UnknownCell {
-                    cell: query.cell.clone(),
-                })?;
+            if query.op_moment > world.now() {
+                world.advance(query.op_moment)?;
+            }
 
-            let answer = cell.reduce(&query.lexostatus, &query.params, query.op_moment)?;
+            let answer = world.reduce(
+                &query.cell,
+                &query.lexostatus,
+                &query.params,
+                query.op_moment,
+            )?;
             let failures = check_expectations(query, &answer.outcome);
 
             outcomes.push(QueryOutcome {
@@ -353,11 +368,11 @@ impl Scenario {
             });
         }
 
-        let transport = InProcessTransport::over(&cells);
-        let transport_outcomes = self.run_via_transport(&cells, &transport)?;
+        let transport_outcomes = self.run_via_transport(&mut world)?;
 
         Ok(ScenarioRun {
             name: self.name.clone(),
+            clock: world.now(),
             outcomes,
             transport_outcomes,
         })
@@ -365,27 +380,31 @@ impl Scenario {
 
     /// Stel de cross-cel-vragen, elk vanuit de veiligheidscontext van de vrager.
     ///
-    /// Het transport is een parameter en geen keuze van deze functie: dat is de
-    /// naad waarlangs later een HTTP-transport aanschuift zonder dat hier of in
-    /// een cel iets verandert.
-    fn run_via_transport(
-        &self,
-        cells: &BTreeMap<String, Cell>,
-        transport: &dyn CellTransport,
-    ) -> Result<Vec<TransportOutcome>> {
+    /// Net als bij een vraag van een consument gaat de klok eerst vooruit tot het
+    /// gevraagde moment, zodat een fixture die ertussen valt onderweg vastlegt.
+    /// Het transport zelf wordt per vraag opnieuw opgebouwd over `world.cells()`
+    /// — dat is de naad waarlangs later een HTTP-transport aanschuift zonder dat
+    /// hier of in een cel iets verandert — en dat kan niet één keer vooraf: de
+    /// lening zou anders `world.advance` in de weg staan.
+    fn run_via_transport(&self, world: &mut World) -> Result<Vec<TransportOutcome>> {
         let mut outcomes = Vec::with_capacity(self.query_via_transport.len());
         for via in &self.query_via_transport {
             // De vrager moet een cel in deze wereld zijn. Zonder deze controle zou
             // een typfout in `from` een identiteit opleveren die nergens bij hoort,
             // en dan zegt het vraaggraf iets over een cel die niet bestaat.
-            if !cells.contains_key(&via.from) {
+            if !world.cells().contains_key(&via.from) {
                 return Err(SimulatorError::UnknownCell {
                     cell: via.from.clone(),
                 });
             }
 
-            let context = SecurityContext::new(Identity::for_cell(&via.from), transport);
             let query = &via.query;
+            if query.op_moment > world.now() {
+                world.advance(query.op_moment)?;
+            }
+
+            let transport = InProcessTransport::over(world.cells());
+            let context = SecurityContext::new(Identity::for_cell(&via.from), &transport);
             let signed = context.query(
                 &query.cell,
                 &query.lexostatus,
@@ -444,6 +463,7 @@ mod tests {
     fn onbekend_veld_in_scenario_wordt_geweigerd() {
         let yaml = r"
 name: typfout
+clock: { start: 2025-01-01 }
 cells: []
 queeries: []
 ";
@@ -457,6 +477,7 @@ queeries: []
     fn vraag_zonder_verwachting_wordt_geweigerd() {
         let yaml = r"
 name: bewijst niets
+clock: { start: 2025-01-01 }
 cells: []
 queries:
   - cell: toeslagen
@@ -474,6 +495,7 @@ queries:
     fn vraag_die_waarden_en_niets_vastgesteld_verwacht_wordt_geweigerd() {
         let yaml = r"
 name: kan niet uitkomen
+clock: { start: 2025-01-01 }
 cells: []
 queries:
   - cell: brp
@@ -492,9 +514,23 @@ queries:
     }
 
     #[test]
+    fn een_wereld_zonder_klok_wordt_geweigerd() {
+        let yaml = r"
+name: zonder klok
+cells: []
+";
+        assert!(
+            Scenario::from_yaml(yaml).is_err(),
+            "zonder startmoment zou de wereld op de wandklok moeten terugvallen, \
+             en dan is een run morgen een andere run"
+        );
+    }
+
+    #[test]
     fn niets_vastgesteld_mag_de_enige_verwachting_zijn() {
         let yaml = r"
 name: bewijst dat er niets was
+clock: { start: 2025-01-01 }
 cells: []
 queries:
   - cell: brp

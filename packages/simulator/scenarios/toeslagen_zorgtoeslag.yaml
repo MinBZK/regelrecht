@@ -4,8 +4,14 @@ description: >-
   Eén cel, geen verkeer tussen cellen. De cel `toeslagen` laadt haar eigen drie
   regelingen en houdt de feiten die ze nodig heeft in haar eigen kronieken —
   ook de feiten die in de echte wereld van een andere organisatie komen. Die
-  zijn hier vastgelegd als binnengekomen feit, niet als vraag aan een buurcel:
-  zolang er geen transport is, is dat het eerlijke model.
+  zijn hier vastgelegd als wat de cel overkwam (een levering die binnenkwam),
+  niet als vraag aan een buurcel: zolang er geen transport is, is dat het
+  eerlijke model.
+
+clock:
+  # De wereld begint hier. Alle vastleggingen hieronder liggen vóór dit moment,
+  # dus ze staan bij het optuigen al in de kroniek.
+  start: 2024-12-01
 
 cells:
   - id: toeslagen
@@ -21,28 +27,42 @@ cells:
       - stream: relaties
         key: bsn
         events:
-          - op_moment: 2023-01-01
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
             fields:
               bsn: '999993653'
               partnerschap_type: HUWELIJK
-          - op_moment: 2024-07-01
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2024-07-01
             fields:
               bsn: '999993653'
               partnerschap_type: GEEN
 
-      # Feiten die van buiten binnenkwamen en die de cel als eigen feit heeft
-      # vastgelegd: verzekeringsstatus, inkomen en vermogen.
+      # Wat de cel overkwam: er werd inkomen aan haar geleverd, en dat legde ze
+      # vast. Niet "wij haalden op" — de kroniek is haar eigen journaal, en de
+      # verzekeringsstatus, het inkomen en het vermogen kwamen langs dit ene
+      # kanaal binnen.
       #
       # `wet_op_de_zorgtoeslag` noemt deze drie als input met een
       # `source.regulation` naar een andere regeling. Deze stroom overschaduwt
       # die verwijzingen bewust: een kroniekstroom is een databron en wint op
       # tier 1 van de resolutievolgorde (RFC-022 §4.2), dus de cross-law-vraag
-      # komt niet aan bod. Dat is hier de bedoeling — het zijn binnengekomen
-      # feiten — maar het gebeurt stil.
-      - stream: intake
+      # komt niet aan bod. Dat is hier de bedoeling — het is een levering die
+      # binnenkwam — maar het gebeurt stil.
+      - stream: inkomensleveringen
         key: bsn
         events:
-          - op_moment: 2024-11-15
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2024-11-15
             fields:
               bsn: '999993653'
               is_verzekerde: true
