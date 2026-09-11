@@ -22,20 +22,19 @@ profiles:
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
       Bekijk hier uw toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
-    # DELEGATION staat aan: Merijn heeft ouderlijk gezag over twee kinderen
-    # (Burgerlijk Wetboek) en vertegenwoordigt twee ondernemingen
-    # (Machtigingenwet), waarvan één als vennoot met alleen leesrecht. Dat
-    # verschil in rechten komt uit de wet zelf en is precies wat de demo laat
-    # zien.
-    # CHANGE_WIZARD: één ingang voor 'er is iets veranderd' (inkomen, huur,
-    # adres, huishouden), naast de tegels die elk over één regeling gaan.
-    # HARMONIZE: uit een simulatierun één vereenvoudigde regeling afleiden en
-    # laten zien hoe dicht die bij de bestaande wetten blijft.
+    # Merijn is het startprofiel (`default_profile`), dus dit is wat iemand
+    # ziet die de demo opent. Alles staat daarom uit: het verhaal begint bij
+    # een burger met toeslagen, en wie een feature wil tonen zet hem tijdens de
+    # demo aan via Features in het menu. De vlaggen stonden hier eerder aan
+    # omdat de features net gebouwd waren, wat geen reden is om ze aan een
+    # presentator op te dringen.
+    # Claudia (ondernemer) houdt haar eigen vlaggen, dus de features blijven
+    # vindbaar zonder dat je iets hoeft om te zetten.
     feature_flags:
-      DELEGATION: true
+      DELEGATION: false
       AUTO_APPROVE_CLAIMS: false
-      CHANGE_WIZARD: true
-      HARMONIZE: true
+      CHANGE_WIZARD: false
+      HARMONIZE: false
     sidebar_laws: null
     disabled_laws:
       BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]

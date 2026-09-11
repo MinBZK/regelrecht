@@ -268,8 +268,11 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 ></nldd-menu-item>
               </nldd-menu>
             </nldd-button>
-            <!-- Dezelfde keuze als menu, voor als de knop niet meer past. -->
-            <nldd-menu-group slot="overflow" text="Namens wie" @select="onDelegationSelect">
+            <!-- Dezelfde keuze als menu, voor als de knop niet meer past.
+                 `@select` per item: het overloopmenu toont een kloon en de
+                 toolbar dispatcht `select` op het originele item, dus een
+                 handler op de groep eromheen vuurt nooit. -->
+            <nldd-menu-group slot="overflow" text="Namens wie">
               <nldd-menu-item
                 v-for="d in delegations"
                 :key="`${d.subjectType}:${d.subjectId}`"
@@ -279,6 +282,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 :details="delegationLabel(d)"
                 :icon="DELEGATION_ICONS[d.subjectType] ?? 'person'"
                 :selected="(activeDelegation ? `${activeDelegation.subjectType}:${activeDelegation.subjectId}` : `SELF:${profile?.bsn}`) === `${d.subjectType}:${d.subjectId}` || undefined"
+                @select="demo.setDelegation(d)"
               ></nldd-menu-item>
             </nldd-menu-group>
           </nldd-toolbar-item>
@@ -298,7 +302,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             </nldd-button>
             <!-- Idem voor het personage: zonder deze variant verdween de
                  profielkiezer onder 1130px zonder vervanging. -->
-            <nldd-menu-group slot="overflow" text="Demoprofiel" @select="onProfileSelect">
+            <nldd-menu-group slot="overflow" text="Demoprofiel">
               <nldd-menu-item
                 v-for="[key, p] in profileOptions"
                 :key="key"
@@ -307,6 +311,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 :text="p.name"
                 :details="p.type"
                 :selected="profileKey === key || undefined"
+                @select="demo.setProfile(key)"
               ></nldd-menu-item>
             </nldd-menu-group>
           </nldd-toolbar-item>
@@ -316,70 +321,63 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                overloopknop: het demo-menu was dan onbereikbaar. Als vaste
                inhoud van `slot="overflow"` staat alles onder één knop, met de
                overgelopen tabbladen erboven. -->
-          <!-- Een streep tussen wat er overgelopen is (namens wie, profiel) en
-               de instellingen hieronder; zonder de streep lopen die twee in
-               één lijst door elkaar. -->
-          <nldd-menu-divider slot="overflow"></nldd-menu-divider>
-          <!-- De features aan en uit, midden in een demo. De POC kon dit
-               alleen via omgevingsvariabelen bij het starten; een
-               presentator moet het tijdens zijn verhaal kunnen omzetten.
-               In een uitklapper zoals Weergave, zodat het hoofdmenu kort
-               blijft; het aantal aanstaande features staat ernaast, want
-               dat is wat je wilt weten zonder open te klappen. -->
-          <nldd-menu-item slot="overflow" text="Features" icon="puzzle-piece" :details="featureSummary">
-            <nldd-menu accessible-label="Features">
-              <!-- Geen `details` op deze items: dat is een kort label rechts
-                   ("3 van 4 aan"), geen ondertitel. Een hele zin erin duwt het
-                   label op een smal scherm in een kolom van één woord breed,
-                   zodat "Wijziging doorgeven" over vier regels brak. -->
-              <nldd-menu-item
-                v-for="f in FEATURES"
-                :key="f.key"
-                type="checkbox"
-                :text="f.label"
-                :icon="f.icon"
-                :selected="features[f.key] || undefined"
-                @select="demo.toggleFeature(f.key)"
-              ></nldd-menu-item>
-              <!-- Handmatig beoordelen is dezelfde soort schakelaar als de rest
-                   en hoort dus hier, niet los in het hoofdmenu. Het is de
-                   tegenhanger van AUTO_APPROVE_CLAIMS, maar het staat in de
-                   demostaat en niet in de vlaggen, vandaar de losse regel. -->
-              <nldd-menu-divider></nldd-menu-divider>
-              <nldd-menu-item
-                type="checkbox"
-                text="Alle aanvragen handmatig beoordelen"
-                icon="checklist"
-                :selected="state.manualReview || undefined"
-                @select="toggleManualReview"
-              ></nldd-menu-item>
-              <template v-if="hasFeatureOverrides">
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item
-                  text="Terug naar het profiel"
-                  icon="refresh"
-                  @select="demo.resetFeatures()"
-                ></nldd-menu-item>
-              </template>
-            </nldd-menu>
-          </nldd-menu-item>
-          <nldd-menu-divider slot="overflow"></nldd-menu-divider>
-          <nldd-menu-item slot="overflow" text="Weergave" icon="appearance">
-            <nldd-menu @select="onColorSchemeSelect">
-              <nldd-menu-item
-                v-for="[value, label, icon] in colorSchemeOptions"
-                :key="value"
-                type="radio"
-                :value="value"
-                :text="label"
-                :icon="icon"
-                :selected="colorScheme === value || undefined"
-              ></nldd-menu-item>
-            </nldd-menu>
-          </nldd-menu-item>
-          <nldd-menu-item slot="overflow" text="Volledig scherm" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
-          <nldd-menu-divider slot="overflow"></nldd-menu-divider>
-          <nldd-menu-item slot="overflow" text="Demo resetten…" icon="refresh" @select="askReset"></nldd-menu-item>
+          <!-- Alles plat in groepen, geen uitklappers. Een submenu werkt hier
+               niet: nldd-menu verplaatst een geopend submenu naar
+               document.body, en de toolbar luistert op het hoofdmenu om het
+               `select` van een kloon terug te mappen naar het origineel.
+               Buiten dat menu bubbelt het event er nooit heen, dus Features en
+               Weergave deden als uitklapper helemaal niets, op elke breedte.
+               Groepen mét een titel geven dezelfde ordening zonder die klik. -->
+          <nldd-menu-group slot="overflow" text="Features">
+            <!-- Geen `details` op deze items: dat is een kort label rechts,
+                 geen ondertitel. Een hele zin erin duwt het label op een smal
+                 scherm in een kolom van één woord breed, zodat "Wijziging
+                 doorgeven" over vier regels brak. -->
+            <nldd-menu-item
+              v-for="f in FEATURES"
+              :key="f.key"
+              type="checkbox"
+              :text="f.label"
+              :icon="f.icon"
+              :selected="features[f.key] || undefined"
+              @select="demo.toggleFeature(f.key)"
+            ></nldd-menu-item>
+            <!-- Handmatig beoordelen staat hier zonder streep ertussen: het is
+                 dezelfde soort schakelaar als de vlaggen erboven. Het gaat over
+                 aanvragen waar 'correcties direct goedkeuren' over correcties
+                 gaat, maar dat is geen ander soort instelling. Het verschil is
+                 alleen dat het in de demostaat zit en niet in de vlaggen, en
+                 dat is niets wat een presentator hoeft te zien. -->
+            <nldd-menu-item
+              type="checkbox"
+              text="Alle aanvragen handmatig beoordelen"
+              icon="checklist"
+              :selected="state.manualReview || undefined"
+              @select="toggleManualReview"
+            ></nldd-menu-item>
+            <nldd-menu-item
+              v-if="hasFeatureOverrides"
+              text="Terug naar het profiel"
+              icon="refresh"
+              @select="demo.resetFeatures()"
+            ></nldd-menu-item>
+          </nldd-menu-group>
+          <nldd-menu-group slot="overflow" text="Weergave">
+            <nldd-menu-item
+              v-for="[value, label, icon] in colorSchemeOptions"
+              :key="value"
+              type="radio"
+              :value="value"
+              :text="label"
+              :icon="icon"
+              :selected="colorScheme === value || undefined"
+              @select="setColorScheme(value)"
+            ></nldd-menu-item>
+          </nldd-menu-group>
+          <nldd-menu-group slot="overflow" text="Demo">
+            <nldd-menu-item text="Volledig scherm" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
+            <nldd-menu-item text="Demo resetten…" icon="refresh" @select="askReset"></nldd-menu-item>
+          </nldd-menu-group>
         </nldd-toolbar>
       </nldd-container>
 
