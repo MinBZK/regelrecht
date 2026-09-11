@@ -1,0 +1,72 @@
+---
+name: een cel vraagt een lexostatus op bij een andere cel
+description: >-
+  Twee cellen en één vraag over de grens. De vraag gaat niet van cel naar cel:
+  hij gaat van de veiligheidscontext van `toeslagen` naar het transport, en het
+  transport komt bij de publieke ingang van `brp` uit. Dat is de hele
+  bewijslast van dit scenario — er is precies één weg over een celgrens, en die
+  is waarneembaar.
+
+  Wat er níet gebeurt is even belangrijk. Het antwoord van `brp` verdwijnt niet
+  in een kroniek van `toeslagen`: een kroniek bevat alleen wat de cel zelf
+  overkwam, en een geaccepteerde waarde hoort in het besluit dat haar gebruikt.
+  `toeslagen` legt hier dus niets vast, en bij een volgend besluit gaat de vraag
+  opnieuw naar de bron.
+
+cells:
+  # De bevraagde cel: een bron-cel zonder engine, precies zoals het
+  # bron-celscenario hem laat zien. Ze merkt niet dat de vraag over een
+  # celgrens kwam, en dat is het punt van het transport als naad: in-process
+  # nu, HTTP later, zonder dat hier iets verandert.
+  - id: brp
+    laws: []
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+              partner_bsn: '999993756'
+
+    lexostatus_definitions:
+      - name: partnerschap
+        doc: >-
+          De relatievorm van één persoon op één moment, zoals deze cel die
+          vastlegde. Geen berekening: de laatste vastlegging op of vóór het
+          gevraagde moment.
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+          - partner_bsn
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  # De vragende cel. Ze publiceert hier zelf niets en legt niets vast: in deze
+  # ronde is ze alleen vrager, want het besluit-pad dat een opgehaalde waarde
+  # zou accepteren bestaat nog niet. Wat ze wél heeft, is een identiteit — en
+  # dat is alles wat er nodig is om een vraag te ondertekenen.
+  - id: toeslagen
+    laws: []
+
+query_via_transport:
+  - description: >-
+      `toeslagen` heeft de relatievorm van deze persoon nodig en stelt die niet
+      zelf vast. Ze vraagt hem dus op bij de cel die hem wél vastlegde, onder de
+      naam die die cel publiceert, met de parameters die daarbij horen, op een
+      moment dat zij kiest.
+    from: toeslagen
+    cell: brp
+    lexostatus: partnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2024-01-01
+    expect:
+      partnerschap_type: HUWELIJK
+      partner_bsn: '999993756'

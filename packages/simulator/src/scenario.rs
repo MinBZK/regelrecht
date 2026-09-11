@@ -7,6 +7,8 @@
 
 use crate::cell::{Cell, CellConfig, Lexostatus, LexostatusOutcome};
 use crate::error::{Result, SimulatorError};
+use crate::security::{Identity, SecurityContext, SignedAnswer};
+use crate::transport::{CellTransport, InProcessTransport};
 use crate::values::equivalent;
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
@@ -29,6 +31,17 @@ pub struct Scenario {
     /// De vragen die een consument stelt.
     #[serde(default)]
     pub queries: Vec<Query>,
+    /// De vragen die een cel aan een andere cel stelt, over de celgrens.
+    ///
+    /// **Test-only stap, en dat is tijdelijk.** In de opstelling die we bouwen
+    /// stelt een cel zo'n vraag uitsluitend vanuit haar besluit-pad: ze heeft een
+    /// input nodig die een andere organisatie vaststelt. Dat pad bestaat nog niet
+    /// — een cel kan nog niets vastleggen en dus niets accepteren — en tot die tijd
+    /// is dit de enige manier om het verkeer te laten zien en erop te asserteren.
+    /// Zodra het besluit-pad er is, verhuist de aanroep daarheen en is deze stap
+    /// hoogstens nog een sonde.
+    #[serde(default)]
+    pub query_via_transport: Vec<TransportQuery>,
 }
 
 /// Eén vraag van een consument aan één cel.
@@ -59,6 +72,28 @@ pub struct Query {
     /// scenario moet erop kunnen asserteren. Sluit `expect` uit.
     #[serde(default)]
     pub expect_not_established: bool,
+}
+
+/// Eén vraag van een cel aan een andere cel, over de celgrens.
+///
+/// Dezelfde vraag als een [`Query`] — een gepubliceerde naam, gedocumenteerde
+/// parameters, een moment, en wat ze moet opleveren — met één veld erbij: wie
+/// vraagt. Dat veld is het hele verschil tussen een consument die een cel
+/// bevraagt en een cel die een andere cel bevraagt.
+///
+/// `deny_unknown_fields` staat hier nog een keer, en dat is geen dubbelop: een
+/// geflatten veld wordt met een losse veldenlijst gevoed, dus de strengheid van
+/// [`Query`] reikt niet tot deze vorm. Zonder deze regel zou `expct:` in een
+/// vraag over de celgrens stil worden weggegooid en de verwachting met zich
+/// meenemen — de vraag zou dan `ok` melden terwijl ze niets meer controleert.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransportQuery {
+    /// De vragende cel. Haar veiligheidscontext zet de vraag over de grens.
+    pub from: String,
+    /// De vraag zelf, in de vorm die een consument ook gebruikt.
+    #[serde(flatten)]
+    pub query: Query,
 }
 
 /// Eén verwachting die niet uitkwam.
@@ -98,19 +133,43 @@ pub struct QueryOutcome {
     pub failures: Vec<ExpectationFailure>,
 }
 
+/// Het resultaat van één vraag over een celgrens.
+#[derive(Debug, Clone)]
+pub struct TransportOutcome {
+    /// Het bewijsstuk van de veiligheidscontext: wie vroeg, ondertekend, met
+    /// welke parameters, en wat de peer antwoordde.
+    ///
+    /// Dit is wat het observatielog vastlegt, en straks wat een decretogram als
+    /// geaccepteerde waarde draagt.
+    pub signed: SignedAnswer,
+    /// De verwachtingen die niet uitkwamen; leeg is goed.
+    pub failures: Vec<ExpectationFailure>,
+}
+
 /// Het resultaat van een hele run.
 #[derive(Debug, Clone)]
 pub struct ScenarioRun {
     /// De naam van het scenario dat gedraaid heeft.
     pub name: String,
-    /// De uitkomsten, in de volgorde van het scenario.
+    /// De uitkomsten van de vragen van een consument, in scenariovolgorde.
     pub outcomes: Vec<QueryOutcome>,
+    /// De uitkomsten van de vragen over een celgrens, in scenariovolgorde.
+    pub transport_outcomes: Vec<TransportOutcome>,
 }
 
 impl ScenarioRun {
     /// Kwamen alle verwachtingen uit?
     pub fn passed(&self) -> bool {
         self.outcomes.iter().all(|o| o.failures.is_empty())
+            && self
+                .transport_outcomes
+                .iter()
+                .all(|o| o.failures.is_empty())
+    }
+
+    /// Heeft deze run iets vastgelegd? Een run zonder vragen bewijst niets.
+    pub fn proved_something(&self) -> bool {
+        !self.outcomes.is_empty() || !self.transport_outcomes.is_empty()
     }
 
     /// Leesbaar verslag van de run, geschikt voor een terminal of een testfout.
@@ -133,31 +192,65 @@ impl ScenarioRun {
             if let Some(reason) = outcome.lexostatus_value.not_established() {
                 let _ = writeln!(out, "        niets vastgesteld: {reason}");
             }
-            for failure in &outcome.failures {
-                let _ = match failure {
-                    ExpectationFailure::Value {
-                        output,
-                        expected,
-                        actual,
-                    } => {
-                        let actual = match actual {
-                            Some(value) => value.to_string(),
-                            None => "(niet in het antwoord)".to_string(),
-                        };
-                        writeln!(out, "        {output}: verwacht {expected}, kreeg {actual}")
-                    }
-                    ExpectationFailure::NotEstablished { reason } => writeln!(
-                        out,
-                        "        verwachtte waarden, maar de cel stelde niets vast: {reason}"
-                    ),
-                    ExpectationFailure::Established { values } => writeln!(
-                        out,
-                        "        verwachtte 'niets vastgesteld', maar de cel gaf {values:?}"
-                    ),
-                };
-            }
+            write_failures(&mut out, &outcome.failures);
         }
+
+        for outcome in &self.transport_outcomes {
+            let mark = if outcome.failures.is_empty() {
+                "ok"
+            } else {
+                "FOUT"
+            };
+            let answer = &outcome.signed.answer;
+            // De vrager staat erbij, en dat hij ondertekend heeft ook: een
+            // cross-cel-vraag is iets anders dan een consument die vraagt, en het
+            // verslag hoort dat verschil te laten zien.
+            let _ = writeln!(
+                out,
+                "  [{mark}] {} -> {}.{} op {} (over de celgrens, {})",
+                outcome.signed.asked_by,
+                answer.cell,
+                answer.name,
+                answer.op_moment,
+                outcome.signed.signature
+            );
+            if let Some(reason) = answer.not_established() {
+                let _ = writeln!(out, "        niets vastgesteld: {reason}");
+            }
+            write_failures(&mut out, &outcome.failures);
+        }
+
         out
+    }
+}
+
+/// Schrijf de gemiste verwachtingen van één vraag in het verslag.
+///
+/// Eén plek, want een vraag over de celgrens wordt op precies dezelfde manier
+/// afgerekend als een vraag van een consument.
+fn write_failures(out: &mut String, failures: &[ExpectationFailure]) {
+    for failure in failures {
+        let _ = match failure {
+            ExpectationFailure::Value {
+                output,
+                expected,
+                actual,
+            } => {
+                let actual = match actual {
+                    Some(value) => value.to_string(),
+                    None => "(niet in het antwoord)".to_string(),
+                };
+                writeln!(out, "        {output}: verwacht {expected}, kreeg {actual}")
+            }
+            ExpectationFailure::NotEstablished { reason } => writeln!(
+                out,
+                "        verwachtte waarden, maar de cel stelde niets vast: {reason}"
+            ),
+            ExpectationFailure::Established { values } => writeln!(
+                out,
+                "        verwachtte 'niets vastgesteld', maar de cel gaf {values:?}"
+            ),
+        };
     }
 }
 
@@ -181,7 +274,9 @@ impl Scenario {
     /// Een vraag die beide verwachtingen tegelijk stelt, kan nooit slagen; dat
     /// is een schrijffout en wordt hier ook geweigerd.
     fn validate(&self) -> Result<()> {
-        for query in &self.queries {
+        // Dezelfde eis aan beide soorten vraag: wie over de celgrens vraagt zonder
+        // te zeggen wat eruit moet komen, bewijst even weinig.
+        for query in self.all_queries() {
             if query.expect.is_empty() && !query.expect_not_established {
                 return Err(SimulatorError::QueryWithoutExpectation {
                     scenario: self.name.clone(),
@@ -200,6 +295,13 @@ impl Scenario {
         Ok(())
     }
 
+    /// Elke vraag in het scenario, van welke soort ook.
+    fn all_queries(&self) -> impl Iterator<Item = &Query> {
+        self.queries
+            .iter()
+            .chain(self.query_via_transport.iter().map(|via| &via.query))
+    }
+
     /// Lees een scenario van schijf.
     pub fn load(path: &Path) -> Result<Self> {
         let text =
@@ -214,6 +316,10 @@ impl Scenario {
     ///
     /// De runner combineert niets: hij geeft elk antwoord terug zoals de cel het
     /// gaf. Combineren over cellen heen is synthese en hoort bij een consument.
+    ///
+    /// Vragen van een consument gaan rechtstreeks naar de publieke ingang van de
+    /// cel. Vragen uit `query_via_transport` gaan langs de veiligheidscontext van
+    /// de vragende cel naar het transport — de enige weg over een celgrens.
     pub fn run(&self, regulation_root: &Path) -> Result<ScenarioRun> {
         let mut cells: BTreeMap<String, Cell> = BTreeMap::new();
         for config in &self.cells {
@@ -247,10 +353,50 @@ impl Scenario {
             });
         }
 
+        let transport = InProcessTransport::over(&cells);
+        let transport_outcomes = self.run_via_transport(&cells, &transport)?;
+
         Ok(ScenarioRun {
             name: self.name.clone(),
             outcomes,
+            transport_outcomes,
         })
+    }
+
+    /// Stel de cross-cel-vragen, elk vanuit de veiligheidscontext van de vrager.
+    ///
+    /// Het transport is een parameter en geen keuze van deze functie: dat is de
+    /// naad waarlangs later een HTTP-transport aanschuift zonder dat hier of in
+    /// een cel iets verandert.
+    fn run_via_transport(
+        &self,
+        cells: &BTreeMap<String, Cell>,
+        transport: &dyn CellTransport,
+    ) -> Result<Vec<TransportOutcome>> {
+        let mut outcomes = Vec::with_capacity(self.query_via_transport.len());
+        for via in &self.query_via_transport {
+            // De vrager moet een cel in deze wereld zijn. Zonder deze controle zou
+            // een typfout in `from` een identiteit opleveren die nergens bij hoort,
+            // en dan zegt het vraaggraf iets over een cel die niet bestaat.
+            if !cells.contains_key(&via.from) {
+                return Err(SimulatorError::UnknownCell {
+                    cell: via.from.clone(),
+                });
+            }
+
+            let context = SecurityContext::new(Identity::for_cell(&via.from), transport);
+            let query = &via.query;
+            let signed = context.query(
+                &query.cell,
+                &query.lexostatus,
+                &query.params,
+                query.op_moment,
+            )?;
+            let failures = check_expectations(query, &signed.answer.outcome);
+
+            outcomes.push(TransportOutcome { signed, failures });
+        }
+        Ok(outcomes)
     }
 }
 
@@ -359,6 +505,62 @@ queries:
         assert!(
             Scenario::from_yaml(yaml).is_ok(),
             "`expect_not_established` is een volwaardige verwachting"
+        );
+    }
+
+    #[test]
+    fn vraag_over_de_celgrens_zonder_verwachting_wordt_geweigerd() {
+        let yaml = r"
+name: bewijst niets over de grens
+cells: []
+query_via_transport:
+  - from: toeslagen
+    cell: brp
+    lexostatus: partnerschap
+    op_moment: 2025-01-01
+";
+        let err = Scenario::from_yaml(yaml)
+            .expect_err("ook een vraag over de celgrens moet iets vastleggen");
+        assert!(
+            matches!(err, SimulatorError::QueryWithoutExpectation { .. }),
+            "verwachtte QueryWithoutExpectation, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn onbekend_veld_in_een_vraag_over_de_celgrens_wordt_geweigerd() {
+        // `from` staat naast de gewone velden van een vraag, en die combinatie is
+        // precies waar strengheid stil kan wegvallen: bij een geflatten veld
+        // komt de weigering niet van `Query` maar van `TransportQuery` zelf.
+        //
+        // Daarom staat er een geldige `expect` in dit scenario. Zonder die regel
+        // slaagt deze test ook als de typfout ongemerkt doorglipt — dan struikelt
+        // het scenario op "vraag zonder verwachting" en lijkt de poort te werken
+        // terwijl hij niets meer doet. Met de `expect` erbij is het onbekende
+        // veld de enige reden waarom dit nog kan falen, en dat rekenen we ook af
+        // op de melding.
+        let yaml = r"
+name: typfout over de grens
+cells: []
+query_via_transport:
+  - from: toeslagen
+    cell: brp
+    lexostatus: partnerschap
+    op_moment: 2025-01-01
+    expect:
+      partnerschap_type: HUWELIJK
+    expct:
+      partnerschap_type: HUWELIJK
+";
+        let err = Scenario::from_yaml(yaml)
+            .expect_err("een onbekend veld hoort te falen, anders verdwijnt een typfout stil");
+        assert!(
+            matches!(&err, SimulatorError::ScenarioParse(_)),
+            "verwachtte een leesfout op het onbekende veld, kreeg {err}"
+        );
+        assert!(
+            err.to_string().contains("expct"),
+            "de melding hoort het onbekende veld te noemen, kreeg {err}"
         );
     }
 
