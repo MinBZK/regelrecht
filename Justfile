@@ -794,6 +794,20 @@ docs-preview:
 docs-a11y:
     cd docs && npm run a11y
 
+# Start a note: creates docs/src/content/notes/YYYY-MM-DD-slug.md with the
+# frontmatter filled in. Usage: just note "Titel van de notitie"
+note title:
+    node docs/scripts/new-note.mjs "{{ title }}"
+
+# Preview the notes locally at http://localhost:4321/notes (same dev server as `just docs`)
+notes:
+    cd docs && npm run dev -- --open /notes
+
+# Check notes: filename/date agreement, URL stability, and that every
+# `regulations` id exists in corpus/regulation. Runs in CI as part of `docs-a11y`.
+notes-check:
+    node docs/scripts/check-notes.mjs
+
 # --- Architecture model ---
 
 # Generate the code-derived architecture model

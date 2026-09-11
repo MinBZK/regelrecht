@@ -92,9 +92,20 @@ if (isStatusPage) {
   const inResearch = isResearchRoot || pathname.startsWith('/research/');
   const isRoadmapRoot = pathname === '/roadmap/' || pathname === '/roadmap';
   const inRoadmap = isRoadmapRoot || pathname.startsWith('/roadmap/');
+  const isNotesRoot = pathname === '/notes' || pathname === '/notes/';
+  const inNotes = isNotesRoot || pathname.startsWith('/notes/');
   const cat = categoryForPath(pathname);
   const onCategoryPage = cat !== null && pathname === cat.prefix;
-  if (isRoadmapRoot) {
+  if (isNotesRoot) {
+    // The notes section root goes up to the site home. The posts are Dutch, so the
+    // page's own language sends it to the Dutch landing.
+    backHref = landingHome;
+    backText = t.nav.home;
+  } else if (inNotes) {
+    // A post goes up to the notes section overview.
+    backHref = '/notes';
+    backText = t.nav.notes;
+  } else if (isRoadmapRoot) {
     // The roadmap root goes up to the site home, in the page's own language.
     backHref = landingHome;
     backText = t.nav.home;
@@ -196,6 +207,20 @@ if (
     current: isResearchRoot,
   });
   if (!isResearchRoot) {
+    breadcrumbs.push({ text: pageTitle, current: true });
+  }
+} else if (
+  !isLanding &&
+  !isNotFound &&
+  (pathname === '/notes' || pathname.startsWith('/notes/'))
+) {
+  // The notes section sits next to the documentation, like /research and /roadmap:
+  // Home -> Notes -> note. Without this branch it would fall through to the
+  // docs trail below and claim to live under Documentation.
+  const isNotesRoot = pathname === '/notes' || pathname === '/notes/';
+  breadcrumbs.push({ text: homeText, href: homeHref });
+  breadcrumbs.push({ text: t.nav.notes, href: '/notes', current: isNotesRoot });
+  if (!isNotesRoot) {
     breadcrumbs.push({ text: pageTitle, current: true });
   }
 } else if (
