@@ -310,6 +310,15 @@ pub struct DecidesAction {
 /// Met opzet klein. Dit is geen tweede reductietaal: er komt geen waarde naar
 /// buiten, alleen ja of nee, en de vraag gaat over de wereld en niet over een
 /// cel die een andere cel bevraagt.
+///
+/// [`Self::cell`] hoeft niet de actor te zijn — de wereld kent alle cellen en
+/// beantwoordt de vraag zelf, zoals ze ook het beeld van alle kronieken maakt.
+/// Twee dingen volgen daaruit, en het is beter ze hier te zeggen dan ze later te
+/// moeten uitleggen: dit is géén contact over een celgrens (het staat dus niet in
+/// het vraaggraf en niet in het observatielog), en het is ook geen weg waarlangs
+/// een cel iets te weten komt. Moet de actor zélf weten dat er iets gebeurd is,
+/// dan hoort dat als levering in zijn eigen kroniek te liggen — `delivers_to` —
+/// en dan wijst de voorwaarde naar die kroniek.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Availability {
@@ -1098,6 +1107,18 @@ impl World {
         // horen de contacten met de fout mee naar buiten.
         let decretogram = outcome?;
 
+        // Welke instellingen dit besluit gebruikte, staan daarmee vast. Hier, en
+        // niet verderop: het gram ligt nu in de kroniek, en van dat moment af zou
+        // een gewijzigd ritme het iets anders laten zeggen dan er gebeurd is. Gaat
+        // er hieronder alsnog iets om — een termijn die niet nagekomen kan worden —
+        // dan komt de fout naar buiten met het gram al vastgelegd, en dan hoort de
+        // instelling ook vast te staan. Een besluit dat omviel vóór het gram komt
+        // hier niet, dus een geslaagd besluit is de enige die iets vastzet.
+        for setting in self.settings_of(cell, besluit) {
+            self.used_settings
+                .insert(setting, (cell.to_string(), besluit.to_string()));
+        }
+
         // De verplichtingen uit dit besluit worden triggers. Een termijn die nu
         // al vervalt — en de eerste termijn valt op het moment van het besluit,
         // tenzij `from` anders zegt — gaat meteen af: de klok staat er al, dus
@@ -1112,14 +1133,6 @@ impl World {
             self.plan(due.vervaldatum, Trigger::Obligation(due.clone()));
         }
         let events = self.fire_due(self.clock)?;
-
-        // Welke instellingen dit besluit gebruikte, staan daarmee vast. Dat moet
-        // hier, bij het besluit dat gelukt is: een besluit dat omviel heeft niets
-        // vastgelegd en hoeft dus niets vast te zetten.
-        for setting in self.settings_of(cell, besluit) {
-            self.used_settings
-                .insert(setting, (cell.to_string(), besluit.to_string()));
-        }
 
         let crossings = bridge.crossings();
         self.crossings.extend(crossings.iter().cloned());
@@ -2630,9 +2643,13 @@ cells:
     /// cel te zijn. Andersom komt de onbekende cel in een melding over de klok te
     /// staan — "cel 'belastingdienst' … ligt ná de klok" — en dan zoekt de lezer
     /// een klokprobleem bij een cel die er niet is.
+    ///
+    /// Langs beide wegen naar een cel, want ze maken dezelfde keuze: een reductie
+    /// en een besluit toetsen eerst het bestaan van de cel en pas daarna het
+    /// moment.
     #[test]
     fn een_onbekende_cel_gaat_voor_het_moment() {
-        let world = world("2024-01-01", &[]);
+        let mut world = world("2024-01-01", &[]);
         let err = world
             .reduce(
                 "belastingdienst",
@@ -2643,7 +2660,20 @@ cells:
             .expect_err("een cel die de wereld niet kent hoort te falen");
         assert!(
             matches!(err, SimulatorError::UnknownCell { .. }),
-            "verwachtte UnknownCell, kreeg {err}"
+            "verwachtte UnknownCell bij een reductie, kreeg {err}"
+        );
+
+        let err = world
+            .decide(
+                "belastingdienst",
+                "zorgtoeslag_vaststelling",
+                &bsn(),
+                date("2024-06-01"),
+            )
+            .expect_err("een besluit bij een cel die er niet is hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownCell { .. }),
+            "verwachtte UnknownCell bij een besluit, kreeg {err}"
         );
     }
 
@@ -3053,6 +3083,48 @@ records:
             betaald(&world, "belastingdienst", "2024-01-01"),
             None,
             "de betalingen van de vorige run zijn er niet meer"
+        );
+    }
+
+    /// Terugzetten levert hetzelfde beeld als een verse wereld uit hetzelfde
+    /// bestand — byte voor byte, in de vorm waarin dat beeld naar buiten gaat.
+    ///
+    /// `reset` belooft opnieuw beginnen, en dat is alleen waar als er niets van de
+    /// vorige run achterblijft: geen gram, geen betaling, geen contact over een
+    /// celgrens, geen waarschuwing en geen instelling die vast stond. Eén
+    /// vergelijking over het hele contract en niet een assertie per veld, want dat
+    /// laatste mist precies het veld dat iemand later toevoegt.
+    #[test]
+    fn reset_levert_hetzelfde_beeld_als_een_verse_wereld() {
+        let beeld = |world: &World| {
+            serde_json::to_string(&world.snapshot())
+                .unwrap_or_else(|e| panic!("het beeld moet naar JSON te schrijven zijn: {e}"))
+        };
+
+        let mut world = verplichting_wereld(RITME_UIT_INSTELLING, &ritme("kwartaal"))
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        let vers = beeld(&world);
+
+        world
+            .update_settings(&ritme("maand"))
+            .unwrap_or_else(|e| panic!("het ritme mag hier nog om: {e}"));
+        beslis(&mut world);
+        world
+            .advance(date("2024-12-31"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+        assert_ne!(
+            beeld(&world),
+            vers,
+            "de run hoort het beeld te veranderen, anders bewijst deze test niets"
+        );
+
+        world
+            .reset()
+            .unwrap_or_else(|e| panic!("de wereld moet terug te zetten zijn: {e}"));
+        assert_eq!(
+            beeld(&world),
+            vers,
+            "na het terugzetten hoort het beeld dat van een verse wereld te zijn"
         );
     }
 

@@ -40,9 +40,19 @@ type Expected = fn(&InvariantFailure) -> bool;
 /// omdraaien, en dan is "dit scenario is groen" geen uitspraak meer. Wat er wél
 /// afgedwongen wordt, is dat de tabel volledig is — zie
 /// [`elke_negatieve_fixture_staat_in_de_tabel`].
-const FIXTURES: [(&str, &str, Expected, usize); 5] = [
+const FIXTURES: [(&str, &str, Expected, usize); 6] = [
     (
         "niet_gedeclareerde_call.yaml",
+        "I3",
+        |failure| matches!(failure, InvariantFailure::UndeclaredCall { .. }),
+        1,
+    ),
+    (
+        // Dezelfde schending langs de andere weg naar het besluit-pad: een actie
+        // lokt het besluit uit. Zou de gate alleen de rechtstreekse besluiten
+        // lezen, dan zou een wereldbestand elke celgrens over kunnen door een
+        // actie ervoor te zetten, en blijft deze fixture groen.
+        "actie_lokt_niet_gedeclareerde_call_uit.yaml",
         "I3",
         |failure| matches!(failure, InvariantFailure::UndeclaredCall { .. }),
         1,
@@ -201,15 +211,17 @@ fn de_negatieve_fixtures_halen_hun_gewone_verwachtingen_wel() {
         let run = run(&path);
 
         let gewone_fouten: Vec<String> = run
-            .decisions
+            .acts
             .iter()
             .map(|outcome| outcome.failures.len())
+            .chain(run.decisions.iter().map(|outcome| outcome.failures.len()))
             .chain(run.outcomes.iter().map(|outcome| outcome.failures.len()))
             .chain(
                 run.transport_outcomes
                     .iter()
                     .map(|outcome| outcome.failures.len()),
             )
+            .chain(std::iter::once(run.failures.len()))
             .filter(|count| *count > 0)
             .map(|count| count.to_string())
             .collect();
@@ -217,7 +229,8 @@ fn de_negatieve_fixtures_halen_hun_gewone_verwachtingen_wel() {
         assert!(
             gewone_fouten.is_empty(),
             "{name}: deze fixture hoort uitsluitend op een invariant te falen, niet op \
-             een verwachting bij een vraag of een besluit:\n{}",
+             een verwachting bij een actie, een besluit, een vraag of de run als \
+             geheel:\n{}",
             run.report()
         );
     }

@@ -1171,8 +1171,11 @@ levert nog steeds het beeld van toen, want de reductie filtert zelf op
 levering of een vervallen termijn die ertussen valt eerst landt.
 
 Een wereldbestand gebruikt in de praktijk `act` óf `decide`. Mengen kan, en dan
-gaan de acties voor; wie een moment kiest dat vóór de klok ligt, krijgt een fout
-("de klok loopt niet terug") en geen stilte.
+gaan de acties voor. Een `act` op een moment dat de klok al voorbij is, levert een
+fout ("de klok loopt niet terug") en geen stilte: een actie gebeurt op de stand
+van de klok en draagt haar moment niet mee het gram in, dus zou ze anders op een
+andere dag landen dan het bestand noemt. Een `decide` draagt zijn moment zelf en
+mag daarmee wél terugkijken; het gram krijgt dan de dag die er staat.
 
 Een `act` en een `decide` mogen zonder `expect`, anders dan een vraag: ze leggen
 iets vast, en bewijzen daarmee ook zonder verwachting iets — namelijk dat de
@@ -1270,6 +1273,13 @@ volgorde in Rust komt te staan. Het is met opzet geen tweede reductietaal: er ko
 geen waarde naar buiten, alleen ja of nee. Kan een actie nu niet, dan is dat een
 leesbare weigering die zegt wát er nog niet ligt, en het beeld van de wereld toont
 haar met diezelfde reden erbij.
+
+Die cel hoeft niet de actor te zijn: de wereld beantwoordt de vraag zelf, net zoals
+zij het beeld van alle kronieken maakt. Het is daarmee **geen contact over een
+celgrens** — het staat niet in het vraaggraf en niet in het observatielog, en er
+komt geen cel aan de kroniek van een ander. Moet de actor zélf weten dat er iets
+gebeurd is, dan hoort dat als levering in zijn eigen kroniek te liggen
+(`delivers_to`), en wijst de voorwaarde naar die kroniek.
 
 Een actie ontsnapt niet aan de invarianten. Lokt ze een besluit uit dat een waarde
 van een andere cel accepteert, dan gaat dat contact over een celgrens en hoort de

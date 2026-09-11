@@ -892,16 +892,20 @@ impl Scenario {
 
     /// Laat de actoren hun acties doen, elk op zijn eigen moment.
     ///
-    /// De klok gaat eerst vooruit tot dat moment, en dan doet de actor het: een
-    /// actie heeft geen eigen moment mee te geven, ze gebeurt op de stand van de
+    /// De klok gaat eerst naar dat moment, en dan doet de actor het: een actie
+    /// heeft geen eigen moment mee te geven, ze gebeurt op de stand van de
     /// wereld. Zo landt een levering of een vervallen termijn die ertussen valt
     /// eerst — en dat is wat een actie die op zo'n feit wacht, nodig heeft.
+    ///
+    /// De klok gaat er **altijd** naartoe, ook als hij er al voorbij is. Anders
+    /// dan een `decide`, die zijn moment zelf meegeeft, kan een actie het hare
+    /// niet dragen: zou de klok blijven staan, dan landt het gram op een andere
+    /// dag dan het bestand noemt, en dan liegt die regel zonder dat iemand het
+    /// merkt. Nu levert ze de fout die erbij hoort — de klok loopt niet terug.
     fn do_acts(&self, world: &mut World) -> Result<Vec<ActOutcome>> {
         let mut acts = Vec::with_capacity(self.act.len());
         for step in &self.act {
-            if step.op_moment > world.now() {
-                world.advance(step.op_moment)?;
-            }
+            world.advance(step.op_moment)?;
 
             let events = world.act(&step.action, &step.values)?;
 
@@ -1297,6 +1301,56 @@ queries:
         );
     }
 
+    /// Een actie op een moment dat de klok al voorbij is, hoort te falen.
+    ///
+    /// Een actie gebeurt op de stand van de klok; zij draagt haar moment niet mee
+    /// het gram in. Bleef de klok staan, dan zou de vastlegging op een andere dag
+    /// landen dan het bestand noemt — een regel die iets anders doet dan ze zegt,
+    /// en dat is precies de stilte waar deze opstelling tegen bedoeld is.
+    #[test]
+    fn een_actie_op_een_moment_voor_de_klok_wordt_geweigerd() {
+        let yaml = r"
+name: twee acties in de verkeerde volgorde
+clock: { start: 2024-01-01 }
+cells:
+  - id: burger
+    laws: []
+    chronicles:
+      - stream: aanvragen
+        key: bsn
+actions:
+  - id: burger.aanvraag
+    actor: burger
+    label: Aanvraag indienen
+    records:
+      cell: burger
+      chronicle: aanvragen
+      name: aanvraag_ingediend
+      intake: aanvraag
+      fields:
+        - name: bsn
+          type: string
+act:
+  - action: burger.aanvraag
+    values:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+  - action: burger.aanvraag
+    values:
+      bsn: '999993654'
+    op_moment: 2024-03-01
+";
+        let scenario =
+            Scenario::from_yaml(yaml).unwrap_or_else(|e| panic!("het scenario moet lezen: {e}"));
+        let err = scenario
+            .run(&crate::regulation_root())
+            .expect_err("een actie vóór de klok hoort te falen en niet stil op te schuiven");
+        assert!(
+            matches!(err, SimulatorError::ClockRunsBackwards { .. }),
+            "verwachtte ClockRunsBackwards, kreeg {err}"
+        );
+    }
+
     #[test]
     fn een_wereld_zonder_klok_wordt_geweigerd() {
         let yaml = r"
@@ -1507,10 +1561,6 @@ query_via_transport:
             .unwrap_or_else(|| panic!("2024-06-01 moet een geldige datum zijn"))
     }
 
-    /// Een vastlegging waar de klok niet aan toe kwam, hoort in het verslag te
-    /// staan. Zij is geldig bevonden bij het optuigen en doet daarna niets; dat
-    /// stil laten betekent dat een regel in het wereldbestand niets bewijst
-    /// zonder dat iemand het merkt.
     /// Een leeg beeld, voor de tests die over het **verslag** gaan.
     ///
     /// Die bouwen met opzet geen wereld op: wat ze controleren is wat er in de
@@ -1545,6 +1595,10 @@ query_via_transport:
         }
     }
 
+    /// Een vastlegging waar de klok niet aan toe kwam, hoort in het verslag te
+    /// staan. Zij is geldig bevonden bij het optuigen en doet daarna niets; dat
+    /// stil laten betekent dat een regel in het wereldbestand niets bewijst
+    /// zonder dat iemand het merkt.
     #[test]
     fn het_verslag_meldt_vastleggingen_die_niet_afgingen() {
         let run = |pending_triggers| report_of(pending_triggers, Vec::new());
