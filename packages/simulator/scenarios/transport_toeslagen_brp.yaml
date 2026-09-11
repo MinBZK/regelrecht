@@ -13,6 +13,12 @@ description: >-
   `toeslagen` legt hier dus niets vast, en bij een volgend besluit gaat de vraag
   opnieuw naar de bron.
 
+clock:
+  # De vastlegging staat als `events` in de celconfiguratie, dus ze staat er al
+  # bij het optuigen; de klok begint ervoor en er is geen fixture die nog moet
+  # landen.
+  start: 2023-01-01
+
 cells:
   # De bevraagde cel: een bron-cel zonder engine, precies zoals het
   # bron-celscenario hem laat zien. Ze merkt niet dat de vraag over een
@@ -25,7 +31,11 @@ cells:
       - stream: relaties
         key: bsn
         events:
-          - op_moment: 2023-03-01
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
             fields:
               bsn: '999993653'
               partnerschap_type: HUWELIJK

@@ -8,7 +8,7 @@
 use crate::cell::{CellConfig, Lexostatus, LexostatusOutcome};
 use crate::error::{Result, SimulatorError};
 use crate::security::{Identity, SecurityContext, SignedAnswer};
-use crate::transport::{CellTransport, InProcessTransport};
+use crate::transport::InProcessTransport;
 use crate::values::equivalent;
 use crate::world::{Clock, Fixture, World};
 use chrono::NaiveDate;
@@ -572,6 +572,7 @@ queries:
     fn vraag_over_de_celgrens_zonder_verwachting_wordt_geweigerd() {
         let yaml = r"
 name: bewijst niets over de grens
+clock: { start: 2025-01-01 }
 cells: []
 query_via_transport:
   - from: toeslagen
@@ -657,6 +658,7 @@ query_via_transport:
             clock: moment(),
             pending_triggers,
             outcomes: Vec::new(),
+            transport_outcomes: Vec::new(),
         };
 
         assert!(
@@ -691,6 +693,7 @@ query_via_transport:
             clock: moment,
             pending_triggers: 0,
             outcomes: vec![outcome("vóór de vastlegging"), outcome("erna, ongewijzigd")],
+            transport_outcomes: Vec::new(),
         };
 
         let report = run.report();
