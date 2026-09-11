@@ -834,6 +834,33 @@ pub enum SimulatorError {
         peer: String,
     },
 
+    /// Een wet van deze cel wijst een producent aan die de cel niet laadt en ook
+    /// niet als cel-bron declareert.
+    ///
+    /// De engine zegt hier "regeling niet gevonden", en dat is letterlijk waar en
+    /// tegelijk het verkeerde spoor: de naam staat in de wet, dus wie dit leest
+    /// zoekt een ontbrekend corpusbestand terwijl er een afspraak mist. Welke van
+    /// de twee het is, weet de cel niet — een `source.regulation` zegt niet of ze
+    /// een regeling of een organisatie aanwijst (RFC-022 §4.2) — dus de melding
+    /// noemt beide uitwegen en kiest er niet één.
+    ///
+    /// Dit valt niet bij het optuigen: een besluit-definitie mag zo'n input zelf
+    /// aanleveren, en dan komt de verwijzing nooit aan bod.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' voert een regeling uit die '{name}' aanwijst, \
+         maar deze cel laadt geen regeling met die naam en declareert '{name}' ook niet \
+         in `accepts_from`; laad de regeling, of leg in `accepts_from` vast welke \
+         lexostatus bij die cel gevraagd moet worden"
+    )]
+    UndeclaredCellSource {
+        /// De cel die wilde besluiten.
+        cell: String,
+        /// Het besluit dat de waarde nodig had.
+        besluit: String,
+        /// De naam uit `source.regulation` die nergens op uitkomt.
+        name: String,
+    },
+
     /// Een besluit kon een waarde niet van een andere cel accepteren.
     ///
     /// Eigen variant naast [`SimulatorError::BesluitInputMissing`], want de reden

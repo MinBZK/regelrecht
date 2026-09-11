@@ -58,7 +58,11 @@ repos:
         entry: just validate
         language: system
         pass_filenames: true
-        files: ^corpus/(regulation|demo/regulation)/.*\.yaml$
+        # The simulator's fixture regulations are law files too: the same loader
+        # reads them and the same schema applies. Left out, they would be the only
+        # laws in the repo that no gate validates, and a drift there surfaces as a
+        # puzzling scenario failure instead of a schema error.
+        files: ^(corpus/(regulation|demo/regulation)|packages/simulator/fixtures/regulation)/.*\.yaml$
         # Skip dot-prefixed sidecars (.enrichment.yaml, .enrichment-result.yaml):
         # enrichment metadata/result envelopes, not law files.
         exclude: (^|/)\.[^/]*\.yaml$

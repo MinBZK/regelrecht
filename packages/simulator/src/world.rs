@@ -365,10 +365,13 @@ impl World {
         self.cells = bridge.release();
         self.cells.insert(cell.to_string(), deciding);
 
-        // Bij een fout gaan de contacten mee weg. Dat kan, omdat er dan geen
-        // besluit is om ze bij te leggen en de fout zelf al zegt bij wie het
-        // misging; het log meet een run die doorgaat, en een omgevallen besluit
-        // laat de run niet doorgaan.
+        // Bij een fout gaan de contacten mee weg. Dat kan zolang een omgevallen
+        // besluit de run afbreekt — de scenario-runner geeft de fout door en stopt
+        // — en de fout zelf al zegt bij wie het misging. Wordt hier ooit een
+        // aanroeper op gezet die na een mislukt besluit doorgaat (een HTTP-laag
+        // die er een foutantwoord van maakt), dan mist het log precies de vragen
+        // van de besluiten die niet lukten, en dat is de gevaarlijke kant op: dan
+        // horen de contacten met de fout mee naar buiten.
         Ok(DecisionRecord {
             decretogram: outcome?,
             crossings: bridge.crossings(),

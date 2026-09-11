@@ -458,7 +458,22 @@ Wat er met de waarde gebeurt, en vooral wat er níet met haar gebeurt:
   schaduwboekhouding ontstaan die niet van eigen wetenschap te onderscheiden is;
 - antwoordt de bron "niets vastgesteld", dan **valt het besluit om** met een
   melding die zegt welke input van welke cel ontbrak, en er wordt niets
-  vastgelegd. Doorrekenen met een gat is erger dan geen besluit.
+  vastgelegd. Doorrekenen met een gat is erger dan geen besluit. De vraag zelf
+  staat dan wél als contact vast: ze is gesteld en de peer heeft haar gezien, dus
+  ze hoort in het vraaggraf — juist dít geval.
+
+Het zaakkenmerk wordt met opzet ingevuld en gecontroleerd *vóór* de eerste vraag:
+een besluit dat om zijn eigen kenmerk niet genomen kan worden, hoort een andere
+organisatie niet te laten zien dat er iets over iemand werd opgevraagd.
+
+Mist er een afspraak, dan zegt de melding dat ook. Noemt een wet een naam die de
+cel niet laadt en die niet in `accepts_from` staat, dan bereikt de engine de cel
+niet en heet dat daar een onbekende regeling — letterlijk waar, en het verkeerde
+spoor: wie het leest gaat een corpusbestand zoeken dat er niet hoort te zijn. Het
+besluit-pad noemt daarom beide uitwegen (laad de regeling, of leg de lexostatus in
+`accepts_from` vast). Dat dit pas bij het besluit blijkt en niet bij het optuigen,
+is geen slordigheid: een besluit-definitie mag zo'n input zelf aanleveren, en dan
+komt de verwijzing nooit aan bod.
 
 De scenario-runner rekent elk besluit af op de herkomst van zijn waarden — per
 waarde `computed` of `accepted`, met bron — en dat is invariant I5 als gate:

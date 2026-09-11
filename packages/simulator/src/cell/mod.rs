@@ -148,6 +148,14 @@ pub struct Cell {
     /// Het is de afspraak die de wereld nodig heeft om een tier-3-verwijzing bij
     /// de juiste lexostatus van de juiste peer uit te laten komen.
     accepts_from: BTreeMap<(String, String), AcceptedSource>,
+    /// Elke naam die de wetten van deze cel in een `source.regulation` noemen en
+    /// die geen regeling is die zij zelf laadt.
+    ///
+    /// Niet om er iets mee te bereiken — dat kan de cel niet — maar om een
+    /// engine-melding te kunnen plaatsen. "Regeling niet gevonden" over een naam
+    /// die in de eigen wet staat, stuurt de lezer naar een corpusbestand terwijl
+    /// er een afspraak mist; zie [`Self::explain_undeclared_source`].
+    foreign_sources: BTreeSet<String>,
 }
 
 impl Cell {
@@ -259,7 +267,10 @@ impl Cell {
             }
         }
 
-        let accepts_from = check_accepted_sources(config, service.as_ref())?;
+        let CellSources {
+            declared: accepts_from,
+            foreign: foreign_sources,
+        } = check_accepted_sources(config, service.as_ref())?;
 
         Ok(Self {
             id: config.id.clone(),
@@ -269,6 +280,7 @@ impl Cell {
             published,
             besluiten,
             accepts_from,
+            foreign_sources,
         })
     }
 
@@ -464,6 +476,32 @@ impl Cell {
         error.into()
     }
 
+    /// Vertaal "onbekende regeling" naar "die naam staat in je eigen wet" waar dat
+    /// zo is.
+    ///
+    /// Het tegenhanger van [`Self::explain_reach`], voor het besluit-pad. Daar
+    /// gaat het om een cel die de cel-tier wél bereikt maar de reductie niet; hier
+    /// om een naam die de cel-tier helemaal niet bereikt, omdat `accepts_from`
+    /// haar niet declareert. De engine noemt dat een ontbrekende regeling, wat de
+    /// lezer een corpusbestand laat zoeken dat er niet hoort te zijn.
+    fn explain_undeclared_source(
+        &self,
+        definition: &BesluitDefinition,
+        error: regelrecht_engine::EngineError,
+    ) -> SimulatorError {
+        if let regelrecht_engine::EngineError::LawNotFound(name) = &error {
+            let declared = self.accepts_from.keys().any(|(cell, _)| cell == name);
+            if !declared && self.foreign_sources.contains(name) {
+                return SimulatorError::UndeclaredCellSource {
+                    cell: self.id.clone(),
+                    besluit: definition.name.clone(),
+                    name: name.clone(),
+                };
+            }
+        }
+        error.into()
+    }
+
     /// Zet de eigen feiten zoals ze op dit moment waren klaar als databron.
     ///
     /// De stroom met decretogrammen blijft er met opzet buiten. Een besluit is
@@ -641,6 +679,14 @@ impl Cell {
     /// haalt de antwoorden op en geeft ze aan [`Self::decide`] terug. Dat die
     /// twee stappen buiten de cel bij elkaar komen, is geen omweg maar de vorm
     /// van RFC-022 §2.
+    ///
+    /// Dat die splitsing de weigeringen van [`Self::decide`] niet mag verschuiven,
+    /// is de reden dat het zaakkenmerk hier al langskomt. Een vraag over een
+    /// celgrens is bij de bevraagde organisatie een gebeurtenis — zij ziet wie er
+    /// iets over wie kwam opvragen — en die hoort niet te vallen voor een besluit
+    /// dat om zijn eigen kenmerk toch al niet genomen kan worden. Zonder deze
+    /// regel zou de orde van `decide` ("eerst het kenmerk, dan ophalen en
+    /// rekenen") wél in de cel staan en niet meer gelden.
     pub(crate) fn acceptance_requests(
         &self,
         besluit: &str,
@@ -648,6 +694,7 @@ impl Cell {
     ) -> Result<Vec<AcceptanceRequest>> {
         let definition = self.definition(besluit)?;
         definition.check_params(&self.id, params)?;
+        definition.zaakkenmerk(&self.id, params)?;
         Ok(definition.acceptance_requests(params))
     }
 
@@ -832,12 +879,14 @@ impl Cell {
             .collect();
         let calculation_date = op_moment.format("%Y-%m-%d").to_string();
         let recorded: Vec<&str> = definition.recorded_outputs().into_iter().collect();
-        let result = service.evaluate_law(
-            &definition.regulation,
-            &recorded,
-            engine_params.clone(),
-            &calculation_date,
-        )?;
+        let result = service
+            .evaluate_law(
+                &definition.regulation,
+                &recorded,
+                engine_params.clone(),
+                &calculation_date,
+            )
+            .map_err(|error| self.explain_undeclared_source(definition, error))?;
 
         let requested: Vec<String> = recorded.iter().map(|name| (*name).to_string()).collect();
         let receipt = service.build_receipt_with_outputs(
@@ -1008,10 +1057,14 @@ fn build_service(documents: &[String]) -> Result<Option<LawExecutionService>> {
 ///   voor de cel zou anders door de gelijknamige regeling beantwoord worden;
 /// - **twee afspraken over dezelfde `(cel, uitkomst)`**, want dan beslist de
 ///   volgorde in het bestand welke lexostatus gevraagd wordt.
+///
+/// Geeft naast de afspraken op sleutel ook de namen terug die de wetten aanwijzen
+/// en die de cel niet laadt. Die lijst is wat een engine-melding over een
+/// "onbekende regeling" van een verdwaalde naam kan onderscheiden.
 fn check_accepted_sources(
     config: &CellConfig,
     service: Option<&LawExecutionService>,
-) -> Result<BTreeMap<(String, String), AcceptedSource>> {
+) -> Result<CellSources> {
     let asked = service
         .map(|service| cell_sources_in_laws(service, &config.laws))
         .unwrap_or_default();
@@ -1045,7 +1098,26 @@ fn check_accepted_sources(
             });
         }
     }
-    Ok(sources)
+
+    Ok(CellSources {
+        foreign: asked.into_iter().map(|(cell, _)| cell).collect(),
+        declared: sources,
+    })
+}
+
+/// Wat de wetten van een cel buiten zichzelf aanwijzen, en wat daarover is
+/// afgesproken.
+///
+/// De twee horen bij elkaar: de afspraken zijn een deelverzameling van wat de
+/// wetten vragen, en alleen samen kunnen ze een engine-melding over een onbekende
+/// naam plaatsen.
+struct CellSources {
+    /// De afspraken uit `accepts_from`, op `(cel, uitkomst)` zoals de engine
+    /// ernaar vraagt.
+    declared: BTreeMap<(String, String), AcceptedSource>,
+    /// Elke naam die de wetten in een `source.regulation` noemen en die de cel
+    /// niet zelf laadt — met en zonder afspraak.
+    foreign: BTreeSet<String>,
 }
 
 /// De `(cel, uitkomst)`-paren die de wetten van deze cel bij een **andere cel**

@@ -132,6 +132,21 @@ fn niets_vastgesteld_bij_de_bron_laat_het_besluit_omvallen_zonder_gram() {
         "een omgevallen besluit hoort niets vast te leggen, maar er lag: {:?}",
         terugkijk.outcome
     );
+
+    // En de wereld is heel. Een besluit haalt de besluitende cel uit de map en
+    // geeft de rest aan de brug; valt het onderweg om, dan horen ze allemaal terug
+    // te staan. Zou er één blijven liggen, dan zou een mislukt besluit een cel
+    // laten verdwijnen — en dat zou pas bij de volgende vraag blijken, als een
+    // onbegrijpelijke "onbekende cel".
+    let bron = world
+        .reduce(
+            "belastingdienst",
+            "toetsingsinkomen",
+            &bsn(),
+            date("2024-02-01"),
+        )
+        .unwrap_or_else(|e| panic!("de bron-cel hoort er nog te staan: {e}"));
+    assert_eq!(bron.cell, "belastingdienst");
 }
 
 /// **Een geaccepteerde waarde wordt niet onthouden.**
@@ -210,6 +225,113 @@ fn een_verkeerde_herkomstverwachting_wordt_rood() {
         run.report().contains("herkomst van 'toetsingsinkomen'"),
         "het verslag hoort te zeggen wat er over de herkomst mis is:\n{}",
         run.report()
+    );
+}
+
+/// **Een tier-3-verwijzing zonder afspraak zegt dat de afspraak mist.**
+///
+/// Alleen gedeclareerde cel-ids bereiken de resolver, dus een wet die een cel
+/// noemt die niet in `accepts_from` staat, komt bij de engine uit als een
+/// regeling die niemand kent. Dat is letterlijk waar en het verkeerde spoor: wie
+/// het leest gaat een corpusbestand zoeken dat er niet hoort te zijn, terwijl de
+/// cel een afspraak mist. De melding hoort te zeggen welke van de twee het kan
+/// zijn, en de naam te noemen.
+#[test]
+fn een_tier_3_verwijzing_zonder_afspraak_wijst_naar_de_afspraak() {
+    let path = tier_drie();
+    let yaml = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    // Het hele `accepts_from`-blok eruit, tot aan de volgende sleutel van de cel.
+    let start = yaml
+        .find("    accepts_from:")
+        .unwrap_or_else(|| panic!("{} hoort een accepts_from-blok te hebben", path.display()));
+    let end = yaml
+        .find("    besluit_definitions:")
+        .unwrap_or_else(|| panic!("{} hoort besluit_definitions te hebben", path.display()));
+    assert!(start < end, "het blok hoort vóór de besluiten te staan");
+    let zonder_afspraak = format!("{}{}", &yaml[..start], &yaml[end..]);
+
+    let scenario =
+        Scenario::from_yaml(&zonder_afspraak).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let mut world = scenario
+        .world(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    world
+        .advance(date("2024-06-01"))
+        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+
+    let err = world
+        .decide(
+            "toeslagen",
+            "partnerschapstoets",
+            &bsn(),
+            date("2024-06-01"),
+        )
+        .expect_err("zonder afspraak bereikt de engine de cel niet");
+
+    assert!(
+        matches!(
+            &err,
+            SimulatorError::UndeclaredCellSource { name, .. } if name == "brp"
+        ),
+        "verwachtte UndeclaredCellSource over 'brp', kreeg {err}"
+    );
+    let melding = err.to_string();
+    assert!(
+        melding.contains("accepts_from") && melding.contains("laadt geen regeling"),
+        "de melding hoort beide uitwegen te noemen, kreeg: {melding}"
+    );
+}
+
+/// **Een besluit dat niet kan doorgaan, valt een andere organisatie niet lastig.**
+///
+/// De orde is niet vrij: eerst vaststellen dat er een zaak is om over te
+/// besluiten, dan pas vragen. Een zaakkenmerk dat niet eenduidig in te vullen is,
+/// levert geen besluit op — en dan hoort er ook geen ondertekende vraag de
+/// celgrens over te gaan. Die vraag is bij de bevraagde organisatie een
+/// gebeurtenis: ze ziet wie er iets over wie kwam opvragen, en dat hoort niet te
+/// gebeuren voor een besluit dat toch al niet genomen kan worden.
+///
+/// De test meet de orde en niet de melding: bij dit moment had de bron nog niets
+/// vastgesteld, dus als er eerst gevraagd wordt, valt het besluit om over de
+/// ontbrekende input in plaats van over het kenmerk.
+#[test]
+fn een_besluit_zonder_eenduidig_zaakkenmerk_vraagt_de_bron_niets() {
+    let path = accepteren();
+    let yaml = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+        // Twee verwijzingen, dus een scheidingsteken dat in geen waarde mag
+        // voorkomen — en hieronder komt het er wel in.
+        .replace(
+            "        zaakkenmerk: zorgtoeslag/{bsn}\n        params:\n          - name: bsn\n            type: string\n",
+            "        zaakkenmerk: zorgtoeslag/{bsn}/{jaar}\n        params:\n          - name: bsn\n            type: string\n          - name: jaar\n            type: string\n",
+        );
+
+    let scenario = Scenario::from_yaml(&yaml).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let mut world = scenario
+        .world(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    // Vóór de aanslag van de belastingdienst (2024-03-01): had het besluit hier
+    // wél gevraagd, dan was dat de fout geworden die we terugkrijgen.
+    world
+        .advance(date("2024-02-01"))
+        .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+
+    let mut params = bsn();
+    params.insert("jaar".to_string(), Value::String("20/24".to_string()));
+
+    let err = world
+        .decide(
+            "toeslagen",
+            "zorgtoeslag_vaststelling",
+            &params,
+            date("2024-02-01"),
+        )
+        .expect_err("een kenmerk dat niet eenduidig is hoort het besluit te weigeren");
+
+    assert!(
+        matches!(err, SimulatorError::ZaakkenmerkSeparatorInValue { .. }),
+        "het besluit hoort te vallen op het kenmerk en niet op een input die het \
+         daarna alsnog is gaan ophalen, kreeg {err}"
     );
 }
 

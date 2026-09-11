@@ -38,32 +38,25 @@ use regelrecht_engine::{CellResolver, EngineError, Value};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-/// Vraag één waarde op bij een andere cel en maak er een vastlegbare input van.
+/// Maak van een bewijsstuk de vastlegbare input die het besluit nodig heeft.
 ///
-/// Geeft twee dingen terug, en dat is geen gemak: de waarde met haar herkomst
-/// voor het decretogram, en het volledige bewijsstuk voor wie het verkeer meet.
-/// Het observatielog staat buiten de band (zie [`crate::observation`]), dus het
-/// kan het bewijsstuk niet zelf komen halen; wie accepteert, geeft het door.
+/// Losgekoppeld van het stellen van de vraag, en dat is het hele punt van de
+/// splitsing: het contact over de grens is al een feit als deze functie begint.
+/// Wat hier nog kan mislukken, is het *lezen* van het antwoord — en dat mag het
+/// bewijs van de vraag niet meer wissen.
 ///
 /// Een bron-cel die "niets vastgesteld" antwoordt, laat het besluit omvallen. Dat
 /// is geen defect maar een leesbare weigering: welke input van welke cel
 /// ontbrak, en wat de bron-cel als reden gaf. Er wordt dan niets vastgelegd — een
 /// besluit dat met een gat verder rekent, is erger dan geen besluit.
-fn accept_one(
-    context: &SecurityContext<'_>,
+fn accepted_input(
     cell: &str,
     besluit: &str,
     request: &AcceptanceRequest,
-    op_moment: NaiveDate,
-) -> Result<(DecretogramInput, SignedAnswer)> {
-    let signed = context.query(
-        &request.cell,
-        &request.lexostatus,
-        &request.params,
-        op_moment,
-    )?;
-
+    signed: &SignedAnswer,
+) -> Result<DecretogramInput> {
     let answer = &signed.answer;
+    let op_moment = answer.op_moment;
     let missing = |reason: String| SimulatorError::AcceptedInputMissing {
         cell: cell.to_string(),
         besluit: besluit.to_string(),
@@ -102,7 +95,7 @@ fn accept_one(
         signature: signed.signature.to_string(),
     };
 
-    Ok((DecretogramInput { value, origin }, signed))
+    Ok(DecretogramInput { value, origin })
 }
 
 /// De cel-tier van de besluit-engine: een [`CellResolver`] die een
@@ -174,6 +167,13 @@ impl CellBridge {
     /// Apart, zodat het vastleggen van het contact op één plek staat: wat er over
     /// de grens ging, komt in [`Self::crossings`] of het komt nergens, en dan is
     /// het log stil incompleet in plaats van rood.
+    ///
+    /// Het contact wordt vastgelegd zodra de peer antwoordde, en niet pas als dat
+    /// antwoord bruikbaar blijkt. Een "niets vastgesteld" is óók over de grens
+    /// gegaan: de vraag is gesteld, ondertekend, en de peer heeft haar gezien.
+    /// Zou het bewijsstuk pas bij een bruikbare waarde opgeschreven worden, dan
+    /// zou precies het geval dat het besluit doet omvallen in het vraaggraf
+    /// onzichtbaar blijven — en dat is de gevaarlijke kant op.
     fn ask_over(
         &self,
         transport: &dyn CellTransport,
@@ -181,17 +181,16 @@ impl CellBridge {
         op_moment: NaiveDate,
     ) -> Result<(DecretogramInput, SignedAnswer)> {
         let context = SecurityContext::new(self.identity.clone(), transport);
-        let accepted = accept_one(
-            &context,
-            self.identity.cell(),
-            &self.besluit,
-            request,
+        let signed = context.query(
+            &request.cell,
+            &request.lexostatus,
+            &request.params,
             op_moment,
-        );
-        if let Ok((_, signed)) = &accepted {
-            self.crossings.borrow_mut().push(signed.clone());
-        }
-        accepted
+        )?;
+        self.crossings.borrow_mut().push(signed.clone());
+
+        let input = accepted_input(self.identity.cell(), &self.besluit, request, &signed)?;
+        Ok((input, signed))
     }
 
     /// Willig elk verzoek van een besluit-definitie in (`accept_from`).
@@ -384,12 +383,28 @@ lexostatus_definitions:
     fn niets_vastgesteld_bij_de_bron_laat_het_besluit_omvallen() {
         // Vóór de vastlegging van de peer: die had toen niets vastgesteld, en dat
         // is haar goed recht. Doorrekenen met een gat is dat niet.
-        let err = bridge()
+        let bridge = bridge();
+        let err = bridge
             .resolve("brp", "partnerschap", &bsn(), "2022-01-01")
             .expect_err("zonder feit bij de bron hoort het besluit om te vallen");
         assert!(
             err.to_string().contains("niets vast"),
             "de melding hoort te zeggen dat de bron niets vaststelde, kreeg: {err}"
+        );
+
+        // En de vraag stáát er, want ze is gesteld. Dat het antwoord het besluit
+        // niet verder helpt, maakt het contact niet ongedaan: wie het vraaggraf
+        // meet, hoort juist dit geval te zien.
+        assert_eq!(
+            bridge.crossings().len(),
+            1,
+            "een 'niets vastgesteld' is óók over de grens gegaan"
+        );
+        let crossing = &bridge.crossings()[0];
+        assert_eq!(crossing.answer.cell, "brp");
+        assert!(
+            crossing.answer.not_established().is_some(),
+            "en het bewijsstuk hoort te dragen wat de peer antwoordde"
         );
     }
 
