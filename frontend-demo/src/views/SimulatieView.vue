@@ -453,8 +453,17 @@ function exportJson() {
           </nldd-toolbar>
         </nldd-container>
 
+        <!-- Harmonisatie rekent op de uitkomsten van een run, dus zonder run is
+             er niets te harmoniseren. Dat hier zeggen, want anders lijkt de
+             feature niet te werken terwijl de vlag aan staat. -->
         <nldd-simple-section v-if="!runs.length" height="60vh">
-          <nldd-inline-dialog icon="chart-x-y-axis-line" text="Nog geen simulatie" supporting-text="Kies links een populatie en druk op Simuleren. Elke persoon of elk bedrijf wordt door de engine door alle regelingen gehaald."></nldd-inline-dialog>
+          <nldd-inline-dialog
+            icon="chart-x-y-axis-line"
+            text="Nog geen simulatie"
+            :supporting-text="harmonizeEnabled
+              ? 'Kies links een populatie en druk op Simuleren. Elke persoon of elk bedrijf wordt door de engine door alle regelingen gehaald. Daarna verschijnt rechtsboven ook Harmonisatie, dat op die uitkomsten rekent.'
+              : 'Kies links een populatie en druk op Simuleren. Elke persoon of elk bedrijf wordt door de engine door alle regelingen gehaald.'"
+          ></nldd-inline-dialog>
         </nldd-simple-section>
 
         <!-- One run -->

@@ -19,6 +19,11 @@ const { ready, loadError, profile, profileKey, corpus, state, delegations, deleg
 
 /** Heeft de presentator een vlag omgezet? Dan kan hij terug naar het profiel. */
 const hasFeatureOverrides = computed(() => Object.keys(state.featureOverrides ?? {}).length > 0);
+/** Hoeveel er aanstaan, zodat je het ziet zonder de uitklapper te openen. */
+const featureSummary = computed(() => {
+  const aan = FEATURES.filter((f) => features.value[f.key]).length;
+  return `${aan} van ${FEATURES.length} aan`;
+});
 
 // The design system derives its scroll mode (document vs. per-pane) from the
 // outermost split view once, at connect. Ours arrives later (the tab views are
@@ -211,23 +216,32 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 <nldd-menu-divider></nldd-menu-divider>
                 <!-- De features aan en uit, midden in een demo. De POC kon dit
                      alleen via omgevingsvariabelen bij het starten; een
-                     presentator moet het tijdens zijn verhaal kunnen omzetten. -->
-                <nldd-menu-item
-                  v-for="f in FEATURES"
-                  :key="f.key"
-                  type="checkbox"
-                  :text="f.label"
-                  :details="f.hint"
-                  :icon="f.icon"
-                  :selected="features[f.key] || undefined"
-                  @select="demo.toggleFeature(f.key)"
-                ></nldd-menu-item>
-                <nldd-menu-item
-                  v-if="hasFeatureOverrides"
-                  text="Features terug naar het profiel"
-                  icon="refresh"
-                  @select="demo.resetFeatures()"
-                ></nldd-menu-item>
+                     presentator moet het tijdens zijn verhaal kunnen omzetten.
+                     In een uitklapper zoals Weergave, zodat het hoofdmenu kort
+                     blijft; het aantal aanstaande features staat ernaast, want
+                     dat is wat je wilt weten zonder open te klappen. -->
+                <nldd-menu-item text="Features" icon="puzzle-piece" :details="featureSummary">
+                  <nldd-menu accessible-label="Features">
+                    <nldd-menu-item
+                      v-for="f in FEATURES"
+                      :key="f.key"
+                      type="checkbox"
+                      :text="f.label"
+                      :details="f.hint"
+                      :icon="f.icon"
+                      :selected="features[f.key] || undefined"
+                      @select="demo.toggleFeature(f.key)"
+                    ></nldd-menu-item>
+                    <template v-if="hasFeatureOverrides">
+                      <nldd-menu-divider></nldd-menu-divider>
+                      <nldd-menu-item
+                        text="Terug naar het profiel"
+                        icon="refresh"
+                        @select="demo.resetFeatures()"
+                      ></nldd-menu-item>
+                    </template>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Weergave" icon="appearance">
                   <nldd-menu @select="onColorSchemeSelect">
