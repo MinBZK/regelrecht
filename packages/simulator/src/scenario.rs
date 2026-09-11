@@ -5,8 +5,9 @@
 //! staat in het scenariobestand, niet in Rust. Zo blijft een testgeval een
 //! bestand dat iemand kan lezen en wijzigen zonder de crate te kennen.
 
-use crate::cell::{Cell, CellConfig, Lexostatus};
+use crate::cell::{Cell, CellConfig, Lexostatus, LexostatusOutcome};
 use crate::error::{Result, SimulatorError};
+use crate::values::equivalent;
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
@@ -51,17 +52,37 @@ pub struct Query {
     /// anders bewijst de vraag niets.
     #[serde(default)]
     pub expect: BTreeMap<String, Value>,
+    /// Verwacht dat de cel op dit moment niets vastgesteld had.
+    ///
+    /// Een volwaardige verwachting, en de enige manier om dat antwoord vast te
+    /// leggen: "niets vastgesteld" is geen fout en geen leeg antwoord, dus een
+    /// scenario moet erop kunnen asserteren. Sluit `expect` uit.
+    #[serde(default)]
+    pub expect_not_established: bool,
 }
 
 /// Eén verwachting die niet uitkwam.
 #[derive(Debug, Clone)]
-pub struct ExpectationFailure {
-    /// De uitkomst waarover de verwachting ging.
-    pub output: String,
-    /// Wat het scenario verwachtte.
-    pub expected: Value,
-    /// Wat de reductie opleverde; `None` als de uitkomst ontbrak.
-    pub actual: Option<Value>,
+pub enum ExpectationFailure {
+    /// Een uitkomst had een andere waarde dan verwacht, of ontbrak.
+    Value {
+        /// De uitkomst waarover de verwachting ging.
+        output: String,
+        /// Wat het scenario verwachtte.
+        expected: Value,
+        /// Wat de reductie opleverde; `None` als de uitkomst ontbrak.
+        actual: Option<Value>,
+    },
+    /// Het scenario verwachtte waarden, maar de cel stelde niets vast.
+    NotEstablished {
+        /// Wat de cel als reden gaf.
+        reason: String,
+    },
+    /// Het scenario verwachtte "niets vastgesteld", maar de cel gaf een feit.
+    Established {
+        /// De waarden die de cel toch opleverde.
+        values: BTreeMap<String, Value>,
+    },
 }
 
 /// Het resultaat van één vraag.
@@ -106,16 +127,34 @@ impl ScenarioRun {
                 "  [{mark}] {}.{} op {}",
                 outcome.cell, outcome.lexostatus, outcome.lexostatus_value.op_moment
             );
+            // "Niets vastgesteld" is een antwoord, dus het verslag zegt het ook
+            // als het klopte: anders staat er `ok` bij een regel waarvan de
+            // lezer niet kan zien wat de cel antwoordde.
+            if let Some(reason) = outcome.lexostatus_value.not_established() {
+                let _ = writeln!(out, "        niets vastgesteld: {reason}");
+            }
             for failure in &outcome.failures {
-                let actual = match &failure.actual {
-                    Some(value) => value.to_string(),
-                    None => "(niet in het antwoord)".to_string(),
+                let _ = match failure {
+                    ExpectationFailure::Value {
+                        output,
+                        expected,
+                        actual,
+                    } => {
+                        let actual = match actual {
+                            Some(value) => value.to_string(),
+                            None => "(niet in het antwoord)".to_string(),
+                        };
+                        writeln!(out, "        {output}: verwacht {expected}, kreeg {actual}")
+                    }
+                    ExpectationFailure::NotEstablished { reason } => writeln!(
+                        out,
+                        "        verwachtte waarden, maar de cel stelde niets vast: {reason}"
+                    ),
+                    ExpectationFailure::Established { values } => writeln!(
+                        out,
+                        "        verwachtte 'niets vastgesteld', maar de cel gaf {values:?}"
+                    ),
                 };
-                let _ = writeln!(
-                    out,
-                    "        {}: verwacht {}, kreeg {actual}",
-                    failure.output, failure.expected
-                );
             }
         }
         out
@@ -138,10 +177,20 @@ impl Scenario {
     /// zonder assertie geen groen kan opleveren. Zonder deze controle draait een
     /// scenariobestand dat niets verwacht mee in de suite en meldt het `ok` —
     /// het duurste soort groen, want het lijkt op bewijs.
+    ///
+    /// Een vraag die beide verwachtingen tegelijk stelt, kan nooit slagen; dat
+    /// is een schrijffout en wordt hier ook geweigerd.
     fn validate(&self) -> Result<()> {
         for query in &self.queries {
-            if query.expect.is_empty() {
+            if query.expect.is_empty() && !query.expect_not_established {
                 return Err(SimulatorError::QueryWithoutExpectation {
+                    scenario: self.name.clone(),
+                    cell: query.cell.clone(),
+                    lexostatus: query.lexostatus.clone(),
+                });
+            }
+            if !query.expect.is_empty() && query.expect_not_established {
+                return Err(SimulatorError::ContradictoryExpectation {
                     scenario: self.name.clone(),
                     cell: query.cell.clone(),
                     lexostatus: query.lexostatus.clone(),
@@ -188,7 +237,7 @@ impl Scenario {
                 })?;
 
             let answer = cell.reduce(&query.lexostatus, &query.params, query.op_moment)?;
-            let failures = check_expectations(&query.expect, &answer.values);
+            let failures = check_expectations(query, &answer.outcome);
 
             outcomes.push(QueryOutcome {
                 cell: query.cell.clone(),
@@ -205,33 +254,39 @@ impl Scenario {
     }
 }
 
-/// Vergelijk de verwachtingen met wat de reductie opleverde.
-fn check_expectations(
-    expect: &BTreeMap<String, Value>,
-    actual: &BTreeMap<String, Value>,
-) -> Vec<ExpectationFailure> {
-    expect
-        .iter()
-        .filter_map(|(output, expected)| {
-            let found = actual.get(output);
-            match found {
-                Some(value) if equivalent(expected, value) => None,
-                _ => Some(ExpectationFailure {
-                    output: output.clone(),
-                    expected: expected.clone(),
-                    actual: found.cloned(),
-                }),
-            }
-        })
-        .collect()
-}
-
-/// Gelijkheid met één versoepeling: getallen vergelijken op waarde, niet op
-/// variant. YAML kent geen verschil tussen `1` en `1.0`, de engine wel.
-fn equivalent(expected: &Value, actual: &Value) -> bool {
-    match (expected.as_decimal(), actual.as_decimal()) {
-        (Some(left), Some(right)) => left == right,
-        _ => expected == actual,
+/// Vergelijk de verwachtingen van een vraag met wat de reductie opleverde.
+///
+/// De twee soorten antwoord worden apart afgerekend: wie waarden verwacht en
+/// "niets vastgesteld" krijgt, heeft geen ontbrekende uitkomst maar een ander
+/// antwoord, en het verslag zegt dat ook zo.
+fn check_expectations(query: &Query, outcome: &LexostatusOutcome) -> Vec<ExpectationFailure> {
+    match (outcome, query.expect_not_established) {
+        (LexostatusOutcome::NotEstablished { .. }, true) => Vec::new(),
+        (LexostatusOutcome::NotEstablished { reason }, false) => {
+            vec![ExpectationFailure::NotEstablished {
+                reason: reason.clone(),
+            }]
+        }
+        (LexostatusOutcome::Established(values), true) => {
+            vec![ExpectationFailure::Established {
+                values: values.clone(),
+            }]
+        }
+        (LexostatusOutcome::Established(values), false) => query
+            .expect
+            .iter()
+            .filter_map(|(output, expected)| {
+                let found = values.get(output);
+                match found {
+                    Some(value) if equivalent(expected, value) => None,
+                    _ => Some(ExpectationFailure::Value {
+                        output: output.clone(),
+                        expected: expected.clone(),
+                        actual: found.cloned(),
+                    }),
+                }
+            })
+            .collect(),
     }
 }
 
@@ -270,17 +325,101 @@ queries:
     }
 
     #[test]
-    fn getallen_vergelijken_op_waarde() {
-        assert!(equivalent(&Value::Int(1), &Value::Int(1)));
-        assert!(!equivalent(&Value::Int(1), &Value::Int(2)));
-        assert!(!equivalent(&Value::Int(1), &Value::String("1".to_string())));
+    fn vraag_die_waarden_en_niets_vastgesteld_verwacht_wordt_geweigerd() {
+        let yaml = r"
+name: kan niet uitkomen
+cells: []
+queries:
+  - cell: brp
+    lexostatus: partnerschap
+    op_moment: 2025-01-01
+    expect_not_established: true
+    expect:
+      partnerschap_type: GEEN
+";
+        let err = Scenario::from_yaml(yaml)
+            .expect_err("twee verwachtingen die elkaar uitsluiten horen te falen");
+        assert!(
+            matches!(err, SimulatorError::ContradictoryExpectation { .. }),
+            "verwachtte ContradictoryExpectation, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn niets_vastgesteld_mag_de_enige_verwachting_zijn() {
+        let yaml = r"
+name: bewijst dat er niets was
+cells: []
+queries:
+  - cell: brp
+    lexostatus: partnerschap
+    op_moment: 2025-01-01
+    expect_not_established: true
+";
+        assert!(
+            Scenario::from_yaml(yaml).is_ok(),
+            "`expect_not_established` is een volwaardige verwachting"
+        );
+    }
+
+    /// Een vraag met precies één verwachting, voor de assertietests hieronder.
+    fn query(expect_not_established: bool, expect: BTreeMap<String, Value>) -> Query {
+        Query {
+            description: None,
+            cell: "brp".to_string(),
+            lexostatus: "partnerschap".to_string(),
+            params: BTreeMap::new(),
+            op_moment: NaiveDate::default(),
+            expect,
+            expect_not_established,
+        }
     }
 
     #[test]
     fn ontbrekende_uitkomst_is_een_gemiste_verwachting() {
         let expect = BTreeMap::from([("hoogte".to_string(), Value::Int(1))]);
-        let failures = check_expectations(&expect, &BTreeMap::new());
-        assert_eq!(failures.len(), 1);
-        assert!(failures[0].actual.is_none());
+        let failures = check_expectations(
+            &query(false, expect),
+            &LexostatusOutcome::Established(BTreeMap::new()),
+        );
+        assert!(
+            matches!(
+                failures.as_slice(),
+                [ExpectationFailure::Value { actual: None, .. }]
+            ),
+            "verwachtte één gemiste uitkomst, kreeg {failures:?}"
+        );
+    }
+
+    #[test]
+    fn niets_vastgesteld_is_geen_gemiste_uitkomst_maar_een_ander_antwoord() {
+        let expect = BTreeMap::from([("partnerschap_type".to_string(), Value::Null)]);
+        let outcome = LexostatusOutcome::NotEstablished {
+            reason: "geen vastlegging".to_string(),
+        };
+        let failures = check_expectations(&query(false, expect), &outcome);
+        assert!(
+            matches!(
+                failures.as_slice(),
+                [ExpectationFailure::NotEstablished { .. }]
+            ),
+            "verwachtte NotEstablished, kreeg {failures:?}"
+        );
+    }
+
+    #[test]
+    fn een_feit_waar_niets_verwacht_werd_is_een_gemiste_verwachting() {
+        let outcome = LexostatusOutcome::Established(BTreeMap::from([(
+            "partnerschap_type".to_string(),
+            Value::String("GEEN".to_string()),
+        )]));
+        let failures = check_expectations(&query(true, BTreeMap::new()), &outcome);
+        assert!(
+            matches!(
+                failures.as_slice(),
+                [ExpectationFailure::Established { .. }]
+            ),
+            "verwachtte Established, kreeg {failures:?}"
+        );
     }
 }

@@ -4,6 +4,9 @@
 //! eigen kronieken, laadt haar eigen wetten en reduceert daarover tot een
 //! *lexostatus*. Wat een cel niet is: ze houdt geen sleutels, ze heeft geen
 //! bevoegd gezag en ze combineert niets over cellen heen (RFC-022 §2, §4.1).
+//! Wetten zijn optioneel: een cel met `laws: []` is een **bron-cel** die
+//! vastlegt en reduceert zonder engine, en dat is de toets dat het
+//! lexostatus-contract engine-onafhankelijk is.
 //!
 //! Deze eerste versie kent één cel per scenario en geen verkeer tussen cellen.
 //! De grens ligt er wel al: een cel bezit haar [`ChronicleStore`] privé, en
@@ -27,10 +30,11 @@ pub mod cell;
 mod corpus;
 pub mod error;
 pub mod scenario;
+mod values;
 
 pub use cell::{
     Cell, CellConfig, ChronicleEvent, ChronicleStore, ChronicleStream, Lexostatus,
-    LexostatusDefinition, LexostatusInput, ParameterType, Reduction,
+    LexostatusDefinition, LexostatusInput, LexostatusOutcome, ParameterType, Reduction,
 };
 pub use corpus::regulation_root;
 pub use error::{Result, SimulatorError};

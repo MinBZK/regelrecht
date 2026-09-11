@@ -9,6 +9,7 @@
 //! [`crate::cell::Cell`].
 
 use crate::error::{Result, SimulatorError};
+use crate::values::equivalent;
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
@@ -90,6 +91,64 @@ impl ChronicleStore {
         Ok(Self { streams })
     }
 
+    /// De veldnamen die deze cel van elke stroom kent.
+    ///
+    /// Het sleutelveld hoort er altijd bij — de stroom declareert het — en
+    /// verder alles wat in een vastlegging voorkomt. Hiermee valt bij het
+    /// optuigen te toetsen of een kroniekfilter praat over velden die bestaan,
+    /// in plaats van stil "niets vastgesteld" te antwoorden op een typfout.
+    pub(crate) fn declared_fields(&self) -> BTreeMap<String, BTreeSet<String>> {
+        self.streams
+            .iter()
+            .map(|stream| {
+                let mut fields: BTreeSet<String> = BTreeSet::from([stream.key.clone()]);
+                for event in &stream.events {
+                    fields.extend(event.fields.keys().cloned());
+                }
+                (stream.stream.clone(), fields)
+            })
+            .collect()
+    }
+
+    /// De laatste vastlegging op of vóór `op_moment` met deze sleutelwaarde.
+    ///
+    /// Dit is de reductie van een cel zonder engine: geen toestandsmerge over
+    /// velden heen, maar precies één vastlegging. Wat samen vastgelegd is,
+    /// blijft samen — de eigenschap die [`Self::reduce_to`] opgeeft omdat de
+    /// engine records als databron wil.
+    ///
+    /// `conditions` bepaalt wélke vastleggingen meedoen, en pas daarna wint de
+    /// laatste. Een voorwaarde op een veld dat over tijd verandert levert dus de
+    /// laatste vastlegging die eraan voldeed, niet de huidige stand.
+    ///
+    /// `None` is een antwoord en geen fout: op dit moment was er niets
+    /// vastgesteld over dit onderwerp.
+    pub(crate) fn latest_recording(
+        &self,
+        stream: &str,
+        key: &str,
+        key_value: &Value,
+        conditions: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Option<&ChronicleEvent> {
+        // `max_by_key` levert bij gelijke sleutel het laatste element, dus twee
+        // vastleggingen op één dag volgen dezelfde regel als in `reduce_to`: de
+        // volgorde in de configuratie beslist.
+        self.streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)?
+            .events
+            .iter()
+            .filter(|event| event.op_moment <= op_moment)
+            .filter(|event| field_equals(&event.fields, key, key_value))
+            .filter(|event| {
+                conditions
+                    .iter()
+                    .all(|(field, expected)| field_equals(&event.fields, field, expected))
+            })
+            .max_by_key(|event| event.op_moment)
+    }
+
     /// De feiten zoals ze op `op_moment` in deze cel bekend waren.
     ///
     /// Dit is de tijdreductie: vastleggingen ná `op_moment` bestaan voor deze
@@ -137,12 +196,29 @@ impl ChronicleStore {
     }
 }
 
-/// De sleutelwaarde van een vastlegging, hoofdletterongevoelig opgezocht.
-fn record_key(fields: &BTreeMap<String, Value>, key: &str) -> Option<String> {
+/// De waarde van een veld, hoofdletterongevoelig opgezocht.
+///
+/// Zelfde souplesse als de engine, die inputnamen ook hoofdletterongevoelig
+/// matcht: een vastlegging die `BSN` schrijft, gaat over hetzelfde veld als een
+/// die `bsn` schrijft.
+pub(crate) fn field<'a>(fields: &'a BTreeMap<String, Value>, name: &str) -> Option<&'a Value> {
     fields
         .iter()
-        .find(|(name, _)| name.eq_ignore_ascii_case(key))
-        .map(|(_, value)| value.to_string())
+        .find(|(field, _)| field.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value)
+}
+
+/// Heeft deze vastlegging dit veld, met deze waarde?
+///
+/// Een veld dat de vastlegging niet heeft, voldoet niet: "onbekend" is geen
+/// gelijkheid.
+fn field_equals(fields: &BTreeMap<String, Value>, name: &str, expected: &Value) -> bool {
+    field(fields, name).is_some_and(|value| equivalent(value, expected))
+}
+
+/// De sleutelwaarde van een vastlegging, hoofdletterongevoelig opgezocht.
+fn record_key(fields: &BTreeMap<String, Value>, key: &str) -> Option<String> {
+    field(fields, key).map(ToString::to_string)
 }
 
 #[cfg(test)]
@@ -302,6 +378,80 @@ mod tests {
             Some(&Value::String("GEEN".to_string())),
             "de tijdas kan twee vastleggingen op één dag niet ordenen; \
              dan beslist de volgorde in de configuratie"
+        );
+    }
+
+    #[test]
+    fn het_filter_volgt_bij_gelijk_moment_dezelfde_regel_als_de_tijdreductie() {
+        // `latest_recording` leunt hiervoor op de belofte van `max_by_key` dat
+        // bij gelijke sleutel het laatste element wint. Zonder deze test zou een
+        // andere formulering (`max_by`, eerst sorteren, omgekeerd doorlopen) het
+        // antwoord van een bron-cel stil omdraaien, terwijl de tijdreductie
+        // ernaast wél bewaakt blijft.
+        let store = store(vec![
+            event(
+                "2024-07-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("HUWELIJK".to_string())),
+                ],
+            ),
+            event(
+                "2024-07-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("GEEN".to_string())),
+                ],
+            ),
+        ]);
+
+        let found = store
+            .latest_recording(
+                "relatie",
+                "bsn",
+                &Value::String("1".to_string()),
+                &BTreeMap::new(),
+                date("2025-01-01"),
+            )
+            .unwrap_or_else(|| panic!("er staan twee vastleggingen, dus er is er een de laatste"));
+        assert_eq!(
+            found.fields.get("partnerschap_type"),
+            Some(&Value::String("GEEN".to_string())),
+            "het kroniekfilter moet dezelfde vastlegging kiezen als de tijdreductie"
+        );
+    }
+
+    #[test]
+    fn een_voorwaarde_op_een_veld_dat_de_vastlegging_niet_heeft_voldoet_niet() {
+        // "Onbekend" is geen gelijkheid: een vastlegging die het veld niet draagt
+        // doet niet mee, ook niet als ze op de tijdas de laatste zou zijn.
+        let store = store(vec![
+            event(
+                "2023-03-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("HUWELIJK".to_string())),
+                ],
+            ),
+            event("2024-07-01", &[("bsn", Value::String("1".to_string()))]),
+        ]);
+
+        let found = store
+            .latest_recording(
+                "relatie",
+                "bsn",
+                &Value::String("1".to_string()),
+                &BTreeMap::from([(
+                    "partnerschap_type".to_string(),
+                    Value::String("HUWELIJK".to_string()),
+                )]),
+                date("2025-01-01"),
+            )
+            .unwrap_or_else(|| panic!("de vastlegging van 2023-03-01 voldoet aan het filter"));
+        assert_eq!(
+            found.op_moment,
+            date("2023-03-01"),
+            "de latere vastlegging kent het veld niet en doet dus niet mee"
         );
     }
 }

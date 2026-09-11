@@ -43,9 +43,13 @@ pub struct LexostatusDefinition {
     /// De gedocumenteerde uitkomsten: wat de cel onder deze naam publiceert.
     ///
     /// Wat hier niet staat, komt niet in het antwoord, ook al berekende de
-    /// engine het onderweg. Leeg of afwezig betekent: alleen
-    /// [`Reduction::output`]. Die uitkomst hoort er altijd bij — ze *is* de
-    /// lexostatus — dus deze lijst breidt uit, ze perkt niet in.
+    /// engine het onderweg. Bij de wetsvorm betekent leeg of afwezig: alleen
+    /// de `output` van de reductie. Die uitkomst hoort er altijd bij — ze *is*
+    /// de lexostatus — dus deze lijst breidt uit, ze perkt niet in.
+    ///
+    /// Bij een kroniekfilter is de lijst **verplicht**: daar is geen
+    /// wetsuitkomst die het antwoord bepaalt, dus zonder deze lijst zou de cel
+    /// haar hele vastlegging naar buiten geven en niets beloofd hebben.
     #[serde(default)]
     pub outputs: Vec<String>,
     /// Hoe de cel over haar eigen feiten reduceert.
@@ -95,39 +99,203 @@ impl ParameterType {
     }
 }
 
-/// De chronolexoreductie: welke uitkomst van welke eigen regeling de cel over
-/// haar eigen feiten berekent, en met welke parameters.
+/// De chronolexoreductie: hoe de cel over haar eigen feiten reduceert.
 ///
-/// In deze eerste versie is de reductie precies één uitkomst van één eigen
-/// regeling. Rijkere vormen (filteren en aggregeren over meerdere kronieken)
-/// passen in dezelfde plek in de configuratie zonder dat de publieke ingang van
-/// de cel verandert.
+/// Twee vormen, en de configuratie kiest door te noemen wat ze bedoelt:
+///
+/// - de **wetsvorm** (`regulation` + `output`) laat een eigen regeling over de
+///   eigen feiten rekenen;
+/// - het **kroniekfilter** (`chronicle` + `key`) leest rechtstreeks uit een
+///   eigen kroniek, zonder engine.
+///
+/// Dat de tweede vorm bestaat is geen gemak maar de toets op het contract: een
+/// organisatie die niet op RegelRecht draait is evengoed een cel, en haar
+/// lexostatussen zijn filters over haar eigen vastleggingen (RFC-022 §2 — de
+/// engine is een component dat in een cel kán draaien, niet de cel zelf).
+///
+/// Aggregeren (som, telling) over kronieken hoort in deze plek thuis en bestaat
+/// nog niet; `latest: true` is het enige filter dat er nu is.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "ReductionFields")]
+pub enum Reduction {
+    /// Een uitkomst van een eigen regeling, berekend over de eigen feiten.
+    Law {
+        /// De regeling, bij `$id`. Moet in `laws` van dezelfde cel staan.
+        regulation: String,
+        /// De uitkomst van die regeling die de reductie moet opleveren.
+        ///
+        /// Dit stuurt de evaluatie aan. Wat het antwoord draagt, bepaalt
+        /// [`LexostatusDefinition::outputs`]: de engine levert ook de
+        /// uitkomsten die causaal met deze meekomen, en die zijn daarmee nog
+        /// niet gepubliceerd.
+        output: String,
+        /// De parameters voor de regeling. Een waarde `$naam` verwijst naar een
+        /// gedocumenteerde parameter van de lexostatus; elke andere waarde is
+        /// een letterlijke tekst.
+        parameters: BTreeMap<String, String>,
+    },
+    /// Een filter over één eigen kroniek: per sleutelwaarde de laatste
+    /// vastlegging op of vóór het gevraagde moment.
+    Chronicle {
+        /// De kroniekstroom waarover gefilterd wordt. Moet een stroom van
+        /// dezelfde cel zijn.
+        chronicle: String,
+        /// Het veld waarop de vastlegging gezocht wordt. Tevens de naam van de
+        /// gedocumenteerde parameter die de waarde aanlevert.
+        key: String,
+        /// Extra gelijkheidsvoorwaarden op velden van de vastlegging (`where`).
+        ///
+        /// Ze bepalen wélke vastleggingen het filter in beschouwing neemt;
+        /// daarna wint de laatste. Een voorwaarde op een veld dat over tijd
+        /// verandert levert dus de laatste vastlegging die eraan voldeed, niet
+        /// de huidige stand.
+        conditions: BTreeMap<String, Value>,
+    },
+}
+
+/// Het YAML-oppervlak van een reductie: alle velden van beide vormen, los.
+///
+/// De keuze tussen de vormen valt in [`Reduction::try_from`] en niet in serde.
+/// `#[serde(untagged)]` zou hier "data did not match any variant" opleveren bij
+/// elke typfout, en een verplicht `kind`-veld zou de configuratie laten zeggen
+/// wat ze al toont. Zo staat er in de foutmelding wat er mis is.
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Reduction {
-    /// De regeling, bij `$id`. Moet in `laws` van dezelfde cel staan.
-    pub regulation: String,
-    /// De uitkomst van die regeling die de reductie moet opleveren.
-    ///
-    /// Dit stuurt de evaluatie aan. Wat het antwoord draagt, bepaalt
-    /// [`LexostatusDefinition::outputs`]: de engine levert ook de uitkomsten
-    /// die causaal met deze meekomen, en die zijn daarmee nog niet
-    /// gepubliceerd.
-    pub output: String,
-    /// De parameters voor de regeling. Een waarde `$naam` verwijst naar een
-    /// gedocumenteerde parameter van de lexostatus; elke andere waarde is een
-    /// letterlijke tekst.
-    #[serde(default)]
-    pub parameters: BTreeMap<String, String>,
+struct ReductionFields {
+    /// Zie [`Reduction::Law::regulation`].
+    regulation: Option<String>,
+    /// Zie [`Reduction::Law::output`].
+    output: Option<String>,
+    /// Zie [`Reduction::Law::parameters`].
+    parameters: Option<BTreeMap<String, String>>,
+    /// Zie [`Reduction::Chronicle::chronicle`].
+    chronicle: Option<String>,
+    /// Zie [`Reduction::Chronicle::key`].
+    key: Option<String>,
+    /// Alleen `true` heeft betekenis; zie [`Reduction`].
+    latest: Option<bool>,
+    /// Zie [`Reduction::Chronicle::conditions`].
+    #[serde(rename = "where")]
+    conditions: Option<BTreeMap<String, Value>>,
+}
+
+impl TryFrom<ReductionFields> for Reduction {
+    type Error = String;
+
+    fn try_from(fields: ReductionFields) -> std::result::Result<Self, Self::Error> {
+        match (fields.regulation, fields.chronicle) {
+            (Some(regulation), Some(chronicle)) => Err(format!(
+                "reductie noemt zowel regeling '{regulation}' als kroniekstroom '{chronicle}'; \
+                 een reductie is óf een wetsvorm (`regulation` + `output`) \
+                 óf een kroniekfilter (`chronicle` + `key`)"
+            )),
+            (Some(regulation), None) => {
+                if fields.key.is_some() || fields.latest.is_some() || fields.conditions.is_some() {
+                    return Err(format!(
+                        "`key`, `latest` en `where` horen bij een kroniekfilter (`chronicle`), \
+                         niet bij de reductie over regeling '{regulation}'"
+                    ));
+                }
+                let output = fields.output.ok_or_else(|| {
+                    format!(
+                        "reductie over regeling '{regulation}' mist `output`: \
+                         zonder uitkomst valt er niets te berekenen"
+                    )
+                })?;
+                Ok(Self::Law {
+                    regulation,
+                    output,
+                    parameters: fields.parameters.unwrap_or_default(),
+                })
+            }
+            (None, Some(chronicle)) => {
+                if fields.output.is_some() || fields.parameters.is_some() {
+                    return Err(format!(
+                        "`output` en `parameters` horen bij een reductie over een regeling, \
+                         niet bij het kroniekfilter op '{chronicle}'; \
+                         wat een kroniekfilter oplevert staat in `outputs`"
+                    ));
+                }
+                if fields.latest == Some(false) {
+                    return Err(format!(
+                        "kroniekfilter op '{chronicle}' kent alleen `latest: true`: \
+                         aggregeren over kronieken (som, telling) bestaat nog niet"
+                    ));
+                }
+                let key = fields.key.ok_or_else(|| {
+                    format!(
+                        "kroniekfilter op '{chronicle}' mist `key`: zonder sleutelveld \
+                         weet het filter niet over welk onderwerp de vraag gaat"
+                    )
+                })?;
+                Ok(Self::Chronicle {
+                    chronicle,
+                    key,
+                    conditions: fields.conditions.unwrap_or_default(),
+                })
+            }
+            (None, None) => Err(
+                "reductie noemt geen `regulation` en geen `chronicle`: een reductie is \
+                 een wetsvorm (`regulation` + `output`) of een kroniekfilter \
+                 (`chronicle` + `key`)"
+                    .to_string(),
+            ),
+        }
+    }
+}
+
+/// Wat een cel te bieden heeft, zoals ze bij het optuigen blijkt te zijn.
+///
+/// Hiermee toetst elke lexostatus-definitie of ze belooft wat de cel kan
+/// waarmaken: haar eigen regelingen met hun uitkomsten, en haar eigen
+/// kroniekstromen met de velden die daarin voorkomen.
+pub(crate) struct CellSurface<'a> {
+    /// De regelingen die de cel zelf laadt, bij `$id`.
+    pub(crate) laws: &'a [String],
+    /// Per regeling de uitkomstnamen, over alle geladen versies heen.
+    pub(crate) outputs: BTreeMap<String, BTreeSet<String>>,
+    /// Per kroniekstroom de veldnamen die de cel van die stroom kent.
+    pub(crate) streams: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl CellSurface<'_> {
+    /// De uitkomsten die een regeling kent; leeg als de cel haar niet laadt.
+    fn outputs_of(&self, regulation: &str) -> BTreeSet<String> {
+        self.outputs.get(regulation).cloned().unwrap_or_default()
+    }
+}
+
+/// Komma-gescheiden opsomming voor een foutmelding.
+fn listing<'a>(names: impl IntoIterator<Item = &'a String>) -> String {
+    names
+        .into_iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Kent deze verzameling de naam, hoofdletterongevoelig?
+///
+/// Zelfde souplesse als de kroniekstore en de engine: veldnamen matchen
+/// hoofdletterongevoelig, dus een definitie afkeuren op een hoofdletter zou
+/// weigeren wat bij het bevragen wél werkt.
+fn contains_name(names: &BTreeSet<String>, name: &str) -> bool {
+    names.iter().any(|known| known.eq_ignore_ascii_case(name))
 }
 
 impl LexostatusDefinition {
     /// De uitkomsten die deze lexostatus publiceert.
     ///
-    /// Altijd [`Reduction::output`], plus wat [`Self::outputs`] noemt. Een
-    /// consument krijgt precies deze namen te zien.
+    /// Bij de wetsvorm altijd de `output` van de reductie, plus wat
+    /// [`Self::outputs`] noemt; bij een kroniekfilter precies
+    /// [`Self::outputs`]. Een consument krijgt precies deze namen te zien.
     pub fn published_outputs(&self) -> BTreeSet<&str> {
-        std::iter::once(self.reduction.output.as_str())
+        let driving = match &self.reduction {
+            Reduction::Law { output, .. } => Some(output.as_str()),
+            Reduction::Chronicle { .. } => None,
+        };
+        driving
+            .into_iter()
             .chain(self.outputs.iter().map(String::as_str))
             .collect()
     }
@@ -148,56 +316,63 @@ impl LexostatusDefinition {
 
     /// Controleer de definitie tegen de cel waarin ze staat.
     ///
-    /// Drie dingen moeten kloppen voordat een consument er ooit bij kan: de
-    /// reductie mag alleen een eigen regeling van de cel raken, elke
-    /// gepubliceerde uitkomst moet een uitkomst zijn die die regeling kent, en
-    /// elke `$`-verwijzing moet een gedocumenteerde parameter zijn.
+    /// Een definitie is een belofte aan een consument, dus alles wat die belofte
+    /// niet waar kan maken blijkt hier — bij het optuigen van de cel, en niet
+    /// pas bij de eerste vraag.
     ///
-    /// `known_outputs` bevat per regeling de uitkomstnamen van álle geladen
+    /// `surface.outputs` bevat per regeling de uitkomstnamen van álle geladen
     /// versies. Een definitie afkeuren om een naam die alleen in de nieuwste
     /// versie ontbreekt, zou een scenario over een ouder moment onterecht
     /// blokkeren.
-    pub(crate) fn validate(
+    pub(crate) fn validate(&self, cell: &str, surface: &CellSurface<'_>) -> Result<()> {
+        match &self.reduction {
+            Reduction::Law {
+                regulation,
+                parameters,
+                ..
+            } => self.validate_law(cell, surface, regulation, parameters),
+            Reduction::Chronicle {
+                chronicle,
+                key,
+                conditions,
+            } => self.validate_chronicle(cell, surface, chronicle, key, conditions),
+        }
+    }
+
+    /// De wetsvorm: eigen regeling, bestaande uitkomsten, bestaande parameters.
+    fn validate_law(
         &self,
         cell: &str,
-        own_laws: &[String],
-        known_outputs: &BTreeMap<String, BTreeSet<String>>,
+        surface: &CellSurface<'_>,
+        regulation: &str,
+        parameters: &BTreeMap<String, String>,
     ) -> Result<()> {
-        if !own_laws.contains(&self.reduction.regulation) {
+        if !surface.laws.iter().any(|law| law == regulation) {
             return Err(SimulatorError::ForeignRegulation {
                 cell: cell.to_string(),
                 lexostatus: self.name.clone(),
-                regulation: self.reduction.regulation.clone(),
+                regulation: regulation.to_string(),
             });
         }
 
-        let known = known_outputs
-            .get(&self.reduction.regulation)
-            .cloned()
-            .unwrap_or_default();
+        let known = surface.outputs_of(regulation);
         for published in self.published_outputs() {
             if !known.contains(published) {
                 return Err(SimulatorError::UnknownOutput {
                     cell: cell.to_string(),
                     lexostatus: self.name.clone(),
-                    regulation: self.reduction.regulation.clone(),
+                    origin: format!("regeling '{regulation}'"),
                     output: published.to_string(),
-                    known: known
-                        .iter()
-                        .map(String::as_str)
-                        .collect::<Vec<_>>()
-                        .join(", "),
+                    known: listing(&known),
                 });
             }
         }
 
-        for reference in self
-            .reduction
-            .parameters
+        for reference in parameters
             .values()
             .filter_map(|binding| binding_name(binding))
         {
-            if !self.inputs.iter().any(|input| input.name == reference) {
+            if !self.documents(reference) {
                 return Err(SimulatorError::UnknownReference {
                     cell: cell.to_string(),
                     lexostatus: self.name.clone(),
@@ -209,16 +384,97 @@ impl LexostatusDefinition {
         Ok(())
     }
 
-    /// Zet de vraag van een consument om in parameters voor de engine.
+    /// Het kroniekfilter: eigen stroom, bestaande velden, en een sleutel die de
+    /// consument kan meegeven.
+    fn validate_chronicle(
+        &self,
+        cell: &str,
+        surface: &CellSurface<'_>,
+        chronicle: &str,
+        key: &str,
+        conditions: &BTreeMap<String, Value>,
+    ) -> Result<()> {
+        let Some(fields) = surface.streams.get(chronicle) else {
+            return Err(SimulatorError::UnknownStream {
+                cell: cell.to_string(),
+                lexostatus: self.name.clone(),
+                stream: chronicle.to_string(),
+                known: listing(surface.streams.keys()),
+            });
+        };
+
+        if self.outputs.is_empty() {
+            return Err(SimulatorError::ChronicleWithoutOutputs {
+                cell: cell.to_string(),
+                lexostatus: self.name.clone(),
+                stream: chronicle.to_string(),
+            });
+        }
+
+        for published in self.published_outputs() {
+            if !contains_name(fields, published) {
+                return Err(SimulatorError::UnknownOutput {
+                    cell: cell.to_string(),
+                    lexostatus: self.name.clone(),
+                    origin: format!("kroniekstroom '{chronicle}'"),
+                    output: published.to_string(),
+                    known: listing(fields),
+                });
+            }
+        }
+
+        for field in std::iter::once(key).chain(conditions.keys().map(String::as_str)) {
+            if !contains_name(fields, field) {
+                return Err(SimulatorError::UnknownFilterField {
+                    cell: cell.to_string(),
+                    lexostatus: self.name.clone(),
+                    stream: chronicle.to_string(),
+                    field: field.to_string(),
+                    known: listing(fields),
+                });
+            }
+        }
+
+        // `where` vergelijkt met letterlijke waarden. Wie de `$naam`-vorm van de
+        // wetsvorm hier overneemt, krijgt anders een filter dat de tekst `$naam`
+        // zoekt en dus op elke vraag "niets vastgesteld" antwoordt — niet te
+        // onderscheiden van een leeg verleden, en daarom hier een optuigfout.
+        for (field, expected) in conditions {
+            if let Some(reference) = expected.as_str().and_then(binding_name) {
+                return Err(SimulatorError::FilterValueReference {
+                    cell: cell.to_string(),
+                    lexostatus: self.name.clone(),
+                    field: field.clone(),
+                    reference: reference.to_string(),
+                });
+            }
+        }
+
+        if !self.documents(key) {
+            return Err(SimulatorError::ChronicleKeyWithoutParameter {
+                cell: cell.to_string(),
+                lexostatus: self.name.clone(),
+                key: key.to_string(),
+                documented: self.documented_parameters(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Documenteert deze lexostatus een parameter met deze naam?
+    fn documents(&self, name: &str) -> bool {
+        self.inputs.iter().any(|input| input.name == name)
+    }
+
+    /// Controleer de vraag van een consument tegen de gedocumenteerde parameters.
     ///
     /// Weigert een ontbrekende parameter, een niet-gedocumenteerde parameter en
     /// een parameter van het verkeerde type. Dat is wat "gedocumenteerde
     /// parameters" waard maakt: de cel accepteert precies wat ze publiceert.
-    pub(crate) fn bind(
-        &self,
-        cell: &str,
-        params: &BTreeMap<String, Value>,
-    ) -> Result<BTreeMap<String, Value>> {
+    /// Geldt voor beide reductievormen — een bron-cel zonder engine houdt haar
+    /// consument even strikt aan de gepubliceerde vraag.
+    pub(crate) fn check_params(&self, cell: &str, params: &BTreeMap<String, Value>) -> Result<()> {
         for supplied in params.keys() {
             if !self.inputs.iter().any(|input| &input.name == supplied) {
                 return Err(SimulatorError::UndocumentedParameter {
@@ -249,15 +505,7 @@ impl LexostatusDefinition {
             }
         }
 
-        let mut bound = BTreeMap::new();
-        for (name, binding) in &self.reduction.parameters {
-            let value = match binding_name(binding) {
-                Some(reference) => params.get(reference).cloned().unwrap_or(Value::Null),
-                None => Value::String(binding.clone()),
-            };
-            bound.insert(name.clone(), value);
-        }
-        Ok(bound)
+        Ok(())
     }
 
     /// Komma-gescheiden lijst van gedocumenteerde parameters, voor foutmeldingen.
@@ -270,7 +518,160 @@ impl LexostatusDefinition {
     }
 }
 
+/// Zet de gecontroleerde vraag om in parameters voor de engine.
+///
+/// Alleen de wetsvorm heeft dit nodig: een kroniekfilter praat niet met een
+/// engine. Aanroepen ná [`LexostatusDefinition::check_params`] — een `$naam`
+/// die daar niet doorkwam, landt hier als [`Value::Null`].
+pub(crate) fn engine_parameters(
+    bindings: &BTreeMap<String, String>,
+    params: &BTreeMap<String, Value>,
+) -> BTreeMap<String, Value> {
+    bindings
+        .iter()
+        .map(|(name, binding)| {
+            let value = match binding_name(binding) {
+                Some(reference) => params.get(reference).cloned().unwrap_or(Value::Null),
+                None => Value::String(binding.clone()),
+            };
+            (name.clone(), value)
+        })
+        .collect()
+}
+
 /// `"$bsn"` → `Some("bsn")`; alles zonder `$` is een letterlijke waarde.
 fn binding_name(binding: &str) -> Option<&str> {
     binding.strip_prefix('$')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Leest een reductie zoals de loader dat doet, en levert de foutmelding als
+    /// tekst: deze tests gaan juist over wat er in die melding staat.
+    fn reduction(yaml: &str) -> std::result::Result<Reduction, String> {
+        serde_yaml_ng::from_str(yaml).map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn de_wetsvorm_wordt_gelezen() {
+        let parsed = reduction(
+            r"
+regulation: wet_op_de_zorgtoeslag
+output: heeft_recht_op_zorgtoeslag
+parameters:
+  bsn: $bsn
+",
+        )
+        .unwrap_or_else(|e| panic!("de wetsvorm moet gelezen worden: {e}"));
+        let Reduction::Law { output, .. } = parsed else {
+            panic!("verwachtte de wetsvorm, kreeg {parsed:?}");
+        };
+        assert_eq!(output, "heeft_recht_op_zorgtoeslag");
+    }
+
+    #[test]
+    fn het_kroniekfilter_wordt_gelezen() {
+        let parsed = reduction(
+            r"
+chronicle: relaties
+key: bsn
+latest: true
+where:
+  partnerschap_type: HUWELIJK
+",
+        )
+        .unwrap_or_else(|e| panic!("het kroniekfilter moet gelezen worden: {e}"));
+        let Reduction::Chronicle {
+            chronicle,
+            key,
+            conditions,
+        } = parsed
+        else {
+            panic!("verwachtte een kroniekfilter, kreeg {parsed:?}");
+        };
+        assert_eq!(chronicle, "relaties");
+        assert_eq!(key, "bsn");
+        assert_eq!(
+            conditions.get("partnerschap_type"),
+            Some(&Value::String("HUWELIJK".to_string()))
+        );
+    }
+
+    #[test]
+    fn latest_mag_weggelaten_worden() {
+        assert!(
+            reduction("chronicle: relaties\nkey: bsn\n").is_ok(),
+            "`latest: true` is de enige modus, dus de afwezigheid ervan is geen keuze"
+        );
+    }
+
+    #[test]
+    fn twee_vormen_in_een_reductie_noemt_beide() {
+        let err = reduction("regulation: wet_x\noutput: y\nchronicle: relaties\nkey: bsn\n")
+            .expect_err("twee vormen in één reductie hoort te falen");
+        assert!(
+            err.contains("wet_x") && err.contains("relaties"),
+            "de melding moet beide vormen noemen, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn geen_van_beide_vormen_noemt_ze_beide() {
+        let err = reduction("parameters:\n  bsn: $bsn\n")
+            .expect_err("een reductie zonder vorm hoort te falen");
+        assert!(
+            err.contains("`regulation`") && err.contains("`chronicle`"),
+            "de melding moet vertellen welke twee vormen er zijn, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn de_wetsvorm_zonder_output_wordt_geweigerd() {
+        let err = reduction("regulation: wet_x\n").expect_err("zonder `output` hoort het te falen");
+        assert!(
+            err.contains("`output`"),
+            "de melding moet `output` noemen, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn een_kroniekfilter_met_een_wetsveld_wordt_geweigerd() {
+        let err = reduction("chronicle: relaties\nkey: bsn\noutput: heeft_partner\n")
+            .expect_err("`output` bij een kroniekfilter hoort te falen");
+        assert!(
+            err.contains("`outputs`"),
+            "de melding moet naar `outputs` wijzen, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn een_wetsvorm_met_een_kroniekveld_wordt_geweigerd() {
+        let err = reduction("regulation: wet_x\noutput: y\nlatest: true\n")
+            .expect_err("`latest` bij de wetsvorm hoort te falen");
+        assert!(
+            err.contains("`latest`"),
+            "de melding moet `latest` noemen, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn aggregeren_bestaat_nog_niet_en_zegt_dat() {
+        let err = reduction("chronicle: relaties\nkey: bsn\nlatest: false\n")
+            .expect_err("`latest: false` hoort te falen zolang er niets te aggregeren valt");
+        assert!(
+            err.contains("aggregeren"),
+            "de melding moet zeggen wat er ontbreekt, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn een_kroniekfilter_zonder_sleutel_wordt_geweigerd() {
+        let err = reduction("chronicle: relaties\n").expect_err("zonder `key` hoort het te falen");
+        assert!(
+            err.contains("`key`"),
+            "de melding moet `key` noemen, kreeg: {err}"
+        );
+    }
 }
