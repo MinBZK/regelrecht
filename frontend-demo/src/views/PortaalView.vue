@@ -8,6 +8,7 @@ import { fieldSpec, numericImpact } from '../data/format.js';
 import { loadFailures } from '../engine/useDemoEngine.js';
 import { PERMISSION_LABELS, delegationLabel } from '../data/delegation.js';
 import { useDemo } from '../store/demoStore.js';
+import { useNarrow } from '../useNarrow.js';
 
 // The citizen's (or entrepreneur's) portal: every regeling the persona can
 // discover, evaluated live, ordered by financial impact. This is where the
@@ -15,6 +16,9 @@ import { useDemo } from '../store/demoStore.js';
 // submits an application.
 
 const demo = useDemo();
+// Op een smal scherm blijft alleen de kop staan; zie de toelichting in de
+// template bij nldd-title.
+const narrow = useNarrow();
 const { profile, persona, portalLaws, corpus, state, activeDelegation, canSubmitClaims, features } = demo;
 
 // Impact per law (from the tiles' evaluations) drives the ordering.
@@ -128,17 +132,35 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
          de tekst boven de tegels op dezelfde marge staat. -->
     <nldd-simple-section width="1440px">
       <nldd-title slot="header" size="2">
-        <span slot="overline">Ingelogd als {{ persona?.name ?? profile?.name }}<template v-if="activeDelegation"> · namens {{ activeDelegation.subjectName }}</template> · demo, geen echte overheidsdienst</span>
+        <!-- Op een smal scherm blijft alleen de kop staan: vijf lagen tekst
+             vulden daar het scherm voordat de eerste tegel in beeld kwam. Wie
+             is ingelogd staat ook in de werkbalk. Namens wie er gehandeld
+             wordt blijft wél staan, want dat verandert de betekenis van alles
+             eronder.
+             Dit gaat met v-if en niet met een CSS-klasse: overline en subtitle
+             zijn slots van nldd-title, en de component zet daar in zijn
+             shadow-DOM een eigen display op die een regel van buiten niet
+             overstemt (gemeten: allebei bleven zichtbaar). -->
+        <span v-if="!narrow || activeDelegation" slot="overline">
+          <template v-if="narrow">Namens {{ activeDelegation.subjectName }}</template>
+          <template v-else>Ingelogd als {{ persona?.name ?? profile?.name }}<template v-if="activeDelegation"> · namens {{ activeDelegation.subjectName }}</template> · demo, geen echte overheidsdienst</template>
+        </span>
         <h1>{{ heading }}</h1>
-        <span slot="subtitle">{{ subtitle }}</span>
+        <span v-if="!narrow" slot="subtitle">{{ subtitle }}</span>
         <!-- De slot heet `end`, niet `actions`: nldd-title kent alleen
              overline, default, subtitle en end. Met `actions` viel het blok
              buiten de shadow-DOM en was het 0x0 — de persona-tags stonden er
              dus wel, maar zag niemand. `.title__end` is een flexrij die niet
              krimpt, dus de tags gaan er los in: een nldd-container ertussen
-             heeft geen eigen breedte en werd 0px breed. -->
-        <nldd-tag v-for="p in properties" :key="p" slot="end" size="sm" :text="p"></nldd-tag>
-        <nldd-tag v-if="profile?.kvk && !activeDelegation" slot="end" size="sm" icon="building" :text="`KVK ${profile.kvk}`"></nldd-tag>
+             heeft geen eigen breedte en werd 0px breed.
+             Op een smal scherm staan ze naast de kop en namen ze de helft van
+             de breedte, waardoor die over vier regels brak. Het zijn
+             eigenschappen van de persona, net als de beschrijving hierboven,
+             dus ze gaan daar samen weg. -->
+        <template v-if="!narrow">
+          <nldd-tag v-for="p in properties" :key="p" slot="end" size="sm" :text="p"></nldd-tag>
+          <nldd-tag v-if="profile?.kvk && !activeDelegation" slot="end" size="sm" icon="building" :text="`KVK ${profile.kvk}`"></nldd-tag>
+        </template>
       </nldd-title>
       <!-- Eén ingang voor 'er is iets veranderd', naast de tegels die elk over
            één regeling gaan. Onder de kop en niet ernaast: het is een actie op
@@ -147,7 +169,7 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         <nldd-button size="sm" variant="secondary" start-icon="edit" text="Wijziging doorgeven" @click="wizardOpen = true"></nldd-button>
       </nldd-container>
       <!-- De beschrijving hoort bij de persona zelf; namens een ander zegt zij niets. -->
-      <nldd-rich-text v-if="persona?.description && !activeDelegation" spacing="tight"><p><em>{{ persona.description }}</em></p></nldd-rich-text>
+      <nldd-rich-text v-if="persona?.description && !activeDelegation && !narrow" spacing="tight"><p><em>{{ persona.description }}</em></p></nldd-rich-text>
       <!-- The persona line above sets `spacing="tight"`, which strips the space
            under it, so a banner placed straight after touched it (measured: 0px
            between them). The banners get their own container with a gap. -->

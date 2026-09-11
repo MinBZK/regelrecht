@@ -11,6 +11,7 @@ import { BUSINESS_DIMENSIONS, CITIZEN_DIMENSIONS, breakdown, flattenResults, toC
 import { disposableIncomeBreakdown, summariseDisposableIncome } from '../simulation/income.js';
 import { describeModel, featuresFor, taxLawIds, trainBracketModel, trainingData } from '../simulation/harmonize.js';
 import { useDemo } from '../store/demoStore.js';
+import { useNarrow } from '../useNarrow.js';
 
 // Simulatie: a synthetic population of citizens or businesses, every portal
 // law evaluated for each of them by the same engine the portal uses, and the
@@ -90,6 +91,9 @@ watch(activeRun, () => {
 
 async function run() {
   if (!ready.value || running.value) return;
+  // Op een smal scherm bedekt de sheet het hoofdpaneel, dus de voortgang en de
+  // uitkomst zouden erachter verdwijnen.
+  splitView.value?.hidePrimarySidebarSheet?.();
   running.value = true;
   runError.value = null;
   signal.cancelled = false;
@@ -206,6 +210,13 @@ const harmonizeRelativeError = computed(() => {
 const harmonizeNetCost = computed(() => (harmonizeModel.value?.metrics?.meanAmount ?? 0) < 0);
 
 // ---- inspector ----------------------------------------------------------------
+// De instellingen staan op een smal scherm in een sheet; na het starten van
+// een run moet die dicht, anders bedekt hij de uitkomst waar het om gaat.
+// Op een breed scherm blijft het paneel gewoon staan (zie de split view in de
+// template), dus daar is de knop overbodig.
+const splitView = ref(null);
+const narrow = useNarrow();
+
 const inspector = ref(null); // { type: 'params', lawId } | { type: 'law', lawId }
 function editParameters(law) {
   inspector.value = { type: 'params', lawId: law.id };
@@ -361,20 +372,33 @@ function exportJson() {
 </script>
 
 <template>
-  <nldd-navigation-split-view>
-    <nldd-split-view-pane slot="sidebar" has-content>
-      <nldd-page sticky-header>
-        <nldd-container slot="header" padding="8">
-          <nldd-toolbar size="sm">
-            <nldd-toolbar-title slot="start" text="Simulatie" :supporting-text="`${lawSet.runnable.length} regelingen`"></nldd-toolbar-title>
-          </nldd-toolbar>
-        </nldd-container>
-        <nldd-container padding="12" gap="12">
+  <!-- Alleen op een smal scherm wordt het zijpaneel een sheet. Daar viel het
+       anders helemaal weg en was er geen enkele manier meer om een simulatie
+       te starten. Op een breed scherm blijft het staan, anders dan bij Wetten
+       en Scenario's: tijdens een demo stel je hier voortdurend parameters bij,
+       en dat zou telkens een extra klik kosten. -->
+  <nldd-navigation-split-view
+    ref="splitView"
+    :primary-sidebar-as-sheet="narrow || undefined"
+    primary-sidebar-accessible-label="Simulatie-instellingen"
+  >
+    <nldd-split-view-pane slot="sidebar" has-content background="tinted">
+      <!-- Kop, keuze en zoekveld horen in de header, zoals Wetten het doet: de
+           burger/ondernemer-keuze is de hoofdknop van dit paneel, want alles
+           eronder gaat over de gekozen soort.
+           `sticky-header` staat er bewust niet op. Een plakkende header zweeft
+           over de scroll-container (gemeten: 61px, en precies evenveel bij
+           Wetten), wat daar onzichtbaar blijft omdat een lijst begint waar hier
+           meteen een invoerveld staat. -->
+      <nldd-page background="inherit">
+        <nldd-container slot="header" padding="12" gap="8">
+          <nldd-top-title-bar text="Simulatie" :supporting-text="`${lawSet.runnable.length} regelingen`"></nldd-top-title-bar>
           <nldd-segmented-control width="full" :value="kind" @change="kind = $event.detail?.value ?? kind">
             <nldd-segmented-control-item value="burgers" text="Burgers" icon="person"></nldd-segmented-control-item>
             <nldd-segmented-control-item value="ondernemers" text="Ondernemers" icon="business-suitcase"></nldd-segmented-control-item>
           </nldd-segmented-control>
-
+        </nldd-container>
+        <nldd-container padding="12" gap="12">
           <nldd-form-field :label="kind === 'ondernemers' ? 'Aantal bedrijven' : 'Aantal personen'">
             <nldd-number-field :value="params.count" min="1" max="2000" step="10" width="full" @change="params.count = numberFrom($event) ?? params.count"></nldd-number-field>
           </nldd-form-field>
@@ -422,9 +446,17 @@ function exportJson() {
 
     <nldd-split-view-pane slot="main" has-content>
       <nldd-page sticky-header>
-        <nldd-container v-if="runs.length" slot="header" padding="8">
+        <!-- De koptekst staat er altijd, ook zonder run: hij draagt de knop
+             naar de instellingen, en die is op een smal scherm de enige
+             ingang naar het zijpaneel. Stond hij achter `runs.length`, dan
+             was er zonder simulatie geen enkele manier om er een te
+             starten. -->
+        <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
-            <nldd-toolbar-item slot="start">
+            <nldd-toolbar-item slot="start" v-if="narrow">
+              <nldd-button size="sm" variant="neutral-tinted" start-icon="settings" text="Instellingen" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="start" v-if="runs.length">
               <nldd-tab-bar size="sm" @tabchange="onTab">
                 <nldd-tab-bar-item v-for="r in runs" :key="r.id" :data-run="r.id" :selected="activeTab === r.id || undefined" :text="r.label"></nldd-tab-bar-item>
                 <nldd-tab-bar-item v-if="runs.length > 1" data-run="vergelijking" :selected="activeTab === 'vergelijking' || undefined" text="Vergelijking" icon="arrow-left-right"></nldd-tab-bar-item>
@@ -460,9 +492,7 @@ function exportJson() {
           <nldd-inline-dialog
             icon="chart-x-y-axis-line"
             text="Nog geen simulatie"
-            :supporting-text="harmonizeEnabled
-              ? 'Kies links een populatie en druk op Simuleren. Elke persoon of elk bedrijf wordt door de engine door alle regelingen gehaald. Daarna verschijnt rechtsboven ook Harmonisatie, dat op die uitkomsten rekent.'
-              : 'Kies links een populatie en druk op Simuleren. Elke persoon of elk bedrijf wordt door de engine door alle regelingen gehaald.'"
+            :supporting-text="`${narrow ? 'Kies onder Instellingen' : 'Kies links'} een populatie en druk op Simuleren. Elke persoon of elk bedrijf wordt door de engine door alle regelingen gehaald.${harmonizeEnabled ? ' Daarna verschijnt rechtsboven ook Harmonisatie, dat op die uitkomsten rekent.' : ''}`"
           ></nldd-inline-dialog>
         </nldd-simple-section>
 
