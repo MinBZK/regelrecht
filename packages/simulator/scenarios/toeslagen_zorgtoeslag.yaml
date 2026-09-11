@@ -1,0 +1,119 @@
+---
+name: toeslagen reduceert over eigen feiten
+description: >-
+  Eén cel, geen verkeer tussen cellen. De cel `toeslagen` laadt haar eigen drie
+  regelingen en houdt de feiten die ze nodig heeft in haar eigen kronieken —
+  ook de feiten die in de echte wereld van een andere organisatie komen. Die
+  zijn hier vastgelegd als binnengekomen feit, niet als vraag aan een buurcel:
+  zolang er geen transport is, is dat het eerlijke model.
+
+cells:
+  - id: toeslagen
+    laws:
+      - wet_op_de_zorgtoeslag
+      - algemene_wet_inkomensafhankelijke_regelingen
+      - regeling_standaardpremie
+
+    chronicles:
+      # Wat de cel over de relatievorm van deze persoon heeft vastgelegd (AWIR
+      # art. 3). Twee vastleggingen: de tweede vervangt de eerste vanaf haar
+      # eigen moment, wat de tijdreductie zichtbaar maakt.
+      - stream: relaties
+        key: bsn
+        events:
+          - op_moment: 2023-01-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+          - op_moment: 2024-07-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+
+      # Feiten die van buiten binnenkwamen en die de cel als eigen feit heeft
+      # vastgelegd: verzekeringsstatus, inkomen en vermogen.
+      #
+      # `wet_op_de_zorgtoeslag` noemt deze drie als input met een
+      # `source.regulation` naar een andere regeling. Deze stroom overschaduwt
+      # die verwijzingen bewust: een kroniekstroom is een databron en wint op
+      # tier 1 van de resolutievolgorde (RFC-022 §4.2), dus de cross-law-vraag
+      # komt niet aan bod. Dat is hier de bedoeling — het zijn binnengekomen
+      # feiten — maar het gebeurt stil.
+      - stream: intake
+        key: bsn
+        events:
+          - op_moment: 2024-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+              verzamelinkomen: 79547
+              buitenlands_inkomen: 0
+              vermogen: 0
+
+    lexostatus_definitions:
+      - name: zorgtoeslag_rechtstoestand
+        doc: >-
+          De zorgtoeslagpositie van één persoon op één moment, op de feiten die
+          deze cel kent. Wie iets anders wil weten, moet een andere lexostatus
+          gepubliceerd zien te krijgen — een eigen reductie meesturen kan niet.
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          # Wat de cel onder deze naam publiceert. De engine berekent onderweg
+          # meer; wat hier niet staat, verlaat de cel niet.
+          - heeft_recht_op_zorgtoeslag
+          - hoogte_zorgtoeslag
+        reduction:
+          regulation: wet_op_de_zorgtoeslag
+          output: heeft_recht_op_zorgtoeslag
+          parameters:
+            bsn: $bsn
+
+      - name: toeslagpartnerschap
+        doc: >-
+          Of deze persoon op het gevraagde moment een toeslagpartner had (AWIR
+          art. 3), op de relatiefeiten die deze cel kent.
+        inputs:
+          - name: bsn
+            type: string
+        reduction:
+          regulation: algemene_wet_inkomensafhankelijke_regelingen
+          output: heeft_toeslagpartner
+          parameters:
+            bsn: $bsn
+
+queries:
+  - description: >-
+      Alleenstaande met een actieve polis en een laag toetsingsinkomen; op
+      2025-01-01 zijn alle vastleggingen bekend en geldt de versie 2025 van de
+      standaardpremie.
+    cell: toeslagen
+    lexostatus: zorgtoeslag_rechtstoestand
+    params:
+      bsn: '999993653'
+    op_moment: 2025-01-01
+    expect:
+      heeft_recht_op_zorgtoeslag: true
+      hoogte_zorgtoeslag: 209692
+
+  # Dezelfde cel, dezelfde persoon, twee momenten: het antwoord verschilt omdat
+  # de vastlegging van 2024-07-01 er op het eerste moment nog niet was. Dat
+  # `op_moment` geen versiering is, staat of valt met dit paar.
+  - description: op 2024-06-01 gold nog de vastlegging HUWELIJK
+    cell: toeslagen
+    lexostatus: toeslagpartnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      heeft_toeslagpartner: true
+
+  - description: na de vastlegging van 2024-07-01 is er geen toeslagpartner meer
+    cell: toeslagen
+    lexostatus: toeslagpartnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2025-01-01
+    expect:
+      heeft_toeslagpartner: false

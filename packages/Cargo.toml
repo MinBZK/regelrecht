@@ -12,6 +12,7 @@ members = [
     "law-model",
     "pipeline",
     "shared",
+    "simulator",
     "tui",
 ]
 
