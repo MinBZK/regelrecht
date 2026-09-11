@@ -440,6 +440,42 @@ lexostatus_definitions:
         );
     }
 
+    /// De executogram-vorm weigert wat ze niet kent, en dat geldt voor een
+    /// veldnaam net zo goed als voor een kanaalnaam. Zonder die twee weigeringen
+    /// staat er straks een vastlegging in een kroniek die iets anders zegt dan
+    /// de auteur bedoelde: een grondslag die stil wegviel, of een kanaal
+    /// waarvan niemand meer kan zeggen waarlangs het feit binnenkwam. Dat
+    /// laatste is de hele reden dat `intake` een enum is en geen vrije tekst.
+    #[test]
+    fn een_onbekend_veld_of_kanaal_in_een_fixture_wordt_geweigerd() {
+        let yaml = |grondslag: &str, intake: &str| {
+            format!(
+                r"
+at: 2024-01-01
+record:
+  cell: toeslagen
+  chronicle: relaties
+  name: relatie_gewijzigd
+  intake: {intake}
+  {grondslag}: AWIR art. 3
+  fields:
+    bsn: '999993653'
+"
+            )
+        };
+
+        serde_yaml_ng::from_str::<Fixture>(&yaml("grondslag", "levering"))
+            .unwrap_or_else(|e| panic!("een correcte fixture moet parsen: {e}"));
+        assert!(
+            serde_yaml_ng::from_str::<Fixture>(&yaml("grondlsag", "levering")).is_err(),
+            "een typfout in een veldnaam hoort te falen; anders verdwijnt de grondslag stil"
+        );
+        assert!(
+            serde_yaml_ng::from_str::<Fixture>(&yaml("grondslag", "leverng")).is_err(),
+            "een typfout in een kanaalnaam hoort te falen"
+        );
+    }
+
     /// Twee triggers op dezelfde dag vallen op de tijdas niet uit elkaar; dan
     /// beslist de volgorde in het bestand, en de laatste wint. De sortering van
     /// de trigger-lijst is stabiel, dus dat is een vastgelegde eigenschap en
