@@ -44,6 +44,7 @@ jobs:
               - frontend-poc-portal/**
               - frontend-poc-terugbetaalregimes/**
               - frontend-poc-nieuwkomersbekostiging/**
+              - frontend-poc-napp/**
               - corpus-poc/**
               - pocs/**
               - packages/frontend-shared/**

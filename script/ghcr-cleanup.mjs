@@ -78,6 +78,7 @@ export const PACKAGES = [
   'regelrecht-lawmaking',
   'regelrecht-docs',
   'regelrecht-poc',
+  'regelrecht-poc-napp',
 ];
 
 // Tags die een versie onaanraakbaar maken, wat er verder ook op zit. Dit is de

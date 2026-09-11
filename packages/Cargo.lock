@@ -2622,6 +2622,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -4287,6 +4288,32 @@ dependencies = [
  "tower-http 0.7.0",
  "tracing",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "regelrecht-poc-napp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "cucumber",
+ "regelrecht-auth",
+ "regelrecht-engine",
+ "reqwest 0.12.28",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sqlx",
+ "time",
+ "tokio",
+ "tower-http 0.7.0",
+ "tower-sessions",
+ "tower-sessions-memory-store",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 

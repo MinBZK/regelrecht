@@ -1,0 +1,133 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$id: besluit_subsidiering_decentrale_politieke_partijen
+regulatory_layer: AMVB
+publication_date: '2025-12-01'
+valid_from: '2026-01-01'
+bwb_id: BWBR0000002
+url: https://wetten.overheid.nl/BWBR0000002/2026-01-01
+name: Besluit subsidiëring decentrale politieke partijen
+# FICTIEF. Artikel 26 van het wetsvoorstel Wpp (36742) delegeert de regels
+# over de subsidiëring van decentrale politieke partijen en de wijze van
+# verdeling aan een algemene maatregel van bestuur; die AMvB bestaat nog
+# niet. Dit besluit is een plausibele invulling om de end-to-end werking te
+# tonen: de gemeentestaffel komt uit de berichtgeving rond het wetsvoorstel
+# (EUR 658 tot EUR 1.613 per raadszetel, afhankelijk van het inwoneraantal);
+# de bedragen per staten-, eilandsraads- en waterschapszetel zijn eigen
+# aannames. Vervang dit bestand zodra de echte AMvB er is.
+legal_basis:
+  - law_id: wet_op_de_politieke_partijen
+    article: '26'
+
+articles:
+  - number: '1'
+    text: |-
+      Het bedrag per raadszetel voor een decentrale politieke partij of
+      afdeling bedraagt, afhankelijk van het aantal inwoners van de
+      gemeente op de peildatum: EUR 658 (tot en met 40.000 inwoners),
+      EUR 900 (tot en met 100.000), EUR 1.200 (tot en met 375.000) en
+      EUR 1.613 (meer dan 375.000).
+    url: https://wetten.overheid.nl/BWBR0000002/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '12'
+          open_term: bedrag_per_raadszetel
+          gelet_op: Gelet op artikel 26, eerste lid, van de Wet op de politieke partijen
+      execution:
+        parameters:
+          - name: inwoneraantal_gemeente
+            type: number
+            required: true
+            description: Aantal inwoners van de gemeente op de peildatum (1 januari)
+        output:
+          - name: bedrag_per_raadszetel
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: bedrag_per_raadszetel
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject: $inwoneraantal_gemeente
+                    value: 40000
+                  then: 65800
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject: $inwoneraantal_gemeente
+                    value: 100000
+                  then: 90000
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject: $inwoneraantal_gemeente
+                    value: 375000
+                  then: 120000
+              default: 161300
+
+  - number: '2'
+    text: |-
+      Het bedrag per zetel in provinciale staten bedraagt EUR 1.613.
+    url: https://wetten.overheid.nl/BWBR0000002/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '12'
+          open_term: bedrag_per_statenzetel
+          gelet_op: Gelet op artikel 26, eerste lid, van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: bedrag_per_statenzetel
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          # Aanname: gelijkgesteld aan de hoogste gemeentestaffel.
+          - output: bedrag_per_statenzetel
+            value: 161300
+
+  - number: '3'
+    text: |-
+      Het bedrag per zetel in een eilandsraad bedraagt EUR 658.
+    url: https://wetten.overheid.nl/BWBR0000002/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '12'
+          open_term: bedrag_per_eilandsraadszetel
+          gelet_op: Gelet op artikel 26, eerste lid, van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: bedrag_per_eilandsraadszetel
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          # Aanname: gelijkgesteld aan de laagste gemeentestaffel; de
+          # openbare lichamen hebben elk minder dan 40.000 inwoners.
+          - output: bedrag_per_eilandsraadszetel
+            value: 65800
+
+  - number: '4'
+    text: |-
+      Het bedrag per zetel in het algemeen bestuur van een waterschap
+      bedraagt EUR 1.613.
+    url: https://wetten.overheid.nl/BWBR0000002/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '12'
+          open_term: bedrag_per_waterschapszetel
+          gelet_op: Gelet op artikel 26, eerste lid, van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: bedrag_per_waterschapszetel
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          # Aanname: zie artikel 2.
+          - output: bedrag_per_waterschapszetel
+            value: 161300

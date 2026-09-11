@@ -11,6 +11,7 @@ members = [
     "harvester",
     "law-model",
     "pipeline",
+    "poc-napp",
     "poc-portal",
     "shared",
     "tui",

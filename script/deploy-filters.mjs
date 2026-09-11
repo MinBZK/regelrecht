@@ -63,6 +63,17 @@ export const COMPONENTS = {
   // Het poc-portaal bakt de statische pocs in zijn eigen image, dus het raakt
   // ook aan hun frontends en hun casus-corpus. De crate-kant (auth, corpus,
   // engine) volgt uit de graaf.
+  // napp draait als eigen, niet-gepubliceerd component; het portaal proxyt
+  // ernaartoe. Eigen image, dus eigen filter.
+  'poc-napp': {
+    crate: 'regelrecht-poc-napp',
+    paths: [
+      'pocs/',
+      'corpus-poc/napp/',
+      'frontend-poc-napp/',
+      'packages/poc-napp/Dockerfile',
+    ],
+  },
   poc: {
     crate: 'regelrecht-poc-portal',
     paths: [
