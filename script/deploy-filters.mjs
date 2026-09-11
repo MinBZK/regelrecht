@@ -70,6 +70,7 @@ export const COMPONENTS = {
       'corpus-poc/',
       'frontend-poc-portal/',
       'frontend-poc-terugbetaalregimes/',
+      'frontend-poc-nieuwkomersbekostiging/',
       'packages/poc-portal/Dockerfile',
     ],
   },

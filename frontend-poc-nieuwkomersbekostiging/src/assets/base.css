@@ -1,0 +1,24 @@
+/*
+ * Basisstijl voor tekst buiten de nldd-componenten. Het design system
+ * levert de RijksSans @font-face en de tokens, maar zet zelf geen globale
+ * body-font (zie ook regelrecht frontend/css/main.css).
+ */
+:root {
+  /* Volg de OS-voorkeur; nodig om light-dark() in eigen én nldd-css
+     consistent te laten resolven met de app-achtergrond. */
+  color-scheme: light dark;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--primitives-font-family-body, var(--primitives-font-family-sans-serif, system-ui, sans-serif));
+  /* De nldd-tokens zijn zelf al licht/donker-adaptief: neutral-900 is de
+     contrastkleur in beide schema's. Geen extra light-dark() eromheen. */
+  color: var(--primitives-color-neutral-900, canvastext);
+}

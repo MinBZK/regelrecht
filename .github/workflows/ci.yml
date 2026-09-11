@@ -43,6 +43,7 @@ jobs:
               - frontend-lawmaking/**
               - frontend-poc-portal/**
               - frontend-poc-terugbetaalregimes/**
+              - frontend-poc-nieuwkomersbekostiging/**
               - corpus-poc/**
               - pocs/**
               - packages/frontend-shared/**
@@ -907,7 +908,9 @@ jobs:
       # hierboven heeft het al gebouwd.
       - name: Run poc tests
         if: needs.changes.outputs.ci == 'true'
-        run: npm test -w frontend-poc-terugbetaalregimes
+        run: |
+          npm test -w frontend-poc-terugbetaalregimes
+          npm test -w frontend-poc-nieuwkomersbekostiging
 
       - name: Upload Playwright report
         if: failure() && needs.changes.outputs.ci == 'true'

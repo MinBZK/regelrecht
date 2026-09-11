@@ -762,6 +762,9 @@ poc-build: wasm-build poc-assets
     POC_BASE=/terugbetaalregimes/ npm run build -w poc-terugbetaalregimes
     mkdir -p .poc-static/terugbetaalregimes
     cp -R frontend-poc-terugbetaalregimes/dist/. .poc-static/terugbetaalregimes/
+    POC_BASE=/nieuwkomersbekostiging/ npm run build -w poc-nieuwkomersbekostiging
+    mkdir -p .poc-static/nieuwkomersbekostiging
+    cp -R frontend-poc-nieuwkomersbekostiging/dist/. .poc-static/nieuwkomersbekostiging/
 
 # Start het poc-portaal op http://localhost:8611
 #

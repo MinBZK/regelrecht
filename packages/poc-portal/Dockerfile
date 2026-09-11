@@ -65,6 +65,7 @@ COPY frontend/package.json frontend/
 COPY frontend-lawmaking/package.json frontend-lawmaking/
 COPY frontend-poc-portal/package.json frontend-poc-portal/
 COPY frontend-poc-terugbetaalregimes/package.json frontend-poc-terugbetaalregimes/
+COPY frontend-poc-nieuwkomersbekostiging/package.json frontend-poc-nieuwkomersbekostiging/
 RUN npm ci --ignore-scripts
 
 # Het portaal: alleen het ontwerpsysteem voor zijn eigen twee pagina's.
@@ -76,8 +77,10 @@ RUN npm run build -w poc-portal-assets
 # /app/static/<slug>, en de bundel verwijst met dat voorvoegsel naar zichzelf.
 COPY corpus-poc/ corpus-poc/
 COPY frontend-poc-terugbetaalregimes/ frontend-poc-terugbetaalregimes/
+COPY frontend-poc-nieuwkomersbekostiging/ frontend-poc-nieuwkomersbekostiging/
 COPY --from=wasm-builder /wasm-pkg/ frontend/public/wasm/pkg/
 RUN POC_BASE=/terugbetaalregimes/ npm run build -w poc-terugbetaalregimes
+RUN POC_BASE=/nieuwkomersbekostiging/ npm run build -w poc-nieuwkomersbekostiging
 
 # Stage 2: chef-basis voor de Rust-kant.
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
@@ -160,6 +163,7 @@ COPY --from=frontend-builder /app/frontend-poc-portal/dist /app/static/_assets
 # blijft plat. De map onder /app/static heet dus naar de slug, niet naar wat
 # vite uitspuugt.
 COPY --from=frontend-builder /app/frontend-poc-terugbetaalregimes/dist /app/static/terugbetaalregimes
+COPY --from=frontend-builder /app/frontend-poc-nieuwkomersbekostiging/dist /app/static/nieuwkomersbekostiging
 
 WORKDIR /app
 ENV POC_STATIC_DIR=/app/static
