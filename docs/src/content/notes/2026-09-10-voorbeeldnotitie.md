@@ -45,6 +45,26 @@ De velden bovenaan dit bestand sturen vier dingen aan:
   [Wet op de zorgtoeslag](https://wetten.overheid.nl/BWBR0018451), en onderaan
   staat automatisch een link naar diezelfde regeling in de leesomgeving.
 
+## Slides en afbeeldingen
+
+Een afbeelding staat naast de notitie en verwijs je er relatief naartoe. Astro
+verkleint hem bij het bouwen, dus zet er gerust een export van een slide in:
+
+![Voorbeeldslide met drie routes naast elkaar](./voorbeeldslide.png)
+
+De alt-tekst is niet optioneel. Zonder valt de toegankelijkheidspoort in de CI
+erover, en terecht: "slide 4" zegt niemand iets, "de drie routes naast elkaar"
+wel.
+
+Een hele presentatie hoort niet in de notitie. Zet de twee of drie slides die
+het punt dragen in de tekst, en link de rest als PDF:
+[het hele deck](/notes/voorbeelddeck.pdf) (PDF). Die bestanden staan in
+`docs/public/notes/`.
+
+Voor een schema is een [mermaid](https://mermaid.js.org/)-blok beter dan een
+screenshot: dat blijft leesbaar, kleurt mee met licht en donker, en is
+doorzoekbaar.
+
 De bestandsnaam bepaalt de URL. Dit bestand heet
 `2026-09-10-voorbeeldnotitie.md` en staat dus op
 `/notes/2026/09/voorbeeldnotitie`. Die URL verandert niet meer, ook niet als de

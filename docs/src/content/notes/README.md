@@ -48,6 +48,22 @@ annotations on legal text inside the editor. These are site pages.
    prompt rather than a section. Answering it is usually what makes a note
    worth reading; deleting it is fine too.
 
+   **Images and slides.** Put the file next to the note and reference it
+   relatively: `![what it shows](./my-slide.png)`. Astro resizes it at build
+   time. Alt text is required — the accessibility gate fails without it, and
+   "slide 4" tells a reader nothing. Keep files under 500 KB (a pre-commit
+   hook enforces it) and remember the repository carries them forever.
+
+   A whole deck does not belong in a note. Put the two or three slides that
+   carry the point in the text and link the rest as a PDF from
+   `docs/public/notes/`, which is served as-is: `[the deck](/notes/deck.pdf)`.
+   Embedding a PDF is not possible — the content security policy sets
+   `object-src 'none'` — and a hosted deck (Google Slides, SlideShare) is
+   blocked by `default-src 'self'`.
+
+   For a diagram, a ```mermaid block beats a screenshot: it stays legible,
+   follows the light and dark theme, and is searchable.
+
 4. **Open a pull request.** `just notes` previews it locally at
    <http://localhost:4321/notes>. Merging to `main` publishes it.
 
