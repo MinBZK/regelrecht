@@ -187,6 +187,7 @@ impl PathNode {
                 ResolveType::DataSource => "data_source",
                 ResolveType::OpenTerm => "open_term",
                 ResolveType::OpenTermSilent => "open_term_silent",
+                ResolveType::Cell => "cell",
                 ResolveType::Hook => "hook",
                 ResolveType::Override => "override",
             };
@@ -652,6 +653,7 @@ fn resolve_type_name(rt: &ResolveType) -> &'static str {
         ResolveType::DataSource => "DATA_SOURCE",
         ResolveType::OpenTerm => "OPEN_TERM",
         ResolveType::OpenTermSilent => "OPEN_TERM_SILENT",
+        ResolveType::Cell => "CELL",
         ResolveType::Hook => "HOOK",
         ResolveType::Override => "OVERRIDE",
     }

@@ -26,10 +26,11 @@
 //! ```
 
 use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, Input, MachineReadable};
+use crate::cell::CellResolver;
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
-use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
+use crate::engine::{ArticleEngine, ArticleResult, InputProvenance, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
@@ -43,7 +44,7 @@ use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -483,6 +484,38 @@ pub struct LawExecutionService {
     source_info: HashMap<String, (String, String)>,
     /// How to handle articles with untranslatable constructs (RFC-012)
     untranslatable_mode: UntranslatableMode,
+    /// The cell tier of source resolution (RFC-022 §4.2), absent unless a
+    /// caller granted it with [`Self::set_cell_resolver`].
+    cells: Option<CellRegistration>,
+}
+
+/// A registered [`CellResolver`] together with the cell ids it answers for.
+///
+/// The ids are not a convenience: they are what makes the shadow check
+/// (RFC-022 §4.2) total. A cell that is never declared can never be queried,
+/// so it can never be the one silently rerouted to a regulation of the same
+/// name.
+struct CellRegistration {
+    ids: BTreeSet<String>,
+    resolver: Rc<dyn CellResolver>,
+}
+
+/// The load-time refusal of a cell id that is also a loaded regulation `$id`
+/// (RFC-022 §4.2).
+///
+/// Stricter than RFC-010's regulation-versus-regulation collision, which
+/// priority resolves because shadowing is intended there. A cell shadowing a
+/// regulation has no legitimate use, and its consequence — a query meant for
+/// another organisation answered by an unrelated regulation, without a trace
+/// of the substitution — is severe enough to refuse both orders: registering
+/// the cell after the regulation loaded, and loading the regulation after the
+/// cell was registered.
+fn cell_shadows_regulation(id: &str) -> EngineError {
+    EngineError::LoadError(format!(
+        "cell id '{id}' shadows loaded regulation '{id}': a cell id and a regulation $id \
+         must not be the same, because a query for the cell would be answered by the \
+         regulation (RFC-022 §4.2). Rename the cell or do not load this regulation"
+    ))
 }
 
 impl Default for LawExecutionService {
@@ -499,7 +532,65 @@ impl LawExecutionService {
             data_registry: DataSourceRegistry::new(),
             source_info: HashMap::new(),
             untranslatable_mode: UntranslatableMode::default(),
+            cells: None,
         }
+    }
+
+    /// Grant this engine the cell tier of source resolution (RFC-022 §4.2).
+    ///
+    /// `cell_ids` are the values of `source.regulation` that `resolver`
+    /// answers for. Only those reach it, so an id that is neither a loaded
+    /// regulation nor a declared cell stays the error it is today.
+    ///
+    /// Without this call there is no cell tier: the engine resolves exactly as
+    /// it did before. Two configurations over the same laws — one with a
+    /// resolver, one without — therefore differ in what they *can* do, not in
+    /// what they promise to do.
+    ///
+    /// # Errors
+    /// [`EngineError::LoadError`] when a cell id equals the `$id` of a loaded
+    /// regulation. The registration is then refused whole: no id is taken over
+    /// and the previous resolver, if any, stays in place.
+    pub fn set_cell_resolver(
+        &mut self,
+        cell_ids: impl IntoIterator<Item = impl Into<String>>,
+        resolver: Rc<dyn CellResolver>,
+    ) -> Result<()> {
+        let ids: BTreeSet<String> = cell_ids.into_iter().map(Into::into).collect();
+        for id in &ids {
+            if self.resolver.has_law(id) {
+                return Err(cell_shadows_regulation(id));
+            }
+        }
+        self.cells = Some(CellRegistration { ids, resolver });
+        Ok(())
+    }
+
+    /// The cell ids this engine can query (RFC-022 §4.2), empty without a
+    /// registered resolver.
+    pub fn cell_ids(&self) -> Vec<&str> {
+        self.cells
+            .as_ref()
+            .map(|cells| cells.ids.iter().map(String::as_str).collect())
+            .unwrap_or_default()
+    }
+
+    /// Refuse a just-loaded regulation whose `$id` is a registered cell id,
+    /// and take it back out again so the refusal leaves no trace.
+    ///
+    /// The check has to sit on both sides of the load: registering a cell
+    /// first and loading the regulation later must fail exactly like the
+    /// other order.
+    fn reject_cell_shadow(&mut self, law_id: &str) -> Result<()> {
+        if self
+            .cells
+            .as_ref()
+            .is_some_and(|cells| cells.ids.contains(law_id))
+        {
+            self.resolver.unload_law(law_id);
+            return Err(cell_shadows_regulation(law_id));
+        }
+        Ok(())
     }
 
     /// Set the untranslatable handling mode (RFC-012).
@@ -511,16 +602,25 @@ impl LawExecutionService {
     ///
     /// # Returns
     /// The law ID on success.
+    ///
+    /// # Errors
+    /// Besides the parse and validation errors, [`EngineError::LoadError`]
+    /// when the law's `$id` is a registered cell id (RFC-022 §4.2).
     pub fn load_law(&mut self, yaml: &str) -> Result<String> {
-        self.resolver.load_from_yaml(yaml)
+        let law_id = self.resolver.load_from_yaml(yaml)?;
+        self.reject_cell_shadow(&law_id)?;
+        Ok(law_id)
     }
 
     /// Load a law struct directly.
     ///
     /// # Returns
-    /// `Ok(())` on success, `Err` if the maximum number of laws would be exceeded.
+    /// `Ok(())` on success, `Err` if the maximum number of laws would be
+    /// exceeded or the law's `$id` is a registered cell id (RFC-022 §4.2).
     pub fn load_law_struct(&mut self, law: ArticleBasedLaw) -> Result<()> {
-        self.resolver.load_law(law)
+        let law_id = law.id.clone();
+        self.resolver.load_law(law)?;
+        self.reject_cell_shadow(&law_id)
     }
 
     /// Load a law without the static type check, for tests of the run-time
@@ -542,6 +642,7 @@ impl LawExecutionService {
         source_name: &str,
     ) -> Result<String> {
         let law_id = self.resolver.load_from_yaml(yaml)?;
+        self.reject_cell_shadow(&law_id)?;
         self.source_info.insert(
             law_id.clone(),
             (source_id.to_string(), source_name.to_string()),
@@ -580,6 +681,33 @@ impl LawExecutionService {
                 valid_from: law.valid_from.clone(),
                 valid_to: law.valid_to.clone(),
                 hash: law.content_hash.clone(),
+            })
+            .collect();
+
+        // Every input that came in over the cell tier (RFC-022 §4.2) is a
+        // value this engine accepted instead of computing, so the receipt has
+        // to carry it: without it the decision cannot be read back, because
+        // nothing here reproduces it (RFC-013).
+        let accepted_values: Vec<AcceptedValue> = result
+            .input_provenance
+            .values()
+            .filter_map(|provenance| match provenance {
+                InputProvenance::Cell {
+                    cell,
+                    output,
+                    value,
+                } => Some(AcceptedValue {
+                    output: output.clone(),
+                    value: value.clone(),
+                    authority: cell.clone(),
+                    engine: None,
+                    engine_version: None,
+                    regulation_id: None,
+                    regulation_hash: None,
+                    trace_id: None,
+                    signed: None,
+                }),
+                _ => None,
             })
             .collect();
 
@@ -623,7 +751,7 @@ impl LawExecutionService {
                 output_provenance: result.output_provenance.clone(),
                 trace: result.trace.clone(),
             },
-            accepted_values: Vec::new(),
+            accepted_values,
             timestamp: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -1095,6 +1223,7 @@ impl LawExecutionService {
                     merged.outputs.extend(result.outputs);
                     merged.output_provenance.extend(result.output_provenance);
                     merged.resolved_inputs.extend(result.resolved_inputs);
+                    merged.input_provenance.extend(result.input_provenance);
                 }
             }
         }
@@ -1153,6 +1282,7 @@ impl LawExecutionService {
                     outputs: cached.outputs.clone(),
                     output_provenance: cached.output_provenance.clone(),
                     resolved_inputs: BTreeMap::new(),
+                    input_provenance: BTreeMap::new(),
                     article_number: String::new(),
                     law_id: law_id.to_string(),
                     law_uuid: None,
@@ -1655,7 +1785,8 @@ impl LawExecutionService {
         }
 
         // Resolve inputs with sources using ServiceProvider
-        self.resolve_inputs_with_service(article, law, &mut context, &parameters, res_ctx)?;
+        let input_provenance =
+            self.resolve_inputs_with_service(article, law, &mut context, &parameters, res_ctx)?;
 
         // Resolve open terms via IoC (implements index lookup)
         let open_term_values = self.resolve_open_terms(article, law, &context, res_ctx)?;
@@ -1704,6 +1835,9 @@ impl LawExecutionService {
                 requested_output,
             )?
         };
+
+        // Where each input came from: resolved here, not by the article engine.
+        result.input_provenance = input_provenance;
 
         // Fire post_actions hooks (between action execution and result return).
         // Post-hooks receive both parameters and article outputs.
@@ -2086,6 +2220,9 @@ impl LawExecutionService {
     }
 
     /// Resolve input sources using ServiceProvider.
+    ///
+    /// Returns where each resolved input came from (RFC-022 §4.2): the caller,
+    /// a data source, a loaded regulation, or a cell.
     fn resolve_inputs_with_service(
         &self,
         article: &Article,
@@ -2093,8 +2230,9 @@ impl LawExecutionService {
         context: &mut RuleContext,
         parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<()> {
+    ) -> Result<BTreeMap<String, InputProvenance>> {
         let inputs = article.get_inputs();
+        let mut provenance = BTreeMap::new();
 
         for input in inputs {
             // A value handed in under the input's name bypasses its source,
@@ -2111,6 +2249,7 @@ impl LawExecutionService {
                         "parameter from caller".to_string(),
                     ));
                 }
+                provenance.insert(input.name.clone(), InputProvenance::Parameter);
                 continue;
             }
 
@@ -2154,6 +2293,12 @@ impl LawExecutionService {
                     ));
                 }
 
+                provenance.insert(
+                    input.name.clone(),
+                    InputProvenance::DataSource {
+                        source: data_match.source_name,
+                    },
+                );
                 context.set_resolved_input(&input.name, data_match.value);
                 continue;
             }
@@ -2162,6 +2307,43 @@ impl LawExecutionService {
             let output_name = source.output.as_deref().unwrap_or(&input.name);
 
             if let Some(regulation) = &source.regulation {
+                // Tier 3 of RFC-022 §4.2, and only after tier 2 has declined:
+                // a cell is consulted for a `source.regulation` that no loaded
+                // regulation answers to. Shadowing is refused at load time, so
+                // the two tiers can never both apply; the check is here anyway
+                // because the order is the guarantee, not a side effect of the
+                // load-time rule.
+                if !self.resolver.has_law(regulation) {
+                    if let Some(value) = self.resolve_cell_input(
+                        regulation,
+                        output_name,
+                        source.parameters.as_ref(),
+                        context,
+                        res_ctx,
+                    )? {
+                        // A cell that answers "none" is an absence like any
+                        // other: this input has to be declared able to take
+                        // one (RFC-036).
+                        if value.is_null() && !input.is_nullable() {
+                            return Err(null_for_non_nullable(
+                                law,
+                                input,
+                                format!("cell {regulation}.{output_name}"),
+                            ));
+                        }
+                        provenance.insert(
+                            input.name.clone(),
+                            InputProvenance::Cell {
+                                cell: regulation.clone(),
+                                output: output_name.to_string(),
+                                value: value.clone(),
+                            },
+                        );
+                        context.set_resolved_input(&input.name, value);
+                        continue;
+                    }
+                }
+
                 // External reference
                 let resolution = self.resolve_external_input_detailed(
                     regulation,
@@ -2184,6 +2366,13 @@ impl LawExecutionService {
                     return Err(null_for_non_nullable(law, input, origin));
                 }
 
+                provenance.insert(
+                    input.name.clone(),
+                    InputProvenance::Regulation {
+                        regulation: regulation.clone(),
+                        output: output_name.to_string(),
+                    },
+                );
                 context.set_resolved_input(&input.name, resolution.value);
             } else if source.output.is_some() {
                 // Internal reference (same-law) with output specified.
@@ -2286,6 +2475,15 @@ impl LawExecutionService {
                             format!("{}.{output_name}", law.id),
                         ));
                     }
+                    // Another article of this same regulation: tier 2 with the
+                    // law pointing at itself.
+                    provenance.insert(
+                        input.name.clone(),
+                        InputProvenance::Regulation {
+                            regulation: law.id.clone(),
+                            output: output_name.to_string(),
+                        },
+                    );
                     context.set_resolved_input(&input.name, value.clone());
                 } else {
                     // The referenced article ran but produced no such output
@@ -2375,7 +2573,70 @@ impl LawExecutionService {
             }
         }
 
-        Ok(())
+        Ok(provenance)
+    }
+
+    /// Tier 3 of RFC-022 §4.2: ask a cell for `output`.
+    ///
+    /// `Ok(None)` means this was not a cell question at all — no resolver was
+    /// granted, or `cell_id` is not one of the ids it answers for — and the
+    /// caller falls through to the tiers that follow.
+    ///
+    /// # Errors
+    /// The resolver's own error, or [`EngineError::ResolutionError`] when a
+    /// declared cell has no answer: nothing follows the cell tier but step 4
+    /// of the order, which is an error.
+    fn resolve_cell_input(
+        &self,
+        cell_id: &str,
+        output: &str,
+        source_parameters: Option<&BTreeMap<String, String>>,
+        context: &RuleContext,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<Option<Value>> {
+        let Some(cells) = self.cells.as_ref().filter(|c| c.ids.contains(cell_id)) else {
+            return Ok(None);
+        };
+
+        let _guard = res_ctx.trace_guard(
+            format!("{cell_id}#{output}"),
+            PathNodeType::CrossLawReference,
+        );
+        res_ctx.trace_set_resolve_type(ResolveType::Cell);
+
+        // The cell gets exactly what a loaded regulation would get, built from
+        // the same `source.parameters` block.
+        let parameters = match self.build_target_parameters(source_parameters, context) {
+            Ok(p) => p,
+            Err(e) => {
+                res_ctx.trace_set_message(format!("Failed to build parameters: {e}"));
+                return Err(e);
+            }
+        };
+
+        let answer =
+            match cells
+                .resolver
+                .resolve(cell_id, output, &parameters, res_ctx.calculation_date)
+            {
+                Ok(answer) => answer,
+                Err(e) => {
+                    res_ctx.trace_set_message(format!("Cell '{cell_id}' failed to answer: {e}"));
+                    return Err(e);
+                }
+            };
+
+        let Some(value) = answer else {
+            res_ctx.trace_set_message(format!("Cell '{cell_id}' has no value for '{output}'"));
+            return Err(EngineError::ResolutionError(format!(
+                "cell '{cell_id}' has no value for '{output}'"
+            )));
+        };
+
+        tracing::debug!(cell = %cell_id, output = %output, "Accepted value from cell");
+        res_ctx.trace_set_result(value.clone());
+        res_ctx.trace_set_message(format!("Accepted '{output}' from cell '{cell_id}'"));
+        Ok(Some(value))
     }
 
     /// Internal method for external input resolution with depth tracking.
@@ -7762,5 +8023,398 @@ articles:
             }
             other => panic!("expected NullForNonNullable, got {other:?}"),
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Cell tier (RFC-022 §4.2)
+    // -------------------------------------------------------------------------
+
+    /// A cell that answers the same value to everything, and remembers what it
+    /// was asked. `None` is a cell that has no answer.
+    struct RecordingCell {
+        answer: Option<Value>,
+        calls: RefCell<Vec<CellCall>>,
+    }
+
+    /// One question put to a cell: id, output, parameters, reference date.
+    #[derive(Debug, PartialEq)]
+    struct CellCall {
+        cell_id: String,
+        output: String,
+        parameters: BTreeMap<String, Value>,
+        reference_date: String,
+    }
+
+    impl RecordingCell {
+        fn answering(value: Value) -> Rc<Self> {
+            Rc::new(Self {
+                answer: Some(value),
+                calls: RefCell::new(Vec::new()),
+            })
+        }
+
+        fn without_answer() -> Rc<Self> {
+            Rc::new(Self {
+                answer: None,
+                calls: RefCell::new(Vec::new()),
+            })
+        }
+
+        fn calls(&self) -> std::cell::Ref<'_, Vec<CellCall>> {
+            self.calls.borrow()
+        }
+    }
+
+    impl CellResolver for RecordingCell {
+        fn resolve(
+            &self,
+            cell_id: &str,
+            output: &str,
+            parameters: &BTreeMap<String, Value>,
+            reference_date: &str,
+        ) -> Result<Option<Value>> {
+            self.calls.borrow_mut().push(CellCall {
+                cell_id: cell_id.to_string(),
+                output: output.to_string(),
+                parameters: parameters.clone(),
+                reference_date: reference_date.to_string(),
+            });
+            Ok(self.answer.clone())
+        }
+    }
+
+    /// A law whose input comes from `cjib`, which is nobody's regulation.
+    /// `output` is the `source.output` line, empty to leave it out.
+    fn cell_consumer_law(output: &str) -> String {
+        format!(
+            r#"
+$id: cell_consumer
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Counts what another organisation says it holds
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        input:
+          - name: openstaande_vorderingen
+            type: number
+            source:
+              regulation: cjib
+              {output}
+              parameters:
+                bsn: $bsn
+        output:
+          - name: dubbel
+            type: number
+        actions:
+          - output: dubbel
+            operation: MULTIPLY
+            values:
+              - $openstaande_vorderingen
+              - 2
+"#
+        )
+    }
+
+    fn cell_consumer_params() -> BTreeMap<String, Value> {
+        params(&[("bsn", Value::String("999993653".to_string()))])
+    }
+
+    fn evaluate_cell_consumer(service: &LawExecutionService) -> Result<ArticleResult> {
+        service.evaluate_law_output(
+            "cell_consumer",
+            "dubbel",
+            cell_consumer_params(),
+            "2025-01-01",
+        )
+    }
+
+    #[test]
+    fn cell_tier_answers_a_source_no_loaded_regulation_has() {
+        // Tier 3: `cjib` is not a regulation and never will be, it is another
+        // organisation answering for its own facts.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&cell_consumer_law("output: openstaande_vorderingen_totaal"))
+            .unwrap();
+        let cell = RecordingCell::answering(Value::Int(21));
+        service.set_cell_resolver(["cjib"], cell.clone()).unwrap();
+
+        let result = evaluate_cell_consumer(&service).unwrap();
+
+        assert_eq!(result.outputs.get("dubbel"), Some(&Value::Int(42)));
+        assert_eq!(
+            cell.calls().as_slice(),
+            &[CellCall {
+                cell_id: "cjib".to_string(),
+                output: "openstaande_vorderingen_totaal".to_string(),
+                parameters: params(&[("bsn", Value::String("999993653".to_string()))]),
+                reference_date: "2025-01-01".to_string(),
+            }]
+        );
+        assert_eq!(
+            result.input_provenance.get("openstaande_vorderingen"),
+            Some(&InputProvenance::Cell {
+                cell: "cjib".to_string(),
+                output: "openstaande_vorderingen_totaal".to_string(),
+                value: Value::Int(21),
+            })
+        );
+    }
+
+    #[test]
+    fn cell_output_falls_back_to_the_input_name() {
+        // Same rule as for a regulation: no `source.output` means the input's
+        // own name.
+        let mut service = LawExecutionService::new();
+        service.load_law(&cell_consumer_law("")).unwrap();
+        let cell = RecordingCell::answering(Value::Int(3));
+        service.set_cell_resolver(["cjib"], cell.clone()).unwrap();
+
+        evaluate_cell_consumer(&service).unwrap();
+
+        assert_eq!(cell.calls()[0].output, "openstaande_vorderingen");
+    }
+
+    #[test]
+    fn data_source_tier_comes_before_the_cell_tier() {
+        // Tier 1 short-circuits on the input name, so the cell is not asked at
+        // all — the order is fixed, not a preference.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&cell_consumer_law("output: openstaande_vorderingen_totaal"))
+            .unwrap();
+        let cell = RecordingCell::answering(Value::Int(21));
+        service.set_cell_resolver(["cjib"], cell.clone()).unwrap();
+        let mut record = BTreeMap::new();
+        record.insert("bsn".to_string(), Value::String("999993653".to_string()));
+        record.insert("openstaande_vorderingen".to_string(), Value::Int(5));
+        service
+            .register_dict_source_for_law(
+                "cell_consumer",
+                "eigen_register",
+                "bsn",
+                vec![record],
+                10,
+            )
+            .unwrap();
+
+        let result = evaluate_cell_consumer(&service).unwrap();
+
+        assert_eq!(result.outputs.get("dubbel"), Some(&Value::Int(10)));
+        assert!(cell.calls().is_empty(), "the cell must not be asked");
+        assert_eq!(
+            result.input_provenance.get("openstaande_vorderingen"),
+            Some(&InputProvenance::DataSource {
+                source: "eigen_register".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn loaded_regulation_tier_is_unaffected_by_a_registered_resolver() {
+        // Tier 2 with a resolver present resolves exactly as without one.
+        let mut service = LawExecutionService::new();
+        service.load_law(make_base_law()).unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+        let cell = RecordingCell::answering(Value::Int(0));
+        service.set_cell_resolver(["cjib"], cell.clone()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "dependent_law",
+                "doubled_value",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
+        assert!(cell.calls().is_empty(), "the cell must not be asked");
+        assert_eq!(
+            result.input_provenance.get("external_base"),
+            Some(&InputProvenance::Regulation {
+                regulation: "base_law".to_string(),
+                output: "base_value".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_source_that_is_neither_regulation_nor_cell_is_an_error() {
+        // Step 4 of the order, and the behaviour of an engine without a
+        // resolver: nothing answers for `cjib`.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&cell_consumer_law("output: openstaande_vorderingen_totaal"))
+            .unwrap();
+
+        let err = evaluate_cell_consumer(&service).unwrap_err();
+
+        assert!(
+            matches!(&err, EngineError::LawNotFound(id) if id == "cjib"),
+            "expected LawNotFound, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn a_declared_cell_without_an_answer_is_an_error() {
+        // Nothing follows the cell tier: a cell that cannot answer leaves the
+        // input unresolvable, and that is step 4.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&cell_consumer_law("output: openstaande_vorderingen_totaal"))
+            .unwrap();
+        service
+            .set_cell_resolver(["cjib"], RecordingCell::without_answer())
+            .unwrap();
+
+        let err = evaluate_cell_consumer(&service).unwrap_err();
+
+        let message = err.to_string();
+        assert!(
+            message.contains("cjib") && message.contains("openstaande_vorderingen_totaal"),
+            "error must name the cell and the output, got {message}"
+        );
+    }
+
+    #[test]
+    fn an_input_the_caller_passed_is_provenance_parameter() {
+        // A value handed in under the input's own name bypasses the whole
+        // order, and the receipt should say so rather than imply a source.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&cell_consumer_law("output: openstaande_vorderingen_totaal"))
+            .unwrap();
+        let cell = RecordingCell::answering(Value::Int(21));
+        service.set_cell_resolver(["cjib"], cell.clone()).unwrap();
+
+        let mut given = cell_consumer_params();
+        given.insert("openstaande_vorderingen".to_string(), Value::Int(7));
+        let result = service
+            .evaluate_law_output("cell_consumer", "dubbel", given, "2025-01-01")
+            .unwrap();
+
+        assert_eq!(result.outputs.get("dubbel"), Some(&Value::Int(14)));
+        assert!(cell.calls().is_empty(), "the cell must not be asked");
+        assert_eq!(
+            result.input_provenance.get("openstaande_vorderingen"),
+            Some(&InputProvenance::Parameter)
+        );
+    }
+
+    #[test]
+    fn registering_a_cell_that_shadows_a_loaded_regulation_fails() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_base_law()).unwrap();
+
+        let err = service
+            .set_cell_resolver(["base_law"], RecordingCell::answering(Value::Int(1)))
+            .unwrap_err();
+
+        let message = err.to_string();
+        assert!(
+            message.contains("cell id 'base_law' shadows loaded regulation 'base_law'"),
+            "unexpected message: {message}"
+        );
+        assert!(
+            service.cell_ids().is_empty(),
+            "a refused registration must take no ids"
+        );
+    }
+
+    #[test]
+    fn loading_a_regulation_that_shadows_a_registered_cell_fails() {
+        // The other order has to fail the same way, or the check would only
+        // hold for whoever happens to come first.
+        let mut service = LawExecutionService::new();
+        service
+            .set_cell_resolver(["base_law"], RecordingCell::answering(Value::Int(1)))
+            .unwrap();
+
+        let err = service.load_law(make_base_law()).unwrap_err();
+
+        let message = err.to_string();
+        assert!(
+            message.contains("cell id 'base_law' shadows loaded regulation 'base_law'"),
+            "unexpected message: {message}"
+        );
+        assert!(
+            !service.has_law("base_law"),
+            "a refused law must not stay loaded"
+        );
+    }
+
+    #[test]
+    fn loading_a_law_struct_that_shadows_a_registered_cell_fails() {
+        let mut service = LawExecutionService::new();
+        service
+            .set_cell_resolver(["base_law"], RecordingCell::answering(Value::Int(1)))
+            .unwrap();
+        let law = ArticleBasedLaw::from_yaml_str(make_base_law()).unwrap();
+
+        let err = service.load_law_struct(law).unwrap_err();
+
+        assert!(
+            err.to_string().contains("shadows loaded regulation"),
+            "unexpected message: {err}"
+        );
+        assert!(!service.has_law("base_law"));
+    }
+
+    #[test]
+    fn a_value_from_a_cell_lands_in_the_receipt_as_accepted() {
+        // RFC-013: this engine did not compute the value and cannot reproduce
+        // it, so the receipt has to carry it with the organisation that said
+        // it.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&cell_consumer_law("output: openstaande_vorderingen_totaal"))
+            .unwrap();
+        service
+            .set_cell_resolver(["cjib"], RecordingCell::answering(Value::Int(21)))
+            .unwrap();
+
+        let result = evaluate_cell_consumer(&service).unwrap();
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &cell_consumer_params(),
+            "2025-01-01",
+            &["dubbel".to_string()],
+        );
+
+        assert_eq!(receipt.accepted_values.len(), 1);
+        let accepted = &receipt.accepted_values[0];
+        assert_eq!(accepted.authority, "cjib");
+        assert_eq!(accepted.output, "openstaande_vorderingen_totaal");
+        assert_eq!(accepted.value, Value::Int(21));
+    }
+
+    #[test]
+    fn a_receipt_without_a_cell_has_no_accepted_values() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_base_law()).unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "dependent_law",
+                "doubled_value",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let receipt = service.build_receipt_with_outputs(
+            &result,
+            &BTreeMap::new(),
+            "2025-01-01",
+            &["doubled_value".to_string()],
+        );
+
+        assert!(receipt.accepted_values.is_empty());
     }
 }

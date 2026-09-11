@@ -120,6 +120,8 @@ pub enum ResolveType {
     /// implementing regulation returned null for this case (RFC-036: the
     /// implementation is silent, no deviation was granted)
     OpenTermSilent,
+    /// Value accepted from a cell rather than computed here (RFC-022 §4.2)
+    Cell,
     /// Value resolved via lifecycle hook (RFC-007)
     Hook,
     /// Value resolved via lex specialis override (RFC-007)
