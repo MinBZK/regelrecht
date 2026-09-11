@@ -7,6 +7,9 @@
 
 use crate::cell::{CellConfig, Decretogram, Lexostatus, LexostatusOutcome};
 use crate::error::{Result, SimulatorError};
+use crate::invariant::{
+    check_invariants, observed_graph, DecisionTraffic, DeclaredQuery, InvariantFailure, Traffic,
+};
 use crate::security::{Identity, SecurityContext, SignedAnswer};
 use crate::transport::InProcessTransport;
 use crate::values::equivalent;
@@ -14,7 +17,7 @@ use crate::world::{Clock, Fixture, World};
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -68,6 +71,25 @@ pub struct Scenario {
     /// omheen te bouwen: handig om de naad zelf te beproeven, en verder niets.
     #[serde(default)]
     pub query_via_transport: Vec<TransportQuery>,
+    /// Het **toegestane vraaggraf**: welke cel welke andere cel mag bevragen, en
+    /// op welke lexostatus.
+    ///
+    /// De runner legt hier het feitelijke graf naast — afgeleid uit wat er over
+    /// de celgrenzen ging — en laat elk verschil het scenario laten falen: een
+    /// vraag die hier niet staat net zo goed als een vraag die hier wél staat en
+    /// niet gesteld werd (invariant I3).
+    ///
+    /// Weglaten mag en betekent iets: **geen enkele vraag over een celgrens**.
+    /// Dat is met opzet de default, want een gate die je moet aanzetten is een
+    /// gate die iemand vergeet — een scenario dat stilletjes over een grens
+    /// reikt, hoort rood te worden en niet te zwijgen.
+    ///
+    /// Wat hier staat is een declaratie en geen vrijbrief: de gate berekent uit
+    /// de `accept_from`-inputs en de `accepts_from`-afspraken van elke cel wat
+    /// haar eigen recht vraagt, en een declaratie die daarbuiten valt faalt ook
+    /// als de vraag netjes gesteld wordt.
+    #[serde(default)]
+    pub query_graph: Vec<DeclaredQuery>,
 }
 
 /// Eén vraag van een consument aan één cel.
@@ -264,10 +286,17 @@ pub struct ScenarioRun {
     pub outcomes: Vec<QueryOutcome>,
     /// De uitkomsten van de vragen over een celgrens, in scenariovolgorde.
     pub transport_outcomes: Vec<TransportOutcome>,
+    /// De invarianten die deze run niet haalde; leeg is goed.
+    ///
+    /// Apart van de verwachtingen per vraag, en dat is geen ordening maar een
+    /// verschil in soort: een verwachting is wat dít scenario beweert, een
+    /// invariant is wat elk scenario moet halen. Ze staan dus niet bij één vraag
+    /// en niet bij één besluit — ze gaan over de run als geheel.
+    pub invariant_failures: Vec<InvariantFailure>,
 }
 
 impl ScenarioRun {
-    /// Kwamen alle verwachtingen uit?
+    /// Kwamen alle verwachtingen uit, en haalde de run haar invarianten?
     pub fn passed(&self) -> bool {
         self.decisions.iter().all(|o| o.failures.is_empty())
             && self.outcomes.iter().all(|o| o.failures.is_empty())
@@ -275,6 +304,38 @@ impl ScenarioRun {
                 .transport_outcomes
                 .iter()
                 .all(|o| o.failures.is_empty())
+            && self.invariant_failures.is_empty()
+    }
+
+    /// Wat er in deze run over de celgrenzen ging, met de plek waar het vandaan
+    /// kwam.
+    ///
+    /// Dit is wat de invarianten-gate leest, en het is ook exact wat een
+    /// meetinstrument aangereikt krijgt: dezelfde bewijsstukken, in dezelfde
+    /// volgorde. Publiek, zodat een test de twee tegen elkaar kan houden in
+    /// plaats van te moeten geloven dat ze hetzelfde zien.
+    pub fn traffic(&self) -> Traffic<'_> {
+        Traffic {
+            decisions: self
+                .decisions
+                .iter()
+                .map(|decision| DecisionTraffic {
+                    decretogram: &decision.decretogram,
+                    crossings: &decision.crossings,
+                })
+                .collect(),
+            probes: self
+                .transport_outcomes
+                .iter()
+                .map(|outcome| &outcome.signed)
+                .collect(),
+        }
+    }
+
+    /// Elk contact over een celgrens in deze run, in de volgorde waarin het
+    /// plaatsvond.
+    pub fn crossings(&self) -> Vec<&SignedAnswer> {
+        self.traffic().entries()
     }
 
     /// Heeft deze run iets vastgelegd? Een run zonder vragen bewijst niets.
@@ -401,6 +462,29 @@ impl ScenarioRun {
             write_failures(&mut out, &outcome.failures);
         }
 
+        // De invarianten-gate staat in het verslag ook als hij niets vond. Een
+        // gate die alleen bij een fout iets zegt, is niet te onderscheiden van
+        // een gate die niet gedraaid heeft — en dat is precies het soort stilte
+        // waar deze opstelling tegen bedoeld is.
+        let contacts = self.crossings();
+        let edges = observed_graph(contacts.iter().copied()).len();
+        let mark = if self.invariant_failures.is_empty() {
+            "ok"
+        } else {
+            "FOUT"
+        };
+        // Het aantal takken staat erbij en niet alleen het aantal contacten: het
+        // graf is waar de gate over gaat, en dezelfde vraag twee keer is één tak.
+        let _ = writeln!(
+            out,
+            "  [{mark}] invarianten: {} contact(en) over een celgrens, {edges} tak(ken) \
+             in het vraaggraf",
+            contacts.len(),
+        );
+        for failure in &self.invariant_failures {
+            let _ = writeln!(out, "        {}", failure.describe());
+        }
+
         let _ = writeln!(out, "  klok staat op {}", self.clock);
         // Een fixture waar de klok nooit aan toe komt, is een regel in het
         // bestand die niets doet. Dat mag, maar het hoort niet stil te zijn:
@@ -501,6 +585,51 @@ impl Scenario {
                 });
             }
         }
+        self.validate_query_graph()
+    }
+
+    /// Controleer het gedeclareerde vraaggraf op zichzelf.
+    ///
+    /// Bij het lezen en niet pas na een run, want elk van deze drie zou anders
+    /// als een falende invariant naar buiten komen terwijl er een schrijffout in
+    /// het bestand staat. Een tak naar een cel die niet bestaat, wordt nooit
+    /// gesteld en zou als "gedeclareerde vraag die uitbleef" verschijnen — een
+    /// melding die de lezer naar de run stuurt in plaats van naar de typfout.
+    fn validate_query_graph(&self) -> Result<()> {
+        let known = || {
+            self.cells
+                .iter()
+                .map(|cell| cell.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+
+        for declared in &self.query_graph {
+            let edge = declared.edge();
+            for cell in [&declared.from, &declared.to] {
+                if !self.cells.iter().any(|config| &config.id == cell) {
+                    return Err(SimulatorError::QueryGraphUnknownCell {
+                        scenario: self.name.clone(),
+                        edge: edge.to_string(),
+                        cell: cell.clone(),
+                        known: known(),
+                    });
+                }
+            }
+            if declared.from == declared.to {
+                return Err(SimulatorError::QueryGraphToSelf {
+                    scenario: self.name.clone(),
+                    edge: edge.to_string(),
+                });
+            }
+            if !seen.insert(edge.to_string()) {
+                return Err(SimulatorError::DuplicateQueryGraphEdge {
+                    scenario: self.name.clone(),
+                    edge: edge.to_string(),
+                });
+            }
+        }
         Ok(())
     }
 
@@ -576,14 +705,23 @@ impl Scenario {
 
         let transport_outcomes = self.run_via_transport(&mut world)?;
 
-        Ok(ScenarioRun {
+        let mut run = ScenarioRun {
             name: self.name.clone(),
             clock: world.now(),
             pending_triggers: world.pending_triggers(),
             decisions,
             outcomes,
             transport_outcomes,
-        })
+            invariant_failures: Vec::new(),
+        };
+        // De gate draait als laatste en over de hele run: hij vergelijkt het
+        // gedeclareerde vraaggraf met wat er werkelijk over de grenzen ging, en
+        // dat laatste is pas compleet als alles gedraaid heeft. Hij draait bij
+        // élk scenario, ook bij eentje dat geen vraaggraf declareert — dan is
+        // het toegestane graf leeg, en dat is een even geldige bewering.
+        let failures = check_invariants(&self.query_graph, &self.cells, &run.traffic());
+        run.invariant_failures = failures;
+        Ok(run)
     }
 
     /// Laat de cellen hun besluiten nemen, elk op zijn eigen moment.
@@ -1045,6 +1183,7 @@ query_via_transport:
             decisions: Vec::new(),
             outcomes: Vec::new(),
             transport_outcomes: Vec::new(),
+            invariant_failures: Vec::new(),
         };
 
         assert!(
@@ -1081,6 +1220,7 @@ query_via_transport:
             decisions: Vec::new(),
             outcomes: vec![outcome("vóór de vastlegging"), outcome("erna, ongewijzigd")],
             transport_outcomes: Vec::new(),
+            invariant_failures: Vec::new(),
         };
 
         let report = run.report();

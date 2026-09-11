@@ -58,12 +58,38 @@ cells:
           key: bsn
           latest: true
 
-  # De vragende cel. Ze publiceert hier zelf niets en legt niets vast: in deze
-  # ronde is ze alleen vrager, want het besluit-pad dat een opgehaalde waarde
-  # zou accepteren bestaat nog niet. Wat ze wél heeft, is een identiteit — en
-  # dat is alles wat er nodig is om een vraag te ondertekenen.
+  # De vragende cel. Ze publiceert hier zelf niets en legt niets vast: in dit
+  # scenario is ze alleen vrager, en wat ze nodig heeft om een vraag over de
+  # grens te zetten is een identiteit.
+  #
+  # Wat ze óók nodig heeft, is een *reden*. Invariant I3 zegt dat een cel alleen
+  # de cellen bevraagt die haar eigen wetten of besluit-definities noemen, en de
+  # gate rekent de sonde hieronder daar net zo hard op af als een besluit — zou
+  # hij dat niet doen, dan lag er in elk scenario een weg omheen. Die reden
+  # staat hier: haar wet vraagt via `source.regulation` om `partnerschap` bij de
+  # cel `brp`, en `accepts_from` legt vast onder welke gepubliceerde naam dat
+  # daar te halen is. Dat is geen recht maar een afspraak tussen twee
+  # organisaties, en daarom staat het in de celconfiguratie en niet in de wet.
   - id: toeslagen
-    laws: []
+    laws:
+      - test_partnerschapstoets
+
+    accepts_from:
+      - cell: brp
+        output: partnerschap
+        lexostatus: partnerschap
+        field: partnerschap_type
+
+# Het toegestane vraaggraf van dit scenario: precies één tak. Wat er straks over
+# de grens gaat wordt hiermee vergeleken, beide kanten op — een vraag die hier
+# niet staat is een fout, en deze tak zonder vraag ook.
+query_graph:
+  - doc: >-
+      `toeslagen` mag bij `brp` de lexostatus `partnerschap` opvragen; haar
+      eigen wet vraagt daarom.
+    from: toeslagen
+    to: brp
+    lexostatus: partnerschap
 
 query_via_transport:
   - description: >-

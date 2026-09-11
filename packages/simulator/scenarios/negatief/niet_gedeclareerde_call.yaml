@@ -1,0 +1,105 @@
+---
+name: een besluit vraagt over een celgrens zonder dat het scenario dat declareert
+description: >-
+  **Negatieve fixture: dit scenario hoort te falen.** Hij staat in
+  `scenarios/negatief/` en wordt door `tests/invarianten.rs` gedraaid, dat
+  controleert dát hij faalt en waarop — niet door de gewone scenariosuite, die
+  van elk bestand verwacht dat het groen is.
+
+  Wat er mis is: het besluit van `toeslagen` haalt de relatievorm bij `brp`, want
+  haar eigen wet vraagt daarom. Dat mág, maar dit bestand declareert geen enkel
+  vraaggraf, en dan is de bewering van het scenario "er gaat niets over een
+  celgrens". De gate hoort dat verschil te melden met de vraag erin — welke cel,
+  welke cel, welke lexostatus, welk moment — en niet met een telling.
+
+  Waarom de afwezigheid van `query_graph` een bewering is en geen omissie: was
+  een leeg graf "geen mening", dan zou elk scenario dat de declaratie vergeet
+  stilzwijgend elk verkeer toestaan, en dan meet de gate alleen nog bij wie eraan
+  dacht.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: brp
+    laws: []
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+
+    lexostatus_definitions:
+      - name: partnerschap
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  - id: toeslagen
+    laws:
+      - test_partnerschapstoets
+
+    accepts_from:
+      - cell: brp
+        output: partnerschap
+        lexostatus: partnerschap
+        field: partnerschap_type
+
+    besluit_definitions:
+      - name: partnerschapstoets
+        regulation: test_partnerschapstoets
+        output: is_gehuwd
+        zaakkenmerk: partnerschapstoets/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: partnerschapsbeschikking
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - is_gehuwd
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+# Hier hoort een `query_graph` te staan met de tak toeslagen -> brp.partnerschap.
+# Hij staat er niet, en dat is de schending.
+
+decide:
+  - cell: toeslagen
+    besluit: partnerschapstoets
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      is_gehuwd: true
+
+queries:
+  - cell: toeslagen
+    lexostatus: partnerschapsbeschikking
+    params:
+      zaakkenmerk: partnerschapstoets/999993653
+    op_moment: 2024-06-01
+    expect:
+      is_gehuwd: true

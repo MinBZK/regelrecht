@@ -1,0 +1,107 @@
+---
+name: het scenario declareert een vraag die in de run nooit gesteld wordt
+description: >-
+  **Negatieve fixture: dit scenario hoort te falen.** Zie
+  `niet_gedeclareerde_call.yaml` voor waarom deze bestanden apart staan.
+
+  Wat er mis is: het vraaggraf declareert dat `toeslagen` de relatievorm bij `brp`
+  mag opvragen, en die declaratie is in orde — haar eigen wet vraagt daarom, dus
+  declaratie en definitie lopen hier niet uit de pas. Alleen wordt het besluit dat
+  die vraag zou stellen nooit genomen: er staat geen `decide` in dit bestand. De
+  vraag blijft dus uit.
+
+  Dat dít faalt is de minder voor de hand liggende helft van de vergelijking, en
+  de belangrijkste. Een niet-gedeclareerde vraag valt op; een vraag die stilletjes
+  wegvalt niet. Zou de gate alleen de eerste kant meten, dan zou een scenario
+  waarin het besluit verdwijnt — verplaatst, uitgecommentarieerd, kapot — groen
+  blijven terwijl het niets meer aantoont. Het is de gevaarlijkste vorm van
+  groen: hij lijkt op bewijs.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: brp
+    laws: []
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+
+    lexostatus_definitions:
+      - name: partnerschap
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  - id: toeslagen
+    laws:
+      - test_partnerschapstoets
+
+    accepts_from:
+      - cell: brp
+        output: partnerschap
+        lexostatus: partnerschap
+        field: partnerschap_type
+
+    besluit_definitions:
+      - name: partnerschapstoets
+        regulation: test_partnerschapstoets
+        output: is_gehuwd
+        zaakkenmerk: partnerschapstoets/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: partnerschapsbeschikking
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - is_gehuwd
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+query_graph:
+  - doc: >-
+      Deze tak is toegestaan en past bij de definities van `toeslagen` — ze wordt
+      alleen nooit gebruikt, want het besluit dat haar zou stellen ontbreekt.
+    from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+
+# Hier hoorde het besluit te staan dat de vraag stelt. Het ontbreekt, en dat is
+# de schending.
+
+queries:
+  - description: >-
+      Zonder besluit ligt er geen decretogram, dus de cel heeft over deze zaak
+      niets vastgesteld. Dat is een geldig antwoord en geen fout; de fout zit in
+      het vraaggraf.
+    cell: toeslagen
+    lexostatus: partnerschapsbeschikking
+    params:
+      zaakkenmerk: partnerschapstoets/999993653
+    op_moment: 2024-06-01
+    expect_not_established: true

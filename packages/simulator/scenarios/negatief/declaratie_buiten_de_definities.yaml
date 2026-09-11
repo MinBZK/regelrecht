@@ -1,0 +1,116 @@
+---
+name: het vraaggraf staat een vraag toe waar geen enkele definitie om vraagt
+description: >-
+  **Negatieve fixture: dit scenario hoort te falen.** Hij staat in
+  `scenarios/negatief/` en wordt door `tests/invarianten.rs` gedraaid, dat
+  controleert dát hij faalt en waarop.
+
+  Wat er mis is: het vraaggraf declareert dat `toeslagen` bij `belastingdienst`
+  een toetsingsinkomen mag opvragen, en niets in haar recht vraagt daarom — geen
+  `accept_from` in een besluit-definitie, geen `accepts_from`-afspraak bij haar
+  wetten. Er wordt in deze run ook nooit zo'n vraag gesteld, en daarom is dit iets
+  anders dan `cel_bevraagt_cel_buiten_haar_definities.yaml`: daar faalt het
+  *gedrag*, hier faalt de **declaratie** op zichzelf.
+
+  Dat dit een eigen fout is en niet alleen een ongebruikte regel, is het punt. Een
+  toegestaan vraaggraf dat ruimer is dan de definities vragen, vertelt een lezer
+  iets anders over de opstelling dan er waar is — en zodra iemand er een vraag bij
+  schrijft, is die vraag "gedeclareerd" en lijkt alles in orde. De gate berekent
+  het toegestane graf daarom zelf uit de celconfiguraties en vergelijkt de
+  declaratie ermee.
+
+  Er komt een tweede melding bij: de gedeclareerde tak is ook niet gesteld. Die
+  hoort erbij — een declaratie die niets meet is óók een fout — maar de melding
+  waar deze fixture over gaat, is die over declaratie en definitie die uit de pas
+  lopen.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: brp
+    laws: []
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+
+    lexostatus_definitions:
+      - name: partnerschap
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  - id: belastingdienst
+    laws: []
+
+    chronicles:
+      - stream: aanslagen
+        key: bsn
+        events:
+          - name: aanslag_vastgesteld
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-03-01
+            fields:
+              bsn: '999993653'
+              toetsingsinkomen: 81000
+
+    lexostatus_definitions:
+      - name: toetsingsinkomen
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - toetsingsinkomen
+        reduction:
+          chronicle: aanslagen
+          key: bsn
+          latest: true
+
+  - id: toeslagen
+    laws:
+      - test_partnerschapstoets
+
+    accepts_from:
+      - cell: brp
+        output: partnerschap
+        lexostatus: partnerschap
+        field: partnerschap_type
+
+query_graph:
+  - doc: >-
+      Deze tak komt uit de lucht vallen: geen wet en geen besluit van `toeslagen`
+      vraagt om de belastingdienst.
+    from: toeslagen
+    to: belastingdienst
+    lexostatus: toetsingsinkomen
+
+queries:
+  - description: >-
+      Een gewone vraag van een consument aan de bron-cel. Die gaat niet over een
+      celgrens en staat dus ook niet in het vraaggraf; ze staat hier zodat dit
+      bestand iets meet en de fout in de declaratie zit en niet in de leegte.
+    cell: belastingdienst
+    lexostatus: toetsingsinkomen
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      toetsingsinkomen: 81000

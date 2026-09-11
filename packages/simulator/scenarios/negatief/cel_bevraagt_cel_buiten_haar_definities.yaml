@@ -1,0 +1,125 @@
+---
+name: een cel bevraagt een cel die haar eigen definities niet noemen
+description: >-
+  **Negatieve fixture: dit scenario hoort te falen** — op invariant I3. Hij staat
+  in `scenarios/negatief/` en wordt door `tests/invarianten.rs` gedraaid, dat
+  controleert dát hij faalt en waarop.
+
+  Wat er mis is: `toeslagen` bevraagt `belastingdienst`, en niets in haar eigen
+  recht vraagt daarom. Haar wet wijst `brp` aan en verder niemand, en geen van
+  haar besluit-definities accepteert iets van de belastingdienst.
+
+  En het scenario **declareert die vraag wel**. Dat is met opzet, want het is de
+  hele pointe van I3: het toegestane vraaggraf is niet wat een scenario mag
+  beweren, het is wat uit de `accept_from`-inputs en de `accepts_from`-afspraken
+  van de cellen volgt. Een declaratie is geen vrijbrief; zou ze dat zijn, dan
+  hield I3 niets tegen dan slordigheid, en was elke schending met één regel YAML
+  te legaliseren. Daarom komt er hier een tweede melding bij: de declaratie zelf
+  loopt uit de pas met de definities.
+
+  De weg waarlangs de vraag gesteld wordt is `query_via_transport`. Dat is de
+  sonde over de naad, en in de opstelling zelf de enige manier waarop een cel
+  buiten een besluit over haar grens komt — dus de enige manier waarop een
+  scenariobestand deze schending kan uitdrukken. Vandaar dat de gate de sonde aan
+  dezelfde definities houdt als een besluit: een uitzondering daar zou in elk
+  scenario een weg om I3 heen openzetten.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  # De cel die haar recht wél aanwijst, en die hier niets gevraagd wordt. Ze
+  # staat erin omdat `accepts_from` van `toeslagen` naar haar verwijst: een
+  # afspraak met een cel die de wereld niet kent, wordt bij het optuigen
+  # geweigerd.
+  - id: brp
+    laws: []
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+
+    lexostatus_definitions:
+      - name: partnerschap
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  # De cel die bevraagd wordt zonder dat iemands recht daarom vroeg. Zij merkt
+  # niets: een cel kan niet zien of een vraag bij het recht van de vrager past, en
+  # dat is precies waarom deze invariant aan de kant van de vrager gemeten wordt.
+  - id: belastingdienst
+    laws: []
+
+    chronicles:
+      - stream: aanslagen
+        key: bsn
+        events:
+          - name: aanslag_vastgesteld
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-03-01
+            fields:
+              bsn: '999993653'
+              toetsingsinkomen: 81000
+
+    lexostatus_definitions:
+      - name: toetsingsinkomen
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - toetsingsinkomen
+        reduction:
+          chronicle: aanslagen
+          key: bsn
+          latest: true
+
+  - id: toeslagen
+    laws:
+      - test_partnerschapstoets
+
+    # Wat haar recht vraagt: `brp`, en niemand anders.
+    accepts_from:
+      - cell: brp
+        output: partnerschap
+        lexostatus: partnerschap
+        field: partnerschap_type
+
+query_graph:
+  - doc: >-
+      Het scenario staat deze vraag toe. Dat verandert niets: de definities van
+      `toeslagen` vragen niet om de belastingdienst.
+    from: toeslagen
+    to: belastingdienst
+    lexostatus: toetsingsinkomen
+
+query_via_transport:
+  - description: >-
+      De vraag die niet mag. Ze lukt technisch prima — de belastingdienst
+      antwoordt netjes — en dat is het punt: alleen het vraaggraf laat zien dat
+      hier iets gebeurde waar het recht van deze cel niet om vraagt.
+    from: toeslagen
+    cell: belastingdienst
+    lexostatus: toetsingsinkomen
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      toetsingsinkomen: 81000

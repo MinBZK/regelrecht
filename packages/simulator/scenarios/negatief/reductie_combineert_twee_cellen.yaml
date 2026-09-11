@@ -1,0 +1,139 @@
+---
+name: een cel combineert buiten een besluit-pad antwoorden van twee cellen
+description: >-
+  **Negatieve fixture: dit scenario hoort te falen** — op invariant I4. Hij staat
+  in `scenarios/negatief/` en wordt door `tests/invarianten.rs` gedraaid, dat
+  controleert dát hij faalt en waarop.
+
+  Wat er mis is: `toeslagen` haalt een relatievorm bij `brp` en een inkomensklasse
+  bij `belastingdienst`, en er is geen besluit waar die twee samenkomen. Dan
+  bestaat het totaalbeeld tóch ergens — in die cel, op dat moment — en dat is
+  precies wat deze opstelling zegt dat nergens gebeurt.
+
+  Let op wat hier **niet** mis is, want dat is het verschil dat I4 maakt. Beide
+  vragen zijn toegestaan: de wet van `toeslagen` wijst beide cellen aan, beide
+  afspraken staan in `accepts_from`, en beide takken staan in het vraaggraf. Elke
+  vraag afzonderlijk is dus in orde. Wat niet mag is ze bij elkaar leggen op een
+  plek waar niemand het kan terugzien. In een besluit mág dat wel, en dan staat het
+  in het decretogram met bron, moment en ondertekening per waarde — combineren is
+  niet verboden, onzichtbaar combineren is dat.
+
+  De achterdeur waarlangs dit hier gebeurt is `query_via_transport`, de sonde over
+  de naad. In de opstelling zelf kan een cel dit niet: `Cell::reduce` krijgt nooit
+  een cel-resolver, dus een reductie die buiten haar eigen kronieken reikt is een
+  ontbrekende capability en geen afspraak. Dat de schending alleen via de sonde uit
+  te drukken is, is dus goed nieuws — maar een gate die hem niet zou zien, zou dat
+  goede nieuws niet kunnen aantonen.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: brp
+    laws: []
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+
+    lexostatus_definitions:
+      - name: partnerschap
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  - id: belastingdienst
+    laws: []
+
+    chronicles:
+      - stream: aanslagen
+        key: bsn
+        events:
+          - name: aanslag_vastgesteld
+            intake: eigen_besluit
+            recording_actor: belastingdienst
+            grondslag: Wet inkomstenbelasting 2001, hoofdstuk 2
+            op_moment: 2024-03-01
+            fields:
+              bsn: '999993653'
+              inkomensklasse: LAAG
+
+    lexostatus_definitions:
+      - name: inkomensklasse
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - inkomensklasse
+        reduction:
+          chronicle: aanslagen
+          key: bsn
+          latest: true
+
+  # De combinerende cel. Haar wet is een testregeling die twee organisaties
+  # aanwijst, en beide afspraken staan hieronder: het toegestane vraaggraf van
+  # deze cel bevat dus beide takken. Daarmee is dit bestand een fixture over I4 en
+  # niet over I3 — zonder die twee afspraken zouden de twee schendingen door
+  # elkaar lopen en zou de test niet kunnen zeggen welke hij meet.
+  - id: toeslagen
+    laws:
+      - test_dubbele_celbron
+
+    accepts_from:
+      - cell: brp
+        output: partnerschap
+        lexostatus: partnerschap
+        field: partnerschap_type
+
+      - cell: belastingdienst
+        output: inkomensklasse
+        lexostatus: inkomensklasse
+        field: inkomensklasse
+
+query_graph:
+  - from: toeslagen
+    to: brp
+    lexostatus: partnerschap
+
+  - from: toeslagen
+    to: belastingdienst
+    lexostatus: inkomensklasse
+
+query_via_transport:
+  - description: de eerste bron
+    from: toeslagen
+    cell: brp
+    lexostatus: partnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      partnerschap_type: HUWELIJK
+
+  - description: >-
+      En de tweede. Op dit moment kent `toeslagen` de antwoorden van twee
+      organisaties zonder dat er een besluit is dat ze bij elkaar brengt; het
+      moment in de faalmelding is dít moment.
+    from: toeslagen
+    cell: belastingdienst
+    lexostatus: inkomensklasse
+    params:
+      bsn: '999993653'
+    op_moment: 2024-07-01
+    expect:
+      inkomensklasse: LAAG
