@@ -1,0 +1,123 @@
+---
+name: brp is een cel zonder engine
+description: >-
+  Een bron-cel: `laws: []`, dus geen engine in deze cel. Ze legt vast en ze
+  reduceert, en haar lexostatus is een filter over haar eigen kroniek. Zo is
+  elke organisatie die niet op RegelRecht draait — een register, een partij, een
+  betaalsysteem, een legacy-API — evengoed een cel, en dat is de toets dat het
+  lexostatus-contract niets van een engine nodig heeft.
+
+cells:
+  - id: brp
+    # Geen wetten. Deze cel zou de BRP-wet kunnen laden, maar hoeft dat niet:
+    # wat ze publiceert staat in haar kroniek, niet in een berekening.
+    laws: []
+
+    chronicles:
+      # Twee vastleggingen over dezelfde persoon. De tweede vervangt de eerste
+      # vanaf haar eigen moment; wat daarvóór gevraagd wordt, krijgt het beeld
+      # van toen.
+      - stream: relaties
+        key: bsn
+        events:
+          - op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+              partner_bsn: '999993756'
+          - op_moment: 2024-07-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+              # Uitdrukkelijk leeg: het register is hier gezaghebbend en zegt
+              # dat er geen partner is. Dat is een waarde, geen ontbrekend feit.
+              partner_bsn: null
+
+    lexostatus_definitions:
+      - name: partnerschap
+        doc: >-
+          De relatievorm van één persoon op één moment, zoals deze cel die
+          vastlegde. Geen berekening: de laatste vastlegging op of vóór het
+          gevraagde moment.
+        inputs:
+          # De sleutel van het filter moet een gedocumenteerde parameter zijn:
+          # de consument levert de waarde aan, en zonder parameter zou de vraag
+          # over geen enkel onderwerp gaan.
+          - name: bsn
+            type: string
+        outputs:
+          # Verplicht bij een kroniekfilter: er is geen wetsuitkomst die het
+          # antwoord bepaalt, dus zonder deze lijst zou de cel haar hele
+          # vastlegging naar buiten geven zonder iets beloofd te hebben.
+          - partnerschap_type
+          - partner_bsn
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+      - name: laatste_huwelijk
+        doc: >-
+          Dezelfde kroniek, met een gelijkheidsfilter erop. Let op de betekenis:
+          `where` bepaalt welke vastleggingen meedoen, en pas van die groep
+          wint de laatste. Dit is dus niet "is deze persoon gehuwd", maar "wat
+          legde deze cel het laatst vast toen ze HUWELIJK zei".
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+          - partner_bsn
+        reduction:
+          chronicle: relaties
+          key: bsn
+          where:
+            partnerschap_type: HUWELIJK
+
+queries:
+  - description: >-
+      Op 2024-01-01 was de vastlegging van 2023-03-01 de laatste; de hele
+      vastlegging telt, dus ook de partner die erbij hoorde.
+    cell: brp
+    lexostatus: partnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2024-01-01
+    expect:
+      partnerschap_type: HUWELIJK
+      partner_bsn: '999993756'
+
+  - description: >-
+      Zelfde cel, zelfde persoon, later moment: na de vastlegging van
+      2024-07-01 is de uitkomst een andere.
+    cell: brp
+    lexostatus: partnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2025-01-01
+    expect:
+      partnerschap_type: GEEN
+      partner_bsn: null
+
+  - description: >-
+      Vóór de eerste vastlegging had deze cel niets vastgesteld. Dat is een
+      gewoon antwoord met een reden, geen fout en geen leeg antwoord dat op een
+      antwoord lijkt.
+    cell: brp
+    lexostatus: partnerschap
+    params:
+      bsn: '999993653'
+    op_moment: 2023-01-01
+    expect_not_established: true
+
+  - description: >-
+      Het gelijkheidsfilter levert de laatste vastlegging die eraan voldeed —
+      hier die van 2023-03-01, ook al is de huidige stand GEEN.
+    cell: brp
+    lexostatus: laatste_huwelijk
+    params:
+      bsn: '999993653'
+    op_moment: 2025-01-01
+    expect:
+      partnerschap_type: HUWELIJK
+      partner_bsn: '999993756'

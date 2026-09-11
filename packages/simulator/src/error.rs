@@ -107,27 +107,110 @@ pub enum SimulatorError {
         regulation: String,
     },
 
-    /// Een lexostatus publiceert een uitkomst die haar regeling niet kent.
+    /// Een lexostatus publiceert een uitkomst die haar bron niet kent.
     ///
     /// Wat een cel publiceert is een belofte aan de consument; een naam die
-    /// geen enkele geladen versie van de regeling oplevert, kan die belofte
-    /// niet waarmaken. Dat blijkt bij het optuigen, net als bij
+    /// geen enkele geladen versie van de regeling oplevert — of die in geen
+    /// enkele vastlegging van de kroniekstroom voorkomt — kan die belofte niet
+    /// waarmaken. Dat blijkt bij het optuigen, net als bij
     /// [`SimulatorError::ForeignRegulation`], en niet pas bij de eerste vraag.
     #[error(
         "cel '{cell}': lexostatus '{lexostatus}' publiceert uitkomst '{output}', \
-         maar regeling '{regulation}' kent die niet (wel: {known})"
+         maar {origin} kent die niet (wel: {known})"
     )]
     UnknownOutput {
         /// Cel waarin de definitie staat.
         cell: String,
         /// De lexostatus met de onbekende uitkomst.
         lexostatus: String,
-        /// De regeling waarover gereduceerd wordt.
-        regulation: String,
+        /// Waar de uitkomst uit had moeten komen: `regeling '…'` of
+        /// `kroniekstroom '…'`. Niet `source`: dat veld zou thiserror als de
+        /// onderliggende fout lezen.
+        origin: String,
         /// De uitkomstnaam die niet bestaat.
         output: String,
-        /// Komma-gescheiden lijst van uitkomsten die de regeling wél kent.
+        /// Komma-gescheiden lijst van namen die de bron wél kent.
         known: String,
+    },
+
+    /// Een kroniekfilter verwijst naar een stroom die de cel niet houdt.
+    ///
+    /// Een reductie raakt uitsluitend de eigen feiten van de cel. Een onbekende
+    /// stroomnaam is de kroniek-tegenhanger van
+    /// [`SimulatorError::ForeignRegulation`] en blijkt op hetzelfde moment.
+    #[error(
+        "cel '{cell}': kroniekfilter van '{lexostatus}' verwijst naar kroniekstroom \
+         '{stream}', die deze cel niet houdt (wel: {known})"
+    )]
+    UnknownStream {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// De lexostatus met de onbekende stroom.
+        lexostatus: String,
+        /// De stroomnaam die niet bestaat.
+        stream: String,
+        /// Komma-gescheiden lijst van stromen die de cel wél houdt.
+        known: String,
+    },
+
+    /// Een kroniekfilter zegt niet wat het publiceert.
+    ///
+    /// Bij de wetsvorm is er altijd één uitkomst die de lexostatus *is*; een
+    /// kroniekfilter heeft die niet. Zonder `outputs` zou de cel dus haar hele
+    /// vastlegging naar buiten geven zonder iets beloofd te hebben.
+    #[error(
+        "cel '{cell}': kroniekfilter van '{lexostatus}' op '{stream}' moet in `outputs` \
+         noemen wat het publiceert; een kroniekfilter heeft geen wetsuitkomst \
+         die dat bepaalt"
+    )]
+    ChronicleWithoutOutputs {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// De lexostatus zonder `outputs`.
+        lexostatus: String,
+        /// De stroom waarover gefilterd wordt.
+        stream: String,
+    },
+
+    /// Een kroniekfilter sleutelt of filtert op een veld dat de stroom niet kent.
+    ///
+    /// Zo'n filter zou stil "niets vastgesteld" antwoorden op elke vraag, en dat
+    /// is niet te onderscheiden van een leeg verleden.
+    #[error(
+        "cel '{cell}': kroniekfilter van '{lexostatus}' gebruikt veld '{field}', \
+         maar kroniekstroom '{stream}' kent dat niet (wel: {known})"
+    )]
+    UnknownFilterField {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// De lexostatus met het onbekende veld.
+        lexostatus: String,
+        /// De stroom waarover gefilterd wordt.
+        stream: String,
+        /// Het veld dat de stroom niet kent.
+        field: String,
+        /// Komma-gescheiden lijst van velden die de stroom wél kent.
+        known: String,
+    },
+
+    /// De sleutel van een kroniekfilter is geen gedocumenteerde parameter.
+    ///
+    /// De consument levert de sleutelwaarde aan; staat de sleutel niet in
+    /// `inputs`, dan is er niets dat hem aanlevert en gaat de vraag over geen
+    /// enkel onderwerp.
+    #[error(
+        "cel '{cell}': kroniekfilter van '{lexostatus}' sleutelt op '{key}', maar dat \
+         is geen gedocumenteerde parameter (gedocumenteerd: {documented})"
+    )]
+    ChronicleKeyWithoutParameter {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// De lexostatus met de onbereikbare sleutel.
+        lexostatus: String,
+        /// Het sleutelveld van het filter.
+        key: String,
+        /// Komma-gescheiden lijst van gedocumenteerde parameters.
+        documented: String,
     },
 
     /// Geen regelingmap met deze naam in het corpus.
@@ -187,9 +270,27 @@ pub enum SimulatorError {
     /// altijd en bewijst niets; dat mag geen groen opleveren.
     #[error(
         "scenario '{scenario}': vraag naar '{cell}.{lexostatus}' heeft geen `expect` \
-         en bewijst dus niets"
+         en geen `expect_not_established`, en bewijst dus niets"
     )]
     QueryWithoutExpectation {
+        /// Het scenario waarin de vraag staat.
+        scenario: String,
+        /// De bevraagde cel.
+        cell: String,
+        /// De gevraagde lexostatus.
+        lexostatus: String,
+    },
+
+    /// Een vraag verwacht waarden én dat er niets vastgesteld is.
+    ///
+    /// Die twee sluiten elkaar uit, dus zo'n vraag kan nooit slagen. Dat is een
+    /// schrijffout in het scenario en geen falende assertie: hij blijkt bij het
+    /// lezen, niet pas na een run.
+    #[error(
+        "scenario '{scenario}': vraag naar '{cell}.{lexostatus}' verwacht zowel waarden \
+         als `expect_not_established`; dat kan niet samen uitkomen"
+    )]
+    ContradictoryExpectation {
         /// Het scenario waarin de vraag staat.
         scenario: String,
         /// De bevraagde cel.

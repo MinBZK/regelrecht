@@ -16,9 +16,11 @@ pub use config::{CellConfig, LexostatusDefinition, LexostatusInput, ParameterTyp
 use crate::corpus;
 use crate::error::{Result, SimulatorError};
 use chrono::NaiveDate;
+use config::{engine_parameters, CellSurface};
 use regelrecht_engine::{LawExecutionService, Value};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 use std::path::Path;
 
 /// Het antwoord van een cel: de rechtstoestand vanuit een gevraagd perspectief,
@@ -31,12 +33,48 @@ pub struct Lexostatus {
     pub name: String,
     /// Het moment waarop gevraagd is; het antwoord geldt op dat moment.
     pub op_moment: NaiveDate,
-    /// De waarden die de reductie opleverde.
+    /// Wat de cel op dat moment vond.
+    pub outcome: LexostatusOutcome,
+}
+
+/// De twee antwoorden die een reductie kan opleveren.
+///
+/// "Niets vastgesteld" is er één van. Een cel die op het gevraagde moment geen
+/// feit had, heeft niet gefaald en is niet stuk; ze heeft een antwoord dat een
+/// consument moet kunnen onderscheiden van een antwoord met waarden. Een lege
+/// map zou dat onderscheid verstoppen, want die lijkt op een antwoord.
+#[derive(Debug, Clone)]
+pub enum LexostatusOutcome {
+    /// Er was een feit, en dit is wat de cel erover publiceert.
     ///
     /// Uitsluitend de uitkomsten die de definitie publiceert. De engine levert
     /// bij een gevraagde uitkomst ook wat er causaal mee meekomt; berekend is
     /// niet gepubliceerd, dus dat blijft binnen de cel.
-    pub values: BTreeMap<String, Value>,
+    Established(BTreeMap<String, Value>),
+    /// Er was op het gevraagde moment niets vastgesteld.
+    NotEstablished {
+        /// Waarom er niets was, in de woorden van de cel: welke stroom is
+        /// nagekeken, met welke sleutel en welk filter.
+        reason: String,
+    },
+}
+
+impl Lexostatus {
+    /// De gepubliceerde waarden, of `None` als er niets vastgesteld was.
+    pub fn values(&self) -> Option<&BTreeMap<String, Value>> {
+        match &self.outcome {
+            LexostatusOutcome::Established(values) => Some(values),
+            LexostatusOutcome::NotEstablished { .. } => None,
+        }
+    }
+
+    /// Waarom er niets vastgesteld was, of `None` als er wél een feit was.
+    pub fn not_established(&self) -> Option<&str> {
+        match &self.outcome {
+            LexostatusOutcome::Established(_) => None,
+            LexostatusOutcome::NotEstablished { reason } => Some(reason),
+        }
+    }
 }
 
 /// Eén chronolexocel.
@@ -48,11 +86,17 @@ pub struct Lexostatus {
 pub struct Cell {
     /// Het cel-id, alleen voor foutmeldingen en herkomst in het antwoord.
     id: String,
-    /// Engine met uitsluitend de eigen wetten van deze cel geladen.
+    /// Engine met uitsluitend de eigen wetten van deze cel geladen — of geen
+    /// engine, bij een bron-cel (`laws: []`).
+    ///
+    /// Dat dit een `Option` is, is de vorm van RFC-022 §2: de engine is een
+    /// component dat in een cel kán draaien, niet de cel zelf. Een organisatie
+    /// die niet op RegelRecht draait, legt vast en reduceert, en is daarmee een
+    /// gewone cel.
     ///
     /// In een `RefCell`, omdat elke reductie de zichtbare feiten opnieuw op het
     /// gevraagde moment zet; naar buiten toe blijft bevragen een leesactie.
-    service: RefCell<LawExecutionService>,
+    service: Option<RefCell<LawExecutionService>>,
     /// De eigen feiten. Privé, en dat is het punt.
     chronicles: ChronicleStore,
     /// De gepubliceerde lexostatussen, op naam.
@@ -65,19 +109,36 @@ impl Cell {
     /// Laadt uitsluitend de eigen wetten (alle versies, zodat de engine zelf op
     /// het gevraagde moment de juiste kiest) en controleert de gepubliceerde
     /// lexostatussen voordat er ook maar één vraag gesteld kan worden.
+    ///
+    /// `laws: []` is geldig: dan komt er geen engine, en houdt de cel het bij
+    /// vastleggen en reduceren over haar eigen kronieken.
     pub fn from_config(config: &CellConfig, regulation_root: &Path) -> Result<Self> {
-        let mut service = LawExecutionService::new();
-        for law in &config.laws {
-            for document in corpus::regulation_versions(regulation_root, law)? {
-                service.load_law(&document)?;
-            }
-        }
+        let chronicles = ChronicleStore::from_streams(&config.id, config.chronicles.clone())?;
 
-        let known_outputs = outputs_per_regulation(&service);
+        let service = if config.laws.is_empty() {
+            None
+        } else {
+            let mut service = LawExecutionService::new();
+            for law in &config.laws {
+                for document in corpus::regulation_versions(regulation_root, law)? {
+                    service.load_law(&document)?;
+                }
+            }
+            Some(service)
+        };
+
+        let surface = CellSurface {
+            laws: &config.laws,
+            outputs: service
+                .as_ref()
+                .map(outputs_per_regulation)
+                .unwrap_or_default(),
+            streams: chronicles.declared_fields(),
+        };
 
         let mut published: BTreeMap<String, LexostatusDefinition> = BTreeMap::new();
         for definition in &config.lexostatus_definitions {
-            definition.validate(&config.id, &config.laws, &known_outputs)?;
+            definition.validate(&config.id, &surface)?;
             if published
                 .insert(definition.name.clone(), definition.clone())
                 .is_some()
@@ -91,8 +152,8 @@ impl Cell {
 
         Ok(Self {
             id: config.id.clone(),
-            service: RefCell::new(service),
-            chronicles: ChronicleStore::from_streams(&config.id, config.chronicles.clone())?,
+            service: service.map(RefCell::new),
+            chronicles,
             published,
         })
     }
@@ -109,7 +170,9 @@ impl Cell {
     /// alleen wat de definitie noemt, en het antwoord geeft niet meer dan dat.
     ///
     /// `op_moment` is het moment waarop gevraagd wordt: feiten die pas later in
-    /// deze cel zijn vastgelegd, bestaan voor dit antwoord niet.
+    /// deze cel zijn vastgelegd, bestaan voor dit antwoord niet. Was er op dat
+    /// moment niets vastgesteld, dan is dat een antwoord — zie
+    /// [`LexostatusOutcome`] — en geen fout.
     pub fn reduce(
         &self,
         lexostatus: &str,
@@ -130,28 +193,139 @@ impl Cell {
                         .join(", "),
                 })?;
 
-        let bound = definition.bind(&self.id, params)?;
+        definition.check_params(&self.id, params)?;
 
-        let mut service = self.service.borrow_mut();
+        let outcome = match &definition.reduction {
+            Reduction::Law {
+                regulation,
+                output,
+                parameters,
+            } => self.reduce_with_law(
+                definition, regulation, output, parameters, params, op_moment,
+            )?,
+            Reduction::Chronicle {
+                chronicle,
+                key,
+                conditions,
+            } => {
+                self.filter_chronicle(definition, chronicle, key, conditions, params, op_moment)?
+            }
+        };
+
+        Ok(Lexostatus {
+            cell: self.id.clone(),
+            name: definition.name.clone(),
+            op_moment,
+            outcome,
+        })
+    }
+
+    /// De wetsvorm: laat de eigen engine over de eigen feiten rekenen.
+    fn reduce_with_law(
+        &self,
+        definition: &LexostatusDefinition,
+        regulation: &str,
+        output: &str,
+        parameters: &BTreeMap<String, String>,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<LexostatusOutcome> {
+        // Onbereikbaar: `validate` weigert bij het optuigen elke wetsvorm over
+        // een regeling die de cel niet zelf laadt, en een cel zonder engine
+        // laadt er geen enkele. De melding is hier dan ook de juiste.
+        let Some(service) = &self.service else {
+            return Err(SimulatorError::ForeignRegulation {
+                cell: self.id.clone(),
+                lexostatus: definition.name.clone(),
+                regulation: regulation.to_string(),
+            });
+        };
+
+        let mut service = service.borrow_mut();
         service.clear_data_sources();
         for stream in self.chronicles.reduce_to(op_moment) {
             service.register_dict_source(&stream.stream, &stream.key, stream.records)?;
         }
 
         let result = service.evaluate_law_output(
-            &definition.reduction.regulation,
-            &definition.reduction.output,
-            bound,
+            regulation,
+            output,
+            engine_parameters(parameters, params),
             &op_moment.format("%Y-%m-%d").to_string(),
         )?;
 
-        Ok(Lexostatus {
-            cell: self.id.clone(),
-            name: definition.name.clone(),
-            op_moment,
-            values: definition.project(result.outputs),
-        })
+        Ok(LexostatusOutcome::Established(
+            definition.project(result.outputs),
+        ))
     }
+
+    /// Het kroniekfilter: lees de laatste vastlegging over dit onderwerp.
+    ///
+    /// Geen engine in zicht. Wat de vastlegging draagt en de definitie
+    /// publiceert, komt in het antwoord; een gepubliceerd veld dat deze
+    /// vastlegging niet heeft, blijft eruit — de cel vult niets aan.
+    fn filter_chronicle(
+        &self,
+        definition: &LexostatusDefinition,
+        chronicle: &str,
+        key: &str,
+        conditions: &BTreeMap<String, Value>,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<LexostatusOutcome> {
+        // Onbereikbaar: `validate` eist dat de sleutel een gedocumenteerde
+        // parameter is, en `check_params` dat elke gedocumenteerde parameter
+        // meekomt.
+        let key_value = params
+            .get(key)
+            .ok_or_else(|| SimulatorError::MissingParameter {
+                cell: self.id.clone(),
+                lexostatus: definition.name.clone(),
+                parameter: key.to_string(),
+            })?;
+
+        let Some(event) = self
+            .chronicles
+            .latest_recording(chronicle, key, key_value, conditions, op_moment)
+        else {
+            return Ok(LexostatusOutcome::NotEstablished {
+                reason: nothing_established(chronicle, key, key_value, conditions, op_moment),
+            });
+        };
+
+        let values = definition
+            .published_outputs()
+            .into_iter()
+            .filter_map(|output| {
+                chronicle::field(&event.fields, output)
+                    .map(|value| (output.to_string(), value.clone()))
+            })
+            .collect();
+        Ok(LexostatusOutcome::Established(values))
+    }
+}
+
+/// Waarom het kroniekfilter niets vond, zo precies dat het na te lopen is.
+fn nothing_established(
+    chronicle: &str,
+    key: &str,
+    key_value: &Value,
+    conditions: &BTreeMap<String, Value>,
+    op_moment: NaiveDate,
+) -> String {
+    let mut reason = format!(
+        "kroniekstroom '{chronicle}' heeft op of vóór {op_moment} geen vastlegging \
+         met {key} '{key_value}'"
+    );
+    if !conditions.is_empty() {
+        let filter = conditions
+            .iter()
+            .map(|(field, value)| format!("{field} = {value}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = write!(reason, " die voldoet aan {filter}");
+    }
+    reason
 }
 
 /// De uitkomstnamen per regeling, over alle geladen versies heen.
@@ -220,8 +394,25 @@ lexostatus_definitions:
     }
 
     fn moment() -> NaiveDate {
-        NaiveDate::from_ymd_opt(2025, 1, 1)
-            .unwrap_or_else(|| panic!("2025-01-01 moet een geldige datum zijn"))
+        date("2025-01-01")
+    }
+
+    /// Faalt luid op een onleesbare datum: deze tests draaien om de tijdas, dus
+    /// een typfout mag niet stil op een standaarddatum uitkomen.
+    fn date(text: &str) -> NaiveDate {
+        NaiveDate::parse_from_str(text, "%Y-%m-%d")
+            .unwrap_or_else(|e| panic!("testdatum '{text}' moet leesbaar zijn: {e}"))
+    }
+
+    /// De waarden van een antwoord, of een luide fout als er niets vastgesteld
+    /// was: een test die daarop stilvalt, zou niets meer bewijzen.
+    fn values(answer: &Lexostatus) -> &BTreeMap<String, Value> {
+        answer.values().unwrap_or_else(|| {
+            panic!(
+                "verwachtte een vastgesteld feit, kreeg: {}",
+                answer.not_established().unwrap_or("(onbekend)")
+            )
+        })
     }
 
     #[test]
@@ -308,14 +499,14 @@ lexostatus_definitions:
             .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
 
         assert_eq!(
-            answer.values.get("heeft_recht_op_zorgtoeslag"),
+            values(&answer).get("heeft_recht_op_zorgtoeslag"),
             Some(&Value::Bool(true)),
             "de gepubliceerde uitkomst hoort in het antwoord"
         );
         assert!(
-            !answer.values.contains_key("hoogte_zorgtoeslag"),
+            !values(&answer).contains_key("hoogte_zorgtoeslag"),
             "de engine berekent de hoogte mee, maar de cel publiceert haar niet; kreeg {:?}",
-            answer.values
+            values(&answer)
         );
     }
 
@@ -331,9 +522,9 @@ lexostatus_definitions:
             .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
 
         assert!(
-            answer.values.contains_key("hoogte_zorgtoeslag"),
+            values(&answer).contains_key("hoogte_zorgtoeslag"),
             "een uitkomst die in `outputs` staat hoort in het antwoord; kreeg {:?}",
-            answer.values
+            values(&answer)
         );
     }
 
@@ -347,6 +538,250 @@ lexostatus_definitions:
         assert!(
             matches!(err, SimulatorError::UnknownOutput { .. }),
             "verwachtte UnknownOutput, kreeg {err}"
+        );
+    }
+
+    /// Een bron-cel: geen wetten, één kroniek, en een lexostatus die erover
+    /// filtert.
+    ///
+    /// `definition` wordt letterlijk ingeplakt, zodat elke test alleen het blok
+    /// varieert waar ze over gaat. De tweede vastlegging laat `partner_bsn`
+    /// weg: die stond in de eerste, dus de stroom kent het veld, maar deze
+    /// vastlegging draagt het niet.
+    fn brp(definition: &str) -> CellConfig {
+        config(&format!(
+            r"
+id: brp
+laws: []
+chronicles:
+  - stream: relaties
+    key: bsn
+    events:
+      - op_moment: 2023-03-01
+        fields:
+          bsn: '999993653'
+          partnerschap_type: HUWELIJK
+          partner_bsn: '999993756'
+      - op_moment: 2024-07-01
+        fields:
+          bsn: '999993653'
+          partnerschap_type: GEEN
+lexostatus_definitions:
+  - name: partnerschap
+    inputs:
+      - name: bsn
+        type: string
+{definition}
+"
+        ))
+    }
+
+    /// Het kroniekfilter zoals de meeste tests hieronder het bedoelen.
+    const PARTNERSCHAP: &str = "    outputs:
+      - partnerschap_type
+      - partner_bsn
+    reduction:
+      chronicle: relaties
+      key: bsn
+      latest: true";
+
+    fn source_cell(definition: &str) -> Cell {
+        Cell::from_config(&brp(definition), &regulation_root())
+            .unwrap_or_else(|e| panic!("een bron-cel moet op te tuigen zijn: {e}"))
+    }
+
+    #[test]
+    fn een_cel_zonder_wetten_reduceert_over_haar_eigen_kroniek() {
+        let cell = source_cell(PARTNERSCHAP);
+
+        let eerder = cell
+            .reduce("partnerschap", &bsn(), date("2024-01-01"))
+            .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
+        assert_eq!(
+            values(&eerder).get("partnerschap_type"),
+            Some(&Value::String("HUWELIJK".to_string())),
+            "op 2024-01-01 gold de vastlegging van 2023-03-01"
+        );
+        assert_eq!(
+            values(&eerder).get("partner_bsn"),
+            Some(&Value::String("999993756".to_string())),
+            "de hele vastlegging telt, niet alleen het sleutelveld"
+        );
+
+        let later = cell
+            .reduce("partnerschap", &bsn(), moment())
+            .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
+        assert_eq!(
+            values(&later).get("partnerschap_type"),
+            Some(&Value::String("GEEN".to_string())),
+            "na 2024-07-01 is de latere vastlegging de laatste"
+        );
+        assert!(
+            !values(&later).contains_key("partner_bsn"),
+            "deze vastlegging draagt het veld niet, en de cel vult niets aan; kreeg {:?}",
+            values(&later)
+        );
+    }
+
+    #[test]
+    fn niets_vastgesteld_is_een_gewoon_antwoord() {
+        let answer = source_cell(PARTNERSCHAP)
+            .reduce("partnerschap", &bsn(), date("2023-01-01"))
+            .unwrap_or_else(|e| panic!("een moment vóór het eerste feit is geen fout: {e}"));
+
+        let reason = answer
+            .not_established()
+            .unwrap_or_else(|| panic!("verwachtte 'niets vastgesteld', kreeg {answer:?}"));
+        assert!(
+            reason.contains("relaties") && reason.contains("2023-01-01"),
+            "de reden moet zeggen waar en wanneer er niets stond, kreeg: {reason}"
+        );
+    }
+
+    #[test]
+    fn where_filtert_over_de_vastleggingen_en_pas_daarna_wint_de_laatste() {
+        let answer = source_cell(
+            "    outputs:
+      - partnerschap_type
+      - partner_bsn
+    reduction:
+      chronicle: relaties
+      key: bsn
+      where:
+        partnerschap_type: HUWELIJK",
+        )
+        .reduce("partnerschap", &bsn(), moment())
+        .unwrap_or_else(|e| panic!("de reductie moet slagen: {e}"));
+
+        assert_eq!(
+            values(&answer).get("partner_bsn"),
+            Some(&Value::String("999993756".to_string())),
+            "het filter bepaalt welke vastleggingen meedoen; van die groep wint de laatste"
+        );
+    }
+
+    #[test]
+    fn where_dat_niets_aantreft_stelt_niets_vast() {
+        let answer = source_cell(
+            "    outputs:
+      - partnerschap_type
+    reduction:
+      chronicle: relaties
+      key: bsn
+      where:
+        partnerschap_type: GEREGISTREERD_PARTNERSCHAP",
+        )
+        .reduce("partnerschap", &bsn(), moment())
+        .unwrap_or_else(|e| panic!("een filter zonder treffer is geen fout: {e}"));
+
+        let reason = answer
+            .not_established()
+            .unwrap_or_else(|| panic!("verwachtte 'niets vastgesteld', kreeg {answer:?}"));
+        assert!(
+            reason.contains("GEREGISTREERD_PARTNERSCHAP"),
+            "de reden moet het filter noemen waaraan niets voldeed, kreeg: {reason}"
+        );
+    }
+
+    #[test]
+    fn een_onbekende_stroomnaam_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &brp("    outputs:
+      - partnerschap_type
+    reduction:
+      chronicle: relatis
+      key: bsn"),
+            &regulation_root(),
+        )
+        .expect_err("een typfout in de stroomnaam hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownStream { .. }),
+            "verwachtte UnknownStream, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_kroniekfilter_zonder_outputs_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &brp("    reduction:
+      chronicle: relaties
+      key: bsn"),
+            &regulation_root(),
+        )
+        .expect_err("een kroniekfilter zonder `outputs` hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ChronicleWithoutOutputs { .. }),
+            "verwachtte ChronicleWithoutOutputs, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_output_die_de_stroom_niet_kent_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &brp("    outputs:
+      - partnerschap_duur
+    reduction:
+      chronicle: relaties
+      key: bsn"),
+            &regulation_root(),
+        )
+        .expect_err("een uitkomst die geen vastlegging draagt hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownOutput { .. }),
+            "verwachtte UnknownOutput, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_filter_op_een_onbekend_veld_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &brp("    outputs:
+      - partnerschap_type
+    reduction:
+      chronicle: relaties
+      key: bsn
+      where:
+        partnerschaptype: HUWELIJK"),
+            &regulation_root(),
+        )
+        .expect_err("een `where` op een onbekend veld hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownFilterField { .. }),
+            "verwachtte UnknownFilterField, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_sleutel_zonder_gedocumenteerde_parameter_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &brp("    outputs:
+      - partnerschap_type
+    reduction:
+      chronicle: relaties
+      key: partner_bsn"),
+            &regulation_root(),
+        )
+        .expect_err("een sleutel die de consument niet kan meegeven hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ChronicleKeyWithoutParameter { .. }),
+            "verwachtte ChronicleKeyWithoutParameter, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_wetsvorm_in_een_cel_zonder_wetten_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &brp("    reduction:
+      regulation: wet_basisregistratie_personen
+      output: heeft_partner
+      parameters:
+        bsn: $bsn"),
+            &regulation_root(),
+        )
+        .expect_err("zonder geladen regeling hoort een wetsvorm te falen");
+        assert!(
+            matches!(err, SimulatorError::ForeignRegulation { .. }),
+            "verwachtte ForeignRegulation, kreeg {err}"
         );
     }
 
