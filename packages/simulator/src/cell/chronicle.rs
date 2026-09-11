@@ -41,18 +41,6 @@ pub enum Intake {
     EigenBesluit,
 }
 
-impl Intake {
-    /// De naam zoals die in de configuratie en in foutmeldingen staat.
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Aanvraag => "aanvraag",
-            Self::Levering => "levering",
-            Self::Betaling => "betaling",
-            Self::EigenBesluit => "eigen_besluit",
-        }
-    }
-}
-
 /// Eén vastlegging in een kroniekstroom: één executogram.
 ///
 /// De vorm komt uit RFC-022 §1.3, die vraagt dat per vastlegging vier dingen
@@ -197,16 +185,33 @@ impl ChronicleStore {
             .max_by_key(|event| event.op_moment)
     }
 
-    /// Houdt deze store een stroom met deze naam?
+    /// Zou deze vastlegging in deze stroom mogen?
     ///
     /// Zodat een wereld een vastlegging kan afkeuren bij het optuigen in plaats
-    /// van halverwege de tijdlijn. Geeft alleen prijs *of* de stroom bestaat —
-    /// haar naam staat toch al in de celconfiguratie — en nooit wat erin staat.
-    pub(crate) fn check_stream(&self, cell: &str, stream: &str) -> Result<()> {
-        match self.index_of(stream) {
-            Some(_) => Ok(()),
-            None => Err(self.unknown_stream(cell, stream)),
-        }
+    /// van halverwege de tijdlijn. Dezelfde toets als bij het vastleggen zelf,
+    /// zodat er geen fixture is die het optuigen haalt en later alsnog omvalt.
+    /// Geeft niets prijs over wat er al in de stroom staat.
+    pub(crate) fn check_recording(
+        &self,
+        cell: &str,
+        stream: &str,
+        event: &ChronicleEvent,
+    ) -> Result<()> {
+        self.checked_index(cell, stream, event).map(|_| ())
+    }
+
+    /// De plaats van de stroom waarin deze vastlegging mag, of de fout die haar
+    /// tegenhoudt.
+    ///
+    /// Eén plek voor de toets, zodat het optuigen en het vastleggen niet uit
+    /// elkaar kunnen lopen.
+    fn checked_index(&self, cell: &str, stream: &str, event: &ChronicleEvent) -> Result<usize> {
+        let Some(index) = self.index_of(stream) else {
+            return Err(self.unknown_stream(cell, stream));
+        };
+        let target = &self.streams[index];
+        check_event(cell, &target.stream, &target.key, event)?;
+        Ok(index)
     }
 
     /// De plaats van een stroom in de store, op naam.
@@ -237,12 +242,8 @@ impl ChronicleStore {
     /// Achteraan, en niet op datumpositie: bij een gelijk moment beslist de
     /// volgorde van vastlegging, en [`Self::reduce_to`] sorteert stabiel.
     pub(crate) fn record(&mut self, cell: &str, stream: &str, event: ChronicleEvent) -> Result<()> {
-        let Some(index) = self.index_of(stream) else {
-            return Err(self.unknown_stream(cell, stream));
-        };
-        let target = &mut self.streams[index];
-        check_event(cell, &target.stream, &target.key, &event)?;
-        target.events.push(event);
+        let index = self.checked_index(cell, stream, &event)?;
+        self.streams[index].events.push(event);
         Ok(())
     }
 

@@ -36,9 +36,10 @@ pub struct Clock {
 
 /// Eén startstand-gebeurtenis: wat er op welk moment wordt vastgelegd.
 ///
-/// Een startstand is data. Fixtures vóór het startmoment van de klok staan bij
-/// het optuigen al in de kroniek; latere fixtures zijn triggers die afgaan
-/// wanneer [`World::advance`] hun datum passeert.
+/// Een startstand is data. Fixtures op of vóór het startmoment van de klok staan
+/// bij het optuigen al in de kroniek — de grens is inclusief, want een reductie
+/// op het startmoment ziet wat op dat moment gebeurde. Latere fixtures zijn
+/// triggers die afgaan wanneer [`World::advance`] hun datum passeert.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Fixture {
@@ -122,9 +123,11 @@ impl World {
     /// de kroniek: de klok staat op `start`, dus wat toen al gebeurd was, is
     /// gebeurd. De rest blijft staan tot [`World::advance`] eraan komt.
     ///
-    /// Een fixture die naar een onbekende cel of een onbekende stroom wijst,
-    /// faalt hier — ook als haar datum nog jaren weg is. Een typfout in een
-    /// startstand hoort niet halverwege een tijdlijn op te duiken.
+    /// Elke fixture wordt hier getoetst zoals ze bij het vastleggen getoetst zou
+    /// worden — onbekende cel, onbekende stroom, ontbrekend sleutelveld — ook als
+    /// haar datum nog jaren weg is. Een typfout in een startstand hoort niet
+    /// halverwege een tijdlijn op te duiken, en of dat gebeurt mag niet afhangen
+    /// van hoe ver die datum weg ligt.
     pub fn new(
         configs: &[CellConfig],
         clock: Clock,
@@ -151,7 +154,7 @@ impl World {
                 .ok_or_else(|| SimulatorError::UnknownCell {
                     cell: target.cell.clone(),
                 })?;
-            cell.check_chronicle(&target.chronicle)?;
+            cell.check_recording(&target.chronicle, &target.event(fixture.at))?;
         }
 
         let mut pending: Vec<(NaiveDate, Trigger)> = fixtures
@@ -437,6 +440,45 @@ lexostatus_definitions:
         );
     }
 
+    /// Twee triggers op dezelfde dag vallen op de tijdas niet uit elkaar; dan
+    /// beslist de volgorde in het bestand, en de laatste wint. De sortering van
+    /// de trigger-lijst is stabiel, dus dat is een vastgelegde eigenschap en
+    /// geen toeval — zonder deze test zou een sortering die dat omgooit
+    /// ongemerkt door kunnen.
+    #[test]
+    fn bij_een_gelijke_datum_beslist_de_volgorde_in_het_bestand() {
+        let mut world = world(
+            "2024-01-01",
+            &[
+                fixture("2024-06-01", "relaties", "HUWELIJK"),
+                fixture("2024-06-01", "relaties", "GEEN"),
+            ],
+        );
+        world
+            .advance(date("2024-07-01"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+
+        assert_eq!(
+            partner(&world, "2024-07-01"),
+            Value::Bool(false),
+            "de laatste van twee triggers op dezelfde dag hoort te winnen"
+        );
+    }
+
+    #[test]
+    fn een_fixture_op_het_startmoment_staat_er_bij_het_optuigen_al() {
+        let world = world(
+            "2024-01-01",
+            &[fixture("2024-01-01", "relaties", "HUWELIJK")],
+        );
+        assert_eq!(
+            partner(&world, "2024-01-01"),
+            Value::Bool(true),
+            "de grens is inclusief: wat op het startmoment gebeurde, is gebeurd, \
+             en een reductie op dat moment hoort het te zien"
+        );
+    }
+
     #[test]
     fn een_fixture_naar_een_onbekende_stroom_faalt_bij_het_optuigen() {
         let err = World::new(
@@ -452,5 +494,50 @@ lexostatus_definitions:
             matches!(err, SimulatorError::UnknownStream { .. }),
             "verwachtte UnknownStream, kreeg {err}"
         );
+    }
+
+    #[test]
+    fn een_fixture_naar_een_onbekende_cel_faalt_bij_het_optuigen() {
+        let mut elders = fixture("2030-01-01", "relaties", "GEEN");
+        elders.record.cell = "belastingdienst".to_string();
+        let err = World::new(
+            &toeslagen(),
+            Clock {
+                start: date("2024-01-01"),
+            },
+            &[elders],
+            &regulation_root(),
+        )
+        .expect_err("een cel die de wereld niet kent hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownCell { .. }),
+            "verwachtte UnknownCell, kreeg {err}"
+        );
+    }
+
+    /// Een fixture die het sleutelveld van haar stroom mist, hoort bij het
+    /// optuigen te falen en niet halverwege de tijdlijn — en dat mag niet
+    /// afhangen van de datum. Stond die datum vóór het startmoment, dan viel de
+    /// fout op omdat de vastlegging bij het optuigen afging; lag hij erna, dan
+    /// kwam dezelfde typfout pas bij `advance` boven water.
+    #[test]
+    fn een_fixture_zonder_sleutelveld_faalt_bij_het_optuigen_ook_als_haar_datum_ver_weg_ligt() {
+        for at in ["2023-01-01", "2030-01-01"] {
+            let mut zonder_sleutel = fixture(at, "relaties", "GEEN");
+            zonder_sleutel.record.fields.remove("bsn");
+            let err = World::new(
+                &toeslagen(),
+                Clock {
+                    start: date("2024-01-01"),
+                },
+                &[zonder_sleutel],
+                &regulation_root(),
+            )
+            .expect_err("een vastlegging zonder sleutelveld hoort te falen");
+            assert!(
+                matches!(err, SimulatorError::ChronicleEventWithoutKey { .. }),
+                "fixture van {at}: verwachtte ChronicleEventWithoutKey, kreeg {err}"
+            );
+        }
     }
 }

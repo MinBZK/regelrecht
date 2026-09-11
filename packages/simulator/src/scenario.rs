@@ -132,6 +132,8 @@ pub enum ExpectationFailure {
 /// Het resultaat van één vraag.
 #[derive(Debug, Clone)]
 pub struct QueryOutcome {
+    /// De omschrijving uit het scenario, als die er stond.
+    pub description: Option<String>,
     /// De cel waaraan gevraagd is.
     pub cell: String,
     /// De gevraagde lexostatus.
@@ -197,6 +199,12 @@ impl ScenarioRun {
                 "  [{mark}] {}.{} op {}",
                 outcome.cell, outcome.lexostatus, outcome.lexostatus_value.op_moment
             );
+            // De omschrijving erbij, want twee vragen kunnen dezelfde cel, naam
+            // en moment hebben — in de kernassertie over tijd is dat juist het
+            // punt — en dan is de regel hierboven twee keer dezelfde.
+            if let Some(description) = &outcome.description {
+                let _ = writeln!(out, "        {description}");
+            }
             // "Niets vastgesteld" is een antwoord, dus het verslag zegt het ook
             // als het klopte: anders staat er `ok` bij een regel waarvan de
             // lezer niet kan zien wat de cel antwoordde.
@@ -361,6 +369,7 @@ impl Scenario {
             let failures = check_expectations(query, &answer.outcome);
 
             outcomes.push(QueryOutcome {
+                description: query.description.clone(),
                 cell: query.cell.clone(),
                 lexostatus: query.lexostatus.clone(),
                 lexostatus_value: answer,
@@ -611,6 +620,39 @@ query_via_transport:
             expect,
             expect_not_established,
         }
+    }
+
+    /// Twee vragen met dezelfde cel, naam en moment horen in het verslag uit
+    /// elkaar te vallen. In de kernassertie over tijd staat dezelfde vraag twee
+    /// keer, vóór en ná een vastlegging; zonder de omschrijving zijn dat twee
+    /// identieke regels en zegt het verslag niet welke welke is.
+    #[test]
+    fn het_verslag_onderscheidt_twee_gelijke_vragen_aan_hun_omschrijving() {
+        let moment = NaiveDate::from_ymd_opt(2024, 6, 1)
+            .unwrap_or_else(|| panic!("2024-06-01 moet een geldige datum zijn"));
+        let outcome = |description: &str| QueryOutcome {
+            description: Some(description.to_string()),
+            cell: "toeslagen".to_string(),
+            lexostatus: "toeslagpartnerschap".to_string(),
+            lexostatus_value: Lexostatus {
+                cell: "toeslagen".to_string(),
+                name: "toeslagpartnerschap".to_string(),
+                op_moment: moment,
+                outcome: LexostatusOutcome::Established(BTreeMap::new()),
+            },
+            failures: Vec::new(),
+        };
+        let run = ScenarioRun {
+            name: "tijd".to_string(),
+            clock: moment,
+            outcomes: vec![outcome("vóór de vastlegging"), outcome("erna, ongewijzigd")],
+        };
+
+        let report = run.report();
+        assert!(
+            report.contains("vóór de vastlegging") && report.contains("erna, ongewijzigd"),
+            "het verslag hoort elke omschrijving te noemen; kreeg:\n{report}"
+        );
     }
 
     #[test]

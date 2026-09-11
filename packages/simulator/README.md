@@ -500,7 +500,9 @@ een kroniek niet meer te zeggen hoe het daar kwam.
 `intake` is hier een enum en geen vrije tekst, terwijl RFC-022 het vocabulaire
 open houdt. Dat is een bewuste afwijking: een typfout in een kanaalnaam mag niet
 stil doorgaan. Een kanaal erbij is één regel Rust — het is platformvocabulaire,
-geen casusdata.
+geen casusdata. De vier namen zijn ook niet die van het voorbeeld in de RFC
+(`external_intake`): dit zijn de kanalen waarlangs een cel iets *overkomt*.
+Aansluiten op een breder vocabulaire is later een hernoeming, geen herontwerp.
 
 `recording_actor` moet de cel zijn die de stroom houdt; een vastlegging op naam
 van een ander wordt geweigerd bij het optuigen. Zie [Wat een cel
@@ -519,9 +521,11 @@ moment:
   staat op `start`, dus wat toen al gebeurd was, is gebeurd;
 - **erna** — is een trigger, en landt zodra `advance` die datum passeert.
 
-Een fixture die naar een onbekende cel of een onbekende stroom wijst, faalt bij
-het optuigen, ook als haar datum nog jaren weg is: een typfout in een startstand
-hoort niet halverwege een tijdlijn op te duiken.
+Een fixture wordt bij het optuigen getoetst zoals ze bij het vastleggen getoetst
+wordt: een onbekende cel, een onbekende stroom of een ontbrekend sleutelveld
+faalt daar, ook als haar datum nog jaren weg is. Een typfout in een startstand
+hoort niet halverwege een tijdlijn op te duiken, en of dat gebeurt mag niet
+afhangen van hoe ver die datum weg ligt.
 
 Eenzelfde feit kan dus twee kanten op geschreven worden — als `events` in de
 celconfiguratie of als `fixture` met een `at` — en dat is geen dubbelop. Het

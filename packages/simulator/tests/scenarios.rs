@@ -4,7 +4,7 @@
 //! dat elk bestand draait en dat geen enkele verwachting mist. Een nieuw
 //! testgeval is dus een nieuw YAML-bestand, geen nieuwe Rust.
 
-use regelrecht_simulator::{regulation_root, Scenario};
+use regelrecht_simulator::{regulation_root, Scenario, ScenarioRun};
 use std::path::{Path, PathBuf};
 
 fn scenario_files() -> Vec<PathBuf> {
@@ -44,7 +44,27 @@ fn alle_scenarios_voldoen_aan_hun_eigen_verwachtingen() {
     }
 }
 
-/// Twee runs van hetzelfde bestand geven hetzelfde verslag.
+/// Elk antwoord van een run, ook de uitkomsten waarover geen `expect` gaat.
+///
+/// Het verslag noemt bij een geslaagde vraag alleen `ok`, dus twee runs die
+/// dezelfde verwachtingen halen met verschillende waarden eronder zouden op het
+/// verslag alleen identiek lijken. Determinisme gaat over de waarden zelf.
+fn answers(run: &ScenarioRun) -> Vec<String> {
+    run.outcomes
+        .iter()
+        .map(|outcome| {
+            format!(
+                "{}.{} op {}: {:?}",
+                outcome.cell,
+                outcome.lexostatus,
+                outcome.lexostatus_value.op_moment,
+                outcome.lexostatus_value.values
+            )
+        })
+        .collect()
+}
+
+/// Twee runs van hetzelfde bestand geven hetzelfde verslag én dezelfde waarden.
 ///
 /// De klok van een wereld is logisch en de tijdlijn staat in het bestand, dus
 /// een run mag nergens van de wandklok of van een willekeurige volgorde
@@ -65,6 +85,12 @@ fn twee_runs_geven_hetzelfde_verslag() {
             first.report(),
             second.report(),
             "{}: twee runs horen identiek te zijn",
+            path.display()
+        );
+        assert_eq!(
+            answers(&first),
+            answers(&second),
+            "{}: twee runs horen dezelfde waarden op te leveren",
             path.display()
         );
         assert_eq!(

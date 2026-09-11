@@ -171,12 +171,14 @@ impl Cell {
         self.chronicles.record(&self.id, stream, event)
     }
 
-    /// Houdt deze cel een kroniekstroom met deze naam?
+    /// Zou deze vastlegging in deze stroom van deze cel mogen?
     ///
     /// Alleen zodat een wereld een vastlegging bij het optuigen kan afkeuren in
-    /// plaats van halverwege de tijdlijn. Geeft niets prijs over de inhoud.
-    pub(crate) fn check_chronicle(&self, stream: &str) -> Result<()> {
-        self.chronicles.check_stream(&self.id, stream)
+    /// plaats van halverwege de tijdlijn: dezelfde toets als
+    /// [`Self::record`] doet, zonder iets vast te leggen. Geeft niets prijs over
+    /// de inhoud van de kroniek.
+    pub(crate) fn check_recording(&self, stream: &str, event: &ChronicleEvent) -> Result<()> {
+        self.chronicles.check_recording(&self.id, stream, event)
     }
 
     /// Reduceer over de eigen feiten en lever de gevraagde lexostatus.
