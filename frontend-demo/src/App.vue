@@ -82,6 +82,23 @@ function isActive(tab) {
   return route.name === tab.name;
 }
 
+// De tabbalk krimpt met het venster mee in plaats van tabbladen weg te laten
+// vallen. Gemeten met zeven tabbladen: icoon met tekst 878px, alleen tekst
+// 696px, alleen icoon 314px. Bij de drempels zit ruimte voor de knoppen rechts
+// (namens wie, profiel) en de overloopknop.
+const viewportWidth = ref(typeof window === 'undefined' ? 1600 : window.innerWidth);
+function onResize() {
+  viewportWidth.value = window.innerWidth;
+}
+onMounted(() => window.addEventListener('resize', onResize));
+onUnmounted(() => window.removeEventListener('resize', onResize));
+
+const tabVariant = computed(() => {
+  if (viewportWidth.value >= 1240) return 'icon-and-text';
+  if (viewportWidth.value >= 1040) return 'text';
+  return 'icon';
+});
+
 const profileOptions = computed(() => Object.entries(corpus.value?.config?.profiles ?? {}));
 
 function onProfileSelect(e) {
@@ -146,22 +163,28 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" background="base">
         <nldd-toolbar size="md" label="Werkruimte">
-          <!-- De hele tabbalk in één toolbar-item verbergt op een smal scherm
-               álle tabbladen tegelijk: past het item niet, dan zet de toolbar
-               er `hidden` op, en zonder overflow-slot komt er niets voor terug.
-               Onder 940px was de navigatie daardoor helemaal weg.
-               Elk tabblad is nu een eigen item met zijn eigen menu-variant, dus
-               ze schuiven één voor één het overloopmenu in naarmate het smaller
-               wordt. `priority` laat de laatste tabbladen het eerst gaan, zodat
-               Presentatie en Wetten het langst zichtbaar blijven. -->
-          <nldd-toolbar-item
-            v-for="(tab, i) in tabs"
-            :key="tab.name"
-            slot="start"
-            :priority="tabs.length - i"
-          >
-            <nldd-tab-bar size="md" navigation accessible-label="Demo-onderdeel" :compact="presentation.active.value || undefined">
+          <!-- Eén tab-bar met alle tabbladen, niet één per tabblad. Een tab-bar
+               per tabblad leek de overloop netjes op te lossen, maar elke bar
+               rendert zijn eigen `<nav>`-landmark en regelt pijltjesnavigatie
+               binnen zijn eigen items: zeven bars gaven zeven gelijknamige
+               landmarks, zeven tabstops achter elkaar, en pijltjes die nergens
+               meer heen gingen.
+               De balk blijft heel en wordt smal via `variant`: alleen iconen
+               meet 314px tegen 878px met tekst, dus hij past tot ruim onder
+               400px. De tekst blijft de toegankelijke naam van elk item. -->
+          <!-- Hoogste priority: de navigatie is het laatste wat mag wijken.
+               Namens wie (20) en het profiel (30) gaan eerst het menu in, en
+               die hebben daar allebei een eigen menu-variant voor. -->
+          <nldd-toolbar-item slot="start" :priority="90">
+            <nldd-tab-bar
+              size="md"
+              navigation
+              accessible-label="Demo-onderdeel"
+              :variant="tabVariant"
+            >
               <nldd-tab-bar-item
+                v-for="tab in tabs"
+                :key="tab.name"
                 :text="tab.text"
                 :href="tab.to"
                 :selected="isActive(tab) || undefined"
@@ -170,13 +193,19 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 <nldd-icon slot="icon" :name="tab.icon"></nldd-icon>
               </nldd-tab-bar-item>
             </nldd-tab-bar>
-            <nldd-menu-item
-              slot="overflow"
-              :text="tab.text"
-              :icon="tab.icon"
-              :selected="isActive(tab) || undefined"
-              @select="router.push(tab.to)"
-            ></nldd-menu-item>
+            <!-- Vangnet: past zelfs de iconenbalk niet meer, dan verbergt de
+                 toolbar dit item en komen de tabbladen hier terug. Zonder dit
+                 was de navigatie onder 500px weg, dezelfde fout als eerst. -->
+            <nldd-menu-group slot="overflow" text="Ga naar">
+              <nldd-menu-item
+                v-for="tab in tabs"
+                :key="tab.name"
+                :text="tab.text"
+                :icon="tab.icon"
+                :selected="isActive(tab) || undefined"
+                @select="router.push(tab.to)"
+              ></nldd-menu-item>
+            </nldd-menu-group>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
             <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="`${openCases} te beoordelen`" @click="router.push('/zaaksysteem')"></nldd-button>
@@ -253,9 +282,9 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                overloopknop: het demo-menu was dan onbereikbaar. Als vaste
                inhoud van `slot="overflow"` staat alles onder één knop, met de
                overgelopen tabbladen erboven. -->
-          <!-- Een streep tussen de overgelopen tabbladen en de instellingen.
-               Boven staat waar je heen gaat, onder wat je instelt; zonder de
-               streep lopen die twee in één lijst door elkaar. -->
+          <!-- Een streep tussen wat er overgelopen is (namens wie, profiel) en
+               de instellingen hieronder; zonder de streep lopen die twee in
+               één lijst door elkaar. -->
           <nldd-menu-divider slot="overflow"></nldd-menu-divider>
           <!-- De features aan en uit, midden in een demo. De POC kon dit
                alleen via omgevingsvariabelen bij het starten; een
