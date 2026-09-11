@@ -665,6 +665,7 @@ fn check_obligations(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cell::ObligationDefinition;
     use crate::corpus::regulation_root;
 
     fn date(text: &str) -> NaiveDate {
@@ -1326,9 +1327,111 @@ laws: []
         );
     }
 
+    /// Eén besluit mag meer dan één verplichting opleggen, en dan hoort elke
+    /// termijn van elk van beide nagekomen te worden.
+    ///
+    /// Zonder doorlopende volgnummers begint elke verplichting weer bij 1, en dan
+    /// gaat de eerste termijn van de tweede verplichting door voor die van de
+    /// eerste: hij wordt als "al betaald" overgeslagen en valt stil weg. De som
+    /// is het enige waar dat aan te zien is.
+    #[test]
+    fn twee_verplichtingen_in_een_besluit_worden_beide_nagekomen() {
+        let twee = "      - amount: $hoogte_zorgtoeslag
+        payer: belastingdienst
+        schedule: kwartaal
+      - amount: $hoogte_zorgtoeslag
+        payer: belastingdienst
+        schedule: ineens";
+        let mut world = verplichting_wereld(twee, &no_settings())
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+
+        let gram = beslis(&mut world);
+        assert_eq!(
+            gram.obligations.len(),
+            5,
+            "vier kwartaaltermijnen plus één ineens"
+        );
+        let volgnummers: Vec<i64> = gram
+            .obligations
+            .iter()
+            .map(|due| due.volgnummer)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        assert_eq!(
+            volgnummers,
+            vec![1, 2, 3, 4, 5],
+            "de volgnummers van één gram horen uniek te zijn"
+        );
+
+        world
+            .advance(date("2025-01-01"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2025-01-01"),
+            Some(Value::Decimal("394410.62374".parse().unwrap_or_default())),
+            "beide verplichtingen zijn opgelegd, dus beide horen betaald te zijn"
+        );
+        assert_eq!(
+            betaald(&world, "toeslagen", "2025-01-01"),
+            Some(Value::Decimal("394410.62374".parse().unwrap_or_default())),
+            "en de besluitende cel hoort van beide de melding te hebben"
+        );
+    }
+
+    /// Over één zaak worden meer besluiten genomen, elk met een eigen schema dat
+    /// bij termijn 1 begint. Dat tweede schema hoort óók nagekomen te worden.
+    ///
+    /// Herkende de idempotentie een termijn op zaak en volgnummer alleen, dan zou
+    /// de eerste termijn van het tweede besluit voor die van het eerste doorgaan
+    /// — precies het geval van een verlening met daarna een vaststelling.
+    #[test]
+    fn een_tweede_besluit_over_dezelfde_zaak_wordt_ook_nagekomen() {
+        let mut configs = verplichting_configs(KWARTAAL, true);
+        let mut tweede = configs[0].besluit_definitions[0].clone();
+        tweede.name = "zorgtoeslag_herziening".to_string();
+        tweede.obligations = vec![ObligationDefinition {
+            amount: "$hoogte_zorgtoeslag".to_string(),
+            payer: "belastingdienst".to_string(),
+            schedule: "ineens".to_string(),
+            from: None,
+        }];
+        configs[0].besluit_definitions.push(tweede);
+
+        let mut world = World::new(
+            &configs,
+            Clock {
+                start: date("2024-01-01"),
+            },
+            &[],
+            &no_settings(),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+
+        beslis(&mut world);
+        world
+            .decide(
+                "toeslagen",
+                "zorgtoeslag_herziening",
+                &bsn(),
+                date("2024-01-01"),
+            )
+            .unwrap_or_else(|e| panic!("het tweede besluit moet genomen kunnen worden: {e}"));
+        world
+            .advance(date("2025-01-01"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+
+        assert_eq!(
+            betaald(&world, "belastingdienst", "2025-01-01"),
+            Some(Value::Decimal("394410.62374".parse().unwrap_or_default())),
+            "twee besluiten, twee schema's, twee keer het toegekende bedrag"
+        );
+    }
+
     /// Twee keer hetzelfde besluit op dezelfde dag plant twee keer hetzelfde
-    /// schema. Nagekomen wordt het één keer: dezelfde zaak met hetzelfde
-    /// volgnummer is dezelfde termijn.
+    /// schema. Nagekomen wordt het één keer: dezelfde zaak, hetzelfde besluit en
+    /// hetzelfde volgnummer is dezelfde termijn.
     #[test]
     fn een_tweede_besluit_op_dezelfde_dag_levert_geen_tweede_betaling() {
         let mut world = verplichting_wereld(KWARTAAL, &no_settings())

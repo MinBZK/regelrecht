@@ -384,10 +384,19 @@ niet op de eerste vervaldatum, halverwege de tijdlijn. Anders dan `beschikkingen
 is de stroom níet voorbehouden: een betaling is een gewoon feit, en een wereld mag
 er een startstand in hebben staan.
 
-**Eén termijn wordt één keer nagekomen.** Dezelfde zaak met hetzelfde volgnummer is
-dezelfde termijn: de klok mag in zo kleine stappen langskomen als ze wil, en een
-besluit dat op dezelfde dag wordt overgedaan levert geen tweede betaling. Zonder die
-regel zou de som dubbel tellen, en dat is aan het getal niet te zien.
+**Eén termijn wordt één keer nagekomen.** Dezelfde zaak, hetzelfde besluit en
+hetzelfde volgnummer is dezelfde termijn: de klok mag in zo kleine stappen
+langskomen als ze wil, en een besluit dat wordt overgedaan levert geen tweede
+betaling. Zonder die regel zou de som dubbel tellen, en dat is aan het getal niet
+te zien.
+
+Dat het besluit in die vergelijking staat en niet alleen het volgnummer, is de
+andere helft: over één zaak worden meer besluiten genomen — een verlening en later
+een vaststelling — en elk draagt een eigen schema dat bij termijn 1 begint. Op
+zaak en volgnummer alléén zou de eerste termijn van het tweede besluit voor die
+van het eerste doorgaan en stil wegvallen. Om dezelfde reden lopen de volgnummers
+binnen één gram dóór over álle verplichtingen die het besluit oplegt, en beginnen
+ze niet per verplichting opnieuw.
 
 Het staat als scenario in
 [`scenarios/toeslagen_verplichtingen.yaml`](scenarios/toeslagen_verplichtingen.yaml)

@@ -683,8 +683,20 @@ impl Cell {
             total += value;
         }
 
+        // Onder de gepubliceerde naam en niet onder de naam in `sum`. Het filter
+        // hiernaast doet dat ook, en die twee mogen niet uiteenlopen: het optuigen
+        // vergelijkt `outputs` met het gesommeerde veld zonder op kapitalen te
+        // letten, dus de twee schrijfwijzen kunnen verschillen — en dan zou het
+        // antwoord onder een naam staan die de definitie niet publiceert.
+        // Onbereikbaar leeg: `validate_chronicle` eist precies één uitkomst.
+        let published = definition
+            .published_outputs()
+            .into_iter()
+            .next()
+            .unwrap_or(field);
+
         Ok(LexostatusOutcome::Established(BTreeMap::from([(
-            field.to_string(),
+            published.to_string(),
             amount(total),
         )])))
     }
@@ -1070,29 +1082,56 @@ impl Cell {
     }
 
     /// Leg één kant van een vervallen termijn vast, tenzij ze er al ligt.
+    ///
+    /// Langs [`Self::record`] en niet rechtstreeks naar de store: dat is de poort
+    /// waar elke vastlegging langs hoort, ook een die het platform zelf maakt.
     fn record_obligation(&mut self, due: &ObligationDue, event: ChronicleEvent) -> Result<bool> {
         if self.already_settled(due) {
             return Ok(false);
         }
-        self.chronicles.record(&self.id, BETALINGEN, event)?;
+        self.record(BETALINGEN, event)?;
         Ok(true)
     }
 
     /// Ligt deze termijn hier al?
     ///
-    /// Eén zaak plus één volgnummer is één termijn. Dat is wat een executogram
-    /// twee keer vastleggen tegenhoudt: de klok mag in kleine stappen langskomen,
-    /// een besluit mag op dezelfde dag overgedaan worden en een wereld mag de
-    /// betaling al als startstand hebben staan — betaald is betaald, en een
-    /// kroniek die hetzelfde feit twee keer draagt telt het in een som ook twee
-    /// keer mee.
+    /// Eén zaak, één besluit en één volgnummer is één termijn. Dat is wat een
+    /// executogram twee keer vastleggen tegenhoudt: de klok mag in kleine stappen
+    /// langskomen, een besluit mag overgedaan worden, en een wereld mag de
+    /// betaling al als startstand hebben staan mits die dezelfde verwijzing naar
+    /// het besluit draagt — betaald is betaald, en een kroniek die hetzelfde feit
+    /// twee keer draagt telt het in een som ook twee keer mee.
+    ///
+    /// Het besluit hoort in die sleutel en niet alleen het volgnummer: over één
+    /// zaak worden meer besluiten genomen (een verlening en later een
+    /// vaststelling), en die dragen elk hun eigen schema dat bij 1 begint. Op
+    /// alleen zaak en volgnummer zou de termijn van het tweede besluit voor die
+    /// van het eerste doorgaan en stil wegvallen. Dat het volgnummer bínnen een
+    /// besluit uniek is, komt van de andere kant — zie
+    /// [`ObligationDue::volgnummer`].
+    ///
+    /// Het *moment* van het besluit zit er met opzet niet in. Hetzelfde besluit
+    /// over dezelfde zaak nog eens nemen levert daardoor geen tweede betaling,
+    /// ook niet op een latere dag. Een herzieningsbesluit dat een eerder schema
+    /// vervángt, is iets anders — dat vraagt om intrekken, en intrekken bestaat
+    /// hier nog niet.
     fn already_settled(&self, due: &ObligationDue) -> bool {
         self.chronicles
             .latest_recording(
                 BETALINGEN,
                 besluit::ZAAKKENMERK,
                 &Value::String(due.zaakkenmerk.clone()),
-                &BTreeMap::from([(besluit::VOLGNUMMER.to_string(), Value::Int(due.volgnummer))]),
+                &BTreeMap::from([
+                    (besluit::VOLGNUMMER.to_string(), Value::Int(due.volgnummer)),
+                    (
+                        besluit::BESLUIT.to_string(),
+                        Value::String(due.besluit.clone()),
+                    ),
+                    (
+                        besluit::BESLUIT_CEL.to_string(),
+                        Value::String(due.decided_by.clone()),
+                    ),
+                ]),
                 due.vervaldatum,
             )
             .is_some()
@@ -2092,6 +2131,30 @@ lexostatus_definitions:
             matches!(err, SimulatorError::SumOutputMismatch { .. }),
             "verwachtte SumOutputMismatch, kreeg {err}"
         );
+    }
+
+    /// Het antwoord staat onder de naam die de definitie publiceert, ook als
+    /// `sum` die naam anders schrijft.
+    ///
+    /// Het optuigen vergelijkt de twee zonder op kapitalen te letten, net als bij
+    /// elke andere gepubliceerde uitkomst. Zou de som onder de naam uit `sum`
+    /// antwoorden, dan lag het getal er wel maar onder een naam die de definitie
+    /// niet noemt — en dan vindt een consument niets.
+    #[test]
+    fn de_som_antwoordt_onder_de_gepubliceerde_naam() {
+        let mut config = betaalcel("500");
+        config.lexostatus_definitions[0].outputs = vec!["Bedrag".to_string()];
+        let cell = Cell::from_config(&config, &regulation_root(), &no_fixtures())
+            .unwrap_or_else(|e| panic!("de cel moet op te tuigen zijn: {e}"));
+
+        let answer = cell
+            .reduce(
+                "betaald_tot_nu_toe",
+                &zaak("zorgtoeslag/999993653"),
+                date("2024-06-01"),
+            )
+            .unwrap_or_else(|e| panic!("de som moet te maken zijn: {e}"));
+        assert_eq!(values(&answer).get("Bedrag"), Some(&Value::Int(1500)));
     }
 
     #[test]

@@ -301,12 +301,23 @@ pub struct ObligationDue {
     pub vervaldatum: NaiveDate,
     /// Het bedrag van deze termijn.
     pub bedrag: Value,
-    /// Het volgnummer binnen deze verplichting, vanaf 1.
+    /// Het volgnummer binnen het schema van dít besluit, vanaf 1.
     ///
-    /// Hierop is een betaling te herkennen: dezelfde zaak en hetzelfde
-    /// volgnummer is dezelfde termijn, ook als de klok er in kleine stappen
-    /// langs komt.
+    /// Hierop plus de verwijzing naar het besluit is een betaling te herkennen:
+    /// dezelfde zaak, hetzelfde besluit en hetzelfde volgnummer is dezelfde
+    /// termijn, ook als de klok er in kleine stappen langs komt.
+    ///
+    /// Doorgenummerd over álle verplichtingen van het besluit, en niet per
+    /// verplichting opnieuw. Dat moet ook: legt één besluit twee verplichtingen
+    /// op, dan zouden twee termijnen met hetzelfde nummer bij het nakomen voor
+    /// elkaar doorgaan en zou de tweede stil wegvallen.
     pub volgnummer: i64,
+    /// Hoeveel termijnen het schema van dit besluit in totaal kent.
+    ///
+    /// Alleen om een termijn leesbaar te kunnen benoemen ("termijn 2 van 4"),
+    /// en niet uit [`Self::schedule`] af te leiden: een besluit mag meer dan één
+    /// verplichting opleggen, elk met een eigen ritme.
+    pub termijnen: i64,
 }
 
 impl ObligationDue {
@@ -335,11 +346,7 @@ impl ObligationDue {
     fn grondslag(&self) -> String {
         format!(
             "verplichting uit besluit '{}' van cel '{}' ({}), termijn {} van {}",
-            self.besluit,
-            self.decided_by,
-            self.decided_op_moment,
-            self.volgnummer,
-            self.schedule.terms()
+            self.besluit, self.decided_by, self.decided_op_moment, self.volgnummer, self.termijnen
         )
     }
 
@@ -394,7 +401,7 @@ impl ObligationDue {
         format!(
             "termijn {}/{} van {} op {}, te betalen door {} ({})",
             self.volgnummer,
-            self.schedule.terms(),
+            self.termijnen,
             self.bedrag,
             self.vervaldatum,
             self.payer,
@@ -968,15 +975,31 @@ impl BesluitDefinition {
         settings: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
     ) -> Result<Vec<ObligationDue>> {
-        let mut due = Vec::new();
+        // Eerst elke verplichting oplossen, dan pas termijnen maken: het aantal
+        // termijnen van het hele schema staat in elke termijn, en dat is pas
+        // bekend als alle ritmes eruit zijn.
+        let mut resolved = Vec::with_capacity(self.obligations.len());
         for obligation in &self.obligations {
             let schedule = obligation.schedule(cell, &self.name, settings)?;
             let start = obligation.start(cell, &self.name, params, op_moment)?;
             let total = obligation.total(cell, &self.name, outputs)?;
+            resolved.push((obligation, schedule, start, total));
+        }
+        // De termijnen van dit besluit tellen nooit zo hoog dat ze de grenzen van
+        // i64 raken: het zijn er ten hoogste twaalf per verplichting.
+        let termijnen = i64::try_from(
+            resolved
+                .iter()
+                .map(|(_, schedule, _, _)| schedule.terms() as usize)
+                .sum::<usize>(),
+        )
+        .unwrap_or(i64::MAX);
 
+        let mut due = Vec::new();
+        for (obligation, schedule, start, total) in resolved {
             for (index, bedrag) in split(total, schedule.terms()).into_iter().enumerate() {
                 // `index` telt de termijnen van dit ritme en komt nooit in de
-                // buurt van de grenzen van u32 of i64.
+                // buurt van de grens van u32.
                 let step = u32::try_from(index).unwrap_or(u32::MAX);
                 let vervaldatum = start
                     .checked_add_months(Months::new(step * schedule.step_months()))
@@ -999,7 +1022,10 @@ impl BesluitDefinition {
                     schedule,
                     vervaldatum,
                     bedrag: amount(bedrag),
-                    volgnummer: i64::try_from(index + 1).unwrap_or(i64::MAX),
+                    // Door het hele schema heen, niet per verplichting opnieuw:
+                    // zie [`ObligationDue::volgnummer`].
+                    volgnummer: i64::try_from(due.len() + 1).unwrap_or(i64::MAX),
+                    termijnen,
                 });
             }
         }
