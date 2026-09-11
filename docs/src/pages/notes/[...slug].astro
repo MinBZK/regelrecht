@@ -105,9 +105,14 @@ const pathname = notePath(entry.id);
             {/* Tags are metadata, not navigation: there are no tag pages to
                 link to, so they render as plain labels. The label is visible
                 rather than an aria-label, which a role-less container does not
-                expose to assistive technology anyway. */}
+                expose to assistive technology anyway.
+
+                It is an nldd-text and not a bare <span>: the design system
+                only sets a body font on `html:has(nldd-app-view) body`, and
+                this site builds on nldd-page, so light-DOM text outside a
+                component falls back to the browser default serif. */}
             <nldd-container layout="wrap" gap="4">
-              <span>Onderwerpen:</span>
+              <nldd-text size="sm" color="secondary">Onderwerpen:</nldd-text>
               {tags.map((tag) => (
                 <nldd-tag color="neutral" size="md">
                   {tag}
