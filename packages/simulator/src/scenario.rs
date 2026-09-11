@@ -80,7 +80,14 @@ pub struct Query {
 /// parameters, een moment, en wat ze moet opleveren — met één veld erbij: wie
 /// vraagt. Dat veld is het hele verschil tussen een consument die een cel
 /// bevraagt en een cel die een andere cel bevraagt.
+///
+/// `deny_unknown_fields` staat hier nog een keer, en dat is geen dubbelop: een
+/// geflatten veld wordt met een losse veldenlijst gevoed, dus de strengheid van
+/// [`Query`] reikt niet tot deze vorm. Zonder deze regel zou `expct:` in een
+/// vraag over de celgrens stil worden weggegooid en de verwachting met zich
+/// meenemen — de vraag zou dan `ok` melden terwijl ze niets meer controleert.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TransportQuery {
     /// De vragende cel. Haar veiligheidscontext zet de vraag over de grens.
     pub from: String,
@@ -522,8 +529,16 @@ query_via_transport:
 
     #[test]
     fn onbekend_veld_in_een_vraag_over_de_celgrens_wordt_geweigerd() {
-        // `from` staat naast de gewone velden van een vraag; dat mag de
-        // strengheid van de loader niet kosten.
+        // `from` staat naast de gewone velden van een vraag, en die combinatie is
+        // precies waar strengheid stil kan wegvallen: bij een geflatten veld
+        // komt de weigering niet van `Query` maar van `TransportQuery` zelf.
+        //
+        // Daarom staat er een geldige `expect` in dit scenario. Zonder die regel
+        // slaagt deze test ook als de typfout ongemerkt doorglipt — dan struikelt
+        // het scenario op "vraag zonder verwachting" en lijkt de poort te werken
+        // terwijl hij niets meer doet. Met de `expect` erbij is het onbekende
+        // veld de enige reden waarom dit nog kan falen, en dat rekenen we ook af
+        // op de melding.
         let yaml = r"
 name: typfout over de grens
 cells: []
@@ -532,12 +547,20 @@ query_via_transport:
     cell: brp
     lexostatus: partnerschap
     op_moment: 2025-01-01
+    expect:
+      partnerschap_type: HUWELIJK
     expct:
       partnerschap_type: HUWELIJK
 ";
+        let err = Scenario::from_yaml(yaml)
+            .expect_err("een onbekend veld hoort te falen, anders verdwijnt een typfout stil");
         assert!(
-            Scenario::from_yaml(yaml).is_err(),
-            "een onbekend veld hoort te falen, anders verdwijnt een typfout stil"
+            matches!(&err, SimulatorError::ScenarioParse(_)),
+            "verwachtte een leesfout op het onbekende veld, kreeg {err}"
+        );
+        assert!(
+            err.to_string().contains("expct"),
+            "de melding hoort het onbekende veld te noemen, kreeg {err}"
         );
     }
 

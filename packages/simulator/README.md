@@ -291,8 +291,17 @@ Het log bewaart het bewijsstuk van de veiligheidscontext ongewijzigd; er komt ge
 kopie-met-andere-namen naast. Wat in het log staat, is exact wat over de grens
 ging.
 
+Daar hangt een prijs aan, en die hoort er expliciet bij te staan: **volledigheid
+is niet afgedwongen.** De veiligheidscontext geeft haar bewijsstuk terug aan wie
+vroeg, en of dat bewijsstuk in het log belandt beslist die aanroeper. Vandaag is
+dat de scenario-runner, die elk bewijsstuk teruggeeft, dus voor een run klopt het
+nu. Zodra een cel zelf kan besluiten, verhuist de vraag naar dat pad en moet het
+vastleggen mee; gebeurt dat niet, dan is het log stil incompleet in plaats van
+rood.
+
 De invarianten-gate die het gedeclareerde vraaggraf met het feitelijke vergelijkt
-(I3) staat er nog niet. Dit is het instrument waar die op gaat rusten.
+(I3) staat er nog niet. Dit is het instrument waar die op gaat rusten, en daar
+hoort die volledigheidseis dan ook thuis.
 
 ## Scenarioformaat
 

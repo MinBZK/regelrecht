@@ -162,8 +162,20 @@ fn het_observatielog_kan_geen_cel_aanraken() {
         .find(|(file, _)| file == "observation.rs")
         .unwrap_or_else(|| panic!("src/observation.rs hoort te bestaan"));
 
+    // Niet alleen `Cell` en `ChronicleStore`: ook de stromen en de gebeurtenissen
+    // erin zijn de kroniek, en `crate::cell` is de module die ze alle vier
+    // uitdeelt. Wie alleen de twee bekendste namen afvangt, laat `ChronicleStream`
+    // en een volledig uitgeschreven pad ernaartoe gewoon door.
+    let forbidden = [
+        "Cell",
+        "ChronicleStore",
+        "ChronicleStream",
+        "ChronicleEvent",
+    ];
     let offenders: Vec<String> = code_lines(&text)
-        .filter(|(_, line)| mentions_word(line, "Cell") || mentions_word(line, "ChronicleStore"))
+        .filter(|(_, line)| {
+            forbidden.iter().any(|name| mentions_word(line, name)) || line.contains("crate::cell")
+        })
         .map(|(number, line)| format!("src/observation.rs:{number}: {}", line.trim()))
         .collect();
 
@@ -188,7 +200,17 @@ fn een_cel_heeft_geen_transport_en_geen_veiligheidscontext() {
             continue;
         }
         for (number, line) in code_lines(&text) {
-            for forbidden in ["CellTransport", "SecurityContext", "SignedAnswer"] {
+            // De typenamen én de modules waar ze vandaan komen: een `use
+            // crate::transport as wire;` met daarna `wire::…` noemt geen enkel
+            // verboden type, en zou langs een poort glippen die alleen op namen
+            // let.
+            for forbidden in [
+                "CellTransport",
+                "SecurityContext",
+                "SignedAnswer",
+                "crate::transport",
+                "crate::security",
+            ] {
                 if line.contains(forbidden) {
                     offenders.push(format!("src/{file}:{number}: {}", line.trim()));
                 }

@@ -27,6 +27,21 @@
 //!    beslissing, weigert nooit een aanroep en kan niet falen. [`ObservationLog`]
 //!    heeft daarom geen methode die iets teruggeeft aan de aanroeper van
 //!    [`crate::SecurityContext::query`].
+//!
+//! ## Wat die keuze kost
+//!
+//! Buiten de band staan betekent dat dit log niet uit zichzelf volledig is. De
+//! veiligheidscontext geeft haar bewijsstuk terug aan wie vroeg; of dat
+//! bewijsstuk hier belandt, beslist die aanroeper. Vandaag is dat de
+//! scenario-runner, en die geeft elk bewijsstuk terug, dus voor een run is
+//! volledigheid nu structureel.
+//!
+//! Zodra een cel zelf kan besluiten, verhuist de vraag naar dat pad — en dan moet
+//! het vastleggen mee. Gebeurt dat niet, dan is het log stil incompleet in plaats
+//! van rood, en dat is de gevaarlijke kant op. Volledigheid is daarom een
+//! eigenschap van de invarianten-gate die het gedeclareerde vraaggraf met het
+//! feitelijke vergelijkt (I3), en niet van deze module: die gate hoort te falen
+//! als een cel een peer bevraagt zonder dat het log het weet.
 
 use crate::{LexostatusOutcome, SignedAnswer};
 use std::fmt::Write as _;
