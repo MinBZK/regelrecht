@@ -82,6 +82,52 @@ function isActive(tab) {
   return route.name === tab.name;
 }
 
+// De tabbalk krimpt met het venster mee in plaats van tabbladen weg te laten
+// vallen. Gemeten met zeven tabbladen: icoon met tekst 878px, alleen tekst
+// 696px, alleen icoon 314px. Bij de drempels zit ruimte voor de knoppen rechts
+// (namens wie, profiel) en de overloopknop.
+const viewportWidth = ref(typeof window === 'undefined' ? 1600 : window.innerWidth);
+function onResize() {
+  viewportWidth.value = window.innerWidth;
+}
+onMounted(() => window.addEventListener('resize', onResize));
+onUnmounted(() => window.removeEventListener('resize', onResize));
+
+/**
+ * De tabbladen in het vangnet-menu hebben een `href` zodat ze als echte link
+ * renderen: dat zet `aria-current="page"` op het actieve tabblad en houdt
+ * middenklik heel. Het menu-item roept er alleen geen preventDefault op, dus
+ * de browser volgt die href en herlaadt de hele pagina naast de
+ * router-navigatie (gemeten: vier framenavigaties).
+ *
+ * De luisteraar moet op het menu van de toolbar zelf: dat menu bevat klonen
+ * van onze items en is naar document.body verplaatst, dus een handler op onze
+ * eigen nldd-menu-group in de template ziet die klik nooit. Capture-fase, zodat
+ * we er vóór het menu-item bij zijn. Een klik met een modifier laten we staan,
+ * want dat is iemand die bewust een nieuw tabblad of venster wil.
+ */
+function onOverflowMenuClick(event) {
+  if (event.defaultPrevented) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+  const item = event.composedPath?.().find((n) => n?.tagName?.toLowerCase?.() === 'nldd-menu-item');
+  const to = item?.getAttribute?.('href');
+  if (!to || !tabs.value.some((t) => t.to === to)) return;
+  event.preventDefault();
+  router.push(to);
+}
+
+// Het menu bestaat pas nadat de toolbar het heeft aangemaakt, en het verhuist
+// naar document.body. Daarom luisteren we op document en filteren we op de
+// href van een eigen tabblad.
+onMounted(() => document.addEventListener('click', onOverflowMenuClick, true));
+onUnmounted(() => document.removeEventListener('click', onOverflowMenuClick, true));
+
+const tabVariant = computed(() => {
+  if (viewportWidth.value >= 1240) return 'icon-and-text';
+  if (viewportWidth.value >= 1040) return 'text';
+  return 'icon';
+});
+
 const profileOptions = computed(() => Object.entries(corpus.value?.config?.profiles ?? {}));
 
 function onProfileSelect(e) {
@@ -146,8 +192,25 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" background="base">
         <nldd-toolbar size="md" label="Werkruimte">
-          <nldd-toolbar-item slot="start">
-            <nldd-tab-bar size="md" navigation accessible-label="Demo-onderdelen" :compact="presentation.active.value || undefined">
+          <!-- Eén tab-bar met alle tabbladen, niet één per tabblad. Een tab-bar
+               per tabblad leek de overloop netjes op te lossen, maar elke bar
+               rendert zijn eigen `<nav>`-landmark en regelt pijltjesnavigatie
+               binnen zijn eigen items: zeven bars gaven zeven gelijknamige
+               landmarks, zeven tabstops achter elkaar, en pijltjes die nergens
+               meer heen gingen.
+               De balk blijft heel en wordt smal via `variant`: alleen iconen
+               meet 314px tegen 878px met tekst, dus hij past tot ruim onder
+               400px. De tekst blijft de toegankelijke naam van elk item. -->
+          <!-- Hoogste priority: de navigatie is het laatste wat mag wijken.
+               Namens wie (20) en het profiel (30) gaan eerst het menu in, en
+               die hebben daar allebei een eigen menu-variant voor. -->
+          <nldd-toolbar-item slot="start" :priority="90">
+            <nldd-tab-bar
+              size="md"
+              navigation
+              accessible-label="Demo-onderdeel"
+              :variant="tabVariant"
+            >
               <nldd-tab-bar-item
                 v-for="tab in tabs"
                 :key="tab.name"
@@ -159,13 +222,31 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 <nldd-icon slot="icon" :name="tab.icon"></nldd-icon>
               </nldd-tab-bar-item>
             </nldd-tab-bar>
+            <!-- Vangnet: past zelfs de iconenbalk niet meer, dan verbergt de
+                 toolbar dit item en komen de tabbladen hier terug. Zonder dit
+                 was de navigatie onder 500px weg, dezelfde fout als eerst. -->
+            <nldd-menu-group slot="overflow" text="Ga naar">
+              <!-- Met `href` rendert het item als een echte link en zet het
+                   `aria-current="page"` op het actieve tabblad. Zonder href
+                   doet `selected` hier niets: het vinkje hoort bij checkbox
+                   en radio, en aria-current komt alleen op de link-variant.
+                   Middenklik en 'openen in nieuw tabblad' werken zo ook. -->
+              <nldd-menu-item
+                v-for="tab in tabs"
+                :key="tab.name"
+                :text="tab.text"
+                :icon="tab.icon"
+                :href="tab.to"
+                :selected="isActive(tab) || undefined"
+              ></nldd-menu-item>
+            </nldd-menu-group>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
             <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="`${openCases} te beoordelen`" @click="router.push('/zaaksysteem')"></nldd-button>
           </nldd-toolbar-item>
           <!-- Namens wie: alleen als de wet meer dan één mogelijkheid geeft.
                Staat naast het profiel, want het hoort bij wie er ingelogd is. -->
-          <nldd-toolbar-item slot="end" v-if="showDelegation" class="rr-hide-presenting">
+          <nldd-toolbar-item slot="end" v-if="showDelegation" class="rr-hide-presenting" :priority="20">
             <nldd-button
               size="md"
               :variant="activeDelegation ? 'accent-tinted' : 'neutral-transparent'"
@@ -187,8 +268,21 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 ></nldd-menu-item>
               </nldd-menu>
             </nldd-button>
+            <!-- Dezelfde keuze als menu, voor als de knop niet meer past. -->
+            <nldd-menu-group slot="overflow" text="Namens wie" @select="onDelegationSelect">
+              <nldd-menu-item
+                v-for="d in delegations"
+                :key="`${d.subjectType}:${d.subjectId}`"
+                type="radio"
+                :value="`${d.subjectType}:${d.subjectId}`"
+                :text="d.subjectName"
+                :details="delegationLabel(d)"
+                :icon="DELEGATION_ICONS[d.subjectType] ?? 'person'"
+                :selected="(activeDelegation ? `${activeDelegation.subjectType}:${activeDelegation.subjectId}` : `SELF:${profile?.bsn}`) === `${d.subjectType}:${d.subjectId}` || undefined"
+              ></nldd-menu-item>
+            </nldd-menu-group>
           </nldd-toolbar-item>
-          <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting">
+          <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting" :priority="30">
             <nldd-button size="md" variant="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">
               <nldd-menu slot="popup" accessible-label="Demoprofiel" @select="onProfileSelect">
                 <nldd-menu-item
@@ -202,66 +296,90 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 ></nldd-menu-item>
               </nldd-menu>
             </nldd-button>
+            <!-- Idem voor het personage: zonder deze variant verdween de
+                 profielkiezer onder 1130px zonder vervanging. -->
+            <nldd-menu-group slot="overflow" text="Demoprofiel" @select="onProfileSelect">
+              <nldd-menu-item
+                v-for="[key, p] in profileOptions"
+                :key="key"
+                type="radio"
+                :value="key"
+                :text="p.name"
+                :details="p.type"
+                :selected="profileKey === key || undefined"
+              ></nldd-menu-item>
+            </nldd-menu-group>
           </nldd-toolbar-item>
-          <nldd-toolbar-item slot="end">
-            <nldd-icon-button size="md" variant="neutral-transparent" icon="ellipsis" text="Meer" tooltip-timing="never" popup-type="menu">
-              <nldd-menu slot="popup" accessible-label="Demo-menu">
+          <!-- Het demo-menu hangt aan de toolbar zelf en niet meer aan een eigen
+               ellipsis-knop. Die knop stond náást de overloopknop van de
+               toolbar, allebei als `...`, en zodra er iets overliep won de
+               overloopknop: het demo-menu was dan onbereikbaar. Als vaste
+               inhoud van `slot="overflow"` staat alles onder één knop, met de
+               overgelopen tabbladen erboven. -->
+          <!-- Een streep tussen wat er overgelopen is (namens wie, profiel) en
+               de instellingen hieronder; zonder de streep lopen die twee in
+               één lijst door elkaar. -->
+          <nldd-menu-divider slot="overflow"></nldd-menu-divider>
+          <!-- De features aan en uit, midden in een demo. De POC kon dit
+               alleen via omgevingsvariabelen bij het starten; een
+               presentator moet het tijdens zijn verhaal kunnen omzetten.
+               In een uitklapper zoals Weergave, zodat het hoofdmenu kort
+               blijft; het aantal aanstaande features staat ernaast, want
+               dat is wat je wilt weten zonder open te klappen. -->
+          <nldd-menu-item slot="overflow" text="Features" icon="puzzle-piece" :details="featureSummary">
+            <nldd-menu accessible-label="Features">
+              <!-- Geen `details` op deze items: dat is een kort label rechts
+                   ("3 van 4 aan"), geen ondertitel. Een hele zin erin duwt het
+                   label op een smal scherm in een kolom van één woord breed,
+                   zodat "Wijziging doorgeven" over vier regels brak. -->
+              <nldd-menu-item
+                v-for="f in FEATURES"
+                :key="f.key"
+                type="checkbox"
+                :text="f.label"
+                :icon="f.icon"
+                :selected="features[f.key] || undefined"
+                @select="demo.toggleFeature(f.key)"
+              ></nldd-menu-item>
+              <!-- Handmatig beoordelen is dezelfde soort schakelaar als de rest
+                   en hoort dus hier, niet los in het hoofdmenu. Het is de
+                   tegenhanger van AUTO_APPROVE_CLAIMS, maar het staat in de
+                   demostaat en niet in de vlaggen, vandaar de losse regel. -->
+              <nldd-menu-divider></nldd-menu-divider>
+              <nldd-menu-item
+                type="checkbox"
+                text="Alle aanvragen handmatig beoordelen"
+                icon="checklist"
+                :selected="state.manualReview || undefined"
+                @select="toggleManualReview"
+              ></nldd-menu-item>
+              <template v-if="hasFeatureOverrides">
+                <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item
-                  type="checkbox"
-                  text="Alle aanvragen handmatig beoordelen"
-                  icon="checklist"
-                  :selected="state.manualReview || undefined"
-                  @select="toggleManualReview"
+                  text="Terug naar het profiel"
+                  icon="refresh"
+                  @select="demo.resetFeatures()"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
-                <!-- De features aan en uit, midden in een demo. De POC kon dit
-                     alleen via omgevingsvariabelen bij het starten; een
-                     presentator moet het tijdens zijn verhaal kunnen omzetten.
-                     In een uitklapper zoals Weergave, zodat het hoofdmenu kort
-                     blijft; het aantal aanstaande features staat ernaast, want
-                     dat is wat je wilt weten zonder open te klappen. -->
-                <nldd-menu-item text="Features" icon="puzzle-piece" :details="featureSummary">
-                  <nldd-menu accessible-label="Features">
-                    <nldd-menu-item
-                      v-for="f in FEATURES"
-                      :key="f.key"
-                      type="checkbox"
-                      :text="f.label"
-                      :details="f.hint"
-                      :icon="f.icon"
-                      :selected="features[f.key] || undefined"
-                      @select="demo.toggleFeature(f.key)"
-                    ></nldd-menu-item>
-                    <template v-if="hasFeatureOverrides">
-                      <nldd-menu-divider></nldd-menu-divider>
-                      <nldd-menu-item
-                        text="Terug naar het profiel"
-                        icon="refresh"
-                        @select="demo.resetFeatures()"
-                      ></nldd-menu-item>
-                    </template>
-                  </nldd-menu>
-                </nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item text="Weergave" icon="appearance">
-                  <nldd-menu @select="onColorSchemeSelect">
-                    <nldd-menu-item
-                      v-for="[value, label, icon] in colorSchemeOptions"
-                      :key="value"
-                      type="radio"
-                      :value="value"
-                      :text="label"
-                      :icon="icon"
-                      :selected="colorScheme === value || undefined"
-                    ></nldd-menu-item>
-                  </nldd-menu>
-                </nldd-menu-item>
-                <nldd-menu-item text="Volledig scherm" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
-                <nldd-menu-item text="Demo resetten…" icon="refresh" @select="askReset"></nldd-menu-item>
-              </nldd-menu>
-            </nldd-icon-button>
-          </nldd-toolbar-item>
+              </template>
+            </nldd-menu>
+          </nldd-menu-item>
+          <nldd-menu-divider slot="overflow"></nldd-menu-divider>
+          <nldd-menu-item slot="overflow" text="Weergave" icon="appearance">
+            <nldd-menu @select="onColorSchemeSelect">
+              <nldd-menu-item
+                v-for="[value, label, icon] in colorSchemeOptions"
+                :key="value"
+                type="radio"
+                :value="value"
+                :text="label"
+                :icon="icon"
+                :selected="colorScheme === value || undefined"
+              ></nldd-menu-item>
+            </nldd-menu>
+          </nldd-menu-item>
+          <nldd-menu-item slot="overflow" text="Volledig scherm" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
+          <nldd-menu-divider slot="overflow"></nldd-menu-divider>
+          <nldd-menu-item slot="overflow" text="Demo resetten…" icon="refresh" @select="askReset"></nldd-menu-item>
         </nldd-toolbar>
       </nldd-container>
 
