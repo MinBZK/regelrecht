@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
-import { useDemo } from './store/demoStore.js';
+import { FEATURES, useDemo } from './store/demoStore.js';
 import { delegationLabel } from './data/delegation.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
 import { usePresentation } from './presentation/usePresentation.js';
@@ -15,7 +15,10 @@ import { usePresentation } from './presentation/usePresentation.js';
 const route = useRoute();
 const router = useRouter();
 const demo = useDemo();
-const { ready, loadError, profile, profileKey, corpus, state, delegations, delegationEnabled, activeDelegation } = demo;
+const { ready, loadError, profile, profileKey, corpus, state, delegations, delegationEnabled, activeDelegation, features } = demo;
+
+/** Heeft de presentator een vlag omgezet? Dan kan hij terug naar het profiel. */
+const hasFeatureOverrides = computed(() => Object.keys(state.featureOverrides ?? {}).length > 0);
 
 // The design system derives its scroll mode (document vs. per-pane) from the
 // outermost split view once, at connect. Ours arrives later (the tab views are
@@ -204,6 +207,26 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                   icon="checklist"
                   :selected="state.manualReview || undefined"
                   @select="toggleManualReview"
+                ></nldd-menu-item>
+                <nldd-menu-divider></nldd-menu-divider>
+                <!-- De features aan en uit, midden in een demo. De POC kon dit
+                     alleen via omgevingsvariabelen bij het starten; een
+                     presentator moet het tijdens zijn verhaal kunnen omzetten. -->
+                <nldd-menu-item
+                  v-for="f in FEATURES"
+                  :key="f.key"
+                  type="checkbox"
+                  :text="f.label"
+                  :details="f.hint"
+                  :icon="f.icon"
+                  :selected="features[f.key] || undefined"
+                  @select="demo.toggleFeature(f.key)"
+                ></nldd-menu-item>
+                <nldd-menu-item
+                  v-if="hasFeatureOverrides"
+                  text="Features terug naar het profiel"
+                  icon="refresh"
+                  @select="demo.resetFeatures()"
                 ></nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Weergave" icon="appearance">

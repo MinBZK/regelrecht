@@ -17,7 +17,7 @@ const props = defineProps({
   open: { type: Boolean, default: false },
 });
 const emit = defineEmits(['close', 'submitted']);
-const { corpus, submitClaim, profile, subjectBsn } = useDemo();
+const { corpus, submitClaim, profile, subjectBsn, features } = useDemo();
 
 const sheet = ref(null);
 const step = ref(0);
@@ -226,7 +226,7 @@ function show(claim) {
                 @input="reason = $event.detail?.value ?? $event.target.value"
               ></nldd-multi-line-text-field>
               <nldd-form-field-help-text>
-                {{ profile?.feature_flags?.AUTO_APPROVE_CLAIMS
+                {{ features.AUTO_APPROVE_CLAIMS
                   ? 'Uw melding wordt direct gebruikt in de berekening.'
                   : 'Uw regelingen rekenen meteen met wat u doorgeeft; een behandelaar beoordeelt de wijziging voordat de uitkomst vaststaat.' }}
               </nldd-form-field-help-text>

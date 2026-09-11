@@ -217,6 +217,43 @@ describe('de zaak van het juiste onderwerp', () => {
   });
 });
 
+/**
+ * Dezelfde afleiding als `demoStore.featureEnabled`: wat de presentator omzette
+ * wint van het profiel, de rest volgt demo-config.yaml.
+ */
+function featureEnabled(profile, overrides, key) {
+  const override = overrides?.[key];
+  if (override !== undefined) return override;
+  return !!profile?.feature_flags?.[key];
+}
+
+describe('vlaggen die de presentator omzet', () => {
+  const profile = { feature_flags: { DELEGATION: true, CHANGE_WIZARD: true, HARMONIZE: false } };
+
+  it('volgt het profiel zolang er niets is omgezet', () => {
+    expect(featureEnabled(profile, {}, 'DELEGATION')).toBe(true);
+    expect(featureEnabled(profile, {}, 'HARMONIZE')).toBe(false);
+    // Een vlag die het profiel niet noemt staat uit.
+    expect(featureEnabled(profile, {}, 'AUTO_APPROVE_CLAIMS')).toBe(false);
+  });
+
+  it('laat een omgezette vlag winnen van het profiel, allebei de kanten op', () => {
+    expect(featureEnabled(profile, { DELEGATION: false }, 'DELEGATION')).toBe(false);
+    expect(featureEnabled(profile, { HARMONIZE: true }, 'HARMONIZE')).toBe(true);
+  });
+
+  it('raakt de andere vlaggen niet aan', () => {
+    const overrides = { DELEGATION: false };
+    expect(featureEnabled(profile, overrides, 'CHANGE_WIZARD')).toBe(true);
+  });
+
+  it('valt terug op het profiel als de overrides leeg zijn', () => {
+    // "Features terug naar het profiel" leegt de lijst; false is dan weer
+    // false omdat het profiel dat zegt, niet omdat het is uitgezet.
+    expect(featureEnabled(profile, {}, 'DELEGATION')).toBe(true);
+  });
+});
+
 describe('delegationsFor tegen de echte interface', () => {
   it('leest de parallelle lijsten zoals de wetten ze opleveren', () => {
     const law = {

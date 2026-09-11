@@ -19,7 +19,7 @@ import { useDemo } from '../store/demoStore.js';
 // goes up?"), and runs sit side by side for comparison.
 
 const demo = useDemo();
-const { corpus, engine, ready, state, profile } = demo;
+const { corpus, engine, ready, state, profile, features } = demo;
 
 const kind = ref('burgers');
 const citizenParams = reactive(JSON.parse(JSON.stringify(CITIZEN_DEFAULTS)));
@@ -139,7 +139,7 @@ function onTab(e) {
 // Uit de uitkomsten van deze run één vereenvoudigde regeling afleiden die de
 // gekozen wetten benadert, en laten zien hoe dicht die komt. Achter een vlag
 // per profiel (de POC's FEATURE_HARMONIZE).
-const harmonizeEnabled = computed(() => !!profile.value?.feature_flags?.HARMONIZE);
+const harmonizeEnabled = computed(() => features.value.HARMONIZE);
 /** De wetten die samengenomen worden; standaard alles met een bedrag. */
 const harmonizeLaws = ref([]);
 const harmonizePrimary = ref('inkomen');

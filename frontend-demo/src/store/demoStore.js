@@ -39,6 +39,10 @@ function defaultState() {
     // sleutel (`BUSINESS:85234567`), niet als het hele object, want de
     // machtiging zelf komt uit de wet en wordt bij het laden opnieuw bepaald.
     delegationKey: null,
+    // Vlaggen die de presentator tijdens de demo heeft omgezet. Alleen wat
+    // hij écht aanraakte staat hier; de rest volgt het profiel uit
+    // demo-config.yaml. Zo blijft "resetten" terug naar de bedoelde opzet.
+    featureOverrides: {},
   };
 }
 
@@ -181,6 +185,48 @@ const persona = computed(() => {
   return corpus.value.profiles.profiles?.[p.bsn] ?? null;
 });
 
+// ---- vlaggen ---------------------------------------------------------------
+
+/**
+ * De vlaggen die de demo kent, in de volgorde waarin ze in het menu staan.
+ *
+ * De POC zette deze in omgevingsvariabelen (`FEATURE_*`), dus alleen te
+ * wijzigen door de server opnieuw te starten. Hier hoort een presentator ze
+ * midden in zijn verhaal aan te kunnen zetten, dus staan ze in het demo-menu.
+ */
+export const FEATURES = [
+  // De toelichting staat naast het label en krijgt de ruimte die overblijft,
+  // dus een lang label breekt over drie regels. Kort houden.
+  { key: 'DELEGATION', label: 'Machtigingen', icon: 'switch', hint: 'Handelen namens een kind of een onderneming' },
+  { key: 'CHANGE_WIZARD', label: 'Wijziging doorgeven', icon: 'edit', hint: 'Eén ingang voor inkomen, huur, adres en huishouden' },
+  { key: 'HARMONIZE', label: 'Harmonisatie', icon: 'chart-x-y-axis-line', hint: 'Eén staffel, op het simulatietabblad' },
+  { key: 'AUTO_APPROVE_CLAIMS', label: 'Correcties direct goedkeuren', icon: 'checked', hint: 'Zonder tussenkomst van een behandelaar' },
+];
+
+/**
+ * Staat een vlag aan? Wat de presentator omzette wint van het profiel; wat hij
+ * niet aanraakte volgt `demo-config.yaml`. Alles leest via deze ene plek, want
+ * een schakelaar die maar de helft van de features bereikt is erger dan geen
+ * schakelaar.
+ */
+function featureEnabled(key) {
+  const override = state.featureOverrides?.[key];
+  if (override !== undefined) return override;
+  return !!profile.value?.feature_flags?.[key];
+}
+
+/** Reactieve vorm van `featureEnabled`, voor gebruik in een template. */
+const features = computed(() => Object.fromEntries(FEATURES.map((f) => [f.key, featureEnabled(f.key)])));
+
+function toggleFeature(key) {
+  state.featureOverrides = { ...state.featureOverrides, [key]: !featureEnabled(key) };
+}
+
+/** Terug naar wat het profiel zegt, voor alle vlaggen. */
+function resetFeatures() {
+  state.featureOverrides = {};
+}
+
 // ---- machtigingen ----------------------------------------------------------
 
 /**
@@ -196,7 +242,7 @@ const delegationResult = computed(() => {
 });
 
 /** Of dit profiel machtigingen mag gebruiken (demo-config per profiel). */
-const delegationEnabled = computed(() => !!profile.value?.feature_flags?.DELEGATION);
+const delegationEnabled = computed(() => features.value.DELEGATION);
 
 /** De machtigingen die dit profiel kan kiezen; leeg als de vlag uit staat. */
 const delegations = computed(() => (delegationEnabled.value ? delegationResult.value.delegations : []));
@@ -483,7 +529,7 @@ function submitClaim({
   // once; a correction of a register value waits for the caseworker unless the
   // profile auto-approves. An appeal to a hardship clause always needs a human,
   // whatever the profile says. An explicit `approve` (the caseworker) wins.
-  const autoApprove = approve ?? (hardship ? false : selfDeclared || !!profile.value?.feature_flags?.AUTO_APPROVE_CLAIMS);
+  const autoApprove = approve ?? (hardship ? false : selfDeclared || featureEnabled('AUTO_APPROVE_CLAIMS'));
   const claim = {
     id: newId('claim'),
     bsn,
@@ -542,6 +588,9 @@ export function useDemo() {
     profile,
     persona,
     personaParams,
+    features,
+    toggleFeature,
+    resetFeatures,
     delegations,
     delegationEnabled,
     delegationErrors: computed(() => delegationResult.value.errors),

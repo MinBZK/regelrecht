@@ -15,7 +15,7 @@ import { useDemo } from '../store/demoStore.js';
 // submits an application.
 
 const demo = useDemo();
-const { profile, persona, portalLaws, corpus, state, activeDelegation, canSubmitClaims } = demo;
+const { profile, persona, portalLaws, corpus, state, activeDelegation, canSubmitClaims, features } = demo;
 
 // Impact per law (from the tiles' evaluations) drives the ordering.
 const impact = reactive({});
@@ -51,7 +51,7 @@ const sortedLaws = computed(() =>
 // burger — de wizard gaat over inkomen, huur, adres en huishouden.
 const wizardOpen = ref(false);
 const showWizard = computed(
-  () => !!profile.value?.feature_flags?.CHANGE_WIZARD && canSubmitClaims.value && activeDelegation.value?.subjectType !== 'BUSINESS' && profile.value?.type !== 'ondernemer',
+  () => features.value.CHANGE_WIZARD && canSubmitClaims.value && activeDelegation.value?.subjectType !== 'BUSINESS' && profile.value?.type !== 'ondernemer',
 );
 
 const editing = ref(null); // { node, law }
