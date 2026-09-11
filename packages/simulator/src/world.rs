@@ -660,6 +660,68 @@ record:
         );
     }
 
+    /// De stroom met decretogrammen is niet met een `fixture` te vullen.
+    ///
+    /// Dat de configuratie haar niet mag declareren is niet genoeg: zodra een cel
+    /// besluit-definities heeft, bestáát de stroom, en zonder deze poort zou een
+    /// wereldbestand er een "besluit" in kunnen zetten dat nooit langs een engine
+    /// kwam — zonder receipt, zonder herkomst, met een `intake` naar keuze. Een
+    /// reductie erover zou dat niet van een echt besluit kunnen onderscheiden, en
+    /// dan bewijst het kernscenario niets meer.
+    #[test]
+    fn een_fixture_kan_geen_decretogram_verzinnen() {
+        let config: CellConfig = serde_yaml_ng::from_str(
+            r"
+id: toeslagen
+laws:
+  - wet_op_de_zorgtoeslag
+  - algemene_wet_inkomensafhankelijke_regelingen
+  - regeling_standaardpremie
+besluit_definitions:
+  - name: zorgtoeslag_vaststelling
+    regulation: wet_op_de_zorgtoeslag
+    output: heeft_recht_op_zorgtoeslag
+    zaakkenmerk: 'zorgtoeslag/{bsn}'
+    params:
+      - name: bsn
+        type: string
+",
+        )
+        .unwrap_or_else(|e| panic!("testconfig moet parsen: {e}"));
+
+        let verzonnen = Fixture {
+            at: date("2024-06-01"),
+            record: Recording {
+                cell: "toeslagen".to_string(),
+                chronicle: crate::cell::BESCHIKKINGEN.to_string(),
+                name: "zorgtoeslag_vaststelling".to_string(),
+                intake: Intake::Levering,
+                grondslag: String::new(),
+                fields: BTreeMap::from([
+                    (
+                        "zaakkenmerk".to_string(),
+                        Value::String("zorgtoeslag/999993653".to_string()),
+                    ),
+                    ("heeft_recht_op_zorgtoeslag".to_string(), Value::Bool(true)),
+                ]),
+            },
+        };
+
+        let err = World::new(
+            &[config],
+            Clock {
+                start: date("2024-01-01"),
+            },
+            &[verzonnen],
+            &regulation_root(),
+        )
+        .expect_err("een verzonnen decretogram hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ReservedStreamRecording { .. }),
+            "verwachtte ReservedStreamRecording, kreeg {err}"
+        );
+    }
+
     #[test]
     fn een_fixture_naar_een_onbekende_cel_faalt_bij_het_optuigen() {
         let mut elders = fixture("2030-01-01", "relaties", "GEEN");

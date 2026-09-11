@@ -264,7 +264,19 @@ impl Cell {
     ///
     /// Vastleggen voegt toe. Een bestaand gram wordt nooit gewijzigd, dus een
     /// reductie over een eerder moment blijft na dit vastleggen exact hetzelfde.
+    ///
+    /// De stroom [`BESCHIKKINGEN`] kan hier niet in: daar ontstaat een gram door
+    /// te *besluiten*. Zie [`Self::check_not_a_decretogram`].
     pub(crate) fn record(&mut self, stream: &str, event: ChronicleEvent) -> Result<()> {
+        self.check_not_a_decretogram(stream, &event)?;
+        self.record_own(stream, event)
+    }
+
+    /// Vastleggen zonder de poort op [`BESCHIKKINGEN`].
+    ///
+    /// Privé, en alleen voor [`Self::decide`]: dat is het enige pad dat een
+    /// decretogram mág maken.
+    fn record_own(&mut self, stream: &str, event: ChronicleEvent) -> Result<()> {
         self.chronicles.record(&self.id, stream, event)
     }
 
@@ -275,7 +287,29 @@ impl Cell {
     /// [`Self::record`] doet, zonder iets vast te leggen. Geeft niets prijs over
     /// de inhoud van de kroniek.
     pub(crate) fn check_recording(&self, stream: &str, event: &ChronicleEvent) -> Result<()> {
+        self.check_not_a_decretogram(stream, event)?;
         self.chronicles.check_recording(&self.id, stream, event)
+    }
+
+    /// Weiger een vastlegging van buiten het besluit-pad in de stroom met
+    /// decretogrammen.
+    ///
+    /// Dat de configuratie die stroom niet zelf mag declareren, is niet genoeg:
+    /// zodra een cel besluit-definities heeft, bestaat de stroom en zou een
+    /// `fixture` er een gram in kunnen zetten dat nooit langs een engine kwam —
+    /// zonder receipt, zonder herkomst, en met een `intake` naar keuze. Een
+    /// reductie erover zou dat niet van een besluit kunnen onderscheiden, en
+    /// precies dat onderscheid is wat deze stroom waard maakt.
+    fn check_not_a_decretogram(&self, stream: &str, event: &ChronicleEvent) -> Result<()> {
+        if stream != BESCHIKKINGEN {
+            return Ok(());
+        }
+        Err(SimulatorError::ReservedStreamRecording {
+            cell: self.id.clone(),
+            stream: stream.to_string(),
+            name: event.name.clone(),
+            op_moment: event.op_moment.to_string(),
+        })
     }
 
     /// Reduceer over de eigen feiten en lever de gevraagde lexostatus.
@@ -505,12 +539,16 @@ impl Cell {
             .clone();
 
         definition.check_params(&self.id, params)?;
+        // Vóór het ophalen en het rekenen: een zaak waarvan het kenmerk niet
+        // eenduidig is, hoort er helemaal niet te komen — en dan hoeft de engine
+        // er ook niet voor te draaien.
+        let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
 
         let inputs = self.collect_inputs(&definition, params, op_moment)?;
-        let decretogram = self.execute(&definition, params, inputs, op_moment)?;
+        let decretogram = self.execute(&definition, zaakkenmerk, inputs, op_moment)?;
 
         let event = decretogram.event()?;
-        self.record(BESCHIKKINGEN, event)?;
+        self.record_own(BESCHIKKINGEN, event)?;
 
         Ok(decretogram)
     }
@@ -627,7 +665,7 @@ impl Cell {
     fn execute(
         &self,
         definition: &BesluitDefinition,
-        params: &BTreeMap<String, Value>,
+        zaakkenmerk: String,
         inputs: BTreeMap<String, DecretogramInput>,
         op_moment: NaiveDate,
     ) -> Result<Decretogram> {
@@ -681,7 +719,7 @@ impl Cell {
         Ok(Decretogram {
             cell: self.id.clone(),
             besluit: definition.name.clone(),
-            zaakkenmerk: definition.zaakkenmerk(params),
+            zaakkenmerk,
             op_moment,
             regulation: definition.regulation.clone(),
             regulation_valid_from: result.regulation_valid_from.clone(),
@@ -1585,6 +1623,47 @@ besluit_definitions:
             cell.chronicles.len_of(BESCHIKKINGEN),
             Some(0),
             "een besluit dat niet doorging, hoort geen gram achter te laten"
+        );
+    }
+
+    /// Twee besluiten op één dag over dezelfde zaak: beide grammen blijven, en
+    /// het laatstgenomen besluit is wat een reductie oplevert.
+    ///
+    /// De dag is de fijnste korrel van deze tijdas, dus op de tijdas zelf zijn ze
+    /// niet uit elkaar te houden; de volgorde van vastleggen beslist dan. Dat een
+    /// kroniek groeit en niets vervangt, blijft daarbij overeind: het eerste gram
+    /// staat er nog.
+    #[test]
+    fn twee_besluiten_op_een_dag_leveren_het_laatstgenomen_besluit() {
+        let mut cell = besluitende_toeslagen(VASTSTELLING);
+        for _ in 0..2 {
+            cell.decide("zorgtoeslag_vaststelling", &bsn(), moment())
+                .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+        }
+
+        assert_eq!(
+            cell.chronicles.len_of(BESCHIKKINGEN),
+            Some(2),
+            "een tweede besluit vervangt het eerste niet; de kroniek groeit"
+        );
+
+        let laatste = cell
+            .chronicles
+            .latest_recording(
+                BESCHIKKINGEN,
+                besluit::ZAAKKENMERK,
+                &Value::String("zorgtoeslag/999993653".to_string()),
+                &BTreeMap::new(),
+                moment(),
+            )
+            .unwrap_or_else(|| panic!("er liggen twee grammen over deze zaak"));
+        let laatst_vastgelegd = cell
+            .chronicles
+            .last_recording(BESCHIKKINGEN)
+            .unwrap_or_else(|| panic!("de stroom heeft vastleggingen"));
+        assert!(
+            std::ptr::eq(laatste, laatst_vastgelegd),
+            "op één dag beslist de volgorde van vastleggen, en de laatste wint"
         );
     }
 

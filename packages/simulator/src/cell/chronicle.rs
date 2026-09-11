@@ -162,6 +162,19 @@ impl ChronicleStore {
             .map(|candidate| candidate.key.as_str())
     }
 
+    /// De laatst vastgelegde gebeurtenis van een stroom; `None` als er geen is.
+    ///
+    /// Alleen voor tests: wat een reductie op één dag oplevert hangt af van de
+    /// volgorde van vastleggen, en dat is van buiten de cel niet te zien.
+    #[cfg(test)]
+    pub(crate) fn last_recording(&self, stream: &str) -> Option<&ChronicleEvent> {
+        self.streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)?
+            .events
+            .last()
+    }
+
     /// Het aantal vastleggingen in een stroom; `None` als de cel haar niet houdt.
     ///
     /// Alleen voor tests: dat een besluit precies één gram vastlegt (RFC-022
@@ -198,7 +211,11 @@ impl ChronicleStore {
     ) -> Option<&ChronicleEvent> {
         // `max_by_key` levert bij gelijke sleutel het laatste element, dus twee
         // vastleggingen op één dag volgen dezelfde regel als in `reduce_to`: de
-        // volgorde in de configuratie beslist.
+        // volgorde in de stroom beslist, en de laatste wint. Voor een stroom uit
+        // de configuratie is dat de volgorde in het bestand; voor een stroom
+        // waarin de cel zelf vastlegt (zie [`Self::record`]) de volgorde waarin
+        // dat gebeurde. Twee besluiten op één dag over dezelfde zaak leveren dus
+        // het laatstgenomen besluit — de dag is hier de fijnste korrel.
         self.streams
             .iter()
             .find(|candidate| candidate.stream == stream)?

@@ -326,6 +326,31 @@ pub enum SimulatorError {
         stream: String,
     },
 
+    /// Een vastlegging van buiten het besluit-pad mikt op de stroom met
+    /// decretogrammen.
+    ///
+    /// Dat de configuratie die stroom niet mag declareren
+    /// ([`SimulatorError::ReservedStream`]) is niet genoeg: zodra een cel
+    /// besluit-definities heeft, bestaat de stroom, en een `fixture` zou er een
+    /// gram in kunnen zetten dat nooit langs een engine kwam — zonder receipt en
+    /// met een `intake` naar keuze. Een reductie erover zou dat niet van een
+    /// besluit kunnen onderscheiden.
+    #[error(
+        "cel '{cell}': kroniekstroom '{stream}' is voorbehouden aan het besluit-pad; \
+         vastlegging '{name}' van {op_moment} hoort daar niet in — een decretogram \
+         ontstaat door te besluiten, niet door het op te schrijven"
+    )]
+    ReservedStreamRecording {
+        /// De cel waarin vastgelegd zou worden.
+        cell: String,
+        /// De voorbehouden stroomnaam.
+        stream: String,
+        /// De naam van de vastlegging die geweigerd wordt.
+        name: String,
+        /// Het moment van die vastlegging.
+        op_moment: String,
+    },
+
     /// Een besluit leest een input uit een stroom waarvan het sleutelveld geen
     /// gedocumenteerde parameter van dat besluit is.
     ///
@@ -440,6 +465,53 @@ pub enum SimulatorError {
         besluit: String,
         /// Het sjabloon zoals het in de configuratie staat.
         template: String,
+    },
+
+    /// Twee verwijzingen in een zaakkenmerk-sjabloon plakken aan elkaar.
+    ///
+    /// `{jaar}{bsn}` levert voor 2024 + 999993653 hetzelfde kenmerk als voor
+    /// 20249 + 99993653: twee zaken, één kenmerk, en een reductie die het besluit
+    /// van de ander teruggeeft. Geen enkele parameterwaarde kan dat repareren,
+    /// dus het is een optuigfout.
+    #[error(
+        "cel '{cell}': zaakkenmerk '{template}' van besluit '{besluit}' zet '{first}' \
+         en '{second}' tegen elkaar aan; zet er iets tussen dat ze scheidt"
+    )]
+    AdjacentZaakkenmerkReferences {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit met het dubbelzinnige sjabloon.
+        besluit: String,
+        /// Het sjabloon zoals het in de configuratie staat.
+        template: String,
+        /// De eerste van de twee verwijzingen.
+        first: String,
+        /// De verwijzing die er direct achter staat.
+        second: String,
+    },
+
+    /// Een parameterwaarde bevat het scheidingsteken van het zaakkenmerk-sjabloon.
+    ///
+    /// Dan valt het kenmerk niet meer eenduidig terug te lezen: bij
+    /// `{jaar}/{bsn}` geeft `2024/9` + `99993653` hetzelfde kenmerk als `2024` +
+    /// `999993653`. Het zaakkenmerk is waaronder een zaak terug te vinden is, dus
+    /// twee zaken mogen er nooit één worden.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' krijgt voor parameter '{parameter}' een \
+         waarde met '{separator}' erin, en dat scheidt in zaakkenmerk '{template}' \
+         twee verwijzingen; dan zou dit kenmerk ook bij een andere zaak kunnen horen"
+    )]
+    ZaakkenmerkSeparatorInValue {
+        /// De besluitende cel.
+        cell: String,
+        /// Het besluit dat genomen werd.
+        besluit: String,
+        /// Het sjabloon zoals het in de configuratie staat.
+        template: String,
+        /// De parameter met de dubbelzinnige waarde.
+        parameter: String,
+        /// Het scheidingsteken dat in die waarde voorkomt.
+        separator: String,
     },
 
     /// Het receipt van een besluit kon niet als kroniekveld worden opgeslagen.

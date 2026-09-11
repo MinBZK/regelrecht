@@ -421,23 +421,28 @@ impl BesluitDefinition {
     ///
     /// Aanroepen ná [`Self::check_params`]: elke verwijzing is bij het optuigen
     /// aan een gedocumenteerde parameter gebonden, en die is dan aanwezig.
-    pub(crate) fn zaakkenmerk(&self, params: &BTreeMap<String, Value>) -> String {
+    ///
+    /// Weigert een waarde waarin een scheidingsteken van het sjabloon zelf
+    /// voorkomt. Zie [`Template::check_separators_absent`]: zonder die weigering
+    /// zouden twee verschillende zaken hetzelfde kenmerk kunnen krijgen, en dan
+    /// levert een reductie op dat kenmerk het besluit van een ander.
+    pub(crate) fn zaakkenmerk(
+        &self,
+        cell: &str,
+        params: &BTreeMap<String, Value>,
+    ) -> Result<String> {
+        let template = Template::parse(&self.zaakkenmerk);
+        template.check_separators_absent(cell, &self.name, &self.zaakkenmerk, params)?;
+
         let mut out = String::with_capacity(self.zaakkenmerk.len());
-        let mut rest = self.zaakkenmerk.as_str();
-        while let Some((before, after)) = rest.split_once('{') {
-            out.push_str(before);
-            let Some((reference, remainder)) = after.split_once('}') else {
-                out.push('{');
-                out.push_str(after);
-                return out;
-            };
-            if let Some(value) = params.get(reference) {
+        out.push_str(template.leading);
+        for part in &template.parts {
+            if let Some(value) = params.get(part.reference) {
                 out.push_str(&value.to_string());
             }
-            rest = remainder;
+            out.push_str(part.literal);
         }
-        out.push_str(rest);
-        out
+        Ok(out)
     }
 
     /// Controleer de definitie tegen de cel waarin ze staat.
@@ -541,39 +546,177 @@ impl BesluitDefinition {
     }
 
     /// Het zaakkenmerk-sjabloon: sluitende accolades, minstens één verwijzing,
-    /// en elke verwijzing een gedocumenteerde parameter.
+    /// elke verwijzing een gedocumenteerde parameter, en tussen twee
+    /// verwijzingen iets dat ze uit elkaar houdt.
     fn validate_zaakkenmerk(&self, cell: &str) -> Result<()> {
-        let mut rest = self.zaakkenmerk.as_str();
-        let mut references = 0usize;
-        while let Some((_, after)) = rest.split_once('{') {
-            let Some((reference, remainder)) = after.split_once('}') else {
-                return Err(SimulatorError::MalformedZaakkenmerk {
-                    cell: cell.to_string(),
-                    besluit: self.name.clone(),
-                    template: self.zaakkenmerk.clone(),
-                });
-            };
-            if !documents(&self.params, reference) {
+        if !closing_braces_match(&self.zaakkenmerk) {
+            return Err(SimulatorError::MalformedZaakkenmerk {
+                cell: cell.to_string(),
+                besluit: self.name.clone(),
+                template: self.zaakkenmerk.clone(),
+            });
+        }
+
+        let template = Template::parse(&self.zaakkenmerk);
+        for part in &template.parts {
+            if !documents(&self.params, part.reference) {
                 return Err(SimulatorError::UnknownReference {
                     cell: cell.to_string(),
                     subject: Subject::Besluit,
                     name: self.name.clone(),
-                    reference: reference.to_string(),
+                    reference: part.reference.to_string(),
                 });
             }
-            references += 1;
-            rest = remainder;
         }
 
-        if references == 0 {
+        if template.parts.is_empty() {
             return Err(SimulatorError::ZaakkenmerkWithoutReference {
                 cell: cell.to_string(),
                 besluit: self.name.clone(),
                 template: self.zaakkenmerk.clone(),
             });
         }
+
+        // Twee verwijzingen die aan elkaar plakken zijn nooit uit elkaar te
+        // houden: `{jaar}{bsn}` met 2024 + 999993653 levert hetzelfde kenmerk
+        // als 20249 + 99993653. Geen waarde kan dat repareren, dus dit is een
+        // optuigfout en geen weigering bij het besluit.
+        for pair in template.parts.windows(2) {
+            if pair[0].literal.is_empty() {
+                return Err(SimulatorError::AdjacentZaakkenmerkReferences {
+                    cell: cell.to_string(),
+                    besluit: self.name.clone(),
+                    template: self.zaakkenmerk.clone(),
+                    first: pair[0].reference.to_string(),
+                    second: pair[1].reference.to_string(),
+                });
+            }
+        }
+
         Ok(())
     }
+}
+
+/// Eén verwijzing uit een zaakkenmerk-sjabloon, met de letterlijke tekst erachter.
+struct TemplatePart<'a> {
+    /// De parameternaam tussen de accolades.
+    reference: &'a str,
+    /// Wat er letterlijk achter deze verwijzing staat, tot de volgende
+    /// verwijzing of tot het eind.
+    literal: &'a str,
+}
+
+/// Een zaakkenmerk-sjabloon, uit elkaar gehaald.
+///
+/// Eén parser voor het optuigen én het invullen: zouden die uit elkaar lopen,
+/// dan zou een sjabloon dat bij het optuigen goedgekeurd is bij het besluit
+/// iets anders opleveren dan de toets veronderstelde.
+struct Template<'a> {
+    /// De letterlijke tekst vóór de eerste verwijzing.
+    leading: &'a str,
+    /// De verwijzingen, in volgorde.
+    parts: Vec<TemplatePart<'a>>,
+}
+
+impl<'a> Template<'a> {
+    /// Haal een sjabloon uit elkaar.
+    ///
+    /// Een accolade die niet sluit levert geen verwijzing op; dat geval wordt bij
+    /// het optuigen apart geweigerd ([`closing_braces_match`]), zodat het hier
+    /// niet stil als letterlijke tekst hoeft te eindigen.
+    fn parse(template: &'a str) -> Self {
+        let (leading, mut rest) = match template.split_once('{') {
+            Some((leading, rest)) => (leading, rest),
+            None => {
+                return Self {
+                    leading: template,
+                    parts: Vec::new(),
+                }
+            }
+        };
+
+        let mut parts = Vec::new();
+        while let Some((reference, after)) = rest.split_once('}') {
+            // Geen volgende `{` betekent dat de rest letterlijke tekst is; `rest`
+            // wordt dan leeg en de lus stopt vanzelf op de volgende ronde.
+            let (literal, remainder) = after.split_once('{').unwrap_or((after, ""));
+            parts.push(TemplatePart { reference, literal });
+            rest = remainder;
+        }
+        Self { leading, parts }
+    }
+
+    /// De letterlijke stukken die twee verwijzingen uit elkaar houden.
+    ///
+    /// De tekst vóór de eerste en die ná de laatste verwijzing tellen niet mee:
+    /// die staan vast en kunnen geen twee invullingen laten samenvallen.
+    fn separators(&self) -> impl Iterator<Item = &'a str> + '_ {
+        let last = self.parts.len().saturating_sub(1);
+        self.parts[..last].iter().map(|part| part.literal)
+    }
+
+    /// Weiger een parameterwaarde waarin een scheidingsteken van dit sjabloon
+    /// voorkomt.
+    ///
+    /// Het zaakkenmerk is waaronder een zaak terug te vinden is, dus twee zaken
+    /// mogen er nooit één worden. Bij `{jaar}/{bsn}` zou `jaar = "2024/9"` met
+    /// `bsn = "99993653"` hetzelfde kenmerk geven als `jaar = "2024"` met
+    /// `bsn = "999993653"`, en dan levert een reductie op dat kenmerk het besluit
+    /// over iemand anders. Zolang geen waarde een scheidingsteken bevat, is de
+    /// invulling omkeerbaar en kan dat niet gebeuren.
+    ///
+    /// Een sjabloon met één verwijzing heeft geen scheidingstekens en weigert dus
+    /// niets: daar is elke waarde ondubbelzinnig.
+    fn check_separators_absent(
+        &self,
+        cell: &str,
+        besluit: &str,
+        template: &str,
+        params: &BTreeMap<String, Value>,
+    ) -> Result<()> {
+        let separators: Vec<&str> = self
+            .separators()
+            .filter(|separator| !separator.is_empty())
+            .collect();
+        if separators.is_empty() {
+            return Ok(());
+        }
+
+        for part in &self.parts {
+            let Some(value) = params.get(part.reference) else {
+                continue;
+            };
+            let text = value.to_string();
+            for separator in &separators {
+                if text.contains(separator) {
+                    return Err(SimulatorError::ZaakkenmerkSeparatorInValue {
+                        cell: cell.to_string(),
+                        besluit: besluit.to_string(),
+                        template: template.to_string(),
+                        parameter: part.reference.to_string(),
+                        separator: (*separator).to_string(),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Sluit elke `{` in dit sjabloon weer?
+///
+/// Apart van [`Template::parse`], omdat de parser een niet-sluitende accolade
+/// overslaat: die twee moeten het eens zijn over wat een verwijzing is, en de
+/// weigering hoort bij het optuigen te vallen.
+fn closing_braces_match(template: &str) -> bool {
+    let mut rest = template;
+    while let Some((_, after)) = rest.split_once('{') {
+        let Some((_, remainder)) = after.split_once('}') else {
+            return false;
+        };
+        rest = remainder;
+    }
+    true
 }
 
 /// De veldnamen die de stroom met decretogrammen van deze cel gaat dragen.
@@ -667,18 +810,83 @@ zaakkenmerk: '{zaakkenmerk}'
 params:
   - name: bsn
     type: string
+  - name: jaar
+    type: string
 "
         ))
         .unwrap_or_else(|e| panic!("testdefinitie moet parsen: {e}"))
     }
 
+    /// Vul een sjabloon in, of leg luid uit waarom dat niet mocht.
+    fn zaakkenmerk(template: &str, params: &[(&str, &str)]) -> Result<String> {
+        let params: BTreeMap<String, Value> = params
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), Value::String((*value).to_string())))
+            .collect();
+        definition(template).zaakkenmerk("toeslagen", &params)
+    }
+
     #[test]
     fn het_zaakkenmerk_vult_de_parameters_in() {
-        let params = BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))]);
         assert_eq!(
-            definition("zorgtoeslag/{bsn}").zaakkenmerk(&params),
+            zaakkenmerk("zorgtoeslag/{bsn}", &[("bsn", "999993653")])
+                .unwrap_or_else(|e| panic!("het sjabloon moet in te vullen zijn: {e}")),
             "zorgtoeslag/999993653"
         );
+    }
+
+    /// Eén verwijzing kent geen scheidingsteken, dus elke waarde is eenduidig.
+    ///
+    /// Wat er vóór en achter staat ligt vast, dus `zorgtoeslag/` gevolgd door een
+    /// waarde met een `/` erin blijft terug te lezen. Weigeren zou hier een regel
+    /// opleggen die niets beschermt.
+    #[test]
+    fn een_enkele_verwijzing_neemt_elke_waarde_zoals_ze_is() {
+        assert_eq!(
+            zaakkenmerk("zorgtoeslag/{bsn}", &[("bsn", "9999/93653")])
+                .unwrap_or_else(|e| panic!("één verwijzing hoort niets te weigeren: {e}")),
+            "zorgtoeslag/9999/93653"
+        );
+    }
+
+    /// Twee zaken mogen nooit één kenmerk krijgen.
+    ///
+    /// `{jaar}/{bsn}` met `2024/9` + `99993653` levert letterlijk hetzelfde
+    /// kenmerk als `2024` + `999993653`. Dan wijst het kenmerk naar twee zaken en
+    /// levert een reductie erop het besluit over iemand anders.
+    #[test]
+    fn een_waarde_met_het_scheidingsteken_erin_wordt_geweigerd() {
+        let eerlijk = zaakkenmerk("{jaar}/{bsn}", &[("jaar", "2024"), ("bsn", "999993653")])
+            .unwrap_or_else(|e| panic!("een gewone invulling moet slagen: {e}"));
+
+        let err = zaakkenmerk("{jaar}/{bsn}", &[("jaar", "2024/9"), ("bsn", "99993653")])
+            .expect_err("een waarde die het scheidingsteken bevat hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ZaakkenmerkSeparatorInValue { .. }),
+            "verwachtte ZaakkenmerkSeparatorInValue, kreeg {err}"
+        );
+        assert_eq!(
+            eerlijk, "2024/999993653",
+            "de botsing die geweigerd wordt, is precies dit kenmerk"
+        );
+    }
+
+    #[test]
+    fn twee_verwijzingen_zonder_scheiding_worden_bij_het_optuigen_geweigerd() {
+        let err = definition("{jaar}{bsn}")
+            .validate_zaakkenmerk("toeslagen")
+            .expect_err("twee verwijzingen tegen elkaar aan hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::AdjacentZaakkenmerkReferences { .. }),
+            "verwachtte AdjacentZaakkenmerkReferences, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn twee_verwijzingen_met_scheiding_mogen_wel() {
+        definition("{jaar}/{bsn}")
+            .validate_zaakkenmerk("toeslagen")
+            .unwrap_or_else(|e| panic!("een gescheiden sjabloon hoort te mogen: {e}"));
     }
 
     #[test]

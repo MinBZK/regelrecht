@@ -244,6 +244,13 @@ gebeurt, in deze volgorde:
    die toen gold;
 4. de uitkomst gaat als één gram de stroom `beschikkingen` in.
 
+Die stroom is **voorbehouden**: ze wordt automatisch aangemaakt zodra een cel
+besluit-definities heeft, een configuratie die haar zelf declareert wordt
+geweigerd, en een `fixture` kan er niets in zetten. Alleen besluiten legt er iets
+in. Zou een wereldbestand er een gram in mogen schrijven, dan lag er een
+"besluit" zonder receipt en zonder herkomst tussen de echte, en kon een reductie
+de twee niet onderscheiden — dan bewijst het kernscenario hieronder niets meer.
+
 ### Twee paden, twee engines
 
 Een cel met besluit-definities houdt **twee engine-instanties over precies dezelfde
@@ -291,6 +298,35 @@ Eén besluit is één gram. Wat tegelijk ontstaat, wordt samen vastgelegd (RFC-0
 §1.2 — elk chronolexogram is *elementair*): het recht en het bedrag staan in
 hetzelfde gram, niet in twee.
 
+### Het zaakkenmerk moet bij precies één zaak horen
+
+Het `zaakkenmerk` is waaronder een zaak terug te vinden is, dus twee zaken mogen
+er nooit één worden. Twee regels bewaken dat:
+
+- **Bij het optuigen**: twee verwijzingen die aan elkaar plakken worden
+  geweigerd. `{jaar}{bsn}` geeft voor `2024` + `999993653` precies hetzelfde
+  kenmerk als voor `20249` + `99993653`, en geen enkele waarde repareert dat.
+- **Bij het besluit**: een parameterwaarde waarin een scheidingsteken van het
+  sjabloon voorkomt wordt geweigerd. Bij `{jaar}/{bsn}` is `jaar = '2024/9'`
+  met `bsn = '99993653'` niet te onderscheiden van `jaar = '2024'` met
+  `bsn = '999993653'`.
+
+Een sjabloon met één verwijzing heeft geen scheidingstekens en weigert dus niets:
+wat ervóór en erachter staat ligt vast, dus `zorgtoeslag/{bsn}` blijft eenduidig
+ook als de waarde zelf een `/` bevat.
+
+Grammen van verschillende besluiten kunnen wél bewust één kenmerk delen — dat is
+juist wat "de kroniek van een zaak" betekent. Ze houden elkaar uit elkaar met het
+veld `besluit`, waar een kroniekfilter met `where:` op kan filteren.
+
+### Twee besluiten op één moment
+
+De dag is hier de fijnste korrel van de tijdas. Twee besluiten op dezelfde dag
+over dezelfde zaak zijn daarop niet uit elkaar te houden; dan beslist de volgorde
+van vastleggen, en een reductie levert het **laatstgenomen** besluit. Beide
+grammen blijven staan — een kroniek groeit en vervangt niets — dus het eerste is
+niet verdwenen, alleen niet meer het laatste woord van die dag.
+
 ### Terugzien is een reductie, nooit een herberekening
 
 Het gram is een gewoon `ChronicleEvent` met `intake: eigen_besluit`, dus de
@@ -312,6 +348,21 @@ De stroom `beschikkingen` gaat met opzet **niet** als databron naar de engine. E
 besluit is geen feit om op te rekenen; zou ze meedoen, dan kon een volgende
 uitvoering stil op de uitkomst van een eerder besluit leunen, en dan is niet meer
 te zeggen of er gerekend of overgeschreven is.
+
+Welk van de twee een vraag oplevert, staat in het `reduction`-blok van de
+lexostatus, en dat verschil is het lezen waard:
+
+| `reduction` | wat de vraag oplevert |
+|---|---|
+| `chronicle: beschikkingen` | het **vastgelegde besluit** van toen, met de `regulation_valid_from` van toen; geen engine in zicht |
+| `regulation: …` + `output: …` | de **rechtstoestand nu**, opnieuw berekend op de wetsversie die op `op_moment` gold |
+
+Allebei zijn ze geldig en allebei zijn ze nodig: de tweede vorm is het lexogram
+(*wat zegt het recht over deze feiten*), de eerste het decretogram (*wat is er
+besloten*). Ze geven alleen niet hetzelfde antwoord zodra de wet of een feit
+verandert, en dat is precies waarom ze naast elkaar bestaan. Een lexostatus die
+naar het besluit heet te vragen maar de wetsvorm gebruikt, rekent dus nog steeds
+— vandaar dat de naam en de vorm in een wereldbestand bij elkaar horen te passen.
 
 ### Wat van RFC-022 §1.2 hier wel en niet in zit
 
