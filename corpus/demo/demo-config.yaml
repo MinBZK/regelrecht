@@ -22,7 +22,20 @@ profiles:
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
       Bekijk hier uw toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
-    feature_flags: {DELEGATION: false, AUTO_APPROVE_CLAIMS: false}
+    # DELEGATION staat aan: Merijn heeft ouderlijk gezag over twee kinderen
+    # (Burgerlijk Wetboek) en vertegenwoordigt twee ondernemingen
+    # (Machtigingenwet), waarvan één als vennoot met alleen leesrecht. Dat
+    # verschil in rechten komt uit de wet zelf en is precies wat de demo laat
+    # zien.
+    # CHANGE_WIZARD: één ingang voor 'er is iets veranderd' (inkomen, huur,
+    # adres, huishouden), naast de tegels die elk over één regeling gaan.
+    # HARMONIZE: uit een simulatierun één vereenvoudigde regeling afleiden en
+    # laten zien hoe dicht die bij de bestaande wetten blijft.
+    feature_flags:
+      DELEGATION: true
+      AUTO_APPROVE_CLAIMS: false
+      CHANGE_WIZARD: true
+      HARMONIZE: true
     sidebar_laws: null
     disabled_laws:
       BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]
@@ -165,6 +178,7 @@ dashboard_outputs:
   RVO/omgevingswet/energiebesparing/informatieplicht: heeft_informatieplicht
   NVWA/warenwet/meldplicht: heeft_meldplicht
   IND/vreemdelingenwet: heeft_verblijfsrecht
+  DOUANE/wet_op_de_accijns/accijnsplicht_alcohol: verschuldigde_accijns
 
 # Wat een tegel onder de uitkomst laat zien.
 #
@@ -211,6 +225,13 @@ tile_details:
   GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten: []
   SVB/algemene_kinderbijslagwet: []
   IND/vreemdelingenwet: []
+  DOUANE/wet_op_de_accijns/accijnsplicht_alcohol:
+    # Het bedrag is het antwoord; het tarief en de categorie zijn de weg
+    # ernaartoe en staan in de berekening. Of er een vergunning voor een
+    # accijnsgoederenplaats nodig is, is een tweede vraag met eigen gevolgen
+    # (art. 5 verbiedt produceren zonder), dus die blijft op de tegel staan.
+    - agp_vergunning_vereist
+    - voldoet_aan_vergunningsplicht
 
 # Hoe een tegel haar uitkomst vertelt. Zonder dit zegt elke tegel hetzelfde:
 # "U voldoet aan de voorwaarden", het bedrag, en de veldnaam eronder. Dat is
@@ -299,6 +320,10 @@ outcome_phrasing:
     lead: Uw precariobelasting is waarschijnlijk
     unit: per jaar
     none: U bent waarschijnlijk geen precariobelasting verschuldigd.
+  DOUANE/wet_op_de_accijns/accijnsplicht_alcohol:
+    lead: Over deze partij bent u waarschijnlijk
+    unit: aan accijns verschuldigd
+    none: Over deze partij bent u waarschijnlijk geen accijns verschuldigd.
   # Ja/nee-wetten: geen bedrag, wel een uitspraak. `date_input` zet de datum
   # waar de uitspraak over gaat in de aanhef.
   KIESRAAD/kieswet:

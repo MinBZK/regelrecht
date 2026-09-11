@@ -136,6 +136,18 @@ ci-gate-test:
 nldd-imports-test:
     node --test script/nldd-imports.test.mjs
 
+# Een `slot="..."` die het component niet kent, is nergens een fout: het
+# element blijft in de light-DOM, wordt nooit toegewezen en is 0x0. Zo stonden
+# de persona-tags op het portaal en de startknop van de presentatie er wel,
+# maar zag niemand ze. Deze guard laat de build erop omvallen.
+[doc("Check that every nldd slot assignment exists")]
+nldd-slots:
+    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src
+
+[doc("Check the design-system slot guard")]
+nldd-slots-test:
+    node --test script/nldd-slots.test.mjs
+
 # Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
 # of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
 # bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
@@ -165,7 +177,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test nldd-imports-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 

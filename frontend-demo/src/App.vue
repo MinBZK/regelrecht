@@ -2,7 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
-import { useDemo } from './store/demoStore.js';
+import { FEATURES, useDemo } from './store/demoStore.js';
+import { delegationLabel } from './data/delegation.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
 import { usePresentation } from './presentation/usePresentation.js';
 
@@ -14,7 +15,15 @@ import { usePresentation } from './presentation/usePresentation.js';
 const route = useRoute();
 const router = useRouter();
 const demo = useDemo();
-const { ready, loadError, profile, profileKey, corpus, state } = demo;
+const { ready, loadError, profile, profileKey, corpus, state, delegations, delegationEnabled, activeDelegation, features } = demo;
+
+/** Heeft de presentator een vlag omgezet? Dan kan hij terug naar het profiel. */
+const hasFeatureOverrides = computed(() => Object.keys(state.featureOverrides ?? {}).length > 0);
+/** Hoeveel er aanstaan, zodat je het ziet zonder de uitklapper te openen. */
+const featureSummary = computed(() => {
+  const aan = FEATURES.filter((f) => features.value[f.key]).length;
+  return `${aan} van ${FEATURES.length} aan`;
+});
 
 // The design system derives its scroll mode (document vs. per-pane) from the
 // outermost split view once, at connect. Ours arrives later (the tab views are
@@ -58,7 +67,14 @@ const tabs = computed(() => [
   { name: 'graaf', text: 'Graaf', icon: 'centralized-network', to: '/graaf' },
   { name: 'scenarios', text: "Scenario's", icon: 'checklist', to: '/scenarios' },
   { name: 'simulatie', text: 'Simulatie', icon: 'chart-x-y-axis-line', to: '/simulatie' },
-  { name: 'portaal', text: profile.value?.portal_tab_label ?? 'Mijn overheid', icon: 'person', to: '/portaal' },
+  // Namens een onderneming heet het tabblad naar die onderneming: 'Mijn
+  // overheid' gaat over de ingelogde burger, en dat is dan niet het onderwerp.
+  {
+    name: 'portaal',
+    text: activeDelegation.value?.subjectType === 'BUSINESS' ? activeDelegation.value.subjectName : profile.value?.portal_tab_label ?? 'Mijn overheid',
+    icon: activeDelegation.value?.subjectType === 'BUSINESS' ? 'building' : 'person',
+    to: '/portaal',
+  },
   { name: 'zaaksysteem', text: 'Zaaksysteem', icon: 'inbox', to: '/zaaksysteem' },
 ]);
 
@@ -71,6 +87,24 @@ const profileOptions = computed(() => Object.entries(corpus.value?.config?.profi
 function onProfileSelect(e) {
   const value = e.target?.getAttribute?.('value');
   if (value) demo.setProfile(value);
+}
+
+// ---- machtigingen ----------------------------------------------------------
+// Namens wie er gehandeld wordt. De lijst komt uit de wet (elke wet met
+// discoverable: DELEGATION_PROVIDER), niet uit de app.
+
+/** Toon de keuze pas als er echt iets te kiezen valt. */
+const showDelegation = computed(() => delegationEnabled.value && delegations.value.length > 1);
+
+/** Wat er in de knop staat: 'Mezelf' of degene namens wie gehandeld wordt. */
+const delegationButtonText = computed(() => activeDelegation.value?.subjectName ?? 'Mezelf');
+
+const DELEGATION_ICONS = { SELF: 'person', CITIZEN: 'person', BUSINESS: 'building' };
+
+function onDelegationSelect(e) {
+  const value = e.target?.getAttribute?.('value');
+  if (!value) return;
+  demo.setDelegation(delegations.value.find((d) => `${d.subjectType}:${d.subjectId}` === value) ?? null);
 }
 
 const { colorScheme, setColorScheme } = useColorScheme();
@@ -129,6 +163,31 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
             <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="`${openCases} te beoordelen`" @click="router.push('/zaaksysteem')"></nldd-button>
           </nldd-toolbar-item>
+          <!-- Namens wie: alleen als de wet meer dan één mogelijkheid geeft.
+               Staat naast het profiel, want het hoort bij wie er ingelogd is. -->
+          <nldd-toolbar-item slot="end" v-if="showDelegation" class="rr-hide-presenting">
+            <nldd-button
+              size="md"
+              :variant="activeDelegation ? 'accent-tinted' : 'neutral-transparent'"
+              :start-icon="activeDelegation ? DELEGATION_ICONS[activeDelegation.subjectType] : 'switch'"
+              :text="delegationButtonText"
+              expandable
+              popup-type="menu"
+            >
+              <nldd-menu slot="popup" accessible-label="Namens wie" @select="onDelegationSelect">
+                <nldd-menu-item
+                  v-for="d in delegations"
+                  :key="`${d.subjectType}:${d.subjectId}`"
+                  type="radio"
+                  :value="`${d.subjectType}:${d.subjectId}`"
+                  :text="d.subjectName"
+                  :details="delegationLabel(d)"
+                  :icon="DELEGATION_ICONS[d.subjectType] ?? 'person'"
+                  :selected="(activeDelegation ? `${activeDelegation.subjectType}:${activeDelegation.subjectId}` : `SELF:${profile?.bsn}`) === `${d.subjectType}:${d.subjectId}` || undefined"
+                ></nldd-menu-item>
+              </nldd-menu>
+            </nldd-button>
+          </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting">
             <nldd-button size="md" variant="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">
               <nldd-menu slot="popup" accessible-label="Demoprofiel" @select="onProfileSelect">
@@ -154,6 +213,35 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                   :selected="state.manualReview || undefined"
                   @select="toggleManualReview"
                 ></nldd-menu-item>
+                <nldd-menu-divider></nldd-menu-divider>
+                <!-- De features aan en uit, midden in een demo. De POC kon dit
+                     alleen via omgevingsvariabelen bij het starten; een
+                     presentator moet het tijdens zijn verhaal kunnen omzetten.
+                     In een uitklapper zoals Weergave, zodat het hoofdmenu kort
+                     blijft; het aantal aanstaande features staat ernaast, want
+                     dat is wat je wilt weten zonder open te klappen. -->
+                <nldd-menu-item text="Features" icon="puzzle-piece" :details="featureSummary">
+                  <nldd-menu accessible-label="Features">
+                    <nldd-menu-item
+                      v-for="f in FEATURES"
+                      :key="f.key"
+                      type="checkbox"
+                      :text="f.label"
+                      :details="f.hint"
+                      :icon="f.icon"
+                      :selected="features[f.key] || undefined"
+                      @select="demo.toggleFeature(f.key)"
+                    ></nldd-menu-item>
+                    <template v-if="hasFeatureOverrides">
+                      <nldd-menu-divider></nldd-menu-divider>
+                      <nldd-menu-item
+                        text="Terug naar het profiel"
+                        icon="refresh"
+                        @select="demo.resetFeatures()"
+                      ></nldd-menu-item>
+                    </template>
+                  </nldd-menu>
+                </nldd-menu-item>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item text="Weergave" icon="appearance">
                   <nldd-menu @select="onColorSchemeSelect">

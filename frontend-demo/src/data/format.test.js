@@ -91,6 +91,18 @@ describe('helpers', () => {
     expect(humanize('')).toBe('');
   });
 
+  it('humanize schrijft een afkorting als afkorting', () => {
+    // Zonder dit werd het "Agp vergunning vereist", wat als woord leest.
+    expect(humanize('agp_vergunning_vereist')).toBe('AGP vergunning vereist');
+    expect(humanize('heeft_haccp_verplichting')).toBe('Heeft HACCP verplichting');
+    expect(humanize('kvk_nummer')).toBe('KvK nummer');
+    // Een afkorting vooraan houdt haar eigen schrijfwijze.
+    expect(humanize('bsn')).toBe('BSN');
+    expect(humanize('ww_uitkering_per_maand')).toBe('WW uitkering per maand');
+    // Een woord dat toevallig op een afkorting lijkt blijft ongemoeid.
+    expect(humanize('wonen_in_nederland')).toBe('Wonen in nederland');
+  });
+
   it('formatDate leaves an unparsable value alone', () => {
     expect(formatDate('geen datum')).toBe('geen datum');
   });

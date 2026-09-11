@@ -1,0 +1,845 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: wet_op_de_accijns/accijnsplicht_alcohol
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+name: Accijnsplicht en tarief alcoholhoudende dranken
+bwb_id: BWBR0005251
+url: https://wetten.overheid.nl/BWBR0005251/2024-01-01
+service: DOUANE
+uuid: d4e8f2a1-7c3b-4a9e-b5d1-6f8e2c4a3b7d
+discoverable: BUSINESS
+articles:
+  - number: '1'
+    text: >-
+      1. Onder de naam accijns wordt een belasting geheven van:
+        a. bier;
+        b. wijn;
+        c. tussenproducten;
+        d. overige alcoholhoudende producten;
+        e. minerale oliën; en
+        f. tabaksproducten.
+
+      2. De accijns wordt verschuldigd ter zake van de uitslag tot verbruik van de in het eerste
+      lid bedoelde goederen.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel1
+    machine_readable:
+      definitions:
+        type_bier: bier
+        type_wijn_niet_mousserend: wijn_niet_mousserend
+        type_wijn_mousserend: wijn_mousserend
+        type_tussenproduct_niet_mousserend: tussenproduct_niet_mousserend
+        type_tussenproduct_mousserend: tussenproduct_mousserend
+        type_overige_alcohol: overige_alcohol
+        # Art. 6: bier is een product met een alcoholgehalte van meer dan 0,5%vol.
+        grens_bier_alcohol: 0.5
+        # Art. 8a, 9, 11b, 11c en 12: wijn, tussenproducten en overige alcoholhoudende
+        # producten hebben een alcoholgehalte van meer dan 1,2%vol.
+        grens_overig_alcohol: 1.2
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: AANSLAG
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+          - name: type_product
+            type: string
+            required: true
+          - name: alcoholpercentage
+            type: number
+            required: true
+          - name: hoeveelheid_hectoliter
+            type: number
+            required: true
+        input:
+          # De vier tarieven komen uit de tariefartikelen van Hoofdstuk II, elk in
+          # hele eurocent per hectoliter.
+          - name: tarief_bier
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              output: tarief_bier
+          - name: tarief_wijn
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              output: tarief_wijn
+          - name: tarief_tussenproduct
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              output: tarief_tussenproduct
+          - name: tarief_overige_alcohol
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+            source:
+              output: tarief_overige_alcohol
+        output:
+          - name: voldoet_aan_voorwaarden
+            type: boolean
+          - name: is_accijnsgoed
+            type: boolean
+          - name: accijnscategorie
+            type: string
+          - name: tarief_per_hectoliter
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+          - name: verschuldigde_accijns
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+        actions:
+          # De POC-`requirements` van deze wet zijn hier één voorwaarden-output
+          # geworden: het canonieke schema kent geen `requirements`-blok.
+          - output: voldoet_aan_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - operation: IN
+                  subject: $type_product
+                  values:
+                    - $type_bier
+                    - $type_wijn_niet_mousserend
+                    - $type_wijn_mousserend
+                    - $type_tussenproduct_niet_mousserend
+                    - $type_tussenproduct_mousserend
+                    - $type_overige_alcohol
+                  legal_basis:
+                    law: Wet op de accijns
+                    bwb_id: BWBR0005251
+                    article: '1'
+                    paragraph: '1'
+                    url: >-
+                      https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel1
+                    juriconnect: >-
+                      jci1.3:c:BWBR0005251&artikel=1&z=2024-01-01&g=2024-01-01
+                    explanation: >-
+                      Het product moet vallen onder een van de in artikel 1 lid 1 genoemde
+                      categorieën van accijnsgoederen
+                - operation: OR
+                  conditions:
+                    - operation: AND
+                      conditions:
+                        - operation: EQUALS
+                          subject: $type_product
+                          value: $type_bier
+                        - operation: GREATER_THAN
+                          subject: $alcoholpercentage
+                          value: $grens_bier_alcohol
+                          legal_basis:
+                            law: Wet op de accijns
+                            bwb_id: BWBR0005251
+                            article: '6'
+                            url: >-
+                              https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel6
+                            juriconnect: >-
+                              jci1.3:c:BWBR0005251&artikel=6&z=2024-01-01&g=2024-01-01
+                            explanation: >-
+                              Artikel 6: onder bier worden producten verstaan voor zover deze een
+                              alcoholgehalte hebben van meer dan 0,5%vol
+                    - operation: AND
+                      conditions:
+                        - operation: NOT
+                          value:
+                            operation: EQUALS
+                            subject: $type_product
+                            value: $type_bier
+                        - operation: GREATER_THAN
+                          subject: $alcoholpercentage
+                          value: $grens_overig_alcohol
+                          legal_basis:
+                            law: Wet op de accijns
+                            bwb_id: BWBR0005251
+                            article: 8a
+                            url: >-
+                              https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel8a
+                            juriconnect: >-
+                              jci1.3:c:BWBR0005251&artikel=8a&z=2024-01-01&g=2024-01-01
+                            explanation: >-
+                              Artikelen 8a, 9, 11b, 11c en 12 vragen voor wijn, tussenproducten en
+                              overige alcoholhoudende producten een alcoholgehalte van meer dan
+                              1,2%vol
+                - operation: GREATER_THAN
+                  subject: $hoeveelheid_hectoliter
+                  value: 0
+                  legal_basis:
+                    law: Wet op de accijns
+                    bwb_id: BWBR0005251
+                    article: '1'
+                    paragraph: '2'
+                    url: >-
+                      https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel1
+                    juriconnect: >-
+                      jci1.3:c:BWBR0005251&artikel=1&z=2024-01-01&g=2024-01-01
+                    explanation: >-
+                      Accijns wordt geheven over een positieve hoeveelheid accijnsgoederen bij
+                      uitslag tot verbruik
+          - output: is_accijnsgoed
+            # De POC zette deze output op de constante true, omdat de POC-engine
+            # outputs alleen berekende als de requirements golden. Deze engine
+            # evalueert elke actie, dus de constante zou "accijnsgoed" zeggen voor
+            # een product dat de drempel van artikel 6 of 8a niet haalt.
+            value: $voldoet_aan_voorwaarden
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '1'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel1
+              juriconnect: jci1.3:c:BWBR0005251&artikel=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 1 lid 1 somt de goederen op waarover accijns wordt geheven: bier, wijn,
+                tussenproducten, overige alcoholhoudende producten, minerale oliën en
+                tabaksproducten
+          - output: accijnscategorie
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $type_product
+                    value: $type_bier
+                  then: bier
+                - when:
+                    operation: IN
+                    subject: $type_product
+                    values:
+                      - $type_wijn_niet_mousserend
+                      - $type_wijn_mousserend
+                  then: wijn
+                - when:
+                    operation: IN
+                    subject: $type_product
+                    values:
+                      - $type_tussenproduct_niet_mousserend
+                      - $type_tussenproduct_mousserend
+                  then: tussenproducten
+                - when:
+                    operation: EQUALS
+                    subject: $type_product
+                    value: $type_overige_alcohol
+                  then: overige_alcoholhoudende_producten
+              default: onbekend
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '1'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel1
+              juriconnect: jci1.3:c:BWBR0005251&artikel=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Indeling in de accijnscategorie van artikel 1 lid 1 op basis van het type
+                product; Hoofdstuk II werkt elke categorie uit
+          - output: tarief_per_hectoliter
+            # Het tarief zelf staat per categorie in artikel 7 (bier), 10 (wijn),
+            # 11d (tussenproducten) en 13 (overige); die artikelen berekenen het en
+            # deze actie kiest op grond van artikel 1 lid 1 welke van de vier geldt.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $type_product
+                    value: $type_bier
+                  then: $tarief_bier
+                - when:
+                    operation: IN
+                    subject: $type_product
+                    values:
+                      - $type_wijn_niet_mousserend
+                      - $type_wijn_mousserend
+                  then: $tarief_wijn
+                - when:
+                    operation: IN
+                    subject: $type_product
+                    values:
+                      - $type_tussenproduct_niet_mousserend
+                      - $type_tussenproduct_mousserend
+                  then: $tarief_tussenproduct
+                - when:
+                    operation: EQUALS
+                    subject: $type_product
+                    value: $type_overige_alcohol
+                  then: $tarief_overige_alcohol
+              default: 0
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '1'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel1
+              juriconnect: jci1.3:c:BWBR0005251&artikel=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                De categorie van artikel 1 lid 1 bepaalt welke tariefbepaling uit Hoofdstuk II
+                van toepassing is
+          - output: verschuldigde_accijns
+            # Deze engine evalueert elke actie, ook als de voorwaarden niet gelden;
+            # de POC-engine berekende alleen bij geldende requirements. Zonder deze
+            # toets zou een product onder de drempel van artikel 6 of 8a toch een
+            # bedrag krijgen. Artikel 1 lid 2 heft accijns over de goederen van lid
+            # 1: is het geen accijnsgoed, dan is er niets verschuldigd.
+            # ROUND op hele eurocent (RFC-024): de hoeveelheid is geen geheel aantal
+            # hectoliter, dus het product is dat evenmin.
+            value:
+              operation: ROUND
+              precision: 0
+              value:
+                operation: IF
+                cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $is_accijnsgoed
+                      value: true
+                    then:
+                      operation: MULTIPLY
+                      values:
+                        - $tarief_per_hectoliter
+                        - $hoeveelheid_hectoliter
+                default: 0
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '1'
+              paragraph: '2'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel1
+              juriconnect: jci1.3:c:BWBR0005251&artikel=1&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 1 lid 2 bepaalt dat de accijns verschuldigd wordt ter zake van de uitslag
+                tot verbruik; het bedrag is het tarief per hectoliter maal de hoeveelheid
+  - number: '5'
+    text: >-
+      1. Het is niet toegestaan:
+        a. een accijnsgoed te produceren of verwerken buiten een accijnsgoederenplaats die voor
+      dat soort accijnsgoed als zodanig is aangewezen;
+        b. een accijnsgoed voorhanden of in opslag te hebben dat niet overeenkomstig de
+      bepalingen van deze wet in de heffing is betrokken.
+
+      2. Het verbod als bedoeld in het eerste lid, onderdeel a, is niet van toepassing indien
+      het produceren of verwerken geschiedt overeenkomstig de wettelijke bepalingen, bedoeld in
+      artikel 1:1, eerste en tweede lid, van de Algemene douanewet.
+
+      3. Onder bij algemene maatregel van bestuur te stellen voorwaarden en beperkingen wordt
+      ontheffing verleend van de in het eerste lid bedoelde verboden voor:
+        a. het produceren of verwerken van accijnsgoederen uit andere accijnsgoederen, waarbij
+      het accijnsbedrag dat de eerstbedoelde accijnsgoederen vertegenwoordigen niet hoger is dan
+      het accijnsbedrag dat de accijnsgoederen vertegenwoordigen waaruit zij zijn geproduceerd
+      of verwerkt;
+        b. het produceren of verwerken van accijnsgoederen waarvoor een vrijstelling van accijns
+      geldt op de voet van artikel 65;
+        c. het thuis produceren van bier en wijn door particulieren, voor zover die goederen
+      worden aangewend voor eigen gebruik;
+        d. het produceren of verwerken en het voorhanden of in opslag hebben van andere minerale
+      oliën dan bedoeld in het vierde lid, mits deze minerale oliën niet op grond van artikel 28
+      worden gelijkgesteld met minerale oliën waarvoor in artikel 27 een tarief is vastgesteld;
+        e. het handmatig produceren van een sigaret in de persoonlijke sfeer, voor zover die
+      sigaret wordt aangewend voor eigen gebruik, daaronder begrepen het door middel van een
+      eenvoudige, niet-industriële handeling in een huls van sigarettenpapier schuiven of met
+      sigarettenpapier omhullen van rooktabak.
+
+      4. De in het derde lid, onderdeel d, bedoelde minerale oliën zijn de producten van de
+      GN-codes: (opsomming van GN-codes; niet van belang voor alcoholhoudende dranken).
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel5
+    machine_readable:
+      definitions:
+        activiteit_productie: productie
+        activiteit_opslag: opslag
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+          - name: activiteit
+            type: string
+            required: true
+        input:
+          - name: heeft_agp_vergunning
+            # Niet nullable, zoals de output van artikel 39: de vergunning is
+            # constitutief (een plaats mag alleen als accijnsgoederenplaats worden
+            # gebruikt als de inspecteur een vergunning heeft verstrekt), dus het
+            # register van de Douane is uitputtend voor wie er een heeft. Geen rij
+            # betekent geen vergunning, niet 'onbekend'.
+            type: boolean
+            source:
+              output: heeft_agp_vergunning
+        output:
+          - name: agp_vergunning_vereist
+            type: boolean
+          - name: voldoet_aan_vergunningsplicht
+            type: boolean
+        actions:
+          - output: agp_vergunning_vereist
+            value:
+              operation: IN
+              subject: $activiteit
+              values:
+                - $activiteit_productie
+                - $activiteit_opslag
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '5'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel5
+              juriconnect: jci1.3:c:BWBR0005251&artikel=5&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 5 lid 1 onder a verbiedt het produceren of verwerken van een accijnsgoed
+                buiten een accijnsgoederenplaats, en onder b het voorhanden of in opslag hebben
+                van een accijnsgoed dat niet in de heffing is betrokken; voor productie en opslag
+                is daarom een accijnsgoederenplaats nodig
+          - output: voldoet_aan_vergunningsplicht
+            # De POC gebruikte hier NOT_IN, een operatie die het canonieke schema
+            # niet kent; die wordt geschreven als NOT om een IN heen.
+            value:
+              operation: OR
+              conditions:
+                - operation: NOT
+                  value:
+                    operation: IN
+                    subject: $activiteit
+                    values:
+                      - $activiteit_productie
+                      - $activiteit_opslag
+                - operation: EQUALS
+                  subject: $heeft_agp_vergunning
+                  value: true
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '5'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukI_Artikel5
+              juriconnect: jci1.3:c:BWBR0005251&artikel=5&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Het bedrijf voldoet aan het verbod van artikel 5 lid 1 als het geen
+                accijnsgoederenplaats nodig heeft, of als het over de vergunning van artikel 39
+                beschikt
+  - number: '6'
+    text: >-
+      Onder bier wordt verstaan:
+        a. elk product van GN-code 2203; en
+        b. elk product van GN-code 2206 dat een mengsel van bier als bedoeld in onderdeel a en
+      niet-alcoholhoudende dranken bevat;
+      voor zover deze producten een alcoholgehalte hebben van meer dan 0,5%vol.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel6
+    # De ondergrens van 0,5%vol uit dit artikel is gemodelleerd in de
+    # voldoet_aan_voorwaarden-actie van artikel 1, waar de accijnsplicht wordt
+    # vastgesteld; deze tekst is de bron voor die tak.
+  - number: '7'
+    text: >-
+      1. De accijns bedraagt voor bier per hectoliter bij een temperatuur van 20°C per
+      volumeprocent alcohol € 8,12, met dien verstande dat het minimumbedrag aan accijns in
+      totaal ten minste € 26,13 bedraagt, waarbij een gedeelte van een hectoliter rekenkundig
+      wordt afgerond op twee decimalen en van een volumeprocent alcohol naar beneden wordt
+      afgerond op één decimaal.
+
+      2. In afwijking van het eerste lid bedraagt de accijns voor bier dat is geproduceerd in
+      een accijnsgoederenplaats waar in het voorafgaande kalenderjaar niet meer dan 200.000
+      hectoliter bier is geproduceerd, per hectoliter bij een temperatuur van 20°C per
+      volumeprocent alcohol € 7,51, met dien verstande dat het minimumbedrag aan accijns in
+      totaal ten minste € 26,13 per hectoliter bedraagt.
+
+      3. Het tweede lid vindt slechts toepassing met betrekking tot een accijnsgoederenplaats
+      die:
+        a. juridisch en economisch onafhankelijk is van een andere accijnsgoederenplaats waar
+      bier wordt geproduceerd;
+        b. gebruik maakt van installaties die in fysiek opzicht losstaan van die van een andere
+      accijnsgoederenplaats waar bier wordt geproduceerd; en
+        c. geen bier produceert onder licentie, tenzij het onder licentie geproduceerde bier
+      slechts een klein gedeelte van de totale productie betreft, met dien verstande dat het
+      tweede lid geen toepassing vindt met betrekking tot het onder licentie geproduceerde bier.
+
+      4. Voor de toepassing van het tweede en derde lid wordt een samenwerkingsverband van twee
+      of meer accijnsgoederenplaatsen waar gezamenlijk in het voorafgaande kalenderjaar niet
+      meer dan 200.000 hectoliter bier is geproduceerd, aangemerkt als één accijnsgoederenplaats.
+
+      5. Het tweede, derde en vierde lid zijn van overeenkomstige toepassing op bier geproduceerd
+      in een belastingentrepot.
+
+      6. Bij ministeriële regeling worden regels gesteld met betrekking tot het bepalen van het
+      alcoholgehalte en de toepassing van het tweede en derde lid.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel7
+    machine_readable:
+      definitions:
+        # Alle tarieven in hele eurocent, de eenheid waarin dit corpus geldbedragen
+        # uitdrukt; de euro's uit de wettekst staan ernaast.
+        tarief_bier_per_hl_per_procent: 812  # € 8,12
+        tarief_bier_minimum_per_hl: 2613  # € 26,13
+        tarief_bier_klein_per_hl_per_procent: 751  # € 7,51
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: alcoholpercentage
+            type: number
+            required: true
+          - name: is_kleine_brouwerij
+            # Art. 7 lid 2 hangt het verlaagde tarief aan de accijnsgoederenplaats
+            # waar het bier is geproduceerd, niet aan het bedrijf; het bedrijf geeft
+            # hier op of die plaats in het voorafgaande kalenderjaar niet meer dan
+            # 200.000 hectoliter produceerde. De voorwaarden van lid 3 en 4
+            # (juridische en economische onafhankelijkheid, losstaande installaties,
+            # geen licentieproductie, samenwerkingsverbanden) zijn niet gemodelleerd:
+            # de POC-bron kende er geen gegeven voor.
+            type: boolean
+            required: false
+            nullable: true
+        output:
+          - name: tarief_bier
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+        actions:
+          - output: tarief_bier
+            # Artikel 7 lid 1 schrijft twee afrondingen voor, en ze gaan de
+            # andere kant op. Het volumeprocent gaat "naar beneden op één
+            # decimaal" (FLOOR, precision 1) vóór de vermenigvuldiging: 5,28%
+            # rekent als 5,2%. Het bedrag dat eruit komt wordt "rekenkundig"
+            # afgerond, en dat is half-up (ROUND) op hele eurocent (RFC-024) —
+            # de engine rondt niets uit zichzelf af.
+            #
+            # De volgorde doet ertoe: met het ruwe percentage betaalt iemand
+            # met 5,28% bier € 0,65 per hectoliter te veel, en bij 40,37%
+            # gedistilleerd (art. 13, dezelfde zin) € 1,28. Altijd ten nadele
+            # van de belastingplichtige.
+            value:
+              operation: ROUND
+              precision: 0
+              value:
+                operation: IF
+                cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $is_kleine_brouwerij
+                      value: true
+                    then:
+                      operation: MAX
+                      values:
+                        - operation: MULTIPLY
+                          values:
+                            - $tarief_bier_klein_per_hl_per_procent
+                            - operation: FLOOR
+                              precision: 1
+                              value: $alcoholpercentage
+                        - $tarief_bier_minimum_per_hl
+                    # Art. 7 lid 2: verlaagd tarief van € 7,51 per hectoliter per
+                    # volumeprocent, met hetzelfde minimum van € 26,13. Lid 1 zegt
+                    # "ten minste € 26,13", lid 2 "€ 26,13 per hectoliter"; hier
+                    # staat één definitie voor allebei, want per hectoliter is de
+                    # enige lezing die met de rest van het artikel rijmt.
+                default:
+                  operation: MAX
+                  values:
+                    - operation: MULTIPLY
+                      values:
+                        - $tarief_bier_per_hl_per_procent
+                        - operation: FLOOR
+                          precision: 1
+                          value: $alcoholpercentage
+                    - $tarief_bier_minimum_per_hl
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '7'
+              paragraph: '1'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel7
+              juriconnect: jci1.3:c:BWBR0005251&artikel=7&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 7 lid 1: € 8,12 per hectoliter per volumeprocent alcohol, met een
+                minimumbedrag van € 26,13 per hectoliter; lid 2 geeft € 7,51 per volumeprocent
+                voor bier uit een accijnsgoederenplaats met een jaarproductie van niet meer dan
+                200.000 hectoliter
+  - number: '8'
+    text: Wijn wordt onderscheiden in niet-mousserende wijn en mousserende wijn.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel8
+    # Het onderscheid tussen mousserende en niet-mousserende wijn is in dit model
+    # een gegeven van de aangifte (type_product); artikel 8a en 9 vullen het in.
+  - number: 8a
+    text: >-
+      1. Onder niet-mousserende wijn worden verstaan alle producten van GN-codes 2204 en 2205,
+      met uitzondering van mousserende wijn als bedoeld in artikel 9, eerste lid, met:
+        a. een alcoholgehalte van meer dan 1,2%vol maar niet meer dan 15%vol, voor zover de
+      alcohol in het eindproduct volledig door gisting is verkregen; of
+        b. een alcoholgehalte van meer dan 15%vol maar niet meer dan 18%vol, voor zover zij
+      zonder enige verrijking zijn geproduceerd en de alcohol in het eindproduct volledig door
+      gisting is verkregen.
+
+      2. Onder niet-mousserende wijn worden mede verstaan alle niet in het eerste lid bedoelde
+      producten van GN-codes 2204 en 2205, alsmede producten van GN-code 2206, die ingevolge
+      artikel 6 niet als bier en ingevolge artikel 9, tweede lid, niet als mousserende wijn
+      worden aangemerkt, met:
+        a. een alcoholgehalte van meer dan 1,2%vol maar niet meer dan 10%vol; of
+        b. een alcoholgehalte van meer dan 10%vol maar niet meer dan 15%vol, voor zover de
+      alcohol in het product volledig door gisting is verkregen.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel8a
+    # De ondergrens van 1,2%vol uit dit artikel is gemodelleerd in de
+    # voldoet_aan_voorwaarden-actie van artikel 1; deze tekst is de bron voor die
+    # tak. De bovengrenzen (15%vol, 18%vol) en de gisting-voorwaarden zijn niet
+    # gemodelleerd: het model neemt het producttype uit de aangifte over en toetst
+    # de GN-indeling niet.
+  - number: '10'
+    text: >-
+      De accijns bedraagt per hectoliter, waarbij een gedeelte van een hectoliter rekenkundig
+      wordt afgerond op twee decimalen, voor zowel niet-mousserende wijn als mousserende wijn
+      met een alcoholgehalte van:
+        a. niet meer dan 8,5% vol € 47,95;
+        b. meer dan 8,5% vol € 95,69.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel10
+    machine_readable:
+      definitions:
+        # Tarieven in hele eurocent; de euro's uit de wettekst staan ernaast.
+        tarief_wijn_laag_per_hl: 4795  # € 47,95
+        tarief_wijn_hoog_per_hl: 9569  # € 95,69
+        # Een alcoholgehalte, geen bedrag: blijft in volumeprocent.
+        grens_wijn_alcohol: 8.5
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: alcoholpercentage
+            type: number
+            required: true
+        output:
+          - name: tarief_wijn
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+        actions:
+          - output: tarief_wijn
+            # Artikel 10 maakt geen onderscheid tussen mousserende en
+            # niet-mousserende wijn: beide volgen dezelfde twee tarieven. De POC had
+            # vier takken met twee paar identieke bedragen; dat onderscheid staat
+            # niet in de tekst en is hier één grens op het alcoholgehalte.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject: $alcoholpercentage
+                    value: $grens_wijn_alcohol
+                  then: $tarief_wijn_laag_per_hl
+              default: $tarief_wijn_hoog_per_hl
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '10'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel10
+              juriconnect: jci1.3:c:BWBR0005251&artikel=10&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 10: € 47,95 per hectoliter bij een alcoholgehalte van niet meer dan
+                8,5%vol en € 95,69 per hectoliter daarboven, voor zowel niet-mousserende als
+                mousserende wijn
+  - number: 11a
+    text: >-
+      Tussenproducten worden onderscheiden in niet-mousserende tussenproducten en mousserende
+      tussenproducten.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel11a
+    # Zoals bij wijn is dit onderscheid in het model een gegeven van de aangifte
+    # (type_product); artikel 11b en 11c vullen het in, met voor beide een
+    # alcoholgehalte van meer dan 1,2%vol maar niet meer dan 22%vol.
+  - number: 11d
+    text: >-
+      De accijns bedraagt per hectoliter, waarbij een gedeelte van een hectoliter rekenkundig
+      wordt afgerond op twee decimalen, voor zowel niet-mousserende tussenproducten als
+      mousserende tussenproducten met een alcoholgehalte van:
+        a. niet meer dan 15% vol € 114,85;
+        b. meer dan 15% vol € 161,80.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel11d
+    machine_readable:
+      definitions:
+        # Tarieven in hele eurocent; de euro's uit de wettekst staan ernaast.
+        tarief_tussen_laag_per_hl: 11485  # € 114,85
+        tarief_tussen_hoog_per_hl: 16180  # € 161,80
+        # Een alcoholgehalte, geen bedrag: blijft in volumeprocent.
+        grens_tussen_alcohol: 15
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: alcoholpercentage
+            type: number
+            required: true
+        output:
+          - name: tarief_tussenproduct
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+        actions:
+          - output: tarief_tussenproduct
+            # Als bij artikel 10 geldt hetzelfde tarief voor mousserende en
+            # niet-mousserende tussenproducten; de vier POC-takken zijn er twee.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject: $alcoholpercentage
+                    value: $grens_tussen_alcohol
+                  then: $tarief_tussen_laag_per_hl
+              default: $tarief_tussen_hoog_per_hl
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: 11d
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel11d
+              juriconnect: jci1.3:c:BWBR0005251&artikel=11d&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 11d: € 114,85 per hectoliter bij een alcoholgehalte van niet meer dan
+                15%vol en € 161,80 per hectoliter daarboven, voor zowel niet-mousserende als
+                mousserende tussenproducten
+  - number: '12'
+    text: >-
+      1. Onder overige alcoholhoudende producten worden verstaan:
+        a. alle producten van GN-codes 2207 en 2208 met een alcoholgehalte van meer dan 1,2%vol,
+      ook wanneer deze producten bestanddeel zijn van een product van een GN-code uit een ander
+      hoofdstuk van de gecombineerde nomenclatuur;
+        b. producten van GN-codes 2204, 2205 en 2206 met een alcoholgehalte van meer dan 22%vol.
+
+      2. Onder overige alcoholhoudende producten worden mede verstaan gedistilleerde dranken als
+      bedoeld in het eerste lid, wanneer deze dranken andere producten, al dan niet in oplossing,
+      bevatten.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel12
+    # De ondergrens van 1,2%vol uit lid 1 onder a is gemodelleerd in de
+    # voldoet_aan_voorwaarden-actie van artikel 1; deze tekst is mede de bron voor
+    # die tak. De GN-indeling zelf wordt niet getoetst.
+  - number: '13'
+    text: >-
+      De accijns bedraagt voor overige alcoholhoudende producten per hectoliter bij een
+      temperatuur van 20°C per volumeprocent alcohol € 18,27, waarbij een gedeelte van een
+      hectoliter rekenkundig wordt afgerond op drie decimalen en van een volumeprocent alcohol
+      naar beneden wordt afgerond op één decimaal.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel13
+    machine_readable:
+      definitions:
+        # In hele eurocent; het bedrag uit de wettekst staat ernaast.
+        tarief_overige_per_hl_per_procent: 1827  # € 18,27
+      execution:
+        produces:
+          legal_character: WAARDEBEPALING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: alcoholpercentage
+            type: number
+            required: true
+        output:
+          - name: tarief_overige_alcohol
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+        actions:
+          - output: tarief_overige_alcohol
+            # Artikel 13 draagt dezelfde slotzin als artikel 7 lid 1: het
+            # volumeprocent naar beneden op één decimaal (FLOOR, precision 1)
+            # vóór de vermenigvuldiging, het bedrag daarna rekenkundig, dus
+            # half-up (ROUND) op hele eurocent (RFC-024).
+            #
+            # Zonder het afkappen betaalt iemand met 40,37% gedistilleerd
+            # € 1,28 per hectoliter te veel.
+            value:
+              operation: ROUND
+              precision: 0
+              value:
+                operation: MULTIPLY
+                values:
+                  - $tarief_overige_per_hl_per_procent
+                  - operation: FLOOR
+                    precision: 1
+                    value: $alcoholpercentage
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '13'
+              url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukII_Artikel13
+              juriconnect: jci1.3:c:BWBR0005251&artikel=13&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 13: € 18,27 per hectoliter per volumeprocent alcohol voor overige
+                alcoholhoudende producten
+  - number: '39'
+    text: >-
+      Een plaats kan alleen als accijnsgoederenplaats worden gebruikt indien daartoe een
+      vergunning is verstrekt door de inspecteur.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukIII_Afdeling1_Artikel39
+    machine_readable:
+      execution:
+        produces:
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: kvk_nummer
+            type: string
+            required: true
+        input:
+          - name: heeft_agp_vergunning_register
+            # De vergunningstatus komt uit het register van de Douane; het canonieke
+            # schema bindt die data buiten de YAML (source: {}).
+            #
+            # Niet nullable: artikel 39 laat een plaats alleen als
+            # accijnsgoederenplaats gebruiken indien daartoe een vergunning is
+            # verstrekt, dus het register is uitputtend voor wie er een heeft.
+            # Geen rij betekent dan geen vergunning, niet 'onbekend' — en dat is
+            # ook wat de binding levert (absent: false).
+            type: boolean
+            source: {}
+        output:
+          - name: heeft_agp_vergunning
+            type: boolean
+        actions:
+          - output: heeft_agp_vergunning
+            value: $heeft_agp_vergunning_register
+            legal_basis:
+              law: Wet op de accijns
+              bwb_id: BWBR0005251
+              article: '39'
+              url: >-
+                https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukIII_Afdeling1_Artikel39
+              juriconnect: jci1.3:c:BWBR0005251&artikel=39&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 39 eist voor het gebruik van een plaats als accijnsgoederenplaats een
+                vergunning van de inspecteur; de vergunningstatus wordt gecontroleerd in het
+                register van de Douane
+  - number: '40'
+    text: >-
+      1. Als accijnsgoederenplaats kan in aanmerking komen een plaats waar:
+        a. accijnsgoederen worden geproduceerd of verwerkt;
+        b. geen accijnsgoederen worden geproduceerd of verwerkt maar die dient voor het
+      voorhanden hebben en de opslag van accijnsgoederen, indien de hoeveelheid accijnsgoederen
+      die gemiddeld over een jaar voorhanden is of is opgeslagen meer bedraagt dan een bij
+      ministeriële regeling per soort accijnsgoed vast te stellen hoeveelheid.
+
+      2. Een plaats van waaruit accijnsgoederen worden geleverd aan een verbruiker kan niet in
+      aanmerking komen als accijnsgoederenplaats.
+
+      3. In bij ministeriële regeling aan te wijzen gevallen kunnen plaatsen in afwijking van
+      het bepaalde in het eerste en in het tweede lid in aanmerking komen als
+      accijnsgoederenplaats.
+    url: https://wetten.overheid.nl/BWBR0005251/2024-01-01#HoofdstukIII_Afdeling1_Artikel40
+    # De POC hing de vergunningplicht en de vergunningstatus aan dit artikel. De
+    # eis van een vergunning staat echter in artikel 39; artikel 40 zegt alleen
+    # welke plaatsen als accijnsgoederenplaats in aanmerking kunnen komen. De
+    # vergunningstatus is daarom naar artikel 39 verplaatst. Welke plaatsen in
+    # aanmerking komen (lid 1 onder b met de bij ministeriële regeling vast te
+    # stellen hoeveelheid, lid 2 en lid 3) is niet gemodelleerd.

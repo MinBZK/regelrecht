@@ -819,6 +819,12 @@ Geen brontekst in het corpus (de tekst is de bron, een getal wordt niet verzonne
 - Alcoholwet vergunning VWS art. 8 lid 4: de tak "niet ingeschreven en lid-4-voorwaarden onbekend geeft onbekend" is niet als scenario te schrijven, omdat deze wet platte parameters gebruikt en de scenariotaal een parameter niet onbekend kan maken.
 - Awb beroep: de binding van `zaak` heeft `kind: cases`, dat een lijst levert en geen object, en de materialiser heeft geen sleutel om de zaak te selecteren (de zaak is de zaak). Genoteerd in `bindings.yaml`, niet stilzwijgend omzeild.
 
+Nog niet nagelopen, gevonden bij de accijnswet (september 2026):
+
+- **Afrondingsvoorschriften in de wettekst die het model niet uitvoert.** De Wet op de accijns art. 7 lid 1 en art. 13 dragen dezelfde slotzin met twee afrondingen die de andere kant op gaan: de hectoliter "rekenkundig" (half-up), het volumeprocent alcohol "naar beneden" op één decimaal. Het model deed alleen de eerste, waardoor bier van 5,28%vol € 0,65 per hectoliter te duur werd en gedistilleerd van 40,37%vol € 1,28, altijd ten nadele van de belastingplichtige. Rechtgezet met `FLOOR precision: 1` vóór de vermenigvuldiging, met scenario's die het vastleggen.
+
+  Het punt is algemener dan deze wet. Schema-validatie ziet zo'n afwijking niet, de scenario's zagen hem niet omdat ze allemaal ronde percentages gebruikten, en het commentaar boven de regel ging over precies die zin maar sloeg de tweede helft over. Twaalf andere bestanden in de demo-corpus noemen "afgerond" of "afronding" in hun artikeltekst (zorgtoeslagwet 2024 en 2025, AOW en AOW-gegevens, Wet IB, SUWI, huurtoeslag, bijstand Amsterdam, WW, pensioenwet, Zvw werkgeversbijdrage). Of die de voorgeschreven afronding werkelijk uitvoeren, en in de juiste richting en volgorde, is niet nagelopen. Dat vraagt de wettekst zin voor zin naast het model leggen; de skill `law-letter-fidelity-audit` is daarvoor bedoeld.
+
 Wat de taal niet kan (zie de nummers onder "Wat de taal nog niet kan"):
 
 - Participatiewet art. 11 lid 4 (partnerrecht): kandidaat 10, de aanroep van de eigen wet op de partner-bsn wordt als kringverwijzing geweigerd. Empirisch geverifieerd en teruggedraaid.

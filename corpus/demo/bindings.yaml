@@ -1938,6 +1938,19 @@ wet_kinderopvang:
   verwachte_partner_uren:
     kind: claim
     service: TOESLAGEN
+wet_op_de_accijns/accijnsplicht_alcohol:
+  # De vergunning voor een accijnsgoederenplaats staat in het register van de
+  # Douane (art. 39/40). Geen rij betekent geen vergunning, niet 'onbekend':
+  # het register is uitputtend voor wie er een heeft.
+  heeft_agp_vergunning_register:
+    table: agp_vergunningen
+    field: heeft_agp_vergunning
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: DOUANE
+    absent: false
 wet_op_de_huurtoeslag:
   huurprijs:
     kind: claim

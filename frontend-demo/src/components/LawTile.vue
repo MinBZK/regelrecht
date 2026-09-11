@@ -19,7 +19,7 @@ const props = defineProps({
 const emit = defineEmits(['edit-value', 'evaluated', 'apply']);
 const router = useRouter();
 const demo = useDemo();
-const { corpus, dataVersion, profile, personaParams, findCase } = demo;
+const { corpus, dataVersion, profile, personaParams, findCase, canSubmitClaims, activeDelegation } = demo;
 
 const evaluation = ref(null);
 const showData = ref(false);
@@ -176,9 +176,11 @@ const produces = computed(() => {
   }
   return null;
 });
-const canApply = computed(() => evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
+// Een machtiging zonder het recht om aanvragen in te dienen mag alleen kijken:
+// dan verdwijnen de knoppen, niet alleen hun werking.
+const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
 /** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
-const canObject = computed(() => currentCase.value?.status === 'DECIDED' && currentCase.value?.approved === false && !currentCase.value?.objection);
+const canObject = computed(() => canSubmitClaims.value && currentCase.value?.status === 'DECIDED' && currentCase.value?.approved === false && !currentCase.value?.objection);
 
 // The application stays in the portal (a sheet); the case system is the
 // caseworker's world.
@@ -314,7 +316,7 @@ const statusTag = computed(() => {
            maken" 347px, so both wrapped; "Aanvraag" and "Bezwaar" fit. -->
       <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" text="Bezwaar" @click="apply"></nldd-button>
       <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Aanvraag" @click="apply"></nldd-button>
-      <nldd-button v-else-if="evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
+      <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>
       <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" text="Berekening" @click="showTrace = true"></nldd-button>
       <nldd-button variant="neutral-transparent" size="sm" start-icon="book" text="Wettekst" @click="router.push(`/wetten/${encodeURIComponent(law.id)}`)"></nldd-button>

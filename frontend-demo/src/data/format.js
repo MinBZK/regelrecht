@@ -105,10 +105,42 @@ export function formatDateTime(iso) {
 }
 
 /** `hoogte_toeslag` -> `Hoogte toeslag`. */
+/**
+ * Afkortingen die als afkorting geschreven horen te worden. Zonder deze lijst
+ * maakt `humanize` van `agp_vergunning_vereist` "Agp vergunning vereist", en
+ * dat leest als een woord in plaats van als de accijnsgoederenplaats die het
+ * is. Alleen namen die in het corpus voorkomen; een onbekende afkorting krijgt
+ * gewoon de gebruikelijke behandeling.
+ */
+const ABBREVIATIONS = new Map(
+  [
+    ['agp', 'AGP'],
+    ['aow', 'AOW'],
+    ['bsn', 'BSN'],
+    ['bbz', 'Bbz'],
+    ['brp', 'BRP'],
+    ['cbs', 'CBS'],
+    ['haccp', 'HACCP'],
+    ['kvk', 'KvK'],
+    ['nvwa', 'NVWA'],
+    ['sbi', 'SBI'],
+    ['svh', 'SVH'],
+    ['vog', 'VOG'],
+    ['wia', 'WIA'],
+    ['ww', 'WW'],
+    ['zvw', 'Zvw'],
+  ],
+);
+
 export function humanize(name) {
   if (!name) return '';
-  const s = String(name).replaceAll('_', ' ').trim();
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  const words = String(name).replaceAll('_', ' ').trim().split(/\s+/);
+  const out = words.map((w) => ABBREVIATIONS.get(w.toLowerCase()) ?? w);
+  if (!out.length) return '';
+  // De eerste letter met een hoofdletter, tenzij het woord al een afkorting is.
+  const first = out[0];
+  out[0] = ABBREVIATIONS.has(words[0].toLowerCase()) ? first : first.charAt(0).toUpperCase() + first.slice(1);
+  return out.join(' ');
 }
 
 /** Eurocent value for a monetary spec; the raw number otherwise. */
