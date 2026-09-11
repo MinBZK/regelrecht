@@ -23,7 +23,10 @@
 //!    waarom dat niet alleen een omweg is maar ook de nette uitkomst.
 //!
 //! Het opstarten faalt luid: geen wereldbestand, geen leesbare wereld of geen
-//! regelingen betekent dat het proces stopt met de reden. Een server die opkomt
+//! regelingen betekent dat het proces stopt met de reden. Leesbaar is daarbij
+//! niet genoeg — het opstarten bouwt één wereld
+//! ([`WorldRegistry::check_buildable`]) om ook een wereldbestand te zien dat een
+//! regeling noemt die niet in de opgehaalde map staat. Een server die opkomt
 //! zonder wereld zou op elke healthcheck groen staan en op elk verzoek dezelfde
 //! fout geven.
 

@@ -60,8 +60,12 @@ gedeelde `CORPUS_GIT_TOKEN` van de harvester-tijd gaat nooit naar een repo die
 deze app aanwijst.
 
 Het opstarten **faalt luid**. Geen wereldbestand, geen leesbare wereld, geen
-regelingen of een ref die niet bestaat: het proces stopt met de reden. Een server
-die opkomt zonder wereld zou op elke healthcheck groen staan en op elk verzoek
+regelingen of een ref die niet bestaat: het proces stopt met de reden. Leesbaar is
+daarbij niet genoeg, dus het opstarten bouwt één wereld voordat de listener
+opengaat (`WorldRegistry::check_buildable`): zo komt ook een wereldbestand boven
+dat een regeling noemt die niet in de opgehaalde map staat — een corpusbron die
+één map te hoog wijst, een ref waarin die wet nog niet bestond. Een server die
+opkomt zonder wereld zou op elke healthcheck groen staan en op elk verzoek
 dezelfde fout geven.
 
 ## De API

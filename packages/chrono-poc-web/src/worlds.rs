@@ -86,6 +86,34 @@ impl WorldRegistry {
         &self.definition
     }
 
+    /// Toets of er uit deze definitie en deze regelingen werkelijk een wereld te
+    /// bouwen is, en geef de melding van de simulator als dat niet zo is.
+    ///
+    /// Hoort bij het starten te gebeuren, vóór de listener opengaat. Zonder deze
+    /// toets is "het wereldbestand is leesbaar" alles wat het opstarten
+    /// vaststelt, en dat is minder dan het lijkt: een wereldbestand dat een
+    /// regeling noemt die niet in de opgehaalde map staat — een corpusbron die
+    /// één map te hoog wijst, een ref waarin die wet nog niet bestond — levert
+    /// een proces op dat groen staat op `/health` en op elk verzoek dezelfde 500
+    /// geeft. Precies de vorm van "hij draait" die deze crate belooft niet te
+    /// hebben.
+    ///
+    /// De wereld wordt gebouwd en meteen weggegooid: hij is niet `Send`, dus hij
+    /// verlaat deze thread niet, en wat hier getoetst wordt is dat hij te bouwen
+    /// is. Het kost één keer het inlezen van de regelingen, op een blocking
+    /// thread, op een moment dat er nog niemand wacht.
+    pub async fn check_buildable(&self) -> Result<(), String> {
+        let definition = Arc::clone(&self.definition);
+        let regulation_root = Arc::clone(&self.regulation_root);
+        tokio::task::spawn_blocking(move || {
+            World::from_definition(&definition, &regulation_root)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| format!("de toets op het wereldbestand liep vast: {e}"))?
+    }
+
     /// Hoeveel sessies er nu een wereld hebben.
     pub fn len(&self) -> usize {
         self.sessions.len()
@@ -207,12 +235,16 @@ impl WorldRegistry {
     /// Geeft terug hoeveel er weg zijn. Het weggooien van de greep sluit het
     /// kanaal, waarna de thread zijn lus verlaat en de wereld laat vallen — er
     /// is dus niets te sluiten dat hier gesloten moet worden.
+    ///
+    /// `saturating_sub` en geen `-`: tussen de twee metingen kan er een sessie
+    /// bijgekomen zijn, en dan is het verschil negatief. Een getal voor een
+    /// logregel hoort het proces niet om te leggen.
     pub fn sweep(&self) -> usize {
         let ttl = self.ttl;
         let before = self.sessions.len();
         self.sessions
             .retain(|_, world| world.last_used.elapsed() < ttl);
-        before - self.sessions.len()
+        before.saturating_sub(self.sessions.len())
     }
 }
 
@@ -332,12 +364,10 @@ cells:
         assert_eq!(clock.to_string(), "2024-01-01");
     }
 
-    /// Een wereld die niet opgetuigd kan worden — hier: een regelingenmap die
-    /// niet bestaat, terwijl de cel wetten laadt — komt als 500 terug met de
-    /// melding van de simulator erin, en niet als een hangend verzoek.
-    #[tokio::test]
-    async fn een_wereld_die_niet_opkomt_geeft_een_leesbare_fout() {
-        let broken = WorldDefinition::from_yaml(
+    /// Een definitie die een regeling noemt die er niet is: leesbaar als YAML,
+    /// maar er valt geen wereld uit te bouwen.
+    fn unbuildable() -> WorldDefinition {
+        WorldDefinition::from_yaml(
             r"
 clock:
   start: 2024-01-01
@@ -347,9 +377,52 @@ cells:
       - wet_die_niet_bestaat
 ",
         )
-        .expect("de definitie zelf is leesbaar");
+        .expect("de definitie zelf is leesbaar")
+    }
+
+    /// De toets bij het starten: een wereldbestand dat een regeling noemt die
+    /// niet in de regelingenmap staat, hoort het proces te laten stoppen met de
+    /// naam van die regeling erin — en niet een server op te leveren die groen
+    /// staat op `/health` en op elk verzoek dezelfde 500 geeft.
+    #[tokio::test]
+    async fn een_onbouwbare_wereld_wordt_bij_het_starten_gezien() {
         let registry = WorldRegistry::new(
-            broken,
+            unbuildable(),
+            PathBuf::from("/bestaat/niet"),
+            Duration::from_secs(60),
+        );
+
+        let err = registry
+            .check_buildable()
+            .await
+            .expect_err("een wereld zonder regelingen hoort bij het starten te falen");
+        assert!(
+            err.contains("wet_die_niet_bestaat"),
+            "de melding noemt de regeling niet: {err}"
+        );
+        assert!(
+            registry.is_empty(),
+            "de toets hoort geen sessie achter te laten"
+        );
+    }
+
+    /// En de andere kant: een wereld die wél te bouwen is, laat het opstarten
+    /// doorlopen. Zonder deze helft zou een toets die altijd faalt ook slagen.
+    #[tokio::test]
+    async fn een_bouwbare_wereld_komt_door_de_toets() {
+        registry(Duration::from_secs(60))
+            .check_buildable()
+            .await
+            .expect("de testwereld heeft geen regelingen nodig en hoort bouwbaar te zijn");
+    }
+
+    /// Een wereld die niet opgetuigd kan worden — hier: een regelingenmap die
+    /// niet bestaat, terwijl de cel wetten laadt — komt als 500 terug met de
+    /// melding van de simulator erin, en niet als een hangend verzoek.
+    #[tokio::test]
+    async fn een_wereld_die_niet_opkomt_geeft_een_leesbare_fout() {
+        let registry = WorldRegistry::new(
+            unbuildable(),
             PathBuf::from("/bestaat/niet"),
             Duration::from_secs(60),
         );

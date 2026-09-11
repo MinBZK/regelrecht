@@ -16,7 +16,9 @@
 //!    en de regelingen waarop het rust horen uit dezelfde momentopname te komen;
 //!    en
 //! 3. het token uit `CORPUS_AUTH_<SLUG>_TOKEN` gaat mee als `Authorization`,
-//!    want zonder dat komt een privérepo niet binnen.
+//!    want zonder dat komt een privérepo niet binnen; en
+//! 4. een pad dat in de opgehaalde momentopname niet bestaat, noemt zichzelf —
+//!    ook als het het tweede pad uit dezelfde momentopname is.
 //!
 //! Eén test, want dit is één verhaal dat de env van het hele proces aanpast
 //! (`GITHUB_API_BASE`); twee tests zouden daarop racen.
@@ -93,8 +95,6 @@ async fn een_wereld_uit_een_repo_kost_een_archiefverzoek_met_het_token() {
                 "",
             ),
         ])))
-        // Twee bronnen, één verzoek: het archief wordt hergebruikt.
-        .expect(1)
         .mount(&server)
         .await;
 
@@ -106,6 +106,16 @@ async fn een_wereld_uit_een_repo_kost_een_archiefverzoek_met_het_token() {
     let resolved = resolve(&world, Some(&corpus), None)
         .await
         .unwrap_or_else(|e| panic!("het opstarten uit een repo moet slagen: {e}"));
+
+    // Twee bronnen, één verzoek: het archief wordt hergebruikt.
+    assert_eq!(
+        server
+            .received_requests()
+            .await
+            .map(|requests| requests.len()),
+        Some(1),
+        "twee bronnen uit dezelfde repo op dezelfde ref horen één archiefverzoek te kosten"
+    );
 
     assert_eq!(resolved.definition.cells.len(), 1);
     assert_eq!(resolved.definition.cells[0].id, "brp");
@@ -123,6 +133,20 @@ async fn een_wereld_uit_een_repo_kost_een_archiefverzoek_met_het_token() {
         !root.exists(),
         "de opgehaalde map hoort opgeruimd te worden, {} staat er nog",
         root.display()
+    );
+
+    // Een corpuspad dat in de momentopname niet bestaat, noemt zichzelf. Dit is
+    // het tweede pad uit dezelfde momentopname en loopt dus langs het
+    // hergebruikte archief; zonder de toets daar zou dit terugkomen als "zet
+    // CHRONO_POC_CORPUS_SOURCE", van een variabele die wél gezet is.
+    let mis = Source::parse("github:example-org/corpus-voorbeeld@main:regelingen")
+        .expect("geldige corpusbron");
+    let err = resolve(&world, Some(&mis), None)
+        .await
+        .expect_err("een corpuspad dat er niet in staat hoort het opstarten te laten falen");
+    assert!(
+        err.contains("regelingen") && err.contains("staat niet in"),
+        "de melding hoort het pad in de repo te noemen: {err}"
     );
 
     std::env::remove_var("GITHUB_API_BASE");

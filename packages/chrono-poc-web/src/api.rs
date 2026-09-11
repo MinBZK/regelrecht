@@ -142,9 +142,11 @@ fn static_service(static_dir: &str) -> MethodRouter {
 
 /// Leeft dit proces? Zonder login, want een healthcheck heeft er geen.
 ///
-/// Zegt niets over de werelden: die worden per sessie opgetuigd, en het
-/// wereldbestand is bij het starten al gelezen — een proces dat hier antwoordt,
-/// heeft een leesbare wereld (zie [`crate::sources::resolve`]).
+/// Zegt niets over de werelden: die worden per sessie opgetuigd. Dat het over
+/// die werelden niets hoeft te zeggen, komt doordat het opstarten er al één
+/// gebouwd heeft (zie [`crate::sources::resolve`] en
+/// [`crate::worlds::WorldRegistry::check_buildable`]) — een proces dat hier
+/// antwoordt, heeft een wereld die te bouwen is.
 async fn health() -> &'static str {
     "OK"
 }

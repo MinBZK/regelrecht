@@ -218,7 +218,13 @@ impl<'a> Fetcher<'a> {
             } => {
                 let key = (repo.clone(), git_ref.clone());
                 if let Some(root) = self.fetched.get(&key) {
-                    return join_in_repo(root, path);
+                    // Dezelfde toets als na een verse haal: een tweede bron uit
+                    // een al opgehaalde momentopname hoort dezelfde melding te
+                    // krijgen als de eerste. Zonder dit zou een corpuspad dat er
+                    // niet in staat als "de regelingenmap bestaat niet — zet
+                    // CHRONO_POC_CORPUS_SOURCE" terugkomen, van een variabele die
+                    // wél gezet is en alleen het verkeerde pad noemt.
+                    return located_in_repo(root, path, repo, git_ref);
                 }
                 let token = resolve_token(source, self.auth_ref_override)?;
                 let dir = tempfile::Builder::new()
@@ -240,17 +246,21 @@ impl<'a> Fetcher<'a> {
                 let root = dir.path().to_path_buf();
                 self.dirs.push(dir);
                 self.fetched.insert(key, root.clone());
-                let located = join_in_repo(&root, path)?;
-                if !located.exists() {
-                    return Err(format!(
-                        "'{path}' staat niet in {repo}@{git_ref} (wel opgehaald, maar dit pad \
-                         bestaat er niet)"
-                    ));
-                }
-                Ok(located)
+                located_in_repo(&root, path, repo, git_ref)
             }
         }
     }
+}
+
+/// Het pad ín een opgehaalde momentopname, mits het er ook echt in staat.
+fn located_in_repo(root: &Path, path: &str, repo: &str, git_ref: &str) -> Result<PathBuf, String> {
+    let located = join_in_repo(root, path)?;
+    if !located.exists() {
+        return Err(format!(
+            "'{path}' staat niet in {repo}@{git_ref} (wel opgehaald, maar dit pad bestaat er niet)"
+        ));
+    }
+    Ok(located)
 }
 
 /// Voeg een repo-relatief pad samen met de map waarin de repo staat.

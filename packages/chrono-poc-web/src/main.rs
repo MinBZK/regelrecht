@@ -50,6 +50,18 @@ async fn main() {
         "wereldbestand gelezen"
     );
 
+    let worlds = Arc::new(WorldRegistry::new(definition, regulation_root, SESSION_TTL));
+
+    // Leesbaar is niet hetzelfde als bouwbaar: een wereldbestand dat een regeling
+    // noemt die niet in de opgehaalde map staat, komt hier pas boven. Zonder deze
+    // toets zou dat proces opkomen, groen staan op `/health` en op elk verzoek
+    // dezelfde 500 geven — de duurste vorm van "hij draait".
+    if let Err(e) = worlds.check_buildable().await {
+        tracing::error!("kon uit dit wereldbestand en deze regelingen geen wereld bouwen: {e}");
+        std::process::exit(1);
+    }
+    tracing::info!("wereld bouwbaar");
+
     let (oidc_client, end_session_url) = match config.oidc.as_ref() {
         Some(oidc) => match regelrecht_auth::discover_client(oidc).await {
             Ok(result) => (Some(Arc::new(result.client)), result.end_session_url),
@@ -74,7 +86,6 @@ async fn main() {
     };
 
     let port = config.port;
-    let worlds = Arc::new(WorldRegistry::new(definition, regulation_root, SESSION_TTL));
     let state = AppState {
         config: Arc::new(config),
         worlds: Arc::clone(&worlds),
