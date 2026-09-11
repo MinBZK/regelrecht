@@ -1,13 +1,21 @@
-//! De celconfiguratie: welke wetten een cel laadt, welke feiten ze houdt en
-//! welke lexostatussen ze publiceert.
+//! De celconfiguratie: welke wetten een cel laadt, welke feiten ze houdt, welke
+//! lexostatussen ze publiceert en welke besluiten ze kan nemen.
 //!
-//! Lexostatus-definities zijn **data**, geen Rust. Ze staan in de configuratie
-//! van de cel, worden gelezen door de loader en zijn verder onveranderlijk. Een
-//! consument kan dus geen eigen reductie injecteren; hij kan alleen een
-//! gepubliceerde naam opvragen met gedocumenteerde parameters (RFC-022 §4.1).
+//! Lexostatus- en besluit-definities zijn **data**, geen Rust. Ze staan in de
+//! configuratie van de cel, worden gelezen door de loader en zijn verder
+//! onveranderlijk. Een consument kan dus geen eigen reductie injecteren; hij kan
+//! alleen een gepubliceerde naam opvragen met gedocumenteerde parameters
+//! (RFC-022 §4.1).
+//!
+//! Wat de twee soorten definitie delen, staat hier ook: de gedocumenteerde
+//! parameter, de controle van een vraag daartegen, en de toetsen die een
+//! definitie aan de cel houden waarin ze staat ([`CellSurface`]). Ze beloven
+//! allebei hetzelfde soort ding, dus ze horen op dezelfde manier afgekeurd te
+//! worden.
 
+use crate::cell::besluit::BesluitDefinition;
 use crate::cell::chronicle::ChronicleStream;
-use crate::error::{Result, SimulatorError};
+use crate::error::{Result, SimulatorError, Subject};
 use regelrecht_engine::Value;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -26,6 +34,14 @@ pub struct CellConfig {
     /// De lexostatussen die de cel naar buiten publiceert.
     #[serde(default)]
     pub lexostatus_definitions: Vec<LexostatusDefinition>,
+    /// De besluiten die de cel kan nemen.
+    ///
+    /// Niet gepubliceerd: een besluit wordt niet door een consument opgevraagd
+    /// maar door de cel zelf uitgevoerd (zie [`crate::World::decide`]). Wat er
+    /// naar buiten van te zien is, is het decretogram dat eruit komt — en dat
+    /// via een reductie over de eigen kroniek.
+    #[serde(default)]
+    pub besluit_definitions: Vec<BesluitDefinition>,
 }
 
 /// Eén gepubliceerde lexostatus met haar gedocumenteerde parameters en reductie.
@@ -39,7 +55,7 @@ pub struct LexostatusDefinition {
     pub doc: Option<String>,
     /// De gedocumenteerde parameters. Een vraag die hiervan afwijkt, faalt.
     #[serde(default)]
-    pub inputs: Vec<LexostatusInput>,
+    pub inputs: Vec<DocumentedParameter>,
     /// De gedocumenteerde uitkomsten: wat de cel onder deze naam publiceert.
     ///
     /// Wat hier niet staat, komt niet in het antwoord, ook al berekende de
@@ -56,11 +72,16 @@ pub struct LexostatusDefinition {
     pub reduction: Reduction,
 }
 
-/// Eén gedocumenteerde parameter van een lexostatus.
+/// Eén gedocumenteerde parameter van een lexostatus of van een besluit.
+///
+/// Dezelfde vorm voor beide, want het is dezelfde belofte: dit zijn de namen en
+/// typen die de aanroeper mag — en moet — meegeven, en alles daarbuiten wordt
+/// geweigerd.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LexostatusInput {
-    /// Parameternaam, waarnaar de reductie met `$naam` verwijst.
+pub struct DocumentedParameter {
+    /// Parameternaam, waarnaar een reductie met `$naam` en een zaakkenmerk met
+    /// `{naam}` verwijst.
     pub name: String,
     /// Het verwachte type van de meegegeven waarde.
     #[serde(rename = "type")]
@@ -254,8 +275,13 @@ pub(crate) struct CellSurface<'a> {
     pub(crate) laws: &'a [String],
     /// Per regeling de uitkomstnamen, over alle geladen versies heen.
     pub(crate) outputs: BTreeMap<String, BTreeSet<String>>,
+    /// Per regeling de namen die ze als parameter of input declareert, over alle
+    /// geladen versies heen. Dit is wat een besluit aan de engine mag aanleveren.
+    pub(crate) regulation_inputs: BTreeMap<String, BTreeSet<String>>,
     /// Per kroniekstroom de veldnamen die de cel van die stroom kent.
     pub(crate) streams: BTreeMap<String, BTreeSet<String>>,
+    /// Per kroniekstroom het sleutelveld waarop ze groepeert.
+    pub(crate) stream_keys: BTreeMap<String, String>,
 }
 
 impl CellSurface<'_> {
@@ -263,6 +289,184 @@ impl CellSurface<'_> {
     fn outputs_of(&self, regulation: &str) -> BTreeSet<String> {
         self.outputs.get(regulation).cloned().unwrap_or_default()
     }
+
+    /// Laadt de cel deze regeling zelf?
+    ///
+    /// Eén plek voor de weigering, want de reden is voor een reductie en voor
+    /// een besluit dezelfde: een cel rekent op haar eigen recht.
+    pub(crate) fn check_own_regulation(
+        &self,
+        cell: &str,
+        subject: Subject,
+        name: &str,
+        regulation: &str,
+    ) -> Result<()> {
+        if self.laws.iter().any(|law| law == regulation) {
+            return Ok(());
+        }
+        Err(SimulatorError::ForeignRegulation {
+            cell: cell.to_string(),
+            subject,
+            name: name.to_string(),
+            regulation: regulation.to_string(),
+        })
+    }
+
+    /// Kent deze regeling elk van deze uitkomsten?
+    ///
+    /// `self.outputs` bevat de uitkomstnamen van álle geladen versies. Een
+    /// definitie afkeuren om een naam die alleen in de nieuwste versie ontbreekt,
+    /// zou een vraag of een besluit over een ouder moment onterecht blokkeren.
+    pub(crate) fn check_regulation_outputs<'a>(
+        &self,
+        cell: &str,
+        subject: Subject,
+        name: &str,
+        regulation: &str,
+        outputs: impl IntoIterator<Item = &'a str>,
+    ) -> Result<()> {
+        let known = self.outputs_of(regulation);
+        for output in outputs {
+            if !known.contains(output) {
+                return Err(SimulatorError::UnknownOutput {
+                    cell: cell.to_string(),
+                    subject,
+                    name: name.to_string(),
+                    origin: format!("regeling '{regulation}'"),
+                    output: output.to_string(),
+                    known: listing(&known),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// De velden die de cel van deze stroom kent, of de fout die zegt dat ze de
+    /// stroom niet houdt.
+    pub(crate) fn fields_of_stream(
+        &self,
+        cell: &str,
+        subject: Subject,
+        name: &str,
+        stream: &str,
+    ) -> Result<&BTreeSet<String>> {
+        self.streams
+            .get(stream)
+            .ok_or_else(|| SimulatorError::UnknownStream {
+                cell: cell.to_string(),
+                subject,
+                name: name.to_string(),
+                stream: stream.to_string(),
+                known: listing(self.streams.keys()),
+            })
+    }
+
+    /// Het sleutelveld van een stroom; `None` als de cel haar niet houdt.
+    pub(crate) fn stream_key(&self, stream: &str) -> Option<&str> {
+        self.stream_keys.get(stream).map(String::as_str)
+    }
+
+    /// Kent deze stroom dit veld?
+    pub(crate) fn check_stream_field(
+        &self,
+        cell: &str,
+        subject: Subject,
+        name: &str,
+        stream: &str,
+        field: &str,
+    ) -> Result<()> {
+        let fields = self.fields_of_stream(cell, subject, name, stream)?;
+        if contains_name(fields, field) {
+            return Ok(());
+        }
+        Err(SimulatorError::UnknownFilterField {
+            cell: cell.to_string(),
+            subject,
+            name: name.to_string(),
+            stream: stream.to_string(),
+            field: field.to_string(),
+            known: listing(fields),
+        })
+    }
+}
+
+/// De uitkomsten die een definitie publiceert: de uitkomst die de uitvoering
+/// aanstuurt, plus wat `outputs` erbij noemt.
+///
+/// Eén plek voor de regel, want ze geldt voor een lexostatus en voor een
+/// besluit: de aansturende uitkomst hoort er altijd bij — ze *is* het antwoord
+/// of het besluit — dus `outputs` breidt uit en perkt niet in.
+pub(crate) fn published_outputs<'a>(
+    driving: Option<&'a str>,
+    extra: &'a [String],
+) -> BTreeSet<&'a str> {
+    driving
+        .into_iter()
+        .chain(extra.iter().map(String::as_str))
+        .collect()
+}
+
+/// Controleer de meegegeven parameters tegen de gedocumenteerde.
+///
+/// Weigert een ontbrekende parameter, een niet-gedocumenteerde parameter en een
+/// parameter van het verkeerde type. Dat is wat "gedocumenteerde parameters"
+/// waard maakt: de cel accepteert precies wat ze publiceert. Eén plek, want een
+/// besluit is even strikt als een reductie.
+pub(crate) fn check_documented_params(
+    cell: &str,
+    subject: Subject,
+    name: &str,
+    documented: &[DocumentedParameter],
+    params: &BTreeMap<String, Value>,
+) -> Result<()> {
+    for supplied in params.keys() {
+        if !documented.iter().any(|input| &input.name == supplied) {
+            return Err(SimulatorError::UndocumentedParameter {
+                cell: cell.to_string(),
+                subject,
+                name: name.to_string(),
+                parameter: supplied.clone(),
+                documented: parameter_listing(documented),
+            });
+        }
+    }
+
+    for input in documented {
+        let Some(value) = params.get(&input.name) else {
+            return Err(SimulatorError::MissingParameter {
+                cell: cell.to_string(),
+                subject,
+                name: name.to_string(),
+                parameter: input.name.clone(),
+            });
+        };
+        if !input.value_type.accepts(value) {
+            return Err(SimulatorError::ParameterType {
+                cell: cell.to_string(),
+                subject,
+                name: name.to_string(),
+                parameter: input.name.clone(),
+                expected: input.value_type.label(),
+                actual: value.type_name(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// Komma-gescheiden lijst van gedocumenteerde parameters, voor foutmeldingen.
+pub(crate) fn parameter_listing(documented: &[DocumentedParameter]) -> String {
+    documented
+        .iter()
+        .map(|input| input.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Documenteert deze lijst een parameter met deze naam?
+pub(crate) fn documents(documented: &[DocumentedParameter], name: &str) -> bool {
+    documented.iter().any(|input| input.name == name)
 }
 
 /// Komma-gescheiden opsomming voor een foutmelding.
@@ -294,10 +498,7 @@ impl LexostatusDefinition {
             Reduction::Law { output, .. } => Some(output.as_str()),
             Reduction::Chronicle { .. } => None,
         };
-        driving
-            .into_iter()
-            .chain(self.outputs.iter().map(String::as_str))
-            .collect()
+        published_outputs(driving, &self.outputs)
     }
 
     /// Laat van het antwoord van de engine alleen de gepubliceerde uitkomsten
@@ -347,26 +548,14 @@ impl LexostatusDefinition {
         regulation: &str,
         parameters: &BTreeMap<String, String>,
     ) -> Result<()> {
-        if !surface.laws.iter().any(|law| law == regulation) {
-            return Err(SimulatorError::ForeignRegulation {
-                cell: cell.to_string(),
-                lexostatus: self.name.clone(),
-                regulation: regulation.to_string(),
-            });
-        }
-
-        let known = surface.outputs_of(regulation);
-        for published in self.published_outputs() {
-            if !known.contains(published) {
-                return Err(SimulatorError::UnknownOutput {
-                    cell: cell.to_string(),
-                    lexostatus: self.name.clone(),
-                    origin: format!("regeling '{regulation}'"),
-                    output: published.to_string(),
-                    known: listing(&known),
-                });
-            }
-        }
+        surface.check_own_regulation(cell, Subject::Lexostatus, &self.name, regulation)?;
+        surface.check_regulation_outputs(
+            cell,
+            Subject::Lexostatus,
+            &self.name,
+            regulation,
+            self.published_outputs(),
+        )?;
 
         for reference in parameters
             .values()
@@ -375,7 +564,8 @@ impl LexostatusDefinition {
             if !self.documents(reference) {
                 return Err(SimulatorError::UnknownReference {
                     cell: cell.to_string(),
-                    lexostatus: self.name.clone(),
+                    subject: Subject::Lexostatus,
+                    name: self.name.clone(),
                     reference: reference.to_string(),
                 });
             }
@@ -394,14 +584,7 @@ impl LexostatusDefinition {
         key: &str,
         conditions: &BTreeMap<String, Value>,
     ) -> Result<()> {
-        let Some(fields) = surface.streams.get(chronicle) else {
-            return Err(SimulatorError::UnknownStream {
-                cell: cell.to_string(),
-                lexostatus: self.name.clone(),
-                stream: chronicle.to_string(),
-                known: listing(surface.streams.keys()),
-            });
-        };
+        let fields = surface.fields_of_stream(cell, Subject::Lexostatus, &self.name, chronicle)?;
 
         if self.outputs.is_empty() {
             return Err(SimulatorError::ChronicleWithoutOutputs {
@@ -415,7 +598,8 @@ impl LexostatusDefinition {
             if !contains_name(fields, published) {
                 return Err(SimulatorError::UnknownOutput {
                     cell: cell.to_string(),
-                    lexostatus: self.name.clone(),
+                    subject: Subject::Lexostatus,
+                    name: self.name.clone(),
                     origin: format!("kroniekstroom '{chronicle}'"),
                     output: published.to_string(),
                     known: listing(fields),
@@ -424,15 +608,7 @@ impl LexostatusDefinition {
         }
 
         for field in std::iter::once(key).chain(conditions.keys().map(String::as_str)) {
-            if !contains_name(fields, field) {
-                return Err(SimulatorError::UnknownFilterField {
-                    cell: cell.to_string(),
-                    lexostatus: self.name.clone(),
-                    stream: chronicle.to_string(),
-                    field: field.to_string(),
-                    known: listing(fields),
-                });
-            }
+            surface.check_stream_field(cell, Subject::Lexostatus, &self.name, chronicle, field)?;
         }
 
         // `where` vergelijkt met letterlijke waarden. Wie de `$naam`-vorm van de
@@ -464,57 +640,20 @@ impl LexostatusDefinition {
 
     /// Documenteert deze lexostatus een parameter met deze naam?
     fn documents(&self, name: &str) -> bool {
-        self.inputs.iter().any(|input| input.name == name)
+        documents(&self.inputs, name)
     }
 
     /// Controleer de vraag van een consument tegen de gedocumenteerde parameters.
     ///
-    /// Weigert een ontbrekende parameter, een niet-gedocumenteerde parameter en
-    /// een parameter van het verkeerde type. Dat is wat "gedocumenteerde
-    /// parameters" waard maakt: de cel accepteert precies wat ze publiceert.
     /// Geldt voor beide reductievormen — een bron-cel zonder engine houdt haar
     /// consument even strikt aan de gepubliceerde vraag.
     pub(crate) fn check_params(&self, cell: &str, params: &BTreeMap<String, Value>) -> Result<()> {
-        for supplied in params.keys() {
-            if !self.inputs.iter().any(|input| &input.name == supplied) {
-                return Err(SimulatorError::UndocumentedParameter {
-                    cell: cell.to_string(),
-                    lexostatus: self.name.clone(),
-                    parameter: supplied.clone(),
-                    documented: self.documented_parameters(),
-                });
-            }
-        }
-
-        for input in &self.inputs {
-            let Some(value) = params.get(&input.name) else {
-                return Err(SimulatorError::MissingParameter {
-                    cell: cell.to_string(),
-                    lexostatus: self.name.clone(),
-                    parameter: input.name.clone(),
-                });
-            };
-            if !input.value_type.accepts(value) {
-                return Err(SimulatorError::ParameterType {
-                    cell: cell.to_string(),
-                    lexostatus: self.name.clone(),
-                    parameter: input.name.clone(),
-                    expected: input.value_type.label(),
-                    actual: value.type_name(),
-                });
-            }
-        }
-
-        Ok(())
+        check_documented_params(cell, Subject::Lexostatus, &self.name, &self.inputs, params)
     }
 
     /// Komma-gescheiden lijst van gedocumenteerde parameters, voor foutmeldingen.
     fn documented_parameters(&self) -> String {
-        self.inputs
-            .iter()
-            .map(|input| input.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
+        parameter_listing(&self.inputs)
     }
 }
 

@@ -10,6 +10,10 @@ een taalgrens en geen afspraak.
 Wetten zijn optioneel. Een cel met `laws: []` is een **bron-cel**: ze legt vast
 en reduceert, zonder engine. Zie [Een bron-cel](#een-bron-cel).
 
+Een cel met eigen wetten kan ook **besluiten**: ze voert een regeling uit en legt
+de uitkomst vast als decretogram in haar eigen kroniek. Zie
+[Het besluit-pad](#het-besluit-pad).
+
 Gaat een vraag over een celgrens, dan loopt hij langs de **veiligheidscontext**
 van de vragende cel naar het **transport**, en dat is de enige weg. Zie
 [Over een celgrens](#over-een-celgrens). Wat daar langs gaat is te meten met het
@@ -19,8 +23,8 @@ van de vragende cel naar het **transport**, en dat is de enige weg. Zie
 ## De drie chronolexogrammen, en waar ze hier zitten
 
 De paper onderscheidt drie soorten chronolexogram (RFC-022 §1.1–§1.2). Deze
-crate kent ze alle drie bij naam, maar legt er nog maar één zelf vast — de kaart
-van paper naar code:
+crate kent ze alle drie bij naam; twee ervan ontstaan hier tijdens een run — de
+kaart van paper naar code:
 
 - **Lexogram** — generiek en compile-time: het recht zelf. Hier is dat elk
   versiebestand onder `laws`. De map met `valid_from`-versies van een regeling
@@ -29,8 +33,8 @@ van paper naar code:
 - **Executogram** — de vastgelegde vaststelling van een feit. Dat is een
   `ChronicleEvent`, en sinds de tijdlijn erin zit heeft die de vorm die
   RFC-022 §1.3 vraagt: zie [De executogram-vorm](#de-executogram-vorm).
-- **Decretogram** — individueel en operationeel: het besluit. Dat wordt hier
-  nog nergens vastgelegd; zie [Wat hier nog niet staat](#wat-hier-nog-niet-staat).
+- **Decretogram** — individueel en operationeel: het besluit. Dat legt een cel
+  nu zelf vast, in haar eigen kroniek: zie [Het besluit-pad](#het-besluit-pad).
 
 En de vierde term, de **reductie**: de huidige vormen (één uitkomst van één
 eigen regeling, of één kroniekfilter dat per sleutelwaarde de laatste
@@ -86,9 +90,9 @@ dat is het punt: de scenario's [`brp_broncel.yaml`](scenarios/brp_broncel.yaml)
 en [`toeslagen_zorgtoeslag.yaml`](scenarios/toeslagen_zorgtoeslag.yaml) stellen
 hun vragen op dezelfde manier.
 
-Wat een bron-cel (nog) niet kan, is besluiten: daar hoort een regeling bij, een
-bevoegd gezag en een vastgelegd decretogram. Vastleggen en reduceren is genoeg
-om een cel te zijn.
+Wat een bron-cel niet kan, is besluiten: daar hoort een eigen regeling bij, en
+die heeft ze niet. Vastleggen en reduceren is genoeg om een cel te zijn — zie
+[Het besluit-pad](#het-besluit-pad) voor wat een cel mét wetten er nog bij kan.
 
 ## Wat een cel níet is
 
@@ -218,6 +222,111 @@ met `expect_not_established: true`; dat is een volwaardige verwachting en sluit
 wandklok. Feiten die pas later in de cel zijn vastgelegd, bestaan voor dat
 antwoord niet, en de engine kiest op datzelfde moment de regelingversie. Een
 moment ná de klok van de wereld is een fout; zie [De tijdlijn](#de-tijdlijn).
+
+## Het besluit-pad
+
+De lus van chronolexografie is informeren → concluderen → **vastleggen**, en dit
+is het derde deel. Een cel voert een eigen regeling uit en legt de uitkomst vast
+als **decretogram** in haar eigen kroniek:
+
+```rust,ignore
+world.decide("toeslagen", "zorgtoeslag_vaststelling", &params, op_moment)?;
+```
+
+`Cell::decide` is `pub(crate)`, net als `Cell::record`: een consument kan een cel
+niet laten besluiten, net zomin als hij in haar kroniek kan schrijven. Wat er
+gebeurt, in deze volgorde:
+
+1. de gedocumenteerde parameters worden gecontroleerd, precies zoals bij een vraag;
+2. de inputs worden verzameld — uit de eigen kronieken zoals ze op `op_moment`
+   waren, en uit de parameters van het besluit;
+3. de **besluit-engine** voert de regeling uit op dat moment, dus op de wetsversie
+   die toen gold;
+4. de uitkomst gaat als één gram de stroom `beschikkingen` in.
+
+### Twee paden, twee engines
+
+Een cel met besluit-definities houdt **twee engine-instanties over precies dezelfde
+wetten**. Dat is geen verdubbeling maar de plek waar het verschil tussen de twee
+paden afdwingbaar wordt (RFC-022 §4.2):
+
+| pad | engine | mag de celgrens over |
+|---|---|---|
+| `Cell::reduce` (publiek) | reduce-engine, **nooit** een `CellResolver` | nee — tier 1 en 2 |
+| `Cell::decide` (intern) | besluit-engine, de enige die er ooit een krijgt | ja, straks — tier 3 |
+
+Een cross-cel-pull vanuit een reductie is daarmee een *ontbrekende capability* en
+geen afspraak: de engine van het reduce-pad heeft geen resolver, dus ze kan een
+`source.regulation` die een andere cel aanwijst niet beantwoorden en levert geen
+antwoord in plaats van een geraden antwoord. Vandaag heeft géén van beide engines
+een resolver — het accepteren van een waarde van een andere cel volgt apart — dus
+het verschil is nu een belofte over wie wat mag, met de haak op zijn plek en een
+test eromheen.
+
+### Wat een decretogram draagt
+
+Het decretogram **is** het RFC-013 Execution Receipt, plus wat dat receipt niet
+kan weten. Geen parallel formaat ernaast: een handgeschreven selectie zou bij elke
+uitbreiding van RFC-013 stil achterlopen.
+
+| veld | wat |
+|---|---|
+| `zaakkenmerk` | waaronder deze zaak terug te vinden is, uit het sjabloon van de definitie |
+| `op_moment` | wanneer besloten is (het gram is een gewoon executogram) |
+| `regulation` + `regulation_valid_from` | welke regeling, en **welke versie daarvan gold** |
+| `competent_authority` | het bevoegd gezag dat de regeling noemt (RFC-002) |
+| `legal_character` | wat de wet ervan maakt: `BESCHIKKING`, `TOETS`, … |
+| de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
+| `inputs` | elke waarde waarop besloten is, **met haar herkomst** |
+| `receipt` | het volledige Execution Receipt |
+
+De herkomst per input is geen versiering. Zonder haar staat er wel een waarde in
+het gram, maar niet van wanneer ze was of wie haar leverde — en dan is
+"accepteren in plaats van narekenen" niet van gokken te onderscheiden. Wat het
+besluit ophaalde, gaat daarom ín het gram en **niet** als los feit in een
+kroniek: een volgend besluit haalt het opnieuw op. Een kroniek bevat alleen wat de
+cel zelf overkwam (zie [Wat een cel is](#wat-een-cel-is)).
+
+Eén besluit is één gram. Wat tegelijk ontstaat, wordt samen vastgelegd (RFC-022
+§1.2 — elk chronolexogram is *elementair*): het recht en het bedrag staan in
+hetzelfde gram, niet in twee.
+
+### Terugzien is een reductie, nooit een herberekening
+
+Het gram is een gewoon `ChronicleEvent` met `intake: eigen_besluit`, dus de
+tijdreductie werkt er zonder speciale gevallen overheen. Een lexostatus die over
+`beschikkingen` filtert levert het besluit terug zoals het toen vastgelegd is;
+ligt er op het gevraagde moment nog geen gram, dan is het antwoord "niets
+vastgesteld" — en geen som van vandaag.
+
+Dat verschil is de hele reden dat een decretogram naast een lexogram bestaat, en
+het staat als scenario in
+[`scenarios/toeslagen_besluit.yaml`](scenarios/toeslagen_besluit.yaml): een
+besluit op T1 onder wetsversie V1, een vraag op T2 waar V2 geldt en een
+herberekening een ander bedrag zou geven, en een antwoord dat nog steeds het gram
+van T1 is — met `regulation_valid_from: 2024-01-01` erin, zodat te zien is onder
+welk recht besloten is. Het tegenscenario staat er direct naast: een nieuw besluit
+op T2 levert wél V2.
+
+De stroom `beschikkingen` gaat met opzet **niet** als databron naar de engine. Een
+besluit is geen feit om op te rekenen; zou ze meedoen, dan kon een volgende
+uitvoering stil op de uitkomst van een eerder besluit leunen, en dan is niet meer
+te zeggen of er gerekend of overgeschreven is.
+
+### Wat van RFC-022 §1.2 hier wel en niet in zit
+
+**Wel**: dat een decretogram een engine-uitkomst met een `legal_character` is en
+het RFC-013 receipt haar lichaam; dat elk gram elementair is en co-ontstane
+uitkomsten samen draagt; het `zaakkenmerk` als de sleutel waaronder de grammen van
+één zaak een kroniek vormen; het moment.
+
+**Niet**: de RFC-008-stages (BESLUIT, BEKENDMAKING, BEZWAAR — er is één soort gram
+en geen stage-decretogrammen, dus "de huidige stap" bestaat hier niet); `modality`
+(`is_intrekking_van`, `is_wijziging_van`); de afgeleide rechtsbeschermingsroute
+(§3.3); `decision_type` als open vocabulaire; `extensions`; en de handtekening —
+het gram wordt niet ondertekend, want er is geen sleutelmateriaal (zie
+[Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd)). Verplichtingen
+die uit een besluit volgen horen ook bij §1.2 en staan er nog niet.
 
 ## Over een celgrens
 
@@ -370,10 +479,11 @@ bereikt geen stille regel in het bestand is.
 ## Het wereldbestand
 
 Een wereld is één YAML-bestand: `clock` (de tijdlijn), `cells` (wie er zijn),
-`fixtures` (de startstand) en twee soorten vraag: `queries` (een consument
-bevraagt een cel) en `query_via_transport` (een cel bevraagt een andere cel).
-Beide dragen hun eigen verwachting. De assertie hoort bij het bestand, niet bij
-Rust: een nieuw testgeval is een nieuw bestand.
+`fixtures` (de startstand), `decide` (welke cel wanneer waarover besluit) en twee
+soorten vraag: `queries` (een consument bevraagt een cel) en
+`query_via_transport` (een cel bevraagt een andere cel). Elk draagt zijn eigen
+verwachting. De assertie hoort bij het bestand, niet bij Rust: een nieuw
+testgeval is een nieuw bestand.
 
 ```yaml
 name: korte naam van het scenario
@@ -427,6 +537,25 @@ cells:
           key: bsn                              # sleutel = naam van een input
           latest: true                          # de enige modus; mag weg
 
+    besluit_definitions:                        # wat de cel kan besluiten
+      - name: zorgtoeslag_vaststelling
+        doc: vrije toelichting                  # optioneel
+        regulation: wet_op_de_zorgtoeslag       # een eigen regeling
+        output: heeft_recht_op_zorgtoeslag      # de uitkomst die het besluit ís
+        outputs:                                # wat er in hetzelfde gram mee gaat
+          - hoogte_zorgtoeslag
+        zaakkenmerk: 'zorgtoeslag/{bsn}'        # {naam} = een gedocumenteerde
+                                                # parameter; minstens één
+        params:                                 # de gedocumenteerde parameters
+          - name: bsn
+            type: string
+        inputs:                                 # wat de cel de engine aanlevert
+          bsn:
+            param: bsn                          # uit de parameters van het besluit
+          is_verzekerde:
+            from_chronicle: inkomensleveringen  # uit een eigen stroom: de laatste
+            field: is_verzekerde                # vastlegging op of vóór het moment
+
 fixtures:                                       # de startstand van de wereld
   - at: 2024-07-01                              # het moment van de vastlegging
     record:
@@ -438,6 +567,17 @@ fixtures:                                       # de startstand van de wereld
       fields:
         bsn: '999993653'
         partnerschap_type: GEEN
+
+decide:                                         # besluiten, elk op een moment
+  - description: vrije omschrijving             # optioneel
+    cell: toeslagen                             # de cel die besluit
+    besluit: zorgtoeslag_vaststelling           # de definitie hierboven
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01                       # bepaalt welke feiten de cel
+                                                # kent én welke wetsversie geldt
+    expect:                                     # optioneel: wat het gram draagt
+      heeft_recht_op_zorgtoeslag: true
 
 queries:
   - description: vrije omschrijving             # optioneel
@@ -474,9 +614,22 @@ query_via_transport:                            # vragen over een celgrens
 `query_via_transport` is een **test-only stap, en dat is tijdelijk**. In de
 opstelling die we bouwen stelt een cel zo'n vraag uitsluitend vanuit haar
 besluit-pad: ze heeft een input nodig die een andere organisatie vaststelt. Dat
-pad bestaat nog niet — een cel kan nog niets vastleggen en dus niets accepteren —
-en tot die tijd is dit de enige manier om het verkeer te laten zien en erop te
-asserteren. Zodra het besluit-pad er is, verhuist de aanroep daarheen.
+pad bestaat inmiddels, maar het *accepteren* van zo'n waarde nog niet — een
+besluit haalt zijn inputs uit de eigen kronieken en uit zijn parameters — en tot
+die tijd is dit de enige manier om het verkeer te laten zien en erop te
+asserteren. Zodra accepteren er is, verhuist de aanroep naar het besluit-pad.
+
+De stappen lopen in deze volgorde: eerst de besluiten, dan de vragen van een
+consument, dan die over een celgrens. Dat past bij wat ze zijn — een besluit is
+een gebeurtenis op de tijdlijn, een vraag kijkt erop terug — en het maakt niets
+onmogelijk: een vraag over een moment *vóór* een besluit levert nog steeds het
+beeld van toen, want de reductie filtert zelf op `op_moment`. De klok gaat vóór
+elke stap vooruit tot haar moment, zodat een levering die ertussen valt eerst
+landt.
+
+Een `decide` mag zonder `expect`, anders dan een vraag: hij legt iets vast, en
+bewijst daarmee ook zonder verwachting iets — namelijk dat de vragen erna iets te
+vinden hebben.
 
 Onbekende velden worden geweigerd, zodat een typfout niet stil verdwijnt. Elke
 vraag heeft minstens één verwachting: een vraag zonder `expect` en zonder
@@ -602,29 +755,27 @@ Het corpus wordt standaard naast de crate gezocht (`corpus/regulation`);
 
 ## Wat hier nog niet staat
 
-**De cel besluit nog niets.** Er wordt inmiddels vastgelegd — een trigger op de
-klok legt een executogram in een kroniek — maar alleen wat de startstand
-voorschrijft. De cel zelf concludeert nog niks. In chronolexografie is
-vastleggen juist de *productieve* activiteit, en de lus is informeren →
-concluderen → **vastleggen**. Een reductie die
-`heeft_recht_op_zorgtoeslag: true` oplevert is een besluit, en dat hoort als
-decretogram (BESCHIKKING, met moment en `zaakkenmerk`) in de eigen kroniek te
-landen (RFC-022 §1.2), zodat een latere vraag *op dat moment* het besluit
-terugvindt in plaats van het opnieuw uit te rekenen onder een mogelijk andere
-wetsversie. Precies dat verschil — decretogram tegenover lexogram — is wat deze
-opstelling wil laten zien, en zonder vastleggen valt het niet te demonstreren;
-"een besluit van een andere bevoegde organisatie accepteren" heeft er evengoed
-een vastgelegd besluit voor nodig. Het vastleg-pad dat daarvoor nodig is, staat
-er nu: `Cell::record` is `pub(crate)`, dus geen consument kan erin schrijven,
-net zomin als eruit lezen. Wat mist is de trigger die een besluit *neemt*.
+**Een besluit trekt nog geen verplichtingen na zich aan.** Een beschikking die
+een bedrag toekent, brengt in de echte wereld betalingen voort met een
+vervaldatum; die horen bij het decretogram (RFC-022 §1.2) en worden bij het
+verstrijken van de tijd executogrammen. De trigger-lus in de wereld is er al op
+gebouwd, maar er is nog geen soort trigger voor.
 
-Aan de kant van de celgrens ontbreken nog drie dingen. **Accepteren in plaats van
-narekenen** (I5): het bewijsstuk van de veiligheidscontext heeft de vorm die een
-decretogram ervoor nodig heeft, maar er is nog geen decretogram om het in te
-leggen. De **invarianten-gate** die het gedeclareerde vraaggraf uit het scenario
-vergelijkt met het feitelijke uit het observatielog (I3). En **autorisatie**: de
-veiligheidscontext kent identiteit en ondertekening, en beslist nog niets over wat
-mag.
+**Een besluit wordt nog niet door een actie uitgelokt.** Het scenario zegt in
+`decide` wie wanneer waarover besluit; er is nog geen `World::act` waarmee een
+actor (een aanvraag indienen, een opgave doen) een cel aan het werk zet. Dat is
+de reden dat `decide` een stap in het bestand is en geen gevolg van iets anders.
+
+**Een besluit accepteert nog niets van een andere cel** (I5). De inputs komen uit
+de eigen kronieken en uit de parameters; de haak voor tier 3 zit op de
+besluit-engine en het bewijsstuk van de veiligheidscontext heeft al de vorm die
+`accepted_values` vraagt, maar de twee zijn nog niet verbonden. Het besluit-pad is
+wel de plek waar dat gaat gebeuren, en de enige.
+
+Aan de kant van de celgrens ontbreken verder de **invarianten-gate** die het
+gedeclareerde vraaggraf uit het scenario vergelijkt met het feitelijke uit het
+observatielog (I3), en **autorisatie**: de veiligheidscontext kent identiteit en
+ondertekening, en beslist nog niets over wat mag.
 
 Ook een **HTTP-transport** is er niet; dat is het punt van de trait. Komt het er,
 dan is dat een tweede implementatie naast `InProcessTransport` en geen wijziging in

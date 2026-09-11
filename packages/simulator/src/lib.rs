@@ -22,6 +22,13 @@
 //! wereld, nooit de wandklok, en [`World::advance`] laat de tijd lopen zodat
 //! triggers op hun eigen moment vastleggen.
 //!
+//! De lus is rond: een cel kan ook **besluiten**. [`World::decide`] laat haar een
+//! eigen regeling uitvoeren en legt het resultaat vast als [`Decretogram`] — het
+//! RFC-013 Execution Receipt plus moment en zaakkenmerk — in haar eigen kroniek.
+//! Terugzien doe je met een gewone reductie over die kroniek: ligt er geen
+//! decretogram, dan is het antwoord "niets vastgesteld" en nooit een
+//! herberekening onder een inmiddels andere wetsversie.
+//!
 //! ```no_run
 //! use regelrecht_simulator::{regulation_root, Scenario};
 //! use std::path::Path;
@@ -50,14 +57,15 @@ mod values;
 pub mod world;
 
 pub use cell::{
-    Cell, CellConfig, ChronicleEvent, ChronicleStore, ChronicleStream, Intake, Lexostatus,
-    LexostatusDefinition, LexostatusInput, LexostatusOutcome, ParameterType, Reduction,
+    BesluitDefinition, BesluitInput, Cell, CellConfig, ChronicleEvent, ChronicleStore,
+    ChronicleStream, Decretogram, DecretogramInput, DocumentedParameter, InputOrigin, Intake,
+    Lexostatus, LexostatusDefinition, LexostatusOutcome, ParameterType, Reduction, BESCHIKKINGEN,
 };
 pub use corpus::regulation_root;
-pub use error::{Result, SimulatorError};
+pub use error::{Result, SimulatorError, Subject};
 pub use scenario::{
-    ExpectationFailure, Query, QueryOutcome, Scenario, ScenarioRun, TransportOutcome,
-    TransportQuery,
+    Decision, DecisionOutcome, ExpectationFailure, Query, QueryOutcome, Scenario, ScenarioRun,
+    TransportOutcome, TransportQuery,
 };
 pub use security::{Identity, SecurityContext, Signature, SignedAnswer};
 pub use transport::{CellTransport, InProcessTransport};

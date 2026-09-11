@@ -1,0 +1,189 @@
+---
+name: een besluit wordt vastgelegd en niet opnieuw uitgerekend
+description: >-
+  De lus sluit: informeren → concluderen → **vastleggen**. De cel `toeslagen`
+  voert op T1 haar eigen wet uit, en het resultaat landt als decretogram in haar
+  eigen kroniek. Op T2 geldt een andere wetsversie met een andere uitkomst, maar
+  een vraag op T2 levert nog steeds het besluit van T1 — met de `valid_from` van
+  toen erbij, zodat te zien is onder welk recht besloten is. Pas een nieuw
+  besluit op T2 levert de nieuwe uitkomst.
+
+  Dat verschil is de hele reden dat een decretogram bestaat naast een lexogram.
+  Zonder vastleggen zou elke vraag een herberekening zijn, en dan zou het
+  antwoord op "wat is er destijds beslist" veranderen zodra de wet verandert.
+
+clock:
+  # De feiten van deze persoon staan als `events` in de celconfiguratie en
+  # liggen allemaal vóór dit moment; de besluiten hieronder liggen erna en
+  # nemen de klok mee.
+  start: 2024-01-01
+
+cells:
+  - id: toeslagen
+    laws:
+      - wet_op_de_zorgtoeslag
+      - algemene_wet_inkomensafhankelijke_regelingen
+      - regeling_standaardpremie
+
+    chronicles:
+      # Wat de cel over deze persoon vastlegde. Er staat géén stroom
+      # `beschikkingen` bij: die hoort bij het besluit-pad en wordt automatisch
+      # aangemaakt zodra een cel besluit-definities heeft.
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+              verzamelinkomen: 79547
+              buitenlands_inkomen: 0
+              vermogen: 0
+
+    besluit_definitions:
+      - name: zorgtoeslag_vaststelling
+        doc: >-
+          De cel voert artikel 2 van de Wet op de zorgtoeslag uit en legt de
+          uitkomst vast. Het artikel zegt zelf dat het een BESCHIKKING
+          voortbrengt; de cel neemt dat over in het gram, samen met het bevoegd
+          gezag dat de wet noemt.
+        regulation: wet_op_de_zorgtoeslag
+        # De uitkomst die het besluit *is*. Wat er causaal mee meekomt, blijft
+        # binnen de cel tenzij het hieronder in `outputs` staat.
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          # Wat samen ontstaat, wordt samen vastgelegd: één besluit is één gram
+          # met het recht én het bedrag erin, niet twee grammen.
+          - hoogte_zorgtoeslag
+        # Waaronder deze zaak terug te vinden is. Elke verwijzing moet een
+        # gedocumenteerde parameter zijn, anders zou het kenmerk voor elke zaak
+        # hetzelfde zijn.
+        zaakkenmerk: zorgtoeslag/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          # Wat de cel aan de engine aanlevert, met de herkomst erbij. Die
+          # herkomst gaat mee ín het decretogram: van welk moment het feit was,
+          # en uit welke stroom het kwam.
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+
+    lexostatus_definitions:
+      - name: zorgtoeslagbeschikking
+        doc: >-
+          Wat deze cel over deze zaak besloten heeft, op het gevraagde moment.
+          Een gewoon kroniekfilter — geen engine, geen herberekening — over de
+          stroom waarin het besluit-pad zijn decretogrammen legt.
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - heeft_recht_op_zorgtoeslag
+          - hoogte_zorgtoeslag
+          # De versie van de regeling waaronder besloten is. Dít maakt zichtbaar
+          # dat het antwoord een besluit is en geen som van vandaag.
+          - regulation_valid_from
+          - legal_character
+          - competent_authority
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+decide:
+  # T1. De wet van 2024 geldt, en de standaardpremie van 2024 (€ 1.987).
+  - description: op T1 besluit de cel onder de wetsversie die dan geldt
+    cell: toeslagen
+    besluit: zorgtoeslag_vaststelling
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      heeft_recht_op_zorgtoeslag: true
+      hoogte_zorgtoeslag: 197205.31187
+
+  # T2. Inmiddels geldt de wet van 2025, met een hogere standaardpremie en
+  # andere drempels. Hetzelfde besluit over dezelfde persoon valt daarom anders
+  # uit — en dat is precies wat het tegenscenario hieronder nodig heeft.
+  - description: op T2 levert hetzelfde besluit een andere uitkomst
+    cell: toeslagen
+    besluit: zorgtoeslag_vaststelling
+    params:
+      bsn: '999993653'
+    op_moment: 2025-02-01
+    expect:
+      heeft_recht_op_zorgtoeslag: true
+      hoogte_zorgtoeslag: 209692
+
+queries:
+  - description: >-
+      Vóór het eerste besluit had deze cel over deze zaak niets vastgesteld. Dat
+      is een gewoon antwoord met een reden, en nadrukkelijk geen berekening ter
+      plekke.
+    cell: toeslagen
+    lexostatus: zorgtoeslagbeschikking
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-01-01
+    expect_not_established: true
+
+  - description: >-
+      De kernassertie. Op 2025-01-01 is de wetsversie van 2025 in werking en zou
+      een herberekening een ander bedrag geven. Het antwoord is het besluit van
+      T1, met de `valid_from` van de versie waaronder het genomen is.
+    cell: toeslagen
+    lexostatus: zorgtoeslagbeschikking
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2025-01-01
+    expect:
+      heeft_recht_op_zorgtoeslag: true
+      hoogte_zorgtoeslag: 197205.31187
+      regulation_valid_from: '2024-01-01'
+      legal_character: BESCHIKKING
+      competent_authority: Dienst Toeslagen
+
+  - description: >-
+      Het tegenscenario: ná het tweede besluit levert dezelfde vraag het nieuwe
+      gram, onder de nieuwe versie. Een besluit vervangt het vorige niet — de
+      kroniek groeit — maar op dit moment is dit de laatste vaststelling.
+    cell: toeslagen
+    lexostatus: zorgtoeslagbeschikking
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2025-02-01
+    expect:
+      hoogte_zorgtoeslag: 209692
+      regulation_valid_from: '2025-01-01'
+
+  - description: >-
+      En het beeld van T1 blijft daarna exact hetzelfde: een gram dat later
+      landde, raakt een eerder moment niet.
+    cell: toeslagen
+    lexostatus: zorgtoeslagbeschikking
+    params:
+      zaakkenmerk: zorgtoeslag/999993653
+    op_moment: 2024-06-01
+    expect:
+      hoogte_zorgtoeslag: 197205.31187
+      regulation_valid_from: '2024-01-01'

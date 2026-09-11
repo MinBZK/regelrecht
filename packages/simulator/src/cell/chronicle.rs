@@ -146,6 +146,35 @@ impl ChronicleStore {
             .collect()
     }
 
+    /// Het sleutelveld dat elke stroom declareert, op stroomnaam.
+    pub(crate) fn declared_keys(&self) -> BTreeMap<String, String> {
+        self.streams
+            .iter()
+            .map(|stream| (stream.stream.clone(), stream.key.clone()))
+            .collect()
+    }
+
+    /// Het sleutelveld van één stroom; `None` als de cel haar niet houdt.
+    pub(crate) fn key_of(&self, stream: &str) -> Option<&str> {
+        self.streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)
+            .map(|candidate| candidate.key.as_str())
+    }
+
+    /// Het aantal vastleggingen in een stroom; `None` als de cel haar niet houdt.
+    ///
+    /// Alleen voor tests: dat een besluit precies één gram vastlegt (RFC-022
+    /// §1.2 — elk chronolexogram is elementair) is niet van buiten de cel te
+    /// zien, en het hoort ook niet van buiten de cel te zien te zijn.
+    #[cfg(test)]
+    pub(crate) fn len_of(&self, stream: &str) -> Option<usize> {
+        self.streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)
+            .map(|candidate| candidate.events.len())
+    }
+
     /// De laatste vastlegging op of vóór `op_moment` met deze sleutelwaarde.
     ///
     /// Dit is de reductie van een cel zonder engine: geen toestandsmerge over

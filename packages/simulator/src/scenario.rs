@@ -1,11 +1,11 @@
-//! Het wereldbestand: de klok, de cellen, de startstand, de vragen die gesteld
-//! worden en wat die vragen moeten opleveren.
+//! Het wereldbestand: de klok, de cellen, de startstand, de besluiten die
+//! genomen worden, de vragen die gesteld worden en wat dat alles moet opleveren.
 //!
 //! Een wereld is data. De assertie hoort erbij: wat een run moet opleveren
 //! staat in het bestand, niet in Rust. Zo blijft een testgeval een bestand dat
 //! iemand kan lezen en wijzigen zonder de crate te kennen.
 
-use crate::cell::{CellConfig, Lexostatus, LexostatusOutcome};
+use crate::cell::{CellConfig, Decretogram, Lexostatus, LexostatusOutcome};
 use crate::error::{Result, SimulatorError};
 use crate::security::{Identity, SecurityContext, SignedAnswer};
 use crate::transport::InProcessTransport;
@@ -37,6 +37,16 @@ pub struct Scenario {
     /// klok die datum passeert.
     #[serde(default)]
     pub fixtures: Vec<Fixture>,
+    /// De besluiten die in deze run genomen worden, elk op een moment.
+    ///
+    /// Dit is de aansturing van het besluit-pad zolang een cel nog geen actie
+    /// van een actor kent: het scenario zegt wie wanneer waarover besluit. Ze
+    /// gaan vóór de vragen, en dat is de volgorde die past bij wat ze zijn — een
+    /// besluit is een gebeurtenis op de tijdlijn, een vraag kijkt erop terug. Wie
+    /// een vraag over een moment *vóór* een besluit stelt, krijgt nog altijd het
+    /// beeld van toen: de reductie filtert zelf op `op_moment`.
+    #[serde(default)]
+    pub decide: Vec<Decision>,
     /// De vragen die een consument stelt.
     #[serde(default)]
     pub queries: Vec<Query>,
@@ -44,11 +54,12 @@ pub struct Scenario {
     ///
     /// **Test-only stap, en dat is tijdelijk.** In de opstelling die we bouwen
     /// stelt een cel zo'n vraag uitsluitend vanuit haar besluit-pad: ze heeft een
-    /// input nodig die een andere organisatie vaststelt. Dat pad bestaat nog niet
-    /// — een cel kan nog niets vastleggen en dus niets accepteren — en tot die tijd
-    /// is dit de enige manier om het verkeer te laten zien en erop te asserteren.
-    /// Zodra het besluit-pad er is, verhuist de aanroep daarheen en is deze stap
-    /// hoogstens nog een sonde.
+    /// input nodig die een andere organisatie vaststelt. Dat pad bestaat inmiddels
+    /// ([`Self::decide`]), maar het accepteren van een waarde van een andere cel
+    /// nog niet: een besluit haalt zijn inputs uit de eigen kronieken en uit zijn
+    /// parameters. Tot dat er is, is deze stap de enige manier om het verkeer te
+    /// laten zien en erop te asserteren; daarna verhuist de aanroep naar het
+    /// besluit-pad en is ze hoogstens nog een sonde.
     #[serde(default)]
     pub query_via_transport: Vec<TransportQuery>,
 }
@@ -81,6 +92,37 @@ pub struct Query {
     /// scenario moet erop kunnen asserteren. Sluit `expect` uit.
     #[serde(default)]
     pub expect_not_established: bool,
+}
+
+/// Eén besluit dat een cel in deze run neemt.
+///
+/// De tegenhanger van een [`Query`]: geen vraag maar een gebeurtenis. Wat eruit
+/// komt is een decretogram in de eigen kroniek van de cel, en dat is ook waar
+/// het daarna vandaan gehaald wordt — met een gewone vraag over een lexostatus
+/// die over die stroom reduceert.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Decision {
+    /// Vrije omschrijving, verschijnt in het verslag.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// De cel die besluit.
+    pub cell: String,
+    /// De besluit-definitie die uitgevoerd wordt.
+    pub besluit: String,
+    /// De gedocumenteerde parameters van dat besluit.
+    #[serde(default)]
+    pub params: BTreeMap<String, Value>,
+    /// Het moment waarop besloten wordt. Expliciet, nooit de wandklok: het
+    /// bepaalt zowel welke feiten de cel kent als welke wetsversie geldt.
+    pub op_moment: NaiveDate,
+    /// De verwachte uitkomsten in het decretogram.
+    ///
+    /// Mag leeg blijven, anders dan bij een vraag: een besluit legt iets vast,
+    /// dus het bewijst ook zonder verwachting iets — namelijk dat de vragen
+    /// erna iets te vinden hebben.
+    #[serde(default)]
+    pub expect: BTreeMap<String, Value>,
 }
 
 /// Eén vraag van een cel aan een andere cel, over de celgrens.
@@ -157,6 +199,17 @@ pub struct TransportOutcome {
     pub failures: Vec<ExpectationFailure>,
 }
 
+/// Het resultaat van één besluit.
+#[derive(Debug, Clone)]
+pub struct DecisionOutcome {
+    /// De omschrijving uit het scenario, als die er stond.
+    pub description: Option<String>,
+    /// Het vastgelegde decretogram.
+    pub decretogram: Decretogram,
+    /// De verwachtingen die niet uitkwamen; leeg is goed.
+    pub failures: Vec<ExpectationFailure>,
+}
+
 /// Het resultaat van een hele run.
 #[derive(Debug, Clone)]
 pub struct ScenarioRun {
@@ -168,6 +221,8 @@ pub struct ScenarioRun {
     /// ligt. De runner loopt de tijd af tot de laatste vraag, dus een fixture
     /// verder in de toekomst gebeurt in deze run niet.
     pub pending_triggers: usize,
+    /// De besluiten die genomen zijn, in scenariovolgorde.
+    pub decisions: Vec<DecisionOutcome>,
     /// De uitkomsten van de vragen van een consument, in scenariovolgorde.
     pub outcomes: Vec<QueryOutcome>,
     /// De uitkomsten van de vragen over een celgrens, in scenariovolgorde.
@@ -177,7 +232,8 @@ pub struct ScenarioRun {
 impl ScenarioRun {
     /// Kwamen alle verwachtingen uit?
     pub fn passed(&self) -> bool {
-        self.outcomes.iter().all(|o| o.failures.is_empty())
+        self.decisions.iter().all(|o| o.failures.is_empty())
+            && self.outcomes.iter().all(|o| o.failures.is_empty())
             && self
                 .transport_outcomes
                 .iter()
@@ -185,6 +241,10 @@ impl ScenarioRun {
     }
 
     /// Heeft deze run iets vastgelegd? Een run zonder vragen bewijst niets.
+    ///
+    /// Besluiten tellen hier met opzet niet mee. Een besluit legt iets vast, maar
+    /// wat het waard is blijkt pas als iemand het terugvraagt: een scenario dat
+    /// alleen besluit en niets vraagt, laat de hele tijdreductie onbeproefd.
     pub fn proved_something(&self) -> bool {
         !self.outcomes.is_empty() || !self.transport_outcomes.is_empty()
     }
@@ -192,6 +252,48 @@ impl ScenarioRun {
     /// Leesbaar verslag van de run, geschikt voor een terminal of een testfout.
     pub fn report(&self) -> String {
         let mut out = format!("scenario '{}':\n", self.name);
+        for decision in &self.decisions {
+            let mark = if decision.failures.is_empty() {
+                "ok"
+            } else {
+                "FOUT"
+            };
+            let gram = &decision.decretogram;
+            // Het rechtskarakter en het bevoegd gezag staan erbij, want dat is
+            // het verschil tussen een berekening en een besluit. Wat er níet
+            // bij staat is het tijdstempel van het receipt: dat is wandkloktijd,
+            // en een verslag dat per run verschilt is geen verslag.
+            let _ = writeln!(
+                out,
+                "  [{mark}] {} besluit '{}' op {} -> zaakkenmerk '{}' ({}{}{})",
+                gram.cell,
+                gram.besluit,
+                gram.op_moment,
+                gram.zaakkenmerk,
+                gram.regulation,
+                gram.regulation_valid_from
+                    .as_ref()
+                    .map(|valid_from| format!(", versie {valid_from}"))
+                    .unwrap_or_default(),
+                describe_authority(gram),
+            );
+            if let Some(description) = &decision.description {
+                let _ = writeln!(out, "        {description}");
+            }
+            for (name, value) in &gram.outputs {
+                let _ = writeln!(out, "        {name} = {value}");
+            }
+            for (name, input) in &gram.inputs {
+                let _ = writeln!(
+                    out,
+                    "        input {name} = {} ({})",
+                    input.value,
+                    input.origin.describe()
+                );
+            }
+            write_failures(&mut out, &decision.failures);
+        }
+
         for outcome in &self.outcomes {
             let mark = if outcome.failures.is_empty() {
                 "ok"
@@ -255,6 +357,20 @@ impl ScenarioRun {
             );
         }
         out
+    }
+}
+
+/// Het rechtskarakter en het bevoegd gezag van een decretogram, voor het verslag.
+///
+/// Leeg als de regeling er niets over zegt, en dan staat het er ook niet:
+/// een besluit waarvan de wet het karakter niet noemt, hoort niet met een lege
+/// haak te suggereren dat het er wel een heeft.
+fn describe_authority(gram: &Decretogram) -> String {
+    match (&gram.legal_character, &gram.competent_authority) {
+        (Some(character), Some(authority)) => format!(", {character} door {authority}"),
+        (Some(character), None) => format!(", {character}"),
+        (None, Some(authority)) => format!(", door {authority}"),
+        (None, None) => String::new(),
     }
 }
 
@@ -368,6 +484,8 @@ impl Scenario {
     pub fn run(&self, regulation_root: &Path) -> Result<ScenarioRun> {
         let mut world = self.world(regulation_root)?;
 
+        let decisions = self.take_decisions(&mut world)?;
+
         let mut outcomes = Vec::with_capacity(self.queries.len());
         for query in &self.queries {
             if query.op_moment > world.now() {
@@ -397,9 +515,39 @@ impl Scenario {
             name: self.name.clone(),
             clock: world.now(),
             pending_triggers: world.pending_triggers(),
+            decisions,
             outcomes,
             transport_outcomes,
         })
+    }
+
+    /// Laat de cellen hun besluiten nemen, elk op zijn eigen moment.
+    ///
+    /// De klok gaat eerst vooruit tot dat moment, zodat een levering die
+    /// ertussen valt eerst landt: een besluit rekent op de feiten die de cel op
+    /// dat moment heeft, en op de wetsversie die dan geldt.
+    fn take_decisions(&self, world: &mut World) -> Result<Vec<DecisionOutcome>> {
+        let mut decisions = Vec::with_capacity(self.decide.len());
+        for decision in &self.decide {
+            if decision.op_moment > world.now() {
+                world.advance(decision.op_moment)?;
+            }
+
+            let decretogram = world.decide(
+                &decision.cell,
+                &decision.besluit,
+                &decision.params,
+                decision.op_moment,
+            )?;
+            let failures = check_values(&decision.expect, &decretogram.outputs);
+
+            decisions.push(DecisionOutcome {
+                description: decision.description.clone(),
+                decretogram,
+                failures,
+            });
+        }
+        Ok(decisions)
     }
 
     /// Stel de cross-cel-vragen, elk vanuit de veiligheidscontext van de vrager.
@@ -461,22 +609,34 @@ fn check_expectations(query: &Query, outcome: &LexostatusOutcome) -> Vec<Expecta
                 values: values.clone(),
             }]
         }
-        (LexostatusOutcome::Established(values), false) => query
-            .expect
-            .iter()
-            .filter_map(|(output, expected)| {
-                let found = values.get(output);
-                match found {
-                    Some(value) if equivalent(expected, value) => None,
-                    _ => Some(ExpectationFailure::Value {
-                        output: output.clone(),
-                        expected: expected.clone(),
-                        actual: found.cloned(),
-                    }),
-                }
-            })
-            .collect(),
+        (LexostatusOutcome::Established(values), false) => check_values(&query.expect, values),
     }
+}
+
+/// Vergelijk verwachte waarden met wat er werkelijk uitkwam.
+///
+/// Eén plek, want een besluit wordt op zijn uitkomsten afgerekend zoals een
+/// vraag op haar antwoord: uitkomsten waarover niets verwacht wordt, worden niet
+/// gecontroleerd, en een uitkomst die ontbreekt is een gemiste verwachting en
+/// geen stilte.
+fn check_values(
+    expect: &BTreeMap<String, Value>,
+    values: &BTreeMap<String, Value>,
+) -> Vec<ExpectationFailure> {
+    expect
+        .iter()
+        .filter_map(|(output, expected)| {
+            let found = values.get(output);
+            match found {
+                Some(value) if equivalent(expected, value) => None,
+                _ => Some(ExpectationFailure::Value {
+                    output: output.clone(),
+                    expected: expected.clone(),
+                    actual: found.cloned(),
+                }),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -657,6 +817,7 @@ query_via_transport:
             name: "tijd".to_string(),
             clock: moment(),
             pending_triggers,
+            decisions: Vec::new(),
             outcomes: Vec::new(),
             transport_outcomes: Vec::new(),
         };
@@ -692,6 +853,7 @@ query_via_transport:
             name: "tijd".to_string(),
             clock: moment,
             pending_triggers: 0,
+            decisions: Vec::new(),
             outcomes: vec![outcome("vóór de vastlegging"), outcome("erna, ongewijzigd")],
             transport_outcomes: Vec::new(),
         };
