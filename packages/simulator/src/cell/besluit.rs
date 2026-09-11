@@ -19,6 +19,13 @@
 //!   decretogram terug als kroniekfeit; ligt er geen, dan is het antwoord
 //!   "niets vastgesteld". Nooit een herberekening onder een inmiddels andere
 //!   wetsversie.
+//!
+//! Een besluit kan ook **verplichtingen** voortbrengen: een bedrag dat op
+//! vervaldata nagekomen moet worden (RFC-022 §1.2). Het schema daarvan wordt
+//! hier uitgerekend — bij het besluit, op de uitkomst waarop besloten is — en
+//! gaat mee in het gram. Het *nakomen* gebeurt elders: de klok laat een termijn
+//! vervallen en dan legt de cel die de verplichting draagt een betaling vast.
+//! Zie [`ObligationDue`].
 
 use crate::cell::config::{
     binding_name, check_documented_params, documents, engine_parameters, parameter_listing,
@@ -26,8 +33,10 @@ use crate::cell::config::{
 };
 use crate::cell::{ChronicleEvent, Intake};
 use crate::error::{Result, SimulatorError, Subject};
-use chrono::NaiveDate;
+use crate::values::amount;
+use chrono::{Months, NaiveDate};
 use regelrecht_engine::{ExecutionReceipt, Value};
+use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,6 +47,17 @@ use std::collections::{BTreeMap, BTreeSet};
 /// declareert wordt geweigerd. Dat de naam vastligt, is wat een reductie erover
 /// mogelijk maakt zonder dat elke casus hem opnieuw verzint.
 pub const BESCHIKKINGEN: &str = "beschikkingen";
+
+/// De kroniekstroom waarin betalingen op verplichtingen landen.
+///
+/// Platformvocabulaire, net als [`Intake`]: een cel die een verplichting draagt
+/// of er een oplegt, houdt een stroom met deze naam. Anders dan
+/// [`BESCHIKKINGEN`] wordt ze niet automatisch aangemaakt — een betaling is een
+/// gewoon feit dat een cel overkomt, en een wereld mag er een startstand in
+/// hebben staan. Wat wél vastligt is de naam en de sleutel ([`ZAAKKENMERK`]):
+/// daarop reduceert "betaald tot nu toe", en die hoeft geen casus opnieuw te
+/// verzinnen.
+pub const BETALINGEN: &str = "betalingen";
 
 /// De veldnamen die elk decretogram draagt, naast de uitkomsten van het besluit.
 ///
@@ -58,11 +78,13 @@ pub const COMPETENT_AUTHORITY: &str = "competent_authority";
 pub const LEGAL_CHARACTER: &str = "legal_character";
 /// Veld met de inputs van het besluit, elk met hun herkomst.
 pub const INPUTS: &str = "inputs";
+/// Veld met het uitgerekende betalingsschema van dit besluit.
+pub const OBLIGATIONS: &str = "obligations";
 /// Veld met het volledige RFC-013 Execution Receipt.
 pub const RECEIPT: &str = "receipt";
 
 /// De vaste velden van een decretogram, in de volgorde waarin ze hierboven staan.
-const FIXED_FIELDS: [&str; 8] = [
+const FIXED_FIELDS: [&str; 9] = [
     ZAAKKENMERK,
     BESLUIT,
     REGULATION,
@@ -70,8 +92,37 @@ const FIXED_FIELDS: [&str; 8] = [
     COMPETENT_AUTHORITY,
     LEGAL_CHARACTER,
     INPUTS,
+    OBLIGATIONS,
     RECEIPT,
 ];
+
+/// Veld met het bedrag van één betalingstermijn.
+pub const BEDRAG: &str = "bedrag";
+/// Veld met het volgnummer van een termijn binnen één verplichting.
+pub const VOLGNUMMER: &str = "volgnummer";
+/// Veld met de cel die het besluit nam waaruit deze betaling volgt.
+pub const BESLUIT_CEL: &str = "besluit_cel";
+/// Veld met het moment van dat besluit.
+pub const BESLUIT_OP_MOMENT: &str = "besluit_op_moment";
+
+/// De velden die elke vastlegging in [`BETALINGEN`] draagt.
+///
+/// Bekend vóór de eerste betaling, om dezelfde reden als bij
+/// [`declared_fields`]: een lexostatus die over deze stroom sommeert wordt bij
+/// het optuigen getoetst, en dan is de stroom nog leeg.
+pub(crate) fn betaling_fields() -> BTreeSet<String> {
+    [
+        ZAAKKENMERK,
+        BEDRAG,
+        VOLGNUMMER,
+        BESLUIT,
+        BESLUIT_CEL,
+        BESLUIT_OP_MOMENT,
+    ]
+    .iter()
+    .map(|field| (*field).to_string())
+    .collect()
+}
 
 /// Eén besluit dat een cel kan nemen.
 #[derive(Debug, Clone, Deserialize)]
@@ -110,6 +161,253 @@ pub struct BesluitDefinition {
     /// (`accept_from`).
     #[serde(default)]
     pub inputs: BTreeMap<String, BesluitInput>,
+    /// De verplichtingen die uit dit besluit volgen: wat er betaald moet worden,
+    /// door wie, in welk ritme en vanaf wanneer.
+    ///
+    /// Leeg is het gewone geval: niet elk besluit kent iets toe. Wat hier staat
+    /// wordt bij het besluit uitgerekend tot een schema van termijnen en gaat
+    /// mee in het decretogram; het nakomen gebeurt op de klok.
+    #[serde(default)]
+    pub obligations: Vec<ObligationDefinition>,
+}
+
+/// Eén verplichting die een besluit oplegt.
+///
+/// De vorm is casusdata: een bedrag uit de eigen uitkomsten, een cel die
+/// betaalt, een ritme en een startdatum. Wat er niet in staat is even
+/// belangrijk: geen kroniekstroom (die heet [`BETALINGEN`], overal), geen
+/// bedrag met de hand (dat zou naast de wetsuitkomst gaan leven) en geen
+/// vervaldata per stuk (die volgen uit het ritme).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObligationDefinition {
+    /// Het bedrag, als `$uitkomst` van dít besluit.
+    ///
+    /// Geen letterlijk bedrag en geen parameter: wat betaald moet worden, komt
+    /// uit de wet die het besluit uitvoert. Een bedrag dat de configuratie zelf
+    /// noemt zou naast de uitkomst gaan leven, en dan zegt het gram twee dingen.
+    pub amount: String,
+    /// De cel die de verplichting draagt en dus betaalt.
+    ///
+    /// Mag de besluitende cel zelf zijn; meestal is het een andere organisatie,
+    /// en dan weten beide kanten wat er gebeurde zonder elkaars kroniek te lezen.
+    pub payer: String,
+    /// Het ritme: `ineens`, `kwartaal` of `maand`, of `$instelling` — een
+    /// verwijzing naar `settings` in het wereldbestand.
+    ///
+    /// Dat een ritme een instelling mag zijn, is geen gemak: een betalingsritme
+    /// is doorgaans beleid en geen wet, en beleid hoort niet in een
+    /// besluit-definitie vast te staan alsof de wet het voorschrijft.
+    pub schedule: String,
+    /// Vanaf wanneer de termijnen lopen, als sjabloon met `{parameter}`.
+    ///
+    /// Weggelaten betekent: het moment van het besluit. Wat er staat moet een
+    /// datum opleveren (`JJJJ-MM-DD`) die niet vóór het besluit ligt — een
+    /// verplichting kan niet vervallen vóór het besluit dat haar schept.
+    #[serde(default)]
+    pub from: Option<String>,
+}
+
+/// Het ritme waarin een verplichting vervalt.
+///
+/// Drie soorten, en ze beschrijven alle drie **één jaar**: ineens is één
+/// termijn, kwartaal vier, maand twaalf. Platformvocabulaire zoals [`Intake`]:
+/// een ritme erbij is een variant erbij, en een typfout in een ritmenaam hoort
+/// niet stil als "ineens" te eindigen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Schedule {
+    /// Eén termijn, op de startdatum.
+    Ineens,
+    /// Vier termijnen, elk kwartaal één.
+    Kwartaal,
+    /// Twaalf termijnen, elke maand één.
+    Maand,
+}
+
+impl Schedule {
+    /// De ritmes die de simulator kent, met hun naam in een wereldbestand.
+    const ALL: [(&'static str, Self); 3] = [
+        ("ineens", Self::Ineens),
+        ("kwartaal", Self::Kwartaal),
+        ("maand", Self::Maand),
+    ];
+
+    /// Het ritme met deze naam, of `None` als er geen zo heet.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(known, _)| *known == name)
+            .map(|(_, schedule)| *schedule)
+    }
+
+    /// De naam waaronder dit ritme in een wereldbestand staat.
+    pub fn name(self) -> &'static str {
+        // Onbereikbaar leeg: elke variant staat in `ALL`.
+        Self::ALL
+            .iter()
+            .find(|(_, known)| *known == self)
+            .map_or("", |(name, _)| *name)
+    }
+
+    /// Komma-gescheiden opsomming van de ritmes, voor foutmeldingen.
+    pub(crate) fn listing() -> String {
+        Self::ALL
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// Hoeveel termijnen dit ritme over een jaar kent.
+    fn terms(self) -> u32 {
+        match self {
+            Self::Ineens => 1,
+            Self::Kwartaal => 4,
+            Self::Maand => 12,
+        }
+    }
+
+    /// Hoeveel maanden er tussen twee termijnen zitten.
+    fn step_months(self) -> u32 {
+        match self {
+            Self::Ineens => 0,
+            Self::Kwartaal => 3,
+            Self::Maand => 1,
+        }
+    }
+}
+
+/// Eén termijn van één verplichting: wat er op een vervaldatum moet gebeuren.
+///
+/// Uitgerekend bij het besluit en vastgelegd in het decretogram, zodat te lezen
+/// is wat er beloofd is voordat er iets betaald is. De verwijzing naar het
+/// besluit reist mee: een betaling zonder de zaak, het besluit en het moment
+/// waaruit ze volgt, is een bedrag zonder grondslag.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObligationDue {
+    /// De cel die betaalt.
+    pub payer: String,
+    /// De cel die het besluit nam.
+    pub decided_by: String,
+    /// De besluit-definitie waaruit deze verplichting volgt.
+    pub besluit: String,
+    /// Het zaakkenmerk van dat besluit; hierop groepeert [`BETALINGEN`].
+    pub zaakkenmerk: String,
+    /// Het moment van dat besluit.
+    pub decided_op_moment: NaiveDate,
+    /// Het ritme waarin deze termijn valt.
+    pub schedule: Schedule,
+    /// De dag waarop deze termijn vervalt.
+    pub vervaldatum: NaiveDate,
+    /// Het bedrag van deze termijn.
+    pub bedrag: Value,
+    /// Het volgnummer binnen het schema van dít besluit, vanaf 1.
+    ///
+    /// Hierop plus de verwijzing naar het besluit is een betaling te herkennen:
+    /// dezelfde zaak, hetzelfde besluit en hetzelfde volgnummer is dezelfde
+    /// termijn, ook als de klok er in kleine stappen langs komt.
+    ///
+    /// Doorgenummerd over álle verplichtingen van het besluit, en niet per
+    /// verplichting opnieuw. Dat moet ook: legt één besluit twee verplichtingen
+    /// op, dan zouden twee termijnen met hetzelfde nummer bij het nakomen voor
+    /// elkaar doorgaan en zou de tweede stil wegvallen.
+    pub volgnummer: i64,
+    /// Hoeveel termijnen het schema van dit besluit in totaal kent.
+    ///
+    /// Alleen om een termijn leesbaar te kunnen benoemen ("termijn 2 van 4"),
+    /// en niet uit [`Self::schedule`] af te leiden: een besluit mag meer dan één
+    /// verplichting opleggen, elk met een eigen ritme.
+    pub termijnen: i64,
+}
+
+impl ObligationDue {
+    /// De velden die beide kanten van een betaling vastleggen.
+    fn fields(&self) -> BTreeMap<String, Value> {
+        BTreeMap::from([
+            (
+                ZAAKKENMERK.to_string(),
+                Value::String(self.zaakkenmerk.clone()),
+            ),
+            (BEDRAG.to_string(), self.bedrag.clone()),
+            (VOLGNUMMER.to_string(), Value::Int(self.volgnummer)),
+            (BESLUIT.to_string(), Value::String(self.besluit.clone())),
+            (
+                BESLUIT_CEL.to_string(),
+                Value::String(self.decided_by.clone()),
+            ),
+            (
+                BESLUIT_OP_MOMENT.to_string(),
+                Value::String(self.decided_op_moment.to_string()),
+            ),
+        ])
+    }
+
+    /// De grondslag van beide vastleggingen: het besluit waaruit ze volgen.
+    fn grondslag(&self) -> String {
+        format!(
+            "verplichting uit besluit '{}' van cel '{}' ({}), termijn {} van {}",
+            self.besluit, self.decided_by, self.decided_op_moment, self.volgnummer, self.termijnen
+        )
+    }
+
+    /// Het executogram van de betalende cel: zij betaalde.
+    pub(crate) fn payment_event(&self) -> ChronicleEvent {
+        ChronicleEvent {
+            name: "betaling".to_string(),
+            intake: Intake::Betaling,
+            recording_actor: self.payer.clone(),
+            grondslag: self.grondslag(),
+            op_moment: self.vervaldatum,
+            fields: self.fields(),
+        }
+    }
+
+    /// Het executogram van de besluitende cel: haar werd gemeld dat er betaald is.
+    ///
+    /// Een eigen vastlegging met een eigen kanaal, en geen kopie van het gram
+    /// hiernaast: wat de betalende cel deed staat in háár kroniek, en wat deze
+    /// cel overkwam in de hare. Zo weten beide kanten wat er gebeurde zonder dat
+    /// er één staat is die twee cellen delen.
+    pub(crate) fn delivery_event(&self) -> ChronicleEvent {
+        ChronicleEvent {
+            name: "betaling_ontvangen_gemeld".to_string(),
+            intake: Intake::Levering,
+            recording_actor: self.decided_by.clone(),
+            grondslag: self.grondslag(),
+            op_moment: self.vervaldatum,
+            fields: self.fields(),
+        }
+    }
+
+    /// Deze termijn als vastlegbare waarde, voor in het decretogram.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            (
+                "vervaldatum".to_string(),
+                Value::String(self.vervaldatum.to_string()),
+            ),
+            (BEDRAG.to_string(), self.bedrag.clone()),
+            (VOLGNUMMER.to_string(), Value::Int(self.volgnummer)),
+            ("payer".to_string(), Value::String(self.payer.clone())),
+            (
+                "schedule".to_string(),
+                Value::String(self.schedule.name().to_string()),
+            ),
+        ]))
+    }
+
+    /// Leesbare termijn voor een verslag.
+    pub fn describe(&self) -> String {
+        format!(
+            "termijn {}/{} van {} op {}, te betalen door {} ({})",
+            self.volgnummer,
+            self.termijnen,
+            self.bedrag,
+            self.vervaldatum,
+            self.payer,
+            self.schedule.name()
+        )
+    }
 }
 
 /// De drie vormen die een input van een besluit kan hebben, voor foutmeldingen.
@@ -487,6 +785,12 @@ pub struct Decretogram {
     pub outputs: BTreeMap<String, Value>,
     /// De inputs waarop besloten is, met hun herkomst.
     pub inputs: BTreeMap<String, DecretogramInput>,
+    /// De verplichtingen die uit dit besluit volgen, uitgerekend tot termijnen.
+    ///
+    /// Het schema hoort bij het besluit en niet bij de betaling: wat beloofd is,
+    /// staat er vóórdat er iets betaald is, en verandert niet meer doordat er
+    /// betaald wordt. Leeg als het besluit niets toekent.
+    pub obligations: Vec<ObligationDue>,
     /// Het volledige receipt van de uitvoering.
     pub receipt: ExecutionReceipt,
 }
@@ -557,6 +861,15 @@ impl Decretogram {
                                 ])),
                             )
                         })
+                        .collect(),
+                ),
+            ),
+            (
+                OBLIGATIONS.to_string(),
+                Value::Array(
+                    self.obligations
+                        .iter()
+                        .map(ObligationDue::as_value)
                         .collect(),
                 ),
             ),
@@ -643,16 +956,106 @@ impl BesluitDefinition {
     ) -> Result<String> {
         let template = Template::parse(&self.zaakkenmerk);
         template.check_separators_absent(cell, &self.name, &self.zaakkenmerk, params)?;
+        Ok(template.fill(params))
+    }
 
-        let mut out = String::with_capacity(self.zaakkenmerk.len());
-        out.push_str(template.leading);
-        for part in &template.parts {
-            if let Some(value) = params.get(part.reference) {
-                out.push_str(&value.to_string());
-            }
-            out.push_str(part.literal);
+    /// Reken de verplichtingen van dit besluit uit tot termijnen.
+    ///
+    /// Aanroepen ná de uitvoering: het bedrag komt uit de uitkomsten waarop
+    /// besloten is, en niet uit de configuratie. Wat hier ontstaat is het
+    /// volledige schema — alle vervaldata, alle bedragen, alle volgnummers —
+    /// zodat het in het gram kan en niemand later hoeft te raden wat er beloofd
+    /// was.
+    pub(crate) fn schedule_obligations(
+        &self,
+        cell: &str,
+        zaakkenmerk: &str,
+        outputs: &BTreeMap<String, Value>,
+        params: &BTreeMap<String, Value>,
+        settings: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<Vec<ObligationDue>> {
+        // Eerst elke verplichting oplossen, dan pas termijnen maken: het aantal
+        // termijnen van het hele schema staat in elke termijn, en dat is pas
+        // bekend als alle ritmes eruit zijn.
+        let mut resolved = Vec::with_capacity(self.obligations.len());
+        for obligation in &self.obligations {
+            let schedule = obligation.schedule(cell, &self.name, settings)?;
+            let start = obligation.start(cell, &self.name, params, op_moment)?;
+            let total = obligation.total(cell, &self.name, outputs)?;
+            resolved.push((obligation, schedule, start, total));
         }
-        Ok(out)
+        // De termijnen van dit besluit tellen nooit zo hoog dat ze de grenzen van
+        // i64 raken: het zijn er ten hoogste twaalf per verplichting.
+        let termijnen = i64::try_from(
+            resolved
+                .iter()
+                .map(|(_, schedule, _, _)| schedule.terms() as usize)
+                .sum::<usize>(),
+        )
+        .unwrap_or(i64::MAX);
+
+        let mut due = Vec::new();
+        for (obligation, schedule, start, total) in resolved {
+            for (index, bedrag) in split(total, schedule.terms()).into_iter().enumerate() {
+                // `index` telt de termijnen van dit ritme en komt nooit in de
+                // buurt van de grens van u32.
+                let step = u32::try_from(index).unwrap_or(u32::MAX);
+                let vervaldatum = start
+                    .checked_add_months(Months::new(step * schedule.step_months()))
+                    .ok_or_else(|| SimulatorError::MalformedObligationDate {
+                        cell: cell.to_string(),
+                        besluit: self.name.clone(),
+                        template: obligation.from.clone().unwrap_or_else(|| start.to_string()),
+                        reason: format!(
+                            "de termijn {} maanden na {start} valt buiten het bereik van de kalender",
+                            step * schedule.step_months()
+                        ),
+                    })?;
+
+                due.push(ObligationDue {
+                    payer: obligation.payer.clone(),
+                    decided_by: cell.to_string(),
+                    besluit: self.name.clone(),
+                    zaakkenmerk: zaakkenmerk.to_string(),
+                    decided_op_moment: op_moment,
+                    schedule,
+                    vervaldatum,
+                    bedrag: amount(bedrag),
+                    // Door het hele schema heen, niet per verplichting opnieuw:
+                    // zie [`ObligationDue::volgnummer`].
+                    volgnummer: i64::try_from(due.len() + 1).unwrap_or(i64::MAX),
+                    termijnen,
+                });
+            }
+        }
+        Ok(due)
+    }
+
+    /// Controleer de verplichtingen tegen de instellingen van de wereld.
+    ///
+    /// Apart van [`Self::validate`], omdat het antwoord niet in de cel staat: een
+    /// `schedule: $betalingsritme` verwijst naar het wereldbestand, en een cel
+    /// kent dat niet. De wereld roept dit aan bij het optuigen, zodat een
+    /// instelling die niet bestaat of geen ritme is meteen blijkt en niet pas bij
+    /// het besluit dat erop leunt.
+    pub(crate) fn check_settings(
+        &self,
+        cell: &str,
+        settings: &BTreeMap<String, Value>,
+    ) -> Result<()> {
+        for obligation in &self.obligations {
+            obligation.schedule(cell, &self.name, settings)?;
+        }
+        Ok(())
+    }
+
+    /// De cellen die een verplichting van dit besluit moeten dragen.
+    pub(crate) fn payers(&self) -> BTreeSet<&str> {
+        self.obligations
+            .iter()
+            .map(|obligation| obligation.payer.as_str())
+            .collect()
     }
 
     /// Controleer de definitie tegen de cel waarin ze staat.
@@ -708,6 +1111,10 @@ impl BesluitDefinition {
                 });
             }
             self.validate_input(cell, surface, input, origin)?;
+        }
+
+        for obligation in &self.obligations {
+            obligation.validate(cell, &self.name, self.recorded_outputs(), &self.params)?;
         }
 
         self.validate_zaakkenmerk(cell)
@@ -886,6 +1293,196 @@ impl BesluitDefinition {
     }
 }
 
+impl ObligationDefinition {
+    /// Controleer deze verplichting tegen het besluit waarin ze staat.
+    ///
+    /// Alles wat de cel zelf kan weten valt hier: het bedrag moet een uitkomst
+    /// van dít besluit zijn, een letterlijk ritme moet bestaan, en `from` moet
+    /// een datum kunnen opleveren. Wat de cel *niet* kan weten — bestaat de
+    /// betalende cel, bestaat de instelling — toetst de wereld.
+    fn validate(
+        &self,
+        cell: &str,
+        besluit: &str,
+        outputs: BTreeSet<&str>,
+        params: &[DocumentedParameter],
+    ) -> Result<()> {
+        let amount_error = || SimulatorError::ObligationAmount {
+            cell: cell.to_string(),
+            besluit: besluit.to_string(),
+            amount: self.amount.clone(),
+            outputs: outputs.iter().copied().collect::<Vec<_>>().join(", "),
+        };
+        let output = self.amount.strip_prefix('$').ok_or_else(amount_error)?;
+        if !outputs.contains(output) {
+            return Err(amount_error());
+        }
+
+        // Een `$instelling` kan de cel niet nakijken; een letterlijk ritme wel,
+        // en dan hoort een typfout hier te vallen en niet bij het besluit.
+        if !self.schedule.starts_with('$') && Schedule::from_name(&self.schedule).is_none() {
+            return Err(SimulatorError::UnknownSchedule {
+                cell: cell.to_string(),
+                besluit: besluit.to_string(),
+                schedule: self.schedule.clone(),
+                known: Schedule::listing(),
+            });
+        }
+
+        let Some(from) = &self.from else {
+            return Ok(());
+        };
+        if !closing_braces_match(from) {
+            return Err(SimulatorError::MalformedObligationDate {
+                cell: cell.to_string(),
+                besluit: besluit.to_string(),
+                template: from.clone(),
+                reason: "een accolade sluit niet".to_string(),
+            });
+        }
+
+        let template = Template::parse(from);
+        for part in &template.parts {
+            if !documents(params, part.reference) {
+                return Err(SimulatorError::UnknownReference {
+                    cell: cell.to_string(),
+                    subject: Subject::Besluit,
+                    name: besluit.to_string(),
+                    reference: part.reference.to_string(),
+                });
+            }
+        }
+
+        // Zonder verwijzingen staat de datum hier al vast, dus een sjabloon dat
+        // nooit een datum kan opleveren hoort bij het optuigen te vallen en niet
+        // pas bij het besluit dat erop rekent.
+        if template.parts.is_empty() {
+            parse_date(from).ok_or_else(|| SimulatorError::MalformedObligationDate {
+                cell: cell.to_string(),
+                besluit: besluit.to_string(),
+                template: from.clone(),
+                reason: "dat is geen datum (JJJJ-MM-DD)".to_string(),
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Het ritme van deze verplichting, met de instellingen van de wereld erbij.
+    fn schedule(
+        &self,
+        cell: &str,
+        besluit: &str,
+        settings: &BTreeMap<String, Value>,
+    ) -> Result<Schedule> {
+        let name = match self.schedule.strip_prefix('$') {
+            None => self.schedule.clone(),
+            Some(setting) => settings
+                .get(setting)
+                .ok_or_else(|| SimulatorError::UnknownSetting {
+                    cell: cell.to_string(),
+                    besluit: besluit.to_string(),
+                    setting: setting.to_string(),
+                    known: settings
+                        .keys()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                })?
+                .to_string(),
+        };
+
+        Schedule::from_name(&name).ok_or_else(|| SimulatorError::UnknownSchedule {
+            cell: cell.to_string(),
+            besluit: besluit.to_string(),
+            schedule: name,
+            known: Schedule::listing(),
+        })
+    }
+
+    /// De dag waarop de eerste termijn vervalt.
+    ///
+    /// Zonder `from` is dat het moment van het besluit. Met `from` is het wat
+    /// het sjabloon oplevert — en dat mag niet vóór het besluit liggen: een
+    /// termijn in het verleden zou bij het vastleggen het beeld van een eerder
+    /// moment veranderen, en dat is precies wat een kroniek niet doet.
+    fn start(
+        &self,
+        cell: &str,
+        besluit: &str,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<NaiveDate> {
+        let Some(from) = &self.from else {
+            return Ok(op_moment);
+        };
+
+        let filled = Template::parse(from).fill(params);
+        let start = parse_date(&filled).ok_or_else(|| SimulatorError::MalformedObligationDate {
+            cell: cell.to_string(),
+            besluit: besluit.to_string(),
+            template: from.clone(),
+            reason: format!("ingevuld levert dat '{filled}' op, en dat is geen datum (JJJJ-MM-DD)"),
+        })?;
+
+        if start < op_moment {
+            return Err(SimulatorError::ObligationBeforeDecision {
+                cell: cell.to_string(),
+                besluit: besluit.to_string(),
+                from: start.to_string(),
+                op_moment: op_moment.to_string(),
+            });
+        }
+        Ok(start)
+    }
+
+    /// Het bedrag waarover deze verplichting gaat, uit de uitkomsten van het
+    /// besluit.
+    fn total(
+        &self,
+        cell: &str,
+        besluit: &str,
+        outputs: &BTreeMap<String, Value>,
+    ) -> Result<Decimal> {
+        // Onbereikbaar zonder `$`: `validate` weigert een bedrag dat niet naar
+        // een uitkomst verwijst.
+        let output = self.amount.strip_prefix('$').unwrap_or(&self.amount);
+        let found = outputs.get(output);
+        found
+            .and_then(Value::as_decimal)
+            .ok_or_else(|| SimulatorError::ObligationAmountValue {
+                cell: cell.to_string(),
+                besluit: besluit.to_string(),
+                output: output.to_string(),
+                found: found.map_or_else(
+                    || "niet in de uitkomsten van dit besluit".to_string(),
+                    |value| format!("{} ({})", value, value.type_name()),
+                ),
+            })
+    }
+}
+
+/// Verdeel een bedrag over een aantal termijnen, zonder een cent te verliezen.
+///
+/// Elke termijn krijgt hetzelfde bedrag in hele eenheden (de eenheid van de wet
+/// — in dit corpus de eurocent), en wat niet deelbaar is gaat naar de laatste.
+/// De som van de termijnen is dus exact het bedrag waarover besloten is; dat is
+/// de eigenschap die telt, want "betaald tot nu toe" wordt eroverheen
+/// gesommeerd en moet aan het eind uitkomen op wat toegekend is.
+fn split(total: Decimal, terms: u32) -> Vec<Decimal> {
+    if terms <= 1 {
+        return vec![total];
+    }
+    let each = (total / Decimal::from(terms)).trunc();
+    let mut amounts = vec![each; (terms - 1) as usize];
+    amounts.push(total - each * Decimal::from(terms - 1));
+    amounts
+}
+
+/// Een datum uit een sjabloon, of `None` als het er geen is.
+fn parse_date(text: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(text, "%Y-%m-%d").ok()
+}
+
 /// Eén verwijzing uit een zaakkenmerk-sjabloon, met de letterlijke tekst erachter.
 struct TemplatePart<'a> {
     /// De parameternaam tussen de accolades.
@@ -933,6 +1530,23 @@ impl<'a> Template<'a> {
             rest = remainder;
         }
         Self { leading, parts }
+    }
+
+    /// Vul het sjabloon in met deze parameters.
+    ///
+    /// Eén invuller voor het zaakkenmerk én voor de startdatum van een
+    /// verplichting: twee sjablonen met dezelfde vorm horen niet op twee manieren
+    /// ingevuld te worden. Een verwijzing zonder waarde levert niets op — dat
+    /// geval is bij het optuigen al geweigerd, hier zou het een lege plek zijn.
+    fn fill(&self, params: &BTreeMap<String, Value>) -> String {
+        let mut out = String::from(self.leading);
+        for part in &self.parts {
+            if let Some(value) = params.get(part.reference) {
+                out.push_str(&value.to_string());
+            }
+            out.push_str(part.literal);
+        }
+        out
     }
 
     /// De letterlijke stukken die twee verwijzingen uit elkaar houden.
@@ -1380,6 +1994,154 @@ params:
             matches!(err, SimulatorError::ReservedDecretogramField { .. }),
             "verwachtte ReservedDecretogramField, kreeg {err}"
         );
+    }
+
+    /// Een verplichting zoals ze in een wereldbestand staat.
+    fn obligation(yaml: &str) -> ObligationDefinition {
+        serde_yaml_ng::from_str(yaml)
+            .unwrap_or_else(|e| panic!("testverplichting moet parsen: {e}"))
+    }
+
+    /// De uitkomsten en parameters van het besluit waarin de verplichtingen
+    /// hieronder staan.
+    fn valideer(obligation: &ObligationDefinition) -> Result<()> {
+        let params = vec![DocumentedParameter {
+            name: "jaar".to_string(),
+            value_type: crate::cell::ParameterType::String,
+        }];
+        obligation.validate(
+            "toeslagen",
+            "toekenning",
+            BTreeSet::from(["hoogte_zorgtoeslag"]),
+            &params,
+        )
+    }
+
+    /// De som van de termijnen is exact het bedrag waarover besloten is.
+    ///
+    /// Dat is de eigenschap waarop "betaald tot nu toe" rust: wie de rest laat
+    /// vallen, betaalt aan het eind minder uit dan de beschikking toekende, en
+    /// dat is dan nergens aan te zien behalve aan het totaal.
+    #[test]
+    fn de_termijnen_tellen_op_tot_het_hele_bedrag() {
+        for bedrag in ["100000", "197205.31187", "1", "-4000"] {
+            let total: Decimal = bedrag
+                .parse()
+                .unwrap_or_else(|e| panic!("testbedrag '{bedrag}' moet leesbaar zijn: {e}"));
+            for terms in [1_u32, 4, 12] {
+                let amounts = split(total, terms);
+                assert_eq!(amounts.len(), terms as usize);
+                assert_eq!(
+                    amounts.iter().sum::<Decimal>(),
+                    total,
+                    "{bedrag} over {terms} termijnen hoort exact op te tellen"
+                );
+            }
+        }
+    }
+
+    /// Gelijke termijnen, en het restant op de laatste. Zonder deze assertie zou
+    /// een verdeling die alles op de eerste termijn zet ook "exact optellen".
+    #[test]
+    fn de_termijnen_zijn_gelijk_op_het_restant_na() {
+        let amounts = split(Decimal::from(100_000), 12);
+        assert_eq!(&amounts[..11], &[Decimal::from(8333); 11]);
+        assert_eq!(amounts[11], Decimal::from(8337));
+    }
+
+    #[test]
+    fn een_ritme_beschrijft_een_jaar() {
+        assert_eq!(Schedule::Ineens.terms(), 1);
+        assert_eq!(Schedule::Kwartaal.terms(), 4);
+        assert_eq!(Schedule::Maand.terms(), 12);
+        assert_eq!(Schedule::from_name("kwartaal"), Some(Schedule::Kwartaal));
+        assert_eq!(Schedule::from_name("per_week"), None);
+        assert_eq!(Schedule::Maand.name(), "maand");
+    }
+
+    /// Het bedrag komt uit de wet die het besluit uitvoert, en nergens anders
+    /// vandaan.
+    #[test]
+    fn een_bedrag_dat_geen_uitkomst_van_het_besluit_is_wordt_geweigerd() {
+        for amount in ["100000", "$verzamelinkomen"] {
+            let err = valideer(&obligation(&format!(
+                "amount: '{amount}'\npayer: belastingdienst\nschedule: ineens\n"
+            )))
+            .expect_err("een bedrag buiten de uitkomsten hoort te falen");
+            assert!(
+                matches!(err, SimulatorError::ObligationAmount { .. }),
+                "verwachtte ObligationAmount voor '{amount}', kreeg {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn een_letterlijk_ritme_dat_niet_bestaat_wordt_geweigerd() {
+        let err = valideer(&obligation(
+            "amount: $hoogte_zorgtoeslag\npayer: belastingdienst\nschedule: per_week\n",
+        ))
+        .expect_err("een ritme dat niet bestaat hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownSchedule { .. }),
+            "verwachtte UnknownSchedule, kreeg {err}"
+        );
+    }
+
+    /// Een `$instelling` kan de cel niet nakijken — dat doet de wereld — dus hier
+    /// hoort ze door te komen.
+    #[test]
+    fn een_ritme_uit_een_instelling_komt_langs_de_cel() {
+        valideer(&obligation(
+            "amount: $hoogte_zorgtoeslag\npayer: belastingdienst\nschedule: $betalingsritme\n",
+        ))
+        .unwrap_or_else(|e| panic!("een verwijzing naar een instelling hoort te mogen: {e}"));
+    }
+
+    /// Staat er geen verwijzing in, dan ligt de datum bij het optuigen al vast en
+    /// hoort een tekst die geen datum is daar te sneuvelen.
+    #[test]
+    fn een_vaste_from_die_geen_datum_is_wordt_geweigerd() {
+        let err = valideer(&obligation(
+            "amount: $hoogte_zorgtoeslag\npayer: belastingdienst\nschedule: ineens\nfrom: volgend jaar\n",
+        ))
+        .expect_err("een `from` die geen datum is hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::MalformedObligationDate { .. }),
+            "verwachtte MalformedObligationDate, kreeg {err}"
+        );
+    }
+
+    #[test]
+    fn een_from_die_naar_een_onbekende_parameter_verwijst_wordt_geweigerd() {
+        let err = valideer(&obligation(
+            "amount: $hoogte_zorgtoeslag\npayer: belastingdienst\nschedule: maand\nfrom: '{toeslagjaar}-01-01'\n",
+        ))
+        .expect_err("een verwijzing zonder gedocumenteerde parameter hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownReference { .. }),
+            "verwachtte UnknownReference, kreeg {err}"
+        );
+    }
+
+    /// Een sjabloon dat wél een datum oplevert, levert hem ook op het moment dat
+    /// het ingevuld wordt.
+    #[test]
+    fn een_from_met_een_parameter_levert_de_datum_op() {
+        let obligation = obligation(
+            "amount: $hoogte_zorgtoeslag\npayer: belastingdienst\nschedule: maand\nfrom: '{jaar}-02-01'\n",
+        );
+        valideer(&obligation).unwrap_or_else(|e| panic!("dit sjabloon hoort te mogen: {e}"));
+
+        let params = BTreeMap::from([("jaar".to_string(), Value::String("2027".to_string()))]);
+        let start = obligation
+            .start(
+                "toeslagen",
+                "toekenning",
+                &params,
+                parse_date("2026-12-15").unwrap_or_default(),
+            )
+            .unwrap_or_else(|e| panic!("de startdatum moet uit te rekenen zijn: {e}"));
+        assert_eq!(start, parse_date("2027-02-01").unwrap_or_default());
     }
 
     #[test]

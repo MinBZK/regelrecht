@@ -32,6 +32,13 @@ pub struct Scenario {
     pub clock: Clock,
     /// De cellen in deze run.
     pub cells: Vec<CellConfig>,
+    /// De instellingen van deze wereld: casusdata die geen wet is.
+    ///
+    /// Een `schedule: $betalingsritme` in een verplichting leest hieruit. Dat
+    /// zo'n keuze hier staat en niet in de besluit-definitie, is het verschil
+    /// tussen wat de wet voorschrijft en wat een organisatie als beleid kiest.
+    #[serde(default)]
+    pub settings: BTreeMap<String, Value>,
     /// De startstand: vastleggingen met een moment. Wat vóór het startmoment
     /// van de klok valt staat er bij het optuigen al; de rest landt zodra de
     /// klok die datum passeert.
@@ -335,6 +342,11 @@ impl ScenarioRun {
                     crossing.signature,
                 );
             }
+            // Het schema hoort bij het gram en dus in het verslag: wat beloofd is,
+            // staat er vóórdat er iets betaald is.
+            for due in &gram.obligations {
+                let _ = writeln!(out, "        verplichting: {}", due.describe());
+            }
             write_failures(&mut out, &decision.failures);
         }
 
@@ -512,7 +524,13 @@ impl Scenario {
     /// Tuig de wereld op: de cellen, de klok op haar startmoment en de
     /// startstand die op dat moment al gebeurd was.
     pub fn world(&self, regulation_root: &Path) -> Result<World> {
-        World::new(&self.cells, self.clock, &self.fixtures, regulation_root)
+        World::new(
+            &self.cells,
+            self.clock,
+            &self.fixtures,
+            &self.settings,
+            regulation_root,
+        )
     }
 
     /// Tuig de wereld op, laat de tijd lopen en stel alle vragen.

@@ -13,6 +13,7 @@ categories = ["simulation"]
 [dependencies]
 regelrecht-engine = { path = "../engine" }
 chrono.workspace = true
+rust_decimal.workspace = true
 serde.workspace = true
 serde_yaml_ng.workspace = true
 thiserror.workspace = true

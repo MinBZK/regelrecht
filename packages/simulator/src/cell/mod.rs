@@ -31,19 +31,22 @@ mod config;
 
 pub use besluit::{
     AcceptanceRequest, BesluitDefinition, BesluitInput, Decretogram, DecretogramInput, InputOrigin,
-    BESCHIKKINGEN,
+    ObligationDefinition, ObligationDue, Schedule, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
 };
 pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
 pub use config::{
-    AcceptedSource, CellConfig, DocumentedParameter, LexostatusDefinition, ParameterType, Reduction,
+    AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition,
+    ParameterType, Reduction,
 };
 
 use crate::corpus;
 use crate::error::{Result, SimulatorError, Subject};
+use crate::values::amount;
 use chrono::NaiveDate;
 use config::{engine_parameters, CellSurface};
 use regelrecht_engine::article::CompetentAuthority;
 use regelrecht_engine::{ArticleBasedLaw, CellResolver, LawExecutionService, Value};
+use rust_decimal::Decimal;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -224,6 +227,13 @@ impl Cell {
                 .or_default()
                 .extend(besluit::declared_fields(&config.besluit_definitions));
         }
+        // De betalingsstroom declareert de cel zelf, maar wát er in komt bepaalt
+        // het platform (zie [`BETALINGEN`]). Zonder deze regel zou een som over
+        // `bedrag` als typfout geweigerd worden zolang er nog niets betaald is —
+        // en dat is precies het moment waarop een wereld opgetuigd wordt.
+        if let Some(fields) = declared.get_mut(BETALINGEN) {
+            fields.extend(besluit::betaling_fields());
+        }
 
         let surface = CellSurface {
             laws: &config.laws,
@@ -399,8 +409,20 @@ impl Cell {
                 chronicle,
                 key,
                 conditions,
+                aggregate,
             } => {
-                self.filter_chronicle(definition, chronicle, key, conditions, params, op_moment)?
+                let query = ChronicleQuery {
+                    chronicle,
+                    key,
+                    key_value: self.key_value(definition, key, params)?,
+                    conditions,
+                };
+                match aggregate {
+                    Aggregate::Latest => self.filter_chronicle(definition, &query, op_moment)?,
+                    Aggregate::Sum { field } => {
+                        self.sum_chronicle(definition, &query, field, op_moment)?
+                    }
+                }
             }
         };
 
@@ -566,30 +588,18 @@ impl Cell {
     fn filter_chronicle(
         &self,
         definition: &LexostatusDefinition,
-        chronicle: &str,
-        key: &str,
-        conditions: &BTreeMap<String, Value>,
-        params: &BTreeMap<String, Value>,
+        query: &ChronicleQuery<'_>,
         op_moment: NaiveDate,
     ) -> Result<LexostatusOutcome> {
-        // Onbereikbaar: `validate` eist dat de sleutel een gedocumenteerde
-        // parameter is, en `check_params` dat elke gedocumenteerde parameter
-        // meekomt.
-        let key_value = params
-            .get(key)
-            .ok_or_else(|| SimulatorError::MissingParameter {
-                cell: self.id.clone(),
-                subject: Subject::Lexostatus,
-                name: definition.name.clone(),
-                parameter: key.to_string(),
-            })?;
-
-        let Some(event) = self
-            .chronicles
-            .latest_recording(chronicle, key, key_value, conditions, op_moment)
-        else {
+        let Some(event) = self.chronicles.latest_recording(
+            query.chronicle,
+            query.key,
+            query.key_value,
+            query.conditions,
+            op_moment,
+        ) else {
             return Ok(LexostatusOutcome::NotEstablished {
-                reason: nothing_established(chronicle, key, key_value, conditions, op_moment),
+                reason: query.nothing_established(op_moment),
             });
         };
 
@@ -611,11 +621,105 @@ impl Cell {
         // over datgene wat gevraagd werd.
         if values.is_empty() {
             return Ok(LexostatusOutcome::NotEstablished {
-                reason: nothing_published(definition, chronicle, key, key_value, event.op_moment),
+                reason: nothing_published(definition, query, event.op_moment),
             });
         }
 
         Ok(LexostatusOutcome::Established(values))
+    }
+
+    /// De som over een eigen kroniek: tel één veld op over alles wat op dit
+    /// moment vastlag.
+    ///
+    /// De eerste aggregatie van de simulator. Ze bestaat zodat een totaal — wat
+    /// er tot nu toe betaald is — een **reductie over vastleggingen** kan zijn in
+    /// plaats van een saldo dat ergens bijgehouden wordt. Een saldo zou een
+    /// tweede waarheid naast de kroniek zijn, en dan verandert het beeld van een
+    /// eerder moment zodra er iets bijkomt.
+    ///
+    /// Een vastlegging die het veld niet draagt of er iets anders dan een getal
+    /// in heeft, is een fout en geen nul: een som die zo'n vastlegging overslaat
+    /// valt stil te laag uit.
+    fn sum_chronicle(
+        &self,
+        definition: &LexostatusDefinition,
+        query: &ChronicleQuery<'_>,
+        field: &str,
+        op_moment: NaiveDate,
+    ) -> Result<LexostatusOutcome> {
+        let events = self.chronicles.recordings(
+            query.chronicle,
+            query.key,
+            query.key_value,
+            query.conditions,
+            op_moment,
+        );
+
+        // Nul vastleggingen is niet "nul euro": deze cel heeft over dit
+        // onderwerp niets vastgelegd, en dat is hetzelfde antwoord als bij elk
+        // ander kroniekfilter. Een 0 zou "er is niets betaald" niet kunnen
+        // onderscheiden van "hier is geen zaak".
+        if events.is_empty() {
+            return Ok(LexostatusOutcome::NotEstablished {
+                reason: query.nothing_established(op_moment),
+            });
+        }
+
+        let mut total = Decimal::ZERO;
+        for event in events {
+            let found = chronicle::field(&event.fields, field);
+            let value = found.and_then(Value::as_decimal).ok_or_else(|| {
+                SimulatorError::SumOfNonNumber {
+                    cell: self.id.clone(),
+                    lexostatus: definition.name.clone(),
+                    field: format!("{}.{field}", query.chronicle),
+                    op_moment: event.op_moment.to_string(),
+                    found: found.map_or_else(
+                        || "dat veld niet".to_string(),
+                        |value| format!("{} ({})", value, value.type_name()),
+                    ),
+                }
+            })?;
+            total += value;
+        }
+
+        // Onder de gepubliceerde naam en niet onder de naam in `sum`. Het filter
+        // hiernaast doet dat ook, en die twee mogen niet uiteenlopen: het optuigen
+        // vergelijkt `outputs` met het gesommeerde veld zonder op kapitalen te
+        // letten, dus de twee schrijfwijzen kunnen verschillen — en dan zou het
+        // antwoord onder een naam staan die de definitie niet publiceert.
+        // Onbereikbaar leeg: `validate_chronicle` eist precies één uitkomst.
+        let published = definition
+            .published_outputs()
+            .into_iter()
+            .next()
+            .unwrap_or(field);
+
+        Ok(LexostatusOutcome::Established(BTreeMap::from([(
+            published.to_string(),
+            amount(total),
+        )])))
+    }
+
+    /// De waarde van het sleutelveld uit de vraag.
+    ///
+    /// Onbereikbaar leeg: `validate` eist dat de sleutel een gedocumenteerde
+    /// parameter is, en `check_params` dat elke gedocumenteerde parameter
+    /// meekomt. Eén plek, want beide kroniekfilters stellen dezelfde vraag.
+    fn key_value<'a>(
+        &self,
+        definition: &LexostatusDefinition,
+        key: &str,
+        params: &'a BTreeMap<String, Value>,
+    ) -> Result<&'a Value> {
+        params
+            .get(key)
+            .ok_or_else(|| SimulatorError::MissingParameter {
+                cell: self.id.clone(),
+                subject: Subject::Lexostatus,
+                name: definition.name.clone(),
+                parameter: key.to_string(),
+            })
     }
 
     /// Neem een besluit: voer een eigen regeling uit en leg de uitkomst vast.
@@ -629,8 +733,11 @@ impl Cell {
     ///    `op_moment` waren, en uit de parameters van het besluit;
     /// 3. de **besluit-engine** voert de regeling uit op dat moment, dus op de
     ///    wetsversie die toen gold;
-    /// 4. de uitkomst wordt als decretogram vastgelegd in de eigen stroom
-    ///    [`BESCHIKKINGEN`] — één gram, met alle uitkomsten samen (RFC-022 §1.2).
+    /// 4. de verplichtingen worden uitgerekend tot een schema van termijnen, op
+    ///    de uitkomsten waarop besloten is en met de instellingen van de wereld;
+    /// 5. de uitkomst wordt als decretogram vastgelegd in de eigen stroom
+    ///    [`BESCHIKKINGEN`] — één gram, met alle uitkomsten en het hele schema
+    ///    samen (RFC-022 §1.2).
     ///
     /// `pub(crate)` en niet `pub`, net als [`Self::record`]: een consument kan een
     /// cel niet laten besluiten. Dat doet de cel zelf, in deze opstelling
@@ -647,10 +754,16 @@ impl Cell {
     /// `resolver` is dezelfde weg, maar voor de verwijzingen die *de wet* legt
     /// (tier 3): de besluit-engine krijgt hem voor de duur van dit ene besluit,
     /// en de reduce-engine nooit.
+    ///
+    /// `settings` zijn de instellingen van het wereldbestand; een verplichting
+    /// met `schedule: $betalingsritme` leest eruit. De cel houdt ze niet — ze
+    /// zijn van de wereld, en een besluit krijgt ze aangereikt zoals het zijn
+    /// moment aangereikt krijgt.
     pub(crate) fn decide(
         &mut self,
         besluit: &str,
         params: &BTreeMap<String, Value>,
+        settings: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
         accepted: &BTreeMap<String, DecretogramInput>,
         resolver: Option<Rc<dyn CellResolver>>,
@@ -664,7 +777,18 @@ impl Cell {
         let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
 
         let inputs = self.collect_inputs(&definition, params, accepted, op_moment)?;
-        let decretogram = self.execute(&definition, zaakkenmerk, inputs, resolver, op_moment)?;
+        let mut decretogram =
+            self.execute(&definition, zaakkenmerk, inputs, resolver, op_moment)?;
+        // Ná de uitvoering, want het bedrag komt uit de uitkomst waarop besloten
+        // is; vóór het vastleggen, want het schema hoort ín het gram.
+        decretogram.obligations = definition.schedule_obligations(
+            &self.id,
+            &decretogram.zaakkenmerk,
+            &decretogram.outputs,
+            params,
+            settings,
+            op_moment,
+        )?;
 
         let event = decretogram.event()?;
         self.record_own(BESCHIKKINGEN, event)?;
@@ -928,8 +1052,100 @@ impl Cell {
                 })
                 .collect(),
             inputs,
+            // Het schema komt er in `decide` bij: het hangt aan de uitkomsten
+            // hierboven, en die zijn hier net pas bekend.
+            obligations: Vec::new(),
             receipt,
         })
+    }
+
+    /// Kom één vervallen verplichting na: leg de betaling vast.
+    ///
+    /// Dit is wat de cel die de verplichting draagt doet als de klok een
+    /// vervaldatum passeert. Ze legt vast wat zíj deed — een executogram met
+    /// `intake: betaling` in haar eigen stroom [`BETALINGEN`] — en niets over een
+    /// ander.
+    ///
+    /// Levert `false` als deze termijn er al lag: zie [`Self::already_settled`].
+    pub(crate) fn pay_obligation(&mut self, due: &ObligationDue) -> Result<bool> {
+        self.record_obligation(due, due.payment_event())
+    }
+
+    /// Leg vast dat gemeld is dat er op een verplichting betaald is.
+    ///
+    /// De tegenhanger van [`Self::pay_obligation`], bij de cel die besloot. Ook
+    /// dit is een eigen vastlegging (`intake: levering`) en geen kopie van het
+    /// gram van de betaler: beide kanten weten wat er gebeurde, en geen van
+    /// beide leest de kroniek van de ander.
+    pub(crate) fn note_obligation_paid(&mut self, due: &ObligationDue) -> Result<bool> {
+        self.record_obligation(due, due.delivery_event())
+    }
+
+    /// Leg één kant van een vervallen termijn vast, tenzij ze er al ligt.
+    ///
+    /// Langs [`Self::record`] en niet rechtstreeks naar de store: dat is de poort
+    /// waar elke vastlegging langs hoort, ook een die het platform zelf maakt.
+    fn record_obligation(&mut self, due: &ObligationDue, event: ChronicleEvent) -> Result<bool> {
+        if self.already_settled(due) {
+            return Ok(false);
+        }
+        self.record(BETALINGEN, event)?;
+        Ok(true)
+    }
+
+    /// Ligt deze termijn hier al?
+    ///
+    /// Eén zaak, één besluit en één volgnummer is één termijn. Dat is wat een
+    /// executogram twee keer vastleggen tegenhoudt: de klok mag in kleine stappen
+    /// langskomen, een besluit mag overgedaan worden, en een wereld mag de
+    /// betaling al als startstand hebben staan mits die dezelfde verwijzing naar
+    /// het besluit draagt — betaald is betaald, en een kroniek die hetzelfde feit
+    /// twee keer draagt telt het in een som ook twee keer mee.
+    ///
+    /// Het besluit hoort in die sleutel en niet alleen het volgnummer: over één
+    /// zaak worden meer besluiten genomen (een verlening en later een
+    /// vaststelling), en die dragen elk hun eigen schema dat bij 1 begint. Op
+    /// alleen zaak en volgnummer zou de termijn van het tweede besluit voor die
+    /// van het eerste doorgaan en stil wegvallen. Dat het volgnummer bínnen een
+    /// besluit uniek is, komt van de andere kant — zie
+    /// [`ObligationDue::volgnummer`].
+    ///
+    /// Het *moment* van het besluit zit er met opzet niet in. Hetzelfde besluit
+    /// over dezelfde zaak nog eens nemen levert daardoor geen tweede betaling,
+    /// ook niet op een latere dag. Een herzieningsbesluit dat een eerder schema
+    /// vervángt, is iets anders — dat vraagt om intrekken, en intrekken bestaat
+    /// hier nog niet.
+    fn already_settled(&self, due: &ObligationDue) -> bool {
+        self.chronicles
+            .latest_recording(
+                BETALINGEN,
+                besluit::ZAAKKENMERK,
+                &Value::String(due.zaakkenmerk.clone()),
+                &BTreeMap::from([
+                    (besluit::VOLGNUMMER.to_string(), Value::Int(due.volgnummer)),
+                    (
+                        besluit::BESLUIT.to_string(),
+                        Value::String(due.besluit.clone()),
+                    ),
+                    (
+                        besluit::BESLUIT_CEL.to_string(),
+                        Value::String(due.decided_by.clone()),
+                    ),
+                ]),
+                due.vervaldatum,
+            )
+            .is_some()
+    }
+
+    /// Het sleutelveld van een stroom die deze cel houdt; `None` als ze haar
+    /// niet houdt.
+    ///
+    /// `pub(crate)`, en alleen voor het optuigen: de wereld moet kunnen toetsen
+    /// dat een cel die een verplichting draagt een betalingsstroom heeft met de
+    /// sleutel waarop een zaak terug te vinden is. Geeft niets prijs over wat er
+    /// in die stroom staat.
+    pub(crate) fn stream_key(&self, stream: &str) -> Option<&str> {
+        self.chronicles.key_of(stream)
     }
 }
 
@@ -968,7 +1184,41 @@ fn resolve_reference(law: &ArticleBasedLaw, reference: &str) -> Option<String> {
         })
 }
 
+/// Waar een kroniekfilter naar kijkt: één stroom, één onderwerp, één filter.
+///
+/// De twee reductievormen over een kroniek — de laatste vastlegging en de som —
+/// stellen dezelfde vraag en verschillen alleen in wat ze met het antwoord doen.
+/// Dat ze hier dezelfde vraag dragen, houdt ze bij elkaar: een filter dat voor de
+/// som iets anders zou betekenen dan voor `latest`, zou twee reducties opleveren
+/// die niet over dezelfde vastleggingen gaan.
+struct ChronicleQuery<'a> {
+    /// De eigen stroom waarover gefilterd wordt.
+    chronicle: &'a str,
+    /// Het sleutelveld van die stroom.
+    key: &'a str,
+    /// De sleutelwaarde uit de vraag.
+    key_value: &'a Value,
+    /// De extra gelijkheidsvoorwaarden (`where`).
+    conditions: &'a BTreeMap<String, Value>,
+}
+
+impl ChronicleQuery<'_> {
+    /// Waarom dit filter niets vond, zo precies dat het na te lopen is.
+    fn nothing_established(&self, op_moment: NaiveDate) -> String {
+        nothing_established(
+            self.chronicle,
+            self.key,
+            self.key_value,
+            self.conditions,
+            op_moment,
+        )
+    }
+}
+
 /// Waarom het kroniekfilter niets vond, zo precies dat het na te lopen is.
+///
+/// Los van [`ChronicleQuery`], omdat het besluit-pad dezelfde reden nodig heeft
+/// voor een input die het niet kon ophalen, en daar is geen lexostatus in zicht.
 fn nothing_established(
     chronicle: &str,
     key: &str,
@@ -999,9 +1249,7 @@ fn nothing_established(
 /// tijdas.
 fn nothing_published(
     definition: &LexostatusDefinition,
-    chronicle: &str,
-    key: &str,
-    key_value: &Value,
+    query: &ChronicleQuery<'_>,
     recorded: NaiveDate,
 ) -> String {
     let published = definition
@@ -1010,9 +1258,9 @@ fn nothing_published(
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "kroniekstroom '{chronicle}' heeft voor {key} '{key_value}' wel een vastlegging \
-         (van {recorded}), maar die draagt geen van de gepubliceerde uitkomsten \
-         ({published})"
+        "kroniekstroom '{}' heeft voor {} '{}' wel een vastlegging (van {recorded}), \
+         maar die draagt geen van de gepubliceerde uitkomsten ({published})",
+        query.chronicle, query.key, query.key_value
     )
 }
 
@@ -1261,6 +1509,12 @@ lexostatus_definitions:
 
     fn bsn() -> BTreeMap<String, Value> {
         BTreeMap::from([("bsn".to_string(), Value::String("999993653".to_string()))])
+    }
+
+    /// Een wereld zonder instellingen: geen van de besluiten hieronder legt een
+    /// verplichting op, dus er is niets om naar te verwijzen.
+    fn no_settings() -> BTreeMap<String, Value> {
+        BTreeMap::new()
     }
 
     fn moment() -> NaiveDate {
@@ -1747,6 +2001,162 @@ laws:
         );
     }
 
+    /// Een bron-cel met betalingen in haar kroniek.
+    ///
+    /// `bedrag` van de tweede vastlegging wordt letterlijk ingeplakt, zodat de
+    /// test over een som die niet op te tellen valt dezelfde stroom gebruikt als
+    /// de test die wél optelt.
+    fn betaalcel(tweede_bedrag: &str) -> CellConfig {
+        config(&format!(
+            r"
+id: belastingdienst
+laws: []
+chronicles:
+  - stream: betalingen
+    key: zaakkenmerk
+    events:
+      - name: betaling
+        intake: betaling
+        recording_actor: belastingdienst
+        op_moment: 2024-01-01
+        fields:
+          zaakkenmerk: zorgtoeslag/999993653
+          bedrag: 1000
+          volgnummer: 1
+      - name: betaling
+        intake: betaling
+        recording_actor: belastingdienst
+        op_moment: 2024-04-01
+        fields:
+          zaakkenmerk: zorgtoeslag/999993653
+          bedrag: {tweede_bedrag}
+          volgnummer: 2
+lexostatus_definitions:
+  - name: betaald_tot_nu_toe
+    inputs:
+      - name: zaakkenmerk
+        type: string
+    outputs:
+      - bedrag
+    reduction:
+      chronicle: betalingen
+      key: zaakkenmerk
+      sum: bedrag
+"
+        ))
+    }
+
+    fn zaak(zaakkenmerk: &str) -> BTreeMap<String, Value> {
+        BTreeMap::from([(
+            "zaakkenmerk".to_string(),
+            Value::String(zaakkenmerk.to_string()),
+        )])
+    }
+
+    /// De som is een reductie over de tijdas, net als elk ander kroniekfilter: ze
+    /// telt op wat op het gevraagde moment vastlag en niet wat er inmiddels bij
+    /// is gekomen.
+    #[test]
+    fn de_som_telt_op_wat_op_dat_moment_vastlag() {
+        let cell = Cell::from_config(&betaalcel("500"), &regulation_root(), &no_fixtures())
+            .unwrap_or_else(|e| panic!("de cel moet op te tuigen zijn: {e}"));
+
+        let vroeg = cell
+            .reduce(
+                "betaald_tot_nu_toe",
+                &zaak("zorgtoeslag/999993653"),
+                date("2024-02-01"),
+            )
+            .unwrap_or_else(|e| panic!("de som moet te maken zijn: {e}"));
+        assert_eq!(values(&vroeg).get("bedrag"), Some(&Value::Int(1000)));
+
+        let laat = cell
+            .reduce(
+                "betaald_tot_nu_toe",
+                &zaak("zorgtoeslag/999993653"),
+                date("2024-06-01"),
+            )
+            .unwrap_or_else(|e| panic!("de som moet te maken zijn: {e}"));
+        assert_eq!(values(&laat).get("bedrag"), Some(&Value::Int(1500)));
+    }
+
+    /// Nul vastleggingen is niet nul euro. Een 0 zou "er is niets betaald" niet
+    /// kunnen onderscheiden van "over deze zaak ligt hier niets".
+    #[test]
+    fn de_som_over_niets_is_geen_nul() {
+        let cell = Cell::from_config(&betaalcel("500"), &regulation_root(), &no_fixtures())
+            .unwrap_or_else(|e| panic!("de cel moet op te tuigen zijn: {e}"));
+        let answer = cell
+            .reduce(
+                "betaald_tot_nu_toe",
+                &zaak("zorgtoeslag/999993999"),
+                date("2024-06-01"),
+            )
+            .unwrap_or_else(|e| panic!("de som moet te maken zijn: {e}"));
+        assert!(
+            answer.not_established().is_some(),
+            "verwachtte 'niets vastgesteld', kreeg {:?}",
+            answer.outcome
+        );
+    }
+
+    /// Een vastlegging zonder getal in het veld is een fout en geen nul: een som
+    /// die haar overslaat valt stil te laag uit.
+    #[test]
+    fn een_som_over_een_veld_zonder_getal_faalt() {
+        let cell = Cell::from_config(&betaalcel("veel"), &regulation_root(), &no_fixtures())
+            .unwrap_or_else(|e| panic!("de cel moet op te tuigen zijn: {e}"));
+        let err = cell
+            .reduce(
+                "betaald_tot_nu_toe",
+                &zaak("zorgtoeslag/999993653"),
+                date("2024-06-01"),
+            )
+            .expect_err("een som over tekst hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::SumOfNonNumber { .. }),
+            "verwachtte SumOfNonNumber, kreeg {err}"
+        );
+    }
+
+    /// Een som levert precies één waarde op, dus `outputs` hoort precies dat veld
+    /// te noemen. Al het andere is een belofte die nooit nagekomen wordt.
+    #[test]
+    fn een_som_die_iets_anders_publiceert_dan_ze_optelt_wordt_geweigerd() {
+        let mut config = betaalcel("500");
+        config.lexostatus_definitions[0].outputs = vec!["volgnummer".to_string()];
+        let err = Cell::from_config(&config, &regulation_root(), &no_fixtures())
+            .expect_err("een som die iets anders publiceert hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::SumOutputMismatch { .. }),
+            "verwachtte SumOutputMismatch, kreeg {err}"
+        );
+    }
+
+    /// Het antwoord staat onder de naam die de definitie publiceert, ook als
+    /// `sum` die naam anders schrijft.
+    ///
+    /// Het optuigen vergelijkt de twee zonder op kapitalen te letten, net als bij
+    /// elke andere gepubliceerde uitkomst. Zou de som onder de naam uit `sum`
+    /// antwoorden, dan lag het getal er wel maar onder een naam die de definitie
+    /// niet noemt — en dan vindt een consument niets.
+    #[test]
+    fn de_som_antwoordt_onder_de_gepubliceerde_naam() {
+        let mut config = betaalcel("500");
+        config.lexostatus_definitions[0].outputs = vec!["Bedrag".to_string()];
+        let cell = Cell::from_config(&config, &regulation_root(), &no_fixtures())
+            .unwrap_or_else(|e| panic!("de cel moet op te tuigen zijn: {e}"));
+
+        let answer = cell
+            .reduce(
+                "betaald_tot_nu_toe",
+                &zaak("zorgtoeslag/999993653"),
+                date("2024-06-01"),
+            )
+            .unwrap_or_else(|e| panic!("de som moet te maken zijn: {e}"));
+        assert_eq!(values(&answer).get("Bedrag"), Some(&Value::Int(1500)));
+    }
+
     #[test]
     fn een_output_die_de_stroom_niet_kent_wordt_geweigerd() {
         let err = Cell::from_config(
@@ -1938,6 +2348,7 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_vaststelling",
                 &bsn(),
+                &no_settings(),
                 moment(),
                 &no_accepted(),
                 None,
@@ -1984,6 +2395,7 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_vaststelling",
                 &bsn(),
+                &no_settings(),
                 moment(),
                 &no_accepted(),
                 None,
@@ -2028,6 +2440,7 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_vaststelling",
                 &bsn(),
+                &no_settings(),
                 date("2024-01-01"),
                 &no_accepted(),
                 None,
@@ -2058,6 +2471,7 @@ besluit_definitions:
             cell.decide(
                 "zorgtoeslag_vaststelling",
                 &bsn(),
+                &no_settings(),
                 moment(),
                 &no_accepted(),
                 None,
@@ -2097,6 +2511,7 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_terugvordering",
                 &bsn(),
+                &no_settings(),
                 moment(),
                 &no_accepted(),
                 None,
@@ -2199,6 +2614,7 @@ chronicles:
         cell.decide(
             "zorgtoeslag_vaststelling",
             &bsn(),
+            &no_settings(),
             moment(),
             &no_accepted(),
             None,

@@ -1,0 +1,214 @@
+---
+name: hetzelfde bedrag in een ander ritme
+description: >-
+  Het tegenscenario naast `toeslagen_verplichtingen.yaml`. Hetzelfde besluit,
+  hetzelfde bedrag, twee andere ritmes: `ineens` staat letterlijk in de
+  besluit-definitie, `maand` komt uit `settings` van het wereldbestand. Het
+  ritme verandert de vervaldata en de termijnbedragen; het verandert niet wat er
+  in totaal betaald wordt.
+
+  Verder laat dit scenario `from` zien: de maandelijkse verplichting begint niet
+  bij het besluit maar op een datum die uit een parameter volgt. Zolang die
+  datum niet vóór het besluit ligt, mag dat — een verplichting kan niet
+  vervallen vóór het besluit waaruit ze volgt.
+
+clock:
+  start: 2024-01-01
+
+settings:
+  betalingsritme: maand
+
+cells:
+  - id: toeslagen
+    laws:
+      - wet_op_de_zorgtoeslag
+      - algemene_wet_inkomensafhankelijke_regelingen
+      - regeling_standaardpremie
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: melding uit de basisregistratie personen
+            op_moment: 2023-01-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: GEEN
+
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: toeslagen
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+              verzamelinkomen: 79547
+              buitenlands_inkomen: 0
+              vermogen: 0
+
+      - stream: betalingen
+        key: zaakkenmerk
+
+    besluit_definitions:
+      - name: zorgtoeslag_ineens
+        doc: >-
+          Eén termijn, op het moment van het besluit. Het ritme staat hier
+          letterlijk: deze beschikking betaalt nu eenmaal in één keer, ongeacht
+          wat de wereld als standaardritme heeft ingesteld.
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag-ineens/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+        obligations:
+          - amount: $hoogte_zorgtoeslag
+            payer: belastingdienst
+            schedule: ineens
+
+      - name: zorgtoeslag_maandelijks
+        doc: >-
+          Twaalf termijnen, vanaf een datum die het besluit meekrijgt. `from` is
+          een sjabloon over de gedocumenteerde parameters, net als het
+          zaakkenmerk; wat het oplevert moet een datum zijn.
+        regulation: wet_op_de_zorgtoeslag
+        output: heeft_recht_op_zorgtoeslag
+        outputs:
+          - hoogte_zorgtoeslag
+        zaakkenmerk: zorgtoeslag-maand/{bsn}
+        params:
+          - name: bsn
+            type: string
+          - name: jaar
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+        obligations:
+          - amount: $hoogte_zorgtoeslag
+            payer: belastingdienst
+            schedule: $betalingsritme
+            from: '{jaar}-02-01'
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+  - id: belastingdienst
+    laws: []
+    chronicles:
+      - stream: betalingen
+        key: zaakkenmerk
+
+    lexostatus_definitions:
+      - name: betaald_tot_nu_toe
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - bedrag
+        reduction:
+          chronicle: betalingen
+          key: zaakkenmerk
+          sum: bedrag
+
+decide:
+  - description: ineens - één termijn, meteen
+    cell: toeslagen
+    besluit: zorgtoeslag_ineens
+    params:
+      bsn: '999993653'
+    op_moment: 2024-01-01
+    expect:
+      hoogte_zorgtoeslag: 197205.31187
+
+  - description: maandelijks - twaalf termijnen, vanaf februari
+    cell: toeslagen
+    besluit: zorgtoeslag_maandelijks
+    params:
+      bsn: '999993653'
+      jaar: '2024'
+    op_moment: 2024-01-01
+    expect:
+      hoogte_zorgtoeslag: 197205.31187
+
+queries:
+  - description: >-
+      `ineens` betaalt op de dag van het besluit het hele bedrag; er is geen
+      termijn die later vervalt.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag-ineens/999993653
+    op_moment: 2024-01-01
+    expect:
+      bedrag: 197205.31187
+
+  - description: >-
+      De maandelijkse verplichting begint pas in februari, dus halverwege januari
+      ligt er over die zaak nog niets vast.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag-maand/999993653
+    op_moment: 2024-01-15
+    expect_not_established: true
+
+  - description: >-
+      Halverwege juni zijn er vijf maandtermijnen verstreken (februari tot en met
+      juni). Deze vraag staat hier ook om de klok in kleine stappen te laten
+      lopen: elke termijn gaat één keer af, hoe vaak de tijd ook wordt opgedeeld.
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag-maand/999993653
+    op_moment: 2024-06-15
+    expect:
+      bedrag: 82165
+
+  - description: na september acht termijnen
+    cell: belastingdienst
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag-maand/999993653
+    op_moment: 2024-09-15
+    expect:
+      bedrag: 131464
+
+  - description: >-
+      Na de twaalfde termijn (januari van het volgende jaar) is er precies
+      hetzelfde betaald als in het scenario met kwartalen, en als bij `ineens`.
+      Het ritme bepaalt wanneer, niet hoeveel.
+    cell: toeslagen
+    lexostatus: betaald_tot_nu_toe
+    params:
+      zaakkenmerk: zorgtoeslag-maand/999993653
+    op_moment: 2025-01-05
+    expect:
+      bedrag: 197205.31187
