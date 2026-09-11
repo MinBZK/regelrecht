@@ -28,6 +28,7 @@
 
 pub mod annotation;
 pub mod article;
+pub mod cell;
 pub mod config;
 pub mod context;
 pub mod data_source;
@@ -67,16 +68,17 @@ pub use article::{
     HookDeclaration, HookFilter, HookPoint, LawLoad, MachineReadable, OverrideDeclaration,
     ProcedureDefinition, Source, Stage, UntranslatableEntry,
 };
+pub use cell::{AcceptedCellValue, CellResolver};
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
     MAX_YAML_SIZE,
 };
 pub use context::RuleContext;
 pub use data_source::{DataSource, DataSourceMatch, DataSourceRegistry, DictDataSource};
-pub use engine::{ArticleEngine, ArticleResult, OutputProvenance};
+pub use engine::{ArticleEngine, ArticleResult, InputProvenance, OutputProvenance};
 pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
-pub use receipt::ExecutionReceipt;
+pub use receipt::{AcceptedValue, ExecutionReceipt};
 pub use resolver::RuleResolver;
 pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};

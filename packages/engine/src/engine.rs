@@ -20,6 +20,7 @@
 //! ```
 
 use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
+use crate::cell::AcceptedCellValue;
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
@@ -45,6 +46,35 @@ pub enum OutputProvenance {
     Override { law_id: String, article: String },
 }
 
+/// Provenance of a resolved input: which tier of the resolution order
+/// (RFC-022 §4.2) supplied the value.
+///
+/// An outcome that leans on a fact is only checkable when the fact names where
+/// it came from. The tiers are not interchangeable: a register said so, a
+/// regulation computed it here, another organisation decided it and we
+/// accepted that, or the caller handed it in.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "type")]
+pub enum InputProvenance {
+    /// Handed in by the caller under the input's own name, bypassing its
+    /// `source`.
+    Parameter,
+    /// Delivered by a registered data source (tier 1).
+    DataSource { source: String },
+    /// Computed here by evaluating a loaded regulation (tier 2, RFC-007).
+    Regulation { regulation: String, output: String },
+    /// Accepted from a cell (tier 3, RFC-022 §4.2): a value this engine did
+    /// not compute and cannot reproduce, so it travels with the decision
+    /// instead of being recomputed — it is carried in
+    /// [`ArticleResult::accepted_values`] and lands in the receipt's
+    /// `accepted_values` (RFC-013).
+    ///
+    /// Recorded for the tier that answered, as with a regulation: when the
+    /// cell was not asked because a parameter that says *who* the question is
+    /// about named nobody, the value is that absence, not an accepted one.
+    Cell { cell: String, output: String },
+}
+
 /// Result of article execution
 #[derive(Debug, Clone)]
 pub struct ArticleResult {
@@ -54,6 +84,26 @@ pub struct ArticleResult {
     pub output_provenance: BTreeMap<String, OutputProvenance>,
     /// Resolved input values (from cross-law references)
     pub resolved_inputs: BTreeMap<String, Value>,
+    /// Per-input provenance: which tier of the resolution order supplied each
+    /// input the service resolved (RFC-022 §4.2). Covers the inputs of the
+    /// article(s) this result was produced by, not those of the regulations
+    /// they called in turn — each of those has its own result. Empty for an
+    /// article evaluated by [`ArticleEngine`] alone, which resolves no
+    /// sources. An input that no tier answered — left unknown for lack of any
+    /// data source — carries no entry.
+    pub input_provenance: BTreeMap<String, InputProvenance>,
+    /// Every value accepted from a cell (tier 3, RFC-022 §4.2) during the
+    /// execution this result concludes, including the ones a nested regulation,
+    /// a sibling article, a hook or an override accepted: the decision leans on
+    /// all of them, and this engine reproduces none of them, so the receipt has
+    /// to carry them whoever asked for them (RFC-013 `accepted_values`).
+    ///
+    /// Unlike `input_provenance`, which describes *this* result's own inputs,
+    /// this is a fact about the whole execution, and for a procedure executed
+    /// stage by stage (RFC-008) about every stage of it, carried along in
+    /// [`StageState`](crate::StageState). Empty for an article evaluated by
+    /// [`ArticleEngine`] alone, which resolves no sources.
+    pub accepted_values: Vec<AcceptedCellValue>,
     /// Article number that was executed
     pub article_number: String,
     /// Law ID containing the article
@@ -248,6 +298,9 @@ impl<'a> ArticleEngine<'a> {
             outputs: context.outputs().clone(),
             output_provenance,
             resolved_inputs: context.resolved_inputs().clone(),
+            // Filled in by the service layer, which is where sources resolve.
+            input_provenance: BTreeMap::new(),
+            accepted_values: Vec::new(),
             article_number: self.article.number.clone(),
             law_id: self.law.id.clone(),
             law_uuid: self.law.uuid.clone(),
