@@ -93,6 +93,35 @@ function onResize() {
 onMounted(() => window.addEventListener('resize', onResize));
 onUnmounted(() => window.removeEventListener('resize', onResize));
 
+/**
+ * De tabbladen in het vangnet-menu hebben een `href` zodat ze als echte link
+ * renderen: dat zet `aria-current="page"` op het actieve tabblad en houdt
+ * middenklik heel. Het menu-item roept er alleen geen preventDefault op, dus
+ * de browser volgt die href en herlaadt de hele pagina naast de
+ * router-navigatie (gemeten: vier framenavigaties).
+ *
+ * De luisteraar moet op het menu van de toolbar zelf: dat menu bevat klonen
+ * van onze items en is naar document.body verplaatst, dus een handler op onze
+ * eigen nldd-menu-group in de template ziet die klik nooit. Capture-fase, zodat
+ * we er vóór het menu-item bij zijn. Een klik met een modifier laten we staan,
+ * want dat is iemand die bewust een nieuw tabblad of venster wil.
+ */
+function onOverflowMenuClick(event) {
+  if (event.defaultPrevented) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+  const item = event.composedPath?.().find((n) => n?.tagName?.toLowerCase?.() === 'nldd-menu-item');
+  const to = item?.getAttribute?.('href');
+  if (!to || !tabs.value.some((t) => t.to === to)) return;
+  event.preventDefault();
+  router.push(to);
+}
+
+// Het menu bestaat pas nadat de toolbar het heeft aangemaakt, en het verhuist
+// naar document.body. Daarom luisteren we op document en filteren we op de
+// href van een eigen tabblad.
+onMounted(() => document.addEventListener('click', onOverflowMenuClick, true));
+onUnmounted(() => document.removeEventListener('click', onOverflowMenuClick, true));
+
 const tabVariant = computed(() => {
   if (viewportWidth.value >= 1240) return 'icon-and-text';
   if (viewportWidth.value >= 1040) return 'text';
@@ -197,13 +226,18 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                  toolbar dit item en komen de tabbladen hier terug. Zonder dit
                  was de navigatie onder 500px weg, dezelfde fout als eerst. -->
             <nldd-menu-group slot="overflow" text="Ga naar">
+              <!-- Met `href` rendert het item als een echte link en zet het
+                   `aria-current="page"` op het actieve tabblad. Zonder href
+                   doet `selected` hier niets: het vinkje hoort bij checkbox
+                   en radio, en aria-current komt alleen op de link-variant.
+                   Middenklik en 'openen in nieuw tabblad' werken zo ook. -->
               <nldd-menu-item
                 v-for="tab in tabs"
                 :key="tab.name"
                 :text="tab.text"
                 :icon="tab.icon"
+                :href="tab.to"
                 :selected="isActive(tab) || undefined"
-                @select="router.push(tab.to)"
               ></nldd-menu-item>
             </nldd-menu-group>
           </nldd-toolbar-item>
