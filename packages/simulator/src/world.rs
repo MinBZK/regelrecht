@@ -22,14 +22,24 @@
 //! omdat een actie van een actor nog niet bestaat. De wereld houdt zelf geen
 //! register van wat er besloten is; het decretogram ligt in de kroniek van de
 //! cel die besloot.
+//!
+//! Daar komt één ding bij dat alleen de wereld kan: **accepteren**. Een besluit
+//! dat een waarde van een andere organisatie nodig heeft, zegt dat — en de wereld
+//! haalt hem op langs de veiligheidscontext van de besluitende cel en het
+//! transport, want zij kent de peers en de cel niet. Wat over de grens ging komt
+//! als [`DecisionRecord::crossings`] mee terug, zodat het meetinstrument het kan
+//! zien zonder dat een cel het kent.
 
+use crate::accept::CellBridge;
 use crate::cell::{Cell, CellConfig, ChronicleEvent, Decretogram, Intake, Lexostatus};
 use crate::error::{Result, SimulatorError, Subject};
+use crate::security::{Identity, SignedAnswer};
 use chrono::NaiveDate;
-use regelrecht_engine::Value;
+use regelrecht_engine::{CellResolver, Value};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
+use std::rc::Rc;
 
 /// De logische klok van een wereld, zoals het wereldbestand haar opgeeft.
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -103,6 +113,23 @@ impl Recording {
 enum Trigger {
     /// Er wordt een executogram vastgelegd.
     Record(Recording),
+}
+
+/// Wat één besluit opleverde: het gram, en wat ervoor over de celgrens ging.
+///
+/// De twee horen bij elkaar en komen daarom samen naar buiten. Het gram draagt
+/// de geaccepteerde waarden met hun herkomst — dat is wat de cel vastlegt — en
+/// de contacten zijn het bewijs dat er precies die vragen gesteld zijn en geen
+/// andere. Het observatielog is test-only en passief (zie
+/// [`crate::observation`]), dus het kan dit niet zelf komen halen: wie besluit,
+/// geeft het door, anders is het log stil incompleet in plaats van rood.
+#[derive(Debug, Clone)]
+pub struct DecisionRecord {
+    /// Het vastgelegde besluit.
+    pub decretogram: Decretogram,
+    /// Elk contact over een celgrens dat dit besluit nodig had, in volgorde.
+    /// Leeg als het besluit alles zelf wist.
+    pub crossings: Vec<SignedAnswer>,
 }
 
 /// Eén gesimuleerde wereld: cellen, een klok, en wat er nog moet gebeuren.
@@ -186,6 +213,8 @@ impl World {
                 })?;
             cell.check_recording(&target.chronicle, &target.event(fixture.at))?;
         }
+
+        check_peers_exist(configs, &cells)?;
 
         let mut pending: Vec<(NaiveDate, Trigger)> = fixtures
             .iter()
@@ -285,13 +314,21 @@ impl World {
     /// `op_moment` mag niet ná de klok liggen, om dezelfde reden als bij
     /// [`World::reduce`]: een besluit "op" een moment dat nog niet gebeurd is,
     /// zou een gram in de toekomst leggen.
+    ///
+    /// Dit is ook de enige plek waar een besluit de **celgrens over** kan. De
+    /// cel zegt wat ze van een ander nodig heeft; de wereld — die de peers kent
+    /// en de identiteit van de besluitende cel draagt — haalt het op langs de
+    /// veiligheidscontext en het transport, en geeft het met herkomst terug. Wat
+    /// erover de grens ging komt als [`DecisionRecord::crossings`] mee naar
+    /// buiten: het observatielog staat buiten de band en kan het niet zelf komen
+    /// halen.
     pub fn decide(
         &mut self,
         cell: &str,
         besluit: &str,
         params: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
-    ) -> Result<Decretogram> {
+    ) -> Result<DecisionRecord> {
         if op_moment > self.clock {
             return Err(SimulatorError::MomentAfterClock {
                 cell: cell.to_string(),
@@ -301,12 +338,62 @@ impl World {
                 clock: self.clock.to_string(),
             });
         }
-        self.cells
-            .get_mut(cell)
-            .ok_or_else(|| SimulatorError::UnknownCell {
+
+        // De besluitende cel gaat uit de map, en de rest gaat naar de brug. Twee
+        // vliegen: de brug kan de peers bezitten (een geregistreerde resolver
+        // moet de uitvoering overleven, dus lenen kan niet), en de besluitende
+        // cel is tijdens haar eigen besluit onbereikbaar voor het transport —
+        // een cel die zichzelf over de grens bevraagt is hier geen afspraak maar
+        // een lege plek.
+        let Some(mut deciding) = self.cells.remove(cell) else {
+            return Err(SimulatorError::UnknownCell {
                 cell: cell.to_string(),
-            })?
-            .decide(besluit, params, op_moment)
+            });
+        };
+        let bridge = Rc::new(CellBridge::new(
+            Identity::for_cell(cell),
+            besluit,
+            deciding.accepts_from().cloned().collect::<Vec<_>>(),
+            std::mem::take(&mut self.cells),
+        ));
+
+        let outcome = Self::accept_and_decide(&bridge, &mut deciding, besluit, params, op_moment);
+
+        // Ook als het besluit omviel: de wereld krijgt haar cellen terug zoals ze
+        // waren. Een mislukt besluit legt niets vast, maar het mag al helemaal
+        // geen cel laten verdwijnen.
+        self.cells = bridge.release();
+        self.cells.insert(cell.to_string(), deciding);
+
+        // Bij een fout gaan de contacten mee weg. Dat kan, omdat er dan geen
+        // besluit is om ze bij te leggen en de fout zelf al zegt bij wie het
+        // misging; het log meet een run die doorgaat, en een omgevallen besluit
+        // laat de run niet doorgaan.
+        Ok(DecisionRecord {
+            decretogram: outcome?,
+            crossings: bridge.crossings(),
+        })
+    }
+
+    /// Haal op wat het besluit van anderen nodig heeft, en laat de cel besluiten.
+    ///
+    /// De volgorde is de hele bewijslast van invariant I5: eerst vragen, dan
+    /// rekenen. Wat een ander vaststelt, komt binnen als waarde met herkomst en
+    /// gaat als parameter de engine in; de logica van die ander draait hier
+    /// niet. En wat de *wet* bij een andere cel haalt (tier 3), loopt langs
+    /// dezelfde brug, die de besluit-engine voor de duur van dit besluit krijgt.
+    fn accept_and_decide(
+        bridge: &Rc<CellBridge>,
+        deciding: &mut Cell,
+        besluit: &str,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Result<Decretogram> {
+        let requests = deciding.acceptance_requests(besluit, params)?;
+        let accepted = bridge.accept_all(&requests, op_moment)?;
+        let shared: Rc<CellBridge> = Rc::clone(bridge);
+        let resolver: Rc<dyn CellResolver> = shared;
+        deciding.decide(besluit, params, op_moment, &accepted, Some(resolver))
     }
 
     /// Laat alles afgaan wat op of vóór `tot` valt, in datumvolgorde.
@@ -358,6 +445,54 @@ impl World {
     pub fn pending_triggers(&self) -> usize {
         self.pending.len()
     }
+}
+
+/// Bestaat elke cel waarvan er in deze wereld geaccepteerd wordt?
+///
+/// Twee soorten afspraak wijzen een peer aan: `accept_from` in een
+/// besluit-definitie en `accepts_from` op de cel zelf (tier 3). Geen van beide
+/// is bij het optuigen van de cel te controleren — een cel kent geen andere cel
+/// — dus het valt hier, bij de enige die ze allemaal kent.
+fn check_peers_exist(configs: &[CellConfig], cells: &BTreeMap<String, Cell>) -> Result<()> {
+    let known = || {
+        cells
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    for config in configs {
+        let peers = config
+            .besluit_definitions
+            .iter()
+            .flat_map(|definition| {
+                definition.inputs.iter().filter_map(move |(input, origin)| {
+                    let cell = origin.accepts_from()?;
+                    Some((
+                        cell,
+                        format!("input '{input}' van besluit '{}'", definition.name),
+                    ))
+                })
+            })
+            .chain(config.accepts_from.iter().map(|source| {
+                (
+                    source.cell.as_str(),
+                    format!("uitkomst '{}' van haar wetten", source.output),
+                )
+            }));
+
+        for (peer, what) in peers {
+            if !cells.contains_key(peer) {
+                return Err(SimulatorError::UnknownAcceptedCell {
+                    cell: config.id.clone(),
+                    peer: peer.to_string(),
+                    what,
+                    known: known(),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

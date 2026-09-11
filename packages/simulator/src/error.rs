@@ -722,6 +722,145 @@ pub enum SimulatorError {
         known: String,
     },
 
+    /// Een besluit-definitie accepteert een input van de eigen cel.
+    ///
+    /// Voor eigen feiten is er een kroniek of een eigen wet. Zou dit mogen, dan
+    /// zou een cel zichzelf over de grens bevragen en als cross-cel-contact in
+    /// het vraaggraf komen — zie [`SimulatorError::TransportToSelf`], dezelfde
+    /// weigering een stap eerder.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' accepteert input '{input}' van de eigen cel; \
+         voor eigen feiten is er een kroniek of een eigen wet"
+    )]
+    AcceptFromSelf {
+        /// De cel waarin de definitie staat.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De input die zichzelf zou bevragen.
+        input: String,
+    },
+
+    /// Een cel declareert een cel-bron die geen van haar wetten aanwijst.
+    ///
+    /// Een cel bevraagt alleen de cellen die haar eigen wetten via
+    /// `source.regulation` noemen (invariant I3). Een afspraak daarbuiten zou
+    /// een vraaggraf openzetten waar het recht niet om vraagt, en dat hoort niet
+    /// pas tijdens een besluit te blijken.
+    #[error(
+        "cel '{cell}': `accepts_from` noemt '{peer}.{output}', maar geen van de eigen \
+         wetten vraagt daarom (wel: {asked})"
+    )]
+    UnclaimedCellSource {
+        /// De cel waarin de afspraak staat.
+        cell: String,
+        /// De gedeclareerde bron-cel.
+        peer: String,
+        /// De gedeclareerde uitkomst.
+        output: String,
+        /// Komma-gescheiden lijst van cel-bronnen die de wetten wél noemen.
+        asked: String,
+    },
+
+    /// Twee afspraken over dezelfde cel-bron en uitkomst.
+    #[error("cel '{cell}': `accepts_from` noemt '{peer}.{output}' twee keer")]
+    DuplicateCellSource {
+        /// De cel waarin de afspraak staat.
+        cell: String,
+        /// De bron-cel die dubbel staat.
+        peer: String,
+        /// De uitkomst die dubbel staat.
+        output: String,
+    },
+
+    /// Een gedeclareerde cel-bron heet net zo als een eigen regeling.
+    ///
+    /// Dan zou een vraag die voor de andere organisatie bedoeld is door de
+    /// gelijknamige regeling beantwoord worden, zonder spoor van de omleiding.
+    /// De engine weigert dat ook (RFC-022 §4.2); hier valt het bij het optuigen,
+    /// zodat de cel niet eerst hoeft te besluiten om het te merken.
+    #[error(
+        "cel '{cell}': `accepts_from` noemt cel '{peer}', maar die naam is ook een \
+         regeling die deze cel zelf laadt"
+    )]
+    CellShadowsRegulation {
+        /// De cel waarin de afspraak staat.
+        cell: String,
+        /// Het cel-id dat een eigen regeling overschaduwt.
+        peer: String,
+    },
+
+    /// Een cel wil accepteren van een cel die in deze wereld niet bestaat.
+    ///
+    /// Een cel kent geen andere cel, dus bij het optuigen van de cel valt dit
+    /// niet op; de wereld kent ze wel allemaal en toetst het daarom hier. Zonder
+    /// deze weigering zou een typfout in een peer-naam pas tijdens het besluit
+    /// opduiken, en dan als "transport kent geen cel" — een melding die naar het
+    /// transport wijst terwijl het bestand fout is.
+    #[error(
+        "cel '{cell}' wil {what} accepteren van cel '{peer}', maar die kent dit scenario \
+         niet (wel: {known})"
+    )]
+    UnknownAcceptedCell {
+        /// De cel die wil accepteren.
+        cell: String,
+        /// De peer die niet bestaat.
+        peer: String,
+        /// Wat er geaccepteerd zou worden, in woorden.
+        what: String,
+        /// Komma-gescheiden lijst van cellen die de wereld wél kent.
+        known: String,
+    },
+
+    /// Een reductie heeft een waarde van een andere cel nodig.
+    ///
+    /// Dit is de andere kant van de twee engine-configuraties (RFC-022 §4.2): de
+    /// reduce-engine heeft geen `CellResolver`, dus een `source.regulation` die
+    /// een cel aanwijst is voor haar een onbekende regeling. De cel reikt niet
+    /// buiten zichzelf om te kunnen antwoorden, en dat is geen gebrek maar het
+    /// hele punt — accepteren van een ander is iets wat je bij een **besluit**
+    /// doet, met herkomst in het decretogram, niet stilletjes tijdens een vraag.
+    #[error(
+        "cel '{cell}': lexostatus '{lexostatus}' heeft een waarde van cel '{peer}' nodig, \
+         maar een reductie reikt niet buiten de eigen cel; van een ander accepteren doet \
+         een cel in een besluit"
+    )]
+    ReductionReachesOutsideCell {
+        /// De cel waaraan gevraagd werd.
+        cell: String,
+        /// De lexostatus die niet te reduceren was.
+        lexostatus: String,
+        /// De cel waarvan de wet een waarde nodig had.
+        peer: String,
+    },
+
+    /// Een besluit kon een waarde niet van een andere cel accepteren.
+    ///
+    /// Eigen variant naast [`SimulatorError::BesluitInputMissing`], want de reden
+    /// ligt buiten deze cel: de bron-cel stelde niets vast, of ze publiceert de
+    /// gevraagde uitkomst niet. Het eerste is haar goed recht en geen defect —
+    /// wat er niet mag gebeuren, is doorrekenen met een gat. Het besluit valt dus
+    /// om en er wordt niets vastgelegd.
+    ///
+    /// De melding zegt wat de acceptatiecriteria vragen: welke input, van welke
+    /// cel, en waarom het niet lukte.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' kon input '{input}' niet accepteren van cel \
+         '{peer}': {reason}"
+    )]
+    AcceptedInputMissing {
+        /// De cel die wilde besluiten.
+        cell: String,
+        /// Het besluit dat de input nodig had.
+        besluit: String,
+        /// De input die ontbrak.
+        input: String,
+        /// De bevraagde cel.
+        peer: String,
+        /// Waarom de waarde niet aankwam, met de lexostatus en het moment erin.
+        reason: String,
+    },
+
     /// Een cel bevraagt zichzelf via het transport.
     ///
     /// Voor de eigen feiten is er een reductie; het transport is er voor peers.

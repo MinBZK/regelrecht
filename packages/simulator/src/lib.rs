@@ -29,6 +29,15 @@
 //! decretogram, dan is het antwoord "niets vastgesteld" en nooit een
 //! herberekening onder een inmiddels andere wetsversie.
 //!
+//! Een besluit mag **accepteren**: heeft het een waarde nodig die een andere
+//! organisatie vaststelt, dan wordt die opgehaald in plaats van nagerekend, en ze
+//! landt met haar herkomst in het decretogram — bron-cel, lexostatus, moment en
+//! ondertekening (invariant I5). Twee wegen, één mechanisme: `accept_from` in de
+//! besluit-definitie, of een `source.regulation` in de wet die een cel aanwijst
+//! (tier 3 van RFC-022 §4.2). Beide lopen langs de veiligheidscontext en het
+//! transport; de reduce-engine kan geen van beide, en dat is een ontbrekende
+//! capability en geen afspraak.
+//!
 //! ```no_run
 //! use regelrecht_simulator::{regulation_root, Scenario};
 //! use std::path::Path;
@@ -43,6 +52,7 @@
 
 #![deny(missing_docs)]
 
+mod accept;
 pub mod cell;
 mod corpus;
 pub mod error;
@@ -57,16 +67,17 @@ mod values;
 pub mod world;
 
 pub use cell::{
-    BesluitDefinition, BesluitInput, Cell, CellConfig, ChronicleEvent, ChronicleStore,
-    ChronicleStream, Decretogram, DecretogramInput, DocumentedParameter, InputOrigin, Intake,
-    Lexostatus, LexostatusDefinition, LexostatusOutcome, ParameterType, Reduction, BESCHIKKINGEN,
+    AcceptanceRequest, AcceptedSource, BesluitDefinition, BesluitInput, Cell, CellConfig,
+    ChronicleEvent, ChronicleStore, ChronicleStream, Decretogram, DecretogramInput,
+    DocumentedParameter, InputOrigin, Intake, Lexostatus, LexostatusDefinition, LexostatusOutcome,
+    ParameterType, Reduction, BESCHIKKINGEN,
 };
 pub use corpus::regulation_root;
 pub use error::{Result, SimulatorError, Subject};
 pub use scenario::{
-    Decision, DecisionOutcome, ExpectationFailure, Query, QueryOutcome, Scenario, ScenarioRun,
-    TransportOutcome, TransportQuery,
+    check_provenance, Decision, DecisionOutcome, ExpectationFailure, Query, QueryOutcome, Scenario,
+    ScenarioRun, TransportOutcome, TransportQuery,
 };
 pub use security::{Identity, SecurityContext, Signature, SignedAnswer};
 pub use transport::{CellTransport, InProcessTransport};
-pub use world::{Clock, Fixture, Recording, World};
+pub use world::{Clock, DecisionRecord, Fixture, Recording, World};

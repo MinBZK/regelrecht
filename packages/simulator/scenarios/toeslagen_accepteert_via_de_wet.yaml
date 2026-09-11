@@ -1,0 +1,163 @@
+---
+name: de wet wijst een andere cel aan, en het besluit accepteert wat die zegt
+description: >-
+  Tier 3 van de resolutievolgorde (RFC-022 §4.2). Hier zegt niet de
+  besluit-definitie dat een waarde van een ander komt, maar de **wet**: een
+  `source.regulation` die geen regeling is maar een cel-id. De besluit-engine
+  heeft daar een resolver voor en lost het op langs dezelfde veiligheidscontext
+  en hetzelfde transport als `accept_from`; de waarde landt als geaccepteerde
+  waarde in het decretogram en nergens anders.
+
+  De cel `toeslagen` voert hier een **testregeling** uit
+  (`fixtures/regulation/test_partnerschapstoets`), niet een corpuswet. Dat is
+  met opzet: geen enkele echte wet hoort verbouwd te worden omdat een
+  testopstelling iets wil laten zien, en het corpus is geen plek voor een wet
+  die alleen bestaat om een engine-eigenschap aan te tonen.
+
+  Let op wat de wet níet zegt: ze noemt `brp` en een uitkomstnaam, en verder
+  niets. Welke gepubliceerde lexostatus daar bij hoort, staat in `accepts_from`
+  van de cel — dat is een afspraak tussen twee organisaties en geen recht.
+
+clock:
+  # De vastlegging van `brp` staat als `events` in haar configuratie en ligt
+  # ervóór; er is geen fixture die nog moet landen.
+  start: 2024-01-01
+
+cells:
+  # De bron-cel: geen engine, één kroniek, één gepubliceerde lexostatus. Ze
+  # merkt niet dat de vraag uit een besluit van een ander kwam — het transport
+  # is de naad, en aan haar kant ziet elke vraag er hetzelfde uit.
+  - id: brp
+    laws: []
+
+    chronicles:
+      - stream: relaties
+        key: bsn
+        events:
+          - name: relatie_gewijzigd
+            intake: levering
+            recording_actor: brp
+            grondslag: eigen registratie
+            op_moment: 2023-03-01
+            fields:
+              bsn: '999993653'
+              partnerschap_type: HUWELIJK
+
+    lexostatus_definitions:
+      - name: partnerschap
+        doc: >-
+          De relatievorm van één persoon op één moment, zoals deze cel die
+          vastlegde.
+        inputs:
+          - name: bsn
+            type: string
+        outputs:
+          - partnerschap_type
+        reduction:
+          chronicle: relaties
+          key: bsn
+          latest: true
+
+  - id: toeslagen
+    laws:
+      - test_partnerschapstoets
+
+    # Wat de wet bij een andere cel haalt, en hoe daar te vragen. Zonder deze
+    # afspraak bereikt de engine `brp` niet: alleen gedeclareerde cel-ids komen
+    # bij de resolver uit, dus een cel die hier niet staat kan niet per ongeluk
+    # bevraagd worden.
+    accepts_from:
+      - cell: brp
+        output: partnerschap
+        lexostatus: partnerschap
+        field: partnerschap_type
+        doc: >-
+          `test_partnerschapstoets` art. 1 vraagt `partnerschap` bij de cel
+          `brp`; die publiceert dat als lexostatus met dezelfde naam, en de
+          waarde zit in haar uitkomst `partnerschap_type`.
+
+    besluit_definitions:
+      - name: partnerschapstoets
+        doc: >-
+          De cel voert haar eigen regeling uit. De enige input die de wet nodig
+          heeft, komt van een andere organisatie — en die wordt geaccepteerd,
+          niet nagerekend: `toeslagen` laadt de BRP-wet niet en voert haar dus
+          ook niet uit.
+        regulation: test_partnerschapstoets
+        output: is_gehuwd
+        zaakkenmerk: partnerschapstoets/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          # Alleen de parameter. `partnerschap_type` staat hier met opzet
+          # níet: een input die het besluit zelf aanlevert, vervangt haar
+          # `source`, en dan zou de tier-3-verwijzing nooit aan bod komen.
+          bsn:
+            param: bsn
+
+    lexostatus_definitions:
+      - name: partnerschapsbeschikking
+        doc: wat deze cel over deze zaak besloten heeft, op het gevraagde moment
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - is_gehuwd
+          - legal_character
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+      - name: partnerschap_nu
+        doc: >-
+          Dezelfde regeling, maar als **reductie** in plaats van als besluit. Ze
+          staat hier om te laten zien dat dat niet werkt: de reduce-engine heeft
+          geen resolver, dus ze kan de `source.regulation` naar `brp` niet
+          beantwoorden en komt niet buiten deze cel. Daarom staat er hieronder
+          geen vraag naar deze naam — die zou de run laten omvallen. Wat er
+          precies gebeurt, staat vast in `tests/accepteren.rs`; het is een
+          eigenschap van de opstelling en niet van dit bestand.
+        inputs:
+          - name: bsn
+            type: string
+        reduction:
+          regulation: test_partnerschapstoets
+          output: is_gehuwd
+          parameters:
+            bsn: $bsn
+
+decide:
+  - description: >-
+      Het besluit leunt op een feit van `brp`, en het gram zegt dat ook: de
+      waarde is geaccepteerd van die cel en hier niet uitgerekend.
+    cell: toeslagen
+    besluit: partnerschapstoets
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      is_gehuwd: true
+    expect_accepted:
+      # De naam is die van de uitkomst zoals de wet erom vroeg; de engine zet
+      # haar in `accepted_values` van het receipt, en het gram draagt dat
+      # receipt.
+      partnerschap: brp
+    expect_computed:
+      # De uitkomst van het besluit is wél eigen werk: die rekende deze cel uit
+      # met haar eigen regeling, op de waarde die ze accepteerde.
+      - is_gehuwd
+
+queries:
+  - description: >-
+      Terugzien is een reductie over de eigen kroniek: het besluit ligt er, met
+      het rechtskarakter dat de regeling eraan geeft.
+    cell: toeslagen
+    lexostatus: partnerschapsbeschikking
+    params:
+      zaakkenmerk: partnerschapstoets/999993653
+    op_moment: 2024-06-01
+    expect:
+      is_gehuwd: true
+      legal_character: BESCHIKKING

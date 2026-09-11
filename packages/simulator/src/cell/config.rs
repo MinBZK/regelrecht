@@ -42,6 +42,46 @@ pub struct CellConfig {
     /// via een reductie over de eigen kroniek.
     #[serde(default)]
     pub besluit_definitions: Vec<BesluitDefinition>,
+    /// De cellen die de **wetten** van deze cel aanwijzen, en hoe daar te
+    /// vragen (tier 3 van RFC-022 §4.2).
+    ///
+    /// Dit is de andere manier waarop een cel aan een waarde van een ander komt.
+    /// Bij `accept_from` zegt de besluit-definitie het; hier zegt de wet het, met
+    /// een `source.regulation` die geen regeling is maar een cel-id. De engine
+    /// bereikt zo'n bron alleen langs een geregistreerde resolver, en alleen voor
+    /// de cel-ids die hier staan: een cel die niet gedeclareerd is, kan niet per
+    /// ongeluk bevraagd worden.
+    ///
+    /// Waarom dit niet uit de wet te lezen is: de wet noemt een cel-id en een
+    /// uitkomstnaam, maar wat die naam bij de bevraagde cel is — welke
+    /// gepubliceerde lexostatus, en welke uitkomst daarvan — is een afspraak
+    /// tussen twee organisaties en geen eigenschap van het recht.
+    #[serde(default)]
+    pub accepts_from: Vec<AcceptedSource>,
+}
+
+/// Eén afspraak over een cel-bron van de wetten van deze cel (tier 3).
+///
+/// Leest als: *noemt een van mijn wetten `source.regulation: <cell>` voor
+/// uitkomst `<output>`, dan vraag ik daarvoor lexostatus `<lexostatus>` bij die
+/// cel en neem ik uitkomst `<field>` van het antwoord.*
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptedSource {
+    /// Het cel-id zoals de wet het in `source.regulation` noemt.
+    pub cell: String,
+    /// De uitkomstnaam die de wet vraagt: `source.output`, of — als de wet die
+    /// niet noemt — de naam van de input zelf. Dat is precies wat de engine aan
+    /// de resolver doorgeeft.
+    pub output: String,
+    /// De gepubliceerde lexostatus waarmee die uitkomst bij de peer op te vragen
+    /// is.
+    pub lexostatus: String,
+    /// De uitkomst van die lexostatus die de waarde draagt.
+    pub field: String,
+    /// Vrije toelichting; verschijnt nergens in een antwoord.
+    #[serde(default)]
+    pub doc: Option<String>,
 }
 
 /// Eén gepubliceerde lexostatus met haar gedocumenteerde parameters en reductie.
@@ -679,7 +719,7 @@ pub(crate) fn engine_parameters(
 }
 
 /// `"$bsn"` → `Some("bsn")`; alles zonder `$` is een letterlijke waarde.
-fn binding_name(binding: &str) -> Option<&str> {
+pub(crate) fn binding_name(binding: &str) -> Option<&str> {
     binding.strip_prefix('$')
 }
 

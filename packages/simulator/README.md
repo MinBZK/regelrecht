@@ -115,9 +115,12 @@ Drie dingen dwingen dat af in code in plaats van in proza:
    definitie die naar een vreemde regeling wijst, wordt geweigerd bij het
    optuigen van de cel — niet pas bij de eerste vraag.
 3. `Cell` heeft **geen veld en geen parameter** voor een transport of een
-   veiligheidscontext. `Cell::reduce` kan de grens dus niet bereiken; dat is een
+   veiligheidscontext. Ze kan de grens dus niet bereiken; dat is een
    compileerfout en geen afspraak. Een test grept `src/cell/` erop, zodat ook een
-   latere toevoeging die de weg zou openen meteen rood wordt.
+   latere toevoeging die de weg zou openen meteen rood wordt. Dat geldt ook op het
+   besluit-pad: een waarde *accepteren* van een andere cel kan wel, maar het
+   ophalen gebeurt buiten de cel — zie
+   [Accepteren in plaats van narekenen](#accepteren-in-plaats-van-narekenen-i5).
 
 ## De publieke ingang
 
@@ -266,15 +269,15 @@ paden afdwingbaar wordt (RFC-022 §4.2):
 | pad | engine | mag de celgrens over |
 |---|---|---|
 | `Cell::reduce` (publiek) | reduce-engine, **nooit** een `CellResolver` | nee — tier 1 en 2 |
-| `Cell::decide` (intern) | besluit-engine, de enige die er ooit een krijgt | ja, straks — tier 3 |
+| `Cell::decide` (intern) | besluit-engine, krijgt er een voor de duur van één besluit | ja — tier 3 |
 
 Een cross-cel-pull vanuit een reductie is daarmee een *ontbrekende capability* en
 geen afspraak: de engine van het reduce-pad heeft geen resolver, dus ze kan een
 `source.regulation` die een andere cel aanwijst niet beantwoorden en levert geen
-antwoord in plaats van een geraden antwoord. Vandaag heeft géén van beide engines
-een resolver — het accepteren van een waarde van een andere cel volgt apart — dus
-het verschil is nu een belofte over wie wat mag, met de haak op zijn plek en een
-test eromheen.
+antwoord in plaats van een geraden antwoord. Dezelfde lexostatus over dezelfde
+regeling faalt daar dus waar een besluit slaagt, en dat staat vast in
+[`tests/accepteren.rs`](tests/accepteren.rs) — met een melding die zegt wat er aan
+de hand is: *een reductie reikt niet buiten de eigen cel*.
 
 ### Wat een decretogram draagt
 
@@ -406,14 +409,87 @@ let signed = context.query("brp", "partnerschap", &params, op_moment)?;
 
 Wat de context teruggeeft is geen antwoord maar een **bewijsstuk**
 (`SignedAnswer`): wie vroeg, ondertekend door welke identiteit, met welke
-parameters, en wat de peer antwoordde. Dat is geen gemak. Een cel die straks een
-waarde van een andere cel *accepteert* in plaats van narekent, moet precies dat in
-haar decretogram vastleggen (RFC-013 `accepted_values`), en het observatielog wil
-hetzelfde weten.
+parameters, en wat de peer antwoordde. Dat is geen gemak. Een cel die een waarde
+van een andere cel *accepteert* in plaats van narekent, legt precies dat in haar
+decretogram vast (RFC-013 `accepted_values`), en het observatielog wil hetzelfde
+weten.
 
 Een vraag aan de eigen cel wordt geweigerd: voor eigen feiten is er een reductie.
 Zonder die weigering zou een cel haar eigen kroniek als cross-cel-contact in het
 log krijgen en daarmee het vraaggraf vervuilen.
+
+### Accepteren in plaats van narekenen (I5)
+
+Stelt een andere organisatie een feit vast, dan rekent deze cel het niet na. Ze
+vraagt het op, legt vast bij wie ze het ophaalde en op welk moment, en rekent
+daarmee verder. Dat is stap 4 van de RFC-009-beslisboom, en het is geen nuance: een
+beschikking van een ander bevoegd gezag opnieuw uitrekenen is dat gezag overrulen.
+
+Twee dingen kunnen zeggen dat een waarde van een ander komt, en ze lopen langs
+dezelfde context, hetzelfde transport en hetzelfde log:
+
+| wie zegt het | waar | wat je schrijft |
+|---|---|---|
+| de **besluit-definitie** | `inputs` van het besluit | `accept_from` + `lexostatus` + `field` (+ `params`) |
+| de **wet** (tier 3) | `source.regulation` die een cel-id noemt | `accepts_from` op de cel: welke lexostatus bij welke uitkomst hoort |
+
+Dat de tweede vorm een afspraak in de celconfiguratie nodig heeft, is geen
+omissie. De wet noemt een cel-id en een uitkomstnaam; welke *gepubliceerde
+lexostatus* daarbij hoort, is een afspraak tussen twee organisaties en geen recht,
+dus ze staat niet in de wet. Diezelfde lijst is wat de engine haar cel-tier geeft:
+alleen gedeclareerde cel-ids bereiken de resolver, dus een cel die er niet in staat
+kan niet per ongeluk bevraagd worden — invariant I3 als capability. Een afspraak
+die géén van de eigen wetten noemt, wordt bij het optuigen geweigerd, en een cel-id
+dat een eigen regeling overschaduwt ook.
+
+**Een cel haalt niets zelf op.** Ook op het besluit-pad niet: ze zegt wat ze nodig
+heeft (`Cell::acceptance_requests`) en krijgt het aangereikt. Het ophalen gebeurt
+in `accept.rs`, buiten `src/cell/`, want een veiligheidscontext en een transport
+houdt een cel niet (RFC-022 §2) — en dat is een compileerfout plus een grep-poort
+in [`tests/observation_log.rs`](tests/observation_log.rs), geen afspraak.
+
+Wat er met de waarde gebeurt, en vooral wat er níet met haar gebeurt:
+
+- ze gaat als parameter de besluit-engine in, en met bron, naam, moment en
+  ondertekening het decretogram in (`InputOrigin::Accepted`; bij tier 3 zet de
+  engine haar in `accepted_values` van het receipt);
+- ze belandt **niet** in een kroniek en **niet** in het databronregister. Een
+  volgend besluit vraagt opnieuw bij de bron. Anders zou er een
+  schaduwboekhouding ontstaan die niet van eigen wetenschap te onderscheiden is;
+- antwoordt de bron "niets vastgesteld", dan **valt het besluit om** met een
+  melding die zegt welke input van welke cel ontbrak, en er wordt niets
+  vastgelegd. Doorrekenen met een gat is erger dan geen besluit.
+
+De scenario-runner rekent elk besluit af op de herkomst van zijn waarden — per
+waarde `computed` of `accepted`, met bron — en dat is invariant I5 als gate:
+
+```yaml
+decide:
+  - cell: toeslagen
+    besluit: zorgtoeslag_vaststelling
+    params: { bsn: '999993653' }
+    op_moment: 2024-06-01
+    expect_accepted:
+      toetsingsinkomen: belastingdienst   # van die cel, en hier niet nagerekend
+    expect_computed:
+      - is_verzekerde                     # eigen feit, dus eigen werk
+```
+
+De gate draait bij élk besluit, ook zonder deze verwachtingen: een geaccepteerde
+waarde moet naar een ánder wijzen dan de besluitende cel, en ze mag niet óók als
+eigen uitkomst in hetzelfde gram staan — dan is ze alsnog nagerekend en is
+"accepteren" een etiket.
+
+De scenario's staan naast elkaar, en dat is de bedoeling:
+[`toeslagen_accepteert_toetsingsinkomen.yaml`](scenarios/toeslagen_accepteert_toetsingsinkomen.yaml)
+zet één besluit dat accepteert naast één dat hetzelfde getal uit de eigen kroniek
+haalt — met twee verschillende cijfers, dus twee verschillende bedragen, want
+zonder dat tegenbewijs bewijst het eerste niets.
+[`toeslagen_accepteert_via_de_wet.yaml`](scenarios/toeslagen_accepteert_via_de_wet.yaml)
+doet hetzelfde langs tier 3, met een testregeling uit
+[`fixtures/regulation/`](fixtures/regulation/) in plaats van een corpuswet: geen
+enkele echte wet hoort verbouwd te worden omdat een testopstelling iets wil laten
+zien.
 
 ### Ondertekening is gesimuleerd
 
@@ -477,9 +553,11 @@ Daar hangt een prijs aan, en die hoort er expliciet bij te staan: **volledigheid
 is niet afgedwongen.** De veiligheidscontext geeft haar bewijsstuk terug aan wie
 vroeg, en of dat bewijsstuk in het log belandt beslist die aanroeper. Vandaag is
 dat de scenario-runner, die elk bewijsstuk teruggeeft, dus voor een run klopt het
-nu. Zodra een cel zelf kan besluiten, verhuist de vraag naar dat pad en moet het
-vastleggen mee; gebeurt dat niet, dan is het log stil incompleet in plaats van
-rood.
+nu. Dat gold ook toen het besluit-pad ging accepteren: die vragen gaan over
+dezelfde grens, dus `World::decide` geeft ze mee (`DecisionRecord::crossings`) en
+de runner zet ze in het log. Was dat vergeten, dan was het log stil incompleet
+geworden in plaats van rood — de gevaarlijke kant op, want het vraaggraf zou
+schoner lijken dan het is.
 
 De invarianten-gate die het gedeclareerde vraaggraf met het feitelijke vergelijkt
 (I3) staat er nog niet. Dit is het instrument waar die op gaat rusten, en daar
@@ -612,6 +690,18 @@ cells:
           is_verzekerde:
             from_chronicle: inkomensleveringen  # uit een eigen stroom: de laatste
             field: is_verzekerde                # vastlegging op of vóór het moment
+          toetsingsinkomen:                     # geaccepteerd van een andere cel
+            accept_from: belastingdienst        # de cel die het vaststelt
+            lexostatus: toetsingsinkomen        # de naam die zij publiceert
+            field: toetsingsinkomen             # de uitkomst daarvan
+            params:
+              bsn: $bsn                         # $naam = parameter van dit besluit
+
+    accepts_from:                               # wat de wétten bij een cel halen
+      - cell: brp                               # het cel-id uit source.regulation
+        output: partnerschap                    # de uitkomst die de wet vraagt
+        lexostatus: partnerschap                # wat daar gevraagd moet worden
+        field: partnerschap_type                # en welke uitkomst de waarde is
 
 fixtures:                                       # de startstand van de wereld
   - at: 2024-07-01                              # het moment van de vastlegging
@@ -635,6 +725,10 @@ decide:                                         # besluiten, elk op een moment
                                                 # kent én welke wetsversie geldt
     expect:                                     # optioneel: wat het gram draagt
       heeft_recht_op_zorgtoeslag: true
+    expect_accepted:                            # optioneel: herkomst per waarde
+      toetsingsinkomen: belastingdienst         # van die cel, niet hier berekend
+    expect_computed:                            # en wat hier wél vastgesteld is
+      - is_verzekerde
 
 queries:
   - description: vrije omschrijving             # optioneel
@@ -668,13 +762,13 @@ query_via_transport:                            # vragen over een celgrens
       partnerschap_type: HUWELIJK               # een gewone vraag
 ```
 
-`query_via_transport` is een **test-only stap, en dat is tijdelijk**. In de
-opstelling die we bouwen stelt een cel zo'n vraag uitsluitend vanuit haar
-besluit-pad: ze heeft een input nodig die een andere organisatie vaststelt. Dat
-pad bestaat inmiddels, maar het *accepteren* van zo'n waarde nog niet — een
-besluit haalt zijn inputs uit de eigen kronieken en uit zijn parameters — en tot
-die tijd is dit de enige manier om het verkeer te laten zien en erop te
-asserteren. Zodra accepteren er is, verhuist de aanroep naar het besluit-pad.
+`query_via_transport` is een **sonde, geen onderdeel van de opstelling**. In de
+opstelling stelt een cel zo'n vraag uitsluitend vanuit haar besluit-pad: ze heeft
+een input nodig die een andere organisatie vaststelt, en dan *accepteert* ze die —
+zie [Accepteren in plaats van narekenen](#accepteren-in-plaats-van-narekenen-i5).
+Wat deze stap overhoudt, is één vraag los kunnen stellen en op haar antwoord
+asserteren zonder er een besluit omheen te bouwen: handig om de naad zelf te
+beproeven, en verder niets.
 
 De stappen lopen in deze volgorde: eerst de besluiten, dan de vragen van een
 consument, dan die over een celgrens. Dat past bij wat ze zijn — een besluit is
@@ -808,7 +902,11 @@ cd packages && cargo test -p regelrecht-simulator
 ```
 
 Het corpus wordt standaard naast de crate gezocht (`corpus/regulation`);
-`REGULATION_PATH` overschrijft dat.
+`REGULATION_PATH` overschrijft dat. Vindt een cel haar regeling daar niet, dan
+wordt nog in [`fixtures/regulation/`](fixtures/regulation/) gekeken: een handvol
+**testregelingen** die een eigenschap van de opstelling aantonen en geen recht
+weergeven. Het corpus gaat voor, dus een fixture kan nooit een echte regeling
+overschaduwen.
 
 ## Wat hier nog niet staat
 
@@ -823,16 +921,19 @@ gebouwd, maar er is nog geen soort trigger voor.
 actor (een aanvraag indienen, een opgave doen) een cel aan het werk zet. Dat is
 de reden dat `decide` een stap in het bestand is en geen gevolg van iets anders.
 
-**Een besluit accepteert nog niets van een andere cel** (I5). De inputs komen uit
-de eigen kronieken en uit de parameters; de haak voor tier 3 zit op de
-besluit-engine en het bewijsstuk van de veiligheidscontext heeft al de vorm die
-`accepted_values` vraagt, maar de twee zijn nog niet verbonden. Het besluit-pad is
-wel de plek waar dat gaat gebeuren, en de enige.
+**Onbetrouwbaar gedrag tussen cellen bestaat niet.** Een bron-cel is er altijd, ze
+antwoordt meteen, en haar antwoord is nooit verouderd of in tegenspraak met dat van
+een ander. Accepteren is dus alleen uitgewerkt voor het geval dat goed gaat plus het
+geval "niets vastgesteld"; het moeilijkste deel van elk decentraal systeem staat
+nog open. Zo ook **echte ondertekening** en de RFC-009-modi als configuratie: de
+ondertekening in een geaccepteerde waarde is de placeholder uit
+[Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd).
 
 Aan de kant van de celgrens ontbreken verder de **invarianten-gate** die het
 gedeclareerde vraaggraf uit het scenario vergelijkt met het feitelijke uit het
-observatielog (I3), en **autorisatie**: de veiligheidscontext kent identiteit en
-ondertekening, en beslist nog niets over wat mag.
+observatielog (I3) — de herkomstgate van I5 draait wel, bij elk besluit — en
+**autorisatie**: de veiligheidscontext kent identiteit en ondertekening, en beslist
+nog niets over wat mag.
 
 Ook een **HTTP-transport** is er niet; dat is het punt van de trait. Komt het er,
 dan is dat een tweede implementatie naast `InProcessTransport` en geen wijziging in

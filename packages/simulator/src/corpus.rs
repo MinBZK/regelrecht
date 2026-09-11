@@ -27,6 +27,23 @@ pub fn regulation_root() -> PathBuf {
         })
 }
 
+/// Waar de testregelingen van deze crate staan.
+///
+/// Een tweede wortel náást het corpus, met opzet klein: een scenario dat een
+/// eigenschap van de *opstelling* moet aantonen heeft soms een regeling nodig die
+/// in het corpus niet thuishoort. Tier 3 is daar het voorbeeld van — een wet met
+/// een `source.regulation` die een organisatie aanwijst in plaats van een
+/// regeling — en zo'n wet hoort niet in het echte corpus te gaan staan omdat een
+/// testopstelling haar nodig heeft.
+///
+/// Het corpus gaat vóór: een naam die daar bestaat, wordt daar geladen, dus een
+/// fixture kan geen echte regeling overschaduwen.
+fn fixture_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures")
+        .join("regulation")
+}
+
 /// Alleen de `$id` uit een regelingdocument; de rest laat de engine parseren.
 #[derive(Deserialize)]
 struct RegulationId {
@@ -36,10 +53,31 @@ struct RegulationId {
 
 /// Lees alle versies van één regeling als YAML-teksten, op pad gesorteerd.
 ///
-/// Faalt als de map niet bestaat, leeg is, of een document bevat waarvan de
-/// `$id` niet met de mapnaam overeenkomt — dan zou de cel iets anders laden dan
-/// ze denkt te laden, en dat is geen fout om stil te slikken.
+/// Zoekt eerst in het corpus en daarna in de testregelingen van deze crate
+/// ([`fixture_root`]). Faalt als geen van beide de map heeft, als ze leeg is, of
+/// als er een document in staat waarvan de `$id` niet met de mapnaam
+/// overeenkomt — dan zou de cel iets anders laden dan ze denkt te laden, en dat
+/// is geen fout om stil te slikken.
 pub(crate) fn regulation_versions(root: &Path, regulation: &str) -> Result<Vec<String>> {
+    let found = versions_under(root, regulation)?;
+    if !found.is_empty() {
+        return Ok(found);
+    }
+
+    let fixtures = fixture_root();
+    let found = versions_under(&fixtures, regulation)?;
+    if !found.is_empty() {
+        return Ok(found);
+    }
+
+    Err(SimulatorError::RegulationNotFound {
+        regulation: regulation.to_string(),
+        root: root.to_path_buf(),
+    })
+}
+
+/// Alle versies van één regeling onder één wortel; leeg als ze er niet staat.
+fn versions_under(root: &Path, regulation: &str) -> Result<Vec<String>> {
     let mut documents: Vec<(PathBuf, String)> = Vec::new();
 
     for entry in WalkDir::new(root)
@@ -77,13 +115,6 @@ pub(crate) fn regulation_versions(root: &Path, regulation: &str) -> Result<Vec<S
             }
             documents.push((path, text));
         }
-    }
-
-    if documents.is_empty() {
-        return Err(SimulatorError::RegulationNotFound {
-            regulation: regulation.to_string(),
-            root: root.to_path_buf(),
-        });
     }
 
     documents.sort_by(|(a, _), (b, _)| a.cmp(b));

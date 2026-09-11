@@ -52,14 +52,13 @@ pub struct Scenario {
     pub queries: Vec<Query>,
     /// De vragen die een cel aan een andere cel stelt, over de celgrens.
     ///
-    /// **Test-only stap, en dat is tijdelijk.** In de opstelling die we bouwen
-    /// stelt een cel zo'n vraag uitsluitend vanuit haar besluit-pad: ze heeft een
-    /// input nodig die een andere organisatie vaststelt. Dat pad bestaat inmiddels
-    /// ([`Self::decide`]), maar het accepteren van een waarde van een andere cel
-    /// nog niet: een besluit haalt zijn inputs uit de eigen kronieken en uit zijn
-    /// parameters. Tot dat er is, is deze stap de enige manier om het verkeer te
-    /// laten zien en erop te asserteren; daarna verhuist de aanroep naar het
-    /// besluit-pad en is ze hoogstens nog een sonde.
+    /// **Een sonde, geen onderdeel van de opstelling.** In de opstelling stelt een
+    /// cel zo'n vraag uitsluitend vanuit haar besluit-pad: ze heeft een input
+    /// nodig die een andere organisatie vaststelt, en dan *accepteert* ze die
+    /// (`accept_from`, of een `source.regulation` in haar wet — zie
+    /// [`Self::decide`]). Wat deze stap overhoudt is de mogelijkheid om één vraag
+    /// los te stellen en op haar antwoord te asserteren, zonder er een besluit
+    /// omheen te bouwen: handig om de naad zelf te beproeven, en verder niets.
     #[serde(default)]
     pub query_via_transport: Vec<TransportQuery>,
 }
@@ -123,6 +122,23 @@ pub struct Decision {
     /// erna iets te vinden hebben.
     #[serde(default)]
     pub expect: BTreeMap<String, Value>,
+    /// Waarden die dit besluit van een andere cel moet hebben **geaccepteerd**,
+    /// op naam, met de cel die haar vaststelde.
+    ///
+    /// Dit is invariant I5 als verwachting in het bestand: niet "de uitkomst
+    /// klopt" maar "deze waarde komt van die organisatie en is hier niet
+    /// nagerekend". Werkt voor beide wegen — een input met `accept_from` en een
+    /// waarde die de wet via `source.regulation` bij een cel haalde.
+    #[serde(default)]
+    pub expect_accepted: BTreeMap<String, String>,
+    /// Waarden die dit besluit **zelf** moet hebben vastgesteld: uit een eigen
+    /// kroniek, uit een parameter of uit een eigen wet.
+    ///
+    /// Het tegenbewijs bij [`Self::expect_accepted`], en zonder dat tegenbewijs
+    /// bewijst die niets: een opstelling waarin *alles* als geaccepteerd geldt,
+    /// haalt dezelfde assertie even makkelijk.
+    #[serde(default)]
+    pub expect_computed: Vec<String>,
 }
 
 /// Eén vraag van een cel aan een andere cel, over de celgrens.
@@ -169,6 +185,14 @@ pub enum ExpectationFailure {
         /// De waarden die de cel toch opleverde.
         values: BTreeMap<String, Value>,
     },
+    /// Een waarde in een decretogram kwam ergens anders vandaan dan verwacht —
+    /// of nergens herleidbaar vandaan (invariant I5).
+    Provenance {
+        /// De waarde waarover het gaat.
+        value: String,
+        /// Wat er over haar herkomst mis is.
+        reason: String,
+    },
 }
 
 /// Het resultaat van één vraag.
@@ -192,8 +216,8 @@ pub struct TransportOutcome {
     /// Het bewijsstuk van de veiligheidscontext: wie vroeg, ondertekend, met
     /// welke parameters, en wat de peer antwoordde.
     ///
-    /// Dit is wat het observatielog vastlegt, en straks wat een decretogram als
-    /// geaccepteerde waarde draagt.
+    /// Dit is wat het observatielog vastlegt, en wat een decretogram als
+    /// geaccepteerde waarde draagt zodra een besluit zo'n waarde accepteert.
     pub signed: SignedAnswer,
     /// De verwachtingen die niet uitkwamen; leeg is goed.
     pub failures: Vec<ExpectationFailure>,
@@ -206,6 +230,12 @@ pub struct DecisionOutcome {
     pub description: Option<String>,
     /// Het vastgelegde decretogram.
     pub decretogram: Decretogram,
+    /// Elk contact over een celgrens dat dit besluit nodig had, in volgorde.
+    ///
+    /// Dit is wat het observatielog van een besluit te zien krijgt. Het log komt
+    /// niets halen — het staat buiten de band en is passief — dus de runner geeft
+    /// het door, net als bij een vraag over de celgrens.
+    pub crossings: Vec<SignedAnswer>,
     /// De verwachtingen die niet uitkwamen; leeg is goed.
     pub failures: Vec<ExpectationFailure>,
 }
@@ -289,6 +319,20 @@ impl ScenarioRun {
                     "        input {name} = {} ({})",
                     input.value,
                     input.origin.describe()
+                );
+            }
+            // Wat er voor dit besluit over een celgrens ging. Een input met
+            // `accept_from` staat hierboven al met haar herkomst; deze regels
+            // zijn de enige plek waar een waarde die de *wet* bij een andere cel
+            // haalde (tier 3) in het verslag zichtbaar is.
+            for crossing in &decision.crossings {
+                let _ = writeln!(
+                    out,
+                    "        vroeg {}.{} op {} (over de celgrens, {})",
+                    crossing.answer.cell,
+                    crossing.answer.name,
+                    crossing.answer.op_moment,
+                    crossing.signature,
                 );
             }
             write_failures(&mut out, &decision.failures);
@@ -400,6 +444,9 @@ fn write_failures(out: &mut String, failures: &[ExpectationFailure]) {
                 out,
                 "        verwachtte 'niets vastgesteld', maar de cel gaf {values:?}"
             ),
+            ExpectationFailure::Provenance { value, reason } => {
+                writeln!(out, "        herkomst van '{value}': {reason}")
+            }
         };
     }
 }
@@ -533,17 +580,25 @@ impl Scenario {
                 world.advance(decision.op_moment)?;
             }
 
-            let decretogram = world.decide(
+            let record = world.decide(
                 &decision.cell,
                 &decision.besluit,
                 &decision.params,
                 decision.op_moment,
             )?;
-            let failures = check_values(&decision.expect, &decretogram.outputs);
+            let decretogram = record.decretogram;
+
+            let mut failures = check_values(&decision.expect, &decretogram.outputs);
+            // De gate draait bij élk besluit, ook als het scenario er niets over
+            // zegt: een invariant die je moet aanzetten, is een invariant die
+            // iemand vergeet.
+            failures.extend(check_provenance(&decretogram));
+            failures.extend(check_expected_origins(decision, &decretogram));
 
             decisions.push(DecisionOutcome {
                 description: decision.description.clone(),
                 decretogram,
+                crossings: record.crossings,
                 failures,
             });
         }
@@ -588,6 +643,158 @@ impl Scenario {
             outcomes.push(TransportOutcome { signed, failures });
         }
         Ok(outcomes)
+    }
+}
+
+/// **Invariant I5** — narekenen versus accepteren, als gate over elk besluit.
+///
+/// De invariant zegt: is een waarde door een andere organisatie vastgesteld, dan
+/// hoort ze geaccepteerd te zijn en niet hier herberekend. Dat is alleen te
+/// controleren als elke waarde in een decretogram zegt waar ze vandaan komt, en
+/// dus is dít wat de gate eist:
+///
+/// - **elke input is de waarde waarop gerekend is.** De herkomst staat bij de
+///   input, dus als het receipt met een andere waarde rekende, hoort de herkomst
+///   bij iets wat het besluit niet gebruikt heeft — en dan zegt het gram iets
+///   anders dan er gebeurd is.
+/// - **elke uitkomst komt uit deze uitvoering.** Een uitkomst die niet in het
+///   receipt staat, is er langs een andere weg in gezet en is dus niet berekend
+///   op de inputs die het gram noemt.
+/// - **een geaccepteerde waarde wijst naar een ánder.** Een gram dat zegt een
+///   waarde van zichzelf geaccepteerd te hebben, verbergt een eigen berekening
+///   achter het woord "accepteren".
+/// - **een geaccepteerde waarde is niet óók een eigen uitkomst.** Staat dezelfde
+///   naam bij de uitkomsten van het gram, dan is ze hier alsnog uitgerekend, en
+///   dan is de acceptatie versiering — precies het geval dat I5 uitsluit.
+///
+/// Hij draait bij elk besluit in elk scenario. Een scenario kan er met
+/// [`Decision::expect_accepted`] een concrete verwachting bovenop leggen; deze
+/// gate is wat er zonder die verwachting nog steeds geldt.
+pub fn check_provenance(gram: &Decretogram) -> Vec<ExpectationFailure> {
+    let mut failures = Vec::new();
+
+    for (name, input) in &gram.inputs {
+        match gram.receipt.execution.parameters.get(name) {
+            Some(value) if *value == input.value => {}
+            Some(value) => failures.push(ExpectationFailure::Provenance {
+                value: name.clone(),
+                reason: format!(
+                    "het gram legt {} vast met herkomst {}, maar de uitvoering rekende \
+                     met {value}",
+                    input.value,
+                    input.origin.describe()
+                ),
+            }),
+            None => failures.push(ExpectationFailure::Provenance {
+                value: name.clone(),
+                reason: format!(
+                    "staat als input in het gram ({}), maar de uitvoering kreeg haar niet",
+                    input.origin.describe()
+                ),
+            }),
+        }
+    }
+
+    for name in gram.outputs.keys() {
+        if !gram.receipt.results.outputs.contains_key(name) {
+            failures.push(ExpectationFailure::Provenance {
+                value: name.clone(),
+                reason: format!(
+                    "staat als uitkomst in het gram, maar het receipt van regeling \
+                     '{}' kent haar niet",
+                    gram.regulation
+                ),
+            });
+        }
+    }
+
+    for (name, cell) in gram.accepted_values() {
+        if cell == gram.cell {
+            failures.push(ExpectationFailure::Provenance {
+                value: name.to_string(),
+                reason: format!(
+                    "zegt geaccepteerd te zijn van cel '{cell}', maar dat is de cel die \
+                     besloot; dan is er narekenen als accepteren opgeschreven"
+                ),
+            });
+        }
+        if gram.outputs.contains_key(name) {
+            failures.push(ExpectationFailure::Provenance {
+                value: name.to_string(),
+                reason: format!(
+                    "is geaccepteerd van cel '{cell}' én staat als eigen uitkomst in het \
+                     gram; accepteren en narekenen tegelijk kan niet"
+                ),
+            });
+        }
+    }
+
+    failures
+}
+
+/// Reken een besluit af op de herkomst die het scenario verwacht.
+///
+/// Twee kanten, en ze horen bij elkaar: `expect_accepted` zegt dat een waarde
+/// van een bepaalde cel komt, `expect_computed` dat een waarde hier is
+/// vastgesteld. Alleen de eerste zou bewijzen dat de opstelling waarden kán
+/// accepteren, niet dat ze het onderscheid máákt.
+fn check_expected_origins(decision: &Decision, gram: &Decretogram) -> Vec<ExpectationFailure> {
+    let accepted = gram.accepted_values();
+    let mut failures = Vec::new();
+
+    for (value, expected) in &decision.expect_accepted {
+        match accepted.get(value.as_str()) {
+            Some(cell) if cell == expected => {}
+            Some(cell) => failures.push(ExpectationFailure::Provenance {
+                value: value.clone(),
+                reason: format!("verwachtte geaccepteerd van cel '{expected}', kreeg '{cell}'"),
+            }),
+            None => failures.push(ExpectationFailure::Provenance {
+                value: value.clone(),
+                reason: format!(
+                    "verwachtte geaccepteerd van cel '{expected}', maar deze waarde is \
+                     niet geaccepteerd{}",
+                    describe_origin(gram, value)
+                ),
+            }),
+        }
+    }
+
+    for value in &decision.expect_computed {
+        if let Some(cell) = accepted.get(value.as_str()) {
+            failures.push(ExpectationFailure::Provenance {
+                value: value.clone(),
+                reason: format!(
+                    "verwachtte een eigen vaststelling, maar deze waarde is geaccepteerd \
+                     van cel '{cell}'"
+                ),
+            });
+            continue;
+        }
+        if !gram.inputs.contains_key(value) && !gram.outputs.contains_key(value) {
+            failures.push(ExpectationFailure::Provenance {
+                value: value.clone(),
+                reason: "komt in dit gram niet voor, dus er valt niets over na te rekenen"
+                    .to_string(),
+            });
+        }
+    }
+
+    failures
+}
+
+/// Wat het gram wél over de herkomst van deze waarde zegt, voor in een melding.
+///
+/// Leeg als de naam er helemaal niet in voorkomt: dan is "deze waarde is niet
+/// geaccepteerd" al het hele verhaal, en een lege haak erachter suggereert dat
+/// er iets weggelaten is.
+fn describe_origin(gram: &Decretogram, value: &str) -> String {
+    match gram.inputs.get(value) {
+        Some(input) => format!(" ({})", input.origin.describe()),
+        None if gram.outputs.contains_key(value) => {
+            format!(" (eigen uitkomst van regeling '{}')", gram.regulation)
+        }
+        None => String::new(),
     }
 }
 

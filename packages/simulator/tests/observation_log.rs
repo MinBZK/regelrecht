@@ -20,6 +20,13 @@ fn scenario_path() -> PathBuf {
         .join("transport_toeslagen_brp.yaml")
 }
 
+/// Het scenario waarin een besluit accepteert, met het narekenende besluit ernaast.
+fn accepteren_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("scenarios")
+        .join("toeslagen_accepteert_toetsingsinkomen.yaml")
+}
+
 /// Alle Rust-bestanden onder `src/`, met hun pad relatief aan de crate.
 fn source_files() -> Vec<(String, String)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -122,6 +129,73 @@ fn een_vraag_over_de_celgrens_levert_exact_een_regel_in_het_log() {
         log.report().contains(SIMULATED_SIGNATURE_PREFIX),
         "het verslag hoort te laten zien dat er ondertekend is, en hoe:\n{}",
         log.report()
+    );
+}
+
+/// Een besluit dat accepteert, staat met precies die ene vraag in het log — en
+/// een besluit dat narekent staat er niet in.
+///
+/// Dit is de reden dat het log ook van het besluit-pad zijn bewijsstukken
+/// aangereikt krijgt. Zou dat niet gebeuren, dan was het log stil incompleet
+/// terwijl er wél verkeer over de grens ging, en dat is de gevaarlijke kant op:
+/// het vraaggraf zou dan schoner lijken dan het is.
+#[test]
+fn een_besluit_dat_accepteert_staat_met_die_ene_vraag_in_het_log() {
+    let path = accepteren_path();
+    let scenario = Scenario::load(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    assert!(run.passed(), "{}", run.report());
+
+    let mut log = ObservationLog::new();
+    for decision in &run.decisions {
+        for crossing in &decision.crossings {
+            log.record(crossing);
+        }
+    }
+
+    assert_eq!(
+        log.len(),
+        1,
+        "twee besluiten, waarvan één accepteert: dat is precies één vraag over de \
+         grens:\n{}",
+        log.report()
+    );
+
+    let entry = &log.entries()[0];
+    assert_eq!(entry.asked_by.cell(), "toeslagen", "de vrager");
+    assert_eq!(entry.answer.cell, "belastingdienst", "de bevraagde cel");
+    assert_eq!(entry.answer.name, "toetsingsinkomen", "de lexostatus");
+    assert_eq!(
+        entry.params.get("bsn"),
+        Some(&Value::String("999993653".to_string())),
+        "de parameters waarmee gevraagd is"
+    );
+
+    // En wat er níet in het log staat: een uitvoering van de logica van de ander.
+    // De bevraagde cel is een bron-cel zonder wetten, en de besluitende cel laadt
+    // haar regelingen niet — ze accepteerde een vaststelling en deed die niet over.
+    let accepterend = &run.decisions[0].decretogram;
+    assert_eq!(
+        accepterend.accepted_values().get("toetsingsinkomen"),
+        Some(&"belastingdienst"),
+        "het gram hoort de bron van de geaccepteerde waarde te dragen"
+    );
+    assert_eq!(
+        accepterend.regulation, "wet_op_de_zorgtoeslag",
+        "het besluit voerde uitsluitend de eigen regeling uit"
+    );
+
+    let narekenend = &run.decisions[1];
+    assert!(
+        narekenend.crossings.is_empty(),
+        "een besluit dat op eigen feiten rekent, hoort niemand iets te vragen:\n{}",
+        run.report()
+    );
+    assert!(
+        narekenend.decretogram.accepted_values().is_empty(),
+        "en het hoort niets als geaccepteerd op te schrijven"
     );
 }
 

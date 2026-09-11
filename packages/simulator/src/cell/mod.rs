@@ -13,8 +13,14 @@
 //!   berekening over de eigen kronieken met de eigen wetten, zonder enige weg
 //!   naar een andere cel;
 //! - **besluiten** (`Cell::decide`) is intern: de cel voert een eigen regeling
-//!   uit en legt de uitkomst vast als decretogram. Dit is het pad waar straks
-//!   een waarde van een andere cel binnenkomt, en het enige.
+//!   uit en legt de uitkomst vast als decretogram. Dit is het enige pad waar een
+//!   waarde van een andere cel binnenkomt — *geaccepteerd*, met haar herkomst in
+//!   het gram (invariant I5).
+//!
+//! Ook op dat tweede pad reikt de cel niet zelf over haar grens. Ze zegt wat ze
+//! van een ander nodig heeft ([`Cell::acceptance_requests`]) en krijgt het
+//! aangereikt; het ophalen gebeurt buiten de cel, want een veiligheidscontext en
+//! een transport houdt ze niet. Zie `accept.rs` en [`crate::World::decide`].
 //!
 //! Zie [`Decretogram`] voor wat een besluit vastlegt, en waarom dat het
 //! RFC-013 Execution Receipt is en geen eigen formaat ernaast.
@@ -24,21 +30,25 @@ mod chronicle;
 mod config;
 
 pub use besluit::{
-    BesluitDefinition, BesluitInput, Decretogram, DecretogramInput, InputOrigin, BESCHIKKINGEN,
+    AcceptanceRequest, BesluitDefinition, BesluitInput, Decretogram, DecretogramInput, InputOrigin,
+    BESCHIKKINGEN,
 };
 pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
-pub use config::{CellConfig, DocumentedParameter, LexostatusDefinition, ParameterType, Reduction};
+pub use config::{
+    AcceptedSource, CellConfig, DocumentedParameter, LexostatusDefinition, ParameterType, Reduction,
+};
 
 use crate::corpus;
 use crate::error::{Result, SimulatorError, Subject};
 use chrono::NaiveDate;
 use config::{engine_parameters, CellSurface};
 use regelrecht_engine::article::CompetentAuthority;
-use regelrecht_engine::{ArticleBasedLaw, LawExecutionService, Value};
+use regelrecht_engine::{ArticleBasedLaw, CellResolver, LawExecutionService, Value};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
+use std::rc::Rc;
 
 /// Het antwoord van een cel: de rechtstoestand vanuit een gevraagd perspectief,
 /// op de feiten die in die cel bekend zijn.
@@ -117,13 +127,11 @@ pub struct Cell {
     /// De **tweede** engine over dezelfde wetten: die van het besluit-pad.
     ///
     /// Twee instanties en niet één, omdat ze niet hetzelfde mogen. De engine van
-    /// [`Self::reduce`] krijgt nooit een `CellResolver` en kan de celgrens dus
+    /// [`Self::reduce`] krijgt nooit een [`CellResolver`] en kan de celgrens dus
     /// niet over: een cross-cel-pull vanuit een reductie is daarmee een
     /// ontbrekende capability en geen afspraak (RFC-022 §4.2, tier 3). Deze is
-    /// de enige die er ooit een mag krijgen. Vandaag heeft ook zij er geen — het
-    /// accepteren van een waarde van een andere cel volgt apart — dus het
-    /// verschil is nu een *belofte over wie wat mag*, en de plek waar die
-    /// belofte waargemaakt wordt, staat klaar.
+    /// de enige die er een krijgt, en alleen voor de duur van één besluit — zie
+    /// [`Self::decide`].
     ///
     /// Alleen aanwezig als de cel besluit-definities heeft: een cel die niet
     /// besluit, heeft aan één engine genoeg.
@@ -134,6 +142,12 @@ pub struct Cell {
     published: BTreeMap<String, LexostatusDefinition>,
     /// De besluiten die deze cel kan nemen, op naam.
     besluiten: BTreeMap<String, BesluitDefinition>,
+    /// De cel-bronnen van haar wetten (tier 3), op `(cel, uitkomst)`.
+    ///
+    /// Wat de cel hiermee doet is niets: ze kan geen van deze cellen bereiken.
+    /// Het is de afspraak die de wereld nodig heeft om een tier-3-verwijzing bij
+    /// de juiste lexostatus van de juiste peer uit te laten komen.
+    accepts_from: BTreeMap<(String, String), AcceptedSource>,
 }
 
 impl Cell {
@@ -245,6 +259,8 @@ impl Cell {
             }
         }
 
+        let accepts_from = check_accepted_sources(config, service.as_ref())?;
+
         Ok(Self {
             id: config.id.clone(),
             service: service.map(RefCell::new),
@@ -252,7 +268,17 @@ impl Cell {
             chronicles,
             published,
             besluiten,
+            accepts_from,
         })
+    }
+
+    /// De cel-bronnen die de wetten van deze cel aanwijzen (tier 3).
+    ///
+    /// `pub(crate)`: dit is geen weg naar een andere cel — de cel heeft er geen
+    /// — maar de afspraak die de wereld uitvoert als de engine tijdens een
+    /// besluit om zo'n waarde vraagt.
+    pub(crate) fn accepts_from(&self) -> impl Iterator<Item = &AcceptedSource> {
+        self.accepts_from.values()
     }
 
     /// Leg één executogram vast in een eigen kroniekstroom.
@@ -399,16 +425,43 @@ impl Cell {
         let mut service = service.borrow_mut();
         self.register_own_facts(&mut service, op_moment)?;
 
-        let result = service.evaluate_law_output(
-            regulation,
-            output,
-            engine_parameters(parameters, params),
-            &op_moment.format("%Y-%m-%d").to_string(),
-        )?;
+        let result = service
+            .evaluate_law_output(
+                regulation,
+                output,
+                engine_parameters(parameters, params),
+                &op_moment.format("%Y-%m-%d").to_string(),
+            )
+            .map_err(|error| self.explain_reach(definition, error))?;
 
         Ok(LexostatusOutcome::Established(
             definition.project(result.outputs),
         ))
+    }
+
+    /// Vertaal "onbekende regeling" naar "die naam is een cel" waar dat zo is.
+    ///
+    /// De reduce-engine heeft geen cel-tier, dus een `source.regulation` die een
+    /// cel aanwijst is voor haar een regeling die ze niet kent — en dat is
+    /// letterlijk waar, maar het verbergt wat er gebeurde. De cel weet wél dat
+    /// die naam een peer is (haar configuratie zegt het), dus ze kan de melding
+    /// geven die de lezer nodig heeft: hier reikt een reductie buiten haar cel,
+    /// en dat kan niet.
+    fn explain_reach(
+        &self,
+        definition: &LexostatusDefinition,
+        error: regelrecht_engine::EngineError,
+    ) -> SimulatorError {
+        if let regelrecht_engine::EngineError::LawNotFound(name) = &error {
+            if self.accepts_from.keys().any(|(cell, _)| cell == name) {
+                return SimulatorError::ReductionReachesOutsideCell {
+                    cell: self.id.clone(),
+                    lexostatus: definition.name.clone(),
+                    peer: name.clone(),
+                };
+            }
+        }
+        error.into()
     }
 
     /// Zet de eigen feiten zoals ze op dit moment waren klaar als databron.
@@ -431,6 +484,37 @@ impl Cell {
             }
             service.register_dict_source(&stream.stream, &stream.key, stream.records)?;
         }
+        Ok(())
+    }
+
+    /// Geef de besluit-engine de cel-tier, voor de duur van dit ene besluit.
+    ///
+    /// De resolver komt van buiten en wordt hier alleen doorgegeven: de cel
+    /// bouwt hem niet en kan hem niet bevragen. Wat ze wél bepaalt, is *voor
+    /// welke cel-ids* hij bereikbaar is — precies de bronnen die haar eigen
+    /// wetten noemen en die haar configuratie heeft uitgewerkt. Een cel-id
+    /// daarbuiten blijft voor de engine een onbekende regeling en dus een fout,
+    /// en dat is invariant I3 als capability in plaats van als afspraak.
+    ///
+    /// Zonder gedeclareerde bronnen gebeurt er niets: dan is er geen cel-tier en
+    /// gedraagt de besluit-engine zich als de reduce-engine.
+    fn grant_cell_tier(
+        &self,
+        service: &mut LawExecutionService,
+        resolver: Option<Rc<dyn CellResolver>>,
+    ) -> Result<()> {
+        let Some(resolver) = resolver else {
+            return Ok(());
+        };
+        let ids: BTreeSet<&str> = self
+            .accepts_from
+            .values()
+            .map(|source| source.cell.as_str())
+            .collect();
+        if ids.is_empty() {
+            return Ok(());
+        }
+        service.set_cell_resolver(ids, resolver)?;
         Ok(())
     }
 
@@ -517,13 +601,60 @@ impl Cell {
     /// Een input die op dit moment niet op te halen is, is een fout en geen
     /// "niets vastgesteld": een besluit dat een feit mist, hoort niet met een gat
     /// verder te rekenen en al helemaal niet vast te leggen.
+    ///
+    /// `accepted` zijn de waarden die de cel van een andere cel *accepteert*:
+    /// zij vraagt ze niet zelf op (ze houdt geen veiligheidscontext en geen
+    /// transport), ze krijgt ze aangereikt voor precies de inputs die haar
+    /// definitie met `accept_from` aanwijst — zie [`Self::acceptance_requests`].
+    /// `resolver` is dezelfde weg, maar voor de verwijzingen die *de wet* legt
+    /// (tier 3): de besluit-engine krijgt hem voor de duur van dit ene besluit,
+    /// en de reduce-engine nooit.
     pub(crate) fn decide(
         &mut self,
         besluit: &str,
         params: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
+        accepted: &BTreeMap<String, DecretogramInput>,
+        resolver: Option<Rc<dyn CellResolver>>,
     ) -> Result<Decretogram> {
-        let definition = self
+        let definition = self.definition(besluit)?;
+
+        definition.check_params(&self.id, params)?;
+        // Vóór het ophalen en het rekenen: een zaak waarvan het kenmerk niet
+        // eenduidig is, hoort er helemaal niet te komen — en dan hoeft de engine
+        // er ook niet voor te draaien.
+        let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
+
+        let inputs = self.collect_inputs(&definition, params, accepted, op_moment)?;
+        let decretogram = self.execute(&definition, zaakkenmerk, inputs, resolver, op_moment)?;
+
+        let event = decretogram.event()?;
+        self.record_own(BESCHIKKINGEN, event)?;
+
+        Ok(decretogram)
+    }
+
+    /// Wat dit besluit bij een andere cel moet ophalen voordat het kan rekenen.
+    ///
+    /// De cel stelt de vragen samen en stelt ze niet: ze kan geen andere cel
+    /// bereiken. Wie dat wel kan — in deze opstelling [`crate::World::decide`] —
+    /// haalt de antwoorden op en geeft ze aan [`Self::decide`] terug. Dat die
+    /// twee stappen buiten de cel bij elkaar komen, is geen omweg maar de vorm
+    /// van RFC-022 §2.
+    pub(crate) fn acceptance_requests(
+        &self,
+        besluit: &str,
+        params: &BTreeMap<String, Value>,
+    ) -> Result<Vec<AcceptanceRequest>> {
+        let definition = self.definition(besluit)?;
+        definition.check_params(&self.id, params)?;
+        Ok(definition.acceptance_requests(params))
+    }
+
+    /// Eén besluit-definitie van deze cel, of een nette fout die opsomt wat de
+    /// cel wél kan besluiten.
+    fn definition(&self, besluit: &str) -> Result<BesluitDefinition> {
+        Ok(self
             .besluiten
             .get(besluit)
             .ok_or_else(|| SimulatorError::UnknownBesluit {
@@ -536,21 +667,7 @@ impl Cell {
                     .collect::<Vec<_>>()
                     .join(", "),
             })?
-            .clone();
-
-        definition.check_params(&self.id, params)?;
-        // Vóór het ophalen en het rekenen: een zaak waarvan het kenmerk niet
-        // eenduidig is, hoort er helemaal niet te komen — en dan hoeft de engine
-        // er ook niet voor te draaien.
-        let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
-
-        let inputs = self.collect_inputs(&definition, params, op_moment)?;
-        let decretogram = self.execute(&definition, zaakkenmerk, inputs, op_moment)?;
-
-        let event = decretogram.event()?;
-        self.record_own(BESCHIKKINGEN, event)?;
-
-        Ok(decretogram)
+            .clone())
     }
 
     /// Verzamel de inputs van een besluit, elk met de herkomst erbij.
@@ -563,11 +680,32 @@ impl Cell {
         &self,
         definition: &BesluitDefinition,
         params: &BTreeMap<String, Value>,
+        accepted: &BTreeMap<String, DecretogramInput>,
         op_moment: NaiveDate,
     ) -> Result<BTreeMap<String, DecretogramInput>> {
         let mut collected: BTreeMap<String, DecretogramInput> = BTreeMap::new();
         for (input, origin) in &definition.inputs {
             let gathered = match origin {
+                BesluitInput::AcceptFrom {
+                    cell, lexostatus, ..
+                } => {
+                    // Onbereikbaar langs `World::decide`, dat elk verzoek uit
+                    // `acceptance_requests` inwilligt voordat het hier komt. Een
+                    // ontbrekend antwoord mag hier nooit stil een gat worden: dan
+                    // zou de engine op `null` rekenen en zou er een besluit
+                    // liggen dat een feit mist.
+                    accepted.get(input).cloned().ok_or_else(|| {
+                        SimulatorError::BesluitInputMissing {
+                            cell: self.id.clone(),
+                            besluit: definition.name.clone(),
+                            input: input.clone(),
+                            reason: format!(
+                                "lexostatus '{lexostatus}' van cel '{cell}' is voor dit \
+                                 besluit niet opgehaald"
+                            ),
+                        }
+                    })?
+                }
                 BesluitInput::Param { param } => {
                     // Onbereikbaar: `validate` bindt elke `param` aan een
                     // gedocumenteerde parameter, en `check_params` eist dat elke
@@ -670,6 +808,7 @@ impl Cell {
         definition: &BesluitDefinition,
         zaakkenmerk: String,
         inputs: BTreeMap<String, DecretogramInput>,
+        resolver: Option<Rc<dyn CellResolver>>,
         op_moment: NaiveDate,
     ) -> Result<Decretogram> {
         // Onbereikbaar: `validate` weigert een besluit over een regeling die de
@@ -685,6 +824,7 @@ impl Cell {
 
         let mut service = service.borrow_mut();
         self.register_own_facts(&mut service, op_moment)?;
+        self.grant_cell_tier(&mut service, resolver)?;
 
         let engine_params: BTreeMap<String, Value> = inputs
             .iter()
@@ -855,6 +995,95 @@ fn build_service(documents: &[String]) -> Result<Option<LawExecutionService>> {
     Ok(Some(service))
 }
 
+/// Controleer de cel-bronnen van een configuratie en zet ze op sleutel.
+///
+/// Drie weigeringen, alle drie bij het optuigen en niet pas bij het eerste
+/// besluit:
+///
+/// - een bron die **geen van de eigen wetten noemt**. Dan zou de cel een peer
+///   mogen bevragen zonder dat haar recht daar ooit om vraagt, en dat is precies
+///   het vraaggraf dat invariant I3 uitsluit;
+/// - een cel-id dat **een eigen regeling overschaduwt**. De engine weigert dat
+///   ook (RFC-022 §4.2), maar pas bij het registreren van de resolver: een vraag
+///   voor de cel zou anders door de gelijknamige regeling beantwoord worden;
+/// - **twee afspraken over dezelfde `(cel, uitkomst)`**, want dan beslist de
+///   volgorde in het bestand welke lexostatus gevraagd wordt.
+fn check_accepted_sources(
+    config: &CellConfig,
+    service: Option<&LawExecutionService>,
+) -> Result<BTreeMap<(String, String), AcceptedSource>> {
+    let asked = service
+        .map(|service| cell_sources_in_laws(service, &config.laws))
+        .unwrap_or_default();
+
+    let mut sources: BTreeMap<(String, String), AcceptedSource> = BTreeMap::new();
+    for source in &config.accepts_from {
+        if config.laws.iter().any(|law| law == &source.cell) {
+            return Err(SimulatorError::CellShadowsRegulation {
+                cell: config.id.clone(),
+                peer: source.cell.clone(),
+            });
+        }
+        let key = (source.cell.clone(), source.output.clone());
+        if !asked.contains(&key) {
+            return Err(SimulatorError::UnclaimedCellSource {
+                cell: config.id.clone(),
+                peer: source.cell.clone(),
+                output: source.output.clone(),
+                asked: asked
+                    .iter()
+                    .map(|(cell, output)| format!("{cell}.{output}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            });
+        }
+        if sources.insert(key, source.clone()).is_some() {
+            return Err(SimulatorError::DuplicateCellSource {
+                cell: config.id.clone(),
+                peer: source.cell.clone(),
+                output: source.output.clone(),
+            });
+        }
+    }
+    Ok(sources)
+}
+
+/// De `(cel, uitkomst)`-paren die de wetten van deze cel bij een **andere cel**
+/// halen: elke `source.regulation` die geen regeling is die de cel zelf laadt.
+///
+/// Dat is dezelfde lezing als de engine hanteert (RFC-022 §4.2): een
+/// `source.regulation` wijst een producent aan, en of dat een regeling of een
+/// organisatie is, blijkt uit wat er geladen is. De uitkomstnaam is
+/// `source.output`, of — als de wet die niet noemt — de naam van de input zelf,
+/// precies wat de engine aan een resolver doorgeeft.
+fn cell_sources_in_laws(
+    service: &LawExecutionService,
+    own_laws: &[String],
+) -> BTreeSet<(String, String)> {
+    let mut sources = BTreeSet::new();
+    for law in service.resolver().all_law_versions() {
+        for article in &law.articles {
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            for input in execution.input.iter().flatten() {
+                let Some(source) = input.source.as_ref() else {
+                    continue;
+                };
+                let Some(regulation) = source.regulation.as_ref() else {
+                    continue;
+                };
+                if own_laws.iter().any(|law| law == regulation) {
+                    continue;
+                }
+                let output = source.output.clone().unwrap_or_else(|| input.name.clone());
+                sources.insert((regulation.clone(), output));
+            }
+        }
+    }
+    sources
+}
+
 /// De namen die een regeling als parameter of input declareert, over alle
 /// geladen versies heen.
 ///
@@ -915,6 +1144,13 @@ mod tests {
     /// Geen fixtures: deze tests tuigen een cel rechtstreeks op, buiten een
     /// wereld om, dus er is niets dat een stroom extra velden aanreikt.
     fn no_fixtures() -> BTreeMap<String, BTreeSet<String>> {
+        BTreeMap::new()
+    }
+
+    /// Geen geaccepteerde waarden: deze besluiten vragen niemand iets. Buiten
+    /// een wereld om is er ook niemand die een vraag over de grens kan zetten —
+    /// een cel kan dat zelf niet, en dat is het punt.
+    fn no_accepted() -> BTreeMap<String, DecretogramInput> {
         BTreeMap::new()
     }
 
@@ -1350,6 +1586,95 @@ lexostatus_definitions:
         );
     }
 
+    /// Een cel die één testregeling laadt, met de meegegeven `accepts_from`.
+    ///
+    /// De regeling staat in `fixtures/regulation/` en niet in het corpus: ze
+    /// bestaat om een eigenschap van de opstelling te tonen (een
+    /// `source.regulation` die een cel aanwijst), en dat is geen recht.
+    fn toets_cel(accepts_from: &str) -> Result<Cell> {
+        let config = config(&format!(
+            r"
+id: toeslagen
+laws:
+  - test_partnerschapstoets
+{accepts_from}
+"
+        ));
+        Cell::from_config(&config, &regulation_root(), &no_fixtures())
+    }
+
+    #[test]
+    fn een_cel_bron_die_de_wet_noemt_wordt_geaccepteerd() {
+        toets_cel(
+            "accepts_from:
+  - cell: brp
+    output: partnerschap
+    lexostatus: partnerschap
+    field: partnerschap_type",
+        )
+        .unwrap_or_else(|e| panic!("deze afspraak hoort bij wat de wet vraagt: {e}"));
+    }
+
+    /// Een cel bevraagt alleen de cellen die haar eigen wetten noemen (I3). Een
+    /// afspraak daarbuiten zet een vraaggraf open waar het recht niet om vraagt.
+    #[test]
+    fn een_cel_bron_die_geen_wet_noemt_wordt_geweigerd() {
+        let err = toets_cel(
+            "accepts_from:
+  - cell: kadaster
+    output: eigendom
+    lexostatus: eigendom
+    field: is_eigenaar",
+        )
+        .expect_err("een bron die geen wet aanwijst hoort te falen");
+        let SimulatorError::UnclaimedCellSource { asked, .. } = &err else {
+            panic!("verwachtte UnclaimedCellSource, kreeg {err}");
+        };
+        assert!(
+            asked.contains("brp.partnerschap"),
+            "de melding hoort te zeggen waar de wetten wél om vragen, kreeg: {asked}"
+        );
+    }
+
+    #[test]
+    fn twee_afspraken_over_dezelfde_bron_worden_geweigerd() {
+        let err = toets_cel(
+            "accepts_from:
+  - cell: brp
+    output: partnerschap
+    lexostatus: partnerschap
+    field: partnerschap_type
+  - cell: brp
+    output: partnerschap
+    lexostatus: laatste_huwelijk
+    field: partnerschap_type",
+        )
+        .expect_err("twee afspraken over dezelfde bron horen te falen");
+        assert!(
+            matches!(err, SimulatorError::DuplicateCellSource { .. }),
+            "verwachtte DuplicateCellSource, kreeg {err}"
+        );
+    }
+
+    /// Een cel-id dat net zo heet als een eigen regeling zou een vraag voor de
+    /// andere organisatie door die regeling laten beantwoorden, zonder spoor. De
+    /// engine weigert dat ook; hier valt het bij het optuigen.
+    #[test]
+    fn een_cel_bron_die_een_eigen_regeling_overschaduwt_wordt_geweigerd() {
+        let err = toets_cel(
+            "accepts_from:
+  - cell: test_partnerschapstoets
+    output: partnerschap
+    lexostatus: partnerschap
+    field: partnerschap_type",
+        )
+        .expect_err("een cel-id dat een eigen regeling overschaduwt hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::CellShadowsRegulation { .. }),
+            "verwachtte CellShadowsRegulation, kreeg {err}"
+        );
+    }
+
     #[test]
     fn een_output_die_de_stroom_niet_kent_wordt_geweigerd() {
         let err = Cell::from_config(
@@ -1538,7 +1863,13 @@ besluit_definitions:
     fn een_besluit_legt_precies_een_decretogram_vast() {
         let mut cell = besluitende_toeslagen(VASTSTELLING);
         let gram = cell
-            .decide("zorgtoeslag_vaststelling", &bsn(), moment())
+            .decide(
+                "zorgtoeslag_vaststelling",
+                &bsn(),
+                moment(),
+                &no_accepted(),
+                None,
+            )
             .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
 
         assert_eq!(
@@ -1578,7 +1909,13 @@ besluit_definitions:
     fn het_decretogram_draagt_zijn_inputs_met_herkomst() {
         let mut cell = besluitende_toeslagen(VASTSTELLING);
         let gram = cell
-            .decide("zorgtoeslag_vaststelling", &bsn(), moment())
+            .decide(
+                "zorgtoeslag_vaststelling",
+                &bsn(),
+                moment(),
+                &no_accepted(),
+                None,
+            )
             .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
 
         let uit_de_kroniek = gram
@@ -1616,7 +1953,13 @@ besluit_definitions:
     fn een_besluit_zonder_zijn_feiten_faalt_en_legt_niets_vast() {
         let mut cell = besluitende_toeslagen(VASTSTELLING);
         let err = cell
-            .decide("zorgtoeslag_vaststelling", &bsn(), date("2024-01-01"))
+            .decide(
+                "zorgtoeslag_vaststelling",
+                &bsn(),
+                date("2024-01-01"),
+                &no_accepted(),
+                None,
+            )
             .expect_err("vóór de levering is er geen feit om op te besluiten");
         assert!(
             matches!(err, SimulatorError::BesluitInputMissing { .. }),
@@ -1640,8 +1983,14 @@ besluit_definitions:
     fn twee_besluiten_op_een_dag_leveren_het_laatstgenomen_besluit() {
         let mut cell = besluitende_toeslagen(VASTSTELLING);
         for _ in 0..2 {
-            cell.decide("zorgtoeslag_vaststelling", &bsn(), moment())
-                .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+            cell.decide(
+                "zorgtoeslag_vaststelling",
+                &bsn(),
+                moment(),
+                &no_accepted(),
+                None,
+            )
+            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
         }
 
         assert_eq!(
@@ -1673,7 +2022,13 @@ besluit_definitions:
     #[test]
     fn een_onbekend_besluit_noemt_wat_de_cel_wel_kent() {
         let err = besluitende_toeslagen(VASTSTELLING)
-            .decide("zorgtoeslag_terugvordering", &bsn(), moment())
+            .decide(
+                "zorgtoeslag_terugvordering",
+                &bsn(),
+                moment(),
+                &no_accepted(),
+                None,
+            )
             .expect_err("een besluit dat niet gedefinieerd is hoort te falen");
         let SimulatorError::UnknownBesluit { defined, .. } = &err else {
             panic!("verwachtte UnknownBesluit, kreeg {err}");
@@ -1769,8 +2124,14 @@ chronicles:
     #[test]
     fn de_eigen_besluiten_gaan_niet_als_databron_naar_de_engine() {
         let mut cell = besluitende_toeslagen(VASTSTELLING);
-        cell.decide("zorgtoeslag_vaststelling", &bsn(), moment())
-            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+        cell.decide(
+            "zorgtoeslag_vaststelling",
+            &bsn(),
+            moment(),
+            &no_accepted(),
+            None,
+        )
+        .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
 
         let Some(service) = &cell.service else {
             panic!("deze cel laadt wetten en heeft dus een engine");
