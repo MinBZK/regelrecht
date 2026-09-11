@@ -195,8 +195,10 @@ const persona = computed(() => {
  * midden in zijn verhaal aan te kunnen zetten, dus staan ze in het demo-menu.
  */
 export const FEATURES = [
-  // De toelichting staat naast het label en krijgt de ruimte die overblijft,
-  // dus een lang label breekt over drie regels. Kort houden.
+  // `hint` beschrijft wat de vlag aanzet en staat niet in het menu: het
+  // `details`-attribuut van nldd-menu-item is een kort label rechts, en een
+  // hele zin daarin perst het label op een smal scherm in een kolom van één
+  // woord breed. Het blijft hier staan als uitleg bij de vlag zelf.
   { key: 'DELEGATION', label: 'Machtigingen', icon: 'switch', hint: 'Handelen namens een kind of een onderneming' },
   { key: 'CHANGE_WIZARD', label: 'Wijziging doorgeven', icon: 'edit', hint: 'Eén ingang voor inkomen, huur, adres en huishouden' },
   { key: 'HARMONIZE', label: 'Harmonisatie', icon: 'chart-x-y-axis-line', hint: 'Eén staffel, op het simulatietabblad' },
