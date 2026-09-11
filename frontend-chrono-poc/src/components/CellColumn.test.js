@@ -71,11 +71,30 @@ describe('een kolom per cel', () => {
     expect(supporting.some((text) => text?.includes('01-03-2024'))).toBe(true);
   });
 
+  // `status` en `position` zijn de namen van de tijdlijn-cel zelf. Onder een
+  // andere naam blijft het attribuut op het element staan en doet het niets: de
+  // lijn zou dan overal 'past' en overal 'between' tekenen zonder dat iets faalt.
   it('scheidt op de lijn wat vóór en wat ná de klok ligt', () => {
     const wrapper = mount(CellColumn, { props: { cell: fixtureCell('toeslagen'), clock: '2024-05-01' } });
-    const steps = attrs(wrapper, 'nldd-timeline-track-cell', 'step');
+    const steps = attrs(wrapper, 'nldd-timeline-track-cell', 'status');
     expect(steps).toContain('past');
     expect(steps).toContain('future');
+  });
+
+  it('laat de lijn beginnen, doorlopen en eindigen met de kroniek', () => {
+    const wrapper = mountCell('toeslagen');
+    const cell = fixtureCell('toeslagen');
+    const expected = cell.chronicles.flatMap((chronicle) =>
+      chronicle.grams.map((_, index, grams) => {
+        if (grams.length === 1) return 'only';
+        if (index === 0) return 'first';
+        return index === grams.length - 1 ? 'last' : 'between';
+      }),
+    );
+    expect(attrs(wrapper, 'nldd-timeline-track-cell', 'position')).toStrictEqual(expected);
+    // Een kroniek met één gram: een spoor van één punt krijgt aan geen van beide
+    // kanten een lijn. 'none' bestaat wel op de cel, maar als status en niet als plek.
+    expect(expected).toContain('only');
   });
 
   it('markeert een gram dat erbij kwam sinds de vorige stand', () => {

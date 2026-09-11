@@ -11,11 +11,37 @@
  * niet op een tweede, losse vorm gaat leunen.
  *
  * Fouten komen door als `ApiError` met de leesbare Nederlandse tekst van de
- * server als `message` — apiFetch neemt daarvoor de body van het antwoord.
+ * server als `message`; zie `serverMessage`.
  */
 import { apiFetchJson } from '@regelrecht/frontend-shared';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+/**
+ * De melding die een bezoeker ziet als de server het verzoek weigert.
+ *
+ * De server antwoordt met `{"error": "<uitleg van de wereld>"}`, en die uitleg is
+ * wat in beeld hoort — niet de JSON eromheen. Komt het antwoord niet van de
+ * server (een reverse proxy met een 502-pagina bijvoorbeeld), dan komt er alleen
+ * de status: liever een kale status dan een pagina HTML in een melding. Dezelfde
+ * afweging als bij `errorMessage` in `frontend/src/composables/useLaw.js`.
+ */
+function serverMessage(status, body, contentType) {
+  if (contentType.startsWith('application/json') && body) {
+    try {
+      const parsed = JSON.parse(body);
+      if (typeof parsed?.error === 'string' && parsed.error) return parsed.error;
+    } catch {
+      // Geen leesbare JSON: dan is de status het enige wat zeker klopt.
+    }
+  }
+  return `HTTP ${status}`;
+}
+
+/** Eén verzoek aan de wereld-API: overal dezelfde foutmelding. */
+function request(path, init = {}) {
+  return apiFetchJson(path, { errorMessage: serverMessage, ...init });
+}
 
 /** Lijkt dit op een beeld van de wereld? Klok en cellen maken het beeld. */
 export function isSnapshot(value) {
@@ -31,12 +57,12 @@ export function isSnapshot(value) {
  * Het beeld uit een antwoord, of `null` als er geen in zit.
  *
  * Een antwoord op een wijziging mag het beeld zelf zijn of het onder `snapshot`
- * of `world` dragen; alle drie zijn hetzelfde beeld en de aanroeper hoort het
+ * of `world` dragen; het is elke keer hetzelfde beeld en de aanroeper hoort het
  * verschil niet te kennen.
  */
 export function snapshotFrom(payload) {
   if (isSnapshot(payload)) return payload;
-  for (const key of ['snapshot', 'world', 'beeld', 'wereld']) {
+  for (const key of ['snapshot', 'world']) {
     if (isSnapshot(payload?.[key])) return payload[key];
   }
   return null;
@@ -44,12 +70,12 @@ export function snapshotFrom(payload) {
 
 /** Het beeld van de wereld. */
 export function fetchWorld() {
-  return apiFetchJson('/api/world');
+  return request('/api/world');
 }
 
 /** Voer een actie uit, met de ingevulde velden als body. */
 export function runAction(id, values) {
-  return apiFetchJson(`/api/actions/${encodeURIComponent(id)}`, {
+  return request(`/api/actions/${encodeURIComponent(id)}`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify(values ?? {}),
@@ -58,7 +84,7 @@ export function runAction(id, values) {
 
 /** Spoel de klok vooruit tot en met een dag. */
 export function advanceTo(until) {
-  return apiFetchJson('/api/advance', {
+  return request('/api/advance', {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({ until }),
@@ -67,7 +93,7 @@ export function advanceTo(until) {
 
 /** Wijzig instellingen uit het wereldbestand. */
 export function updateSettings(changes) {
-  return apiFetchJson('/api/settings', {
+  return request('/api/settings', {
     method: 'PUT',
     headers: JSON_HEADERS,
     body: JSON.stringify(changes),
@@ -76,7 +102,7 @@ export function updateSettings(changes) {
 
 /** Zet de wereld terug naar zijn startstand. */
 export function resetWorld() {
-  return apiFetchJson('/api/reset', { method: 'POST' });
+  return request('/api/reset', { method: 'POST' });
 }
 
 /**
@@ -93,5 +119,5 @@ export function askLexostatus(cell, name, params = {}) {
   const search = query.toString();
   const suffix = search ? `?${search}` : '';
   const path = `/api/cells/${encodeURIComponent(cell)}/lexostatus/${encodeURIComponent(name)}`;
-  return apiFetchJson(`${path}${suffix}`);
+  return request(`${path}${suffix}`);
 }

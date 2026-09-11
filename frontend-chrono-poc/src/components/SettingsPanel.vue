@@ -32,11 +32,17 @@ watch(
   { immediate: true, deep: true },
 );
 
-/** Alleen wat veranderd is gaat mee: de server weigert een vaste instelling. */
+/**
+ * Alleen wat veranderd is gaat mee: de server weigert een vaste instelling.
+ *
+ * Een veld dat leeggemaakt is (`null`) is geen wijziging maar een lege hand: wie
+ * dat als waarde zou versturen, zet een instelling op nul zonder dat iemand nul
+ * bedoelde.
+ */
 const changes = computed(() =>
   Object.fromEntries(
     rows.value
-      .filter((row) => !row.locked && draft.value[row.name] !== row.value)
+      .filter((row) => !row.locked && draft.value[row.name] !== null && draft.value[row.name] !== row.value)
       .map((row) => [row.name, draft.value[row.name]]),
   ),
 );
@@ -50,9 +56,12 @@ function typeOf(value) {
 
 function setValue(row, event) {
   const raw = fieldValue(event, draft.value[row.name]);
+  const empty = raw === '' || raw === null || raw === undefined;
   draft.value = {
     ...draft.value,
-    [row.name]: typeOf(row.value) === 'number' ? Number(raw) : raw,
+    // Een leeggemaakt getalveld is niets ingevuld en niet nul: `Number('')` is 0,
+    // en dat zou een instelling op nul zetten alleen omdat het veld leeg was.
+    [row.name]: typeOf(row.value) === 'number' ? (empty ? null : Number(raw)) : raw,
   };
 }
 

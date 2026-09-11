@@ -78,7 +78,9 @@ function runAction({ action, values }) {
       <!-- De skip-link omsluit de werkbalk: zijn knop staat ervóór en zet de
            focus op het eerstvolgende element, de inhoud zelf. -->
       <nldd-skip-link slot="toolbar" text="Direct naar de inhoud">
-        <nldd-container padding="8" background="base">
+        <!-- Alleen padding: nldd-container kent geen achtergrond, de bar leest de
+             zijne uit nldd-app-view. Zelfde vorm als de bars in frontend/. -->
+        <nldd-container padding="8">
           <nldd-toolbar size="md" label="Testopstelling">
             <nldd-toolbar-item slot="start">
               <nldd-title size="6">

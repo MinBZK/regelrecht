@@ -74,6 +74,35 @@ describe('de routes', () => {
     expect(fetchStub.mock.calls[0][0]).toBe('/api/cells/belastingdienst/lexostatus/toetsingsinkomen?bsn=999993653');
   });
 
+  it('zet de uitleg van de server in de fout, zonder de JSON eromheen', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 409,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({ error: "er ligt nog geen aanvraag in cel 'toeslagen'" }),
+      })),
+    );
+    const failure = await runAction('toeslagen.besluit', {}).catch((cause) => cause);
+    expect(failure.message).toBe("er ligt nog geen aanvraag in cel 'toeslagen'");
+    expect(failure.status).toBe(409);
+  });
+
+  it('zet geen pagina van een proxy in een melding, alleen de status', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 502,
+        headers: { get: () => 'text/html' },
+        text: async () => '<html><body>Bad Gateway</body></html>',
+      })),
+    );
+    const failure = await runAction('toeslagen.besluit', {}).catch((cause) => cause);
+    expect(failure.message).toBe('HTTP 502');
+  });
+
   it('laat een naam met een schuine streep heel', async () => {
     const fetchStub = stubFetch({ outcome: {} });
     await askLexostatus('cel/een', 'naam/twee', {});

@@ -42,9 +42,15 @@ const subtitle = computed(() => {
     : 'bron-cel: legt vast en reduceert, besluit niet';
 });
 
-/** De plek van een gram in zijn kroniek, voor de lijn van de tijdlijn-cel. */
+/**
+ * De plek van een gram in zijn kroniek, voor de lijn van de tijdlijn-cel.
+ *
+ * De namen zijn die van `nldd-timeline-track-cell`: `only` is het enige gram in
+ * de kroniek en krijgt aan geen van beide kanten een lijn — een spoor van één
+ * punt leidt nergens heen.
+ */
 function position(index, total) {
-  if (total === 1) return 'none';
+  if (total === 1) return 'only';
   if (index === 0) return 'first';
   return index === total - 1 ? 'last' : 'between';
 }
@@ -68,7 +74,7 @@ function isNew(stream, index) {
           v-for="name in cell.lexostatussen ?? []"
           :key="`lexo-${name}`"
           size="sm"
-          color="coolgray"
+          color="hemelblauw"
           icon="radar"
           :text="name"
         ></nldd-tag>

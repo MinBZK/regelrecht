@@ -46,6 +46,21 @@ describe('het instellingen-paneel', () => {
     expect(wrapper.emitted('save')).toStrictEqual([[{ drempel: 40 }]]);
   });
 
+  // Een leeg getalveld is niets ingevuld. `Number('')` is 0, dus zonder die
+  // scheiding zou het leegmaken van een veld de instelling op nul zetten.
+  it('houdt een leeggemaakt getalveld voor niets ingevuld en niet voor nul', async () => {
+    const wrapper = mountPanel(withFreeSetting());
+    const field = wrapper.find('nldd-number-field');
+    const save = wrapper.findAll('nldd-button').find((button) => button.attributes('type') === 'submit');
+
+    field.element.dispatchEvent(new CustomEvent('input', { detail: { value: '' } }));
+    await wrapper.vm.$nextTick();
+    expect(save.attributes('disabled')).toBe('true');
+
+    await wrapper.find('form').trigger('submit');
+    expect(wrapper.emitted('save')).toBeUndefined();
+  });
+
   it('vraagt om bevestiging voordat de wereld teruggaat naar de startstand', async () => {
     const wrapper = mountPanel();
     const dialog = wrapper.find('nldd-modal-dialog');

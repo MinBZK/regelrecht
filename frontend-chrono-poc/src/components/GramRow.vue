@@ -30,7 +30,10 @@ const props = defineProps({
 const open = ref(false);
 const kind = computed(() => gramKind(props.gram.kind));
 const expandable = computed(() => props.gram.kind === 'decretogram');
-const step = computed(() => (props.clock && props.gram.op_moment > props.clock ? 'future' : 'past'));
+// De namen van de tijdlijn-cel zelf: `status` is 'past' | 'current' | 'future' |
+// 'none'. Wat op of vóór de klok ligt is gebeurd, wat erna komt staat er nog aan
+// te komen.
+const status = computed(() => (props.clock && props.gram.op_moment > props.clock ? 'future' : 'past'));
 const regulation = computed(() => regulationOf(props.gram));
 const obligations = computed(() => obligationsOf(props.gram));
 
@@ -70,7 +73,7 @@ function obligationText(row) {
     :expanded="expandable ? open : undefined"
     @click="expandable && (open = !open)"
   >
-    <nldd-timeline-track-cell :step="step" :child="position"></nldd-timeline-track-cell>
+    <nldd-timeline-track-cell :status="status" :position="position"></nldd-timeline-track-cell>
     <nldd-icon-cell :icon="kind.icon" size="16" color="secondary"></nldd-icon-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-text-cell size="sm" min-width="120px" :text="gram.name" :supporting-text="supporting"></nldd-text-cell>
