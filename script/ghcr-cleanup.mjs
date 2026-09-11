@@ -74,6 +74,7 @@ export const PACKAGES = [
   'regelrecht-harvester-worker',
   'regelrecht-enrich-worker',
   'regelrecht-pipeline-api',
+  'regelrecht-chrono-poc',
   'regelrecht-grafana',
   'regelrecht-lawmaking',
   'regelrecht-docs',

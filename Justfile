@@ -145,7 +145,7 @@ ci-gate-test:
 nldd-imports-test:
     node --test script/nldd-imports.test.mjs
 
-# Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
+# Houdt de Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
 # of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
 # bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
 [doc("Check the Rust Dockerfiles against the cargo workspace")]

@@ -130,11 +130,40 @@ test('de handmatige paden buiten de graaf blijven werken', () => {
   assert.equal(namesOf(['frontend/src/main.ts']).editor, true);
   assert.equal(namesOf(['frontend/src/main.ts']).lawmaking, false);
 
-  // frontend-shared zit in drie frontends tegelijk.
+  // frontend-shared zit in vier frontends tegelijk.
   const shared = namesOf(['packages/frontend-shared/src/auth.ts']);
   assert.equal(shared.editor, true);
   assert.equal(shared.admin, true);
   assert.equal(shared.lawmaking, true);
+  assert.equal(shared['chrono-poc'], true);
+});
+
+test('de testopstelling hangt aan haar crate, haar frontend en haar Dockerfile', () => {
+  // De simulator zit in geen enkel ander image, dus dit is de enige component
+  // die meebouwt als de kern van de opstelling verandert. Werd dat stil `false`,
+  // dan zou de preview een oude wereld draaien terwijl de code verder is.
+  const simulator = namesOf(['packages/simulator/src/cell.rs']);
+  assert.equal(simulator['chrono-poc'], true);
+  assert.equal(simulator.editor, false);
+  assert.equal(simulator.admin, false);
+  assert.equal(simulator['pipeline-api'], false);
+
+  const web = namesOf(['packages/chrono-poc-web/src/api.rs']);
+  assert.equal(web['chrono-poc'], true);
+  assert.equal(web.editor, false);
+
+  const frontend = namesOf(['frontend-chrono-poc/src/App.vue']);
+  assert.equal(frontend['chrono-poc'], true);
+  assert.equal(frontend.editor, false);
+  assert.equal(frontend.lawmaking, false);
+
+  // De Dockerfile ligt in de cratemap, dus zonder de Dockerfile-uitzondering
+  // zou hij elk image raken dat via de graaf aan die crate hangt. Er is er
+  // maar één.
+  const dockerfile = namesOf(['packages/chrono-poc-web/Dockerfile']);
+  assert.equal(dockerfile['chrono-poc'], true);
+  assert.equal(dockerfile.editor, false);
+  assert.equal(dockerfile.admin, false);
 });
 
 test('de gedeelde nginx-headers raken beide nginx-images', () => {

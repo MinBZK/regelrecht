@@ -813,11 +813,10 @@ jobs:
   # release-profiel, de cargo-chef-lagen, de `COPY schema/` waar include_str!
   # aan hangt, en de bin-naam in `COPY --from=builder`.
   #
-  # Eén image is genoeg. De drie Rust-Dockerfiles delen deze hele machinerie en
+  # Eén image is genoeg. De Rust-Dockerfiles delen deze hele machinerie en
   # verschillen alleen in welke members ze kopiëren en welke binary ze eruit
   # halen; dat verschil dekt script/dockerfile-consistency.test.mjs statisch af.
-  # pipeline-api is de goedkoopste van de drie: gemeten 4,4 tot 4,8 minuut met
-  # warme cache.
+  # pipeline-api is de goedkoopste: gemeten 4,4 tot 4,8 minuut met warme cache.
   #
   # Hij hangt aan de `Test`-poort en blokkeert dus. Een build waarop gewacht
   # wordt maar die niets tegenhoudt kost de wandklok zonder de garantie te

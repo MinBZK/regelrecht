@@ -38,6 +38,7 @@ jobs:
             frontend
             lawmaking
             demo
+            chrono-poc
             docs
             grafana
             ci

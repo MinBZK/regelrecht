@@ -11,6 +11,10 @@ frontend
 # Same for the demo: the workspace needs its manifest, nothing else of it.
 frontend-demo
 !frontend-demo/package.json
+# frontend-chrono-poc/ staat hier met opzet NIET bij: packages/chrono-poc-web
+# bouwt die bundel in zijn eigen image en heeft dus de hele map nodig, niet
+# alleen het manifest. Sluit hem hier niet af zonder dat image mee te nemen —
+# de node-stage valt dan om op een ontbrekende workspace.
 doc
 *.md
 *.png
