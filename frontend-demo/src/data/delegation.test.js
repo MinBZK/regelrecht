@@ -18,7 +18,6 @@ function providerLaw(id, { name = id, service = 'RvIG', outputs = null } = {}) {
     name,
     service,
     doc: {
-      discoverable: 'DELEGATION_PROVIDER',
       articles: [{ machine_readable: { execution: { output: names.map((n) => ({ name: n })) } } }],
     },
   };
@@ -80,7 +79,7 @@ describe('delegationProviders', () => {
   it('kiest alleen wetten die machtigingen leveren', () => {
     const corpus = corpusOf(
       providerLaw('burgerlijk_wetboek_gezag'),
-      { id: 'zorgtoeslagwet', doc: { discoverable: 'CITIZEN' } },
+      { id: 'zorgtoeslagwet', doc: { articles: [{ machine_readable: { execution: { output: [{ name: 'hoogte_toeslag' }] } } }] } },
     );
     expect(delegationProviders(corpus).map((l) => l.id)).toEqual(['burgerlijk_wetboek_gezag']);
   });

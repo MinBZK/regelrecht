@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
 $id: burgerlijk_wetboek_executeur
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -11,7 +11,6 @@ bwb_id: BWBR0002761
 url: https://wetten.overheid.nl/BWBR0002761/2024-01-01
 service: NOTARIAAT
 uuid: 9e69492c-c73d-44ea-9672-8a1d36f53ad5
-discoverable: DELEGATION_PROVIDER
 articles:
   - number: '144'
     text: >-
@@ -31,8 +30,8 @@ articles:
           - BESLUITEN_ONTVANGEN
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: RECHTSPOSITIE
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

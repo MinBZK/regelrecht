@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
 $id: machtigingenwet
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -10,7 +10,6 @@ bwb_id: BWBR0003045
 url: https://wetten.overheid.nl/BWBR0003045/2024-01-01
 service: KVK
 uuid: 3f8a2b1c-9d4e-4f5a-b8c7-6e1d2f3a4b5c
-discoverable: DELEGATION_PROVIDER
 articles:
   - number: '240'
     text: >-
@@ -78,8 +77,8 @@ articles:
           - LEZEN
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: RECHTSPOSITIE
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

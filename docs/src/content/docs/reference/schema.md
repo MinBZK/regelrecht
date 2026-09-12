@@ -23,6 +23,7 @@ This table is the single source of truth for which schema version introduced whi
 
 | Version | Introduces | RFC |
 |---------|-----------|-----|
+| v0.5.9 | `RECHTSPOSITIE` added to `produces.legal_character` and to the `hooks.applies_to` filter: a legal position of a person that arises by operation of law, without a besluit and without an aanvraag | [RFC-038](/rfcs/rfc-038) |
 | v0.5.8 | `nullable` on parameters, inputs and outputs: whether `null` (absence) is a legitimate value of the field; defaults to `false`, and the validator and the engine hold a law to it. Also corrects the description of `required` on execution parameters: it defaults to `true`, and an omitted `required: false` parameter is an unknown value, not an error | [RFC-036](/rfcs/rfc-036) |
 | v0.5.7 | `FOREACH` operation (iteration over a variable-length collection) | [RFC-016](/rfcs/rfc-016) |
 | v0.5.6 | Quantity `unit` labels (`euro`, `ratio`, `percentage`) and structured `definitions` constants carrying `type`/`type_spec` | [RFC-023](/rfcs/rfc-023) |
