@@ -120,6 +120,13 @@ repos:
         pass_filenames: false
         files: ^script/(check-)?nldd-slots(\.test)?\.mjs$
 
+      - id: awb-parity
+        name: De Awb zegt in beide corpora hetzelfde
+        entry: just awb-parity-test
+        language: system
+        pass_filenames: false
+        files: ^(corpus/(regulation/nl/wet|demo/regulation/nl)/algemene_wet_bestuursrecht/.*\.yaml|script/awb-parity\.test\.mjs)$
+
       - id: dockerfile-consistency
         name: Rust-Dockerfiles blijven bij de cargo-workspace
         entry: just dockerfile-consistency-test

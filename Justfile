@@ -148,6 +148,15 @@ nldd-slots:
 nldd-slots-test:
     node --test script/nldd-slots.test.mjs
 
+# De Awb staat in twee corpora en moet daar hetzelfde zeggen. Het overzetten
+# ging twee keer mis op een weggevallen laatste regel — één keer de termijn in
+# artikel 6:8, waardoor de einddatum van de bezwaartermijn gelijk werd aan de
+# bekendmakingsdatum. Geldige YAML, dus de schemacontrole zag het niet, en geen
+# scenario raakt 6:8.
+[doc("Check that the Awb says the same in both corpora")]
+awb-parity-test:
+    node --test script/awb-parity.test.mjs
+
 # Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
 # of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
 # bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
@@ -215,9 +224,16 @@ test-db:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
-# Bucket A over the demo corpus: REGULATION_PATH points laws and scenarios at corpus/demo
+# Bucket A over de democorpus: REGULATION_PATH wijst wetten en scenario's naar corpus/demo.
+#
+# De Awb-levensloop draait er achteraan, over hetzelfde corpus. Een scenario
+# toetst één wet; de levensloop-test toetst wat de Awb aan elk besluit toevoegt
+# (RFC-007, RFC-008) en daar kwam een fout in dit corpus aan het licht die geen
+# enkel scenario zag: artikel 6:8 rekende met een afgekapte formule en gaf de
+# bekendmakingsdatum terug als einddatum van de bezwaartermijn.
 bdd-demo:
     cd packages/engine && {{ci_flags}} BDD_BUCKET=corpus REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+    cd packages/engine && {{ci_flags}} REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test awb_lifecycle
 
 # Start the demo and open it. One command for anyone who just wants to see it:
 # it builds the engine to WASM, starts Vite and opens the browser on the
@@ -248,7 +264,7 @@ dev-demo: wasm-build
 # app still broken on a stale WASM build. This is the one command to run before
 # pushing anything demo-related; CI runs the same four steps in its own jobs.
 [doc("Check the whole demo: laws, scenarios, frontend tests, WASM and build")]
-demo-check: validate-demo bdd-demo
+demo-check: validate-demo awb-parity-test bdd-demo
     cd frontend-demo && npx vitest run
     just wasm-build
     cd frontend-demo && npx vite build

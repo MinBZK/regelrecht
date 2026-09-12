@@ -7,6 +7,7 @@ import EditValueSheet from '../components/EditValueSheet.vue';
 import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
 import { useDemo } from '../store/demoStore.js';
+import { awbOutcomes, statusOf } from '../data/lifecycle.js';
 
 // The caseworker's side: applications the citizen submitted, in three lanes,
 // with the engine's fresh verdict next to what the citizen claimed, the
@@ -39,10 +40,15 @@ const orgLaws = computed(() => {
 });
 
 const cases = computed(() => state.cases.filter((c) => c.service === service.value));
+// De banen volgen de fasen die de Awb aan een beschikking geeft (RFC-008), en
+// niet een eigen indeling: te beoordelen, besloten maar nog niet verstuurd, en
+// bekendgemaakt. Die middelste baan is de reden van deze verandering — een
+// besluit dat genomen is maar nog niet is meegedeeld, is een echt moment in de
+// wet en was hier eerder onzichtbaar.
 const lanes = computed(() => [
-  { key: 'SUBMITTED', title: 'Ingediend', items: cases.value.filter((c) => c.status === 'SUBMITTED') },
-  { key: 'IN_REVIEW', title: 'In behandeling', items: cases.value.filter((c) => c.status === 'IN_REVIEW') },
-  { key: 'DECIDED', title: 'Besloten', items: cases.value.filter((c) => c.status === 'DECIDED') },
+  { key: 'IN_REVIEW', title: 'Te beoordelen', items: cases.value.filter((c) => statusOf(c) !== 'DECIDED') },
+  { key: 'BESLUIT', title: 'Bekend te maken', items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && !c.publishedAt) },
+  { key: 'BEKENDMAKING', title: 'Bekendgemaakt', items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && c.publishedAt) },
 ]);
 
 const selected = computed(() => state.cases.find((c) => c.id === route.params.caseId) ?? null);
@@ -134,6 +140,14 @@ function decide(approved) {
   demo.decideCase(selected.value.id, approved, text, verified.value?.ok ? verified.value.outputs : null);
   reason.value = '';
 }
+/** Het besluit gaat de deur uit (Awb 3:41); daarna pas loopt de termijn. */
+function publish() {
+  if (!selected.value) return;
+  demo.publishCase(selected.value.id);
+}
+/** Wat de Awb aan dit besluit heeft toegevoegd. */
+const awb = computed(() => awbOutcomes(selected.value));
+
 function decideObjection(upheld) {
   if (!selected.value) return;
   demo.decideObjection(selected.value.id, upheld, reason.value.trim() || (upheld ? 'Bezwaar gegrond.' : 'Bezwaar ongegrond.'));
@@ -161,9 +175,9 @@ const driftedIds = computed(() => {
 });
 
 function laneTag(c) {
-  if (c.status === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend' } : { color: 'critical', text: 'Afgewezen' };
   if (c.objection?.status === 'PENDING') return { color: 'warning', text: 'Bezwaar' };
-  return { color: 'neutral', text: c.status === 'IN_REVIEW' ? 'Te beoordelen' : 'Nieuw' };
+  if (statusOf(c) === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend' } : { color: 'critical', text: 'Afgewezen' };
+  return { color: 'neutral', text: 'Te beoordelen' };
 }
 function claimLawName(cl) {
   return corpus.value?.lawById(cl.lawId)?.name ?? cl.lawId;
@@ -270,6 +284,10 @@ function claimLawName(cl) {
 
           </nldd-container>
           <nldd-banner v-if="verified && !verified.ok" variant="warning" text="Herberekening mislukt" :supporting-text="verified.error"></nldd-banner>
+          <!-- De levensloop kon niet verder. Het besluit blijft staan zoals het
+               was, maar wat de Awb eraan toevoegt (de termijn, de einddatum)
+               ontbreekt dan, en dat hoort niet stil te blijven. -->
+          <nldd-banner v-if="selected.lifecycleError" variant="warning" text="De levensloop van dit besluit liep vast" :supporting-text="selected.lifecycleError"></nldd-banner>
 
           <nldd-container v-if="lineage.length" gap="4">
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Gebruikte gegevens</nldd-text><nldd-text size="xs" color="secondary">dezelfde gegevens als de burger ziet; klik op een gegeven om het te corrigeren</nldd-text></nldd-container>
@@ -302,7 +320,31 @@ function claimLawName(cl) {
               <nldd-button variant="secondary" text="Bezwaar ongegrond" @click="decideObjection(false)"></nldd-button>
             </nldd-button-group>
           </template>
-          <nldd-rich-text v-else-if="selected.status === 'DECIDED' && !selected.objection" spacing="tight"><p><small>Besloten. De burger kan op het portaal bezwaar maken; dat verschijnt dan hier.</small></p></nldd-rich-text>
+          <!-- Besloten, maar nog niet verstuurd. De Awb maakt van het besluit
+               (art. 1:3) en de bekendmaking ervan (art. 3:41) twee momenten, en
+               pas het tweede laat de bezwaartermijn beginnen (art. 6:8). Dat is
+               hier dus ook een eigen handeling, en geen bijzaak van toekennen. -->
+          <template v-else-if="!selected.publishedAt">
+            <nldd-banner
+              variant="accent"
+              text="Het besluit is genomen en nog niet bekendgemaakt"
+              supporting-text="Zolang het besluit niet is verstuurd, loopt er geen bezwaartermijn: de belanghebbende weet nog van niets (Awb art. 3:41 en 6:8)."
+            ></nldd-banner>
+            <nldd-button-group orientation="horizontal">
+              <nldd-button variant="primary" start-icon="paper-plane" text="Bekendmaken" @click="publish"></nldd-button>
+            </nldd-button-group>
+          </template>
+          <template v-else-if="!selected.objection">
+            <!-- De termijn komt uit de wet: 6:7 geeft het aantal weken, 6:8 de
+                 einddatum vanaf de bekendmaking. -->
+            <nldd-list v-if="awb.bezwaartermijnEinde" variant="box-tinted" accessible-label="Bezwaartermijn">
+              <nldd-list-item size="sm">
+                <nldd-text-cell size="sm" color="secondary" text="Bezwaar mogelijk tot en met"></nldd-text-cell>
+                <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(awb.bezwaartermijnEinde, null)"></nldd-text-cell>
+              </nldd-list-item>
+            </nldd-list>
+            <nldd-rich-text spacing="tight"><p><small>Bekendgemaakt. De burger kan op het portaal bezwaar maken; dat verschijnt dan hier.</small></p></nldd-rich-text>
+          </template>
 
           <nldd-container gap="4">
 

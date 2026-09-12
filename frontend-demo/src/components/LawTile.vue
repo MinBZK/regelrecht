@@ -9,6 +9,7 @@ import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from 
 import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasing.js';
 import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
+import { objectionOpen, statusOf } from '../data/lifecycle.js';
 
 // One regeling on the portal: the outcome of the law for this persona, the
 // values it used (expandable, each correctable), the application button and
@@ -191,7 +192,9 @@ const produces = computed(() => {
 // dan verdwijnen de knoppen, niet alleen hun werking.
 const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
 /** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
-const canObject = computed(() => canSubmitClaims.value && currentCase.value?.status === 'DECIDED' && currentCase.value?.approved === false && !currentCase.value?.objection);
+// Bezwaar pas als de termijn loopt: die begint de dag ná de bekendmaking
+// (Awb 6:8), dus een besluit dat nog niet is verstuurd geeft nog geen knop.
+const canObject = computed(() => canSubmitClaims.value && currentCase.value?.approved === false && objectionOpen(currentCase.value));
 
 // The application stays in the portal (a sheet); the case system is the
 // caseworker's world.
@@ -208,8 +211,11 @@ watch(showTrace, async (open) => {
 const statusTag = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
-  if (c.status === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend', icon: 'checked' } : { color: 'critical', text: 'Afgewezen', icon: 'dismiss-circle' };
-  if (c.status === 'IN_REVIEW') return { color: 'warning', text: 'In behandeling', icon: 'clock' };
+  // Uit de fase en niet uit het opgeslagen veld: die twee horen hetzelfde te
+  // zeggen, en als er ooit één achterloopt is de fase de bron (zie lifecycle.js).
+  const status = statusOf(c);
+  if (status === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend', icon: 'checked' } : { color: 'critical', text: 'Afgewezen', icon: 'dismiss-circle' };
+  if (status === 'IN_REVIEW') return { color: 'warning', text: 'In behandeling', icon: 'clock' };
   return { color: 'neutral', text: 'Ingediend', icon: 'paper-plane' };
 });
 </script>

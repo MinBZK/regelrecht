@@ -271,6 +271,43 @@ export function evaluateLaw(engine, lawEntry, params, referenceDate, outputs = n
   }
 }
 
+/**
+ * Eén stap in de levensloop van een besluit (RFC-007, RFC-008).
+ *
+ * Waar `evaluateLaw` een wet doorrekent en klaar is, loopt dit de procedure af
+ * die de Awb aan dit soort besluit geeft: het vuurt de haken die bij elke fase
+ * horen, en stopt bij de eerste fase waarvan het de gegevens niet heeft. Zo
+ * komt de bezwaartermijn als datum uit de wet in plaats van als vaste tekst uit
+ * het scherm.
+ *
+ * De engine bewaart niets. `state` is `null` bij de eerste stap en daarna wat
+ * de vorige stap teruggaf; de demo bewaart dat bij de zaak. Die verdeling is de
+ * kern van RFC-008: de engine blijft een zuivere functie per fase, de
+ * orkestratielaag houdt het besluit vast.
+ *
+ * Een wet die in geen procedure zit rekent gewoon door en is meteen klaar, dus
+ * dit is voor elke wet veilig aan te roepen.
+ *
+ * @returns {{ok: true, complete: boolean, outputs: object, state: object|null,
+ *   pendingInputs: string[], currentStage: string|null} | {ok: false, error: string}}
+ */
+export function executeStage(engine, lawEntry, outputName, state, params, referenceDate) {
+  try {
+    const result = engine.executeStage(lawEntry.id, outputName, state ?? null, params, referenceDate);
+    return {
+      ok: true,
+      complete: !!result.complete,
+      outputs: result.outputs ?? {},
+      state: result.state ?? null,
+      pendingInputs: result.pending_inputs ?? [],
+      currentStage: result.current_stage ?? null,
+    };
+  } catch (e) {
+    const message = typeof e === 'string' ? e : e?.error ?? e?.message ?? JSON.stringify(e);
+    return { ok: false, error: String(message) };
+  }
+}
+
 export function useDemoEngine() {
-  return { initEngine, prepareEngine, prepareScenarioEngine, registerPersonaData, registerClaims, evaluateLaw, engineReady, engineError, loadFailures, loadFailureFor };
+  return { initEngine, prepareEngine, prepareScenarioEngine, registerPersonaData, registerClaims, evaluateLaw, executeStage, engineReady, engineError, loadFailures, loadFailureFor };
 }

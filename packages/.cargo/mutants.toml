@@ -164,6 +164,15 @@ exclude_re = [
     'engine/src/wasm\.rs.*WasmEngine::execute_with_trace',
     'engine/src/wasm\.rs.*WasmEngine::execute_multiple',
     'engine/src/wasm\.rs.*WasmEngine::execute_multiple_with_trace',
+    # execute_stage staat hier om dezelfde reden als de vier hierboven: het
+    # marshalt JsValue heen en terug en laat het rekenwerk aan
+    # `LawExecutionService::execute_stage`. Ook de `||` erin is niet native te
+    # halen — `state.is_null() || state.is_undefined()` roept twee keer een
+    # JsValue-methode aan. Wat de mutant zou moeten aantonen (dat `undefined`
+    # net als `null` "deze zaak heeft nog geen verleden" betekent) is een
+    # JS-contract; het ligt vast in de tests van de aanroeper in frontend-demo
+    # en in de levensloop-integratietest, die dezelfde fasen langsloopt.
+    'engine/src/wasm\.rs.*WasmEngine::execute_stage',
     'engine/src/wasm\.rs.*WasmEngine::get_law_info',
     'engine/src/wasm\.rs.*WasmEngine::resolve_note\b',
     'engine/src/wasm\.rs.*WasmEngine::resolve_notes',

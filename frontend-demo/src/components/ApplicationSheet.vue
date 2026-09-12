@@ -5,6 +5,7 @@ import { fieldSpec, formatDateTime, formatMissing, formatValue, humanize, verdic
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
 import { useDemo } from '../store/demoStore.js';
+import { awbOutcomes, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
@@ -196,11 +197,13 @@ const statusView = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
   if (c.objection?.status === 'PENDING') return { variant: 'warning', icon: 'flag', text: 'Bezwaar ingediend', supporting: 'De gemeente of dienst beoordeelt uw bezwaar.' };
-  if (c.status === 'DECIDED') {
+  // Uit de fase, niet uit het opgeslagen veld (zie lifecycle.js).
+  const status = statusOf(c);
+  if (status === 'DECIDED') {
     if (c.objection) return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: 'Toegekend na bezwaar', supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: 'Afgewezen, bezwaar ongegrond', supporting: c.reason };
     return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: 'Toegekend', supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: 'Afgewezen', supporting: c.reason };
   }
-  if (c.status === 'IN_REVIEW') return { variant: 'accent', icon: 'clock', text: 'In behandeling', supporting: 'Een behandelaar beoordeelt uw aanvraag. U ontvangt bericht.' };
+  if (status === 'IN_REVIEW') return { variant: 'accent', icon: 'clock', text: 'In behandeling', supporting: 'Een behandelaar beoordeelt uw aanvraag. U ontvangt bericht.' };
   return { variant: 'accent', icon: 'paper-plane', text: 'Ingediend', supporting: 'Uw aanvraag is ontvangen.' };
 });
 const citizenEvents = computed(() =>
@@ -214,7 +217,12 @@ const citizenEvents = computed(() =>
       : e.text,
   })),
 );
-const canObject = computed(() => currentCase.value?.status === 'DECIDED' && !currentCase.value?.objection);
+// Bezwaar kan pas als de bezwaartermijn loopt, en die begint de dag ná de
+// bekendmaking (Awb 6:8). Zolang het besluit nog niet is bekendgemaakt weet de
+// burger van niets en is er niets om bezwaar tegen te maken.
+const canObject = computed(() => objectionOpen(currentCase.value));
+/** Wat de Awb aan dit besluit heeft toegevoegd: de termijn, de einddatum. */
+const awb = computed(() => awbOutcomes(currentCase.value));
 
 /**
  * De aanvraag die er ligt, tegen wat de wet nu zegt. Zelfde vergelijking als
@@ -417,6 +425,21 @@ function claimStatus(cl) {
                 <nldd-text-cell size="sm" :text="e.text" :supporting-text="formatDateTime(e.at)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
+            <!-- De termijn komt uit de wet en niet uit dit scherm: artikel 6:7
+                 Awb geeft de zes weken, artikel 6:8 rekent de einddatum uit
+                 vanaf de bekendmaking, en een bijzondere wet die daarvan
+                 afwijkt is er al in verwerkt. Daarom staat hier een datum en
+                 geen vaste tekst. -->
+            <nldd-list v-if="awb.bezwaartermijnEinde" variant="box-tinted" accessible-label="Bezwaartermijn">
+              <nldd-list-item size="sm">
+                <nldd-text-cell size="sm" color="secondary" text="U kunt bezwaar maken tot en met"></nldd-text-cell>
+                <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(awb.bezwaartermijnEinde, null)"></nldd-text-cell>
+              </nldd-list-item>
+              <nldd-list-item v-if="awb.bezwaartermijnWeken" size="sm">
+                <nldd-text-cell size="sm" color="secondary" text="Termijn volgens de wet"></nldd-text-cell>
+                <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="`${awb.bezwaartermijnWeken} weken`"></nldd-text-cell>
+              </nldd-list-item>
+            </nldd-list>
             <template v-if="canObject">
               <nldd-form-field label="Niet mee eens? Maak bezwaar" optional>
                 <nldd-multi-line-text-field :value="objectionReason" rows="3" placeholder="Waarom bent u het niet eens met het besluit? (Awb art. 6:5)" @input="objectionReason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
@@ -425,6 +448,15 @@ function claimStatus(cl) {
                 <nldd-button variant="secondary" start-icon="flag" text="Bezwaar indienen" @click="fileObjection"></nldd-button>
               </nldd-form-actions>
             </template>
+            <!-- Besloten, maar nog niet de deur uit. Eerlijk benoemen dat de
+                 termijn nog niet loopt is beter dan een knop die er wel staat
+                 maar niets betekent. -->
+            <nldd-banner
+              v-else-if="currentCase && !currentCase.publishedAt && currentCase.decidedAt"
+              variant="accent"
+              text="Het besluit is nog niet bekendgemaakt"
+              supporting-text="Zodra u het besluit ontvangt, begint de bezwaartermijn te lopen (Awb art. 6:8)."
+            ></nldd-banner>
           </template>
         </nldd-container>
       </nldd-page>
