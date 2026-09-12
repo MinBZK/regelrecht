@@ -499,7 +499,16 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
         }
       : { at: nowIso(), type: 'DECIDED', text: requirementsMet ? 'Automatisch toegekend.' : 'Automatisch afgewezen.' },
   );
-  for (const claim of pendingClaims) if (!claim.caseId) claim.caseId = c.id;
+  // Alleen de correcties die bij déze regeling horen komen aan deze zaak te
+  // hangen. De lijst hierboven is met opzet breder — een wijziging bij een
+  // andere regeling telt mee voor de vraag óf er beoordeeld moet worden — maar
+  // eigenaarschap is iets anders dan aanleiding. Zonder dit onderscheid raakt
+  // een correctie die bij een heel andere tegel is opgegeven voorgoed aan deze
+  // zaak vast (`if (!claim.caseId)` zet hem maar één keer), en staat hij in het
+  // dossier van een besluit waar hij niets mee te maken heeft.
+  for (const claim of pendingClaims) {
+    if (!claim.caseId && claim.tileLawId === c.lawId) claim.caseId = c.id;
+  }
   reregister();
   return c;
 }
@@ -564,15 +573,23 @@ function caseDrift(lawEntry, evaluation, subject = null) {
  * hetzelfde zijn als "nieuw". De correctiebron gaat er daarom even af en
  * daarna weer op.
  *
+ * `keyField`/`keyValue` zeggen over wie het gaat: een BSN, een KvK-nummer, een
+ * organisatie. Die komen van de correctie zelf, want het onderwerp van een
+ * correctie is niet altijd degene die haar indient.
+ *
  * `null` als het niet lukt — een wet die niet doorrekent mag een correctie niet
  * tegenhouden; er is dan alleen niets om doorgestreept te tonen.
  */
-function currentValueOf(lawId, input, bsn = subjectBsn()) {
+function currentValueOf(lawId, input, keyField, keyValue) {
   const lawEntry = corpus.value?.lawById(lawId);
-  if (!engine.value || !lawEntry) return null;
+  if (!engine.value || !lawEntry || !keyField || keyValue == null) return null;
   try {
     registerClaims(engine.value, []);
-    const result = evaluate(lawEntry, { bsn }, [input]);
+    // Doorrekenen voor het onderwerp waar de correctie over gáát, en niet voor
+    // wie haar indient. Een correctie op een gegeven van een onderneming staat
+    // op het KvK-nummer; die voor de BSN van de gemachtigde doorrekenen levert
+    // de waarde van een ander op, of een parameter die niet past.
+    const result = evaluate(lawEntry, { [keyField]: keyValue }, [input]);
     return result.ok ? result.outputs?.[input] ?? null : null;
   } catch {
     return null;
@@ -627,7 +644,7 @@ function submitClaim({
   // engine, en niet in elk scherm apart. Al bestaande correcties tellen niet
   // mee: de oude waarde is wat er stond, niet wat een eerdere correctie er al
   // van gemaakt had.
-  const oldValueResolved = oldValue ?? currentValueOf(lawId, input, bsn);
+  const oldValueResolved = oldValue ?? currentValueOf(lawId, input, keyField, keyValue);
   // A value no register holds is the citizen's own declaration and applies at
   // once; a correction of a register value waits for the caseworker unless the
   // profile auto-approves. An appeal to a hardship clause always needs a human,
