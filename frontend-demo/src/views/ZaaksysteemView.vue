@@ -7,7 +7,7 @@ import EditValueSheet from '../components/EditValueSheet.vue';
 import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
 import { useDemo } from '../store/demoStore.js';
-import { producesBeschikking, subjectOf } from '../data/entrypoints.js';
+import { isDelegationProvider, producesBeschikking, subjectOf } from '../data/entrypoints.js';
 import { awbOutcomes, statusOf } from '../data/lifecycle.js';
 
 // The caseworker's side: applications the citizen submitted, in three lanes,
@@ -182,7 +182,7 @@ function laneTag(c) {
 }
 /** Voor wie deze regeling is, afgeleid uit de wet zelf (RFC-038). */
 function lawAudience(law) {
-  if (!producesBeschikking(law.doc)) return 'levert gegevens aan andere wetten';
+  if (isDelegationProvider(law.doc) || !producesBeschikking(law.doc)) return 'levert gegevens aan andere wetten';
   return subjectOf(law.doc) === 'BUSINESS' ? 'voor ondernemers' : 'voor burgers';
 }
 function claimLawName(cl) {
