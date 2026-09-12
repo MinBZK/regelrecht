@@ -8,6 +8,7 @@ import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
 import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasing.js';
 import { useDemo } from '../store/demoStore.js';
+import { objectionOpen } from '../data/lifecycle.js';
 
 // One regeling on the portal: the outcome of the law for this persona, the
 // values it used (expandable, each correctable), the application button and
@@ -180,7 +181,9 @@ const produces = computed(() => {
 // dan verdwijnen de knoppen, niet alleen hun werking.
 const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
 /** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
-const canObject = computed(() => canSubmitClaims.value && currentCase.value?.status === 'DECIDED' && currentCase.value?.approved === false && !currentCase.value?.objection);
+// Bezwaar pas als de termijn loopt: die begint de dag ná de bekendmaking
+// (Awb 6:8), dus een besluit dat nog niet is verstuurd geeft nog geen knop.
+const canObject = computed(() => canSubmitClaims.value && currentCase.value?.approved === false && objectionOpen(currentCase.value));
 
 // The application stays in the portal (a sheet); the case system is the
 // caseworker's world.

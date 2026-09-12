@@ -12,10 +12,12 @@ import { computed, markRaw, reactive, ref, shallowRef, watch } from 'vue';
 import { loadCorpus } from '../data/loadCorpus.js';
 import {
   evaluateLaw as engineEvaluate,
+  executeStage as engineExecuteStage,
   prepareEngine,
   registerClaims,
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
+import { statusOf } from '../data/lifecycle.js';
 import { DELEGATION_TYPE_LABELS, delegationKey, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 
@@ -448,20 +450,120 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
   };
   for (const claim of pendingClaims) claim.caseId = c.id;
   state.cases.unshift(c);
+  // De levensloop begint. De aanvraag is er, dus AANVRAAG en BEHANDELING
+  // hebben hun datums; daarna wacht de engine op de besluitdatum, die er pas
+  // is als er besloten wordt. Bij een aanvraag die meteen wordt toegekend,
+  // volgt die in dezelfde adem.
+  const vandaag = isoDate(c.submittedAt);
+  advanceLifecycle(c, { aanvraag_datum: vandaag, beslistermijn_start: vandaag });
+  if (!needsReview) {
+    advanceLifecycle(c, { besluit_datum: vandaag });
+  }
+  c.status = statusOf(c);
   reregister();
   return c;
+}
+
+/**
+ * De levensloop van een zaak een stuk verder brengen met de gegevens die er nu
+ * zijn (RFC-008).
+ *
+ * De engine loopt de fasen af die de Awb aan dit soort besluit geeft, vuurt bij
+ * elke fase de haken die daarbij horen, en stopt zodra hij een gegeven mist.
+ * Wat hij mist staat in `pendingInputs`; de demo levert dat aan op het moment
+ * dat het bestaat — een besluitdatum als de behandelaar besluit, een
+ * bekendmakingsdatum als het besluit wordt verstuurd.
+ *
+ * De uitkomsten van de Awb (de motiveringsplicht, de termijn, de einddatum)
+ * stapelen zich op in `accumulated_outputs` en worden bij de zaak bewaard. De
+ * engine houdt zelf niets vast; dat is hier met opzet de taak van de demo.
+ *
+ * Een wet die in geen procedure zit, komt in één keer klaar. Dan blijft er geen
+ * `stageState` staan en valt alles terug op de gewone status.
+ */
+function advanceLifecycle(c, supplied = {}) {
+  const lawEntry = corpus.value?.lawById(c.lawId);
+  if (!engine.value || !lawEntry) return;
+  // Het uitvoerveld waar deze zaak over gaat: hetzelfde veld waarop de tegel
+  // en de aanvraag rekenen.
+  const outputName = primaryOutputFor(lawEntry);
+  if (!outputName) return;
+
+  const params = { ...(c.parameters ?? {}), ...(c.lifecycleInputs ?? {}), ...supplied };
+  c.lifecycleInputs = { ...(c.lifecycleInputs ?? {}), ...supplied };
+
+  const step = engineExecuteStage(engine.value, lawEntry, outputName, c.stageState ?? null, params, state.referenceDate);
+  if (!step.ok) {
+    // Een levensloop die niet rekent, mag de zaak niet stukmaken: de zaak
+    // houdt wat ze had en de fout is te zien waar de uitkomsten staan.
+    c.lifecycleError = step.error;
+    return;
+  }
+  c.lifecycleError = null;
+  if (step.complete) {
+    // Alle fasen doorlopen. De laatste stand blijft staan, zodat de termijn
+    // die eruit kwam zichtbaar blijft.
+    c.stageState = {
+      ...(c.stageState ?? {}),
+      current_stage: 'BEZWAAR',
+      accumulated_outputs: { ...(c.stageState?.accumulated_outputs ?? {}), ...step.outputs },
+    };
+    c.pendingInputs = [];
+    return;
+  }
+  c.stageState = step.state;
+  c.pendingInputs = step.pendingInputs;
+}
+
+/**
+ * Het uitvoerveld dat deze wet voor de burger beantwoordt: hetzelfde veld dat
+ * de tegel groot laat zien (`dashboard_outputs`), en anders het eerste dat de
+ * wet declareert.
+ */
+function primaryOutputFor(lawEntry) {
+  const configured = corpus.value?.config?.dashboard_outputs?.[`${lawEntry.service}/${lawEntry.law_path}`];
+  if (configured) return configured;
+  return lawEntry.outputs?.[0] ?? null;
 }
 
 function decideCase(caseId, approved, reason, verifiedResult = null) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c) return;
-  c.status = 'DECIDED';
   c.approved = approved;
   c.reason = reason;
   c.verifiedResult = verifiedResult;
   c.decidedAt = nowIso();
   c.events.push({ at: nowIso(), type: 'DECIDED', text: `${approved ? 'Toegekend' : 'Afgewezen'} door behandelaar: ${reason}` });
+  // Het besluit is genomen: dat is de datum waar de fase BESLUIT op wachtte.
+  advanceLifecycle(c, { besluit_datum: isoDate(c.decidedAt) });
+  c.status = statusOf(c);
   reregister();
+}
+
+/**
+ * Het besluit wordt bekendgemaakt (Awb 3:41): het gaat de deur uit naar de
+ * belanghebbende.
+ *
+ * Een eigen handeling en geen bijzaak van het besluit, omdat de Awb er twee
+ * verschillende momenten van maakt. RFC-008 zet de overgang BESLUIT →
+ * BEKENDMAKING dan ook op "manual", en pas hier vuurt artikel 6:8 en komt de
+ * bezwaartermijn als datum tevoorschijn. Vóór dit moment is er niets om
+ * bezwaar tegen te maken: de burger weet van niets.
+ */
+function publishCase(caseId, bekendmakingDatum = null) {
+  const c = state.cases.find((x) => x.id === caseId);
+  if (!c || c.publishedAt) return;
+  c.publishedAt = nowIso();
+  const datum = bekendmakingDatum ?? isoDate(c.publishedAt);
+  c.events.push({ at: nowIso(), type: 'BEKENDMAKING', text: `Besluit bekendgemaakt aan de belanghebbende op ${datum}.` });
+  advanceLifecycle(c, { bekendmaking_datum: datum });
+  c.status = statusOf(c);
+  reregister();
+}
+
+/** De kalenderdatum uit een tijdstempel; de wet rekent in dagen, niet in uren. */
+function isoDate(iso) {
+  return String(iso ?? nowIso()).slice(0, 10);
 }
 
 function moveCase(caseId, status) {
@@ -472,12 +574,21 @@ function moveCase(caseId, status) {
   reregister();
 }
 
+/**
+ * De burger maakt bezwaar (Awb 6:4).
+ *
+ * Het bezwaar is een veld op het besluit en niet een stap terug in de
+ * levensloop: het besluit blíjft genomen en bekendgemaakt, er is alleen iets
+ * tegen ingebracht. Dat de behandeling van een bezwaar strikt genomen een eigen
+ * besluit is met een eigen levensloop (Awb 7:12, RFC-008 vraag 2), gaat verder
+ * dan wat de demo laat zien; hier is het één veld.
+ */
 function objectToCase(caseId, reason) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c) return;
   c.objection = { reason, status: 'PENDING', filedAt: nowIso() };
-  c.status = 'IN_REVIEW';
   c.events.push({ at: nowIso(), type: 'OBJECTION', text: `Bezwaar ingediend: ${reason}` });
+  reregister();
 }
 
 function decideObjection(caseId, upheld, reason) {
@@ -611,6 +722,7 @@ export function useDemo() {
     findCase,
     submitCase,
     decideCase,
+    publishCase,
     moveCase,
     objectToCase,
     decideObjection,
