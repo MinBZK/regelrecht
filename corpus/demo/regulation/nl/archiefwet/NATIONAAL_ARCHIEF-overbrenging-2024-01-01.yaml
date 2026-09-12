@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Archiefwet - Overbrenging archiefbescheiden
 bwb_id: BWBR0007376
 url: https://wetten.overheid.nl/BWBR0007376/2024-01-01
-service: NATIONAAL_ARCHIEF
 uuid: 5cebc6f0-caa4-4f2f-908e-37c0fcb7337a
 articles:
   - number: '12'

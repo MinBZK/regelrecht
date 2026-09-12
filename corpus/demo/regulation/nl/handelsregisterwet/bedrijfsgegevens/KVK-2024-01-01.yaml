@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bedrijfsgegevens organisatie
 bwb_id: BWBR0021777
 url: https://wetten.overheid.nl/BWBR0021777/2024-01-01
-service: KVK
 uuid: 1b3c8d9e-5f2a-4c7b-8e1d-9a2b3c4d5e6f
 articles:
   - number: '14'

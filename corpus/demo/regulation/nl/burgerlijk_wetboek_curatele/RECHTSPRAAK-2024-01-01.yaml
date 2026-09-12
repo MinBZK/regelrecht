@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen curatele en vertegenwoordigingsbevoegdheid curator
 bwb_id: BWBR0002656
 url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
-service: RECHTSPRAAK
 uuid: b270d49d-f98d-4f3a-bff7-1043dbd5dacb
 articles:
   - number: '378'

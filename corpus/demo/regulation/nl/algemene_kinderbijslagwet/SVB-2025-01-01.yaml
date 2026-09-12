@@ -8,7 +8,6 @@ valid_from: '2020-01-01'
 name: Kinderbijslag gegevens
 bwb_id: BWBR0002368
 url: https://wetten.overheid.nl/BWBR0002368/2020-01-01
-service: SVB
 uuid: 2e4f7a9b-5c8d-4e1a-9f3b-6d2e8a4c7f1b
 articles:
   - number: '6'

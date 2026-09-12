@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen vertegenwoordigingsbevoegdheid minderjarigen
 bwb_id: BWBR0002656
 url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
-service: RvIG
 uuid: a87bbb48-0bde-487a-af4d-3dc7f4a7c220
 articles:
   - number: '245'

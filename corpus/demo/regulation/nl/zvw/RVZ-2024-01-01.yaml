@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen verzekeringsstatus 2024
 bwb_id: BWBR0018450
 url: https://wetten.overheid.nl/BWBR0018450/2024-01-01
-service: RVZ
 uuid: aba2b8fa-4b34-420f-883a-e78da326a8f4
 articles:
   - number: '1'

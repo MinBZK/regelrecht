@@ -8,7 +8,6 @@ valid_from: '2023-05-15'
 name: BRP Terugmeldplicht Dienst Toeslagen
 bwb_id: BWBR0033715
 url: https://wetten.overheid.nl/BWBR0033715/2023-05-15
-service: TOESLAGEN
 uuid: 5f9d3e7a-4c8b-4e1f-9a6c-3d7e8f2a5b4c
 articles:
   - number: '2.34'

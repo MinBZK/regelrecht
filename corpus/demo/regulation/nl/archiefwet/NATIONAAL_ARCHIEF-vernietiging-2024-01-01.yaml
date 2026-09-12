@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Archiefwet - Vernietiging archiefbescheiden
 bwb_id: BWBR0007376
 url: https://wetten.overheid.nl/BWBR0007376/2024-01-01
-service: NATIONAAL_ARCHIEF
 uuid: 81c1b431-545b-4a8a-b1e2-eacfc6c3915a
 articles:
   - number: '5'

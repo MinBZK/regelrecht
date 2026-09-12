@@ -9,7 +9,6 @@ name: >-
   Bepalen faillissementscurator en vertegenwoordigingsbevoegdheid curator boedel
 bwb_id: BWBR0001860
 url: https://wetten.overheid.nl/BWBR0001860/2024-01-01
-service: RECHTSPRAAK
 uuid: e1199fc0-2fbc-4bc7-aab5-e4f3790a5cc7
 articles:
   - number: '68'

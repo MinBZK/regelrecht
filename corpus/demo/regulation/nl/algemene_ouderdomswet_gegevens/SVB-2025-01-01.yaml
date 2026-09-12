@@ -8,7 +8,6 @@ valid_from: '2020-01-01'
 name: Algemene Ouderdomswet Gegevens
 bwb_id: BWBR0002221
 url: https://wetten.overheid.nl/BWBR0002221/2020-01-01
-service: SVB
 uuid: 5a2f8c3d-9e7b-4a1c-8f6d-2b9e4c7a3f5d
 articles:
   - number: 7a

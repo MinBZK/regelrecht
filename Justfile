@@ -157,6 +157,15 @@ nldd-slots-test:
 awb-parity-test:
     node --test script/awb-parity.test.mjs
 
+# Welke organisatie een wet uitvoert staat in services.yaml en niet in het
+# wetsbestand: het stuurt logo's, kleuren en groepering, en waarden als
+# GEMEENTE_ROTTERDAM volgen uit geen wet. Een wet die in die kaart ontbreekt
+# krijgt stil `service: null` — geen logo, geen kleur, geen foutmelding. Deze
+# controle is wat de garantie vervangt die het oude veld gratis gaf.
+[doc("Check that services.yaml covers every demo law")]
+service-map-check:
+    node frontend-demo/scripts/check-service-map.mjs
+
 # Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
 # of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
 # bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
@@ -264,7 +273,7 @@ dev-demo: wasm-build
 # app still broken on a stale WASM build. This is the one command to run before
 # pushing anything demo-related; CI runs the same four steps in its own jobs.
 [doc("Check the whole demo: laws, scenarios, frontend tests, WASM and build")]
-demo-check: validate-demo awb-parity-test bdd-demo
+demo-check: validate-demo awb-parity-test service-map-check bdd-demo
     cd frontend-demo && npx vitest run
     just wasm-build
     cd frontend-demo && npx vite build

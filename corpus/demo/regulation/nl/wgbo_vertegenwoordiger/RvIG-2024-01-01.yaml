@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen WGBO-vertegenwoordiger voor wilsonbekwame patienten
 bwb_id: BWBR0005290
 url: https://wetten.overheid.nl/BWBR0005290/2024-01-01
-service: RvIG
 uuid: 54ba9cdb-61ff-4735-a650-8ccee6ef0bb8
 articles:
   - number: '465'

@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen handelingsbekwaamheid minderjarigen
 bwb_id: BWBR0002656
 url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
-service: RvIG
 uuid: 848e8af1-5b25-454d-9813-8d295a93fd44
 articles:
   - number: '234'

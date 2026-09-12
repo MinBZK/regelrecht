@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen mentorschap en vertegenwoordigingsbevoegdheid mentor
 bwb_id: BWBR0002656
 url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
-service: RECHTSPRAAK
 uuid: 0c6a4f3c-8a49-4f76-a109-265c0b7a05dc
 articles:
   - number: '450'

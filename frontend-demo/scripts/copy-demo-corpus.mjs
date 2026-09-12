@@ -31,6 +31,12 @@ function walk(dir, predicate, out = []) {
 rmSync(destDir, { recursive: true, force: true });
 mkdirSync(destDir, { recursive: true });
 
+// Which organisation executes which law. It lives in services.yaml and not in
+// the law files: it drives logos, colours and grouping, and values like
+// GEMEENTE_ROTTERDAM follow from no statute. Who is competent to decide is a
+// different question, answered by `competent_authority` on the article.
+const serviceByLawId = yaml.load(readFileSync(join(corpusDir, 'services.yaml'), 'utf8')).laws ?? {};
+
 const laws = [];
 for (const file of walk(lawsDir, (n) => n.endsWith('.yaml'))) {
   const rel = relative(lawsDir, file);
@@ -50,8 +56,7 @@ for (const file of walk(lawsDir, (n) => n.endsWith('.yaml'))) {
   laws.push({
     id: doc.$id,
     name: doc.name,
-    service: doc.service ?? null,
-    discoverable: doc.discoverable ?? null,
+    service: serviceByLawId[doc.$id] ?? null,
     regulatory_layer: doc.regulatory_layer,
     valid_from: doc.valid_from ?? doc.publication_date,
     uuid: doc.uuid ?? null,

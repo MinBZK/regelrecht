@@ -8,7 +8,6 @@ valid_from: '2025-01-01'
 name: Ziektewet uitkering status
 bwb_id: BWBR0001888
 url: https://wetten.overheid.nl/BWBR0001888/2025-01-01
-service: UWV
 uuid: 9b5e2d7a-3c4f-4e1b-9a6d-2f9c1e7b4d3a
 articles:
   - number: '29'

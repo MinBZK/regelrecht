@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bibob-advies Landelijk Bureau Bibob
 bwb_id: BWBR0013798
 url: https://wetten.overheid.nl/BWBR0013798/2024-01-01
-service: LBB
 uuid: 2d6430cb-dd3c-47fa-9741-2202386619a8
 articles:
   - number: '9'
