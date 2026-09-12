@@ -7,6 +7,7 @@ import { fieldSpec, formatMissing, formatValue, humanize, isUnknown, verdictOf }
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
 import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasing.js';
+import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
 
 // One regeling on the portal: the outcome of the law for this persona, the
@@ -19,7 +20,7 @@ const props = defineProps({
 const emit = defineEmits(['edit-value', 'evaluated', 'apply']);
 const router = useRouter();
 const demo = useDemo();
-const { corpus, dataVersion, profile, personaParams, findCase, canSubmitClaims, activeDelegation } = demo;
+const { corpus, dataVersion, profile, personaParams, findCase, caseDrift, canSubmitClaims, activeDelegation } = demo;
 
 const evaluation = ref(null);
 const showData = ref(false);
@@ -114,6 +115,16 @@ const lineage = computed(() => {
 const valueCount = computed(() => leafValues(lineage.value).length);
 
 const currentCase = computed(() => findCase(props.law));
+/**
+ * Een lopende aanvraag die niet meer klopt met wat de wet nu zegt.
+ *
+ * De burger heeft ergens een gegeven gewijzigd — misschien bij een hele
+ * andere regeling — en deze wet rekent daar al mee, terwijl de aanvraag nog
+ * op het oude bedrag staat. Dat hoort hij te zien op de plek waar dat besluit
+ * staat, niet pas als het geld anders binnenkomt.
+ */
+const drift = computed(() => caseDrift(props.law, evaluation.value));
+const driftText = computed(() => driftSentence(drift.value, doc.value));
 
 // The questions this regeling has for the citizen (see askedInputs.js): the
 // inputs no register holds and the application-form parameters. Until
@@ -222,6 +233,24 @@ const statusTag = computed(() => {
         <nldd-inline-dialog variant="alert" text="Kon deze regeling niet berekenen" :supporting-text="evaluation.error"></nldd-inline-dialog>
       </template>
       <template v-else>
+        <!-- Wat er al lag klopt niet meer met wat de wet nu zegt. Geen
+             herberekening die iets besluit: alleen de constatering, met de
+             weg terug ernaast (de knop "Wijzigen" in de voettekst). Het
+             besluit zelf blijft staan tot de burger zijn aanvraag wijzigt of
+             een behandelaar ernaar kijkt. Boven de uitkomst en niet in plaats
+             daarvan: het nieuwe bedrag is juist wat hij moet zien.
+
+             Een banner en geen inline-dialog: die laatste is de lege-staat, met
+             het icoon bóven de tekst en alles gecentreerd. Dat leest als een
+             andere soort mededeling dan de rest van de tegel, terwijl dit er
+             juist naast hoort te staan. De aanvraag gebruikt dezelfde banner,
+             dus beide kanten zien hetzelfde. -->
+        <nldd-banner
+          v-if="drift"
+          variant="warning"
+          text="Uw aanvraag klopt niet meer"
+          :supporting-text="driftText"
+        ></nldd-banner>
         <nldd-inline-dialog v-if="verdict === 'unknown'" icon="info" text="Nog niet te bepalen" :supporting-text="`De wet kan met de bekende gegevens geen uitkomst geven; ${verdictMissing}.`"></nldd-inline-dialog>
         <nldd-list v-else variant="box-tinted" accessible-label="Uitkomst">
           <nldd-list-item size="md" :button="primary ? true : undefined" @click="primary && correctOutcome(primary.name, primary.value)">
@@ -315,6 +344,7 @@ const statusTag = computed(() => {
            one onto a second line. "Mijn aanvraag" needed 336px and "Bezwaar
            maken" 347px, so both wrapped; "Aanvraag" and "Bezwaar" fit. -->
       <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" text="Bezwaar" @click="apply"></nldd-button>
+      <nldd-button v-else-if="drift" variant="primary" size="sm" start-icon="edit" text="Wijzigen" @click="apply"></nldd-button>
       <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" text="Aanvraag" @click="apply"></nldd-button>
       <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" variant="primary" size="sm" start-icon="edit" text="Aanvullen" @click="apply"></nldd-button>
       <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" text="Aanvragen" @click="apply"></nldd-button>

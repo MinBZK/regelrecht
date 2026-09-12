@@ -5,6 +5,7 @@ import { fieldSpec, formatDateTime, formatMissing, formatValue, humanize, verdic
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
 import { useDemo } from '../store/demoStore.js';
+import { driftRows, driftSentence } from '../data/caseDrift.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
 // generated per regeling: first the questions only the citizen can answer
@@ -23,7 +24,7 @@ const props = defineProps({
 // opens the same correction sheet for a value corrected from inside the application.
 const emit = defineEmits(['close', 'edit-value']);
 const demo = useDemo();
-const { corpus, profile, personaParams, claimFor, findCase, dataVersion } = demo;
+const { corpus, profile, personaParams, claimFor, findCase, caseDrift, dataVersion } = demo;
 
 const sheet = ref(null);
 const step = ref('gegevens'); // gegevens | controleren | status
@@ -184,6 +185,20 @@ const citizenEvents = computed(() =>
   })),
 );
 const canObject = computed(() => currentCase.value?.status === 'DECIDED' && !currentCase.value?.objection);
+
+/**
+ * De aanvraag die er ligt, tegen wat de wet nu zegt. Zelfde vergelijking als
+ * op de tegel; hier staat de knop waarmee de burger er iets aan kan doen.
+ */
+const drift = computed(() => {
+  void dataVersion.value;
+  return props.law ? caseDrift(props.law, props.evaluation) : null;
+});
+const rows = computed(() => driftRows(drift.value, doc.value));
+const driftText = computed(() => driftSentence(drift.value, doc.value));
+function resubmit() {
+  demo.resubmitCase(currentCase.value.id, props.evaluation, evaluationParamsFor(personaParams(), asked.value));
+}
 function fileObjection() {
   demo.objectToCase(currentCase.value.id, objectionReason.value.trim() || 'Ik ben het niet eens met het besluit.');
   objectionReason.value = '';
@@ -317,6 +332,24 @@ function claimStatus(cl) {
           <template v-else-if="currentCase">
             <nldd-banner :variant="statusView.variant" :icon="statusView.icon" :text="statusView.text" :supporting-text="statusView.supporting"></nldd-banner>
             <nldd-rich-text v-if="justSubmitted" spacing="tight"><p>Uw aanvraag is ingediend bij {{ service }}. U kunt de voortgang hier volgen.</p></nldd-rich-text>
+
+            <!-- Wat er ligt klopt niet meer met wat de wet nu zegt. De demo
+                 rekent niets opnieuw af achter de rug van de burger om: het
+                 besluit blijft staan en hij krijgt te zien wat er veranderd is,
+                 met de weg terug ernaast. Aanvraag per aanvraag, want elke
+                 aanvraag is een eigen besluit. -->
+            <template v-if="drift && !justSubmitted">
+              <nldd-banner variant="warning" text="Uw aanvraag klopt niet meer" :supporting-text="driftText"></nldd-banner>
+              <nldd-list variant="box-tinted" accessible-label="Verschil met uw eerdere aanvraag">
+                <nldd-list-item v-for="row in rows" :key="row.name" size="sm">
+                  <nldd-text-cell size="sm" color="secondary" min-width="50%" :text="humanize(row.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="`${row.was} → ${row.now}`"></nldd-text-cell>
+                </nldd-list-item>
+              </nldd-list>
+              <nldd-form-actions>
+                <nldd-button variant="primary" start-icon="paper-plane" text="Aanvraag wijzigen" @click="resubmit"></nldd-button>
+              </nldd-form-actions>
+            </template>
             <nldd-list v-if="claimedPrimary" variant="box-tinted" accessible-label="Aangevraagd">
               <nldd-list-item size="sm">
                 <nldd-text-cell size="sm" color="secondary" :text="`Aangevraagd · ${humanize(claimedPrimary.name)}`"></nldd-text-cell>

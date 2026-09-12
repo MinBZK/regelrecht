@@ -18,6 +18,7 @@ import {
 } from '../engine/useDemoEngine.js';
 import { DELEGATION_TYPE_LABELS, delegationKey, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
+import { driftOf } from '../data/caseDrift.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
 
@@ -31,7 +32,11 @@ function defaultState() {
   return {
     profileKey: null, // null = config default
     referenceDate: today(),
-    manualReview: true,
+    // Uit, zoals in de POC (`SAMPLE_RATE = 0.0`): een aanvraag waarbij de
+    // burger niets gewijzigd heeft, rekent de wet zelf af en wordt direct
+    // toegekend. De presentator kan het aanzetten om te laten zien hoe een
+    // behandelaar dezelfde zaak ziet.
+    manualReview: false,
     cases: [],
     claims: [],
     presenterName: '',
@@ -452,6 +457,53 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
   return c;
 }
 
+/**
+ * De burger dient dezelfde aanvraag opnieuw in, met de gegevens zoals ze nu
+ * zijn. Dat is de POC's `Case.reset`: geen tweede zaak naast de eerste, maar
+ * dezelfde zaak die opnieuw door dezelfde beoordeling gaat, met het verloop
+ * dat eraan vastzit intact.
+ *
+ * Dit is de weg terug uit `caseDrift`. Dat een gewijzigde aanvraag daarna
+ * vrijwel altijd bij een behandelaar terechtkomt, is geen keuze van de demo:
+ * er ligt een wijziging die nog niet is goedgekeurd, en daar hoort iemand
+ * naar te kijken.
+ */
+function resubmitCase(caseId, evaluation, params = personaParams()) {
+  const c = state.cases.find((x) => x.id === caseId);
+  if (!c || !evaluation?.ok) return null;
+  const verdict = verdictOf(evaluation.outputs);
+  const undecided = verdict === 'unknown';
+  const requirementsMet = verdict === null || verdict === true;
+  // Per BSN, niet per wet: de wijziging die deze zaak raakt kan bij een
+  // andere regeling zijn opgegeven. Dat is precies het geval waar dit voor is.
+  const pendingClaims = state.claims.filter((cl) => cl.bsn === c.bsn && cl.status === 'PENDING');
+  const needsReview = state.manualReview || pendingClaims.length > 0 || undecided;
+  c.parameters = params;
+  c.claimedResult = evaluation.outputs ?? {};
+  c.verifiedResult = null;
+  c.status = needsReview ? 'IN_REVIEW' : 'DECIDED';
+  c.approved = needsReview ? null : requirementsMet;
+  c.reason = needsReview ? null : requirementsMet ? 'Automatisch toegekend op basis van de wet.' : 'Voldoet niet aan de voorwaarden.';
+  c.decidedAt = needsReview ? null : nowIso();
+  c.events.push({ at: nowIso(), type: 'SUBMITTED', text: 'Aanvraag gewijzigd door de burger.' });
+  c.events.push(
+    needsReview
+      ? {
+          at: nowIso(),
+          type: 'IN_REVIEW',
+          text: pendingClaims.length
+            ? 'Handmatige beoordeling: de burger heeft gegevens gewijzigd.'
+            : undecided
+              ? 'Handmatige beoordeling: de wet kan nog geen uitkomst geven, er ontbreken gegevens.'
+              : 'Handmatige beoordeling (steekproef).',
+        }
+      : { at: nowIso(), type: 'DECIDED', text: requirementsMet ? 'Automatisch toegekend.' : 'Automatisch afgewezen.' },
+  );
+  for (const claim of pendingClaims) if (!claim.caseId) claim.caseId = c.id;
+  reregister();
+  return c;
+}
+
 function decideCase(caseId, approved, reason, verifiedResult = null) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c) return;
@@ -489,6 +541,46 @@ function decideObjection(caseId, upheld, reason) {
   if (upheld) c.approved = !c.approved;
   c.events.push({ at: nowIso(), type: 'OBJECTION_DECIDED', text: `Bezwaar ${upheld ? 'gegrond' : 'ongegrond'}: ${reason}` });
   reregister();
+}
+
+/**
+ * Wat een lopende aanvraag nog waard is, gegeven wat er ná het indienen is
+ * gewijzigd. De vergelijking zelf staat in `data/caseDrift.js`; hier wordt
+ * alleen de zaak erbij gezocht.
+ */
+function caseDrift(lawEntry, evaluation, subject = null) {
+  // De behandelaar heeft de zaak al in handen en geeft hem mee; de portal
+  // zoekt hem op bij het huidige onderwerp.
+  return driftOf(subject?.id ? subject : findCase(lawEntry, subject), evaluation);
+}
+
+/**
+ * De waarde die nu geldt voor één gegeven van één wet, zónder de correcties
+ * die er al liggen.
+ *
+ * Nodig om bij een nieuwe correctie vast te leggen wat er stond. Dat kan niet
+ * uit de gewone doorrekening komen: die telt openstaande correcties mee
+ * (`claimsForEngine`), dus daar staat de nieuwe waarde al in en zou "oud"
+ * hetzelfde zijn als "nieuw". De correctiebron gaat er daarom even af en
+ * daarna weer op.
+ *
+ * `null` als het niet lukt — een wet die niet doorrekent mag een correctie niet
+ * tegenhouden; er is dan alleen niets om doorgestreept te tonen.
+ */
+function currentValueOf(lawId, input, bsn = subjectBsn()) {
+  const lawEntry = corpus.value?.lawById(lawId);
+  if (!engine.value || !lawEntry) return null;
+  try {
+    registerClaims(engine.value, []);
+    const result = evaluate(lawEntry, { bsn }, [input]);
+    return result.ok ? result.outputs?.[input] ?? null : null;
+  } catch {
+    return null;
+  } finally {
+    // Altijd terugzetten: zonder dit rekent de rest van de demo verder zonder
+    // de correcties van de burger.
+    registerClaims(engine.value, claimsForEngine());
+  }
 }
 
 // ---- claims ----------------------------------------------------------------
@@ -529,6 +621,13 @@ function submitClaim({
   approve = null,
 }) {
   const acting = claimant === 'BEHANDELAAR' ? null : actingOn();
+  // Wat er stond vóór deze correctie. De aanroeper weet dat niet altijd — de
+  // wijzigingswizard kent alleen wat de burger invult — en zonder die waarde
+  // valt er later niets te tonen dan "0 → 0". Ze wordt hier uitgerekend, bij de
+  // engine, en niet in elk scherm apart. Al bestaande correcties tellen niet
+  // mee: de oude waarde is wat er stond, niet wat een eerdere correctie er al
+  // van gemaakt had.
+  const oldValueResolved = oldValue ?? currentValueOf(lawId, input, bsn);
   // A value no register holds is the citizen's own declaration and applies at
   // once; a correction of a register value waits for the caseworker unless the
   // profile auto-approves. An appeal to a hardship clause always needs a human,
@@ -542,7 +641,7 @@ function submitClaim({
     input,
     keyField,
     keyValue,
-    oldValue,
+    oldValue: oldValueResolved,
     newValue,
     reason,
     evidence,
@@ -609,7 +708,9 @@ export function useDemo() {
     isLawEnabled,
     evaluate,
     findCase,
+    caseDrift,
     submitCase,
+    resubmitCase,
     decideCase,
     moveCase,
     objectToCase,
