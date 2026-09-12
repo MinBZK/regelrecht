@@ -500,3 +500,4 @@ articles:
             value:
               operation: DATE_ADD
               date: $bekendmaking_datum
+              weeks: $bezwaartermijn_weken

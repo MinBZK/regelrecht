@@ -96,12 +96,27 @@ fn run_lifecycle(
     panic!("levensloop kwam niet tot een einde");
 }
 
+/// Of deze wet in het geladen corpus zit.
+///
+/// De suite draait over twee corpora: het regelingencorpus en, met
+/// `REGULATION_PATH`, het democorpus. De Awb-tests horen bij allebei te
+/// slagen — juist dáár kwam een fout in het democorpus aan het licht — maar de
+/// Vreemdelingenwet staat alleen in het eerste. Een test over een wet die er
+/// niet is, zegt niets; die slaat zichzelf over en zegt dat ook.
+fn heeft_wet(service: &LawExecutionService, law_id: &str) -> bool {
+    service.list_laws().contains(&law_id)
+}
+
 /// Een wet die een BESCHIKKING produceert komt de Awb-levensloop binnen, ook al
 /// noemt ze de Awb nergens. Dat is de kern van RFC-007: de verhouding is
 /// eenzijdig, de Awb kent de Vreemdelingenwet niet en andersom ook niet.
 #[test]
 fn een_beschikking_komt_de_awb_levensloop_binnen() {
     let service = load_corpus();
+    if !heeft_wet(&service, "vreemdelingenwet_2000") {
+        eprintln!("overgeslagen: de Vreemdelingenwet zit niet in dit corpus");
+        return;
+    }
     let supply = BTreeMap::new();
 
     let (_outputs, state, pending) = run_lifecycle(
@@ -212,6 +227,10 @@ fn de_termijn_is_een_datum_en_niet_zes_weken() {
 #[test]
 fn een_afwijkende_termijn_werkt_door_in_de_einddatum() {
     let service = load_corpus();
+    if !heeft_wet(&service, "vreemdelingenwet_2000") {
+        eprintln!("overgeslagen: de Vreemdelingenwet zit niet in dit corpus");
+        return;
+    }
     let mut supply = BTreeMap::new();
     supply.insert("aanvraag_datum".to_string(), date("2026-01-05"));
     supply.insert("beslistermijn_start".to_string(), date("2026-01-06"));

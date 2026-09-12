@@ -215,9 +215,16 @@ test-db:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
-# Bucket A over the demo corpus: REGULATION_PATH points laws and scenarios at corpus/demo
+# Bucket A over de democorpus: REGULATION_PATH wijst wetten en scenario's naar corpus/demo.
+#
+# De Awb-levensloop draait er achteraan, over hetzelfde corpus. Een scenario
+# toetst één wet; de levensloop-test toetst wat de Awb aan elk besluit toevoegt
+# (RFC-007, RFC-008) en daar kwam een fout in dit corpus aan het licht die geen
+# enkel scenario zag: artikel 6:8 rekende met een afgekapte formule en gaf de
+# bekendmakingsdatum terug als einddatum van de bezwaartermijn.
 bdd-demo:
     cd packages/engine && {{ci_flags}} BDD_BUCKET=corpus REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+    cd packages/engine && {{ci_flags}} REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test awb_lifecycle
 
 # Start the demo and open it. One command for anyone who just wants to see it:
 # it builds the engine to WASM, starts Vite and opens the browser on the
