@@ -13,6 +13,7 @@
  */
 import { collectKeyValues, lawShape, materialiseAll } from '../data/materialize.js';
 import { fieldSpec, isAmountSpec, verdictOf } from '../data/format.js';
+import { isEntrypointFor } from '../data/entrypoints.js';
 import { evaluateLaw } from '../engine/useDemoEngine.js';
 import { applyOverrides, effectiveOverrides } from './lawParameters.js';
 import { generateBusinesses, generateCitizens, rowsForTables, templatesFromProfiles } from './population.js';
@@ -28,7 +29,7 @@ const IDENTITY = new Set(['bsn', 'kvk_nummer']);
 /** The laws the simulation runs for an audience: the portal's laws, minus those needing parameters the population cannot supply. */
 export function simulationLaws(corpus, kind, isLawEnabled = () => true) {
   const wanted = kind === 'ondernemers' ? 'BUSINESS' : 'CITIZEN';
-  const laws = [...corpus.latestById.values()].filter((law) => law.discoverable === wanted && isLawEnabled(law));
+  const laws = [...corpus.latestById.values()].filter((law) => isEntrypointFor(law.doc, wanted) && isLawEnabled(law));
   const known = new Set([...IDENTITY, ...FORM_PARAMETERS]);
   const runnable = [];
   const skipped = [];

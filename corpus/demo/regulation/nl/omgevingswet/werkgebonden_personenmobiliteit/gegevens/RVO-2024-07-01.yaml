@@ -10,7 +10,6 @@ bwb_id: BWBR0041330
 url: https://wetten.overheid.nl/BWBR0041330/2024-07-01
 service: RVO
 uuid: 9c5d8e7a-4b2f-4d6e-8a1c-3e5b7d9a2f4c
-discoverable: BUSINESS
 articles:
   - number: '18.14'
     text: >-
@@ -34,8 +33,8 @@ articles:
         co2_factor_openbaar_vervoer: 30
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: kvk_nummer
             type: string

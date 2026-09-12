@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
 $id: burgerlijk_wetboek_volmacht
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -11,7 +11,6 @@ bwb_id: BWBR0005291
 url: https://wetten.overheid.nl/BWBR0005291/2024-01-01
 service: NOTARIAAT
 uuid: 5a437c98-30bb-4044-af1a-11701a9bf7ea
-discoverable: DELEGATION_PROVIDER
 articles:
   - number: '60'
     text: >-
@@ -33,8 +32,8 @@ articles:
           bijzondere_volmacht: GEVOLMACHTIGDE_BIJZONDER
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: RECHTSPOSITIE
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

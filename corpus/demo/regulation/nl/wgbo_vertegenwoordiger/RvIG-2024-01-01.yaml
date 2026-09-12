@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
 $id: wgbo_vertegenwoordiger
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -10,7 +10,6 @@ bwb_id: BWBR0005290
 url: https://wetten.overheid.nl/BWBR0005290/2024-01-01
 service: RvIG
 uuid: 54ba9cdb-61ff-4735-a650-8ccee6ef0bb8
-discoverable: DELEGATION_PROVIDER
 articles:
   - number: '465'
     text: >-
@@ -74,8 +73,8 @@ articles:
           - BESLUITEN_ONTVANGEN
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: RECHTSPOSITIE
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

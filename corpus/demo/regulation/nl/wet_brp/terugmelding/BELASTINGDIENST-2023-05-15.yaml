@@ -42,8 +42,8 @@ articles:
         twijfel_langdurig_afwezig: Persoon langdurig in buitenland, mogelijk geen ingezetene
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

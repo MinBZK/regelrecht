@@ -10,7 +10,6 @@ bwb_id: BWBR0017017
 url: https://wetten.overheid.nl/BWBR0017017/2024-01-01
 service: TOESLAGEN
 uuid: f8e7d6c5-4321-4f0f-bbbb-123456789abc
-discoverable: CITIZEN
 articles:
   - number: '1.5'
     text: >-

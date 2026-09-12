@@ -10,7 +10,6 @@ bwb_id: BWBR0033715
 url: https://wetten.overheid.nl/BWBR0033715/2020-01-01
 service: RvIG
 uuid: fcf09c18-1584-4565-9223-e8a86fbddc09
-discoverable: BUSINESS
 articles:
   - number: '1.1'
     text: >-
@@ -82,8 +81,8 @@ articles:
         kind_max_leeftijd_combinatiekorting: 12
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

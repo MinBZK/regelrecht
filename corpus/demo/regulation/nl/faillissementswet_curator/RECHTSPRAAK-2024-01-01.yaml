@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
 $id: faillissementswet_curator
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -11,7 +11,6 @@ bwb_id: BWBR0001860
 url: https://wetten.overheid.nl/BWBR0001860/2024-01-01
 service: RECHTSPRAAK
 uuid: e1199fc0-2fbc-4bc7-aab5-e4f3790a5cc7
-discoverable: DELEGATION_PROVIDER
 articles:
   - number: '68'
     text: >-
@@ -44,8 +43,8 @@ articles:
           - BESLUITEN_ONTVANGEN
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: RECHTSPOSITIE
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string
