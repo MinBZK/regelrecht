@@ -207,7 +207,11 @@ function submit() {
     input: props.node.name,
     keyField: props.node.keyField ?? 'bsn',
     keyValue: props.node.keyValue ?? props.bsn ?? profile.value?.bsn,
-    oldValue: props.node.value,
+    // Alleen de waarde meegeven als ze van het register komt. Bij een gegeven
+    // dat al gecorrigeerd is, toont de rij de gecorrigeerde waarde, en die als
+    // "oud" vastleggen zou de correctie ervóór wegpoetsen. `null` laat de store
+    // opzoeken wat er zonder correcties staat.
+    oldValue: props.node.corrected ? null : props.node.value,
     newValue: value,
     reason: reason.value.trim(),
     evidence: evidence.value,

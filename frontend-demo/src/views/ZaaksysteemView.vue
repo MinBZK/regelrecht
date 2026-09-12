@@ -140,6 +140,26 @@ function decideObjection(upheld) {
   reason.value = '';
 }
 
+/**
+ * De zaken op dit bord die niet meer kloppen met wat de wet nu zegt.
+ *
+ * Dezelfde vergelijking als in de portal (`caseDrift`), maar dan vanaf de
+ * andere kant: een behandelaar moet kunnen zien dát er iets is veranderd
+ * zonder elke zaak open te klikken. Alleen de zaken van deze organisatie, dus
+ * het rekenwerk blijft beperkt tot wat op het scherm staat.
+ */
+const driftedIds = computed(() => {
+  void dataVersion.value;
+  const ids = new Set();
+  for (const c of cases.value) {
+    const law = lawOf(c);
+    if (!law) continue;
+    const evaluation = demo.evaluate(law, c.parameters);
+    if (demo.caseDrift(law, evaluation, c)) ids.add(c.id);
+  }
+  return ids;
+});
+
 function laneTag(c) {
   if (c.status === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend' } : { color: 'critical', text: 'Afgewezen' };
   if (c.objection?.status === 'PENDING') return { color: 'warning', text: 'Bezwaar' };
@@ -182,6 +202,10 @@ function claimLawName(cl) {
                          per letter. In the overline the title keeps the whole card width. -->
                     <nldd-text-cell :text="c.lawName" :supporting-text="`${personaName(c.bsn)} · ${formatDateTime(c.submittedAt)}`">
                       <nldd-tag slot="overline" size="sm" :color="laneTag(c).color" :text="laneTag(c).text"></nldd-tag>
+                      <!-- Er is een gegeven gewijzigd waarmee deze wet nu op iets
+                           anders uitkomt dan waarop besloten is. Het besluit staat
+                           nog; dit zegt alleen dat ernaar gekeken moet worden. -->
+                      <nldd-tag v-if="driftedIds.has(c.id)" slot="overline" size="sm" color="warning" icon="warning" text="Gewijzigd"></nldd-tag>
                     </nldd-text-cell>
                   </nldd-list-item>
                 </nldd-list>
