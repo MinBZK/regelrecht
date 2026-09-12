@@ -7,12 +7,12 @@ The law format is defined by a JSON Schema. All law YAML files in the corpus mus
 
 ## Current Version
 
-The current schema version is **v0.5.8**.
+The current schema version is **v0.5.9**.
 
 Schema URLs use immutable git tags to guarantee reproducibility. The format is:
 
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
 ```
 
 The tag `schema-vX.Y.Z` is created when a schema version is released. Using tags instead of `refs/heads/main` ensures that the schema a law file references can never change underneath it. See [RFC-013](/rfcs/rfc-013) for the rationale.
