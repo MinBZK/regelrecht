@@ -128,7 +128,7 @@ repos:
         files: ^(corpus/(regulation/nl/wet|demo/regulation/nl)/algemene_wet_bestuursrecht/.*\.yaml|script/awb-parity\.test\.mjs)$
 
       - id: service-map
-        name: services.yaml dekt elke democwet
+        name: services.yaml dekt elke demowet
         entry: just service-map-check
         language: system
         pass_filenames: false

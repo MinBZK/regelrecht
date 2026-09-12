@@ -160,7 +160,7 @@ awb-parity-test:
 # Welke organisatie een wet uitvoert staat in services.yaml en niet in het
 # wetsbestand: het stuurt logo's, kleuren en groepering, en waarden als
 # GEMEENTE_ROTTERDAM volgen uit geen wet. Een wet die in die kaart ontbreekt
-# krijgt stil `service: null` — geen logo, geen kleur, geen foutmelding. Deze
+# krijgt stil `service: null`: geen logo, geen kleur, geen foutmelding. Deze
 # controle is wat de garantie vervangt die het oude veld gratis gaf.
 [doc("Check that services.yaml covers every demo law")]
 service-map-check:

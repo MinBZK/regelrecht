@@ -110,4 +110,4 @@ if (problems.length) {
   console.error(`\n${problems.length} probleem(en).`);
   process.exit(1);
 }
-console.log(`services.yaml dekt alle ${ids.size} democwetten, met ${organisations.size} organisaties.`);
+console.log(`services.yaml dekt alle ${ids.size} demowetten, met ${organisations.size} organisaties.`);
