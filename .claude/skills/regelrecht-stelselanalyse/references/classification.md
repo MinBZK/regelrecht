@@ -5,6 +5,22 @@ bepaalt waar de bevinding landt en welke actie volgt. Verkeerd labelen leidt tot
 verkeerde actie (een wet "fixen" die we niet kunnen wijzigen, of onze YAML niet
 corrigeren omdat we de fout bij de wet legden).
 
+> **Twee assen, niet één.** Dit label zegt wat voor *soort* bevinding het is. Het zegt
+> níet wie haar mag sluiten — dat is een tweede, onafhankelijke as, en die twee liepen
+> hier lang door elkaar. "Wetgevings-fout → stakeholders" en "untranslatable → workshop"
+> beschrijven een bevoegdheid, geen soort.
+>
+> Sinds de bevoegdheidsas apart staat: het label bepaalt de **actie**, de bevoegde bepaalt
+> **wie de kwestie sluit**, en die is af te leiden uit waar de bevinding aan hangt (het
+> artikel, en bij een open term `open_terms[].delegated_to`) plus wat voor soort vraag het
+> is — feit → uitvoering, lezing → jurist, bevoegdheid of normconflict → jurist of bestuur,
+> ontbrekend beleid → de normsteller. Klopt de afleiding niet, dan overschrijf je haar mét
+> reden; die uitzonderingen zijn zelf een bevinding over het model van bevoegdheid.
+>
+> Vastleggen doe je in de vorm van `regelrecht-verantwoording`: een bevinding die een lezing
+> kiest, is een claim met een grond, een verworpen alternatief en een bevoegde. Zonder die
+> drie is zij een bewering en kan niemand haar bekrachtigen.
+
 | Label | Wat | Waar het landt | Actie |
 |---|---|---|---|
 | **Modellering-fout** | Onze YAML/feature wijkt af van de (correcte) wettekst | `modellering-fixes-plan` | Wij fixen de YAML |
