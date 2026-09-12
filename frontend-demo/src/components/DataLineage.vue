@@ -65,7 +65,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
 </script>
 
 <template>
-  <nldd-list-item v-for="node in values" :key="`${node.law}|${node.name}`" :slot="slotName" size="sm" :button="canSubmitClaims || undefined" @click="canSubmitClaims && emit('edit', node)">
+  <nldd-list-item v-for="node in values" :key="`${node.law}|${node.name}`" :slot="slotName" size="sm" :button="canSubmitClaims || undefined" @click.stop="canSubmitClaims && emit('edit', node)">
     <nldd-spacer-cell v-for="i in depth" :key="i" size="20"></nldd-spacer-cell>
     <nldd-cell v-if="node.service"><OrgLogo :service="node.service" size="sm" /></nldd-cell>
     <nldd-icon-cell v-else-if="node.corrected" icon="edit" size="16" color="accent"></nldd-icon-cell>
@@ -73,8 +73,12 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-text-cell size="sm" min-width="120px" :text="humanize(node.name)" :supporting-text="pending(node) ? `${supportingText(node) ? supportingText(node) + ' · ' : ''}meegerekend, nog te beoordelen` : supportingText(node)"></nldd-text-cell>
     <nldd-text-cell size="sm" width="fit-content" max-width="55%" horizontal-alignment="right" :color="pending(node) ? 'warning' : isUnknown(node.value) ? 'secondary' : 'default'">
+      <!-- Doorgestreept staat de waarde van vóór de correctie, en die komt van
+           de correctie zelf. Niet `node.value`: de engine rekent de burger zijn
+           openstaande correcties al mee (`claimsForEngine`), dus dat ís de
+           nieuwe waarde en er stond tweemaal hetzelfde bedrag. -->
       <template v-if="pending(node)">
-        <s>{{ formatValue(node.value, specFor(node)) }}</s> → {{ formatValue(pending(node).newValue, specFor(node)) }}
+        <s>{{ formatValue(pending(node).oldValue, specFor(node)) }}</s> → {{ formatValue(pending(node).newValue, specFor(node)) }}
       </template>
       <template v-else>{{ formatValue(node.value, specFor(node)) }}</template>
     </nldd-text-cell>
@@ -86,7 +90,15 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
        data) is a leaf: no disclosure chevron, because there is nothing under it
        to open. Every row stays correctable through its own pencil, an outcome
        of a law included: what the engine computed is a claim like any other,
-       and citizen and caseworker may both dispute it. -->
+       and citizen and caseworker may both dispute it.
+
+       Every click handler in this component is `.stop`, and that is load-
+       bearing: the children of a law row are rendered INSIDE that row
+       (slot="children"), so without it a click on a nested row also reaches
+       every law row above it. Opening "Box1 inkomen" then collapsed "Inkomen"
+       in the same click — the child did open, you just could not see it,
+       because its parent shut over it. The same applied to correcting a
+       nested value. -->
   <nldd-list-item
     v-for="node in laws"
     :key="keyOf(node)"
@@ -94,7 +106,7 @@ const slotName = computed(() => (props.nested ? 'children' : undefined));
     size="sm"
     :button="node.children?.length ? true : undefined"
     :expanded="node.children?.length && open[keyOf(node)] ? true : undefined"
-    @click="node.children?.length && (open[keyOf(node)] = !open[keyOf(node)])"
+    @click.stop="node.children?.length && (open[keyOf(node)] = !open[keyOf(node)])"
   >
     <nldd-spacer-cell v-for="i in depth" :key="i" size="20"></nldd-spacer-cell>
     <nldd-cell v-if="lawService(node.law)"><OrgLogo :service="lawService(node.law)" size="sm" /></nldd-cell>

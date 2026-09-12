@@ -5,7 +5,8 @@ import { fieldSpec, formatDateTime, formatMissing, formatValue, humanize, verdic
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
 import { useDemo } from '../store/demoStore.js';
-import { awbOutcomes, objectionOpen } from '../data/lifecycle.js';
+import { awbOutcomes, objectionOpen, statusOf } from '../data/lifecycle.js';
+import { driftRows, driftSentence } from '../data/caseDrift.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
 // generated per regeling: first the questions only the citizen can answer
@@ -24,7 +25,7 @@ const props = defineProps({
 // opens the same correction sheet for a value corrected from inside the application.
 const emit = defineEmits(['close', 'edit-value']);
 const demo = useDemo();
-const { corpus, profile, personaParams, claimFor, findCase, dataVersion } = demo;
+const { corpus, profile, personaParams, claimFor, findCase, caseDrift, dataVersion } = demo;
 
 const sheet = ref(null);
 const step = ref('gegevens'); // gegevens | controleren | status
@@ -146,6 +147,36 @@ watch([missing, step], ([m, st]) => {
   if (st === 'gegevens' && m.length === 0 && answered.value > 0) step.value = 'controleren';
 });
 
+/**
+ * Het invoerveld krijgt de aandacht, bij elke volgende vraag opnieuw.
+ *
+ * De wet stelt haar vragen één voor één (just in time), en na een antwoord
+ * staat de volgende vraag er met een leeg veld. Zonder dit moet je er elke keer
+ * eerst heen klikken; met dit kun je een aanvraag al typend en enterend
+ * afmaken, wat in een demo voor de zaal het verschil is tussen vertellen en
+ * laten zien. Enter zit op het omhullende veld, zodat elk soort vraag het erft.
+ *
+ * Welk veld dat is, hangt van de vraag af (tekst, datum, keuzelijst). Ze
+ * melden zich alle drie als invoerveld met `static isFormInput = true` — de
+ * afspraak waarop `nldd-form-field` zelf ook zijn label laat wijzen — en
+ * hebben een eigen `focus()` die het schaduw-DOM afhandelt. Dat is stabieler
+ * dan hier een lijst met tagnamen bijhouden.
+ */
+const questionField = ref(null);
+function isFormInput(el) {
+  return el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el.constructor?.isFormInput === true;
+}
+watch(
+  [question, () => props.open],
+  async ([q, open]) => {
+    if (!q || !open) return;
+    await nextTick();
+    const control = [...(questionField.value?.querySelectorAll?.('*') ?? [])].find(isFormInput);
+    control?.focus?.();
+  },
+  { immediate: true },
+);
+
 // ---- step 2/3: check and submit --------------------------------------------------
 const canSubmit = computed(() => props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
 function submitApplication() {
@@ -166,11 +197,13 @@ const statusView = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
   if (c.objection?.status === 'PENDING') return { variant: 'warning', icon: 'flag', text: 'Bezwaar ingediend', supporting: 'De gemeente of dienst beoordeelt uw bezwaar.' };
-  if (c.status === 'DECIDED') {
+  // Uit de fase, niet uit het opgeslagen veld (zie lifecycle.js).
+  const status = statusOf(c);
+  if (status === 'DECIDED') {
     if (c.objection) return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: 'Toegekend na bezwaar', supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: 'Afgewezen, bezwaar ongegrond', supporting: c.reason };
     return c.approved ? { variant: 'success', icon: 'check-mark-circle', text: 'Toegekend', supporting: c.reason } : { variant: 'critical', icon: 'dismiss-circle', text: 'Afgewezen', supporting: c.reason };
   }
-  if (c.status === 'IN_REVIEW') return { variant: 'accent', icon: 'clock', text: 'In behandeling', supporting: 'Een behandelaar beoordeelt uw aanvraag. U ontvangt bericht.' };
+  if (status === 'IN_REVIEW') return { variant: 'accent', icon: 'clock', text: 'In behandeling', supporting: 'Een behandelaar beoordeelt uw aanvraag. U ontvangt bericht.' };
   return { variant: 'accent', icon: 'paper-plane', text: 'Ingediend', supporting: 'Uw aanvraag is ontvangen.' };
 });
 const citizenEvents = computed(() =>
@@ -190,6 +223,20 @@ const citizenEvents = computed(() =>
 const canObject = computed(() => objectionOpen(currentCase.value));
 /** Wat de Awb aan dit besluit heeft toegevoegd: de termijn, de einddatum. */
 const awb = computed(() => awbOutcomes(currentCase.value));
+
+/**
+ * De aanvraag die er ligt, tegen wat de wet nu zegt. Zelfde vergelijking als
+ * op de tegel; hier staat de knop waarmee de burger er iets aan kan doen.
+ */
+const drift = computed(() => {
+  void dataVersion.value;
+  return props.law ? caseDrift(props.law, props.evaluation) : null;
+});
+const rows = computed(() => driftRows(drift.value, doc.value));
+const driftText = computed(() => driftSentence(drift.value, doc.value));
+function resubmit() {
+  demo.resubmitCase(currentCase.value.id, props.evaluation, evaluationParamsFor(personaParams(), asked.value));
+}
 function fileObjection() {
   demo.objectToCase(currentCase.value.id, objectionReason.value.trim() || 'Ik ben het niet eens met het besluit.');
   objectionReason.value = '';
@@ -237,7 +284,10 @@ function claimStatus(cl) {
               <p v-else>Dank u. De wet is opnieuw doorgerekend en loopt tegen nog een gegeven aan dat alleen u weet.</p>
             </nldd-rich-text>
             <template v-if="question">
-              <nldd-form-field :label="labelFor(question)">
+              <!-- Enter op het veld is Verder, wat voor soort vraag het ook is:
+                   een demo loopt zo van vraag naar vraag zonder de muis. Op het
+                   omhullende veld, zodat elk invoertype het erft. -->
+              <nldd-form-field ref="questionField" :label="labelFor(question)" @keydown.enter="canContinue && submitAnswer()">
                 <nldd-dropdown v-if="kindOf(question) === 'enum'" width="full">
                   <select :value="answers[question.name] ?? ''" @change="setAnswer(question, $event)">
                     <option value="" disabled>Maak een keuze</option>
@@ -255,8 +305,8 @@ function claimStatus(cl) {
                 <!-- An unanswered amount is empty, not 0: nldd-number-field has no empty state (it starts at 0 and
                      an emptied field falls back to the last value), so the question is a text field with a numeric
                      keyboard; parseAnswer reads the Dutch notation. -->
-                <nldd-text-field v-else-if="kindOf(question) === 'amount' || kindOf(question) === 'number'" :value="answers[question.name] ?? ''" width="full" :keyboard="kindOf(question) === 'amount' ? 'decimal' : 'numeric'" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)" @keydown.enter="submitAnswer"></nldd-text-field>
-                <nldd-text-field v-else :value="answers[question.name] ?? ''" width="full" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)" @keydown.enter="submitAnswer"></nldd-text-field>
+                <nldd-text-field v-else-if="kindOf(question) === 'amount' || kindOf(question) === 'number'" :value="answers[question.name] ?? ''" width="full" :keyboard="kindOf(question) === 'amount' ? 'decimal' : 'numeric'" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)"></nldd-text-field>
+                <nldd-text-field v-else :value="answers[question.name] ?? ''" width="full" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)"></nldd-text-field>
                 <nldd-form-field-help-text v-if="question.spec?.description">{{ question.spec.description }}</nldd-form-field-help-text>
               </nldd-form-field>
               <nldd-banner v-if="error" variant="critical" :text="error"></nldd-banner>
@@ -323,6 +373,24 @@ function claimStatus(cl) {
           <template v-else-if="currentCase">
             <nldd-banner :variant="statusView.variant" :icon="statusView.icon" :text="statusView.text" :supporting-text="statusView.supporting"></nldd-banner>
             <nldd-rich-text v-if="justSubmitted" spacing="tight"><p>Uw aanvraag is ingediend bij {{ service }}. U kunt de voortgang hier volgen.</p></nldd-rich-text>
+
+            <!-- Wat er ligt klopt niet meer met wat de wet nu zegt. De demo
+                 rekent niets opnieuw af achter de rug van de burger om: het
+                 besluit blijft staan en hij krijgt te zien wat er veranderd is,
+                 met de weg terug ernaast. Aanvraag per aanvraag, want elke
+                 aanvraag is een eigen besluit. -->
+            <template v-if="drift && !justSubmitted">
+              <nldd-banner variant="warning" text="Uw aanvraag klopt niet meer" :supporting-text="driftText"></nldd-banner>
+              <nldd-list variant="box-tinted" accessible-label="Verschil met uw eerdere aanvraag">
+                <nldd-list-item v-for="row in rows" :key="row.name" size="sm">
+                  <nldd-text-cell size="sm" color="secondary" min-width="50%" :text="humanize(row.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="`${row.was} → ${row.now}`"></nldd-text-cell>
+                </nldd-list-item>
+              </nldd-list>
+              <nldd-form-actions>
+                <nldd-button variant="primary" start-icon="paper-plane" text="Aanvraag wijzigen" @click="resubmit"></nldd-button>
+              </nldd-form-actions>
+            </template>
             <nldd-list v-if="claimedPrimary" variant="box-tinted" accessible-label="Aangevraagd">
               <nldd-list-item size="sm">
                 <nldd-text-cell size="sm" color="secondary" :text="`Aangevraagd · ${humanize(claimedPrimary.name)}`"></nldd-text-cell>
