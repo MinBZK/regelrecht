@@ -8,7 +8,6 @@ valid_from: '2022-01-01'
 name: Bepalen detentiestatus
 bwb_id: BWBR0009709
 url: https://wetten.overheid.nl/BWBR0009709/2022-01-01
-service: DJI
 uuid: 292c11ff-8318-4b7a-bb11-3ea545b04c8e
 articles:
   - number: '2'

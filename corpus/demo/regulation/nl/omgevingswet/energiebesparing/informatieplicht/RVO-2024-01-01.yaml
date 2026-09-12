@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Informatieplicht Energiebesparing
 bwb_id: BWBR0041330
 url: https://wetten.overheid.nl/BWBR0041330/2024-01-01
-service: RVO
 uuid: d4ecfc05-c1a3-48f4-bd1c-184390cd0013
 articles:
   - number: 5.15d

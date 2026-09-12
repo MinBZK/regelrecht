@@ -127,6 +127,13 @@ repos:
         pass_filenames: false
         files: ^(corpus/(regulation/nl/wet|demo/regulation/nl)/algemene_wet_bestuursrecht/.*\.yaml|script/awb-parity\.test\.mjs)$
 
+      - id: service-map
+        name: services.yaml dekt elke demowet
+        entry: just service-map-check
+        language: system
+        pass_filenames: false
+        files: ^(corpus/demo/(services\.yaml|regulation/.*\.yaml)|frontend-demo/scripts/check-service-map\.mjs)$
+
       - id: dockerfile-consistency
         name: Rust-Dockerfiles blijven bij de cargo-workspace
         entry: just dockerfile-consistency-test

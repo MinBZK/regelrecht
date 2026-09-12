@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen verblijfsstatus
 bwb_id: BWBR0011823
 url: https://wetten.overheid.nl/BWBR0011823/2024-01-01
-service: IND
 uuid: af0fed0d-ee11-48f3-b629-07becda4b7e9
 articles:
   - number: '8'

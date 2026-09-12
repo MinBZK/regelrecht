@@ -8,7 +8,6 @@ valid_from: '2023-01-01'
 name: Bepalen uitsluiting kiesrecht
 bwb_id: BWBR0001854
 url: https://wetten.overheid.nl/BWBR0001854/2023-01-01
-service: JUSTID
 uuid: 41ffa9a4-89a6-4fed-acc7-6b4fdb2e56ce
 articles:
   - number: '28'

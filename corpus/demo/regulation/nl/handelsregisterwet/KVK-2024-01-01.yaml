@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen ondernemerschap
 bwb_id: BWBR0021777
 url: https://wetten.overheid.nl/BWBR0021777/2024-01-01
-service: KVK
 uuid: 8b59ef92-03f8-4294-bce9-4eaac01ba0ed
 articles:
   - number: '2'

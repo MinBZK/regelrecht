@@ -8,7 +8,6 @@ valid_from: '2020-01-01'
 name: Bepalen persoonsgegevens BRP
 bwb_id: BWBR0033715
 url: https://wetten.overheid.nl/BWBR0033715/2020-01-01
-service: RvIG
 uuid: fcf09c18-1584-4565-9223-e8a86fbddc09
 articles:
   - number: '1.1'

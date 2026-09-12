@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen levensverwachting 2025
 bwb_id: BWBR0015926
 url: https://wetten.overheid.nl/BWBR0015926/2024-01-01
-service: CBS
 uuid: bfc4ce3d-1c52-4fb8-ad96-4f1b9d836c4a
 articles:
   - number: '3'

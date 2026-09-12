@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen handelingsonbekwaamheid volwassenen
 bwb_id: BWBR0002656
 url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
-service: RECHTSPRAAK
 uuid: 9f2a3b4c-1d5e-4f6a-b7c8-2e3d4f5a6b7c
 articles:
   - number: '381'

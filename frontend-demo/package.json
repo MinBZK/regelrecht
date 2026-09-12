@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/copy-demo-corpus.mjs",
+    "predev": "node ../bdd/codegen/gen-js.mjs && node scripts/check-service-map.mjs && node scripts/copy-demo-corpus.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/copy-demo-corpus.mjs",
+    "prebuild": "node scripts/check-service-map.mjs && node scripts/copy-demo-corpus.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "pretest": "node ../bdd/codegen/gen-js.mjs",

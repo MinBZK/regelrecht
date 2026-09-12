@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen verzekerde jaren 2025
 bwb_id: BWBR0013060
 url: https://wetten.overheid.nl/BWBR0013060/2024-01-01
-service: UWV
 uuid: c19a458e-3f5e-4d99-a7c3-67a4288aaa07
 articles:
   - number: '33'

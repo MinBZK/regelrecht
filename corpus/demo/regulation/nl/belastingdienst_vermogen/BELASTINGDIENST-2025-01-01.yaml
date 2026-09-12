@@ -8,7 +8,6 @@ valid_from: '2020-01-01'
 name: Belastingdienst Vermogensgegevens
 bwb_id: BWBR0002320
 url: https://wetten.overheid.nl/BWBR0002320/2020-01-01
-service: BELASTINGDIENST
 uuid: 3f8c2a7d-5e9b-4c1a-8d6f-9b2e5c4a7f3d
 articles:
   - number: '47'
