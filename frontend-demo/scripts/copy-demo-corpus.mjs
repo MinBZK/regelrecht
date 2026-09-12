@@ -35,7 +35,12 @@ mkdirSync(destDir, { recursive: true });
 // the law files: it drives logos, colours and grouping, and values like
 // GEMEENTE_ROTTERDAM follow from no statute. Who is competent to decide is a
 // different question, answered by `competent_authority` on the article.
-const serviceByLawId = yaml.load(readFileSync(join(corpusDir, 'services.yaml'), 'utf8')).laws ?? {};
+// A missing map would give every law `service: null`, and the UI degrades
+// quietly on that: no logo, the code as its own name. Refuse instead.
+const serviceByLawId = yaml.load(readFileSync(join(corpusDir, 'services.yaml'), 'utf8')).laws;
+if (!serviceByLawId || !Object.keys(serviceByLawId).length) {
+  throw new Error('services.yaml heeft geen `laws:`-kaart; zie scripts/check-service-map.mjs');
+}
 
 const laws = [];
 for (const file of walk(lawsDir, (n) => n.endsWith('.yaml'))) {
