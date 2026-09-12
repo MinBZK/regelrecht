@@ -146,6 +146,36 @@ watch([missing, step], ([m, st]) => {
   if (st === 'gegevens' && m.length === 0 && answered.value > 0) step.value = 'controleren';
 });
 
+/**
+ * Het invoerveld krijgt de aandacht, bij elke volgende vraag opnieuw.
+ *
+ * De wet stelt haar vragen één voor één (just in time), en na een antwoord
+ * staat de volgende vraag er met een leeg veld. Zonder dit moet je er elke keer
+ * eerst heen klikken; met dit kun je een aanvraag al typend en enterend
+ * afmaken, wat in een demo voor de zaal het verschil is tussen vertellen en
+ * laten zien. Enter zit op het omhullende veld, zodat elk soort vraag het erft.
+ *
+ * Welk veld dat is, hangt van de vraag af (tekst, datum, keuzelijst). Ze
+ * melden zich alle drie als invoerveld met `static isFormInput = true` — de
+ * afspraak waarop `nldd-form-field` zelf ook zijn label laat wijzen — en
+ * hebben een eigen `focus()` die het schaduw-DOM afhandelt. Dat is stabieler
+ * dan hier een lijst met tagnamen bijhouden.
+ */
+const questionField = ref(null);
+function isFormInput(el) {
+  return el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el.constructor?.isFormInput === true;
+}
+watch(
+  [question, () => props.open],
+  async ([q, open]) => {
+    if (!q || !open) return;
+    await nextTick();
+    const control = [...(questionField.value?.querySelectorAll?.('*') ?? [])].find(isFormInput);
+    control?.focus?.();
+  },
+  { immediate: true },
+);
+
 // ---- step 2/3: check and submit --------------------------------------------------
 const canSubmit = computed(() => props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
 function submitApplication() {
@@ -246,7 +276,10 @@ function claimStatus(cl) {
               <p v-else>Dank u. De wet is opnieuw doorgerekend en loopt tegen nog een gegeven aan dat alleen u weet.</p>
             </nldd-rich-text>
             <template v-if="question">
-              <nldd-form-field :label="labelFor(question)">
+              <!-- Enter op het veld is Verder, wat voor soort vraag het ook is:
+                   een demo loopt zo van vraag naar vraag zonder de muis. Op het
+                   omhullende veld, zodat elk invoertype het erft. -->
+              <nldd-form-field ref="questionField" :label="labelFor(question)" @keydown.enter="canContinue && submitAnswer()">
                 <nldd-dropdown v-if="kindOf(question) === 'enum'" width="full">
                   <select :value="answers[question.name] ?? ''" @change="setAnswer(question, $event)">
                     <option value="" disabled>Maak een keuze</option>
@@ -264,8 +297,8 @@ function claimStatus(cl) {
                 <!-- An unanswered amount is empty, not 0: nldd-number-field has no empty state (it starts at 0 and
                      an emptied field falls back to the last value), so the question is a text field with a numeric
                      keyboard; parseAnswer reads the Dutch notation. -->
-                <nldd-text-field v-else-if="kindOf(question) === 'amount' || kindOf(question) === 'number'" :value="answers[question.name] ?? ''" width="full" :keyboard="kindOf(question) === 'amount' ? 'decimal' : 'numeric'" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)" @keydown.enter="submitAnswer"></nldd-text-field>
-                <nldd-text-field v-else :value="answers[question.name] ?? ''" width="full" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)" @keydown.enter="submitAnswer"></nldd-text-field>
+                <nldd-text-field v-else-if="kindOf(question) === 'amount' || kindOf(question) === 'number'" :value="answers[question.name] ?? ''" width="full" :keyboard="kindOf(question) === 'amount' ? 'decimal' : 'numeric'" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)"></nldd-text-field>
+                <nldd-text-field v-else :value="answers[question.name] ?? ''" width="full" :placeholder="placeholderFor(question)" @input="setAnswer(question, $event)"></nldd-text-field>
                 <nldd-form-field-help-text v-if="question.spec?.description">{{ question.spec.description }}</nldd-form-field-help-text>
               </nldd-form-field>
               <nldd-banner v-if="error" variant="critical" :text="error"></nldd-banner>
