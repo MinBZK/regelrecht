@@ -56,11 +56,18 @@ export function statusOf(caseRecord) {
   if (caseRecord?.withdrawnAt) return 'WITHDRAWN';
   const stage = caseRecord?.stageState?.current_stage;
   if (!stage) return caseRecord?.status ?? 'IN_REVIEW';
-  // Vóór het besluit: de aanvraag ligt er en wordt behandeld.
+  // `current_stage` is de fase waar de levensloop vóór staat, niet de fase die
+  // hij heeft afgerond: de engine zet hem op de volgende fase en kijkt dán pas
+  // of hij de gegevens daarvan heeft (`execute_stage_internal`). Een zaak die
+  // op BESLUIT staat wacht dus nog op de besluitdatum — de haken van artikel
+  // 3:46 en 6:7 hebben niet gevuurd, en er ís nog geen besluit.
+  //
+  // Dat verschil verkeerd lezen draait de demo om: elke aanvraag die naar een
+  // behandelaar gaat, zou meteen als besloten op het portaal staan.
   if (stage === 'AANVRAAG') return 'SUBMITTED';
-  if (stage === 'BEHANDELING') return 'IN_REVIEW';
-  // Vanaf BESLUIT is er een besluit; of het toe- of afwijst zegt `approved`,
-  // niet de fase.
+  if (stage === 'BEHANDELING' || stage === 'BESLUIT') return 'IN_REVIEW';
+  // Voorbij BESLUIT is het besluit genomen. Of het toe- of afwijst zegt
+  // `approved`, niet de fase.
   return 'DECIDED';
 }
 

@@ -46,6 +46,7 @@ procedure:
             type: date
 
       - name: BEZWAAR
+        description: Bezwaarperiode (AWB 6:4 e.v.)
 
 articles:
   - number: '1'

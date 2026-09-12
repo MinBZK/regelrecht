@@ -18,16 +18,25 @@ describe('statusOf', () => {
   it('leidt de status af uit de fase', () => {
     expect(statusOf(atStage('AANVRAAG'))).toBe('SUBMITTED');
     expect(statusOf(atStage('BEHANDELING'))).toBe('IN_REVIEW');
-    expect(statusOf(atStage('BESLUIT'))).toBe('DECIDED');
     expect(statusOf(atStage('BEKENDMAKING'))).toBe('DECIDED');
     expect(statusOf(atStage('BEZWAAR'))).toBe('DECIDED');
+  });
+
+  it('leest een zaak die op BESLUIT wacht niet als besloten', () => {
+    // `current_stage` is de fase waar de levensloop vóór staat, niet de fase
+    // die hij heeft afgerond. Een zaak op BESLUIT wacht nog op de
+    // besluitdatum: de haken van 3:46 en 6:7 hebben niet gevuurd, er is geen
+    // besluit. Dit verkeerd lezen zette elke aanvraag die naar een behandelaar
+    // gaat meteen als "Afgewezen" op het portaal, omdat `approved` dan null is.
+    expect(statusOf(atStage('BESLUIT'))).toBe('IN_REVIEW');
+    expect(statusOf(atStage('BESLUIT', { approved: null, decidedAt: null }))).toBe('IN_REVIEW');
   });
 
   it('maakt van afwijzen geen aparte fase', () => {
     // Toekennen en afwijzen zijn twee uitkomsten van hetzelfde moment; wat het
     // besluit inhoudt staat in `approved`, niet in de fase.
-    expect(statusOf(atStage('BESLUIT', { approved: true }))).toBe('DECIDED');
-    expect(statusOf(atStage('BESLUIT', { approved: false }))).toBe('DECIDED');
+    expect(statusOf(atStage('BEKENDMAKING', { approved: true }))).toBe('DECIDED');
+    expect(statusOf(atStage('BEKENDMAKING', { approved: false }))).toBe('DECIDED');
   });
 
   it('houdt een zaak zonder levensloop bij haar eigen status', () => {
@@ -136,5 +145,25 @@ describe('de volgorde waarin de demo een zaak door de fasen brengt', () => {
     expect(objectionOpen(naBekendmaking)).toBe(true);
     expect(awbOutcomes(naBekendmaking).bezwaartermijnEinde).toBe('2026-04-23');
     expect(awbOutcomes(naBekendmaking).bezwaartermijnWeken).toBe(6);
+  });
+
+  // De andere weg: een aanvraag die naar een behandelaar gaat. De levensloop
+  // stopt dan vóór BESLUIT en wacht op de besluitdatum, die er pas is als er
+  // besloten wordt. Dit is de stand waarin verreweg de meeste zaken staan
+  // zodra "alles handmatig beoordelen" aanstaat.
+  const wachtOpBehandelaar = {
+    stageState: { current_stage: 'BESLUIT', accumulated_outputs: {} },
+    pendingInputs: ['besluit_datum'],
+    approved: null,
+    decidedAt: null,
+  };
+
+  it('laat een aanvraag die op een behandelaar wacht niet als besloten zien', () => {
+    expect(statusOf(wachtOpBehandelaar)).toBe('IN_REVIEW');
+  });
+
+  it('laat op een aanvraag die nog loopt geen bezwaar toe, en geeft er geen termijn bij', () => {
+    expect(objectionOpen(wachtOpBehandelaar)).toBe(false);
+    expect(awbOutcomes(wachtOpBehandelaar).bezwaartermijnWeken).toBeNull();
   });
 });
