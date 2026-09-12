@@ -1,28 +1,13 @@
 /**
- * Welke correcties bij welke zaak horen.
+ * De regel uit `data/claimOwnership.js`, die `demoStore.resubmitCase` draait.
  *
- * Twee vragen die op elkaar lijken maar niet hetzelfde zijn, en die in
- * `resubmitCase` één keer door elkaar liepen:
- *
- * - *Moet er een mens naar kijken?* Daarvoor telt élke openstaande correctie
- *   van deze persoon mee, ook een die bij een andere regeling is opgegeven. Een
- *   inkomenswijziging bij de huurtoeslag verandert immers ook de zorgtoeslag.
- * - *Bij welke zaak hoort deze correctie?* Daarvoor telt alleen de regeling
- *   waarop de correctie is ingediend.
- *
- * Die tweede vraag met het antwoord van de eerste beantwoorden, hangt een
- * correctie voorgoed aan de verkeerde zaak: het veld wordt maar één keer gezet,
- * dus de zaak waar hij wél bij hoort krijgt hem daarna niet meer.
+ * Dezelfde functie en geen nagebouwde kopie: een kopie bewijst alleen dat de
+ * regel klopt zoals hij hier staat, niet dat de winkel hem nog gebruikt. Juist
+ * de fout die dit moet tegenhouden — het `tileLawId`-filter dat wegvalt — zou
+ * een kopie niet zien.
  */
 import { describe, expect, it } from 'vitest';
-
-/** De regel uit `demoStore.resubmitCase`, los van de store getest. */
-function assignOwnership(claims, caseRecord) {
-  for (const claim of claims) {
-    if (!claim.caseId && claim.tileLawId === caseRecord.lawId) claim.caseId = caseRecord.id;
-  }
-  return claims;
-}
+import { assignClaimOwnership as assignOwnership } from './claimOwnership.js';
 
 const claim = (over) => ({ id: 'c1', caseId: null, tileLawId: 'huurtoeslag', ...over });
 

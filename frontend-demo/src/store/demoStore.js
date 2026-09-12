@@ -19,6 +19,7 @@ import {
 import { DELEGATION_TYPE_LABELS, delegationKey, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
+import { assignClaimOwnership } from '../data/claimOwnership.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
 
@@ -499,16 +500,11 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
         }
       : { at: nowIso(), type: 'DECIDED', text: requirementsMet ? 'Automatisch toegekend.' : 'Automatisch afgewezen.' },
   );
-  // Alleen de correcties die bij déze regeling horen komen aan deze zaak te
-  // hangen. De lijst hierboven is met opzet breder — een wijziging bij een
-  // andere regeling telt mee voor de vraag óf er beoordeeld moet worden — maar
-  // eigenaarschap is iets anders dan aanleiding. Zonder dit onderscheid raakt
-  // een correctie die bij een heel andere tegel is opgegeven voorgoed aan deze
-  // zaak vast (`if (!claim.caseId)` zet hem maar één keer), en staat hij in het
-  // dossier van een besluit waar hij niets mee te maken heeft.
-  for (const claim of pendingClaims) {
-    if (!claim.caseId && claim.tileLawId === c.lawId) claim.caseId = c.id;
-  }
+  // De lijst hierboven is met opzet breder dan deze regeling — een wijziging
+  // bij een andere regeling telt mee voor de vraag óf er beoordeeld moet
+  // worden — maar eigenaarschap is iets anders dan aanleiding. Zie
+  // `assignClaimOwnership`.
+  assignClaimOwnership(pendingClaims, c);
   reregister();
   return c;
 }
