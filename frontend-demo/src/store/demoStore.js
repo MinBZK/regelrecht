@@ -553,6 +553,10 @@ function decideCase(caseId, approved, reason, verifiedResult = null) {
 function publishCase(caseId, bekendmakingDatum = null) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c || c.publishedAt) return;
+  // Bekendmaken is het meedelen van een besluit (Awb 3:41), dus zonder besluit
+  // is er niets mee te delen. De knop staat er ook niet eerder, maar dat is een
+  // regel van de wet en hoort niet van het scherm af te hangen.
+  if (statusOf(c) !== 'DECIDED') return;
   c.publishedAt = nowIso();
   const datum = bekendmakingDatum ?? isoDate(c.publishedAt);
   c.events.push({ at: nowIso(), type: 'BEKENDMAKING', text: `Besluit bekendgemaakt aan de belanghebbende op ${datum}.` });

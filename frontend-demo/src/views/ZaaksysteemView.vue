@@ -260,6 +260,10 @@ function claimLawName(cl) {
 
           </nldd-container>
           <nldd-banner v-if="verified && !verified.ok" variant="warning" text="Herberekening mislukt" :supporting-text="verified.error"></nldd-banner>
+          <!-- De levensloop kon niet verder. Het besluit blijft staan zoals het
+               was, maar wat de Awb eraan toevoegt (de termijn, de einddatum)
+               ontbreekt dan, en dat hoort niet stil te blijven. -->
+          <nldd-banner v-if="selected.lifecycleError" variant="warning" text="De levensloop van dit besluit liep vast" :supporting-text="selected.lifecycleError"></nldd-banner>
 
           <nldd-container v-if="lineage.length" gap="4">
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">Gebruikte gegevens</nldd-text><nldd-text size="xs" color="secondary">dezelfde gegevens als de burger ziet; klik op een gegeven om het te corrigeren</nldd-text></nldd-container>
