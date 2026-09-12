@@ -95,3 +95,46 @@ describe('awbOutcomes', () => {
     expect(awbOutcomes(atStage('BESLUIT')).bezwaartermijnEinde).toBeNull();
   });
 });
+
+describe('de volgorde waarin de demo een zaak door de fasen brengt', () => {
+  // Nagelopen tegen de echte engine over het democorpus: na indienen en
+  // toekennen staat de zaak op BEKENDMAKING met de termijn van artikel 6:7
+  // erbij, en pas na het bekendmaken komt de einddatum van artikel 6:8 erbij.
+  // Wat hier vastligt is wat die fasen voor de rest van de demo betekenen.
+  const naToekenning = {
+    stageState: {
+      current_stage: 'BEKENDMAKING',
+      accumulated_outputs: { toegekend: true, motivering_vereist: true, bezwaartermijn_weken: 6 },
+    },
+    approved: true,
+  };
+  const naBekendmaking = {
+    stageState: {
+      current_stage: 'BEZWAAR',
+      accumulated_outputs: {
+        ...naToekenning.stageState.accumulated_outputs,
+        bezwaartermijn_startdatum: '2026-03-13',
+        bezwaartermijn_einddatum: '2026-04-23',
+      },
+    },
+    approved: true,
+    publishedAt: '2026-03-12T10:00:00Z',
+  };
+
+  it('telt een toegekend maar niet bekendgemaakt besluit als besloten', () => {
+    // Voor het bord hoort het bij "besloten"; dat het nog de deur uit moet,
+    // zegt `publishedAt` en niet de status.
+    expect(statusOf(naToekenning)).toBe('DECIDED');
+  });
+
+  it('laat nog geen bezwaar toe voordat het besluit is verstuurd', () => {
+    expect(objectionOpen(naToekenning)).toBe(false);
+    expect(awbOutcomes(naToekenning).bezwaartermijnEinde).toBeNull();
+  });
+
+  it('opent bezwaar met een datum zodra het is bekendgemaakt', () => {
+    expect(objectionOpen(naBekendmaking)).toBe(true);
+    expect(awbOutcomes(naBekendmaking).bezwaartermijnEinde).toBe('2026-04-23');
+    expect(awbOutcomes(naBekendmaking).bezwaartermijnWeken).toBe(6);
+  });
+});
