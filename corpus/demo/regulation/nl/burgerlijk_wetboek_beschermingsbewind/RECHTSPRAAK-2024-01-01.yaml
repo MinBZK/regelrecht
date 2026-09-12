@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
 $id: burgerlijk_wetboek_beschermingsbewind
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -11,7 +11,6 @@ bwb_id: BWBR0002656
 url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
 service: RECHTSPRAAK
 uuid: 970f63e4-eed1-4884-a1ee-9050733eb2e1
-discoverable: DELEGATION_PROVIDER
 articles:
   - number: '431'
     text: >-
@@ -49,8 +48,8 @@ articles:
           - BESLUITEN_ONTVANGEN
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: RECHTSPOSITIE
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

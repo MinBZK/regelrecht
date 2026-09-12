@@ -1,8 +1,8 @@
 /**
  * Wie mag namens wie handelen.
  *
- * Machtiging staat niet in de app maar in de wet: elke wet met
- * `discoverable: DELEGATION_PROVIDER` levert de delegaties die zij regelt.
+ * Machtiging staat niet in de app maar in de wet: elke wet die het
+ * machtigingscontract vervult levert de delegaties die zij regelt.
  * Het gezag over een minderjarige komt uit het Burgerlijk Wetboek, het
  * vertegenwoordigen van een onderneming uit de Machtigingenwet, bewind en
  * curatele uit hun eigen wetten. De demo evalueert die wetten met dezelfde
@@ -23,6 +23,8 @@
  * Een wet die niets oplevert zegt `heeft_delegaties: false`; een wet die de
  * engine niet kan uitvoeren telt niet mee en blokkeert de rest niet.
  */
+
+import { isDelegationProvider } from './entrypoints.js';
 
 /** De uitvoernamen van de standaardinterface, in de volgorde van de lijsten. */
 const OUTPUTS = [
@@ -71,7 +73,7 @@ export const DELEGATION_TYPE_LABELS = {
 export function delegationProviders(corpus) {
   if (!corpus) return [];
   return [...corpus.latestById.values()]
-    .filter((law) => law.doc?.discoverable === 'DELEGATION_PROVIDER')
+    .filter((law) => isDelegationProvider(law.doc))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 

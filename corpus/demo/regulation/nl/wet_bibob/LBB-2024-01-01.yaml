@@ -10,7 +10,6 @@ bwb_id: BWBR0013798
 url: https://wetten.overheid.nl/BWBR0013798/2024-01-01
 service: LBB
 uuid: 2d6430cb-dd3c-47fa-9741-2202386619a8
-discoverable: HIDDEN
 articles:
   - number: '9'
     text: >-
@@ -57,8 +56,8 @@ articles:
         adviestermijn_weken: 8
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: kvk_nummer
             type: string

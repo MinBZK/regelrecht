@@ -7,6 +7,7 @@ import EditValueSheet from '../components/EditValueSheet.vue';
 import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
 import { useDemo } from '../store/demoStore.js';
+import { isDelegationProvider, producesBeschikking, subjectOf } from '../data/entrypoints.js';
 import { awbOutcomes, statusOf } from '../data/lifecycle.js';
 
 // The caseworker's side: applications the citizen submitted, in three lanes,
@@ -179,6 +180,11 @@ function laneTag(c) {
   if (statusOf(c) === 'DECIDED') return c.approved ? { color: 'success', text: 'Toegekend' } : { color: 'critical', text: 'Afgewezen' };
   return { color: 'neutral', text: 'Te beoordelen' };
 }
+/** Voor wie deze regeling is, afgeleid uit de wet zelf (RFC-038). */
+function lawAudience(law) {
+  if (isDelegationProvider(law.doc) || !producesBeschikking(law.doc)) return 'levert gegevens aan andere wetten';
+  return subjectOf(law.doc) === 'BUSINESS' ? 'voor ondernemers' : 'voor burgers';
+}
 function claimLawName(cl) {
   return corpus.value?.lawById(cl.lawId)?.name ?? cl.lawId;
 }
@@ -234,7 +240,7 @@ function claimLawName(cl) {
             <nldd-list variant="box-tinted" accessible-label="Regelingen van deze organisatie">
               <nldd-list-item v-if="orgLaws.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" text="Geen regelingen in het demo-corpus"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="{ law, count } in orgLaws" :key="law.id" size="sm" button @click="router.push(`/wetten/${encodeURIComponent(law.id)}`)">
-                <nldd-text-cell size="sm" :text="law.name" :supporting-text="law.discoverable === 'BUSINESS' ? 'voor ondernemers' : law.discoverable === 'CITIZEN' ? 'voor burgers' : 'levert gegevens aan andere wetten'"></nldd-text-cell>
+                <nldd-text-cell size="sm" :text="law.name" :supporting-text="lawAudience(law)"></nldd-text-cell>
                 <nldd-cell><nldd-tag size="sm" :color="count ? 'accent' : 'neutral'" :text="count === 1 ? '1 zaak' : `${count} zaken`"></nldd-tag></nldd-cell>
                 <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
               </nldd-list-item>

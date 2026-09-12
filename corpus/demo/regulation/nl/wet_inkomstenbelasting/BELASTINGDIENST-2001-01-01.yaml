@@ -10,7 +10,6 @@ bwb_id: BWBR0011353
 url: https://wetten.overheid.nl/BWBR0011353/2001-01-01
 service: BELASTINGDIENST
 uuid: cdd0ec9f-4975-4969-9d8a-808f2d6abfc9
-discoverable: CITIZEN
 articles:
   - number: '2.1'
     text: >-

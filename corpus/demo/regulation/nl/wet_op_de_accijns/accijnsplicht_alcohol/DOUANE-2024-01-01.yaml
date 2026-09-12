@@ -10,7 +10,6 @@ bwb_id: BWBR0005251
 url: https://wetten.overheid.nl/BWBR0005251/2024-01-01
 service: DOUANE
 uuid: d4e8f2a1-7c3b-4a9e-b5d1-6f8e2c4a3b7d
-discoverable: BUSINESS
 articles:
   - number: '1'
     text: >-

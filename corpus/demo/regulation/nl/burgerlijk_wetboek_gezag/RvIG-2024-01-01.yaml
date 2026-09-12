@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.9/schema/v0.5.9/schema.json
 $id: burgerlijk_wetboek_gezag
 regulatory_layer: WET
 publication_date: '2024-01-01'
@@ -10,7 +10,6 @@ bwb_id: BWBR0002656
 url: https://wetten.overheid.nl/BWBR0002656/2024-01-01
 service: RvIG
 uuid: a87bbb48-0bde-487a-af4d-3dc7f4a7c220
-discoverable: DELEGATION_PROVIDER
 articles:
   - number: '245'
     text: >-
@@ -46,8 +45,8 @@ articles:
           - LEZEN
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: RECHTSPOSITIE
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

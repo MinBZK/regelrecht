@@ -10,7 +10,6 @@ bwb_id: BWBR0005537
 url: https://wetten.overheid.nl/BWBR0005537/1994-01-01
 service: AWB
 uuid: 7b2c4d8e-3f91-4a6b-9c5e-8d7f6a5b4c3d
-discoverable: BUSINESS
 # De beschikkingsprocedure (RFC-008): de fasen die de Awb aan elk besluit geeft.
 # Een wet die een BESCHIKKING produceert komt hier vanzelf in terecht, zonder
 # dat zij de Awb noemt of de Awb haar kent.

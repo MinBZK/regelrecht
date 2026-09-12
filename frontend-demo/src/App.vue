@@ -136,8 +136,8 @@ function onProfileSelect(e) {
 }
 
 // ---- machtigingen ----------------------------------------------------------
-// Namens wie er gehandeld wordt. De lijst komt uit de wet (elke wet met
-// discoverable: DELEGATION_PROVIDER), niet uit de app.
+// Namens wie er gehandeld wordt. De lijst komt uit de wet (elke wet die het
+// machtigingscontract vervult), niet uit de app.
 
 /** Toon de keuze pas als er echt iets te kiezen valt. */
 const showDelegation = computed(() => delegationEnabled.value && delegations.value.length > 1);

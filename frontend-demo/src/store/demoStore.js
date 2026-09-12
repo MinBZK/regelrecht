@@ -21,6 +21,7 @@ import { statusOf } from '../data/lifecycle.js';
 import { DELEGATION_TYPE_LABELS, delegationKey, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
+import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
 import { assignClaimOwnership } from '../data/claimOwnership.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
@@ -351,7 +352,7 @@ const portalLaws = computed(() => {
     ? d.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN'
     : profile.value.type === 'ondernemer' ? 'BUSINESS' : 'CITIZEN';
   return [...corpus.value.latestById.values()].filter(
-    (law) => law.discoverable === wanted && isLawEnabled(law),
+    (law) => isEntrypointFor(law.doc, wanted) && isLawEnabled(law),
   );
 });
 
@@ -364,8 +365,8 @@ function evaluate(lawEntry, params = personaParams(), outputs = null) {
 /**
  * De zaak van het huidige onderwerp voor deze wet.
  *
- * Waarop vergeleken wordt volgt de wet, niet de aanroeper: een wet over een
- * onderneming (`discoverable: BUSINESS`) heeft een zaak op het KvK-nummer, een
+ * Waarop vergeleken wordt volgt de wet, niet de aanroeper: een wet die om een
+ * KvK-nummer rekent heeft een zaak op het KvK-nummer, een
  * wet over een persoon een zaak op de BSN. Dat onderscheid is nodig omdat een
  * ondernemer bij zichzelf allebei bij zich draagt: matchen op de BSN zolang
  * die er is, liet een ondernemer zijn eigen bedrijfszaak niet zien zodra een
@@ -374,7 +375,7 @@ function evaluate(lawEntry, params = personaParams(), outputs = null) {
  */
 function findCase(lawEntry, subject = null) {
   const params = subject ?? personaParams();
-  const onBusiness = lawEntry.discoverable === 'BUSINESS' && params.kvk_nummer !== undefined;
+  const onBusiness = subjectOf(lawEntry.doc) === 'BUSINESS' && params.kvk_nummer !== undefined;
   return (
     state.cases.find(
       (c) =>

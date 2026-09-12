@@ -10,7 +10,6 @@ bwb_id: BWBR0018450
 url: https://wetten.overheid.nl/BWBR0018450/2024-01-01
 service: BELASTINGDIENST
 uuid: 8f2a6d4c-1e3b-4f9a-b5c8-7d9e3a2f1b8c
-discoverable: BUSINESS
 articles:
   - number: '42'
     text: >-
