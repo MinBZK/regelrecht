@@ -583,11 +583,12 @@ let signed = context.query("brp", "partnerschap", &params, op_moment)?;
 ```
 
 - **`SecurityContext`** — identiteit, ondertekening, transportkeuze. Gebonden aan
-  precies één cel, en de **enige** die het transport aanroept. De identiteit
-  draagt twee namen: het **cel-id**, waarop het transport de peer vindt en waarop
-  het vraaggraf gaat, en de **naam waaronder de cel zich uitgeeft** (`identity:`
-  in het wereldbestand, standaard het cel-id). Die tweede is wat bij een besluit
-  naast de wet gelegd wordt — zie [Wie mag besluiten](#wie-mag-besluiten).
+  precies één cel, en de **enige** die het transport aanroept. De identiteit is
+  het **cel-id**: waarop het transport de peer vindt en waarop het vraaggraf
+  gaat. De naam waaronder een cel zich *uitgeeft* (`identity:` in het
+  wereldbestand) staat níet hier maar op de cel, en komt alleen bij een besluit
+  ter sprake — zie [Wie mag besluiten](#wie-mag-besluiten). Twee registers voor
+  "wie is dit" zouden bij de eerste echte ondertekening uiteen gaan lopen.
 - **`CellTransport`** — de naad: `query(cel, lexostatus, params, op_moment)`.
   Exact de vorm van de publieke ingang van een cel en met opzet niets meer; een
   transport dat een reductie of een filter kon meesturen, zou de autonomie van de
@@ -717,11 +718,12 @@ Ze komen niet uit de RFC en horen niet als vaststaand gelezen te worden.
   Vandaag bestaat alleen de cel↔cel-kant, dus het bewijs is nog niet geleverd.
 - **Open Question 2 — waaraan bindt de veiligheidscontext?** Onbeslist in de RFC.
   Hier: één context per cel, met één identiteit die de cel zélf is
-  (`cel:toeslagen`, met daarnaast de naam waaronder ze zich uitgeeft). Geen
-  medewerker, geen zaak, geen mandaat, geen autorisatie. Dat is de dunste vorm
-  die de vraag openhoudt; komt er een fijnere binding, dan krijgt `Identity`
-  velden en verandert er aan de aanroepers niets — de declareerbare naam is daar
-  het eerste voorbeeld van.
+  (`cel:toeslagen`). Geen medewerker, geen zaak, geen mandaat, geen autorisatie.
+  Dat is de dunste vorm die de vraag openhoudt; komt er een fijnere binding, dan
+  krijgt `Identity` velden en verandert er aan de aanroepers niets. De naam
+  waaronder een cel zich uitgeeft hoort daar niet bij: die staat op de cel en
+  wordt alleen bij een besluit naast de wet gelegd, zodat er één register blijft
+  voor wie er ondertekent.
 
 ## Het observatielog (buiten de band)
 

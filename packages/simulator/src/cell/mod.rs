@@ -346,17 +346,6 @@ impl Cell {
         &self.id
     }
 
-    /// De naam waaronder deze cel zich uitgeeft.
-    ///
-    /// `pub(crate)`, en voor precies één doel: de wereld bouwt er de identiteit
-    /// van de veiligheidscontext mee (zie [`crate::security::Identity`]). De cel
-    /// houdt die context niet zelf — dat is de naad van RFC-022 §2 — maar de
-    /// naam waaronder ze zich uitgeeft is van haar, en hoort niet in een tweede
-    /// register naast de celconfiguratie te gaan leven.
-    pub(crate) fn identity(&self) -> &str {
-        &self.identity
-    }
-
     /// De regelingen die deze cel laadt, bij `$id`.
     pub(crate) fn laws(&self) -> &[String] {
         &self.laws

@@ -4,7 +4,7 @@ $schema: >-
 $id: test_zonder_bevoegd_gezag
 name: Testregeling zonder bevoegd gezag
 regulatory_layer: WET
-bwb_id: BWBR9999902
+bwb_id: BWBR9999903
 publication_date: '2024-01-01'
 valid_from: '2024-01-01'
 url: https://example.com/test_zonder_bevoegd_gezag

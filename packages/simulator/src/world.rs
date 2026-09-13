@@ -1136,10 +1136,7 @@ impl World {
             });
         };
         let bridge = Rc::new(CellBridge::new(
-            // De identiteit waaronder deze cel zich uitgeeft, en niet haar id:
-            // wat er over de grens gaat, draagt de naam die de cel beweert te
-            // zijn. Zonder declaratie zijn die twee hetzelfde.
-            Identity::new(cell, deciding.identity()),
+            Identity::for_cell(cell),
             besluit,
             deciding.accepts_from().cloned().collect::<Vec<_>>(),
             std::mem::take(&mut self.cells),
