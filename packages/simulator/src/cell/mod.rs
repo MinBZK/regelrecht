@@ -1296,10 +1296,13 @@ impl Cell {
                 ))
             })?;
 
-        // Eerst de velden van het gram zelf — de uitkomsten en de vaste velden —
-        // en daarna de inputs waarop dat besluit rekende. Die liggen in het gram
-        // een laag dieper, elk met hun eigen herkomst; wat hier meekomt is de
-        // waarde, en dat er teruggelezen is staat in de herkomst hieronder.
+        // Twee lagen, en de volgorde doet er niet toe: de velden van het gram
+        // zelf — de uitkomsten en de vaste velden — en de inputs waarop dat
+        // besluit rekende, die een laag dieper liggen met elk hun eigen herkomst.
+        // Een naam die in beide lagen zit is bij het optuigen geweigerd
+        // ([`SimulatorError::AmbiguousEarlierBesluitField`]), dus hier kan er
+        // hoogstens één van de twee iets opleveren. Wat meekomt is de waarde; dat
+        // er teruggelezen is, staat in de herkomst hieronder.
         let value = chronicle::field(&event.fields, field)
             .or_else(|| recorded_input(&event.fields, field))
             .cloned()
@@ -2815,6 +2818,36 @@ besluit_definitions:
         assert!(
             reason.contains("zorgtoeslag/999993654"),
             "de melding hoort over de zaak van dít besluit te gaan, kreeg: {reason}"
+        );
+    }
+
+    /// Liggen er twee grammen van dat besluit over dezelfde zaak, dan wint het
+    /// laatste op of vóór dit moment — en de herkomst noemt dát moment, niet dat
+    /// van het eerste.
+    #[test]
+    fn van_twee_eerdere_besluiten_wordt_het_laatste_teruggelezen() {
+        let mut cell = herziene_toeslagen();
+        let later = date("2025-03-01");
+        for op_moment in [moment(), later] {
+            beslis(&mut cell, "zorgtoeslag_vaststelling", op_moment)
+                .unwrap_or_else(|e| panic!("het besluit van {op_moment} moet kunnen: {e}"));
+        }
+
+        let gram = beslis(&mut cell, "zorgtoeslag_herziening", date("2025-06-01"))
+            .unwrap_or_else(|e| panic!("de herziening moet genomen kunnen worden: {e}"));
+
+        let teruggelezen = gram
+            .inputs
+            .get("is_verzekerde")
+            .unwrap_or_else(|| panic!("de teruggelezen input hoort in het gram te staan"));
+        assert_eq!(
+            teruggelezen.origin,
+            InputOrigin::EarlierDecretogram {
+                besluit: "zorgtoeslag_vaststelling".to_string(),
+                zaakkenmerk: "zorgtoeslag/999993653".to_string(),
+                moment: later,
+            },
+            "de herkomst hoort het laatste eerdere besluit te noemen"
         );
     }
 

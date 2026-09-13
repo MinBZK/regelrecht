@@ -215,11 +215,16 @@ decide:
     expect_accepted:
       # Wat de betalende cel vaststelde, wordt hier niet nagerekend (invariant I5).
       betaald_bedrag: belastingdienst
+    expect_read_back:
+      # Uit een eerder besluit van deze cel zelf, en uit dát besluit. Een eigen
+      # verwachting en niet `expect_computed`: het bedrag komt wel uit de eigen
+      # kroniek, maar deze cel heeft het hier niet vastgesteld — het is
+      # overgeschreven uit een ouder gram, onder het recht dat toen gold.
+      toegekend_bedrag: zorgtoeslag_toekenning
     expect_computed:
-      # Het teruggelezen bedrag is géén geaccepteerde waarde van een ander: het
-      # komt uit een eerder besluit van deze cel zelf. Dat het hier staat, is het
-      # tegenbewijs dat "geaccepteerd" geen etiket is dat overal op past.
-      - toegekend_bedrag
+      # Wat er wél in deze uitvoering is uitgerekend. Zonder dit tegenbewijs zegt
+      # de regel hierboven niets: een opstelling waarin álles teruggelezen heet,
+      # haalt dezelfde assertie even makkelijk.
       - nog_te_betalen
 
 queries:

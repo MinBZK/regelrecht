@@ -830,6 +830,20 @@ impl InputOrigin {
         }
     }
 
+    /// Is deze waarde teruggelezen uit een eerder besluit, en uit welk?
+    ///
+    /// De tegenhanger van [`Self::accepted_from`], en om dezelfde reden hier:
+    /// teruglezen is de derde mogelijkheid naast "van een ander geaccepteerd" en
+    /// "hier zelf vastgesteld". Zonder deze vraag zou een scenario een
+    /// teruggelezen waarde alleen als "niet geaccepteerd" kunnen aanmerken, en
+    /// dat is precies het etiket dat te ruim zit.
+    pub fn earlier_besluit(&self) -> Option<&str> {
+        match self {
+            Self::EarlierDecretogram { besluit, .. } => Some(besluit),
+            Self::OwnChronicle { .. } | Self::Parameter { .. } | Self::Accepted { .. } => None,
+        }
+    }
+
     /// Leesbare herkomst voor een verslag.
     pub fn describe(&self) -> String {
         match self {
@@ -946,6 +960,20 @@ impl Decretogram {
             .iter()
             .map(|accepted| (accepted.output.as_str(), accepted.authority.as_str()));
         from_inputs.chain(from_receipt).collect()
+    }
+
+    /// Elke waarde in dit gram die uit een **eerder besluit** van deze cel is
+    /// teruggelezen, op naam, met de besluit-definitie waar ze vandaan komt.
+    ///
+    /// Naast [`Self::accepted_values`] en niet erin: geaccepteerd komt van een
+    /// andere organisatie, teruggelezen uit de eigen kroniek. Wat de twee delen
+    /// is dat het besluit ze geen van beide zelf heeft vastgesteld, en dat is
+    /// wat een scenario per waarde moet kunnen aanwijzen.
+    pub fn read_back_values(&self) -> BTreeMap<&str, &str> {
+        self.inputs
+            .iter()
+            .filter_map(|(name, input)| Some((name.as_str(), input.origin.earlier_besluit()?)))
+            .collect()
     }
 
     /// Het decretogram als kroniekgebeurtenis.
@@ -1076,6 +1104,46 @@ pub(crate) fn recorded_input<'a>(
     parts.get("value")
 }
 
+/// Wat een gram van één besluit draagt, in de twee lagen waarin het dat doet.
+///
+/// Los van elkaar en niet op één hoop, want ze liggen in het gram ook niet op
+/// één hoop: de uitkomsten en de vaste velden staan er bovenaan, de inputs een
+/// laag dieper onder [`INPUTS`]. Een naam die in beide lagen voorkomt zou
+/// daarmee twee waarden aanwijzen, en dan is het niet aan de lezer van
+/// `from_decretogram: … + field: …` om te raden welke gepakt wordt — zie
+/// [`SimulatorError::AmbiguousEarlierBesluitField`].
+#[derive(Debug, Clone, Default)]
+pub(crate) struct GramFields {
+    /// De velden van het gram zelf: de uitkomsten waarop besloten is, plus de
+    /// vaste velden van elk decretogram.
+    pub(crate) own: BTreeSet<String>,
+    /// De inputs waarop dat besluit rekende, elk met hun eigen herkomst.
+    pub(crate) inputs: BTreeSet<String>,
+}
+
+impl GramFields {
+    /// In welke laag ligt dit veld? `None` als het gram het niet draagt.
+    ///
+    /// Hoofdletterongevoelig, net als elders bij veldnamen — en aan beide kanten
+    /// dezelfde toets als bij het lezen zelf, zodat het optuigen niets doorlaat
+    /// wat later toch niet gevonden wordt.
+    fn layers_with(&self, field: &str) -> (bool, bool) {
+        let has =
+            |names: &BTreeSet<String>| names.iter().any(|known| known.eq_ignore_ascii_case(field));
+        (has(&self.own), has(&self.inputs))
+    }
+
+    /// Alle namen die zo'n gram draagt, voor in een foutmelding.
+    fn listing(&self) -> String {
+        self.own
+            .iter()
+            .chain(self.inputs.iter())
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 /// Een tekst die er kan zijn, als vastlegbare waarde.
 ///
 /// `null` en niet "de lege tekst": dat de regeling geen bevoegd gezag noemt is
@@ -1093,19 +1161,19 @@ impl BesluitDefinition {
     /// De namen die een gram van dít besluit draagt, en die een volgend besluit
     /// er dus met `from_decretogram` uit kan lezen.
     ///
-    /// Drie soorten bij elkaar, want het gram draagt ze alle drie: de uitkomsten
-    /// waarop besloten is, de vaste velden van het decretogram zelf, en de
-    /// inputs waarop het rekende (die staan in het gram onder [`INPUTS`], elk met
-    /// hun herkomst). Bekend vóór het eerste besluit, en dat moet ook: een
-    /// verwijzing die hierbuiten valt hoort bij het optuigen te sneuvelen en niet
-    /// pas op het moment dat er teruggelezen wordt.
-    pub(crate) fn gram_fields(&self) -> BTreeSet<String> {
-        self.recorded_outputs()
-            .into_iter()
-            .map(str::to_string)
-            .chain(FIXED_FIELDS.iter().map(|field| (*field).to_string()))
-            .chain(self.inputs.keys().cloned())
-            .collect()
+    /// Bekend vóór het eerste besluit, en dat moet ook: een verwijzing die
+    /// hierbuiten valt hoort bij het optuigen te sneuvelen en niet pas op het
+    /// moment dat er teruggelezen wordt.
+    pub(crate) fn gram_fields(&self) -> GramFields {
+        GramFields {
+            own: self
+                .recorded_outputs()
+                .into_iter()
+                .map(str::to_string)
+                .chain(FIXED_FIELDS.iter().map(|field| (*field).to_string()))
+                .collect(),
+            inputs: self.inputs.keys().cloned().collect(),
+        }
     }
 
     /// Controleer de meegegeven parameters tegen de gedocumenteerde.
@@ -1384,20 +1452,29 @@ impl BesluitDefinition {
                             .join(", "),
                     });
                 };
-                if !fields.iter().any(|known| known.eq_ignore_ascii_case(field)) {
-                    return Err(SimulatorError::UnknownEarlierBesluitField {
+                // Eén naam kan niet twee waarden aanwijzen. Draagt zo'n gram het
+                // veld in beide lagen — als uitkomst of vast veld én als input —
+                // dan is er geen volgorde te kiezen die niet af en toe het
+                // verkeerde getal oplevert, en het beeld van de wereld kiest hier
+                // al andersom dan een leesregel hier zou doen (zie
+                // `snapshot::gram_snapshot`). Dus bij het optuigen weigeren in
+                // plaats van stil een winnaar aanwijzen.
+                match fields.layers_with(field) {
+                    (true, true) => Err(SimulatorError::AmbiguousEarlierBesluitField {
                         cell: cell.to_string(),
                         besluit: self.name.clone(),
                         earlier: earlier.clone(),
                         field: field.clone(),
-                        known: fields
-                            .iter()
-                            .map(String::as_str)
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    });
+                    }),
+                    (false, false) => Err(SimulatorError::UnknownEarlierBesluitField {
+                        cell: cell.to_string(),
+                        besluit: self.name.clone(),
+                        earlier: earlier.clone(),
+                        field: field.clone(),
+                        known: fields.listing(),
+                    }),
+                    _ => Ok(()),
                 }
-                Ok(())
             }
             BesluitInput::AcceptFrom {
                 cell: peer, params, ..
@@ -2179,6 +2256,71 @@ mod tests {
         assert!(
             matches!(err, SimulatorError::UnknownEarlierBesluitField { .. }),
             "verwachtte UnknownEarlierBesluitField, kreeg {err}"
+        );
+    }
+
+    /// De inputs waarop dat besluit rekende horen er ook bij: die liggen in het
+    /// gram een laag dieper, maar `from_decretogram` kan ze lezen.
+    #[test]
+    fn terug_lezen_kent_ook_de_inputs_waarop_dat_gram_rekende() {
+        let mut earlier = definition("zorgtoeslag/{bsn}");
+        earlier.inputs.insert(
+            "is_verzekerde".to_string(),
+            BesluitInput::FromChronicle {
+                chronicle: "inkomensleveringen".to_string(),
+                field: "is_verzekerde".to_string(),
+            },
+        );
+        let mut surface = surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag");
+        surface
+            .besluit_fields
+            .insert("toekenning".to_string(), earlier.gram_fields());
+
+        definition("zorgtoeslag/{bsn}")
+            .validate_input(
+                "toeslagen",
+                &surface,
+                "is_verzekerde",
+                &BesluitInput::FromDecretogram {
+                    besluit: "toekenning".to_string(),
+                    field: "is_verzekerde".to_string(),
+                },
+            )
+            .unwrap_or_else(|e| panic!("een input van dat gram hoort gelezen te mogen: {e}"));
+    }
+
+    /// Draagt zo'n gram één naam in beide lagen — als vast veld of uitkomst én
+    /// als input — dan wijst `field` twee waarden aan. Welke van de twee gepakt
+    /// wordt, is niets om te raden: bij het optuigen geweigerd, net als een
+    /// uitkomst die een vast veld zou overschrijven.
+    #[test]
+    fn terug_lezen_van_een_naam_die_het_gram_twee_keer_draagt_wordt_geweigerd() {
+        let mut earlier = definition("zorgtoeslag/{bsn}");
+        earlier.inputs.insert(
+            ZAAKKENMERK.to_string(),
+            BesluitInput::Param {
+                param: "bsn".to_string(),
+            },
+        );
+        let mut surface = surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag");
+        surface
+            .besluit_fields
+            .insert("toekenning".to_string(), earlier.gram_fields());
+
+        let err = definition("zorgtoeslag/{bsn}")
+            .validate_input(
+                "toeslagen",
+                &surface,
+                "is_verzekerde",
+                &BesluitInput::FromDecretogram {
+                    besluit: "toekenning".to_string(),
+                    field: ZAAKKENMERK.to_string(),
+                },
+            )
+            .expect_err("een naam die twee waarden aanwijst hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::AmbiguousEarlierBesluitField { .. }),
+            "verwachtte AmbiguousEarlierBesluitField, kreeg {err}"
         );
     }
 

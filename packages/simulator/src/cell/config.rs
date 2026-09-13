@@ -13,7 +13,7 @@
 //! allebei hetzelfde soort ding, dus ze horen op dezelfde manier afgekeurd te
 //! worden.
 
-use crate::cell::besluit::BesluitDefinition;
+use crate::cell::besluit::{BesluitDefinition, GramFields};
 use crate::cell::chronicle::ChronicleStream;
 use crate::error::{Result, SimulatorError, Subject};
 use chrono::NaiveDate;
@@ -451,13 +451,14 @@ pub(crate) struct CellSurface<'a> {
     pub(crate) streams: StreamFields,
     /// Per kroniekstroom het sleutelveld waarop ze groepeert.
     pub(crate) stream_keys: BTreeMap<String, String>,
-    /// Per besluit van deze cel de velden die een gram ervan draagt.
+    /// Per besluit van deze cel de velden die een gram ervan draagt, in de twee
+    /// lagen waarin het gram ze draagt.
     ///
     /// Hiermee is een `from_decretogram` bij het optuigen na te lopen: kent de
-    /// cel dat besluit, en draagt zo'n gram dat veld? Beide antwoorden staan vast
-    /// zodra de definities er zijn, dus een typfout hoort hier te vallen en niet
-    /// pas bij de eerste zaak.
-    pub(crate) besluit_fields: BTreeMap<String, BTreeSet<String>>,
+    /// cel dat besluit, draagt zo'n gram dat veld, en draagt het de naam niet
+    /// twee keer? Alle drie de antwoorden staan vast zodra de definities er zijn,
+    /// dus een typfout hoort hier te vallen en niet pas bij de eerste zaak.
+    pub(crate) besluit_fields: BTreeMap<String, GramFields>,
 }
 
 /// Per kroniekstroom de veldnamen die een cel van die stroom kent.

@@ -152,6 +152,10 @@ pub struct Act {
     /// naam, met de cel die haar vaststelde (invariant I5).
     #[serde(default)]
     pub expect_accepted: BTreeMap<String, String>,
+    /// Waarden die het besluit van deze actie uit een **eerder besluit** van
+    /// dezelfde cel moet hebben teruggelezen, op naam, met dat besluit.
+    #[serde(default)]
+    pub expect_read_back: BTreeMap<String, String>,
     /// Waarden die het besluit van deze actie **zelf** moet hebben vastgesteld.
     #[serde(default)]
     pub expect_computed: Vec<String>,
@@ -225,12 +229,24 @@ pub struct Decision {
     /// waarde die de wet via `source.regulation` bij een cel haalde.
     #[serde(default)]
     pub expect_accepted: BTreeMap<String, String>,
+    /// Waarden die dit besluit uit een **eerder besluit** van dezelfde cel over
+    /// dezelfde zaak moet hebben teruggelezen, op naam, met dat besluit
+    /// (`from_decretogram`).
+    ///
+    /// De derde mogelijkheid naast geaccepteerd en zelf vastgesteld, en ze heeft
+    /// een eigen verwachting nodig omdat ze anders onder
+    /// [`Self::expect_computed`] zou wegvallen: teruggelezen komt uit de eigen
+    /// kroniek, maar het is geen eigen vaststelling — het bedrag is overgeschreven
+    /// uit een ouder gram, onder het recht dat toen gold.
+    #[serde(default)]
+    pub expect_read_back: BTreeMap<String, String>,
     /// Waarden die dit besluit **zelf** moet hebben vastgesteld: uit een eigen
     /// kroniek, uit een parameter of uit een eigen wet.
     ///
     /// Het tegenbewijs bij [`Self::expect_accepted`], en zonder dat tegenbewijs
     /// bewijst die niets: een opstelling waarin *alles* als geaccepteerd geldt,
-    /// haalt dezelfde assertie even makkelijk.
+    /// haalt dezelfde assertie even makkelijk. Een teruggelezen waarde telt hier
+    /// niet mee; die hoort in [`Self::expect_read_back`].
     #[serde(default)]
     pub expect_computed: Vec<String>,
 }
@@ -919,6 +935,7 @@ impl Scenario {
                 failures.extend(check_provenance(gram));
                 failures.extend(check_origins(
                     &step.expect_accepted,
+                    &step.expect_read_back,
                     &step.expect_computed,
                     gram,
                 ));
@@ -961,6 +978,7 @@ impl Scenario {
             failures.extend(check_provenance(&decretogram));
             failures.extend(check_origins(
                 &decision.expect_accepted,
+                &decision.expect_read_back,
                 &decision.expect_computed,
                 &decretogram,
             ));
@@ -1104,17 +1122,42 @@ pub fn check_provenance(gram: &Decretogram) -> Vec<ExpectationFailure> {
 
 /// Reken een besluit af op de herkomst die het scenario verwacht.
 ///
-/// Twee kanten, en ze horen bij elkaar: `expect_accepted` zegt dat een waarde
-/// van een bepaalde cel komt, `expect_computed` dat een waarde hier is
-/// vastgesteld. Alleen de eerste zou bewijzen dat de opstelling waarden kán
-/// accepteren, niet dat ze het onderscheid máákt.
+/// Drie kanten, en ze horen bij elkaar: `expect_accepted` zegt dat een waarde
+/// van een bepaalde cel komt, `expect_read_back` dat ze uit een eerder besluit
+/// van deze cel over dezelfde zaak is overgeschreven, en `expect_computed` dat
+/// ze hier is vastgesteld. Alleen de eerste zou bewijzen dat de opstelling
+/// waarden kán accepteren, niet dat ze het onderscheid máákt — en de derde is
+/// geen restpost: een waarde die onder een van de andere twee valt, wordt daar
+/// rood.
 fn check_origins(
     expect_accepted: &BTreeMap<String, String>,
+    expect_read_back: &BTreeMap<String, String>,
     expect_computed: &[String],
     gram: &Decretogram,
 ) -> Vec<ExpectationFailure> {
     let accepted = gram.accepted_values();
+    let read_back = gram.read_back_values();
     let mut failures = Vec::new();
+
+    for (value, expected) in expect_read_back {
+        match read_back.get(value.as_str()) {
+            Some(besluit) if besluit == expected => {}
+            Some(besluit) => failures.push(ExpectationFailure::Provenance {
+                value: value.clone(),
+                reason: format!(
+                    "verwachtte teruggelezen uit besluit '{expected}', kreeg '{besluit}'"
+                ),
+            }),
+            None => failures.push(ExpectationFailure::Provenance {
+                value: value.clone(),
+                reason: format!(
+                    "verwachtte teruggelezen uit eerder besluit '{expected}', maar deze \
+                     waarde is niet teruggelezen{}",
+                    describe_origin(gram, value)
+                ),
+            }),
+        }
+    }
 
     for (value, expected) in expect_accepted {
         match accepted.get(value.as_str()) {
@@ -1141,6 +1184,21 @@ fn check_origins(
                 reason: format!(
                     "verwachtte een eigen vaststelling, maar deze waarde is geaccepteerd \
                      van cel '{cell}'"
+                ),
+            });
+            continue;
+        }
+        // Teruggelezen is evenmin een eigen vaststelling. Het komt wél uit de
+        // eigen kroniek, dus zonder deze regel zou `expect_computed` er stil
+        // overheen lezen — en dan zou een scenario "dit heeft de cel zelf
+        // vastgesteld" beweren over een bedrag dat uit een ouder gram is
+        // overgeschreven. Daar is `expect_read_back` voor.
+        if let Some(besluit) = read_back.get(value.as_str()) {
+            failures.push(ExpectationFailure::Provenance {
+                value: value.clone(),
+                reason: format!(
+                    "verwachtte een eigen vaststelling, maar deze waarde is teruggelezen \
+                     uit eerder besluit '{besluit}'"
                 ),
             });
             continue;

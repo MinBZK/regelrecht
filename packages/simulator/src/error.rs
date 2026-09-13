@@ -562,6 +562,31 @@ pub enum SimulatorError {
         known: String,
     },
 
+    /// Een besluit leest een veld terug dat een gram van dat eerdere besluit
+    /// **twee keer** draagt: als uitkomst of vast veld, én als input.
+    ///
+    /// Dan wijst één naam twee waarden aan, en welke van de twee er gepakt wordt
+    /// is een leesregel die niemand bij het schrijven voor ogen had. Het beeld
+    /// van de wereld kiest bij zo'n botsing de input (daar is de herkomst
+    /// rijker), een leesregel hier zou eerder het veld van het gram zelf pakken —
+    /// twee antwoorden op dezelfde vraag. Bij het optuigen weigeren dus: hernoem
+    /// de input, of lees een veld dat maar één ding kan zijn.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' leest veld '{field}' uit eerder besluit \
+         '{earlier}', maar een gram van dat besluit draagt die naam twee keer — als \
+         uitkomst of vast veld én als input"
+    )]
+    AmbiguousEarlierBesluitField {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit dat terugleest.
+        besluit: String,
+        /// Het besluit waaruit gelezen wordt.
+        earlier: String,
+        /// Het veld dat gelezen zou worden.
+        field: String,
+    },
+
     /// Een vraag over de celgrens geeft `$zaakkenmerk` mee, maar het besluit
     /// heeft geen zaakkenmerk-sjabloon.
     ///

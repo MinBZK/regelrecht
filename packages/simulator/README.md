@@ -356,7 +356,11 @@ is smal op drie manieren:
 
 `field` mag een uitkomst van dat gram zijn, een van zijn vaste velden, of een van
 de inputs waarop het rekende; wat een gram draagt staat vast zodra de definities
-er zijn, dus een typfout valt bij het optuigen en niet bij de eerste zaak.
+er zijn, dus een typfout valt bij het optuigen en niet bij de eerste zaak. Die
+twee lagen — het gram zelf en zijn inputs — worden allebei gelezen, en een naam
+die in béide zit wordt geweigerd: dan wijst `field` twee waarden aan, en welke van
+de twee gepakt wordt is geen leesregel die iemand bij het schrijven voor ogen had.
+Hernoem dan de input, of lees een veld dat maar één ding kan zijn.
 
 In `accept_from.params` staat naast `$parameter` en letterlijke tekst één
 ingebouwde verwijzing: **`$zaakkenmerk`**, het ingevulde kenmerk van het lopende
@@ -716,7 +720,8 @@ is geen slordigheid: een besluit-definitie mag zo'n input zelf aanleveren, en da
 komt de verwijzing nooit aan bod.
 
 De scenario-runner rekent elk besluit af op de herkomst van zijn waarden — per
-waarde `computed` of `accepted`, met bron — en dat is invariant I5 als gate:
+waarde `computed`, `accepted` of teruggelezen, met bron — en dat is invariant I5
+als gate:
 
 ```yaml
 decide:
@@ -726,9 +731,16 @@ decide:
     op_moment: 2024-06-01
     expect_accepted:
       toetsingsinkomen: belastingdienst   # van die cel, en hier niet nagerekend
+    expect_read_back:
+      toegekend_bedrag: zorgtoeslag_toekenning  # uit een eigen ouder gram
     expect_computed:
       - is_verzekerde                     # eigen feit, dus eigen werk
 ```
+
+`expect_read_back` staat naast de andere twee en niet erin: een teruggelezen
+waarde komt uit de eigen kroniek, maar de cel heeft haar hier niet vastgesteld —
+ze is overgeschreven uit een ouder gram, onder het recht dat toen gold. Ze telt
+daarom niet mee als `expect_computed`; wie haar daar toch noemt, krijgt rood.
 
 De gate draait bij élk besluit, ook zonder deze verwachtingen: een geaccepteerde
 waarde moet naar een ánder wijzen dan de besluitende cel, en ze mag niet óók als
@@ -839,7 +851,7 @@ een RFC aan te pas komt.
 | **I2** | volledig waarneembaar: elk cross-cel-contact loopt langs veiligheidscontext → transport → log | structureel (één weg over de grens) plus een gate-toets: een geaccepteerde waarde zónder vastgelegd contact faalt |
 | **I3** | een cel bevraagt alleen de cellen die haar eigen wetten of besluit-definities noemen | een **capability** (alleen gedeclareerde cel-ids bereiken de resolver) plus de gate, die het feitelijke gedrag toetst |
 | **I4** | synthese gebeurt nooit in een cel | de reduce-engine heeft geen cel-resolver, plus de gate: combineren buiten een besluit faalt, en wat een besluit haalde moet in zijn gram staan |
-| **I5** | narekenen versus accepteren | `check_provenance` over elk decretogram, plus `expect_accepted`/`expect_computed` per besluit — zie [Accepteren in plaats van narekenen](#accepteren-in-plaats-van-narekenen-i5) |
+| **I5** | narekenen versus accepteren | `check_provenance` over elk decretogram, plus `expect_accepted`/`expect_read_back`/`expect_computed` per besluit — zie [Accepteren in plaats van narekenen](#accepteren-in-plaats-van-narekenen-i5) |
 
 De gate leeft in [`src/invariant.rs`](src/invariant.rs) en draait bij **elke** run,
 ook bij een scenario dat er niets over zegt. Een invariant die je moet aanzetten,
@@ -1237,6 +1249,8 @@ act:                                            # acties, elk op een moment
       heeft_recht_op_zorgtoeslag: true
     expect_accepted:                            # optioneel: herkomst per waarde
       toetsingsinkomen: belastingdienst
+    expect_read_back:                           # optioneel: uit een eigen ouder
+      toegekend_bedrag: zorgtoeslag_toekenning  # gram teruggelezen
     expect_computed:                            # en wat hier wél vastgesteld is
       - is_verzekerde
 
@@ -1258,6 +1272,8 @@ decide:                                         # besluiten, elk op een moment
       heeft_recht_op_zorgtoeslag: true
     expect_accepted:                            # optioneel: herkomst per waarde
       toetsingsinkomen: belastingdienst         # van die cel, niet hier berekend
+    expect_read_back:                           # optioneel: uit een eigen ouder
+      toegekend_bedrag: zorgtoeslag_toekenning  # gram teruggelezen
     expect_computed:                            # en wat hier wél vastgesteld is
       - is_verzekerde
 
