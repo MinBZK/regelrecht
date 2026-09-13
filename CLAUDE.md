@@ -238,6 +238,13 @@ After completing significant code changes, proactively use the `code-reviewer` s
 All components are deployed to ZAD (RIG/Quattro/rijksapps) via `.github/workflows/deploy.yml`.
 CI runs via `.github/workflows/ci.yml`.
 
+Een langlevende integratiebranch hoort in de `branches`-lijst van `on.push` én
+`on.pull_request` in `ci.yml` zolang hij leeft — een PR daarheen passeert dan
+dezelfde poorten als een PR naar main — en gaat daar bij de merge naar main weer
+uit; `script/ci-gate.test.mjs` houdt beide lijsten gelijk en op de branches die
+`INTEGRATIEBRANCHES` noemt. Deployen verandert er niets door: `deploy-production`
+blijft aan een push op main hangen.
+
 ### The Claude review merge gate
 
 `claude-code-review.yml` posts its findings as review comments and takes about

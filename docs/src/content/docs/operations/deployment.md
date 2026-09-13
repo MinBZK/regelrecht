@@ -28,6 +28,10 @@ When a PR merges to main, production deployment runs:
 2. Components are deployed to the `regelrecht` deployment on ZAD
 3. Production URLs update within minutes
 
+### Op een integratiebranch
+
+Een langlevende integratiebranch staat zolang hij leeft in de `branches`-lijst van `on.push` en `on.pull_request` in `.github/workflows/ci.yml`, zodat een PR daarheen dezelfde poorten passeert als een PR naar main, en gaat daar bij de merge naar main weer uit (`script/ci-gate.test.mjs` bewaakt die lijst). Uitrollen doet zo'n branch niet: `deploy-production` hangt aan een push op main.
+
 ### On PR close, or when the label is removed
 
 The preview deployment and its GHCR images are cleaned up automatically.
