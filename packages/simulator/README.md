@@ -1633,6 +1633,7 @@ is het vastgepinde voorbeeld):
 | `actions[].prefill` | de [voorinvulling](#voorinvulling-wat-de-wereld-al-weet) per veld, opgelost op de stand van de klok |
 | `crossings` | wat er over een celgrens ging |
 | `warnings` | de termijnen die verstreken zonder dat het feit er lag |
+| `journal` | het [journaal](#het-journaal-wie-deed-wat-en-wat-veranderde-er): één regel per gebeurtenis, in volgorde van ontstaan |
 
 Drie dingen om bij stil te staan:
 
@@ -1664,6 +1665,79 @@ kan er dus niet de kroniek van een ander mee lezen. `crossings` is het materiaal
 van dat log, en een lezer hoort het als zodanig te labelen: wie deze lijst houdt,
 kent de unie van wat over de grenzen ging — precies het totaalbeeld waarvan geen
 enkele cel er een heeft.
+
+### Het journaal: wie deed wat, en wat veranderde er
+
+De kronieken zeggen wat er per cel **ligt**. Het journaal zegt hoe het zover kwam:
+één regel per gebeurtenis, in de volgorde waarin ze ontstond. Een gebeurtenis is
+een actie van een actor (`records` of `decides`), een trigger van de klok (een
+startstand die passeert, een vervallen verplichting, een verstreken termijn), of
+een vraag die over een celgrens ging.
+
+| veld | wat |
+|---|---|
+| `seq` | de plek in het journaal, vanaf 0 — waarnaar `parent` verwijst |
+| `moment` | het moment in de logische tijd |
+| `actor` | `actor` (een actie), `cell` (een cel die zelf besloot of vroeg) of `klok` |
+| `kind` | `vastlegging`, `besluit`, `betaling`, `termijn` of `vraag` |
+| `description` | korte omschrijving, in de woorden van het wereldbestand |
+| `grams` | verwijzingen naar de grammen die erdoor ontstonden: cel, kroniek, gram-id (`<cel>|<kroniek>|<plek>`) |
+| `changes` | wat er aan de stand van de zaak veranderde, per betrokken cel |
+| `accepted` | de waarden die dit besluit van een andere cel accepteerde |
+| `question` | het contact zelf, bij een `vraag`-regel — dezelfde vorm als in `crossings` |
+| `parent` | de regel die deze uitlokte; een cross-cel-vraag hangt onder haar besluit |
+
+Het is **geen tweede administratie**. Een regel wijst naar grammen die in een cel
+liggen en draagt er geen kopie van. Het enige dat er staat en nergens in een gram
+ligt, is het verschil in de stand van de zaak — en dat is een meting.
+
+#### Statusindicatoren zijn casusdata
+
+Welke reducties "de stand van de zaak" van een cel dragen, staat per cel in het
+wereldbestand:
+
+```yaml
+    status_indicators:
+      - lexostatus: zorgtoeslagbeschikking   # een gepubliceerde naam van deze cel
+        label: toekenningspositie            # wat een lezer ziet
+        params:
+          zaakkenmerk: $zaakkenmerk          # uit een veld van de gebeurtenis
+```
+
+`$veld` wijst een veld van de gebeurtenis aan — het zaakkenmerk van een besluit,
+de bsn van een feit — en alles zonder `$` is een letterlijke waarde. Draagt een
+gebeurtenis dat veld niet, dan gaat de indicator er niet over en wordt hij niet
+gereduceerd: een betaling zegt niets over een partnerschap. Dat de lexostatus
+bestaat en dat de parameters precies kloppen, valt bij het optuigen en niet bij
+de eerste meting — een indicator die stil nooit iets oplevert, is niet van "er
+gebeurde niets" te onderscheiden.
+
+Voor elke gebeurtenis reduceert de wereld de indicatoren van de **geraakte**
+cellen vóór en ná, op het moment van de gebeurtenis, en zet het verschil in de
+regel: `niets vastgesteld → 25000`, `0 → 49294`. Geen verschil is geen regel.
+
+#### De meting is geen celgrens-verkeer
+
+De vóór/ná-reductie loopt langs `Cell::reduce` — de publieke ingang van de cel —
+buiten de veiligheidscontext en het transport om, precies zoals de
+[voorinvulling](#voorinvulling-wat-de-wereld-al-weet) van een formulier dat doet.
+Er wordt dus geen vraag over een grens gesteld: er komt **geen `crossing`** van,
+geen regel in het observatielog, en de invarianten-gate ziet er niets van. De
+wereld meet hier haar eigen opstelling, zoals ze ook het beeld van alle kronieken
+maakt; een meting die zichzelf als verkeer laat tellen zou het vraaggraf
+vervuilen met vragen die het recht niet stelt.
+
+Een reductie die niet lukt, levert geen meting en geen fout. Dat is de juiste
+kant op: een indicator waarvan de reductie buiten haar eigen cel zou reiken loopt
+daar stuk (de cel krijgt geen resolver mee), en dan hoort er geen regel te komen
+in plaats van een gebeurtenis om te vallen.
+
+#### Eén bron
+
+`ScenarioRun::report()` schrijft dit journaal op als verhaal, bovenaan het
+verslag, en de frontend toont dezelfde regels. Het wordt niet twee keer afgeleid:
+de wereld houdt het bij op de plek waar de gebeurtenissen ontstaan, en `journal`
+in het beeld en `ScenarioRun::journal` zijn dezelfde lijst.
 
 ### Kroniekstromen en tijd
 

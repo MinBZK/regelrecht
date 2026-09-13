@@ -3,18 +3,25 @@ import { computed, onMounted, ref } from 'vue';
 import ActionPanel from './components/ActionPanel.vue';
 import CellColumn from './components/CellColumn.vue';
 import GramPanel from './components/GramPanel.vue';
+import JournalPanel from './components/JournalPanel.vue';
 import LexostatusPanel from './components/LexostatusPanel.vue';
 import ObservationLog from './components/ObservationLog.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import WorldTimeline from './components/WorldTimeline.vue';
 import { formatMoment } from './world/format.js';
+import { journalEntries } from './world/journal.js';
 import { cells, missedDeadlines } from './world/snapshot.js';
 import { useWorld } from './world/useWorld.js';
 
 // De testopstelling in één pagina: bovenaan de bediening over de volle breedte
 // (acties, instellingen, een vraag aan een cel, alle grammen, en het
-// observatielog als meetinstrument), daaronder een kolom per cel met haar
-// kronieken, en onderaan de tijdlijn met de klok.
+// observatielog als meetinstrument), daaronder het **journaal**, daaronder een
+// kolom per cel met haar kronieken, en onderaan de tijdlijn met de klok.
+//
+// Het journaal staat boven de cellen omdat het de hoofdweergave is: het vertelt
+// wie er iets deed en wat dat veranderde, en de cellen, het observatielog en het
+// grammenpaneel zijn daar de details van. Wie alleen de kolommen ziet, ziet wat
+// er ligt en niet wat er gebeurde.
 //
 // Boven en onder, niet links en rechts: een cel is breed — een kroniekrij draagt
 // een naam, een moment, een kanaal en een grondslag — en in een halve pagina
@@ -31,6 +38,7 @@ import { useWorld } from './world/useWorld.js';
 const {
   snapshot,
   previousCounts,
+  previousJournalLength,
   loading,
   busy,
   error,
@@ -50,6 +58,20 @@ const {
 
 const columns = computed(() => cells(snapshot.value));
 const deadlines = computed(() => missedDeadlines(snapshot.value));
+
+/**
+ * De dag waarop de tijdlijn wijst, of leeg voor het hele verhaal.
+ *
+ * Een punt op de tijdlijn en de regels van die dag horen bij elkaar: klikken op
+ * het punt brengt je bij de regels, en dat is de enige plek waar de twee elkaar
+ * kennen. De tijdlijn zelf weet niets van het journaal.
+ */
+const focusMoment = ref('');
+
+/** Zijn er regels bij gekomen door de laatste stap? */
+const hasNewEntries = computed(
+  () => previousJournalLength.value !== null && journalEntries(snapshot.value).length > previousJournalLength.value,
+);
 
 /**
  * De panelen van de bediening bovenaan.
@@ -97,6 +119,17 @@ function runAction({ action, values }) {
  * die zweeg voor de kaart.
  */
 const showBanner = computed(() => Boolean(error.value) && !(actionError.value && tab.value === 'acties'));
+
+/**
+ * Staat er een groene balk over wat de laatste stap opleverde?
+ *
+ * Alleen als het journaal het niet al zegt. Kwamen er regels bij, dan staan ze
+ * eronder, gemarkeerd als nieuw, met hun grammen en hun verschillen erbij — en
+ * dan is een balk die hetzelfde korter herhaalt een tweede verslag. Wat geen
+ * gebeurtenis oplevert (de wereld terugzetten, een instelling wijzigen) heeft
+ * die balk nog wel nodig: anders zou zo'n stap niets terugzeggen.
+ */
+const showResult = computed(() => Boolean(result.value) && !hasNewEntries.value);
 </script>
 
 <template>
@@ -132,7 +165,7 @@ const showBanner = computed(() => Boolean(error.value) && !(actionError.value &&
       </nldd-skip-link>
 
       <nldd-split-view-pane slot="main" has-content>
-        <nldd-stacked-split-view panes="2">
+        <nldd-stacked-split-view panes="3">
           <!-- Boven de bediening, over de volle breedte. Meldingen over de
                wereld staan hier: dit is de bovenkant van de pagina, en een
                melding die je pas ziet na scrollen is geen melding. -->
@@ -155,7 +188,7 @@ const showBanner = computed(() => Boolean(error.value) && !(actionError.value &&
                   ></nldd-banner>
 
                   <nldd-banner
-                    v-if="result"
+                    v-if="showResult"
                     variant="success"
                     :text="result.label"
                     :supporting-text="resultText"
@@ -201,10 +234,25 @@ const showBanner = computed(() => Boolean(error.value) && !(actionError.value &&
             </nldd-page>
           </nldd-split-view-pane>
 
+          <!-- Daaronder de hoofdweergave: het verhaal van de wereld in
+               tijdsvolgorde. De cellen eronder zijn de details ervan. -->
+          <nldd-split-view-pane slot="pane-2" has-content>
+            <nldd-page>
+              <nldd-simple-section width="full">
+                <JournalPanel
+                  :snapshot="snapshot"
+                  :previous-length="previousJournalLength"
+                  :focus-moment="focusMoment"
+                  @clear-focus="focusMoment = ''"
+                />
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
           <!-- Daaronder de wereld zelf: een kolom per cel, over de volle
                breedte, en die kolommen schuiven binnen hun eigen paneel opzij
                als er meer cellen zijn dan er naast elkaar passen. -->
-          <nldd-split-view-pane slot="pane-2" has-content>
+          <nldd-split-view-pane slot="pane-3" has-content>
             <nldd-page>
               <nldd-simple-section width="full">
                 <nldd-container layout="stack" gap="16">
@@ -263,6 +311,7 @@ const showBanner = computed(() => Boolean(error.value) && !(actionError.value &&
           :previous-counts="previousCounts"
           :busy="busy"
           @advance="advance($event)"
+          @select="focusMoment = focusMoment === $event ? '' : $event"
         />
       </nldd-split-view-pane>
     </nldd-bar-split-view>

@@ -47,12 +47,15 @@
 use crate::accept::CellBridge;
 use crate::cell::{
     check_documented_params, check_prefill_values, BesluitDefinition, Cell, CellConfig,
-    ChronicleEvent, Decretogram, DocumentedParameter, Intake, Lexostatus, ObligationDue, Prefill,
-    BETALINGEN, ZAAKKENMERK,
+    ChronicleEvent, Decretogram, DocumentedParameter, InputOrigin, Intake, Lexostatus,
+    ObligationDue, Prefill, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
 };
 use crate::error::{Result, SimulatorError, Subject};
+use crate::journal::{
+    changes, AcceptedValue, GramRef, JournalActor, JournalEntry, JournalKind, Reading,
+};
 use crate::security::{Identity, SignedAnswer};
-use crate::snapshot::{ActionState, Snapshot, WorldView};
+use crate::snapshot::{crossing_snapshot, gram_kind, ActionState, Snapshot, WorldView};
 use chrono::NaiveDate;
 use regelrecht_engine::{CellResolver, Value};
 use serde::{Deserialize, Serialize};
@@ -467,8 +470,35 @@ pub struct RecordedFact {
     pub cell: String,
     /// De kroniekstroom.
     pub chronicle: String,
+    /// De plek in die kroniek, vanaf 0.
+    ///
+    /// Waarmee dit gram terug te vinden is in het beeld van de wereld, dat de
+    /// grammen per kroniek in precies deze volgorde geeft. Een kroniek groeit
+    /// achteraan en wijzigt nooit, dus die plek verschuift niet meer.
+    pub index: usize,
     /// Het gram zelf.
     pub event: ChronicleEvent,
+}
+
+impl RecordedFact {
+    /// De verwijzing waarmee een journaalregel naar dit gram wijst.
+    fn gram_ref(&self) -> GramRef {
+        GramRef {
+            cell: self.cell.clone(),
+            chronicle: self.chronicle.clone(),
+            id: gram_id(&self.cell, &self.chronicle, self.index),
+            kind: gram_kind(self.event.intake),
+            name: self.event.name.clone(),
+        }
+    }
+}
+
+/// Waaronder één gram in het beeld van de wereld terug te vinden is.
+///
+/// Dezelfde sleutel als de frontend zelf zou vormen uit cel, kroniek en plek;
+/// hier op één plek, zodat de twee niet uiteen kunnen lopen.
+fn gram_id(cell: &str, chronicle: &str, index: usize) -> String {
+    format!("{cell}|{chronicle}|{index}")
 }
 
 /// Wat er gebeurde tijdens één stap in de wereld.
@@ -652,6 +682,13 @@ pub struct World {
     crossings: Vec<SignedAnswer>,
     /// De termijnen die verstreken zonder dat het feit er lag.
     warnings: Vec<Warning>,
+    /// Het journaal: één regel per gebeurtenis, in volgorde van ontstaan.
+    ///
+    /// Geen tweede administratie naast de kronieken: elke regel wijst naar de
+    /// grammen die erdoor ontstonden en draagt verder alleen wat nergens in een
+    /// gram ligt — het **verschil** in de stand van de zaak, gemeten vóór en ná
+    /// de gebeurtenis. Zie [`crate::journal`].
+    journal: Vec<JournalEntry>,
     /// Wat er nog moet gebeuren, oplopend op datum. Bij een gelijke datum
     /// beslist de volgorde waarin de triggers zijn opgegeven; de sortering is
     /// stabiel, dus dat is een vastgelegde eigenschap en geen toeval.
@@ -752,6 +789,7 @@ impl World {
         check_obligations(configs, &cells, &definition.settings)?;
         check_actions(&definition.actions, &cells)?;
         check_deadlines(&definition.deadlines, &cells)?;
+        check_status_indicators(configs, &cells)?;
 
         let mut pending: Vec<(NaiveDate, Trigger)> = fixtures
             .iter()
@@ -775,6 +813,7 @@ impl World {
             clock: definition.clock.start,
             crossings: Vec::new(),
             warnings: Vec::new(),
+            journal: Vec::new(),
             pending: pending.into(),
         };
         world.fire_due(definition.clock.start)?;
@@ -878,15 +917,26 @@ impl World {
             form_values,
         )?;
 
+        // Wie de actie doet, staat in het wereldbestand, en wat een lezer erover
+        // te zien krijgt ook: het journaal schrijft het label van de actie op en
+        // verzint er geen zin omheen.
+        let actor = JournalActor::Actor {
+            id: action.actor.clone(),
+        };
         match &action.effect {
             ActionEffect::Records(records) => {
-                let mut events = Events::default();
-                for recording in recordings_of(&action, records, form_values) {
-                    events
-                        .recordings
-                        .push(self.apply_recording(&recording, self.clock)?);
-                }
-                Ok(events)
+                let recordings = recordings_of(&action, records, form_values);
+                let recordings = self.record_as_event(
+                    &recordings,
+                    self.clock,
+                    actor,
+                    JournalKind::Vastlegging,
+                    action.label.clone(),
+                )?;
+                Ok(Events {
+                    recordings,
+                    ..Events::default()
+                })
             }
             ActionEffect::Decides(decides) => {
                 let (record, mut events) = self.decide_and_settle(
@@ -894,6 +944,8 @@ impl World {
                     &decides.besluit,
                     form_values,
                     self.clock,
+                    actor,
+                    action.label.clone(),
                 )?;
                 events.decisions.push(record);
                 Ok(events)
@@ -956,12 +1008,23 @@ impl World {
             actions: self.actions_now(),
             crossings: &self.crossings,
             warnings: &self.warnings,
+            journal: &self.journal,
         })
     }
 
     /// De waarschuwingen die tot nu toe zijn ontstaan, in volgorde.
     pub fn warnings(&self) -> &[Warning] {
         &self.warnings
+    }
+
+    /// Het journaal van deze wereld: één regel per gebeurtenis, in volgorde.
+    ///
+    /// Dezelfde regels die het beeld draagt, en de enige bron voor het verhaal:
+    /// wie er iets deed, welke grammen er ontstonden en wat er aan de stand van
+    /// de zaak veranderde. Een scenario-verslag schrijft hiermee op wat er
+    /// gebeurde, in plaats van het een tweede keer af te leiden.
+    pub fn journal(&self) -> &[JournalEntry] {
+        &self.journal
     }
 
     /// Elke actie uit het wereldbestand, met haar formulier en of ze nu kan.
@@ -1090,8 +1153,21 @@ impl World {
         params: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
     ) -> Result<DecisionRecord> {
-        self.decide_and_settle(cell, besluit, params, op_moment)
-            .map(|(record, _)| record)
+        // Niemand stuurde deze cel aan langs een actie, dus de journaalregel
+        // noemt de cel zelf als degene die het deed — en niet een actor die er
+        // niet is.
+        let actor = JournalActor::Cell {
+            id: cell.to_string(),
+        };
+        self.decide_and_settle(
+            cell,
+            besluit,
+            params,
+            op_moment,
+            actor,
+            format!("besluit '{besluit}'"),
+        )
+        .map(|(record, _)| record)
     }
 
     /// Hetzelfde besluit, met wat de verplichtingen eruit meteen opleverden.
@@ -1107,6 +1183,8 @@ impl World {
         besluit: &str,
         params: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
+        actor: JournalActor,
+        description: String,
     ) -> Result<(DecisionRecord, Events)> {
         // Eerst de cel, dan het moment: zie [`Self::reduce`].
         if !self.cells.contains_key(cell) {
@@ -1123,6 +1201,13 @@ impl World {
                 clock: self.clock.to_string(),
             });
         }
+
+        // Hoe de zaak ervoor stond, vóórdat dit besluit er ligt. Het kan niet
+        // later: een kroniek groeit en wijzigt nooit, dus "hoe stond het ervoor"
+        // bestaat alleen zolang het gram er nog niet is.
+        let touched = BTreeSet::from([cell.to_string()]);
+        let bearing = self.decision_bearing(cell, besluit, params);
+        let before = self.read_indicators(&touched, &bearing, op_moment);
 
         // De besluitende cel gaat uit de map, en de rest gaat naar de brug. Twee
         // vliegen: de brug kan de peers bezitten (een geregistreerde resolver
@@ -1196,6 +1281,53 @@ impl World {
                 .insert(setting, (cell.to_string(), besluit.to_string()));
         }
 
+        // Hoe de zaak er ná dit besluit voor staat. Hier en niet verderop: de
+        // termijnen die zo meteen vervallen zijn eigen gebeurtenissen met eigen
+        // regels, en hun betalingen horen niet als gevolg van het besluit gelezen
+        // te worden.
+        let after = self.read_indicators(&touched, &bearing, op_moment);
+
+        let crossings = bridge.crossings();
+        self.crossings.extend(crossings.iter().cloned());
+
+        // De regel van het besluit, en daaronder wat het onderweg aan een ander
+        // vroeg. Die vragen gingen vooraf aan het gram — een besluit rekent pas
+        // als het heeft wat het nodig heeft — maar ze hangen eronder: los gelezen
+        // is een vraag over een celgrens een vraag zonder aanleiding.
+        let entry = JournalEntry {
+            seq: 0,
+            moment: op_moment,
+            actor,
+            kind: JournalKind::Besluit,
+            description,
+            grams: self.gram_ref(cell, BESCHIKKINGEN).into_iter().collect(),
+            changes: changes(&before, &after),
+            accepted: accepted_values(&decretogram),
+            question: None,
+            parent: None,
+        };
+        let decision = self.write_journal(entry);
+        for crossing in &crossings {
+            let answer = &crossing.answer;
+            self.write_journal(JournalEntry {
+                seq: 0,
+                moment: answer.op_moment,
+                actor: JournalActor::Cell {
+                    id: crossing.asked_by.cell().to_string(),
+                },
+                kind: JournalKind::Vraag,
+                description: format!(
+                    "vroeg '{}' aan cel '{}' op {}",
+                    answer.name, answer.cell, answer.op_moment
+                ),
+                grams: Vec::new(),
+                changes: Vec::new(),
+                accepted: Vec::new(),
+                question: Some(crossing_snapshot(crossing)),
+                parent: Some(decision),
+            });
+        }
+
         // De verplichtingen uit dit besluit worden triggers. Een termijn die nu
         // al vervalt — en de eerste termijn valt op het moment van het besluit,
         // tenzij `from` anders zegt — gaat meteen af: de klok staat er al, dus
@@ -1215,9 +1347,6 @@ impl World {
         if let Some(warning) = authority_warning {
             events.warnings.insert(0, warning);
         }
-
-        let crossings = bridge.crossings();
-        self.crossings.extend(crossings.iter().cloned());
 
         Ok((
             DecisionRecord {
@@ -1300,13 +1429,41 @@ impl World {
         while let Some((at, trigger)) = self.next_due(tot) {
             self.clock = self.clock.max(at);
             match trigger {
+                // De klok passeert een startstand: er is geen actor die dit
+                // deed, de tijd deed het.
                 Trigger::Record(recording) => {
-                    events
-                        .recordings
-                        .push(self.apply_recording(&recording, at)?);
+                    let description = format!(
+                        "startstand: '{}' in kroniek '{}' van cel '{}'",
+                        recording.name, recording.chronicle, recording.cell
+                    );
+                    let recordings = std::slice::from_ref(&recording);
+                    events.recordings.extend(self.record_as_event(
+                        recordings,
+                        at,
+                        JournalActor::Klok,
+                        JournalKind::Vastlegging,
+                        description,
+                    )?);
                 }
-                Trigger::Obligation(due) => events.recordings.extend(self.settle(&due)?),
-                Trigger::Deadline(index) => events.warnings.extend(self.check_deadline(index, at)),
+                Trigger::Obligation(due) => events.recordings.extend(self.settle_as_event(&due)?),
+                Trigger::Deadline(index) => {
+                    let warnings = self.check_deadline(index, at);
+                    if let Some(warning) = &warnings {
+                        self.write_journal(JournalEntry {
+                            seq: 0,
+                            moment: at,
+                            actor: JournalActor::Klok,
+                            kind: JournalKind::Termijn,
+                            description: warning.describe(),
+                            grams: Vec::new(),
+                            changes: Vec::new(),
+                            accepted: Vec::new(),
+                            question: None,
+                            parent: None,
+                        });
+                    }
+                    events.warnings.extend(warnings);
+                }
             }
         }
         self.warnings.extend(events.warnings.iter().cloned());
@@ -1328,11 +1485,203 @@ impl World {
                     cell: recording.cell.clone(),
                 })?;
         cell.record(&recording.chronicle, event.clone())?;
+        // De plek die dit gram zojuist kreeg. Meteen hier, want een tweede
+        // vastlegging in dezelfde stroom zou hem verderop verschuiven — dan zou
+        // een journaalregel naar het verkeerde gram wijzen.
+        let index = cell
+            .stream_len(&recording.chronicle)
+            .unwrap_or_default()
+            .saturating_sub(1);
         Ok(RecordedFact {
             cell: recording.cell.clone(),
             chronicle: recording.chronicle.clone(),
+            index,
             event,
         })
+    }
+
+    /// Leg één gebeurtenis vast: haar grammen, en de regel in het journaal.
+    ///
+    /// Eén of twee vastleggingen zijn samen één gebeurtenis — een aanvraag die
+    /// ook geleverd wordt, is één ding dat iemand deed — dus ze delen één regel,
+    /// met beide grammen eraan.
+    ///
+    /// Wat de gebeurtenis **aanwijst** komt uit de vastgelegde velden: daarin
+    /// staat het zaakkenmerk of de bsn waarop een statusindicator haar lexostatus
+    /// bevraagt. De meting gaat vóór en ná, want een kroniek kent geen "ervoor"
+    /// zodra het gram er ligt.
+    fn record_as_event(
+        &mut self,
+        recordings: &[Recording],
+        at: NaiveDate,
+        actor: JournalActor,
+        kind: JournalKind,
+        description: String,
+    ) -> Result<Vec<RecordedFact>> {
+        let touched: BTreeSet<String> = recordings
+            .iter()
+            .map(|recording| recording.cell.clone())
+            .collect();
+        let bearing: BTreeMap<String, Value> = recordings
+            .iter()
+            .flat_map(|recording| recording.fields.clone())
+            .collect();
+        let before = self.read_indicators(&touched, &bearing, at);
+
+        let mut facts = Vec::with_capacity(recordings.len());
+        for recording in recordings {
+            facts.push(self.apply_recording(recording, at)?);
+        }
+
+        let after = self.read_indicators(&touched, &bearing, at);
+        let grams = facts.iter().map(RecordedFact::gram_ref).collect();
+        self.write_journal(JournalEntry {
+            seq: 0,
+            moment: at,
+            actor,
+            kind,
+            description,
+            grams,
+            changes: changes(&before, &after),
+            accepted: Vec::new(),
+            question: None,
+            parent: None,
+        });
+        Ok(facts)
+    }
+
+    /// Kom één vervallen termijn na, en schrijf er één journaalregel over.
+    ///
+    /// Wat de gebeurtenis aanwijst, staat in de velden die beide kanten
+    /// vastleggen — het zaakkenmerk voorop — en dat is precies waarop een
+    /// statusindicator over deze zaak te bevragen is.
+    fn settle_as_event(&mut self, due: &ObligationDue) -> Result<Vec<RecordedFact>> {
+        let touched = BTreeSet::from([due.payer.clone(), due.decided_by.clone()]);
+        let bearing = due.payment_event().fields;
+        let before = self.read_indicators(&touched, &bearing, due.vervaldatum);
+
+        let facts = self.settle(due)?;
+        // Lag de betaling er al, dan gebeurde er niets, en dan is er niets te
+        // verslaan: idempotentie is geen gebeurtenis (zie [`Self::settle`]).
+        if facts.is_empty() {
+            return Ok(facts);
+        }
+
+        let after = self.read_indicators(&touched, &bearing, due.vervaldatum);
+        let grams = facts.iter().map(RecordedFact::gram_ref).collect();
+        self.write_journal(JournalEntry {
+            seq: 0,
+            moment: due.vervaldatum,
+            actor: JournalActor::Klok,
+            kind: JournalKind::Betaling,
+            description: due.describe(),
+            grams,
+            changes: changes(&before, &after),
+            accepted: Vec::new(),
+            question: None,
+            parent: None,
+        });
+        Ok(facts)
+    }
+
+    /// Zet één regel in het journaal en geef haar plek terug.
+    ///
+    /// De plek is het volgnummer: het journaal groeit achteraan, zoals een
+    /// kroniek, dus een regel die er eenmaal staat verschuift niet meer — en
+    /// [`JournalEntry::parent`] mag daarnaar wijzen.
+    fn write_journal(&mut self, mut entry: JournalEntry) -> usize {
+        let seq = self.journal.len();
+        entry.seq = seq;
+        self.journal.push(entry);
+        seq
+    }
+
+    /// De verwijzing naar het laatste gram in één kroniek van één cel.
+    ///
+    /// `None` als die kroniek leeg is of niet bestaat; een journaalregel zonder
+    /// gramverwijzing is leesbaar, een verwijzing naar een gram dat er niet is
+    /// niet.
+    fn gram_ref(&self, cell: &str, chronicle: &str) -> Option<GramRef> {
+        let found = self.cells.get(cell)?;
+        let (index, event) = found.last_gram(chronicle)?;
+        Some(GramRef {
+            cell: cell.to_string(),
+            chronicle: chronicle.to_string(),
+            id: gram_id(cell, chronicle, index),
+            kind: gram_kind(event.intake),
+            name: event.name.clone(),
+        })
+    }
+
+    /// Wat een besluit aanwijst, vóórdat het genomen is.
+    ///
+    /// De parameters plus het zaakkenmerk dat eruit volgt. Het kenmerk komt uit
+    /// de besluit-definitie en niet uit het gram, en dat moet ook: de meting
+    /// "hoe stond het ervoor" gebeurt voordat het gram bestaat.
+    ///
+    /// Lukt het niet — een besluit dat de cel niet kent, een kenmerk dat niet te
+    /// vormen is — dan blijven de parameters over. Het besluit valt hieronder
+    /// alsnog om met de melding die erbij hoort; dit is niet de plek om dat te
+    /// melden.
+    fn decision_bearing(
+        &self,
+        cell: &str,
+        besluit: &str,
+        params: &BTreeMap<String, Value>,
+    ) -> BTreeMap<String, Value> {
+        let mut bearing = params.clone();
+        let zaakkenmerk = self
+            .cells
+            .get(cell)
+            .and_then(|found| found.besluit_definition(besluit).ok())
+            .and_then(|definition| definition.zaakkenmerk(cell, params).ok());
+        if let Some(zaakkenmerk) = zaakkenmerk {
+            bearing.insert(ZAAKKENMERK.to_string(), Value::String(zaakkenmerk));
+        }
+        bearing
+    }
+
+    /// Meet de stand van de zaak bij de cellen die deze gebeurtenis raakt.
+    ///
+    /// Alleen die cellen: een indicator van een cel waar niets gebeurde, levert
+    /// twee keer hetzelfde antwoord en dus geen verschil.
+    ///
+    /// Dit is een **meting van de opstelling** en geen verkeer over een
+    /// celgrens. De wereld reduceert hier haar eigen cellen langs hun publieke
+    /// ingang, buiten de veiligheidscontext en het transport om — precies zoals
+    /// ze dat voor een voorinvulling doet (zie [`crate::cell::Prefill`]). Er komt
+    /// dus geen `crossing` van, geen regel in het observatielog, en het
+    /// vraaggraf van de invarianten-gate ziet er niets van.
+    ///
+    /// Een reductie die niet lukt, levert geen meting en geen fout. Dat is de
+    /// juiste kant op: een indicator waarvan de reductie buiten haar eigen cel
+    /// zou reiken loopt hier stuk (de cel krijgt geen resolver mee), en dan
+    /// hoort er geen regel te komen in plaats van een gebeurtenis om te vallen.
+    fn read_indicators(
+        &self,
+        touched: &BTreeSet<String>,
+        bearing: &BTreeMap<String, Value>,
+        at: NaiveDate,
+    ) -> Vec<Reading> {
+        let mut readings = Vec::new();
+        for config in &self.definition.cells {
+            if !touched.contains(&config.id) {
+                continue;
+            }
+            let Some(cell) = self.cells.get(&config.id) else {
+                continue;
+            };
+            for indicator in &config.status_indicators {
+                let Some(params) = indicator.resolve(bearing) else {
+                    continue;
+                };
+                let Ok(answer) = cell.reduce(&indicator.lexostatus, &params, at) else {
+                    continue;
+                };
+                readings.push(Reading::of(&config.id, indicator.label(), &answer));
+            }
+        }
+        readings
     }
 
     /// Verstrijkt hier een termijn zonder dat het feit er ligt?
@@ -1380,23 +1729,26 @@ impl World {
         if !payer.pay_obligation(due)? {
             return Ok(Vec::new());
         }
+        let index = last_index(payer, BETALINGEN);
         let mut facts = vec![RecordedFact {
             cell: due.payer.clone(),
             chronicle: BETALINGEN.to_string(),
+            index,
             event: due.payment_event(),
         }];
 
-        if self
-            .cells
-            .get_mut(&due.decided_by)
-            .ok_or_else(|| SimulatorError::UnknownCell {
-                cell: due.decided_by.clone(),
-            })?
-            .note_obligation_paid(due)?
-        {
+        let noting =
+            self.cells
+                .get_mut(&due.decided_by)
+                .ok_or_else(|| SimulatorError::UnknownCell {
+                    cell: due.decided_by.clone(),
+                })?;
+        if noting.note_obligation_paid(due)? {
+            let index = last_index(noting, BETALINGEN);
             facts.push(RecordedFact {
                 cell: due.decided_by.clone(),
                 chronicle: BETALINGEN.to_string(),
+                index,
                 event: due.delivery_event(),
             });
         }
@@ -1528,6 +1880,91 @@ fn check_obligations(
                         "een kroniekstroom '{BETALINGEN}' met sleutel '{ZAAKKENMERK}'"
                     ),
                     found: reason,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// De plek van het laatste gram in één kroniek van één cel.
+///
+/// Nul als de stroom leeg of onbekend is; wie hier komt, heeft er net iets in
+/// vastgelegd, dus dat geval bestaat niet — en het is geen reden om een
+/// journaalregel te laten omvallen.
+fn last_index(cell: &Cell, chronicle: &str) -> usize {
+    cell.stream_len(chronicle)
+        .unwrap_or_default()
+        .saturating_sub(1)
+}
+
+/// De waarden die dit besluit van een andere cel accepteerde, voor het journaal.
+///
+/// Uit [`Decretogram::accepted_values`] — de ene lijst waarin beide wegen
+/// samenkomen (`accept_from` en een cel-bron van de wet) — verrijkt met wat de
+/// input erover vastlegde. Een waarde die de *wet* haalde heeft die verrijking
+/// niet, en dan staat er wat er wél bekend is in plaats van een verzonnen naam.
+fn accepted_values(gram: &Decretogram) -> Vec<AcceptedValue> {
+    gram.accepted_values()
+        .into_iter()
+        .map(|(name, cell)| {
+            let input = gram.inputs.get(name);
+            let accepted = match input.map(|input| &input.origin) {
+                Some(InputOrigin::Accepted {
+                    lexostatus,
+                    op_moment,
+                    ..
+                }) => (Some(lexostatus.clone()), Some(*op_moment)),
+                _ => (None, None),
+            };
+            AcceptedValue {
+                name: name.to_string(),
+                value: input.map(|input| input.value.clone()),
+                cell: cell.to_string(),
+                lexostatus: accepted.0,
+                op_moment: accepted.1,
+            }
+        })
+        .collect()
+}
+
+/// Toets de statusindicatoren van elke cel tegen wat die cel publiceert.
+///
+/// Bij het optuigen en niet bij de eerste meting: een indicator die zijn
+/// lexostatus niet kan bevragen levert stil nooit een verandering op, en dan is
+/// een typfout in het wereldbestand niet van "er gebeurde niets" te
+/// onderscheiden.
+fn check_status_indicators(configs: &[CellConfig], cells: &BTreeMap<String, Cell>) -> Result<()> {
+    for config in configs {
+        // Onbereikbaar leeg: elke cel uit de configuratie is hierboven opgetuigd.
+        let Some(cell) = cells.get(&config.id) else {
+            continue;
+        };
+        for indicator in &config.status_indicators {
+            let Some(definition) = config
+                .lexostatus_definitions
+                .iter()
+                .find(|candidate| candidate.name == indicator.lexostatus)
+            else {
+                return Err(SimulatorError::UnknownLexostatus {
+                    cell: config.id.clone(),
+                    requested: indicator.lexostatus.clone(),
+                    published: cell.published_names().join(", "),
+                });
+            };
+
+            let expected: BTreeSet<&str> = definition
+                .inputs
+                .iter()
+                .map(|input| input.name.as_str())
+                .collect();
+            let given: BTreeSet<&str> = indicator.params.keys().map(String::as_str).collect();
+            if expected != given {
+                return Err(SimulatorError::StatusIndicatorParams {
+                    cell: config.id.clone(),
+                    lexostatus: indicator.lexostatus.clone(),
+                    given: given.into_iter().collect::<Vec<_>>().join(", "),
+                    expected: expected.into_iter().collect::<Vec<_>>().join(", "),
                 });
             }
         }

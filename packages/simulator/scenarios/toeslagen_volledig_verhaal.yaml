@@ -53,6 +53,17 @@ cells:
           key: bsn
           latest: true
 
+    # De stand van de zaak bij deze cel: welke reducties het journaal vóór en ná
+    # elke gebeurtenis meet, om er een "was → is" van te maken. Casusdata — het
+    # platform weet alleen dát er indicatoren zijn, niet welke. `$veld` wijst een
+    # veld van de gebeurtenis aan; draagt een gebeurtenis dat veld niet, dan gaat
+    # deze indicator er niet over en wordt hij niet gereduceerd.
+    status_indicators:
+      - lexostatus: ingediende_aanvraag
+        label: ingediende aanvraag
+        params:
+          bsn: $bsn
+
   # De cel die het toetsingsinkomen vaststelt, en die later de verplichtingen
   # nakomt. Twee aanslagen: de tweede corrigeert de eerste, en dat verschil is
   # wat het tweede besluit zichtbaar maakt.
@@ -113,6 +124,18 @@ cells:
           chronicle: betalingen
           key: zaakkenmerk
           sum: bedrag
+
+    status_indicators:
+      - lexostatus: toetsingsinkomen
+        label: vastgesteld toetsingsinkomen
+        params:
+          bsn: $bsn
+      # Op het zaakkenmerk van het besluit: daarop groepeert deze cel haar
+      # betalingen, en dat is wat een betaling in haar velden draagt.
+      - lexostatus: betaald_tot_nu_toe
+        label: betaald
+        params:
+          zaakkenmerk: $zaakkenmerk
 
   - id: toeslagen
     # De naam waaronder deze cel zich uitgeeft. Het is een bewering: de
@@ -264,6 +287,20 @@ cells:
           chronicle: betalingen
           key: zaakkenmerk
           sum: bedrag
+
+    status_indicators:
+      - lexostatus: ontvangen_aanvraag
+        label: ontvangen aanvraag
+        params:
+          bsn: $bsn
+      - lexostatus: zorgtoeslagbeschikking
+        label: toekenningspositie
+        params:
+          zaakkenmerk: $zaakkenmerk
+      - lexostatus: betaald_tot_nu_toe
+        label: betaald volgens de meldingen
+        params:
+          zaakkenmerk: $zaakkenmerk
 
 actions:
   - id: burger.aanvraag

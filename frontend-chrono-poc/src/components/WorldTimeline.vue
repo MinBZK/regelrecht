@@ -11,6 +11,10 @@ import { clockIndex, gramKind, timelineMoments } from '../world/snapshot.js';
 // een dag waarop drie dingen gebeurden zou drie keer dezelfde datum op de lijn
 // staan. Het punt zegt wel wát er die dag ligt — de naam bij één gram, het
 // aantal bij meer — en de grammen zelf staan in de kolom van hun cel.
+//
+// Een punt is een knop: klikken erop meldt de dag, en het journaal springt naar
+// de regels van die dag. De tijdlijn weet zelf niets van het journaal — ze meldt
+// een moment, en de pagina brengt de twee bij elkaar.
 
 const props = defineProps({
   /** Het beeld van de wereld. */
@@ -21,7 +25,7 @@ const props = defineProps({
   busy: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['advance']);
+const emit = defineEmits(['advance', 'select']);
 
 const clock = computed(() => props.snapshot?.clock ?? null);
 const moments = computed(() => timelineMoments(props.snapshot, { newGramCounts: props.previousCounts }));
@@ -82,9 +86,11 @@ function icon(point) {
       <nldd-step-indicator-item
         v-for="point in moments"
         :key="point.moment"
+        button
         :status="point.step"
         :icon="icon(point)"
         :text="label(point)"
+        @click="emit('select', point.moment)"
       ></nldd-step-indicator-item>
     </nldd-step-indicator>
   </nldd-container>

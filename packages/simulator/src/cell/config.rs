@@ -16,6 +16,7 @@
 use crate::cell::besluit::{BesluitDefinition, GramFields};
 use crate::cell::chronicle::ChronicleStream;
 use crate::error::{Result, SimulatorError, Subject};
+use crate::journal::StatusIndicator;
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
@@ -73,6 +74,17 @@ pub struct CellConfig {
     /// tussen twee organisaties en geen eigenschap van het recht.
     #[serde(default)]
     pub accepts_from: Vec<AcceptedSource>,
+    /// De lexostatussen die samen "de stand van de zaak" van deze cel vormen.
+    ///
+    /// Casusdata, en met opzet een eigen lijst naast
+    /// [`Self::lexostatus_definitions`]: niet elke gepubliceerde naam is een
+    /// stand (een som over betalingen wel, een losse vastlegging misschien
+    /// niet), en welke dat zijn is een keuze van de casus. Het journaal
+    /// reduceert ze vóór en ná elke gebeurtenis die deze cel raakt en zet het
+    /// verschil in de regel — zie [`crate::journal`], ook voor waarom die
+    /// meting geen celgrens-verkeer is.
+    #[serde(default)]
+    pub status_indicators: Vec<StatusIndicator>,
 }
 
 /// Eén afspraak over een cel-bron van de wetten van deze cel (tier 3).

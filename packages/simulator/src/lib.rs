@@ -60,6 +60,13 @@
 //! elk label komt uit het wereldbestand. [`World::reset`] begint opnieuw uit
 //! datzelfde bestand.
 //!
+//! Daarin zit ook het **journaal**: één verhaal in tijdsvolgorde van wie wat
+//! deed, met per regel de grammen die erdoor ontstonden en wat er aan de stand
+//! van de zaak veranderde. Welke lexostatussen die stand vormen, staat als
+//! casusdata in het wereldbestand ([`StatusIndicator`]); de vóór/ná-meting
+//! ernaast is een meting van de opstelling en geen verkeer over een celgrens —
+//! zie de moduledocs van [`journal`].
+//!
 //! Het eigenlijke product zijn de **invarianten**. Een scenario declareert het
 //! toegestane vraaggraf; [`invariant::check_invariants`] legt daar het
 //! feitelijke graf naast, berekent uit de celconfiguraties wat het recht van
@@ -87,6 +94,7 @@ pub mod cell;
 mod corpus;
 pub mod error;
 pub mod invariant;
+pub mod journal;
 // Meetinstrument, geen onderdeel van de opstelling: zie de moduledocs. Met opzet
 // geen re-export hieronder — wie hem gebruikt, noemt hem bij zijn volle naam, en
 // geen ander bestand in `src/` mag dat doen.
@@ -114,6 +122,10 @@ pub use error::{Result, SimulatorError, Subject};
 pub use invariant::{
     check_invariants, defined_graph, observed_graph, DecisionTraffic, DeclaredQuery,
     InvariantFailure, QueryEdge, Traffic,
+};
+pub use journal::{
+    AcceptedValue, GramRef, IndicatorParam, JournalActor, JournalEntry, JournalKind, StatusChange,
+    StatusIndicator,
 };
 pub use regelrecht_engine::Value;
 // Om dezelfde reden: `SimulatorError::Engine` draagt hem, dus wie de fouten van

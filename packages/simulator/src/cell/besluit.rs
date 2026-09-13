@@ -2392,6 +2392,7 @@ mod tests {
         definition.params.push(DocumentedParameter {
             name: ZAAKKENMERK.to_string(),
             value_type: crate::cell::ParameterType::String,
+            prefill: None,
         });
         let origin = BesluitInput::AcceptFrom {
             cell: "belastingdienst".to_string(),
