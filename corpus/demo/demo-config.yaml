@@ -508,7 +508,6 @@ slides:
   - kind: section
     title: Demo RegelRecht
     lines:
-      - Proof of concept
       - Compleet verhaal, geen eindproduct
       - We maken beleid door te doen
   - kind: demo
@@ -590,7 +589,7 @@ slides:
     profile: claudia
   - kind: closing
     overline: Demo RegelRecht
-    title: Proof of concept
+    title: Van wet naar digitale werking
     lines:
       - Compleet verhaal, **geen eindproduct**
       - We maken beleid **door te doen**
