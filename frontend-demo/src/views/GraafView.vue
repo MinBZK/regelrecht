@@ -246,7 +246,14 @@ function unique(laws) {
                een horizontale groep en kent geen staande variant. Zelf rechtop
                zetten zou tegen het component in werken; dit is dezelfde bediening
                in de vorm die het design system ervoor heeft. -->
-          <nldd-button-bar class="graph-zoom" variant="neutral-base">
+          <!-- `neutral-tinted` is de standaardvariant van de balk, en de enige
+               die hier een zichtbare hover geeft. `neutral-base` zette de balk
+               op wit met een hover van 0.974: dat verschil zie je niet, en
+               omdat de knop geen rand heeft viel hij onder de muis weg in
+               plaats van op te lichten. `neutral-transparent` is nog erger, die
+               heeft helemaal geen hover-vulling. Getint geeft 0.923 in rust en
+               0.898 onder de muis. -->
+          <nldd-button-bar class="graph-zoom" variant="neutral-tinted">
             <nldd-icon-button icon="add" text="Inzoomen" @click="zoomIn()"></nldd-icon-button>
             <nldd-icon-button icon="remove" text="Uitzoomen" @click="zoomOut()"></nldd-icon-button>
             <nldd-button-bar-divider></nldd-button-bar-divider>
