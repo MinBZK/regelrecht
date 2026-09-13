@@ -40,6 +40,17 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Het rechtskarakter dat een uitkomst tot een besluit maakt.
+///
+/// Een decretogram **is** een engine-uitkomst met `legal_character: BESCHIKKING`
+/// (RFC-022 §1.2, ontwerpprincipe 3). Een toets, een waardebepaling of een
+/// feitelijke handeling is er geen: wie die als besluit zou vastleggen, legt een
+/// gram in de stroom met beschikkingen dat geen beschikking is, en dan zegt een
+/// reductie erover iets anders dan de wet. Het optuigen weigert daarom elke
+/// besluit-definitie waarvan de aansturende uitkomst onder een geladen versie
+/// iets anders draagt dan deze waarde.
+pub const BESCHIKKING: &str = "BESCHIKKING";
+
 /// De kroniekstroom waarin een cel haar eigen decretogrammen legt.
 ///
 /// Eén vaste naam per cel, automatisch aanwezig zodra de cel besluit-definities
@@ -87,11 +98,13 @@ pub const LEGAL_CHARACTER: &str = "legal_character";
 pub const INPUTS: &str = "inputs";
 /// Veld met het uitgerekende betalingsschema van dit besluit.
 pub const OBLIGATIONS: &str = "obligations";
+/// Veld met de eigen kronieken waarop de uitvoering leunde, met hun stand.
+pub const CHRONICLE_SOURCES: &str = "chronicle_sources";
 /// Veld met het volledige RFC-013 Execution Receipt.
 pub const RECEIPT: &str = "receipt";
 
 /// De vaste velden van een decretogram, in de volgorde waarin ze hierboven staan.
-const FIXED_FIELDS: [&str; 10] = [
+const FIXED_FIELDS: [&str; 11] = [
     ZAAKKENMERK,
     BESLUIT,
     REGULATION,
@@ -101,6 +114,7 @@ const FIXED_FIELDS: [&str; 10] = [
     LEGAL_CHARACTER,
     INPUTS,
     OBLIGATIONS,
+    CHRONICLE_SOURCES,
     RECEIPT,
 ];
 
@@ -873,6 +887,50 @@ impl InputOrigin {
     }
 }
 
+/// Eén eigen kroniek waarop een uitvoering leunde, met haar stand op dat moment.
+///
+/// RFC-022 §1.3: draagt een kroniekstroom bij aan een uitvoering, dan worden
+/// haar inhoud en versie vastgelegd zodat de uitvoering te reproduceren is. Voor
+/// een kroniek is "de versie" haar stand op `op_moment` — alles wat toen
+/// vastlag — en "de inhoud" een hash over precies die grammen. De waarden die
+/// de engine eruit las, staan per stuk in de trace van het receipt; dit zegt
+/// waaruit ze gelezen zijn, en of dat nog dezelfde stroom is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChronicleSource {
+    /// De eigen stroom die als databron klaarstond.
+    pub chronicle: String,
+    /// Het moment waarop de stand genomen is: het moment van het besluit.
+    pub op_moment: NaiveDate,
+    /// Hoeveel grammen er op dat moment in de stroom lagen.
+    pub grams: usize,
+    /// Een hash over die grammen, in de volgorde van de tijdas.
+    pub content_hash: String,
+}
+
+impl ChronicleSource {
+    /// Deze bron als vastlegbare waarde, voor in het decretogram.
+    fn as_value(&self) -> Value {
+        Value::Object(BTreeMap::from([
+            (
+                "chronicle".to_string(),
+                Value::String(self.chronicle.clone()),
+            ),
+            (
+                "op_moment".to_string(),
+                Value::String(self.op_moment.to_string()),
+            ),
+            (
+                "grams".to_string(),
+                Value::Int(i64::try_from(self.grams).unwrap_or(i64::MAX)),
+            ),
+            (
+                "content_hash".to_string(),
+                Value::String(self.content_hash.clone()),
+            ),
+        ]))
+    }
+}
+
 /// Eén input van een besluit: de waarde waarop besloten is, met haar herkomst.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecretogramInput {
@@ -922,8 +980,12 @@ pub struct Decretogram {
     /// uit de afwezigheid van een weigering af te moeten leiden.
     pub besloten_door: String,
     /// Het rechtskarakter dat de regeling aan deze uitkomst geeft
-    /// (`produces.legal_character`), bijvoorbeeld `BESCHIKKING`.
-    pub legal_character: Option<String>,
+    /// (`produces.legal_character`). Altijd [`BESCHIKKING`]: dat is wat een
+    /// decretogram tot een decretogram maakt (RFC-022 §1.2), en het optuigen én
+    /// het besluit weigeren elke andere waarde. Dat het er toch als veld staat,
+    /// is zodat het gram zélf zegt wat het is en een lezer het niet uit een
+    /// afwezige weigering hoeft af te leiden.
+    pub legal_character: String,
     /// De uitkomsten van het besluit: de aansturende uitkomst plus wat de
     /// definitie erbij noemt. Alle samen in één gram.
     pub outputs: BTreeMap<String, Value>,
@@ -935,6 +997,14 @@ pub struct Decretogram {
     /// staat er vóórdat er iets betaald is, en verandert niet meer doordat er
     /// betaald wordt. Leeg als het besluit niets toekent.
     pub obligations: Vec<ObligationDue>,
+    /// De eigen kronieken die als databron klaarstonden, met hun stand op het
+    /// moment van het besluit (RFC-022 §1.3).
+    ///
+    /// Wat de engine daaruit las, staat niet in [`Self::inputs`] — die draagt
+    /// alleen wat de besluit-definitie zelf aanleverde — maar in de trace van
+    /// het receipt. Zonder deze lijst is niet te zeggen op welke stand van welke
+    /// kroniek de uitvoering leunde, en dan is het besluit niet te reproduceren.
+    pub chronicle_sources: Vec<ChronicleSource>,
     /// Het volledige receipt van de uitvoering.
     pub receipt: ExecutionReceipt,
 }
@@ -1007,7 +1077,7 @@ impl Decretogram {
             ),
             (
                 LEGAL_CHARACTER.to_string(),
-                optional_text(self.legal_character.as_deref()),
+                Value::String(self.legal_character.clone()),
             ),
             (
                 INPUTS.to_string(),
@@ -1032,6 +1102,15 @@ impl Decretogram {
                     self.obligations
                         .iter()
                         .map(ObligationDue::as_value)
+                        .collect(),
+                ),
+            ),
+            (
+                CHRONICLE_SOURCES.to_string(),
+                Value::Array(
+                    self.chronicle_sources
+                        .iter()
+                        .map(ChronicleSource::as_value)
                         .collect(),
                 ),
             ),
@@ -1328,6 +1407,10 @@ impl BesluitDefinition {
             &self.regulation,
             self.recorded_outputs(),
         )?;
+        // De aansturende uitkomst *is* het besluit, dus zij moet een beschikking
+        // zijn — onder elke geladen versie, want een besluit over een ouder
+        // moment landt op een oudere versie (RFC-022 §1.2).
+        surface.check_beschikking(cell, &self.name, &self.regulation, &self.output)?;
 
         // De uitkomsten komen in hetzelfde gram als de vaste velden. Een
         // uitkomst die zo heet, zou er een overschrijven — het gram zou dan
@@ -2622,6 +2705,13 @@ params:
             outputs: BTreeMap::from([(
                 "wet_op_de_zorgtoeslag".to_string(),
                 BTreeSet::from([output.to_string()]),
+            )]),
+            legal_characters: BTreeMap::from([(
+                "wet_op_de_zorgtoeslag".to_string(),
+                BTreeMap::from([(
+                    output.to_string(),
+                    BTreeSet::from([Some(BESCHIKKING.to_string())]),
+                )]),
             )]),
             regulation_inputs: BTreeMap::new(),
             streams: BTreeMap::new(),

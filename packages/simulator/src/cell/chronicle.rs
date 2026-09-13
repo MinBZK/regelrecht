@@ -19,6 +19,7 @@ use crate::values::equivalent;
 use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Het kanaal waarlangs een feit de cel binnenkwam of in de cel ontstond.
@@ -49,7 +50,12 @@ pub enum Intake {
 /// op *welk moment* ([`Self::op_moment`]). [`Self::intake`] vult dat aan met
 /// *waarlangs*. Een vastlegging die alleen een veldwaarde en een datum draagt,
 /// laat de helft van die vragen onbeantwoord.
-#[derive(Debug, Clone, Deserialize)]
+///
+/// `Serialize` hoort erbij voor één ding: de hash over een stroom zoals ze op
+/// een moment lag (zie [`ReducedStream::content_hash`]). Die hash gaat over het
+/// hele gram — naam, kanaal, actor, grondslag, moment en velden — want een
+/// vastlegging die op één van die punten anders is, is een andere vastlegging.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChronicleEvent {
     /// Wat er gebeurde, in de woorden van de cel: `inkomenslevering`,
@@ -118,8 +124,18 @@ pub(crate) struct ReducedStream {
     pub(crate) stream: String,
     /// Het sleutelveld van de stroom.
     pub(crate) key: String,
-    /// Per sleutelwaarde één samengevoegd record.
+    /// Per sleutelwaarde de velden van de laatste vastlegging over dat
+    /// onderwerp — één gram in zijn geheel, geen samenraapsel.
     pub(crate) records: Vec<BTreeMap<String, Value>>,
+    /// Hoeveel grammen er op het moment in de stroom lagen.
+    pub(crate) grams: usize,
+    /// Een hash over precies die grammen, in de volgorde van de tijdas.
+    ///
+    /// Dit is de "inhoud en versie" die RFC-022 §1.3 vraagt van een kroniek die
+    /// aan een uitvoering bijdraagt: een besluit dat deze hash draagt, is na te
+    /// rekenen zolang de stroom tot dit moment dezelfde grammen draagt — en
+    /// een kroniek groeit alleen, dus dat blijft zo.
+    pub(crate) content_hash: String,
 }
 
 impl ChronicleStore {
@@ -402,9 +418,20 @@ impl ChronicleStore {
     /// De feiten zoals ze op `op_moment` in deze cel bekend waren.
     ///
     /// Dit is de tijdreductie: vastleggingen ná `op_moment` bestaan voor deze
-    /// vraag niet, en van de rest wint per sleutel en per veld de laatste
-    /// vastlegging. Een vraag over een moment in het verleden levert dus het
-    /// beeld van toen, niet het beeld van nu.
+    /// vraag niet, en van de rest wint per sleutelwaarde de **laatste
+    /// vastlegging, in haar geheel**. Een vraag over een moment in het verleden
+    /// levert dus het beeld van toen, niet het beeld van nu.
+    ///
+    /// In haar geheel, en niet veld voor veld: wat samen vastgelegd is, blijft
+    /// samen, en wat apart vastgelegd is wordt niet stil tot één record
+    /// samengevoegd dat als vastlegging nooit bestaan heeft. Dat is de
+    /// elementariteit van de paper — elk chronolexogram is één vaststelling op
+    /// één moment — en RFC-022 zegt het de engine na: de reductie redeneert
+    /// over *vaststellingen op momenten*, niet over een toestand van de wereld.
+    /// Een veld dat de laatste vastlegging niet draagt, is op dit moment dus
+    /// niet vastgesteld, ook als een eerdere het wél droeg. Dezelfde regel als
+    /// [`Self::latest_recording`], en met opzet: een bron-cel en een engine horen
+    /// over dezelfde kroniek hetzelfde te zien.
     ///
     /// Twee vastleggingen op hetzelfde moment kunnen niet op de tijdas uit
     /// elkaar gehouden worden. De volgorde in de configuratie beslist dan, en de
@@ -423,27 +450,44 @@ impl ChronicleStore {
                     .collect();
                 events.sort_by_key(|event| event.op_moment);
 
-                let mut per_key: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
-                for event in events {
+                let mut per_key: BTreeMap<String, &ChronicleEvent> = BTreeMap::new();
+                for event in &events {
                     let Some(key) = record_key(&event.fields, &stream.key) else {
                         continue;
                     };
-                    per_key.entry(key).or_default().extend(
-                        event
-                            .fields
-                            .iter()
-                            .map(|(name, value)| (name.clone(), value.clone())),
-                    );
+                    per_key.insert(key, event);
                 }
 
                 ReducedStream {
                     stream: stream.stream.clone(),
                     key: stream.key.clone(),
-                    records: per_key.into_values().collect(),
+                    records: per_key
+                        .into_values()
+                        .map(|event| event.fields.clone())
+                        .collect(),
+                    grams: events.len(),
+                    content_hash: content_hash(&events),
                 }
             })
             .collect()
     }
+}
+
+/// Een hash over een rij grammen, zoals ze op de tijdas liggen.
+///
+/// Over de serialisatie van de grammen zelf en niet over een samenvatting: twee
+/// stromen met dezelfde hash dragen dezelfde vastleggingen in dezelfde
+/// volgorde, en dat is precies wat een besluit nodig heeft om te zeggen waarop
+/// het leunde (RFC-022 §1.3). SHA-256, dezelfde keuze als de engine voor de
+/// hash van een regeling in het receipt.
+fn content_hash(events: &[&ChronicleEvent]) -> String {
+    // Onbereikbaar: een gram serialiseert altijd — de velden zijn `Value`s die
+    // uit YAML kwamen of door het platform gemaakt zijn. Zou het toch falen, dan
+    // is een lege tekst hashen erger dan een herkenbare, dus dat staat er.
+    let text =
+        serde_yaml_ng::to_string(events).unwrap_or_else(|_| "niet te serialiseren".to_string());
+    let digest = Sha256::digest(text.as_bytes());
+    format!("sha256:{digest:x}")
 }
 
 /// De waarde van een veld, hoofdletterongevoelig opgezocht.
@@ -561,6 +605,88 @@ mod tests {
         assert_eq!(
             reduced[0].records[0].get("partnerschap_type"),
             Some(&Value::String("HUWELIJK".to_string()))
+        );
+    }
+
+    /// Eén vastlegging gaat er in haar geheel uit, geen samenraapsel.
+    ///
+    /// De paper: wat samen ontstaat, wordt samen vastgelegd, en een reductie
+    /// redeneert over vaststellingen op momenten en niet over een toestand.
+    /// Draagt de laatste vastlegging een veld niet, dan is dat veld op dit
+    /// moment niet vastgesteld — ook al droeg een eerdere het wél. Zou de
+    /// reductie velden over vastleggingen heen samenvoegen, dan leverde ze een
+    /// record dat als vastlegging nooit bestaan heeft.
+    #[test]
+    fn de_reductie_levert_de_laatste_vastlegging_in_haar_geheel() {
+        let store = store(vec![
+            event(
+                "2024-01-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("HUWELIJK".to_string())),
+                    ("partner_bsn", Value::String("2".to_string())),
+                ],
+            ),
+            event(
+                "2024-06-01",
+                &[
+                    ("bsn", Value::String("1".to_string())),
+                    ("partnerschap_type", Value::String("GEEN".to_string())),
+                ],
+            ),
+        ]);
+
+        let reduced = store.reduce_to(date("2025-01-01"));
+        let record = &reduced[0].records[0];
+        assert_eq!(
+            record.get("partnerschap_type"),
+            Some(&Value::String("GEEN".to_string()))
+        );
+        assert_eq!(
+            record.get("partner_bsn"),
+            None,
+            "een veld dat de laatste vastlegging niet draagt, komt niet uit een eerdere"
+        );
+        assert_eq!(record.len(), 2, "precies de velden van die ene vastlegging");
+    }
+
+    /// De stand van een stroom is te benoemen: hoeveel grammen, en welke.
+    ///
+    /// Dezelfde grammen geven dezelfde hash; één gram erbij geeft een andere,
+    /// en een moment vóór dat gram geeft de oude terug. Dat is wat een besluit
+    /// nodig heeft om te zeggen waarop het leunde (RFC-022 §1.3).
+    #[test]
+    fn de_stand_van_een_stroom_draagt_een_hash_over_precies_haar_grammen() {
+        let eerste = event("2024-01-01", &[("bsn", Value::String("1".to_string()))]);
+        let tweede = event("2024-06-01", &[("bsn", Value::String("1".to_string()))]);
+
+        let een = store(vec![eerste.clone()]).reduce_to(date("2025-01-01"));
+        let twee = store(vec![eerste.clone(), tweede]).reduce_to(date("2025-01-01"));
+        let twee_op_maart = store(vec![
+            eerste.clone(),
+            event("2024-06-01", &[("bsn", Value::String("1".to_string()))]),
+        ])
+        .reduce_to(date("2024-03-01"));
+
+        assert_eq!(een[0].grams, 1);
+        assert_eq!(twee[0].grams, 2);
+        assert!(
+            een[0].content_hash.starts_with("sha256:"),
+            "de hash noemt haar algoritme: {}",
+            een[0].content_hash
+        );
+        assert_ne!(
+            een[0].content_hash, twee[0].content_hash,
+            "een gram erbij is een andere stand"
+        );
+        assert_eq!(
+            een[0].content_hash, twee_op_maart[0].content_hash,
+            "op een moment vóór het tweede gram is de stand dezelfde als zonder dat gram"
+        );
+        assert_eq!(
+            store(vec![eerste]).reduce_to(date("2025-01-01"))[0].content_hash,
+            een[0].content_hash,
+            "dezelfde grammen, dezelfde hash"
         );
     }
 

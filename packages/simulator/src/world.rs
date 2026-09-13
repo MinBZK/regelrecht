@@ -47,8 +47,8 @@
 use crate::accept::CellBridge;
 use crate::cell::{
     check_documented_params, check_parameter_value, check_prefill_values, BesluitDefinition, Cell,
-    CellConfig, ChronicleEvent, Decretogram, DocumentedParameter, InputOrigin, Intake, Lexostatus,
-    ObligationDue, Prefill, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
+    CellConfig, ChronicleEvent, DecisionContext, Decretogram, DocumentedParameter, InputOrigin,
+    Intake, Lexostatus, ObligationDue, Prefill, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
 };
 use crate::error::{Result, SimulatorError, Subject};
 use crate::journal::{
@@ -786,6 +786,7 @@ impl World {
             cell.check_recording(&target.chronicle, &target.event(fixture.at))?;
         }
 
+        check_cell_ids_shadow_no_regulation(configs)?;
         check_peers_exist(configs, &cells)?;
         check_obligations(configs, &cells, &definition.settings)?;
         check_actions(&definition.actions, &cells)?;
@@ -1222,8 +1223,13 @@ impl World {
                 cell: cell.to_string(),
             });
         };
+        // Eén identiteit voor het hele besluit: dezelfde die elke vraag over de
+        // grens ondertekent, draagt straks het gram (`besloten_door`). Twee
+        // registers voor "wie is dit" zouden bij de eerste echte ondertekening
+        // uiteen gaan lopen.
+        let identity = self.identity_of(cell);
         let bridge = Rc::new(CellBridge::new(
-            Identity::for_cell(cell),
+            identity.clone(),
             besluit,
             deciding.accepts_from().cloned().collect::<Vec<_>>(),
             std::mem::take(&mut self.cells),
@@ -1233,6 +1239,7 @@ impl World {
             &bridge,
             &mut deciding,
             besluit,
+            identity.name(),
             params,
             &self.settings,
             op_moment,
@@ -1358,6 +1365,26 @@ impl World {
         ))
     }
 
+    /// De identiteit van een cel: haar veiligheidscontext, zoals het wereldbestand
+    /// die aan haar bindt.
+    ///
+    /// Het cel-id is het adres; de naam is wat de cel beweert te zijn
+    /// (`identity:` op de cel, standaard het id). De wereld houdt die binding —
+    /// niet de cel, want wie zij zegt te zijn is geen eigenschap van haar
+    /// kronieken (RFC-022 §2) — en geeft haar mee aan elke vraag over de grens
+    /// en aan elk besluit. Een cel die de wereld niet kent, komt hier niet: elke
+    /// aanroeper heeft haar bestaan al vastgesteld.
+    fn identity_of(&self, cell: &str) -> Identity {
+        let name = self
+            .definition
+            .cells
+            .iter()
+            .find(|config| config.id == cell)
+            .and_then(|config| config.identity.as_deref())
+            .unwrap_or(cell);
+        Identity::named(cell, name)
+    }
+
     /// De instellingen waarop dit besluit leunde, uit het wereldbestand.
     ///
     /// Uit de definitie en niet uit het gram: het gram draagt het uitgerekende
@@ -1387,19 +1414,23 @@ impl World {
         bridge: &Rc<CellBridge>,
         deciding: &mut Cell,
         besluit: &str,
+        identity: &str,
         params: &BTreeMap<String, Value>,
         settings: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
     ) -> Result<Decretogram> {
-        let requests = deciding.acceptance_requests(besluit, params, op_moment)?;
+        let requests = deciding.acceptance_requests(besluit, identity, params, op_moment)?;
         let accepted = bridge.accept_all(&requests, op_moment)?;
         let shared: Rc<CellBridge> = Rc::clone(bridge);
         let resolver: Rc<dyn CellResolver> = shared;
         deciding.decide(
             besluit,
             params,
-            settings,
-            op_moment,
+            DecisionContext {
+                identity,
+                op_moment,
+                settings,
+            },
             &accepted,
             Some(resolver),
         )
@@ -1776,6 +1807,27 @@ impl World {
     pub fn pending_triggers(&self) -> usize {
         self.pending.len()
     }
+}
+
+/// Is geen enkel cel-id ook de `$id` van een regeling die een cel laadt?
+///
+/// RFC-022 §4.2, en onvoorwaardelijk: een cel-id dat een geladen regeling
+/// overschaduwt faalt bij het laden, want een vraag aan die cel zou door de
+/// regeling beantwoord worden en niemand zou het zien. De engine toetst dat al
+/// per cel, voor de cellen die haar resolver kent; alleen de wereld heeft álle
+/// cel-ids en álle geladen regelingen naast elkaar, en een cel die (nog) niet in
+/// een `accepts_from` staat, is er niet minder een cel om.
+fn check_cell_ids_shadow_no_regulation(configs: &[CellConfig]) -> Result<()> {
+    let ids: BTreeSet<&str> = configs.iter().map(|config| config.id.as_str()).collect();
+    for config in configs {
+        if let Some(law) = config.laws.iter().find(|law| ids.contains(law.as_str())) {
+            return Err(SimulatorError::CellIdShadowsRegulation {
+                cell: law.clone(),
+                loaded_by: config.id.clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Bestaat elke cel waarvan er in deze wereld geaccepteerd wordt?
@@ -3170,6 +3222,33 @@ laws: []
     /// verse wereld uit; een scenario zet er alleen stappen bovenop. Weigert het
     /// een typfout niet, dan valt een onbekend veld stil weg en doet een actie of
     /// een termijn niets zonder dat iemand het merkt.
+    /// Een cel-id dat de `$id` van een geladen regeling is, valt bij het laden
+    /// van de wereld (RFC-022 §4.2) — ook als geen enkele `accepts_from` die cel
+    /// noemt, want dan heeft de engine niets om op te toetsen.
+    #[test]
+    fn een_cel_id_dat_een_geladen_regeling_overschaduwt_wordt_geweigerd() {
+        let definition = WorldDefinition::from_yaml(
+            r"
+clock:
+  start: 2024-01-01
+cells:
+  - id: regeling_standaardpremie
+    laws: []
+  - id: toeslagen
+    laws:
+      - regeling_standaardpremie
+",
+        )
+        .unwrap_or_else(|e| panic!("het wereldbestand moet leesbaar zijn: {e}"));
+        let err = World::from_definition(&definition, &regulation_root())
+            .expect_err("een cel-id dat een regeling overschaduwt hoort te falen");
+        let SimulatorError::CellIdShadowsRegulation { cell, loaded_by } = &err else {
+            panic!("verwachtte CellIdShadowsRegulation, kreeg {err}");
+        };
+        assert_eq!(cell, "regeling_standaardpremie");
+        assert_eq!(loaded_by, "toeslagen");
+    }
+
     #[test]
     fn een_wereldbestand_is_los_te_lezen_en_weigert_een_typfout() {
         let yaml = |sleutel: &str| {

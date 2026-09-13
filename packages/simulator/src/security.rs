@@ -27,37 +27,57 @@ use std::fmt;
 /// apart).
 pub const SIMULATED_SIGNATURE_PREFIX: &str = "GESIMULEERDE-ONDERTEKENING door ";
 
-/// Wie er vraagt.
+/// Wie er handelt: de identiteit van een cel, zoals haar veiligheidscontext die
+/// draagt.
 ///
 /// De binding van de veiligheidscontext is **Open Question 2** in RFC-022 en
 /// dus onbeslist. Deze versie kiest de eenvoudigste vorm die de vraag openhoudt:
-/// één identiteit per cel, die de cel zelf is. Er is nog geen medewerker, geen
-/// zaak en geen mandaat — komt dat er, dan krijgt dit type velden en hoeft geen
-/// enkele aanroeper te veranderen.
+/// één identiteit per cel. Er is nog geen medewerker, geen zaak en geen mandaat
+/// — komt dat er, dan krijgt dit type velden en hoeft geen enkele aanroeper te
+/// veranderen.
 ///
-/// Eén naam en niet twee: het **cel-id**, waar het transport de peer op vindt en
-/// waarop het vraaggraf gaat. De naam waaronder een cel zich *uitgeeft*
-/// (`identity:` in het wereldbestand) staat met opzet níet hier maar op de cel,
-/// en wordt alleen bij een besluit naast de wet gelegd — zie
-/// [`crate::Cell::decide`]. Twee registers voor "wie is dit" zouden bij de
-/// eerste echte ondertekening uiteen gaan lopen, en dan is niet meer te zeggen
-/// wie er getekend heeft.
+/// Twee namen, en ze doen verschillende dingen:
+///
+/// - het **cel-id** is het adres: waar het transport de peer op vindt en waarop
+///   het vraaggraf gaat;
+/// - de **naam** is wie de cel *beweert* te zijn — `identity:` in het
+///   wereldbestand, standaard het cel-id. Dat is de bewering die bij een besluit
+///   naast het bevoegd gezag van de wet gelegd wordt, en het is precies wat een
+///   ondertekening later moet bewijzen. Daarom woont ze hier en niet op de cel:
+///   een cel houdt kronieken en reduceert (RFC-022 §2), en wie zij zegt te zijn
+///   is een eigenschap van haar veiligheidscontext.
+///
+/// Eén register en niet twee: de naam die een vraag ondertekent en de naam die
+/// een besluit draagt, komen uit hetzelfde type. Zouden ze uiteen kunnen lopen,
+/// dan tekent straks een ander dan wie besloot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
     cell: String,
+    name: String,
 }
 
 impl Identity {
-    /// De identiteit van een cel.
+    /// De identiteit van een cel die zich onder haar eigen cel-id uitgeeft.
     pub fn for_cell(cell: &str) -> Self {
+        Self::named(cell, cell)
+    }
+
+    /// De identiteit van een cel die zich onder een eigen naam uitgeeft.
+    pub fn named(cell: &str, name: &str) -> Self {
         Self {
             cell: cell.to_string(),
+            name: name.to_string(),
         }
     }
 
-    /// De cel waarvoor deze identiteit staat.
+    /// De cel waarvoor deze identiteit staat: het adres.
     pub fn cell(&self) -> &str {
         &self.cell
+    }
+
+    /// De naam waaronder deze cel zich uitgeeft: de bewering.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 

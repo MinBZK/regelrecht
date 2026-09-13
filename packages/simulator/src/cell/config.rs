@@ -37,6 +37,12 @@ pub struct CellConfig {
     /// nooit een gezag: uit deze regel valt geen bevoegdheid te lezen die de
     /// wet niet toekent.
     ///
+    /// De naam landt niet in de cel maar in haar **veiligheidscontext**
+    /// ([`crate::Identity`]): wie een cel zegt te zijn, is wat een ondertekening
+    /// straks moet bewijzen, en dat is geen eigenschap van haar kronieken
+    /// (RFC-022 §2). Het wereldbestand is hier de plek waar die context aan de
+    /// cel gebonden wordt — de vorm daarvan is Open Question 2 in de RFC.
+    ///
     /// Het cel-id blijft waar het transport op vindt en waar het vraaggraf op
     /// gaat; deze naam staat los daarvan, want een organisatie heet in de wet
     /// zelden zoals haar systeem heet.
@@ -576,6 +582,9 @@ pub(crate) struct CellSurface<'a> {
     pub(crate) laws: &'a [String],
     /// Per regeling de uitkomstnamen, over alle geladen versies heen.
     pub(crate) outputs: BTreeMap<String, BTreeSet<String>>,
+    /// Per regeling en per uitkomst de rechtskarakters die de geladen versies
+    /// eraan geven (`None` als een versie er geen op zet).
+    pub(crate) legal_characters: BTreeMap<String, BTreeMap<String, BTreeSet<Option<String>>>>,
     /// Per regeling de namen die ze als parameter of input declareert, over alle
     /// geladen versies heen. Dit is wat een besluit aan de engine mag aanleveren.
     pub(crate) regulation_inputs: BTreeMap<String, BTreeSet<String>>,
@@ -700,6 +709,51 @@ impl CellSurface<'_> {
             }
         }
         Ok(())
+    }
+
+    /// Is deze uitkomst onder elke geladen versie een beschikking?
+    ///
+    /// Een decretogram is een uitkomst met `legal_character: BESCHIKKING`
+    /// (RFC-022 §1.2). Een besluit-definitie over een toets of een
+    /// waardebepaling zou een gram in de stroom met beschikkingen leggen dat
+    /// geen beschikking is, en dat hoort bij het optuigen te vallen — niet bij
+    /// het eerste besluit, en al helemaal niet stil.
+    pub(crate) fn check_beschikking(
+        &self,
+        cell: &str,
+        besluit: &str,
+        regulation: &str,
+        output: &str,
+    ) -> Result<()> {
+        let found = self
+            .legal_characters
+            .get(regulation)
+            .and_then(|outputs| outputs.get(output))
+            .cloned()
+            .unwrap_or_default();
+        if !found.is_empty()
+            && found
+                .iter()
+                .all(|character| character.as_deref() == Some(crate::cell::BESCHIKKING))
+        {
+            return Ok(());
+        }
+        Err(SimulatorError::BesluitNotABeschikking {
+            cell: cell.to_string(),
+            besluit: besluit.to_string(),
+            regulation: regulation.to_string(),
+            output: output.to_string(),
+            found: found
+                .iter()
+                .map(|character| {
+                    character
+                        .as_deref()
+                        .unwrap_or("geen `legal_character`")
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+        })
     }
 
     /// De velden die de cel van deze stroom kent, of de fout die zegt dat ze de

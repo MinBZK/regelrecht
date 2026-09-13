@@ -30,8 +30,9 @@ mod chronicle;
 mod config;
 
 pub use besluit::{
-    AcceptanceRequest, BesluitDefinition, BesluitInput, Decretogram, DecretogramInput, InputOrigin,
-    ObligationDefinition, ObligationDue, Schedule, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
+    AcceptanceRequest, BesluitDefinition, BesluitInput, ChronicleSource, Decretogram,
+    DecretogramInput, InputOrigin, ObligationDefinition, ObligationDue, Schedule, BESCHIKKING,
+    BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
 };
 // De vaste velden van een decretogram, voor het beeld van de wereld: dat moet een
 // uitkomst van een besluit van een vast veld kunnen onderscheiden om de herkomst
@@ -128,6 +129,30 @@ impl Lexostatus {
     }
 }
 
+/// Wat een cel bij een besluit van buiten aangereikt krijgt, omdat ze het zelf
+/// niet houdt (RFC-022 §2): wie zij is, hoe laat het is, en wat de wereld heeft
+/// ingesteld.
+///
+/// - `identity` is de naam waaronder de cel zich uitgeeft — de bewering uit
+///   haar veiligheidscontext, die de wet straks naast haar `competent_authority`
+///   legt. Een cel houdt geen veiligheidscontext, dus de naam komt van wie die
+///   wél houdt: in deze opstelling [`crate::World`].
+/// - `op_moment` is het moment van het besluit — de klok woont in de wereld.
+/// - `settings` zijn de instellingen van het wereldbestand; een verplichting met
+///   `schedule: $betalingsritme` leest eruit.
+///
+/// Drie dingen die een cel niet is, in één waarde: dat ze samen aangereikt
+/// worden en niet elk apart, is de vorm van die scheiding.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DecisionContext<'a> {
+    /// De naam waaronder de besluitende cel zich uitgeeft.
+    pub(crate) identity: &'a str,
+    /// Het moment waarop besloten wordt.
+    pub(crate) op_moment: NaiveDate,
+    /// De instellingen van de wereld.
+    pub(crate) settings: &'a BTreeMap<String, Value>,
+}
+
 /// Eén chronolexocel.
 ///
 /// De cel bezit haar feiten. Er is met opzet geen `pub fn store()` en geen
@@ -136,15 +161,13 @@ impl Lexostatus {
 /// is [`Cell::reduce`].
 pub struct Cell {
     /// Het cel-id, alleen voor foutmeldingen en herkomst in het antwoord.
-    id: String,
-    /// De naam waaronder deze cel zich uitgeeft; standaard het cel-id.
     ///
-    /// Een **bewering**, geen bevoegdheid (RFC-022 §2: een cel houdt geen
-    /// bevoegd gezag). Wat de cel ermee mag, staat in de wet: bij een besluit
-    /// legt [`Self::decide`] deze naam naast de `competent_authority` van de
-    /// regeling. Dat is ook de enige plek waar hij iets doet — er is geen weg
-    /// waarlangs een celconfiguratie zichzelf een gezag toebedeelt.
-    identity: String,
+    /// Wat hier met opzet **niet** staat: wie de cel zegt te zijn. Die bewering
+    /// is een eigenschap van haar veiligheidscontext (RFC-022 §2) en komt bij
+    /// een besluit van buiten mee — zie [`Self::decide`]. Een cel houdt
+    /// kronieken en reduceert; een naam waarmee ze zich uitgeeft, is iets wat
+    /// een ondertekening straks moet bewijzen, en dat is niet haar werk.
+    id: String,
     /// De regelingen die deze cel laadt, bij `$id`.
     ///
     /// Niet om er iets mee te doen — daarvoor is er een engine — maar omdat het
@@ -285,6 +308,10 @@ impl Cell {
                 .as_ref()
                 .map(outputs_per_regulation)
                 .unwrap_or_default(),
+            legal_characters: service
+                .as_ref()
+                .map(legal_characters_per_output)
+                .unwrap_or_default(),
             regulation_inputs: service
                 .as_ref()
                 .map(inputs_per_regulation)
@@ -333,7 +360,6 @@ impl Cell {
 
         Ok(Self {
             id: config.id.clone(),
-            identity: config.identity.clone().unwrap_or_else(|| config.id.clone()),
             laws: config.laws.clone(),
             service: service.map(RefCell::new),
             besluit_service: besluit_service.map(RefCell::new),
@@ -763,19 +789,33 @@ impl Cell {
     /// uitkomst van een eerder besluit kunnen leunen, en dan weet niemand meer
     /// of er gerekend of overgeschreven is. Terugzien doe je met een reductie
     /// over die stroom (`Cell::reduce`), en die komt niet langs de engine.
+    ///
+    /// Geeft terug wélke stromen er klaargezet zijn, met hun stand op dit
+    /// moment: hoeveel grammen, en een hash over precies die grammen. Dat is
+    /// wat RFC-022 §1.3 aan een uitvoering vraagt die op een kroniek leunt —
+    /// inhoud en versie, zodat ze te reproduceren is — en het besluit-pad legt
+    /// het in het decretogram (zie [`Decretogram::chronicle_sources`]). Een
+    /// reductie gooit het weg: die legt niets vast.
     fn register_own_facts(
         &self,
         service: &mut LawExecutionService,
         op_moment: NaiveDate,
-    ) -> Result<()> {
+    ) -> Result<Vec<ChronicleSource>> {
         service.clear_data_sources();
+        let mut sources = Vec::new();
         for stream in self.chronicles.reduce_to(op_moment) {
             if stream.stream == BESCHIKKINGEN {
                 continue;
             }
+            sources.push(ChronicleSource {
+                chronicle: stream.stream.clone(),
+                op_moment,
+                grams: stream.grams,
+                content_hash: stream.content_hash.clone(),
+            });
             service.register_dict_source(&stream.stream, &stream.key, stream.records)?;
         }
-        Ok(())
+        Ok(sources)
     }
 
     /// Geef de besluit-engine de cel-tier, voor de duur van dit ene besluit.
@@ -986,19 +1026,24 @@ impl Cell {
     /// (tier 3): de besluit-engine krijgt hem voor de duur van dit ene besluit,
     /// en de reduce-engine nooit.
     ///
-    /// `settings` zijn de instellingen van het wereldbestand; een verplichting
-    /// met `schedule: $betalingsritme` leest eruit. De cel houdt ze niet — ze
-    /// zijn van de wereld, en een besluit krijgt ze aangereikt zoals het zijn
-    /// moment aangereikt krijgt.
+    /// `context` is wat de cel zelf niet houdt en dus aangereikt krijgt: wie zij
+    /// is, hoe laat het is en wat de wereld heeft ingesteld — zie
+    /// [`DecisionContext`]. De naam waaronder ze zich uitgeeft, toetst ze wél
+    /// zelf: tegen het bevoegd gezag dat de wet aanwijst, en dat is haar eigen
+    /// weigering, langs welke weg ze ook aangestuurd wordt.
     pub(crate) fn decide(
         &mut self,
         besluit: &str,
         params: &BTreeMap<String, Value>,
-        settings: &BTreeMap<String, Value>,
-        op_moment: NaiveDate,
+        context: DecisionContext<'_>,
         accepted: &BTreeMap<String, DecretogramInput>,
         resolver: Option<Rc<dyn CellResolver>>,
     ) -> Result<Decretogram> {
+        let DecisionContext {
+            identity,
+            op_moment,
+            settings,
+        } = context;
         let definition = self.definition(besluit)?;
 
         definition.check_params(&self.id, params)?;
@@ -1010,15 +1055,15 @@ impl Cell {
         // Dat dit hier staat en niet alleen bij de aanroeper, is het punt — een
         // cel weigert dit zelf, langs welke weg ze ook aangestuurd wordt.
         let authority = self.competent_authority(&definition, op_moment);
-        self.check_competent_authority(&definition, authority.as_deref())?;
+        self.check_competent_authority(&definition, identity, authority.as_deref())?;
 
         let inputs = self.collect_inputs(&definition, params, accepted, &zaakkenmerk, op_moment)?;
         let mut decretogram = self.execute(
             &definition,
+            context,
             zaakkenmerk,
             inputs,
             resolver,
-            op_moment,
             authority,
         )?;
         // Ná de uitvoering, want het bedrag komt uit de uitkomst waarop besloten
@@ -1060,6 +1105,7 @@ impl Cell {
     pub(crate) fn acceptance_requests(
         &self,
         besluit: &str,
+        identity: &str,
         params: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
     ) -> Result<Vec<AcceptanceRequest>> {
@@ -1067,7 +1113,7 @@ impl Cell {
         definition.check_params(&self.id, params)?;
         let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
         let authority = self.competent_authority(&definition, op_moment);
-        self.check_competent_authority(&definition, authority.as_deref())?;
+        self.check_competent_authority(&definition, identity, authority.as_deref())?;
         Ok(definition.acceptance_requests(params, &zaakkenmerk))
     }
 
@@ -1076,6 +1122,14 @@ impl Cell {
     /// Uit het **law-model** en niet uit de celconfiguratie: de wet bepaalt wie
     /// het bevoegd gezag is. `None` betekent dat de regeling er niets over zegt
     /// — een gat in die regeling, niet iets dat het platform invult.
+    ///
+    /// RFC-002 legt het gezag op het **artikel**: één wet kan nul tot veel
+    /// bevoegde gezagen kennen, en het artikel dat de aansturende uitkomst
+    /// voortbrengt zegt wie dít besluit mag nemen. Het documentniveau is de
+    /// terugvaloptie — het schema laat het toe en het corpus gebruikt het — maar
+    /// zodra het artikel zelf iets zegt, gaat dat voor. Een wet waarin de ene
+    /// dienst indiceert en de andere betaalt, zou anders voor élk besluit één
+    /// gezag noemen, en dat is niet wat de wet zegt.
     ///
     /// Op `op_moment` en niet op vandaag, want het is een eigenschap van de
     /// versie die toen gold: verandert de wet van gezag, dan blijft een besluit
@@ -1087,9 +1141,13 @@ impl Cell {
     ) -> Option<String> {
         let service = self.besluit_service.as_ref()?.borrow();
         let resolver = service.resolver();
-        resolver
-            .get_law_for_date(&definition.regulation, Some(op_moment))
-            .and_then(competent_authority)
+        let law = resolver.get_law_for_date(&definition.regulation, Some(op_moment))?;
+        let declared = resolver
+            .get_article_by_output(&definition.regulation, &definition.output, Some(op_moment))
+            .and_then(|article| article.machine_readable.as_ref())
+            .and_then(|machine_readable| machine_readable.competent_authority.as_ref())
+            .or(law.competent_authority.as_ref())?;
+        competent_authority(law, declared)
     }
 
     /// Is deze cel het bevoegd gezag van de regeling die ze wil uitvoeren?
@@ -1108,18 +1166,19 @@ impl Cell {
     fn check_competent_authority(
         &self,
         definition: &BesluitDefinition,
+        identity: &str,
         authority: Option<&str>,
     ) -> Result<()> {
         let Some(authority) = authority else {
             return Ok(());
         };
-        if normalised(authority) == normalised(&self.identity) {
+        if normalised(authority) == normalised(identity) {
             return Ok(());
         }
         Err(SimulatorError::NotCompetentAuthority {
             cell: self.id.clone(),
             besluit: definition.name.clone(),
-            identity: self.identity.clone(),
+            identity: identity.to_string(),
             regulation: definition.regulation.clone(),
             authority: authority.to_string(),
         })
@@ -1387,12 +1446,17 @@ impl Cell {
     fn execute(
         &self,
         definition: &BesluitDefinition,
+        context: DecisionContext<'_>,
         zaakkenmerk: String,
         inputs: BTreeMap<String, DecretogramInput>,
         resolver: Option<Rc<dyn CellResolver>>,
-        op_moment: NaiveDate,
         competent_authority: Option<String>,
     ) -> Result<Decretogram> {
+        let DecisionContext {
+            identity,
+            op_moment,
+            ..
+        } = context;
         // Onbereikbaar: `validate` weigert een besluit over een regeling die de
         // cel niet zelf laadt, en een cel zonder engine laadt er geen enkele.
         let Some(service) = &self.besluit_service else {
@@ -1405,7 +1469,7 @@ impl Cell {
         };
 
         let mut service = service.borrow_mut();
-        self.register_own_facts(&mut service, op_moment)?;
+        let chronicle_sources = self.register_own_facts(&mut service, op_moment)?;
         self.grant_cell_tier(&mut service, resolver)?;
 
         let engine_params: BTreeMap<String, Value> = inputs
@@ -1436,11 +1500,29 @@ impl Cell {
         // voortbrengt: díe uitkomst *is* het besluit. Een uitkomst die erbij
         // meegaat kan uit een ander artikel komen, en dat artikel zegt niets
         // over het karakter van dit besluit.
+        //
+        // En het moet een beschikking zijn: een decretogram ís een uitkomst met
+        // `legal_character: BESCHIKKING` (RFC-022 §1.2). Het optuigen heeft dat
+        // voor elke geladen versie al getoetst; hier nog eens, op de versie die
+        // op dit moment geldt, zodat een gram nooit iets anders draagt dan wat
+        // het is.
         let legal_character = resolver
             .get_article_by_output(&definition.regulation, &definition.output, Some(op_moment))
             .and_then(regelrecht_engine::Article::get_execution_spec)
             .and_then(|execution| execution.produces.as_ref())
             .and_then(|produces| produces.legal_character.clone());
+        let legal_character = match legal_character {
+            Some(character) if character == BESCHIKKING => character,
+            other => {
+                return Err(SimulatorError::BesluitNotABeschikking {
+                    cell: self.id.clone(),
+                    besluit: definition.name.clone(),
+                    regulation: definition.regulation.clone(),
+                    output: definition.output.clone(),
+                    found: other.unwrap_or_else(|| "geen `legal_character`".to_string()),
+                })
+            }
+        };
 
         Ok(Decretogram {
             cell: self.id.clone(),
@@ -1450,8 +1532,9 @@ impl Cell {
             regulation: definition.regulation.clone(),
             regulation_valid_from: result.regulation_valid_from.clone(),
             competent_authority,
-            besloten_door: self.identity.clone(),
+            besloten_door: identity.to_string(),
             legal_character,
+            chronicle_sources,
             outputs: definition
                 .recorded_outputs()
                 .into_iter()
@@ -1560,19 +1643,21 @@ impl Cell {
     }
 }
 
-/// Het bevoegd gezag dat een regelingversie noemt (RFC-002).
+/// Het bevoegd gezag zoals een regelingversie het declareert (RFC-002), tot een
+/// naam gebracht.
 ///
 /// Twee vormen in het schema, en een derde die eruitziet als de eerste: een
 /// naam die met `#` begint is een **verwijzing** naar een uitkomst van de
 /// regeling zelf (`competent_authority: '#bevoegd_gezag'`). Die uitkomst is niet
 /// altijd als `output` gedeclareerd — vaak zet één actie haar rechtstreeks — dus
 /// ze is niet via de engine op te vragen; het geladen law-model is de plek waar
-/// ze wél staat.
+/// ze wél staat. De verwijzing wordt in de hele regeling opgezocht, of de
+/// declaratie nu op het artikel of op het document staat.
 ///
 /// Wat er met de uitkomst gebeurt, staat in [`Cell::check_competent_authority`]:
 /// de cel die besluit moet deze naam dragen, en anders is er geen besluit.
-fn competent_authority(law: &ArticleBasedLaw) -> Option<String> {
-    match law.competent_authority.as_ref()? {
+fn competent_authority(law: &ArticleBasedLaw, declared: &CompetentAuthority) -> Option<String> {
+    match declared {
         CompetentAuthority::Structured { name } => Some(name.clone()),
         CompetentAuthority::String(text) => match text.strip_prefix('#') {
             Some(reference) => resolve_reference(law, reference),
@@ -1849,6 +1934,40 @@ fn inputs_per_regulation(service: &LawExecutionService) -> BTreeMap<String, BTre
             }
             for input in execution.input.iter().flatten() {
                 known.insert(input.name.clone());
+            }
+        }
+    }
+    per_regulation
+}
+
+/// Per regeling en per uitkomst het rechtskarakter dat het voortbrengende
+/// artikel eraan geeft, over alle geladen versies heen.
+///
+/// `None` in de verzameling betekent dat een versie het artikel wél kent maar
+/// er geen `produces.legal_character` op zet. Alle versies tellen mee, om
+/// dezelfde reden als bij [`outputs_per_regulation`]: een besluit over een ouder
+/// moment landt op een oudere versie, en een decretogram hoort onder élke versie
+/// een beschikking te zijn (RFC-022 §1.2).
+fn legal_characters_per_output(
+    service: &LawExecutionService,
+) -> BTreeMap<String, BTreeMap<String, BTreeSet<Option<String>>>> {
+    let mut per_regulation: BTreeMap<String, BTreeMap<String, BTreeSet<Option<String>>>> =
+        BTreeMap::new();
+    for law in service.resolver().all_law_versions() {
+        let known = per_regulation.entry(law.id.clone()).or_default();
+        for article in &law.articles {
+            let Some(execution) = article.get_execution_spec() else {
+                continue;
+            };
+            let character = execution
+                .produces
+                .as_ref()
+                .and_then(|produces| produces.legal_character.clone());
+            for output in execution.output.iter().flatten() {
+                known
+                    .entry(output.name.clone())
+                    .or_default()
+                    .insert(character.clone());
             }
         }
     }
@@ -2408,6 +2527,182 @@ laws:
         );
     }
 
+    /// Een besluit-definitie over een uitkomst die geen beschikking is, wordt
+    /// bij het optuigen geweigerd.
+    ///
+    /// `vermogen_onder_grens` is een toets (`legal_character: TOETS`), geen
+    /// besluit. Een decretogram is een uitkomst met `BESCHIKKING` (RFC-022
+    /// §1.2); een toets als besluit vastleggen zou een gram in de stroom met
+    /// beschikkingen leggen dat geen beschikking is.
+    #[test]
+    fn een_besluit_over_een_toets_wordt_geweigerd() {
+        let err = Cell::from_config(
+            &besluitende_cel(
+                "    regulation: wet_op_de_zorgtoeslag
+    output: vermogen_onder_grens
+    zaakkenmerk: 'vermogen/{bsn}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      bsn:
+        param: bsn",
+            ),
+            &regulation_root(),
+            &no_fixtures(),
+        )
+        .expect_err("een besluit over een toets hoort te falen");
+        let SimulatorError::BesluitNotABeschikking { output, found, .. } = &err else {
+            panic!("verwachtte BesluitNotABeschikking, kreeg {err}");
+        };
+        assert_eq!(output, "vermogen_onder_grens");
+        assert_eq!(
+            found, "TOETS",
+            "de melding zegt wat de wet er wél van maakt"
+        );
+    }
+
+    /// Het gezag op het artikel gaat vóór het gezag op het document (RFC-002).
+    ///
+    /// `test_gezag_op_artikel` noemt op het document 'Documentgezag' en op het
+    /// artikel dat het besluit voortbrengt 'Artikelgezag'. Eén wet kan meer dan
+    /// één gezag kennen, dus het artikel beslist; wie het documentgezag draagt,
+    /// mag dít besluit niet nemen.
+    #[test]
+    fn het_gezag_op_het_artikel_gaat_voor_het_gezag_op_het_document() {
+        let config = config(
+            r"
+id: uitvoerder
+laws:
+  - test_gezag_op_artikel
+chronicles:
+  - stream: inkomensleveringen
+    key: bsn
+    events:
+      - name: inkomenslevering
+        intake: levering
+        recording_actor: uitvoerder
+        op_moment: 2023-11-15
+        fields:
+          bsn: '999993653'
+          is_verzekerde: true
+besluit_definitions:
+  - name: toekenning
+    regulation: test_gezag_op_artikel
+    output: komt_in_aanmerking
+    zaakkenmerk: 'toekenning/{bsn}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      bsn:
+        param: bsn
+      is_verzekerde:
+        from_chronicle: inkomensleveringen
+        field: is_verzekerde
+",
+        );
+        let mut cell = Cell::from_config(&config, &regulation_root(), &no_fixtures())
+            .unwrap_or_else(|e| panic!("de cel moet op te tuigen zijn: {e}"));
+
+        let err = cell
+            .decide(
+                "toekenning",
+                &bsn(),
+                DecisionContext {
+                    identity: "Documentgezag",
+                    op_moment: moment(),
+                    settings: &no_settings(),
+                },
+                &no_accepted(),
+                None,
+            )
+            .expect_err("het documentgezag mag dit artikel niet uitvoeren");
+        let SimulatorError::NotCompetentAuthority { authority, .. } = &err else {
+            panic!("verwachtte NotCompetentAuthority, kreeg {err}");
+        };
+        assert_eq!(
+            authority, "Artikelgezag",
+            "de weigering noemt het gezag van het artikel"
+        );
+
+        let gram = cell
+            .decide(
+                "toekenning",
+                &bsn(),
+                DecisionContext {
+                    identity: "Artikelgezag",
+                    op_moment: moment(),
+                    settings: &no_settings(),
+                },
+                &no_accepted(),
+                None,
+            )
+            .unwrap_or_else(|e| panic!("het artikelgezag mag wél besluiten: {e}"));
+        assert_eq!(gram.competent_authority.as_deref(), Some("Artikelgezag"));
+        assert_eq!(gram.besloten_door, "Artikelgezag");
+    }
+
+    /// Het gram zegt op welke stand van welke eigen kroniek de uitvoering leunde.
+    ///
+    /// RFC-022 §1.3: een kroniek die aan een uitvoering bijdraagt, wordt met
+    /// inhoud en versie vastgelegd. Zonder dat is een besluit niet te
+    /// reproduceren — de waarden die de engine uit een kroniek las, staan
+    /// nergens anders in het gram dan in de trace.
+    #[test]
+    fn het_decretogram_noemt_de_stand_van_elke_eigen_kroniek() {
+        let mut cell = besluitende_toeslagen(VASTSTELLING);
+        let gram = cell
+            .decide(
+                "zorgtoeslag_vaststelling",
+                &bsn(),
+                DecisionContext {
+                    identity: IDENTITEIT,
+                    op_moment: moment(),
+                    settings: &no_settings(),
+                },
+                &no_accepted(),
+                None,
+            )
+            .unwrap_or_else(|e| panic!("het besluit moet genomen kunnen worden: {e}"));
+
+        let bron = gram
+            .chronicle_sources
+            .iter()
+            .find(|source| source.chronicle == "inkomensleveringen")
+            .unwrap_or_else(|| panic!("de kroniek die als databron klaarstond hoort in het gram"));
+        assert_eq!(
+            bron.op_moment,
+            moment(),
+            "de stand is die van het moment van het besluit"
+        );
+        assert_eq!(bron.grams, 1);
+        assert!(
+            bron.content_hash.starts_with("sha256:"),
+            "{}",
+            bron.content_hash
+        );
+        assert!(
+            gram.chronicle_sources
+                .iter()
+                .all(|source| source.chronicle != BESCHIKKINGEN),
+            "de stroom met besluiten stond niet klaar en hoort er dus niet bij"
+        );
+
+        // Terug te lezen uit de kroniek: het gram draagt de lijst als vast veld.
+        let event = cell
+            .chronicles
+            .last_recording(BESCHIKKINGEN)
+            .unwrap_or_else(|| panic!("het gram ligt in de kroniek"));
+        let Some(Value::Array(sources)) = event.fields.get(besluit::CHRONICLE_SOURCES) else {
+            panic!(
+                "het gram hoort '{}' als lijst te dragen",
+                besluit::CHRONICLE_SOURCES
+            );
+        };
+        assert_eq!(sources.len(), gram.chronicle_sources.len());
+    }
+
     /// Een cel-id dat net zo heet als een eigen regeling zou een vraag voor de
     /// andere organisatie door die regeling laten beantwoorden, zonder spoor. De
     /// engine weigert dat ook; hier valt het bij het optuigen.
@@ -2737,6 +3032,11 @@ besluit_definitions:
         ))
     }
 
+    /// De naam waaronder de besluitende cel zich uitgeeft: wat haar
+    /// veiligheidscontext bij een besluit meegeeft, en wat de zorgtoeslagwet als
+    /// bevoegd gezag aanwijst.
+    const IDENTITEIT: &str = "Dienst Toeslagen";
+
     /// Het besluit zoals de meeste tests hieronder het bedoelen.
     const VASTSTELLING: &str = "    regulation: wet_op_de_zorgtoeslag
     output: heeft_recht_op_zorgtoeslag
@@ -2782,8 +3082,11 @@ besluit_definitions:
         cell.decide(
             besluit,
             &bsn(),
-            &no_settings(),
-            op_moment,
+            DecisionContext {
+                identity: IDENTITEIT,
+                op_moment,
+                settings: &no_settings(),
+            },
             &no_accepted(),
             None,
         )
@@ -2854,8 +3157,11 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_herziening",
                 &andere_zaak,
-                &no_settings(),
-                moment(),
+                DecisionContext {
+                    identity: IDENTITEIT,
+                    op_moment: moment(),
+                    settings: &no_settings(),
+                },
                 &no_accepted(),
                 None,
             )
@@ -2941,8 +3247,11 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_vaststelling",
                 &bsn(),
-                &no_settings(),
-                moment(),
+                DecisionContext {
+                    identity: IDENTITEIT,
+                    op_moment: moment(),
+                    settings: &no_settings(),
+                },
                 &no_accepted(),
                 None,
             )
@@ -2961,8 +3270,7 @@ besluit_definitions:
             "beide uitkomsten horen in hetzelfde gram te staan"
         );
         assert_eq!(
-            gram.legal_character.as_deref(),
-            Some("BESCHIKKING"),
+            gram.legal_character, BESCHIKKING,
             "het rechtskarakter komt uit de wet, niet uit de cel"
         );
         assert_eq!(
@@ -2988,8 +3296,11 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_vaststelling",
                 &bsn(),
-                &no_settings(),
-                moment(),
+                DecisionContext {
+                    identity: IDENTITEIT,
+                    op_moment: moment(),
+                    settings: &no_settings(),
+                },
                 &no_accepted(),
                 None,
             )
@@ -3033,8 +3344,11 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_vaststelling",
                 &bsn(),
-                &no_settings(),
-                date("2024-01-01"),
+                DecisionContext {
+                    identity: IDENTITEIT,
+                    op_moment: date("2024-01-01"),
+                    settings: &no_settings(),
+                },
                 &no_accepted(),
                 None,
             )
@@ -3064,8 +3378,11 @@ besluit_definitions:
             cell.decide(
                 "zorgtoeslag_vaststelling",
                 &bsn(),
-                &no_settings(),
-                moment(),
+                DecisionContext {
+                    identity: IDENTITEIT,
+                    op_moment: moment(),
+                    settings: &no_settings(),
+                },
                 &no_accepted(),
                 None,
             )
@@ -3104,8 +3421,11 @@ besluit_definitions:
             .decide(
                 "zorgtoeslag_terugvordering",
                 &bsn(),
-                &no_settings(),
-                moment(),
+                DecisionContext {
+                    identity: IDENTITEIT,
+                    op_moment: moment(),
+                    settings: &no_settings(),
+                },
                 &no_accepted(),
                 None,
             )
@@ -3207,8 +3527,11 @@ chronicles:
         cell.decide(
             "zorgtoeslag_vaststelling",
             &bsn(),
-            &no_settings(),
-            moment(),
+            DecisionContext {
+                identity: IDENTITEIT,
+                op_moment: moment(),
+                settings: &no_settings(),
+            },
             &no_accepted(),
             None,
         )
