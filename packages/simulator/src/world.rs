@@ -3218,12 +3218,6 @@ laws: []
         );
     }
 
-    /// Een wereldbestand is los te lezen, en het weigert een typfout.
-    ///
-    /// Los, want een web-laag leest één wereldbestand en maakt er per sessie een
-    /// verse wereld uit; een scenario zet er alleen stappen bovenop. Weigert het
-    /// een typfout niet, dan valt een onbekend veld stil weg en doet een actie of
-    /// een termijn niets zonder dat iemand het merkt.
     /// Een cel-id dat de `$id` van een geladen regeling is, valt bij het laden
     /// van de wereld (RFC-022 §4.2) — ook als geen enkele `accepts_from` die cel
     /// noemt, want dan heeft de engine niets om op te toetsen.
@@ -3251,6 +3245,12 @@ cells:
         assert_eq!(loaded_by, "toeslagen");
     }
 
+    /// Een wereldbestand is los te lezen, en het weigert een typfout.
+    ///
+    /// Los, want een web-laag leest één wereldbestand en maakt er per sessie een
+    /// verse wereld uit; een scenario zet er alleen stappen bovenop. Weigert het
+    /// een typfout niet, dan valt een onbekend veld stil weg en doet een actie of
+    /// een termijn niets zonder dat iemand het merkt.
     #[test]
     fn een_wereldbestand_is_los_te_lezen_en_weigert_een_typfout() {
         let yaml = |sleutel: &str| {
