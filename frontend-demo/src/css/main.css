@@ -27,8 +27,12 @@ body {
   height: 40px;
   padding: 5px;
   border-radius: var(--primitives-radius-8, 8px);
-  background: #fff;
-  border: 1px solid var(--semantics-border-color, var(--primitives-color-neutral-200, #e2e2e2));
+  /* Wit in beide modi, niet het thema volgen: een woordmerk is ontworpen op
+     wit en wordt onleesbaar op een donker vlak. `color-scheme: light` dwingt
+     `coolgray-0` naar zijn lichte waarde, ook als de rest donker staat. */
+  color-scheme: light;
+  background: var(--primitives-color-coolgray-0);
+  border: 1px solid var(--semantics-border-color, var(--primitives-color-coolgray-200));
   overflow: hidden;
   flex: none;
 }
@@ -64,19 +68,19 @@ body {
 }
 
 .yaml-tree .yaml-key {
-  color: var(--primitives-color-donkerblauw-700, #1a4a8a);
+  color: var(--primitives-color-donkerblauw-700);
 }
 
 .yaml-tree .yaml-scalar {
-  color: var(--semantics-content-color, var(--primitives-color-neutral-800, #222));
+  color: var(--semantics-content-color, var(--primitives-color-coolgray-800));
 }
 
 .yaml-tree .yaml-string {
-  color: var(--primitives-color-groen-700, #276e2c);
+  color: var(--primitives-color-groen-700);
 }
 
 .yaml-tree .yaml-var {
-  color: var(--primitives-color-paars-700, #5b2d8e);
+  color: var(--primitives-color-paars-700);
   font-weight: 600;
 }
 
@@ -94,7 +98,7 @@ body {
   content: '▸';
   display: inline-block;
   width: 1rem;
-  color: var(--semantics-content-secondary-color, var(--primitives-color-neutral-500, #888));
+  color: var(--semantics-content-secondary-color, var(--primitives-color-coolgray-500));
 }
 
 .yaml-tree .yaml-toggle[aria-expanded='true']::before {
@@ -102,7 +106,7 @@ body {
 }
 
 .yaml-tree .yaml-link {
-  color: var(--primitives-color-donkerblauw-700, #1a4a8a);
+  color: var(--primitives-color-donkerblauw-700);
   text-decoration: underline dotted;
   cursor: pointer;
   border: 0;
@@ -112,7 +116,7 @@ body {
 }
 
 .yaml-tree .yaml-highlight {
-  background: var(--primitives-color-geel-100, #fff6cc);
+  background: var(--primitives-color-geel-100);
   border-radius: 3px;
 }
 
@@ -123,7 +127,7 @@ body {
 }
 
 .gherkin .kw {
-  color: var(--primitives-color-donkerblauw-700, #1a4a8a);
+  color: var(--primitives-color-donkerblauw-700);
   font-weight: 600;
 }
 
@@ -131,24 +135,27 @@ body {
  * it inherits into the shadow DOM of the nldd-table under a step and would turn
  * the template whitespace there into blank lines. */
 .gherkin .str {
-  color: var(--primitives-color-groen-700, #276e2c);
+  color: var(--primitives-color-groen-700);
   white-space: pre-wrap;
 }
 
 .gherkin .num {
-  color: var(--primitives-color-oranje-700, #a04a00);
+  color: var(--primitives-color-oranje-700);
 }
 
 .gherkin .step {
   padding-left: 2rem;
 }
 
+/* `groen`/`rood`, niet `green`/`red`: de palet-namen zijn Nederlands. Met de
+ * Engelse naam bestond het token niet en won stilletjes de hex-fallback, die
+ * naast het palet lag en niet met het thema meebewoog. */
 .gherkin .step.pass {
-  border-left: 3px solid var(--primitives-color-green-600, #2e9e3a);
+  border-left: 3px solid var(--primitives-color-groen-600);
 }
 
 .gherkin .step.fail {
-  border-left: 3px solid var(--primitives-color-red-600, #c62828);
+  border-left: 3px solid var(--primitives-color-rood-600);
 }
 
 .trace {
@@ -180,15 +187,15 @@ body {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  border: 1.5px solid var(--primitives-color-donkerblauw-600, #1a5490);
-  background: light-dark(rgba(21, 66, 115, 0.04), rgba(21, 66, 115, 0.22));
-  color: var(--semantics-content-color, var(--primitives-color-neutral-900, #111));
+  border: 1.5px solid var(--primitives-color-donkerblauw-600);
+  background: light-dark(color-mix(in srgb, var(--primitives-color-lintblauw-750) 4%, transparent), color-mix(in srgb, var(--primitives-color-lintblauw-750) 22%, transparent));
+  color: var(--semantics-content-color, var(--primitives-color-coolgray-900));
   border-radius: var(--primitives-radius-12, 12px);
   font-family: var(--primitives-font-family-body, system-ui, sans-serif);
 }
 
 .graph-law--selected {
-  box-shadow: 0 0 0 3px rgba(21, 66, 115, 0.35);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primitives-color-lintblauw-750) 35%, transparent);
 }
 
 .graph-law__header {
@@ -214,7 +221,7 @@ body {
 
 .graph-law__service {
   font-size: 0.75rem;
-  color: var(--semantics-content-secondary-color, var(--primitives-color-neutral-600, #666));
+  color: var(--semantics-content-secondary-color, var(--primitives-color-coolgray-600));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -224,8 +231,8 @@ body {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--primitives-color-donkerblauw-300, #9fb6d1);
-  background: light-dark(rgba(21, 66, 115, 0.08), rgba(21, 66, 115, 0.35));
+  border: 1px solid var(--primitives-color-donkerblauw-300);
+  background: light-dark(color-mix(in srgb, var(--primitives-color-lintblauw-750) 8%, transparent), color-mix(in srgb, var(--primitives-color-lintblauw-750) 35%, transparent));
   border-radius: var(--primitives-radius-8, 8px);
 }
 
@@ -236,7 +243,7 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--primitives-color-donkerblauw-700, #1a4a8a);
+  color: var(--primitives-color-donkerblauw-700);
 }
 
 .graph-item {
@@ -248,9 +255,9 @@ body {
   justify-content: space-between;
   gap: 8px;
   padding: 0 8px;
-  border: 1px solid var(--primitives-color-neutral-300, #ccc);
-  background: var(--semantics-surfaces-base-background-color, light-dark(#fff, #222));
-  color: var(--semantics-content-color, var(--primitives-color-neutral-900, #111));
+  border: 1px solid var(--primitives-color-coolgray-300);
+  background: var(--semantics-surfaces-base-background-color, light-dark(var(--primitives-color-coolgray-0), var(--primitives-color-coolgray-900)));
+  color: var(--semantics-content-color, var(--primitives-color-coolgray-900));
   border-radius: var(--primitives-radius-6, 6px);
   font-size: 0.8125rem;
 }
@@ -269,7 +276,7 @@ body {
   text-overflow: ellipsis;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--primitives-color-donkerblauw-700, #1a4a8a);
+  color: var(--primitives-color-donkerblauw-700);
 }
 
 .graph-item .vue-flow__handle {
@@ -277,12 +284,12 @@ body {
   height: 7px;
   min-width: 0;
   min-height: 0;
-  background: var(--primitives-color-donkerblauw-600, #1a5490);
+  background: var(--primitives-color-donkerblauw-600);
   border: 0;
 }
 
 .graph-canvas .vue-flow__edge-path {
-  stroke: var(--primitives-color-lintblauw-500, #01689b);
+  stroke: var(--primitives-color-lintblauw-500);
   stroke-width: 1.5;
 }
 
@@ -369,12 +376,12 @@ body {
 /* Focused law: the lines it reads along (outgoing) and the lines others read
  * from it (incoming), coloured apart as in the POC. */
 .graph-canvas .vue-flow__edge.graph-edge--out .vue-flow__edge-path {
-  stroke: var(--primitives-color-groen-600, #39870c);
+  stroke: var(--primitives-color-groen-600);
   stroke-width: 2.5;
 }
 
 .graph-canvas .vue-flow__edge.graph-edge--in .vue-flow__edge-path {
-  stroke: var(--primitives-color-robijnrood-600, #ca005d);
+  stroke: var(--primitives-color-robijnrood-600);
   stroke-width: 2.5;
 }
 

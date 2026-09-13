@@ -65,9 +65,11 @@ const path = computed(() => {
     shape-rendering="crispEdges"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <!-- De stille zone moet licht zijn, ook in donkere modus: een scanner leest
-         donkere modules op een lichte ondergrond. Daarom tekent de code zijn
-         eigen witte vlak in plaats van de achtergrond van de pagina te erven. -->
+    <!-- Zwart op wit, en bewust géén design-system-tokens. Dit is geen
+         vormgeving maar de code zelf: een scanner heeft maximaal contrast
+         nodig, en een themakleur (of een donkere modus) maakt hem onleesbaar.
+         Daarom tekent hij ook zijn eigen witte vlak voor de stille zone in
+         plaats van de achtergrond van de pagina te erven. -->
     <rect :width="size" :height="size" fill="#fff" />
     <path :d="path" fill="#000" />
   </svg>

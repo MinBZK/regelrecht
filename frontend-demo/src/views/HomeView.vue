@@ -162,6 +162,9 @@ onActivated(() => {
   max-width: 200px;
   padding: var(--primitives-space-8, 8px);
   border-radius: var(--primitives-radius-8, 8px);
-  background: #fff;
+  /* Wit in beide modi: een scanner leest donkere modules op een lichte
+     ondergrond, dus dit vlak mag het thema niet volgen. */
+  color-scheme: light;
+  background: var(--primitives-color-coolgray-0);
 }
 </style>

@@ -150,7 +150,10 @@ function saveName(e) {
      met `color-mix`. Zo staat de kleur één keer in het bestand in plaats van
      twintig keer als `rgba(255, 255, 255, …)`, en volgt een wijziging in het
      palet vanzelf. */
-  --ink: var(--primitives-color-neutral-0);
+  /* `coolgray-0`, niet `neutral-0`: de neutrale schaal van dit design system
+     heet coolgray. `neutral-*` bestaat niet, en zo'n naam faalt stil — de tekst
+     leek wit omdat een ongeldige `color` de geërfde waarde laat staan. */
+  --ink: var(--primitives-color-coolgray-0);
   --ink-96: color-mix(in srgb, var(--ink) 96%, transparent);
   --ink-85: color-mix(in srgb, var(--ink) 85%, transparent);
   --ink-72: color-mix(in srgb, var(--ink) 72%, transparent);
