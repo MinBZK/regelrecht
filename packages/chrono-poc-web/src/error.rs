@@ -16,7 +16,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use regelrecht_simulator::SimulatorError;
+use regelrecht_simulator::{EngineError, SimulatorError};
 use serde::Serialize;
 
 /// Een mislukt verzoek: een HTTP-status plus wat er aan de hand is.
@@ -83,12 +83,21 @@ impl ApiError {
     ///   geen verkeerd verzoek en geen defect: het verhaal is er nog niet.
     /// * **400** — het verzoek klopt niet tegen wat de definitie belooft: een
     ///   parameter of instelling te veel, te weinig, of van het verkeerde type.
+    ///   Ook een engine-fout die over een aangeleverde waarde gaat hoort hier:
+    ///   zie [`engine_input_error`].
     /// * **500** — al het andere. Een wereld die niet opgetuigd kan worden, een
     ///   regeling die niet gelezen kan worden, een definitie die niet klopt:
     ///   dat zijn eigenschappen van het wereldbestand waarmee dit proces
     ///   gestart is, en niet van het verzoek dat het net binnenkreeg.
     pub fn from_simulator(error: &SimulatorError) -> Self {
         use SimulatorError as E;
+
+        if let E::Engine(engine) = error {
+            if let Some(message) = engine_input_error(engine) {
+                return Self::bad_request(message);
+            }
+        }
+
         let status = match error {
             E::UnknownCell { .. } | E::UnknownLexostatus { .. } | E::UnknownAction { .. } => {
                 StatusCode::NOT_FOUND
@@ -102,6 +111,7 @@ impl ApiError {
             E::MissingParameter { .. }
             | E::UndocumentedParameter { .. }
             | E::ParameterType { .. }
+            | E::ParameterDate { .. }
             | E::UnknownWorldSetting { .. } => StatusCode::BAD_REQUEST,
 
             _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -111,6 +121,57 @@ impl ApiError {
             message: error.to_string(),
         }
     }
+}
+
+/// De Nederlandse melding als deze engine-fout over een **aangeleverde waarde**
+/// gaat, en niets als het een fout in de regeling of in de opstelling is.
+///
+/// De gedocumenteerde parameters vangen het meeste al af: wat als `date`
+/// gedocumenteerd staat, wordt bij het binden getoetst en komt hier nooit meer
+/// langs. Wat overblijft is de waarde die pas ín een regeling een datum blijkt
+/// te moeten zijn, of de parameter die de regeling leeg vindt. Zonder deze
+/// vertaling gaat dat als 500 naar buiten met de engine-tekst erin — "Failed to
+/// parse date '01-12-2026': trailing input" — en dat is twee keer verkeerd: het
+/// zegt "wij zijn stuk" waar een veld verkeerd staat, en het zegt het in het
+/// Engels van een andere laag.
+fn engine_input_error(error: &EngineError) -> Option<String> {
+    match error {
+        // De traced-variant is een omhulsel om de echte fout; wat erin zit
+        // bepaalt waar dit verzoek aan toe is.
+        EngineError::TracedError { source, .. } => engine_input_error(source),
+
+        EngineError::InvalidDate(detail) => Some(format!(
+            "een datum is niet te lezen ({detail}); een datum hoort als jjjj-mm-dd aangeleverd \
+             te worden"
+        )),
+
+        EngineError::MissingParameter { name, .. } => Some(format!(
+            "parameter '{name}' heeft geen waarde; de regeling kan zo niet uitgevoerd worden"
+        )),
+
+        EngineError::InvalidOperation(message) => unreadable_date(message).map(|raw| {
+            format!("'{raw}' is geen datum; een datum hoort als jjjj-mm-dd aangeleverd te worden")
+        }),
+
+        _ => None,
+    }
+}
+
+/// Waar de engine een datum-parse-fout mee opent.
+const ENGINE_DATE_FAILURE: &str = "Failed to parse date '";
+
+/// De waarde uit een datum-parse-fout van de engine, als het er een is.
+///
+/// De engine heeft voor "deze tekst is geen datum" geen eigen foutvariant — ze
+/// zet het als `InvalidOperation` neer, met de waarde in de melding. Zolang dat
+/// zo is, is dit de enige manier om juist die fout te herkennen, en dat is de
+/// moeite waard: het is de fout die een mens maakt door de Nederlandse notatie
+/// te typen in een veld dat ISO verwacht. Herkent dit de melding niet, dan gaat
+/// de fout als 500 naar buiten: minder behulpzaam, maar niet onwaar.
+fn unreadable_date(message: &str) -> Option<&str> {
+    message
+        .strip_prefix(ENGINE_DATE_FAILURE)
+        .and_then(|rest| rest.split('\'').next())
 }
 
 impl From<SimulatorError> for ApiError {
@@ -184,6 +245,54 @@ mod tests {
         };
         assert_eq!(
             ApiError::from_simulator(&gebroken_wereld).status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    /// Een datum die niet te lezen is, is een fout in het verzoek en niet in de
+    /// server — ook als de engine hem pas onderweg tegenkomt. De melding noemt
+    /// de waarde en de notatie die wél gelezen wordt, in het Nederlands.
+    #[test]
+    fn een_onleesbare_datum_uit_de_engine_is_een_verzoekfout() {
+        let geen_datum = SimulatorError::Engine(EngineError::InvalidOperation(
+            "Failed to parse date '01-12-2026': trailing input. Expected format: YYYY-MM-DD"
+                .to_string(),
+        ));
+        let fout = ApiError::from_simulator(&geen_datum);
+        assert_eq!(fout.status(), StatusCode::BAD_REQUEST);
+        assert!(fout.message().contains("01-12-2026"), "{}", fout.message());
+        assert!(fout.message().contains("jjjj-mm-dd"), "{}", fout.message());
+        assert!(
+            !fout.message().contains("Failed to parse"),
+            "de engine-tekst hoort niet door te komen: {}",
+            fout.message()
+        );
+    }
+
+    /// Een parameter die de regeling leeg vindt, is evengoed iets wat de
+    /// aanroeper kan herstellen.
+    #[test]
+    fn een_lege_parameter_uit_de_engine_is_een_verzoekfout() {
+        let leeg = SimulatorError::Engine(EngineError::MissingParameter {
+            law_id: "wet_op_de_zorgtoeslag".to_string(),
+            name: "bsn".to_string(),
+            value: "null".to_string(),
+        });
+        let fout = ApiError::from_simulator(&leeg);
+        assert_eq!(fout.status(), StatusCode::BAD_REQUEST);
+        assert!(fout.message().contains("bsn"), "{}", fout.message());
+    }
+
+    /// En andersom: een engine-fout die niets met de aangeleverde waarden te
+    /// maken heeft, blijft een 500. Zou alles van de engine een 400 worden, dan
+    /// zou een kapotte regeling de aanroeper de schuld geven.
+    #[test]
+    fn een_engine_fout_over_de_regeling_blijft_onze_schuld() {
+        let kapotte_wet = SimulatorError::Engine(EngineError::LawNotFound(
+            "wet_op_de_zorgtoeslag".to_string(),
+        ));
+        assert_eq!(
+            ApiError::from_simulator(&kapotte_wet).status(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
     }

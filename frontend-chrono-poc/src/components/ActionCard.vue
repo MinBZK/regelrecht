@@ -11,12 +11,20 @@ import { describeEffect, emptyForm } from '../world/snapshot.js';
 // heet zoals de wereld het noemt en heeft het type dat de cel accepteert. Een
 // actie die nu niet kan blijft staan met de reden erbij; ze is uit te voeren
 // zodra de wereld zegt dat het kan.
+//
+// Elk type heeft zijn eigen veld, en een datum dus ook: `nldd-date-field`, net
+// als "Spoel vooruit tot" op de tijdlijn. Dat veld toont de Nederlandse notatie
+// (dd-mm-jjjj) en geeft ISO terug, wat precies het verschil is dat hier telt —
+// een tekstveld liet de invuller zelf gokken welke van de twee de server wilde,
+// en de Nederlandse notatie was daarbij de meest voor de hand liggende gok.
 
 const props = defineProps({
   /** De actie uit het beeld. */
   action: { type: Object, required: true },
   /** Staat er een wijziging onderweg? */
   busy: { type: Boolean, default: false },
+  /** Waarom de server deze actie weigerde; `null` zolang er niets misging. */
+  error: { type: String, default: null },
 });
 
 const emit = defineEmits(['run']);
@@ -45,6 +53,21 @@ function errorId(field) {
 
 function isMissing(field) {
   return missing.value.includes(field.name);
+}
+
+/**
+ * Wat er onder het label van een veld staat: het woord dat de wereld voor het
+ * type gebruikt, en bij een datum de notatie erbij. Die notatie hoort in het
+ * label en niet als placeholder in het veld — zo staat ze er ook nog terwijl er
+ * iets ingevuld is.
+ */
+function supportingLabel(field) {
+  return field.type === 'date' ? `${field.type} · dd-mm-jjjj` : field.type;
+}
+
+/** Hetzelfde type, maar dan zoals het in een zin staat. */
+function typeName(field) {
+  return field.type === 'date' ? 'datum' : field.type;
 }
 
 /** Leeg is niet ingevuld; `false` bij een ja/nee-veld is wél een antwoord. */
@@ -102,6 +125,17 @@ function submit() {
         :supporting-text="action.unavailable_reason"
       ></nldd-banner>
 
+      <!-- De weigering van de server hoort bij het formulier dat haar uitlokte
+           en niet bovenaan de pagina: wie een veld verkeerd invult, kijkt naar
+           dat veld. De tekst is die van de wereld zelf; deze app verzint er geen
+           eigen uitleg bij. -->
+      <nldd-banner
+        v-if="error"
+        variant="critical"
+        text="Deze actie is niet uitgevoerd"
+        :supporting-text="error"
+      ></nldd-banner>
+
       <!-- Eigen <form> binnen nldd-form: de door het ontwerpsysteem aanbevolen
            modus voor frameworks, zodat de component geen kinderen verplaatst
            die Vue zelf plaatst. -->
@@ -116,7 +150,11 @@ function submit() {
               :checked="values[field.name] || undefined"
               @change="setChecked(field, $event)"
             ></nldd-switch-field>
-            <nldd-form-field v-else :label="humanize(field.name)" :supporting-label="field.type">
+            <nldd-form-field
+              v-else
+              :label="humanize(field.name)"
+              :supporting-label="supportingLabel(field)"
+            >
               <nldd-number-field
                 v-if="field.type === 'number'"
                 :value="values[field.name] ?? undefined"
@@ -126,6 +164,15 @@ function submit() {
                 @input="setValue(field, $event)"
                 @change="setValue(field, $event)"
               ></nldd-number-field>
+              <nldd-date-field
+                v-else-if="field.type === 'date'"
+                :value="values[field.name] ?? ''"
+                width="full"
+                :invalid="isMissing(field) || undefined"
+                :error-message="isMissing(field) ? errorId(field) : undefined"
+                @input="setValue(field, $event)"
+                @change="setValue(field, $event)"
+              ></nldd-date-field>
               <nldd-text-field
                 v-else
                 :value="values[field.name] ?? ''"
@@ -135,7 +182,7 @@ function submit() {
                 @change="setValue(field, $event)"
               ></nldd-text-field>
               <nldd-form-field-error-text v-if="isMissing(field)" :id="errorId(field)">
-                Vul {{ humanize(field.name).toLowerCase() }} in; de cel accepteert alleen een {{ field.type }}.
+                Vul {{ humanize(field.name).toLowerCase() }} in; de cel accepteert alleen een {{ typeName(field) }}.
               </nldd-form-field-error-text>
             </nldd-form-field>
           </template>

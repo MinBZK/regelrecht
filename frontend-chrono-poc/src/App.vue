@@ -26,6 +26,7 @@ const {
   loading,
   busy,
   error,
+  actionError,
   result,
   ready,
   clock,
@@ -112,8 +113,11 @@ function runAction({ action, values }) {
             <nldd-page>
               <nldd-simple-section width="full">
                 <nldd-container layout="stack" gap="16">
+                  <!-- Een fout op een actie staat bij haar eigen formulier (zie
+                       ActionCard); die hier nog eens herhalen zou dezelfde zin
+                       twee keer op één scherm zetten. -->
                   <nldd-banner
-                    v-if="error"
+                    v-if="error && !actionError"
                     variant="critical"
                     text="De server kon dit niet doen"
                     :supporting-text="error"
@@ -199,6 +203,7 @@ function runAction({ action, values }) {
                     v-if="tab === 'acties'"
                     :snapshot="snapshot"
                     :busy="busy"
+                    :error="actionError"
                     @run="runAction"
                   />
                   <SettingsPanel

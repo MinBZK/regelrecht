@@ -11,11 +11,21 @@ const props = defineProps({
   snapshot: { type: Object, default: null },
   /** Staat er een wijziging onderweg? */
   busy: { type: Boolean, default: false },
+  /**
+   * De actie die de server weigerde, met haar melding:
+   * `{ action, message }`, of `null` zolang er niets misging.
+   */
+  error: { type: Object, default: null },
 });
 
 const emit = defineEmits(['run']);
 
 const groups = computed(() => actionsByActor(props.snapshot));
+
+/** De melding hoort bij één actie: de andere kaarten weten van niets. */
+function errorOf(action) {
+  return props.error?.action === action.id ? props.error.message : null;
+}
 </script>
 
 <template>
@@ -31,6 +41,7 @@ const groups = computed(() => actionsByActor(props.snapshot));
         :key="action.id"
         :action="action"
         :busy="busy"
+        :error="errorOf(action)"
         @run="emit('run', $event)"
       />
     </nldd-container>

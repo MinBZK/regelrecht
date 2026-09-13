@@ -190,8 +190,12 @@ fn available(world: &Value, action: &str) -> bool {
 }
 
 /// De aanvraag, met de velden die haar formulier documenteert.
+///
+/// De datum staat er als ISO in, want dat is wat er op de draad hoort te staan.
+/// Wat een mens ziet en typt (dd-mm-jjjj) is een zaak van het veld in de
+/// frontend en komt hier nooit langs.
 fn aanvraag() -> Value {
-    json!({ "bsn": "999993653", "jaar": 2024 })
+    json!({ "bsn": "999993653", "jaar": 2024, "ondertekend_op": "2024-01-09" })
 }
 
 /// `/health` is de enige route zonder login, en hij zegt niets over een wereld:
@@ -579,7 +583,54 @@ async fn een_formulier_dat_niet_klopt_wordt_geweigerd() {
     let (status, body) = browser
         .post(
             "/api/actions/burger.aanvraag",
-            json!({ "bsn": 999_993_653_i64, "jaar": 2024 }),
+            json!({ "bsn": 999_993_653_i64, "jaar": 2024, "ondertekend_op": "2024-01-09" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}
+
+/// De Nederlandse notatie in een datumveld: een 400 met een melding waar een
+/// mens iets aan heeft, niet een 500 met de engine-tekst erin.
+///
+/// Dit is de fout die iemand maakt omdat de rest van het scherm datums als
+/// dd-mm-jjjj toont. Dat ze hier stukloopt en niet drie lagen dieper is het punt
+/// van `type: date`: de cel weigert wat ze niet beloofd heeft, en de laag
+/// eromheen noemt dat een verzoekfout.
+#[tokio::test]
+async fn een_datum_in_de_nederlandse_notatie_is_een_verzoekfout() {
+    let mut browser = Browser::new().await;
+
+    let (status, body) = browser
+        .post(
+            "/api/actions/burger.aanvraag",
+            json!({ "bsn": "999993653", "jaar": 2024, "ondertekend_op": "09-01-2024" }),
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let error = body["error"].as_str().expect("een fout heeft een melding");
+    assert!(error.contains("ondertekend_op"), "{error}");
+    assert!(error.contains("09-01-2024"), "{error}");
+    assert!(
+        error.contains("jjjj-mm-dd"),
+        "de melding hoort de notatie te noemen die wél gelezen wordt: {error}"
+    );
+
+    // Een dag die niet bestaat heeft de juiste vorm en is evengoed geen datum.
+    let (status, body) = browser
+        .post(
+            "/api/actions/burger.aanvraag",
+            json!({ "bsn": "999993653", "jaar": 2024, "ondertekend_op": "2024-02-30" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // En een datum als getal is geen leesfout maar een waarde van een ander
+    // soort; ook dat hoort de aanvrager terug te krijgen en niet de server.
+    let (status, body) = browser
+        .post(
+            "/api/actions/burger.aanvraag",
+            json!({ "bsn": "999993653", "jaar": 2024, "ondertekend_op": 20_240_109_i64 }),
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");

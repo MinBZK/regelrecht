@@ -107,6 +107,26 @@ describe('de wereld in de browser', () => {
     expect(world.error.value).toBeNull();
   });
 
+  it('hangt de fout van een actie aan die actie, en haalt hem bij de volgende weer weg', async () => {
+    const api = fakeApi({
+      runAction: vi.fn(async () => {
+        throw new Error("parameter 'ondertekend_op' is geen datum: '09-01-2024' (verwacht jjjj-mm-dd)");
+      }),
+    });
+    const world = createWorld(api);
+    await world.load();
+    await world.act({ id: 'burger.aanvraag', label: 'Aanvraag indienen' }, { ondertekend_op: '09-01-2024' });
+
+    expect(world.actionError.value.action).toBe('burger.aanvraag');
+    expect(world.actionError.value.message).toContain('jjjj-mm-dd');
+
+    // Een volgende stap begint schoon: de melding blijft niet onder een
+    // formulier staan dat intussen wél werkte.
+    api.runAction.mockImplementation(async () => worldFixture);
+    await world.act({ id: 'burger.aanvraag', label: 'Aanvraag indienen' }, { ondertekend_op: '2024-01-09' });
+    expect(world.actionError.value).toBeNull();
+  });
+
   it('vraagt een lexostatus zonder het beeld te veranderen', async () => {
     const api = fakeApi();
     const world = createWorld(api);

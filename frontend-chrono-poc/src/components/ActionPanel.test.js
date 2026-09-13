@@ -9,8 +9,8 @@ async function fill(wrapper, element, value) {
   await wrapper.vm.$nextTick();
 }
 
-function mountPanel(snapshot = worldFixture) {
-  return mount(ActionPanel, { props: { snapshot } });
+function mountPanel(snapshot = worldFixture, props = {}) {
+  return mount(ActionPanel, { props: { snapshot, ...props } });
 }
 
 describe('het actiepaneel', () => {
@@ -25,13 +25,45 @@ describe('het actiepaneel', () => {
     const wrapper = mountPanel();
     const card = wrapper.findAll('nldd-card')[0];
     const action = worldFixture.actions[0];
-    expect(action.form.map((field) => field.type)).toStrictEqual(['string', 'number']);
+    expect(action.form.map((field) => field.type)).toStrictEqual(['string', 'number', 'date']);
     expect(card.findAll('nldd-text-field')).toHaveLength(1);
     expect(card.findAll('nldd-number-field')).toHaveLength(1);
+    expect(card.findAll('nldd-date-field')).toHaveLength(1);
     const labels = card.findAll('nldd-form-field').map((field) => field.attributes('label'));
-    expect(labels).toStrictEqual(['Bsn', 'Jaar']);
+    expect(labels).toStrictEqual(['Bsn', 'Jaar', 'Ondertekend op']);
     const types = card.findAll('nldd-form-field').map((field) => field.attributes('supporting-label'));
-    expect(types).toStrictEqual(action.form.map((field) => field.type));
+    expect(types).toStrictEqual(['string', 'number', 'date · dd-mm-jjjj']);
+  });
+
+  // Het hele punt van `type: date`: een datum krijgt het datumveld en geen
+  // tekstveld. Dat veld toont dd-mm-jjjj en geeft ISO terug, dus de app hoeft
+  // zelf niets om te rekenen — en de invuller hoeft niet te raden.
+  it('stuurt een datum als ISO door, precies zoals het datumveld hem geeft', async () => {
+    const wrapper = mountPanel();
+    const card = wrapper.findAll('nldd-card')[0];
+    await fill(wrapper, card.find('nldd-text-field'), '999993653');
+    await fill(wrapper, card.find('nldd-number-field'), 2025);
+    await fill(wrapper, card.find('nldd-date-field'), '2024-01-09');
+    await card.find('form').trigger('submit');
+
+    const [{ values }] = wrapper.emitted('run')[0];
+    expect(values.ondertekend_op).toBe('2024-01-09');
+  });
+
+  it('toont de weigering van de server bij de actie die hem uitlokte', () => {
+    const melding = "parameter 'ondertekend_op' is geen datum: '09-01-2024' (verwacht jjjj-mm-dd)";
+    const wrapper = mountPanel(worldFixture, {
+      error: { action: worldFixture.actions[0].id, message: melding },
+    });
+    const cards = wrapper.findAll('nldd-card');
+    const kritiek = cards[0].findAll('nldd-banner').filter((banner) => banner.attributes('variant') === 'critical');
+    expect(kritiek).toHaveLength(1);
+    expect(kritiek[0].attributes('supporting-text')).toBe(melding);
+
+    // En nergens anders: een andere actie heeft hier niets mee te maken.
+    for (const card of cards.slice(1)) {
+      expect(card.findAll('nldd-banner').filter((b) => b.attributes('variant') === 'critical')).toHaveLength(0);
+    }
   });
 
   it('zegt of een actie nu kan, en waarom niet', () => {
@@ -52,12 +84,13 @@ describe('het actiepaneel', () => {
     const card = wrapper.findAll('nldd-card')[0];
     await fill(wrapper, card.find('nldd-text-field'), '999993653');
     await fill(wrapper, card.find('nldd-number-field'), 2025);
+    await fill(wrapper, card.find('nldd-date-field'), '2024-01-09');
     await card.find('form').trigger('submit');
 
     expect(wrapper.emitted('run')).toHaveLength(1);
     const [{ action, values }] = wrapper.emitted('run')[0];
     expect(action.id).toBe(worldFixture.actions[0].id);
-    expect(values).toStrictEqual({ bsn: '999993653', jaar: 2025 });
+    expect(values).toStrictEqual({ bsn: '999993653', jaar: 2025, ondertekend_op: '2024-01-09' });
   });
 
   it('vraagt eerst om een leeg veld in plaats van het als niets te versturen', async () => {
@@ -66,14 +99,17 @@ describe('het actiepaneel', () => {
     await card.find('form').trigger('submit');
 
     expect(wrapper.emitted('run')).toBeUndefined();
-    expect(card.findAll('nldd-form-field-error-text')).toHaveLength(2);
+    expect(card.findAll('nldd-form-field-error-text')).toHaveLength(3);
     expect(card.find('nldd-text-field').attributes('invalid')).toBe('true');
+    expect(card.find('nldd-date-field').attributes('invalid')).toBe('true');
     expect(card.find('nldd-text-field').attributes('error-message')).toBe(
       card.find('nldd-form-field-error-text').attributes('id'),
     );
 
     // Zodra er iets staat, is de melding weg.
     await fill(wrapper, card.find('nldd-text-field'), '999993653');
+    expect(card.findAll('nldd-form-field-error-text')).toHaveLength(2);
+    await fill(wrapper, card.find('nldd-date-field'), '2024-01-09');
     expect(card.findAll('nldd-form-field-error-text')).toHaveLength(1);
   });
 

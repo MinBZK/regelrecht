@@ -273,6 +273,11 @@ actions:
           type: string
         - name: jaar
           type: number
+        # Een datum als parameter: ISO op de draad, en bij het binden door
+        # `NaiveDate` gehaald. De Nederlandse notatie hoort bij het scherm en
+        # niet bij wat er vastligt.
+        - name: ondertekend_op
+          type: date
       delivers_to:
         cell: toeslagen
         chronicle: aanvragen
@@ -331,6 +336,7 @@ act:
     values:
       bsn: '999993653'
       jaar: 2024
+      ondertekend_op: '2024-01-09'
     op_moment: 2024-01-10
 
   - description: >-

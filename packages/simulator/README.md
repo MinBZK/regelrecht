@@ -150,6 +150,22 @@ Lexostatus-definities zijn dan ook **data en geen Rust**: ze staan in de
 cel-configuratie van het scenario. Een nieuwe lexostatus is een blok YAML, geen
 nieuwe functie.
 
+Een gedocumenteerde parameter heeft een van vier typen: `string`, `number`,
+`boolean` of `date`. Ze gelden overal waar een parameter gedocumenteerd staat —
+een lexostatus, een besluit, het formulier van een actie — want het is dezelfde
+belofte, en hij wordt op één plek gebonden (`ParameterType::bind`).
+
+`date` is de enige die meer doet dan naar het soort van de waarde kijken. Op de
+draad is een datum een string in ISO-notatie (`jjjj-mm-dd`), en dat blijft zo:
+het is de notatie die de engine leest en die een kroniek vastlegt. Wat het type
+toevoegt is de **toets** — de waarde gaat bij het binden door `NaiveDate`, dus
+`01-12-2026` en `2024-02-30` lopen hier stuk, met een melding die zegt welke
+notatie wél gelezen wordt. Zonder dat type is een datum gewoon tekst en valt
+dezelfde fout drie lagen verderop in een regeling die er een datum van probeert
+te maken, in het Engels van de engine en zonder dat er nog iets van het
+formulier bekend is. De Nederlandse schrijfwijze blijft iets van het scherm: de
+frontend toont dd-mm-jjjj en stuurt ISO.
+
 Gedocumenteerd geldt aan beide kanten. De `output` in de definitie stuurt de
 evaluatie aan, maar begrenst het antwoord niet: de engine levert bij een
 gevraagde uitkomst ook de uitkomsten die er causaal mee meekomen. Wat de cel
@@ -947,7 +963,7 @@ cells:
         doc: vrije toelichting                  # optioneel
         inputs:                                 # de gedocumenteerde parameters
           - name: bsn
-            type: string                        # string | number | boolean
+            type: string                        # string | number | boolean | date
         outputs:                                # wat het antwoord mag dragen;
           - heeft_toeslagpartner                # leeg = alleen reduction.output
         reduction:                              # hoe de cel reduceert
@@ -1044,9 +1060,11 @@ actions:                                        # wat een actor kan doen
       grondslag: Awir art. 15                   # optioneel
       fields:                                   # het formulier van de actie
         - name: bsn
-          type: string                          # string | number | boolean
+          type: string                          # string | number | boolean | date
         - name: jaar
           type: number
+        - name: ondertekend_op
+          type: date                            # ISO op de draad: jjjj-mm-dd
       delivers_to:                              # optioneel: hetzelfde feit óók
         cell: toeslagen                         # bij de ontvanger
         chronicle: aanvragen
