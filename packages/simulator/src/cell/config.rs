@@ -790,11 +790,13 @@ pub(crate) fn check_documented_params(
 
 /// Past één waarde bij het gedocumenteerde type van haar parameter?
 ///
-/// Eén plek voor die toets en voor haar melding, want er zijn twee momenten
-/// waarop ze gesteld wordt: bij een vraag op de draad, en bij het optuigen over
-/// een voorinvulling die al in het wereldbestand staat. Twee formuleringen
-/// zouden dezelfde fout verschillend uitleggen.
-fn check_parameter_value(
+/// Eén plek voor die toets en voor haar melding, want er zijn drie momenten
+/// waarop ze gesteld wordt: bij een vraag op de draad, bij het optuigen over een
+/// voorinvulling die al in het wereldbestand staat, en bij het optuigen over een
+/// letterlijke parameter van een statusindicator (zie
+/// [`crate::journal::IndicatorParam`]). Twee formuleringen zouden dezelfde fout
+/// verschillend uitleggen.
+pub(crate) fn check_parameter_value(
     cell: &str,
     subject: Subject,
     name: &str,

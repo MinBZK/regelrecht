@@ -199,7 +199,11 @@ impl StatusChange {
 /// erbij: bij één waarde zou de naam de regel alleen langer maken, en bij twee
 /// zou het weglaten ervan niet meer te lezen zijn.
 fn describe_values(values: Option<&BTreeMap<String, Value>>) -> String {
-    let Some(values) = values else {
+    // Een reeks zonder uitkomsten leest als "niets vastgesteld" en niet als een
+    // lege regel: er valt niets te tonen, en `voor → ` zou een verandering
+    // suggereren waarvan de ene kant wegviel. Dezelfde regel als in de weergave
+    // (`describeStand`), want het is dezelfde zin.
+    let Some(values) = values.filter(|values| !values.is_empty()) else {
         return "niets vastgesteld".to_string();
     };
     if let Some((_, only)) = values.iter().next().filter(|_| values.len() == 1) {
@@ -473,6 +477,25 @@ mod tests {
         assert_eq!(
             delta[0].describe(),
             "toeslagen · beschikking: niets vastgesteld → 25000"
+        );
+    }
+
+    /// Een reeks zonder uitkomsten leest als "niets vastgesteld".
+    ///
+    /// Niet als een lege regel: `niets vastgesteld → ` zou een verandering
+    /// tonen waarvan de ene kant wegviel, en de weergave zegt hier hetzelfde
+    /// (`describeStand`), dus twee lezers van hetzelfde verschil horen niet
+    /// verschillende dingen te zien.
+    #[test]
+    fn een_stand_zonder_uitkomsten_leest_als_niets_vastgesteld() {
+        let delta = changes(
+            &[reading("brp", "partnerschap", Some(BTreeMap::new()))],
+            &[reading("brp", "partnerschap", values(&[("type", 1)]))],
+        );
+        assert_eq!(delta.len(), 1);
+        assert_eq!(
+            delta[0].describe(),
+            "brp · partnerschap: niets vastgesteld → 1"
         );
     }
 

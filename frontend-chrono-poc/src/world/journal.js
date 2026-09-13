@@ -151,7 +151,12 @@ export function journalCellOptions(snapshot) {
  * Eén statusverandering als tekst: `was → is`.
  *
  * Eén uitkomst staat kaal, meer uitkomsten staan met hun naam erbij — dezelfde
- * regel als in het verslag van de simulator, want het is dezelfde zin.
+ * afweging als in het verslag van de simulator: bij één waarde maakt de naam de
+ * regel alleen langer, bij twee is weglaten niet meer te lezen. De **notatie**
+ * is wel die van het scherm en niet die van het verslag: elke waarde gaat door
+ * `formatValue` (`ja`/`nee`, "nog niet bekend"), en dat hoort hier ook — een
+ * verslag wordt gelezen naast de kronieken, dit staat op een pagina. Wie de twee
+ * vergelijkt, vergelijkt dus wat er staat en niet hoe het genoteerd is.
  */
 export function describeChange(change) {
   return `${describeStand(change?.voor)} → ${describeStand(change?.na)}`;

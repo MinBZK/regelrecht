@@ -46,13 +46,14 @@
 
 use crate::accept::CellBridge;
 use crate::cell::{
-    check_documented_params, check_prefill_values, BesluitDefinition, Cell, CellConfig,
-    ChronicleEvent, Decretogram, DocumentedParameter, InputOrigin, Intake, Lexostatus,
+    check_documented_params, check_parameter_value, check_prefill_values, BesluitDefinition, Cell,
+    CellConfig, ChronicleEvent, Decretogram, DocumentedParameter, InputOrigin, Intake, Lexostatus,
     ObligationDue, Prefill, BESCHIKKINGEN, BETALINGEN, ZAAKKENMERK,
 };
 use crate::error::{Result, SimulatorError, Subject};
 use crate::journal::{
-    changes, AcceptedValue, GramRef, JournalActor, JournalEntry, JournalKind, Reading,
+    changes, AcceptedValue, GramRef, IndicatorParam, JournalActor, JournalEntry, JournalKind,
+    Reading,
 };
 use crate::security::{Identity, SignedAnswer};
 use crate::snapshot::{crossing_snapshot, gram_kind, ActionState, Snapshot, WorldView};
@@ -1934,6 +1935,13 @@ fn accepted_values(gram: &Decretogram) -> Vec<AcceptedValue> {
 /// lexostatus niet kan bevragen levert stil nooit een verandering op, en dan is
 /// een typfout in het wereldbestand niet van "er gebeurde niets" te
 /// onderscheiden.
+///
+/// Drie dingen, en alle drie omdat de meting zelf geen fout kent (zie
+/// [`World::read_indicators`]): de lexostatus bestaat, de parameters heten
+/// precies wat zij vraagt, en een letterlijke waarde past bij het type dat zij
+/// eraan geeft. Wat een `$veld` straks oplevert valt hier niet te toetsen — dat
+/// hangt aan de gebeurtenis — en dát is dan ook geen fout maar een indicator die
+/// er niet over gaat.
 fn check_status_indicators(configs: &[CellConfig], cells: &BTreeMap<String, Cell>) -> Result<()> {
     for config in configs {
         // Onbereikbaar leeg: elke cel uit de configuratie is hierboven opgetuigd.
@@ -1966,6 +1974,26 @@ fn check_status_indicators(configs: &[CellConfig], cells: &BTreeMap<String, Cell
                     given: given.into_iter().collect::<Vec<_>>().join(", "),
                     expected: expected.into_iter().collect::<Vec<_>>().join(", "),
                 });
+            }
+
+            // En een letterlijke waarde gaat door dezelfde typetoets als wat er
+            // straks over de draad komt. Dat de namen kloppen is niet genoeg: een
+            // `999993653` in een `string`-parameter komt bij elke meting op een
+            // typefout uit, en die wordt hierboven stil overgeslagen — dan levert
+            // de indicator nooit een regel op en is dat niet van "er veranderde
+            // niets" te onderscheiden. Dezelfde afweging als bij een
+            // voorinvulling (zie [`check_prefill_values`]).
+            for input in &definition.inputs {
+                let Some(IndicatorParam::Literal(value)) = indicator.params.get(&input.name) else {
+                    continue;
+                };
+                check_parameter_value(
+                    &config.id,
+                    Subject::Lexostatus,
+                    &indicator.lexostatus,
+                    input,
+                    value,
+                )?;
             }
         }
     }
@@ -3925,5 +3953,141 @@ records:
             ),
             "en een vast veld van het gram als zodanig"
         );
+    }
+
+    /// Een wereld met deze statusindicatoren op `toeslagen`, opgetuigd.
+    ///
+    /// De fout komt terug in plaats van dat hij hier omvalt: elke test hieronder
+    /// gaat juist over wat er bij het optuigen misgaat, en dat is niets waard
+    /// als de melding niet te lezen is.
+    fn wereld_met_indicatoren(yaml: &str) -> Result<World> {
+        let mut cells = toeslagen();
+        cells[0].status_indicators = serde_yaml_ng::from_str(yaml)
+            .unwrap_or_else(|e| panic!("deze testindicatoren moeten parsen: {e}"));
+        World::from_definition(
+            &definition(&cells, "2024-01-01", &[], &no_settings()),
+            &regulation_root(),
+        )
+    }
+
+    /// Een indicator op een naam die deze cel niet publiceert, valt bij het
+    /// optuigen om.
+    ///
+    /// Niet bij de eerste meting: die kent geen fout — een reductie die niet lukt
+    /// levert geen regel — dus een typfout zou stil nooit een verandering
+    /// opleveren en niet van "er gebeurde niets" te onderscheiden zijn.
+    #[test]
+    fn een_statusindicator_op_een_onbekende_lexostatus_wordt_geweigerd() {
+        let err =
+            wereld_met_indicatoren("- lexostatus: toeslagpartner\n  params:\n    bsn: $bsn\n")
+                .expect_err("een lexostatus die niet gepubliceerd is, hoort te stranden");
+        let SimulatorError::UnknownLexostatus {
+            requested,
+            published,
+            ..
+        } = &err
+        else {
+            panic!("verwachtte UnknownLexostatus, kreeg {err}");
+        };
+        assert_eq!(requested, "toeslagpartner");
+        assert_eq!(
+            published, "toeslagpartnerschap",
+            "de melding hoort te zeggen wat er wél te bevragen valt"
+        );
+    }
+
+    /// En een indicator die de parameters van haar lexostatus niet precies vult
+    /// net zo goed — te weinig zou de reductie laten stranden, te veel ook.
+    #[test]
+    fn een_statusindicator_die_de_parameters_niet_precies_vult_wordt_geweigerd() {
+        let err = wereld_met_indicatoren(
+            "- lexostatus: toeslagpartnerschap\n  params:\n    burgerservicenummer: $bsn\n",
+        )
+        .expect_err("een parameter onder de verkeerde naam hoort te stranden");
+        let SimulatorError::StatusIndicatorParams {
+            given, expected, ..
+        } = &err
+        else {
+            panic!("verwachtte StatusIndicatorParams, kreeg {err}");
+        };
+        assert_eq!(given, "burgerservicenummer");
+        assert_eq!(expected, "bsn");
+    }
+
+    /// Een letterlijke waarde gaat door dezelfde typetoets als wat er over de
+    /// draad komt.
+    ///
+    /// De namen kloppen hier, dus de toets erboven laat hem door; zonder deze
+    /// zou elke meting op een typefout uitkomen die niemand te zien krijgt.
+    #[test]
+    fn een_letterlijke_parameter_van_het_verkeerde_type_wordt_geweigerd() {
+        let err = wereld_met_indicatoren(
+            "- lexostatus: toeslagpartnerschap\n  params:\n    bsn: 999993653\n",
+        )
+        .expect_err("een getal in een string-parameter hoort te stranden");
+        let SimulatorError::ParameterType {
+            parameter,
+            expected,
+            actual,
+            ..
+        } = &err
+        else {
+            panic!("verwachtte ParameterType, kreeg {err}");
+        };
+        assert_eq!(parameter, "bsn");
+        assert_eq!((*expected, *actual), ("string", "integer"));
+    }
+
+    /// En een letterlijke waarde die wél past, meet gewoon mee.
+    ///
+    /// De tegenproef bij de drie weigeringen hierboven: dit is het pad waarop een
+    /// indicator zonder `$veld` toch over elke gebeurtenis gaat, en het levert een
+    /// verschil op in het journaal zoals een `$veld` dat doet.
+    #[test]
+    fn een_letterlijke_parameter_die_past_levert_een_verschil_in_het_journaal() {
+        let mut cells = toeslagen();
+        cells[0].status_indicators = serde_yaml_ng::from_str(
+            "- lexostatus: toeslagpartnerschap\n  label: toeslagpartner\n  params:\n    bsn: '999993653'\n",
+        )
+        .unwrap_or_else(|e| panic!("deze testindicator moet parsen: {e}"));
+
+        let mut world = World::from_definition(
+            &definition(
+                &cells,
+                "2024-01-01",
+                &[fixture("2024-07-01", "relaties", "HUWELIJK")],
+                &no_settings(),
+            ),
+            &regulation_root(),
+        )
+        .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        assert!(
+            world.journal().is_empty(),
+            "de fixture valt pas ná het startmoment"
+        );
+
+        world
+            .advance(date("2024-12-01"))
+            .unwrap_or_else(|e| panic!("de klok moet vooruit kunnen: {e}"));
+
+        let [entry] = world.journal() else {
+            panic!("één startstand is één journaalregel: {:?}", world.journal());
+        };
+        let [change] = entry.changes.as_slice() else {
+            panic!("de stand hoort te veranderen: {:?}", entry.changes);
+        };
+        assert_eq!(change.cell, "toeslagen");
+        assert_eq!(change.label, "toeslagpartner");
+        let stand = |values: &Option<BTreeMap<String, Value>>| {
+            values
+                .as_ref()
+                .and_then(|values| values.get("heeft_toeslagpartner").cloned())
+                .unwrap_or_else(|| panic!("de indicator hoort een uitkomst te dragen: {change:?}"))
+        };
+        assert!(
+            stand(&change.voor).is_unknown(),
+            "vóór de vastlegging had de regeling het feit nog niet: {change:?}"
+        );
+        assert_eq!(stand(&change.na), Value::Bool(true));
     }
 }
