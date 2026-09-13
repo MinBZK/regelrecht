@@ -11,6 +11,7 @@ use crate::invariant::{
     check_invariants, observed_graph, DecisionTraffic, DeclaredQuery, InvariantFailure, QueryEdge,
     Traffic,
 };
+use crate::journal::{self, JournalEntry};
 use crate::security::{Identity, SecurityContext, SignedAnswer};
 use crate::snapshot::Snapshot;
 use crate::transport::InProcessTransport;
@@ -398,6 +399,13 @@ pub struct ScenarioRun {
     pub invariant_failures: Vec<InvariantFailure>,
     /// De termijnen die verstreken zonder dat het feit er lag, in volgorde.
     pub warnings: Vec<Warning>,
+    /// Het journaal van de wereld na de run: het verhaal in tijdsvolgorde.
+    ///
+    /// Dezelfde regels die het beeld draagt en die een frontend toont — één
+    /// bron. Het verslag hieronder schrijft ze op in plaats van het verhaal een
+    /// tweede keer uit de uitkomsten af te leiden; wat er per stap aan
+    /// toelichting bij hoort, staat bij die stap.
+    pub journal: Vec<JournalEntry>,
     /// Verwachtingen over de run als geheel die niet uitkwamen; leeg is goed.
     pub failures: Vec<ExpectationFailure>,
     /// Het beeld van de wereld na de run.
@@ -476,6 +484,17 @@ impl ScenarioRun {
     /// Leesbaar verslag van de run, geschikt voor een terminal of een testfout.
     pub fn report(&self) -> String {
         let mut out = format!("scenario '{}':\n", self.name);
+
+        // Het verhaal eerst, en daarna pas wat er per stap van te zeggen valt.
+        // Eén bron: dit zijn de regels die de wereld bijhield en die het beeld
+        // naar een frontend draagt, niet een tweede afleiding uit de uitkomsten
+        // hieronder. Een run zonder gebeurtenissen — alleen vragen — heeft geen
+        // verhaal, en dan staat er ook geen kop.
+        if !self.journal.is_empty() {
+            out.push_str("  journaal:\n");
+            out.push_str(&journal::describe(&self.journal));
+        }
+
         for act in &self.acts {
             let mark = if act.failures.is_empty() {
                 "ok"
@@ -894,6 +913,7 @@ impl Scenario {
             invariant_failures: Vec::new(),
             failures: check_warnings(&self.expect_warnings, &warnings),
             warnings,
+            journal: world.journal().to_vec(),
             snapshot: world.snapshot(),
         };
         // De gate draait als laatste en over de hele run: hij vergelijkt het
@@ -1630,6 +1650,7 @@ query_via_transport:
             actions: Vec::new(),
             crossings: Vec::new(),
             warnings: Vec::new(),
+            journal: Vec::new(),
         }
     }
 
@@ -1645,6 +1666,7 @@ query_via_transport:
             transport_outcomes: Vec::new(),
             invariant_failures: Vec::new(),
             warnings: Vec::new(),
+            journal: Vec::new(),
             failures: Vec::new(),
             snapshot: empty_snapshot(),
         }

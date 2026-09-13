@@ -46,6 +46,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** De lijst van het journaal, waar de gebeurtenissen in staan. */
+function journalPanel(wrapper) {
+  return wrapper.findAll('nldd-list').find((list) => list.attributes('accessible-label') === 'Journaal van de wereld');
+}
+
+/**
+ * De regels van het journaal: de bovenste laag, zonder wat er uitgeklapt onder
+ * hangt (die staan in de `children`-slot van hun eigen rij).
+ */
+function journalRows(wrapper) {
+  return journalPanel(wrapper)
+    .findAll('nldd-list-item')
+    .filter((item) => item.attributes('slot') !== 'children');
+}
+
 async function mountApp(world = worldFixture) {
   vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(world)));
   const wrapper = mount(App);
@@ -109,19 +124,21 @@ describe('de pagina', () => {
     expect(complaints).toStrictEqual([]);
   });
 
-  // Waar het om begonnen was: naast elkaar paste geen kolom meer heel.
-  it('zet de bediening boven en de cellen eronder, met de tijdlijn onderaan', async () => {
+  // Waar het om begonnen was: naast elkaar paste geen kolom meer heel, en het
+  // verhaal was nergens te zien.
+  it('zet de bediening boven, het journaal eronder en de cellen daaronder', async () => {
     const wrapper = await mountApp();
 
     // Eén split view, en die stapelt: de panelen liggen boven elkaar en niet
-    // meer naast elkaar. Dat er precies vier panelen zijn, pint de indeling vast
-    // — de inhoud, de twee helften, en de balk met de tijdlijn.
+    // meer naast elkaar. Dat er precies vijf panelen zijn, pint de indeling vast
+    // — de inhoud, de drie lagen, en de balk met de tijdlijn.
     const split = wrapper.find('nldd-stacked-split-view');
-    expect(split.attributes('panes')).toBe('2');
+    expect(split.attributes('panes')).toBe('3');
     expect(wrapper.findAll('nldd-split-view-pane').map((pane) => pane.attributes('slot'))).toStrictEqual([
       'main',
       'pane-1',
       'pane-2',
+      'pane-3',
       'timeline-bar',
     ]);
 
@@ -130,15 +147,53 @@ describe('de pagina', () => {
     expect(panes[0].find('nldd-tab-bar').exists()).toBe(true);
     expect(panes[0].find('nldd-collection').exists()).toBe(false);
 
+    // Het journaal is de hoofdweergave en staat boven de cellen: het vertelt wat
+    // er gebeurde, de kolommen tonen wat er ligt.
     expect(panes[1].attributes('slot')).toBe('pane-2');
-    expect(panes[1].find('nldd-collection').exists()).toBe(true);
-    expect(panes[1].findAll('nldd-card')).toHaveLength(worldFixture.cells.length);
+    expect(panes[1].find('nldd-list').attributes('accessible-label')).toBe('Journaal van de wereld');
+
+    expect(panes[2].attributes('slot')).toBe('pane-3');
+    expect(panes[2].find('nldd-collection').exists()).toBe(true);
+    expect(panes[2].findAll('nldd-card')).toHaveLength(worldFixture.cells.length);
 
     // De tijdlijn hoort niet in de split view maar in haar eigen balk: die
     // blijft onderaan staan, wat er in de panelen ook gebeurt.
     const bar = wrapper.findAll('nldd-split-view-pane').find((pane) => pane.attributes('slot') === 'timeline-bar');
     expect(bar.find('nldd-step-indicator').exists()).toBe(true);
     expect(split.find('nldd-step-indicator').exists()).toBe(false);
+  });
+
+  it('zet elke gebeurtenis van de wereld in het journaal', async () => {
+    const wrapper = await mountApp();
+    const rows = journalRows(wrapper);
+    expect(rows).toHaveLength(worldFixture.journal.length);
+
+    // De omschrijving staat in de rij, in de woorden van het wereldbestand.
+    const teksten = rows.flatMap((row) => row.findAll('nldd-text-cell').map((cell) => cell.attributes('text')));
+    for (const entry of worldFixture.journal) expect(teksten).toContain(entry.description);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  // De tijdlijn en het journaal kennen elkaar via de pagina: een punt meldt een
+  // dag, en het journaal houdt de regels van die dag over.
+  it('laat een klik op de tijdlijn het journaal naar die dag springen', async () => {
+    const wrapper = await mountApp();
+    const dag = worldFixture.journal[0].moment;
+    const punt = wrapper
+      .findAll('nldd-step-indicator-item')
+      .find((item) => item.attributes('text')?.startsWith(dag.split('-').reverse().join('-')));
+    expect(punt.attributes('button')).toBeDefined();
+
+    await punt.trigger('click');
+    const zichtbaar = journalRows(wrapper).filter((row) => row.attributes('hidden') === undefined);
+    expect(zichtbaar).toHaveLength(worldFixture.journal.filter((entry) => entry.moment === dag).length);
+
+    // En er staat een weg terug naar het hele verhaal.
+    const terug = journalPanel(wrapper)
+      .findAll('nldd-button')
+      .map((button) => button.attributes('text'));
+    expect(terug.some((text) => text?.includes('toon alles'))).toBe(true);
+    expect(complaints).toStrictEqual([]);
   });
 
   it('geeft elke celkolom een vaste minimumbreedte en laat het paneel zelf opzij schuiven', async () => {

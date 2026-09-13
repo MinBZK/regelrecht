@@ -42,7 +42,7 @@ pub(crate) use besluit::{fixed_fields, recorded_input, INPUTS, RECEIPT, REGULATI
 // parameters van een lexostatus of een besluit: precies wat gedocumenteerd is,
 // niets erbij en niets van het verkeerde type.
 pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
-pub(crate) use config::{check_documented_params, check_prefill_values};
+pub(crate) use config::{check_documented_params, check_parameter_value, check_prefill_values};
 pub use config::{
     AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition,
     ParameterType, Prefill, Reduction,
@@ -493,6 +493,36 @@ impl Cell {
     /// I1 een afspraak in plaats van een compileerfout.
     pub(crate) fn inspect(&self) -> Vec<ChronicleView<'_>> {
         self.chronicles.view()
+    }
+
+    /// Hoeveel grammen er in één kroniekstroom liggen; `None` als de cel haar
+    /// niet houdt.
+    ///
+    /// Uit hetzelfde inspectiebeeld als [`Self::inspect`], en om dezelfde reden
+    /// `pub(crate)`: de wereld wijst met de plek in de kroniek naar een gram dat
+    /// het beeld al geeft (zie [`crate::journal::GramRef`]), en een cel komt er
+    /// niet aan.
+    pub(crate) fn stream_len(&self, stream: &str) -> Option<usize> {
+        Some(self.stream_view(stream)?.len())
+    }
+
+    /// De plek en het gram van de laatste vastlegging in één stroom.
+    ///
+    /// `None` als de stroom leeg is of niet bestaat. Zie [`Self::stream_len`]
+    /// voor waarom dit het inspectiebeeld is en geen tweede ingang.
+    pub(crate) fn last_gram(&self, stream: &str) -> Option<(usize, &ChronicleEvent)> {
+        let events = self.stream_view(stream)?;
+        let index = events.len().checked_sub(1)?;
+        Some((index, events.get(index)?))
+    }
+
+    /// De grammen van één stroom, geleend uit het inspectiebeeld.
+    fn stream_view(&self, stream: &str) -> Option<&[ChronicleEvent]> {
+        self.chronicles
+            .view()
+            .into_iter()
+            .find(|view| view.stream == stream)
+            .map(|view| view.events)
     }
 
     /// De cel-bronnen die de wetten van deze cel aanwijzen (tier 3).

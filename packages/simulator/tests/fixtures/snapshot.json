@@ -1124,5 +1124,411 @@
       }
     }
   ],
-  "warnings": []
+  "warnings": [],
+  "journal": [
+    {
+      "seq": 0,
+      "moment": "2024-01-10",
+      "actor": {
+        "soort": "actor",
+        "id": "burger"
+      },
+      "kind": "vastlegging",
+      "description": "Aanvraag zorgtoeslag indienen",
+      "grams": [
+        {
+          "cell": "burger",
+          "chronicle": "aanvragen",
+          "id": "burger|aanvragen|0",
+          "kind": "executogram",
+          "name": "aanvraag_ingediend"
+        },
+        {
+          "cell": "toeslagen",
+          "chronicle": "aanvragen",
+          "id": "toeslagen|aanvragen|0",
+          "kind": "executogram",
+          "name": "aanvraag_ontvangen"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "burger",
+          "lexostatus": "ingediende_aanvraag",
+          "label": "ingediende aanvraag",
+          "voor": null,
+          "na": {
+            "jaar": 2024
+          }
+        },
+        {
+          "cell": "toeslagen",
+          "lexostatus": "ontvangen_aanvraag",
+          "label": "ontvangen aanvraag",
+          "voor": null,
+          "na": {
+            "jaar": 2024
+          }
+        }
+      ],
+      "accepted": [],
+      "question": null,
+      "parent": null
+    },
+    {
+      "seq": 1,
+      "moment": "2024-04-01",
+      "actor": {
+        "soort": "actor",
+        "id": "toeslagen"
+      },
+      "kind": "besluit",
+      "description": "Beslis op de aanvraag",
+      "grams": [
+        {
+          "cell": "toeslagen",
+          "chronicle": "beschikkingen",
+          "id": "toeslagen|beschikkingen|0",
+          "kind": "decretogram",
+          "name": "zorgtoeslag_toekenning"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "toeslagen",
+          "lexostatus": "zorgtoeslagbeschikking",
+          "label": "toekenningspositie",
+          "voor": null,
+          "na": {
+            "heeft_recht_op_zorgtoeslag": true,
+            "hoogte_zorgtoeslag": 197178.01
+          }
+        }
+      ],
+      "accepted": [
+        {
+          "name": "toetsingsinkomen",
+          "value": 81000,
+          "cell": "belastingdienst",
+          "lexostatus": "toetsingsinkomen",
+          "op_moment": "2024-04-01"
+        }
+      ],
+      "question": null,
+      "parent": null
+    },
+    {
+      "seq": 2,
+      "moment": "2024-04-01",
+      "actor": {
+        "soort": "cell",
+        "id": "toeslagen"
+      },
+      "kind": "vraag",
+      "description": "vroeg 'toetsingsinkomen' aan cel 'belastingdienst' op 2024-04-01",
+      "grams": [],
+      "changes": [],
+      "accepted": [],
+      "question": {
+        "asked_by": "cel:toeslagen",
+        "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
+        "params": {
+          "bsn": "999993653"
+        },
+        "answer": {
+          "cell": "belastingdienst",
+          "name": "toetsingsinkomen",
+          "op_moment": "2024-04-01",
+          "outcome": {
+            "established": {
+              "competent_authority": "Belastingdienst",
+              "toetsingsinkomen": 81000
+            }
+          }
+        }
+      },
+      "parent": 1
+    },
+    {
+      "seq": 3,
+      "moment": "2024-04-01",
+      "actor": {
+        "soort": "klok"
+      },
+      "kind": "betaling",
+      "description": "termijn 1/4 van 49294 op 2024-04-01, te betalen door belastingdienst (kwartaal)",
+      "grams": [
+        {
+          "cell": "belastingdienst",
+          "chronicle": "betalingen",
+          "id": "belastingdienst|betalingen|0",
+          "kind": "executogram",
+          "name": "betaling"
+        },
+        {
+          "cell": "toeslagen",
+          "chronicle": "betalingen",
+          "id": "toeslagen|betalingen|0",
+          "kind": "executogram",
+          "name": "betaling_ontvangen_gemeld"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "belastingdienst",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald",
+          "voor": null,
+          "na": {
+            "bedrag": 49294
+          }
+        },
+        {
+          "cell": "toeslagen",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald volgens de meldingen",
+          "voor": null,
+          "na": {
+            "bedrag": 49294
+          }
+        }
+      ],
+      "accepted": [],
+      "question": null,
+      "parent": null
+    },
+    {
+      "seq": 4,
+      "moment": "2024-07-01",
+      "actor": {
+        "soort": "klok"
+      },
+      "kind": "betaling",
+      "description": "termijn 2/4 van 49294 op 2024-07-01, te betalen door belastingdienst (kwartaal)",
+      "grams": [
+        {
+          "cell": "belastingdienst",
+          "chronicle": "betalingen",
+          "id": "belastingdienst|betalingen|1",
+          "kind": "executogram",
+          "name": "betaling"
+        },
+        {
+          "cell": "toeslagen",
+          "chronicle": "betalingen",
+          "id": "toeslagen|betalingen|1",
+          "kind": "executogram",
+          "name": "betaling_ontvangen_gemeld"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "belastingdienst",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald",
+          "voor": {
+            "bedrag": 49294
+          },
+          "na": {
+            "bedrag": 98588
+          }
+        },
+        {
+          "cell": "toeslagen",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald volgens de meldingen",
+          "voor": {
+            "bedrag": 49294
+          },
+          "na": {
+            "bedrag": 98588
+          }
+        }
+      ],
+      "accepted": [],
+      "question": null,
+      "parent": null
+    },
+    {
+      "seq": 5,
+      "moment": "2024-10-01",
+      "actor": {
+        "soort": "klok"
+      },
+      "kind": "betaling",
+      "description": "termijn 3/4 van 49294 op 2024-10-01, te betalen door belastingdienst (kwartaal)",
+      "grams": [
+        {
+          "cell": "belastingdienst",
+          "chronicle": "betalingen",
+          "id": "belastingdienst|betalingen|2",
+          "kind": "executogram",
+          "name": "betaling"
+        },
+        {
+          "cell": "toeslagen",
+          "chronicle": "betalingen",
+          "id": "toeslagen|betalingen|2",
+          "kind": "executogram",
+          "name": "betaling_ontvangen_gemeld"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "belastingdienst",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald",
+          "voor": {
+            "bedrag": 98588
+          },
+          "na": {
+            "bedrag": 147882
+          }
+        },
+        {
+          "cell": "toeslagen",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald volgens de meldingen",
+          "voor": {
+            "bedrag": 98588
+          },
+          "na": {
+            "bedrag": 147882
+          }
+        }
+      ],
+      "accepted": [],
+      "question": null,
+      "parent": null
+    },
+    {
+      "seq": 6,
+      "moment": "2024-12-15",
+      "actor": {
+        "soort": "actor",
+        "id": "toeslagen"
+      },
+      "kind": "besluit",
+      "description": "Stel de zorgtoeslag definitief vast",
+      "grams": [
+        {
+          "cell": "toeslagen",
+          "chronicle": "beschikkingen",
+          "id": "toeslagen|beschikkingen|1",
+          "kind": "decretogram",
+          "name": "zorgtoeslag_vaststelling"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "toeslagen",
+          "lexostatus": "zorgtoeslagbeschikking",
+          "label": "toekenningspositie",
+          "voor": {
+            "heeft_recht_op_zorgtoeslag": true,
+            "hoogte_zorgtoeslag": 197178.01
+          },
+          "na": {
+            "heeft_recht_op_zorgtoeslag": true,
+            "hoogte_zorgtoeslag": 197102.85
+          }
+        }
+      ],
+      "accepted": [
+        {
+          "name": "toetsingsinkomen",
+          "value": 85000,
+          "cell": "belastingdienst",
+          "lexostatus": "toetsingsinkomen",
+          "op_moment": "2024-12-15"
+        }
+      ],
+      "question": null,
+      "parent": null
+    },
+    {
+      "seq": 7,
+      "moment": "2024-12-15",
+      "actor": {
+        "soort": "cell",
+        "id": "toeslagen"
+      },
+      "kind": "vraag",
+      "description": "vroeg 'toetsingsinkomen' aan cel 'belastingdienst' op 2024-12-15",
+      "grams": [],
+      "changes": [],
+      "accepted": [],
+      "question": {
+        "asked_by": "cel:toeslagen",
+        "signature": "GESIMULEERDE-ONDERTEKENING door cel:toeslagen",
+        "params": {
+          "bsn": "999993653"
+        },
+        "answer": {
+          "cell": "belastingdienst",
+          "name": "toetsingsinkomen",
+          "op_moment": "2024-12-15",
+          "outcome": {
+            "established": {
+              "competent_authority": "Belastingdienst",
+              "toetsingsinkomen": 85000
+            }
+          }
+        }
+      },
+      "parent": 6
+    },
+    {
+      "seq": 8,
+      "moment": "2025-01-01",
+      "actor": {
+        "soort": "klok"
+      },
+      "kind": "betaling",
+      "description": "termijn 4/4 van 49296.01000 op 2025-01-01, te betalen door belastingdienst (kwartaal)",
+      "grams": [
+        {
+          "cell": "belastingdienst",
+          "chronicle": "betalingen",
+          "id": "belastingdienst|betalingen|3",
+          "kind": "executogram",
+          "name": "betaling"
+        },
+        {
+          "cell": "toeslagen",
+          "chronicle": "betalingen",
+          "id": "toeslagen|betalingen|3",
+          "kind": "executogram",
+          "name": "betaling_ontvangen_gemeld"
+        }
+      ],
+      "changes": [
+        {
+          "cell": "belastingdienst",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald",
+          "voor": {
+            "bedrag": 147882
+          },
+          "na": {
+            "bedrag": 197178.01
+          }
+        },
+        {
+          "cell": "toeslagen",
+          "lexostatus": "betaald_tot_nu_toe",
+          "label": "betaald volgens de meldingen",
+          "voor": {
+            "bedrag": 147882
+          },
+          "na": {
+            "bedrag": 197178.01
+          }
+        }
+      ],
+      "accepted": [],
+      "question": null,
+      "parent": null
+    }
+  ]
 }

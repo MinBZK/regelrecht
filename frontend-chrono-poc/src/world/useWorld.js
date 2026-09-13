@@ -4,8 +4,8 @@
  * De app houdt geen eigen administratie van de wereld bij. Elke wijziging gaat
  * naar de server en wat terugkomt is het nieuwe beeld; alles wat de pagina toont
  * komt daaruit. Wat er nieuw is, is het verschil met het vorige beeld — daarom
- * bewaart deze store per kroniek hoeveel grammen er vóór de wijziging lagen, en
- * niets meer.
+ * bewaart deze store per kroniek hoeveel grammen er vóór de wijziging lagen en
+ * hoeveel journaalregels er stonden, en niets meer.
  *
  * `createWorld` neemt zijn API als argument, zodat een test hem kan vervangen.
  * `useWorld` is dezelfde store met de echte routes, één keer per pagina.
@@ -13,6 +13,7 @@
 import { computed, ref, shallowRef } from 'vue';
 import * as worldApi from '../api/worldApi.js';
 import { snapshotFrom } from '../api/worldApi.js';
+import { journalEntries } from './journal.js';
 import { gramCounts, newGrams } from './snapshot.js';
 
 export function createWorld(api = worldApi) {
@@ -20,6 +21,14 @@ export function createWorld(api = worldApi) {
   const snapshot = shallowRef(null);
   /** Het aantal grammen per kroniek vóór de laatste wijziging; `null` = niets nieuw. */
   const previousCounts = ref(null);
+  /**
+   * Het aantal journaalregels vóór de laatste wijziging; `null` = niets nieuw.
+   *
+   * Dezelfde telling als bij de grammen, en om dezelfde reden: het journaal
+   * groeit achteraan en wijzigt nooit, dus elke regel vanaf het oude aantal is
+   * erbij gekomen.
+   */
+  const previousJournalLength = ref(null);
   /** Een eerste keer laden, of opnieuw. */
   const loading = ref(false);
   /** Een wijziging onderweg. */
@@ -62,6 +71,7 @@ export function createWorld(api = worldApi) {
     try {
       snapshot.value = await api.fetchWorld();
       previousCounts.value = null;
+      previousJournalLength.value = null;
       return snapshot.value;
     } catch (cause) {
       return fail(cause);
@@ -80,11 +90,13 @@ export function createWorld(api = worldApi) {
     actionError.value = null;
     result.value = null;
     const before = snapshot.value ? gramCounts(snapshot.value) : null;
+    const journalBefore = snapshot.value ? journalEntries(snapshot.value).length : null;
     try {
       // Het beeld uit het antwoord, of een verse ophaling als het antwoord er
       // geen draagt: de stand komt van de server, nooit uit een eigen boekhouding.
       const next = snapshotFrom(await run()) ?? (await api.fetchWorld());
       previousCounts.value = before;
+      previousJournalLength.value = journalBefore;
       snapshot.value = next;
       result.value = { label, grams: newGrams(next, before) };
       return next;
@@ -113,6 +125,7 @@ export function createWorld(api = worldApi) {
   async function reset() {
     const next = await step('Wereld teruggezet', () => api.resetWorld());
     previousCounts.value = null;
+    previousJournalLength.value = null;
     result.value = next ? { label: 'Wereld teruggezet', grams: [] } : result.value;
     return next;
   }
@@ -143,6 +156,7 @@ export function createWorld(api = worldApi) {
   return {
     snapshot,
     previousCounts,
+    previousJournalLength,
     loading,
     busy,
     error,

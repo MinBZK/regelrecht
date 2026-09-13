@@ -54,6 +54,18 @@ describe('de tijdlijn onderaan', () => {
     expect(wrapper.emitted('advance')).toStrictEqual([['2027-04-01']]);
   });
 
+  // De tijdlijn weet niets van het journaal: ze meldt een dag, en de pagina
+  // brengt de twee bij elkaar.
+  it('meldt de dag waarop je een punt aanklikt', async () => {
+    const wrapper = mountTimeline();
+    const punt = wrapper.findAll('nldd-step-indicator-item')[0];
+    expect(punt.attributes('button')).toBeDefined();
+
+    await punt.trigger('click');
+    const moments = timelineMoments(worldFixture);
+    expect(wrapper.emitted('select')).toStrictEqual([[moments[0].moment]]);
+  });
+
   it('spoelt niet naar een dag vóór de klok', async () => {
     const wrapper = mountTimeline();
     wrapper.find('nldd-date-field').element.dispatchEvent(

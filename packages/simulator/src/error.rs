@@ -54,6 +54,27 @@ pub enum SimulatorError {
         published: String,
     },
 
+    /// Een statusindicator vult de parameters van haar lexostatus niet precies.
+    ///
+    /// Bij het optuigen en niet bij de eerste meting: een indicator die zijn
+    /// lexostatus niet kan bevragen, zou anders stil nooit een verandering
+    /// opleveren — en dan is niet te zien of er niets gebeurde of dat het
+    /// wereldbestand een typfout draagt.
+    #[error(
+        "cel '{cell}': statusindicator op lexostatus '{lexostatus}' vult parameters \
+         [{given}], maar die lexostatus vraagt [{expected}]"
+    )]
+    StatusIndicatorParams {
+        /// De cel waarin de indicator staat.
+        cell: String,
+        /// De lexostatus die de stand zou dragen.
+        lexostatus: String,
+        /// Komma-gescheiden lijst van wat de indicator vult.
+        given: String,
+        /// Komma-gescheiden lijst van wat de lexostatus vraagt.
+        expected: String,
+    },
+
     /// Een gedocumenteerde parameter ontbreekt in de vraag.
     #[error("{subject} '{cell}.{name}' vereist parameter '{parameter}'")]
     MissingParameter {

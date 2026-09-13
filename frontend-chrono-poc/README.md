@@ -7,6 +7,8 @@ wereld aanbiedt, en die het woord van geen enkele casus kent.
   aanbiedt (gegroepeerd per actor, met het formulier uit de actie zelf), de
   instellingen, een vraag aan een cel — op een moment naar keuze, tot aan de
   klok —, alle grammen op een rij, en het observatielog;
+- **daaronder** het [journaal](#het-journaal-is-de-hoofdweergave): één verhaal in
+  tijdsvolgorde van wie wat deed en wat dat veranderde;
 - **daaronder** een kolom per cel, met per kroniek de grammen in tijdsvolgorde,
   gekleurd per soort (lexogram, decretogram, executogram); een decretogram klapt
   uit en toont per waarde waar ze vandaan komt;
@@ -19,6 +21,41 @@ heel. De bediening is smal van zichzelf en kan de volle breedte hebben zonder er
 iets mee te doen; de cellen krijgen de rest. Past het rijtje kolommen niet naast
 elkaar, dan schuift het **binnen zijn eigen paneel** opzij (`nldd-collection`
 met `layout="horizontal-scroll"` en een vaste `item-width`) en nooit de pagina.
+
+## Het journaal is de hoofdweergave
+
+Het journaal vertelt het verhaal: één regel per gebeurtenis, in de volgorde
+waarin ze ontstond. Per regel het moment, wie het deed (een actor, een cel, of de
+klok), wat het was, en — het punt van de hele weergave — wat het aan de **stand
+van de zaak** veranderde: `toekenningspositie: niets vastgesteld → …`,
+`betaald: 0 → 49294`. Een regel klapt uit naar de grammen die erdoor ontstonden
+(klikbaar: ze openen het gram zoals de cel het in haar eigen kroniek toont, met
+de herkomst van elke waarde), naar wat een besluit van een ander accepteerde in
+plaats van na te rekenen, en naar elk verschil apart.
+
+Een vraag die over een celgrens ging, staat ingesprongen onder het besluit dat
+haar uitlokte: los gelezen is ze een vraag zonder aanleiding.
+
+De kolommen per cel, het grammenpaneel en het observatielog zijn hier de
+**details** van. Wie alleen de kolommen ziet, ziet wat er ligt en niet wat er
+gebeurde — en dat was precies wat er miste.
+
+Drie dingen die deze app hier níet doet:
+
+- **rekenen.** Het verschil tussen "was" en "is" is door de wereld gemeten, op de
+  kronieken zelf, vóór en ná de gebeurtenis. Deze app heeft geen kroniek en zou
+  het niet kunnen;
+- **een casus kennen.** Welke reducties de stand van een zaak dragen, staat als
+  `status_indicators` in het wereldbestand; deze app leest de labels die daaruit
+  komen;
+- **een tweede administratie voeren.** Een regel wijst naar grammen die in het
+  beeld staan (`<cel>|<kroniek>|<plek>`) en draagt er geen kopie van.
+
+Filteren kan op actor en op cel. De tijdlijn onderaan hangt eraan vast: een punt
+aanklikken houdt de regels van die dag over en klapt ze open; de knop erboven
+brengt je terug naar het hele verhaal. Wat er na een actie of na vooruitspoelen
+bij kwam, draagt dezelfde "nieuw"-markering als in de kolommen — en daarom is de
+groene balk over wat een stap opleverde weg zodra het journaal hem zelf toont.
 
 ## Alle grammen op een rij
 

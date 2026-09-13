@@ -29,6 +29,7 @@ use crate::cell::{
     fixed_fields, Cell, ChronicleEvent, DocumentedParameter, Intake, Lexostatus, ParameterType,
     Prefill, INPUTS, RECEIPT, REGULATION,
 };
+use crate::journal::JournalEntry;
 use crate::security::SignedAnswer;
 use crate::world::{ActionDefinition, ActionEffect, Warning};
 use chrono::NaiveDate;
@@ -65,6 +66,17 @@ pub struct Snapshot {
     pub crossings: Vec<CrossingSnapshot>,
     /// De termijnen die verstreken zonder dat het feit er lag.
     pub warnings: Vec<Warning>,
+    /// Het journaal: één regel per gebeurtenis, in volgorde van ontstaan.
+    ///
+    /// Alles tot en met de klok, en per regel wie er iets deed, welke grammen
+    /// erdoor ontstonden en wat er aan de stand van de zaak veranderde. De
+    /// kronieken hierboven zeggen wát er ligt; dit zegt hoe het zover kwam, en
+    /// het is daarmee het verhaal waarvan de cellen de details zijn.
+    ///
+    /// Zoals alles in dit beeld: niets hierin bestaat alleen hier. Elke regel
+    /// wijst naar grammen die in een cel liggen, en het verschil dat ze draagt
+    /// is een meting over precies die grammen (zie [`crate::journal`]).
+    pub journal: Vec<JournalEntry>,
 }
 
 /// Een instelling die vast staat, en waardoor.
@@ -309,6 +321,8 @@ pub(crate) struct WorldView<'a> {
     pub(crate) crossings: &'a [SignedAnswer],
     /// De termijnen die verstreken zonder dat het feit er lag.
     pub(crate) warnings: &'a [Warning],
+    /// Het journaal van deze wereld, in volgorde van ontstaan.
+    pub(crate) journal: &'a [JournalEntry],
 }
 
 /// Bouw het beeld van de wereld.
@@ -341,6 +355,16 @@ pub(crate) fn build(view: &WorldView<'_>) -> Snapshot {
             .collect(),
         crossings: view.crossings.iter().map(crossing_snapshot).collect(),
         warnings: view.warnings.to_vec(),
+        // Tot en met de klok. Een regel ná de klok kan er niet zijn — een
+        // gebeurtenis gebeurt op de stand van de wereld — en dat het hier toch
+        // staat, is de plek waar die eigenschap te lezen is in plaats van te
+        // moeten gelden.
+        journal: view
+            .journal
+            .iter()
+            .filter(|entry| entry.moment <= view.clock)
+            .cloned()
+            .collect(),
     }
 }
 
@@ -371,16 +395,25 @@ fn cell_snapshot(cell: &Cell) -> CellSnapshot {
     }
 }
 
-/// Eén gram, met de herkomst van elke waarde erbij.
-fn gram_snapshot(event: &ChronicleEvent) -> GramSnapshot {
-    // Een decretogram ontstaat langs precies één weg — de cel besluit zelf — en
-    // draagt dat in zijn kanaal. Daarmee is het kanaal ook wat de twee soorten
-    // gram uit elkaar houdt, en niet een tweede veld dat ermee uit de pas kan
-    // lopen.
-    let kind = match event.intake {
+/// Welk van de drie grammen dit is, aan het kanaal waarlangs het binnenkwam.
+///
+/// Een decretogram ontstaat langs precies één weg — de cel besluit zelf — en
+/// draagt dat in zijn kanaal. Daarmee is het kanaal ook wat de twee soorten gram
+/// uit elkaar houdt, en niet een tweede veld dat ermee uit de pas kan lopen.
+///
+/// `pub(crate)`: een journaalregel wijst naar grammen en noemt hun soort (zie
+/// [`crate::journal::GramRef`]); die vraag hoort niet op twee plekken
+/// beantwoord te worden.
+pub(crate) fn gram_kind(intake: Intake) -> GramKind {
+    match intake {
         Intake::EigenBesluit => GramKind::Decretogram,
         Intake::Aanvraag | Intake::Levering | Intake::Betaling => GramKind::Executogram,
-    };
+    }
+}
+
+/// Eén gram, met de herkomst van elke waarde erbij.
+fn gram_snapshot(event: &ChronicleEvent) -> GramSnapshot {
+    let kind = gram_kind(event.intake);
 
     // Een gram dat langs het besluit-pad ontstond, draagt zijn receipt. Een cel
     // zonder engine kan óók een eigen vaststelling in haar kroniek leggen — een
@@ -567,7 +600,11 @@ fn resolve_prefill(param: &DocumentedParameter, view: &WorldView<'_>) -> Option<
 }
 
 /// Eén contact over een celgrens.
-fn crossing_snapshot(signed: &SignedAnswer) -> CrossingSnapshot {
+///
+/// `pub(crate)`: het journaal draagt een cross-cel-vraag in precies deze vorm
+/// (zie [`crate::journal::JournalEntry::question`]), en twee vormen voor
+/// hetzelfde contact zouden uiteen gaan lopen.
+pub(crate) fn crossing_snapshot(signed: &SignedAnswer) -> CrossingSnapshot {
     CrossingSnapshot {
         asked_by: signed.asked_by.to_string(),
         signature: signed.signature.to_string(),
