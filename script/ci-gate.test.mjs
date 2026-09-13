@@ -18,6 +18,60 @@ const WORKFLOW = fileURLToPath(new URL('../.github/workflows/ci.yml', import.met
 const source = readFileSync(WORKFLOW, 'utf8');
 const lines = source.split('\n');
 
+/**
+ * De `branches:`-lijst van één trigger onder `on:`, in beide YAML-vormen
+ * (`[main, x]` en een blok met streepjes).
+ */
+function triggerBranches(event, from = lines) {
+  const start = from.findIndex((line) => /^on:\s*$/.test(line));
+  assert.ok(start !== -1, 'ci.yml heeft geen `on:`-blok');
+
+  const body = [];
+  for (const line of from.slice(start + 1)) {
+    if (/^\S/.test(line)) break;
+    body.push(line);
+  }
+
+  const index = body.findIndex((line) => new RegExp(`^ {2}${event}:\\s*$`).test(line));
+  assert.ok(index !== -1, `ci.yml heeft geen \`${event}\`-trigger`);
+
+  // Op regelnummer verder lezen en niet op regelinhoud: in de blokvorm is
+  // `    branches:` bij beide triggers dezelfde tekst, en zoeken op inhoud
+  // leverde voor allebei de lijst van de eerste trigger op — waarmee de twee
+  // asserties hieronder elkaar zouden bevestigen zonder iets te meten.
+  for (let cursor = index + 1; cursor < body.length; cursor += 1) {
+    const line = body[cursor];
+    if (/^ {0,2}\S/.test(line)) break; // volgende trigger
+    const inline = /^ {4}branches:\s*\[(.*)\]\s*$/.exec(line);
+    if (inline) {
+      return inline[1]
+        .split(',')
+        .map((n) => n.trim().replace(/^['"]|['"]$/g, ''))
+        .filter((n) => n !== '');
+    }
+    if (/^ {4}branches:\s*$/.test(line)) {
+      const names = [];
+      for (const item of body.slice(cursor + 1)) {
+        if (/^\s*#/.test(item) || item.trim() === '') continue;
+        const match = /^ {6}-\s*(.+?)\s*$/.exec(item);
+        if (!match) break;
+        names.push(match[1].replace(/^['"]|['"]$/g, ''));
+      }
+      return names;
+    }
+  }
+  assert.fail(`de \`${event}\`-trigger heeft geen branches:-lijst`);
+}
+
+// Langlevende integratiebranches waarop de PoC's staan. Een PR daarheen hoort
+// door dezelfde poorten als een PR naar main, dus ze staan in de branches-lijst
+// van beide triggers in ci.yml. Zonder deze test verdwijnt zo'n regel bij de
+// eerste conflictoplossing in het `on:`-blok en draait er op die branch stilletjes
+// geen Rust-test meer — precies hoe er eerder een niet-compilerende teststand op
+// belandde. Gaat een integratiebranch naar main, dan gaat hij hier én in ci.yml
+// weg, in dezelfde commit; de test faalt als je er één van vergeet.
+const INTEGRATIEBRANCHES = ['simulator-poc'];
+
 /** Regelnummers waarop een baan op het bovenste niveau van `jobs:` begint. */
 function jobStarts() {
   const starts = new Map();
@@ -115,6 +169,57 @@ const EIGEN_REQUIRED_CHECK = new Set([
 // Banen die bewust buiten beide vallen. Leeg, en dat hoort zo te blijven: elke
 // regel hier is dekking die niemand meer bewaakt, dus zet er de reden bij.
 const BUITEN_DE_POORT = new Set([]);
+
+test('ci.yml draait op main en op elke levende integratiebranch', () => {
+  for (const event of ['push', 'pull_request']) {
+    const branches = triggerBranches(event);
+    assert.deepEqual(
+      branches,
+      ['main', ...INTEGRATIEBRANCHES],
+      `de branches-lijst van de ${event}-trigger loopt uit de pas`,
+    );
+  }
+});
+
+test('push en pull_request dekken dezelfde branches', () => {
+  // Alleen `pull_request` uitbreiden geeft groene PR's en een ongeteste branch
+  // na de merge; alleen `push` geeft het omgekeerde.
+  assert.deepEqual(triggerBranches('pull_request'), triggerBranches('push'));
+});
+
+test('de lezer haalt per trigger zijn eigen branches-lijst op, ook in de blokvorm', () => {
+  // De twee asserties hierboven meten alleen iets als de lezer de triggers uit
+  // elkaar houdt. In de blokvorm is `    branches:` bij beide triggers dezelfde
+  // regel, dus een lezer die op tekst zoekt geeft twee keer de lijst van `push`
+  // terug: de lijsten lopen dan uiteen zonder dat er iets rood wordt.
+  const blok = [
+    'on:',
+    '  push:',
+    '    branches:',
+    '      - main',
+    '      - integratie',
+    '  pull_request:',
+    '    branches:',
+    '      - main',
+    '',
+    'permissions:',
+  ];
+  assert.deepEqual(triggerBranches('push', blok), ['main', 'integratie']);
+  assert.deepEqual(triggerBranches('pull_request', blok), ['main']);
+
+  const gemengd = [
+    'on:',
+    '  push:',
+    '    branches: [main, integratie]',
+    '  pull_request:',
+    '    branches:',
+    '      - main',
+    '',
+    'permissions:',
+  ];
+  assert.deepEqual(triggerBranches('push', gemengd), ['main', 'integratie']);
+  assert.deepEqual(triggerBranches('pull_request', gemengd), ['main']);
+});
 
 test('elke baan in ci.yml blokkeert, via de poort of als eigen required check', () => {
   // Zonder deze assertie is een nieuwe baan toevoegen en vergeten aan te haken

@@ -2,18 +2,24 @@
 name: CI
 
 on:
+  # Naast main staan hier de levende integratiebranches: een PR daarheen hoort
+  # dezelfde poorten te passeren als een PR naar main, anders landt er een stand
+  # op zo'n branch die nooit is gebouwd of getest. Een branch gaat uit deze twee
+  # lijsten zodra hij naar main is gemerged; script/ci-gate.test.mjs bindt de
+  # lijsten aan elkaar en aan die van de test.
   push:
-    branches: [main]
+    branches: [main, simulator-poc]
   pull_request:
-    branches: [main]
+    branches: [main, simulator-poc]
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Op main niet afbreken: een tweede merge zou de run van de eerste afkappen
-  # en main zonder afgeronde CI achterlaten.
+  # Op main en op een integratiebranch niet afbreken: een tweede merge zou de run
+  # van de eerste afkappen en die branch zonder afgeronde CI achterlaten. Alleen
+  # pull requests worden afgebroken, ongeacht waar ze heen gaan.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -98,18 +104,23 @@ jobs:
 
       - name: Check for modifications to released schema versions
         if: needs.changes.outputs.ci == 'true'
+        env:
+          # De base van déze pull request, niet main: op een integratiebranch is
+          # dat die branch. Zij draagt alles wat main al had, dus een PR naar main
+          # meet precies wat hij altijd al mat.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          # Get list of versioned schema directories that exist on main
-          git fetch origin main
-          EXISTING_VERSIONS=$(git ls-tree -d --name-only origin/main schema/ 2>/dev/null \
+          # Get list of versioned schema directories that exist on the base branch
+          git fetch origin "$BASE_REF"
+          EXISTING_VERSIONS=$(git ls-tree -d --name-only "origin/$BASE_REF" schema/ 2>/dev/null \
             | grep -E '^schema/v[0-9]+\.[0-9]+\.[0-9]+$' || true)
 
           if [ -z "$EXISTING_VERSIONS" ]; then
-            echo "No existing schema versions on main, skipping check"
+            echo "No existing schema versions on $BASE_REF, skipping check"
             exit 0
           fi
 
-          echo "Existing schema versions on main:"
+          echo "Existing schema versions on $BASE_REF:"
           echo "$EXISTING_VERSIONS"
           echo ""
 
@@ -117,7 +128,7 @@ jobs:
           VIOLATIONS=""
           for version_dir in $EXISTING_VERSIONS; do
             # Check for modified or deleted files in this version directory
-            CHANGES=$(git diff --name-status origin/main...HEAD -- "$version_dir" | grep -E '^[MD]\s' || true)
+            CHANGES=$(git diff --name-status "origin/$BASE_REF...HEAD" -- "$version_dir" | grep -E '^[MD]\s' || true)
             if [ -n "$CHANGES" ]; then
               VIOLATIONS="$VIOLATIONS
           $CHANGES"
@@ -131,7 +142,7 @@ jobs:
             echo "Cannot modify or delete files in released schema versions:"
             echo "$VIOLATIONS"
             echo ""
-            echo "Schema versions are immutable once released to main."
+            echo "Schema versions are immutable once released to $BASE_REF."
             echo "To make changes, create a new schema version directory."
             echo "(schema/latest/ can be updated freely)"
             exit 1
@@ -230,10 +241,15 @@ jobs:
 
       - name: Check engine version bump on source changes
         if: needs.changes.outputs.ci == 'true' && github.event_name == 'pull_request'
+        env:
+          # Zie protect-schema: meten tegen de base van deze PR, zodat een PR naar
+          # een integratiebranch alleen zijn eigen wijziging ziet en niet alles
+          # wat die branch al op main voorliep.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          git fetch origin main
+          git fetch origin "$BASE_REF"
           # Check if engine source files changed (excluding binaries and tests)
-          ENGINE_CHANGES=$(git diff --name-only origin/main...HEAD -- \
+          ENGINE_CHANGES=$(git diff --name-only "origin/$BASE_REF...HEAD" -- \
             'packages/engine/src/*.rs' \
             'packages/engine/src/**/*.rs' \
             ':!packages/engine/src/bin/*' \
@@ -242,11 +258,11 @@ jobs:
             echo "No engine source changes, skipping version check"
             exit 0
           fi
-          # Compare engine version between main and this branch
-          MAIN_VERSION=$(git show origin/main:packages/engine/Cargo.toml 2>/dev/null \
+          # Compare engine version between the base branch and this branch
+          BASE_VERSION=$(git show "origin/$BASE_REF:packages/engine/Cargo.toml" 2>/dev/null \
             | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
           PR_VERSION=$(grep '^version' packages/engine/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          if [ "$MAIN_VERSION" = "$PR_VERSION" ]; then
+          if [ "$BASE_VERSION" = "$PR_VERSION" ]; then
             echo "WARNING: Engine source files changed but version is still $PR_VERSION"
             echo "Changed files:"
             echo "$ENGINE_CHANGES"
@@ -254,7 +270,7 @@ jobs:
             echo "Consider bumping the engine version in packages/engine/Cargo.toml"
             # Warning only, not a hard failure (yet)
           else
-            echo "Engine version bumped: $MAIN_VERSION -> $PR_VERSION"
+            echo "Engine version bumped: $BASE_VERSION -> $PR_VERSION"
           fi
 
   cross-law-integrity:
