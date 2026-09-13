@@ -3,10 +3,8 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
-import { Controls } from '@vue-flow/controls';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
-import '@vue-flow/controls/dist/style.css';
 import GraphLawNode from '../components/graph/GraphLawNode.vue';
 import GraphBoxNode from '../components/graph/GraphBoxNode.vue';
 import GraphItemNode from '../components/graph/GraphItemNode.vue';
@@ -32,7 +30,7 @@ const router = useRouter();
 const demo = useDemo();
 const { corpus, profile, portalLaws, dataVersion } = demo;
 // Same store id as the <VueFlow> below, otherwise fitView talks to a different instance.
-const { fitView } = useVueFlow({ id: 'demo-graph' });
+const { fitView, zoomIn, zoomOut } = useVueFlow({ id: 'demo-graph' });
 // The law list is a sheet, closed until asked for; the presets live in the toolbar.
 const splitView = ref(null);
 
@@ -238,8 +236,22 @@ function unique(laws) {
             <template #node-box="{ data }"><GraphBoxNode :data="data" /></template>
             <template #node-item="{ data }"><GraphItemNode :data="data" /></template>
             <Background />
-            <Controls :show-interactive="false" />
           </VueFlow>
+          <!-- De zoomknoppen van vue-flow vervangen door knoppen uit het design
+               system: die bracht zijn eigen stylesheet en eigen vormgeving mee,
+               die naast de rest van de app stond en niets van het thema wist.
+               `useVueFlow` levert dezelfde acties, dus alleen de knoppen zijn
+               anders. -->
+          <!-- Liggend, niet staand zoals vue-flow ze zette: nldd-button-bar is
+               een horizontale groep en kent geen staande variant. Zelf rechtop
+               zetten zou tegen het component in werken; dit is dezelfde bediening
+               in de vorm die het design system ervoor heeft. -->
+          <nldd-button-bar class="graph-zoom" variant="neutral-base">
+            <nldd-icon-button icon="add" text="Inzoomen" @click="zoomIn()"></nldd-icon-button>
+            <nldd-icon-button icon="remove" text="Uitzoomen" @click="zoomOut()"></nldd-icon-button>
+            <nldd-button-bar-divider></nldd-button-bar-divider>
+            <nldd-icon-button icon="fit-to-view" text="Alles in beeld" @click="fitView({ padding: 0.1 })"></nldd-icon-button>
+          </nldd-button-bar>
         </div>
       </nldd-page>
     </nldd-split-view-pane>

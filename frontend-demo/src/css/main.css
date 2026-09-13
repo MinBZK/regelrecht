@@ -171,8 +171,25 @@ body {
  * outputs); a graph canvas is not in the design system (same exception as the
  * editor). Colours come from the Rijkshuisstijl and design-system tokens. */
 .graph-canvas {
+  position: relative;
   height: 100%;
   min-height: 60vh;
+}
+
+/* De zoomknoppen zweven over het canvas, linksonder zoals vue-flow ze zette.
+   Positioneren is het enige wat hier eigen is; de knopgroep zelf komt uit het
+   design system en bepaalt haar eigen vorm.
+
+   De onderrand ligt op dezelfde hoogte als de dia-knoppen in de presentatierail
+   ernaast. Op 12px stonden twee vrijwel identieke balken naast elkaar een rij
+   verschoven, en dat viel meteen op. De maat is opgebouwd uit de delen die het
+   dek eronder zet (voetrand 1.5rem + bedieningsregel 0.8rem×1.5 + tussenruimte
+   0.6rem), zodat hij meebeweegt als die regel van formaat verandert. */
+.graph-zoom {
+  position: absolute;
+  left: 12px;
+  bottom: calc(1.5rem + 0.8rem * 1.5 + 0.6rem);
+  z-index: 5;
 }
 
 .graph-canvas .vue-flow__node {
