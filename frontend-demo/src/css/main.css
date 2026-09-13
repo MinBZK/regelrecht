@@ -188,7 +188,11 @@ body {
   height: 100%;
   box-sizing: border-box;
   border: 1.5px solid var(--primitives-color-donkerblauw-600);
-  background: color-mix(in srgb, var(--primitives-color-lintblauw-750) 4%, transparent);
+  /* Trap van oppervlakken: canvas (tinted) → wetkader (base) → vak (tinted) →
+     rij (base, met rand). Elke stap wisselt af, zodat de nesting zichtbaar
+     blijft zonder dat er een vierde grijstint bij hoeft. De tokens keren zelf
+     om, dus dit klopt in beide modi. */
+  background: var(--semantics-surfaces-base-background-color);
   color: var(--semantics-content-color, var(--primitives-color-coolgray-900));
   border-radius: var(--primitives-radius-12, 12px);
   font-family: var(--primitives-font-family-body, system-ui, sans-serif);
@@ -232,7 +236,7 @@ body {
   height: 100%;
   box-sizing: border-box;
   border: 1px solid var(--primitives-color-donkerblauw-300);
-  background: color-mix(in srgb, var(--primitives-color-lintblauw-750) 8%, transparent);
+  background: var(--semantics-surfaces-tinted-background-color);
   border-radius: var(--primitives-radius-8, 8px);
 }
 
@@ -255,8 +259,13 @@ body {
   justify-content: space-between;
   gap: 8px;
   padding: 0 8px;
-  border: 1px solid var(--primitives-color-coolgray-300);
-  background: var(--semantics-surfaces-base-background-color, var(--primitives-color-coolgray-0));
+  border: 1px solid var(--semantics-dividers-color);
+  /* De rij is de bovenste laag en moet loskomen van het vak eronder. De twee
+     oppervlakte-tokens wisselen elkaar hierboven al af, dus een derde stap
+     komt van een lichte optrekking met de contentkleur: die keert vanzelf mee
+     om, zodat de rij in donkere modus lichter wordt en in lichte juist iets
+     donkerder dan wit. */
+  background: color-mix(in srgb, var(--semantics-content-color) 7%, var(--semantics-surfaces-base-background-color));
   color: var(--semantics-content-color, var(--primitives-color-coolgray-900));
   border-radius: var(--primitives-radius-6, 6px);
   font-size: 0.8125rem;
@@ -296,86 +305,79 @@ body {
 
 /* One Rijkshuisstijl colour per organisation, as the POC coloured its laws.
  *
- * Eén token per plek, en bewust géén `light-dark()` eromheen. De schalen van
- * dit design system keren zelf al om tussen de modi: `robijnrood-25` is bijna
- * wit in lichte modus en bijna zwart in donkere. Een token in `light-dark()`
- * zetten kiest in donkere modus dus het hoge nummer, en `robijnrood-950` is
- * daar juist bijna wit — zo werd het wetkader in donkere modus een lichtroze
- * vlak met onleesbare titel. Het lage nummer is in beide modi de rustige
- * ondergrond, het hoge in beide de contrastkleur. */
+ * De kleur zit in de RAND en het LABEL, niet in het vlak. De vlakken komen uit
+ * de oppervlakte-tokens van het design system, zodat de graaf dezelfde trap
+ * gebruikt als de rest van de app: canvas (tinted) → wetkader → vak → rij, elke
+ * stap iets lichter dan de vorige in donkere modus en iets donkerder in lichte.
+ * Zo blijft de nesting zichtbaar in beide modi, en blijft de organisatiekleur
+ * doen waar hij voor is: één wet van de andere onderscheiden.
+ *
+ * Wat hiervoor misging, twee keer:
+ * 1. `light-dark(x-25, x-950)` om een token dat zelf al omkeert. In donkere
+ *    modus koos dat het hoge nummer, en `robijnrood-950` is daar bijna wit: het
+ *    wetkader werd een lichtroze vlak met onleesbare titel.
+ * 2. Daarna `x-25` kaal. Dat is in donkere modus juist bijna zwart (L 0.16),
+ *    dus donkerder dan de canvas (L 0.23) waarop het ligt. Het kader zakte weg
+ *    terwijl de rijen erboven zweefden: de nesting las binnenstebuiten. */
 .graph-c0 .graph-law {
   border-color: var(--primitives-color-lintblauw-500);
-  background: var(--primitives-color-lintblauw-25);
 }
 .graph-c0 .graph-box {
   border-color: var(--primitives-color-lintblauw-300);
-  background: var(--primitives-color-lintblauw-75);
 }
 .graph-c0 .graph-box__label {
   color: var(--primitives-color-lintblauw-800);
 }
 .graph-c1 .graph-law {
   border-color: var(--primitives-color-oranje-500);
-  background: var(--primitives-color-oranje-25);
 }
 .graph-c1 .graph-box {
   border-color: var(--primitives-color-oranje-300);
-  background: var(--primitives-color-oranje-75);
 }
 .graph-c1 .graph-box__label {
   color: var(--primitives-color-oranje-800);
 }
 .graph-c2 .graph-law {
   border-color: var(--primitives-color-groen-500);
-  background: var(--primitives-color-groen-25);
 }
 .graph-c2 .graph-box {
   border-color: var(--primitives-color-groen-300);
-  background: var(--primitives-color-groen-75);
 }
 .graph-c2 .graph-box__label {
   color: var(--primitives-color-groen-800);
 }
 .graph-c3 .graph-law {
   border-color: var(--primitives-color-paars-500);
-  background: var(--primitives-color-paars-25);
 }
 .graph-c3 .graph-box {
   border-color: var(--primitives-color-paars-300);
-  background: var(--primitives-color-paars-75);
 }
 .graph-c3 .graph-box__label {
   color: var(--primitives-color-paars-800);
 }
 .graph-c4 .graph-law {
   border-color: var(--primitives-color-robijnrood-500);
-  background: var(--primitives-color-robijnrood-25);
 }
 .graph-c4 .graph-box {
   border-color: var(--primitives-color-robijnrood-300);
-  background: var(--primitives-color-robijnrood-75);
 }
 .graph-c4 .graph-box__label {
   color: var(--primitives-color-robijnrood-800);
 }
 .graph-c5 .graph-law {
   border-color: var(--primitives-color-donkergeel-500);
-  background: var(--primitives-color-donkergeel-25);
 }
 .graph-c5 .graph-box {
   border-color: var(--primitives-color-donkergeel-300);
-  background: var(--primitives-color-donkergeel-75);
 }
 .graph-c5 .graph-box__label {
   color: var(--primitives-color-donkergeel-800);
 }
 .graph-c6 .graph-law {
   border-color: var(--primitives-color-mintgroen-500);
-  background: var(--primitives-color-mintgroen-25);
 }
 .graph-c6 .graph-box {
   border-color: var(--primitives-color-mintgroen-300);
-  background: var(--primitives-color-mintgroen-75);
 }
 .graph-c6 .graph-box__label {
   color: var(--primitives-color-mintgroen-800);
