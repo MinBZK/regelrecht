@@ -146,6 +146,112 @@ pub struct DocumentedParameter {
     /// Het verwachte type van de meegegeven waarde.
     #[serde(rename = "type")]
     pub value_type: ParameterType,
+    /// Waarmee dit veld voorgevuld is voordat iemand iets typt; niets, als het
+    /// er niet staat.
+    ///
+    /// **Casusdata.** Wat de wereld al weet, hoort niet opnieuw ingetypt te
+    /// worden — en wat zij weet, weet zij uit haar eigen bestand en niet uit
+    /// Rust dat een casus kent (zie [`Prefill`]).
+    ///
+    /// Dit is de *opgave*, niet de uitkomst: `$last:…` staat hier als
+    /// verwijzing, en pas in het beeld van de wereld staat de waarde waarop ze
+    /// op dat moment uitkomt. Daarom gaat dit veld niet mee naar buiten
+    /// (`skip_serializing`): het beeld draagt de **opgeloste** voorinvulling per
+    /// actie (zie [`crate::ActionSnapshot::prefill`]), en een lezer die hier een
+    /// verwijzing zou zien staan, zou haar zelf moeten oplossen — precies wat
+    /// het beeld voor hem doet.
+    ///
+    /// Een voorinvulling hoort bij een veld dat iemand invult: het formulier van
+    /// een actie, en de parameters van een besluit dat een actie start. Op de
+    /// `inputs` van een lexostatus is dit dezelfde vorm maar zonder formulier —
+    /// een vraag aan een cel komt van een consument en niet uit een invulveld —
+    /// en er is daar dus niets om voor te vullen.
+    #[serde(default, skip_serializing)]
+    pub prefill: Option<Prefill>,
+}
+
+/// Waarmee een formulierveld voorgevuld wordt.
+///
+/// Drie vormen, en de eerste twee zijn te herkennen aan de `$`: een letterlijke
+/// waarde staat er zoals ze is, `$clock` is de stand van de logische klok, en
+/// `$last:<cel>.<kroniek>.<veld>` is de laatste waarde die dat veld in die
+/// kroniek kreeg. Een `$`-woord dat geen van beide is, wordt geweigerd in plaats
+/// van als letterlijke tekst doorgegeven: dan staat er straks `$clok` in een
+/// kroniek, en niemand die het merkt.
+///
+/// Wat er níet bij staat, is een berekening. Dit is geen tweede reductietaal —
+/// een voorinvulling wijst iets aan dat er al ligt, of ze noemt een waarde. Wie
+/// een bedrag uit de wet wil voorstellen, laat de wet rekenen.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(try_from = "Value")]
+pub enum Prefill {
+    /// De stand van de logische klok.
+    ///
+    /// Voor een datumveld, en het standaardgedrag van zo'n veld: een actor doet
+    /// iets op het moment dat de wereld staat.
+    Clock,
+    /// De laatste waarde die één veld in één kroniek kreeg, op of vóór de klok.
+    Last {
+        /// De cel die de kroniek houdt.
+        cell: String,
+        /// De kroniekstroom.
+        chronicle: String,
+        /// Het veld waarvan de laatste waarde genomen wordt.
+        field: String,
+    },
+    /// Een waarde die letterlijk in het wereldbestand staat.
+    Literal(Value),
+}
+
+/// Hoe de klok als voorinvulling opgeschreven wordt.
+const PREFILL_CLOCK: &str = "$clock";
+
+/// Waarmee een verwijzing naar de laatst vastgelegde waarde begint.
+const PREFILL_LAST: &str = "$last:";
+
+impl TryFrom<Value> for Prefill {
+    type Error = String;
+
+    fn try_from(value: Value) -> std::result::Result<Self, Self::Error> {
+        let Value::String(text) = &value else {
+            return Ok(Self::Literal(value));
+        };
+        if text == PREFILL_CLOCK {
+            return Ok(Self::Clock);
+        }
+        if let Some(path) = text.strip_prefix(PREFILL_LAST) {
+            let parts: Vec<&str> = path.split('.').collect();
+            let [cell, chronicle, field] = parts[..] else {
+                return Err(prefill_error(text));
+            };
+            if cell.is_empty() || chronicle.is_empty() || field.is_empty() {
+                return Err(prefill_error(text));
+            }
+            return Ok(Self::Last {
+                cell: cell.to_string(),
+                chronicle: chronicle.to_string(),
+                field: field.to_string(),
+            });
+        }
+        if text.starts_with('$') {
+            return Err(prefill_error(text));
+        }
+        Ok(Self::Literal(value))
+    }
+}
+
+/// Wat een onleesbare voorinvulling een lezer vertelt.
+///
+/// De drie vormen erbij, want wie dit leest heeft er één verkeerd
+/// opgeschreven en niet alle drie vergeten.
+fn prefill_error(text: &str) -> String {
+    format!(
+        "'{text}' is geen voorinvulling die ik ken; het is een letterlijke waarde, \
+         '{PREFILL_CLOCK}' (de stand van de klok) of \
+         '{PREFILL_LAST}<cel>.<kroniek>.<veld>' (de laatst vastgelegde waarde). Een \
+         waarde die met '$' begint en niet een van deze twee is, wordt geweigerd: \
+         een typfout hoort hier te vallen en niet als tekst in een kroniek te belanden"
+    )
 }
 
 /// De typen die een lexostatus-parameter kan hebben.
@@ -1083,6 +1189,84 @@ where:
         assert_eq!(parameter.value_type, ParameterType::Date);
     }
 
+    /// Eén parameter uit YAML, zoals een wereldbestand hem opschrijft.
+    fn parameter(yaml: &str) -> std::result::Result<DocumentedParameter, String> {
+        serde_yaml_ng::from_str(yaml).map_err(|e| e.to_string())
+    }
+
+    /// De voorinvulling die dit veld opgeeft.
+    fn prefill(yaml: &str) -> Prefill {
+        parameter(yaml)
+            .unwrap_or_else(|e| panic!("de voorinvulling moet gelezen worden: {e}"))
+            .prefill
+            .unwrap_or_else(|| panic!("er staat een `prefill` in, dus die hoort er te zijn"))
+    }
+
+    /// De drie vormen van een voorinvulling, elk uit het wereldbestand gelezen.
+    ///
+    /// Een letterlijke waarde houdt haar soort — `2024` is een getal en niet de
+    /// tekst "2024" — want ze gaat straks door dezelfde typetoets als wat de
+    /// invuller zelf typt.
+    #[test]
+    fn de_drie_vormen_van_een_voorinvulling_worden_gelezen() {
+        assert_eq!(
+            prefill("name: jaar\ntype: number\nprefill: 2024\n"),
+            Prefill::Literal(Value::Int(2024))
+        );
+        assert_eq!(
+            prefill("name: bsn\ntype: string\nprefill: '999993653'\n"),
+            Prefill::Literal(Value::String("999993653".to_string()))
+        );
+        assert_eq!(
+            prefill("name: ondertekend_op\ntype: date\nprefill: $clock\n"),
+            Prefill::Clock
+        );
+        assert_eq!(
+            prefill("name: bsn\ntype: string\nprefill: $last:burger.aanvragen.bsn\n"),
+            Prefill::Last {
+                cell: "burger".to_string(),
+                chronicle: "aanvragen".to_string(),
+                field: "bsn".to_string(),
+            }
+        );
+    }
+
+    /// Een veld zonder `prefill` heeft er geen. Dat het optioneel is, is de hele
+    /// reden dat bestaande wereldbestanden blijven laden.
+    #[test]
+    fn een_veld_zonder_voorinvulling_heeft_er_geen() {
+        let parameter = parameter("name: bsn\ntype: string\n")
+            .unwrap_or_else(|e| panic!("een veld zonder voorinvulling moet laden: {e}"));
+        assert_eq!(parameter.prefill, None);
+    }
+
+    /// Een `$`-woord dat geen van de twee verwijzingen is, wordt geweigerd.
+    ///
+    /// De aantrekkelijke fout is hem als letterlijke tekst door te laten: dan
+    /// staat er straks `$clok` in een kroniek, en dat is een waarde die niemand
+    /// bedoeld heeft en niemand ziet. Een onvolledig pad hoort net zo goed te
+    /// vallen — `$last:burger.aanvragen` wijst geen veld aan.
+    #[test]
+    fn een_onbekende_verwijzing_wordt_geweigerd() {
+        for verkeerd in [
+            "$clok",
+            "$morgen",
+            "$last",
+            "$last:",
+            "$last:burger.aanvragen",
+            "$last:burger.aanvragen.bsn.extra",
+            "$last:.aanvragen.bsn",
+            "$last:burger..bsn",
+        ] {
+            let error = parameter(&format!("name: bsn\ntype: string\nprefill: '{verkeerd}'\n"))
+                .expect_err(&format!("'{verkeerd}' hoort geweigerd te worden"));
+            assert!(
+                error.contains(verkeerd) && error.contains("$last:"),
+                "de melding hoort te zeggen wat er staat en wat er kan: {error}"
+            );
+        }
+    }
+
     /// De ISO-notatie komt door; de Nederlandse notatie, een halve datum en een
     /// dag die niet bestaat niet. Dat laatste is het punt van parsen in plaats
     /// van een vormtoets: `2024-02-30` heeft de juiste vorm en is geen dag.
@@ -1140,10 +1324,12 @@ where:
             DocumentedParameter {
                 name: "bsn".to_string(),
                 value_type: ParameterType::String,
+                prefill: None,
             },
             DocumentedParameter {
                 name: "besluitdatum".to_string(),
                 value_type: ParameterType::Date,
+                prefill: None,
             },
         ];
         let check = |params: BTreeMap<String, Value>| {

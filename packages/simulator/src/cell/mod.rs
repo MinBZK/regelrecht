@@ -45,7 +45,7 @@ pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
 pub(crate) use config::check_documented_params;
 pub use config::{
     AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition,
-    ParameterType, Reduction,
+    ParameterType, Prefill, Reduction,
 };
 
 use crate::corpus;
@@ -404,6 +404,24 @@ impl Cell {
             .chronicles
             .recordings(stream, field, value, &BTreeMap::new(), op_moment)
             .is_empty()
+    }
+
+    /// De laatste waarde die één veld in één kroniek van deze cel kreeg.
+    ///
+    /// Waarmee de wereld een formulierveld kan voorvullen met wat zij al weet
+    /// (zie [`crate::cell::Prefill`]). Dezelfde weg als [`Self::inspect`] en om
+    /// dezelfde reden `pub(crate)`: de wereld bezit de cellen en maakt het beeld,
+    /// en een cel die dit kon aanroepen zou de kroniek van een ander lezen.
+    ///
+    /// `None` als er nog niets ligt. Dat is een antwoord en geen fout: een
+    /// formulier dat niet voorgevuld kan worden, staat leeg.
+    pub(crate) fn last_value(
+        &self,
+        stream: &str,
+        field: &str,
+        op_moment: NaiveDate,
+    ) -> Option<&Value> {
+        self.chronicles.last_value(stream, field, op_moment)
     }
 
     /// Ligt er op of vóór `op_moment` een gram met deze naam in deze stroom?

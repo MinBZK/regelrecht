@@ -93,8 +93,32 @@ describe('het actiepaneel', () => {
     expect(values).toStrictEqual({ bsn: '999993653', jaar: 2025, ondertekend_op: '2024-01-09' });
   });
 
-  it('vraagt eerst om een leeg veld in plaats van het als niets te versturen', async () => {
+  // Wat de wereld al weet, staat er al in — en het veld zegt erbij dat het een
+  // voorstel is. Zodra iemand er iets anders van maakt, is het zijn opgave en
+  // staat die melding er niet meer.
+  it('begint met de voorinvulling uit het beeld, en markeert haar als zodanig', async () => {
     const wrapper = mountPanel();
+    const card = wrapper.findAll('nldd-card')[0];
+    const { prefill } = worldFixture.actions[0];
+    expect(card.find('nldd-text-field').attributes('value')).toBe(prefill.bsn);
+    expect(card.find('nldd-number-field').attributes('value')).toBe(String(prefill.jaar));
+    expect(card.find('nldd-date-field').attributes('value')).toBe(prefill.ondertekend_op);
+    expect(card.findAll('nldd-form-field-help-text')).toHaveLength(3);
+
+    await card.find('form').trigger('submit');
+    const [{ values }] = wrapper.emitted('run')[0];
+    expect(values).toStrictEqual(prefill);
+
+    await fill(wrapper, card.find('nldd-text-field'), '999993756');
+    expect(card.findAll('nldd-form-field-help-text')).toHaveLength(2);
+  });
+
+  it('vraagt eerst om een leeg veld in plaats van het als niets te versturen', async () => {
+    // Zonder voorinvulling, want dit gaat over het veld dat leeg blijft: met een
+    // voorstel erin is er niets om over te struikelen.
+    const snapshot = cloneWorld();
+    for (const action of snapshot.actions) action.prefill = {};
+    const wrapper = mountPanel(snapshot);
     const card = wrapper.findAll('nldd-card')[0];
     await card.find('form').trigger('submit');
 

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { formatMoment, humanize } from '../world/format.js';
 import { fieldValue } from '../world/events.js';
-import { decidedAlready, describeEffect, emptyForm, gramKind } from '../world/snapshot.js';
+import { decidedAlready, describeEffect, gramKind, initialForm, isPrefilled } from '../world/snapshot.js';
 
 // Eén actie uit het wereldbestand: wie haar doet, wat ze uitwerkt, wat de actor
 // invult, en of ze nu kan.
@@ -11,6 +11,11 @@ import { decidedAlready, describeEffect, emptyForm, gramKind } from '../world/sn
 // heet zoals de wereld het noemt en heeft het type dat de cel accepteert. Een
 // actie die nu niet kan blijft staan met de reden erbij; ze is uit te voeren
 // zodra de wereld zegt dat het kan.
+//
+// Wat de wereld al weet, staat er al in: `prefill` uit het beeld vult de velden
+// voordat iemand iets typt, en het veld zegt erbij dat het voorgevuld is. Het
+// blijft een voorstel — wie er iets anders van maakt, verstuurt dat, en dan is
+// het ook geen voorinvulling meer.
 //
 // Elk type heeft zijn eigen veld, en een datum dus ook: `nldd-date-field`, net
 // als "Spoel vooruit tot" op de tijdlijn. Dat veld toont de Nederlandse notatie
@@ -37,17 +42,19 @@ const props = defineProps({
 
 const emit = defineEmits(['run']);
 
-const values = ref(emptyForm(props.action));
+const values = ref(initialForm(props.action));
 /** De velden die nog leeg zijn en bij de laatste poging ingevuld hadden moeten zijn. */
 const missing = ref([]);
 
-// Een nieuw beeld geeft dezelfde actie opnieuw; het formulier hoort dan leeg te
-// beginnen wanneer de velden zelf veranderen, en anders te blijven staan zoals de
-// bezoeker het invulde.
+// Een nieuw beeld geeft dezelfde actie opnieuw; het formulier hoort dan opnieuw
+// te beginnen wanneer de velden zelf veranderen, en anders te blijven staan zoals
+// de bezoeker het invulde. Een voorinvulling die intussen op iets anders uitkomt
+// — er ligt nu een aanvraag waar er eerst geen was — verandert de velden niet, en
+// overschrijft dus ook niet wat er half ingetypt staat.
 watch(
   () => (props.action.form ?? []).map((field) => `${field.name}:${field.type}`).join(','),
   () => {
-    values.value = emptyForm(props.action);
+    values.value = initialForm(props.action);
     missing.value = [];
   },
 );
@@ -116,6 +123,11 @@ function errorId(field) {
 
 function isMissing(field) {
   return missing.value.includes(field.name);
+}
+
+/** Staat hier nog wat de wereld voorstelde? */
+function wasPrefilled(field) {
+  return isPrefilled(props.action, field.name, values.value[field.name]);
 }
 
 /**
@@ -221,7 +233,9 @@ function run() {
         <form @submit.prevent="submit">
           <template v-for="field in fields" :key="field.name">
             <!-- Een ja/nee-veld draagt zijn label zelf; het zou anders twee keer
-                 boven hetzelfde veld staan. -->
+                 boven hetzelfde veld staan. Een voorgevulde stand staat er
+                 zichtbaar in — de schakelaar ís de weergave van haar waarde —
+                 dus er hoort geen tweede melding bij. -->
             <nldd-switch-field
               v-if="field.type === 'boolean'"
               :label="humanize(field.name)"
@@ -233,6 +247,11 @@ function run() {
               :label="humanize(field.name)"
               :supporting-label="supportingLabel(field)"
             >
+              <!-- Licht gemarkeerd, en in de woorden van wat het is: een
+                   voorstel van de wereld, geen vastgelegd feit. -->
+              <nldd-form-field-help-text v-if="wasPrefilled(field)">
+                Voorgevuld met wat de wereld al weet; pas het aan als het anders is.
+              </nldd-form-field-help-text>
               <nldd-number-field
                 v-if="field.type === 'number'"
                 :value="values[field.name] ?? undefined"

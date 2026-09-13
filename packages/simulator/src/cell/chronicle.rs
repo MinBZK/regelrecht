@@ -211,6 +211,35 @@ impl ChronicleStore {
             })
     }
 
+    /// De laatste waarde die één veld in deze stroom kreeg, op of vóór
+    /// `op_moment`.
+    ///
+    /// Over álle sleutelwaarden heen, en dat is het verschil met
+    /// [`Self::latest_recording`]: die beantwoordt een vraag over één onderwerp,
+    /// deze zoekt de laatste waarde die er hoe dan ook ligt. Dat is precies wat
+    /// een voorinvulling nodig heeft — welk onderwerp het wordt, is wat de
+    /// invuller nog moet kiezen (zie [`crate::cell::Prefill`]).
+    ///
+    /// Dezelfde tijdregel als overal: de dag is de korrel, en bij twee
+    /// vastleggingen op één dag wint de laatste. `None` is een antwoord en geen
+    /// fout: hierover ligt nog niets, en dan blijft het veld leeg.
+    pub(crate) fn last_value(
+        &self,
+        stream: &str,
+        name: &str,
+        op_moment: NaiveDate,
+    ) -> Option<&Value> {
+        self.streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)?
+            .events
+            .iter()
+            .filter(|event| event.op_moment <= op_moment)
+            .filter(|event| field(&event.fields, name).is_some())
+            .max_by_key(|event| event.op_moment)
+            .and_then(|event| field(&event.fields, name))
+    }
+
     /// Het sleutelveld van één stroom; `None` als de cel haar niet houdt.
     pub(crate) fn key_of(&self, stream: &str) -> Option<&str> {
         self.streams

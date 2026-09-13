@@ -26,8 +26,8 @@
 //! is — staat er wel, per veld.
 
 use crate::cell::{
-    fixed_fields, Cell, ChronicleEvent, DocumentedParameter, Intake, Lexostatus, INPUTS, RECEIPT,
-    REGULATION,
+    fixed_fields, Cell, ChronicleEvent, DocumentedParameter, Intake, Lexostatus, ParameterType,
+    Prefill, INPUTS, RECEIPT, REGULATION,
 };
 use crate::security::SignedAnswer;
 use crate::world::{ActionDefinition, ActionEffect, Warning};
@@ -204,6 +204,22 @@ pub struct ActionSnapshot {
     pub effect: ActionEffectSnapshot,
     /// Het formulier: wat de actor invult, en van welk type.
     pub form: Vec<DocumentedParameter>,
+    /// De voorinvulling per veld, opgelost op de stand van de klok.
+    ///
+    /// Alleen de velden waarvoor er iets is; wat hier niet in staat, begint leeg.
+    /// Een verwijzing naar iets dat nog nergens ligt, levert dus geen veld op en
+    /// geen fout: dat de wereld het nog niet weet, is geen weigering (zie
+    /// [`crate::cell::Prefill`]).
+    ///
+    /// **Opgelost en niet doorgegeven.** In het wereldbestand staat een opgave
+    /// (`$last:…`); hier staat de waarde waarop die op dít moment uitkomt. Dat is
+    /// wat een formulier nodig heeft, en het houdt de frontend buiten de kronieken
+    /// — anders zou zij zelf moeten gaan zoeken waar de wereld al staat te kijken.
+    ///
+    /// Het blijft een **voorstel**. De invuller kan er iets anders van maken, en
+    /// wat vastgelegd wordt, is wat hij verstuurt. Een voorinvulling is een gemak,
+    /// geen feit — en ze is bij het vastleggen dan ook niet aan het gram te zien.
+    pub prefill: BTreeMap<String, Value>,
     /// Kan de actie nu?
     pub available: bool,
     /// Waarom ze nu niet kan; `None` als ze kan.
@@ -310,7 +326,11 @@ pub(crate) fn build(view: &WorldView<'_>) -> Snapshot {
             })
             .collect(),
         cells: view.cells.values().map(cell_snapshot).collect(),
-        actions: view.actions.iter().map(action_snapshot).collect(),
+        actions: view
+            .actions
+            .iter()
+            .map(|state| action_snapshot(state, view))
+            .collect(),
         crossings: view.crossings.iter().map(crossing_snapshot).collect(),
         warnings: view.warnings.to_vec(),
     }
@@ -470,7 +490,7 @@ fn besluit_inputs(fields: &BTreeMap<String, Value>) -> BTreeMap<String, Recorded
 }
 
 /// Eén actie, met haar formulier en of ze nu kan.
-fn action_snapshot(state: &ActionState<'_>) -> ActionSnapshot {
+fn action_snapshot(state: &ActionState<'_>, view: &WorldView<'_>) -> ActionSnapshot {
     let action = state.action;
     let effect = match &action.effect {
         ActionEffect::Records(records) => ActionEffectSnapshot::Records {
@@ -493,9 +513,48 @@ fn action_snapshot(state: &ActionState<'_>) -> ActionSnapshot {
         label: action.label.clone(),
         doc: action.doc.clone(),
         effect,
+        prefill: prefilled(&state.form, view),
         form: state.form.clone(),
         available: state.unavailable.is_none(),
         unavailable_reason: state.unavailable.clone(),
+    }
+}
+
+/// De voorinvulling van één formulier, opgelost op de stand van de klok.
+///
+/// Een veld zonder waarde staat er niet in — leeg is leeg, en `null` zou in een
+/// formulier een ingevulde afwezigheid zijn.
+fn prefilled(form: &[DocumentedParameter], view: &WorldView<'_>) -> BTreeMap<String, Value> {
+    form.iter()
+        .filter_map(|param| Some((param.name.clone(), resolve_prefill(param, view)?)))
+        .collect()
+}
+
+/// Waarmee één veld voorgevuld wordt; `None` als er niets is.
+///
+/// Een **datumveld zonder opgave** krijgt de klok. Dat is de stand van de wereld
+/// waarop de actie hoe dan ook gebeurt — een actie draagt geen eigen moment — dus
+/// elke andere datum is een correctie die de invuller bewust maakt, en de klok
+/// overtypen is nooit het werk. Wie er iets anders wil, schrijft het op als
+/// `prefill`; dan wint dat, want een opgave in het wereldbestand is een keuze en
+/// dit is de afwezigheid ervan.
+fn resolve_prefill(param: &DocumentedParameter, view: &WorldView<'_>) -> Option<Value> {
+    let clock = || Value::String(view.clock.to_string());
+    match param.prefill.as_ref() {
+        None => (param.value_type == ParameterType::Date).then(clock),
+        Some(Prefill::Clock) => Some(clock()),
+        Some(Prefill::Literal(value)) => Some(value.clone()),
+        // Onbekende cel of stroom: het optuigen heeft elke verwijzing al aan een
+        // cel en een kroniek gebonden, dus dit is "daar ligt nog niets".
+        Some(Prefill::Last {
+            cell,
+            chronicle,
+            field,
+        }) => view
+            .cells
+            .get(cell)
+            .and_then(|found| found.last_value(chronicle, field, view.clock))
+            .cloned(),
     }
 }
 

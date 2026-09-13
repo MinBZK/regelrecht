@@ -208,8 +208,11 @@ cells:
           - hoogte_zorgtoeslag
         zaakkenmerk: zorgtoeslag/{bsn}
         params:
+          # De persoon uit de aanvraag die deze cel geleverd kreeg. Vóór de
+          # aanvraag ligt daar niets en staat het veld leeg.
           - name: bsn
             type: string
+            prefill: $last:toeslagen.aanvragen.bsn
         inputs:
           bsn:
             param: bsn
@@ -239,8 +242,11 @@ cells:
           - hoogte_zorgtoeslag
         zaakkenmerk: zorgtoeslag/{bsn}
         params:
+          # De persoon uit de aanvraag die deze cel geleverd kreeg. Vóór de
+          # aanvraag ligt daar niets en staat het veld leeg.
           - name: bsn
             type: string
+            prefill: $last:toeslagen.aanvragen.bsn
         inputs:
           bsn:
             param: bsn
@@ -309,13 +315,19 @@ actions:
       intake: aanvraag
       grondslag: Awir art. 15
       fields:
+        # Voorgevuld met wat het register al weet. De aanvrager hoeft haar eigen
+        # nummer niet over te typen; wie het anders wil, typt het anders.
         - name: bsn
           type: string
+          prefill: $last:brp.relaties.bsn
+        # Een letterlijke waarde: het berekeningsjaar van deze wereld.
         - name: jaar
           type: number
+          prefill: 2024
         # Een datum als parameter. Op de draad ISO (jjjj-mm-dd); het scherm toont
         # de Nederlandse notatie, want dat is een kwestie van weergave en niet
-        # van wat er vastligt.
+        # van wat er vastligt. Zonder `prefill` staat de klok erin: een actor
+        # doet iets op het moment dat de wereld staat.
         - name: ondertekend_op
           type: date
       delivers_to:

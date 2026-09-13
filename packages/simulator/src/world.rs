@@ -47,7 +47,7 @@
 use crate::accept::CellBridge;
 use crate::cell::{
     check_documented_params, BesluitDefinition, Cell, CellConfig, ChronicleEvent, Decretogram,
-    DocumentedParameter, Intake, Lexostatus, ObligationDue, BETALINGEN, ZAAKKENMERK,
+    DocumentedParameter, Intake, Lexostatus, ObligationDue, Prefill, BETALINGEN, ZAAKKENMERK,
 };
 use crate::error::{Result, SimulatorError, Subject};
 use crate::security::{Identity, SignedAnswer};
@@ -1610,6 +1610,7 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                     &fields,
                     cells,
                 )?;
+                check_prefill(&action.id, &records.fields, cells)?;
                 if let Some(delivery) = &records.delivers_to {
                     if delivery.cell == records.cell {
                         return Err(SimulatorError::DeliveryToSelf {
@@ -1627,12 +1628,13 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                 }
             }
             ActionEffect::Decides(decides) => {
-                cells
+                let definition = cells
                     .get(&decides.cell)
                     .ok_or_else(|| SimulatorError::UnknownCell {
                         cell: decides.cell.clone(),
                     })?
                     .besluit_definition(&decides.besluit)?;
+                check_prefill(&action.id, &definition.params, cells)?;
             }
         }
 
@@ -1649,6 +1651,38 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                     &condition.field,
                 )?;
         }
+    }
+    Ok(())
+}
+
+/// Wijst elke voorinvulling van dit formulier naar een kroniek die bestaat?
+///
+/// Een verwijzing naar een cel of een stroom die er niet is, vult nooit iets in
+/// — en dat zou niemand merken, want "nog niets vastgelegd" is hier een geldige
+/// uitkomst. Een typfout in `$last:` hoort dus bij het optuigen te vallen, net
+/// als een typfout in `available_when`.
+///
+/// De **stroom** wel en het **veld** niet, en dat is geen slordigheid: welke
+/// velden een stroom kent, wordt afgeleid uit wat erin ligt, en een kroniek die
+/// pas tijdens de run gevuld wordt kent er bij het optuigen nog geen. Een
+/// veldnaam afkeuren zou dan precies de voorinvulling weigeren die na de eerste
+/// actie zou gaan werken.
+fn check_prefill(
+    action: &str,
+    form: &[DocumentedParameter],
+    cells: &BTreeMap<String, Cell>,
+) -> Result<()> {
+    for param in form {
+        let Some(Prefill::Last {
+            cell, chronicle, ..
+        }) = &param.prefill
+        else {
+            continue;
+        };
+        cells
+            .get(cell)
+            .ok_or_else(|| SimulatorError::UnknownCell { cell: cell.clone() })?
+            .check_stream(Subject::Actie, action, chronicle)?;
     }
     Ok(())
 }
@@ -2980,6 +3014,143 @@ records:
         assert!(
             reason.contains("bsn"),
             "de melding hoort het sleutelveld te noemen, kreeg: {reason}"
+        );
+    }
+
+    /// Dezelfde aanvraag-actie, maar met een voorinvulling per veld.
+    ///
+    /// `bsn` krijgt wat de test wil onderzoeken, `jaar` een letterlijke waarde,
+    /// `gemeld_op` de klok bij naam, en `ondertekend_op` niets — dat laatste is
+    /// het datumveld dat de klok hoort te krijgen omdat het een datumveld is.
+    fn voorinvul_actie(bsn: &str) -> ActionDefinition {
+        let yaml = format!(
+            r"
+id: burger.aanvraag
+actor: burger
+label: Aanvraag indienen
+records:
+  cell: burger
+  chronicle: aanvragen
+  name: aanvraag_ingediend
+  intake: aanvraag
+  fields:
+    - name: bsn
+      type: string
+      prefill: {bsn}
+    - name: jaar
+      type: number
+      prefill: 2024
+    - name: gemeld_op
+      type: date
+      prefill: $clock
+    - name: ondertekend_op
+      type: date
+  delivers_to:
+    cell: toeslagen
+    chronicle: aanvragen
+    name: aanvraag_ontvangen
+    intake: aanvraag
+"
+        );
+        serde_yaml_ng::from_str(&yaml)
+            .unwrap_or_else(|e| panic!("testactie moet parsen: {e}\n{yaml}"))
+    }
+
+    /// Een wereld met die voorgevulde actie erin.
+    fn voorinvul_wereld(bsn: &str) -> Result<World> {
+        let mut spec = definition(&actie_cellen(), "2024-01-01", &[], &no_settings());
+        spec.actions = vec![voorinvul_actie(bsn)];
+        World::from_definition(&spec, &regulation_root())
+    }
+
+    /// De opgeloste voorinvulling van de enige actie in het beeld.
+    fn voorinvulling(world: &World) -> BTreeMap<String, Value> {
+        world
+            .snapshot()
+            .actions
+            .first()
+            .unwrap_or_else(|| panic!("deze wereld heeft één actie"))
+            .prefill
+            .clone()
+    }
+
+    /// De drie vormen, opgelost op de stand van de klok — plus het datumveld dat
+    /// er geen opgave bij heeft en de klok hoort te krijgen.
+    ///
+    /// Een letterlijke waarde houdt haar soort: `2024` komt als getal terug, want
+    /// het gaat straks door dezelfde typetoets als wat de invuller zelf typt.
+    #[test]
+    fn de_voorinvulling_staat_opgelost_in_het_beeld() {
+        let world = voorinvul_wereld("'999993653'")
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        assert_eq!(
+            voorinvulling(&world),
+            BTreeMap::from([
+                ("bsn".to_string(), Value::String("999993653".to_string())),
+                ("jaar".to_string(), Value::Int(2024)),
+                (
+                    "gemeld_op".to_string(),
+                    Value::String("2024-01-01".to_string())
+                ),
+                (
+                    "ondertekend_op".to_string(),
+                    Value::String("2024-01-01".to_string())
+                ),
+            ])
+        );
+    }
+
+    /// Waar nog niets over vastligt, blijft leeg — en dat is geen fout.
+    ///
+    /// Zodra het feit er wél ligt, staat het er. Dat is de hele belofte van
+    /// `$last`: de voorinvulling volgt de kroniek en is niet een tweede plek waar
+    /// dezelfde waarde staat.
+    #[test]
+    fn een_voorinvulling_uit_een_lege_kroniek_laat_het_veld_leeg() {
+        let mut world = voorinvul_wereld("$last:burger.aanvragen.bsn")
+            .unwrap_or_else(|e| panic!("de wereld moet op te tuigen zijn: {e}"));
+        assert!(
+            !voorinvulling(&world).contains_key("bsn"),
+            "over dit veld ligt nog niets; dan hoort er niets voorgevuld te staan"
+        );
+
+        let mut waarden = aanvraag_waarden();
+        waarden.insert(
+            "gemeld_op".to_string(),
+            Value::String("2024-01-01".to_string()),
+        );
+        waarden.insert(
+            "ondertekend_op".to_string(),
+            Value::String("2024-01-01".to_string()),
+        );
+        world
+            .act("burger.aanvraag", &waarden)
+            .unwrap_or_else(|e| panic!("de actie moet kunnen: {e}"));
+
+        assert_eq!(
+            voorinvulling(&world).get("bsn"),
+            Some(&Value::String("999993653".to_string())),
+            "nu het feit er ligt, hoort het veld ermee voorgevuld te zijn"
+        );
+    }
+
+    /// Een voorinvulling die naar een kroniek wijst die er niet is, vult nooit
+    /// iets in — en niemand die het merkt, want leeg is hier een geldige uitkomst.
+    /// Zo'n typfout hoort dus bij het optuigen te vallen.
+    #[test]
+    fn een_voorinvulling_naar_een_onbekende_kroniek_faalt_bij_het_optuigen() {
+        let err = voorinvul_wereld("$last:burger.onbekend.bsn")
+            .expect_err("een stroom die niet bestaat hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownStream { .. }),
+            "verwachtte UnknownStream, kreeg {err}"
+        );
+
+        let err = voorinvul_wereld("$last:onbekend.aanvragen.bsn")
+            .expect_err("een cel die niet bestaat hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownCell { .. }),
+            "verwachtte UnknownCell, kreeg {err}"
         );
     }
 
