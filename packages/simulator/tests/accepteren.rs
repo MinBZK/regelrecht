@@ -360,3 +360,89 @@ fn accepteren_van_een_onbekende_cel_wordt_bij_het_optuigen_geweigerd() {
         "verwachtte UnknownAcceptedCell, kreeg {err}"
     );
 }
+
+/// Het teruglees-scenario: `toeslagen` leest haar eigen eerdere besluit over
+/// dezelfde zaak terug en accepteert daarnaast een bedrag van een andere cel.
+fn teruglezen() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("scenarios")
+        .join("toeslagen_nabetaling.yaml")
+}
+
+/// **Teruggelezen is geen eigen vaststelling.**
+///
+/// De waarde komt uit de eigen kroniek, dus zonder een eigen gate zou
+/// `expect_computed` er groen overheen lezen — en dan zou een scenario "dit heeft
+/// de cel zelf vastgesteld" beweren over een bedrag dat uit een ouder gram is
+/// overgeschreven. Precies het soort etiket dat deze opstelling moet kunnen
+/// weerleggen.
+#[test]
+fn een_teruggelezen_waarde_telt_niet_als_eigen_vaststelling() {
+    let path = teruglezen();
+    let yaml = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+        // Het teruggelezen bedrag verhuist van de teruglees-verwachting naar de
+        // lijst met eigen vaststellingen; verder blijft het scenario zoals het is.
+        .replace(
+            "      toegekend_bedrag: zorgtoeslag_toekenning\n    expect_computed:\n",
+            "    expect_computed:\n      - toegekend_bedrag\n",
+        )
+        .replace("    expect_read_back:\n", "");
+    assert!(
+        yaml.contains("      - toegekend_bedrag") && !yaml.contains("expect_read_back"),
+        "de vervanging hoort de teruglees-verwachting om te zetten in een eigen \
+         vaststelling"
+    );
+
+    let scenario = Scenario::from_yaml(&yaml).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+
+    assert!(
+        !run.passed(),
+        "een teruggelezen bedrag is niet hier vastgesteld, en dat hoort te \
+         blijken:\n{}",
+        run.report()
+    );
+    assert!(
+        run.report().contains("herkomst van 'toegekend_bedrag'")
+            && run.report().contains("zorgtoeslag_toekenning"),
+        "het verslag hoort te zeggen waar de waarde dan wél vandaan komt:\n{}",
+        run.report()
+    );
+}
+
+/// **Een teruglees-verwachting op een waarde die niet teruggelezen is, wordt
+/// rood.**
+///
+/// De andere kant van dezelfde gate: zonder deze test bewijst een groene
+/// `expect_read_back` alleen dat er een veld in het gram stond.
+#[test]
+fn een_verkeerde_teruglees_verwachting_wordt_rood() {
+    let path = teruglezen();
+    let yaml = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+        // Het betaalde bedrag is geaccepteerd van een andere cel en niet
+        // teruggelezen uit een eigen gram.
+        .replace(
+            "      toegekend_bedrag: zorgtoeslag_toekenning",
+            "      betaald_bedrag: zorgtoeslag_toekenning",
+        );
+
+    let scenario = Scenario::from_yaml(&yaml).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+
+    assert!(
+        !run.passed(),
+        "een geaccepteerde waarde is niet teruggelezen, en dat hoort te blijken:\n{}",
+        run.report()
+    );
+    assert!(
+        run.report().contains("herkomst van 'betaald_bedrag'"),
+        "het verslag hoort te zeggen wat er over de herkomst mis is:\n{}",
+        run.report()
+    );
+}

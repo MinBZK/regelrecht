@@ -12,6 +12,7 @@
  * opschrijven) valt het hier terug op iets leesbaars: een beeld hoort niet om te
  * vallen omdat één herkomst niet te lezen was.
  */
+import { formatMoment } from './format.js';
 
 /**
  * De drie grammen van de chronolexografie, met hoe ze eruitzien.
@@ -394,6 +395,20 @@ function describeRecordedOrigin(recorded) {
         label: 'opgave bij de actie',
         color: 'lintblauw',
         details: pairs([['parameter', recorded.parameter]]),
+      };
+    case 'eerder_besluit':
+      // Een eigen label en niet dat van de eigen kroniek: hier is een *besluit*
+      // teruggelezen, en dat is iets anders dan een feit dat de cel overkwam. Het
+      // moment erbij, want het bedrag komt uit het gram zoals het toen vastgelegd
+      // is — niet uit een herberekening van nu.
+      return {
+        kind: 'eerder_besluit',
+        label: `uit eerder besluit '${recorded.besluit}' over deze zaak (${formatMoment(recorded.moment)})`,
+        color: 'paars',
+        details: pairs([
+          ['zaak', recorded.zaakkenmerk],
+          ['besloten op', formatMoment(recorded.moment)],
+        ]),
       };
     default:
       return { kind: 'onbekend', label: 'input, herkomst niet te lezen', color: 'neutral', details: [] };

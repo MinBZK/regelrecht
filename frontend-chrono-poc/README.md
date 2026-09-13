@@ -52,6 +52,7 @@ lijkt (invariant I5). Een uitgeklapt decretogram zegt daarom per veld:
 |---|---|
 | geaccepteerd van een andere cel | de cel, de lexostatus, de uitkomst, het moment, wie vroeg en de (gesimuleerde) ondertekening |
 | uit de eigen kroniek | de kroniek, het veld en het moment van vastlegging |
+| uit een eerder besluit over deze zaak | het besluit, de zaak en het moment van dat besluit |
 | opgave bij de actie | de parameter |
 | berekend | de uitgevoerde regeling |
 | vast veld van het besluit | — |

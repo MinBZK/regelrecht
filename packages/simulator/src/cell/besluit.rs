@@ -427,13 +427,26 @@ impl ObligationDue {
     }
 }
 
-/// De drie vormen die een input van een besluit kan hebben, voor foutmeldingen.
+/// De vier vormen die een input van een besluit kan hebben, voor foutmeldingen.
 ///
 /// Eén tekst, want elke weigering hieronder somt ze op: wie er twee door elkaar
 /// haalt, hoort in dezelfde melding te lezen wat de keuze was.
 const INPUT_FORMS: &str = "een input komt uit een eigen kroniek (`from_chronicle` + `field`), \
-                           uit een parameter (`param`), of van een andere cel \
-                           (`accept_from` + `lexostatus` + `field`)";
+                           uit een parameter (`param`), van een andere cel \
+                           (`accept_from` + `lexostatus` + `field`), of uit een eerder \
+                           besluit van dezelfde cel over dezelfde zaak \
+                           (`from_decretogram` + `field`)";
+
+/// De verwijzing waarmee een `accept_from` het zaakkenmerk van het lopende
+/// besluit meegeeft.
+///
+/// Eén ingebouwde naam naast `$parameter` en letterlijke tekst, en met opzet
+/// niet een algemeen `{…}`-sjabloon: wat een cel over de grens meestuurt, hoort
+/// te lezen als wat het is. Het kenmerk komt uit het eigen sjabloon van de
+/// definitie en nooit uit een vrije parameter — anders zou een besluit onder de
+/// vlag van "de zaak waarover ik nu besluit" naar de zaak van een ander kunnen
+/// vragen.
+const ZAAKKENMERK_REFERENCE: &str = "$zaakkenmerk";
 
 /// Waar één input van een besluit vandaan komt.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -475,9 +488,33 @@ pub enum BesluitInput {
         field: String,
         /// De parameters van die vraag, op de naam die de bevraagde cel
         /// documenteert. Een waarde `$naam` verwijst naar een gedocumenteerde
-        /// parameter van dít besluit; elke andere waarde is letterlijke tekst —
-        /// dezelfde vorm als de parameters van een reductie.
+        /// parameter van dít besluit, `$zaakkenmerk` naar het zaakkenmerk van het
+        /// lopende besluit; elke andere waarde is letterlijke tekst — dezelfde
+        /// vorm als de parameters van een reductie.
         params: BTreeMap<String, String>,
+    },
+    /// Uit een **eerder besluit van dezelfde cel over dezelfde zaak**.
+    ///
+    /// De smalle tegenhanger van de weigering hiernaast: teruglezen mag, maar
+    /// alleen benoemd. `from_chronicle: beschikkingen` blijft verboden (zie
+    /// [`SimulatorError::DecretogramAsBesluitInput`]) — dat zou een besluit als
+    /// eigen feit binnenhalen en de schaduwboekhouding van RFC-022 alsnog
+    /// opleveren. Hier staat er letterlijk dát een eerder besluit teruggelezen
+    /// wordt, en dat is ook wat het gram erover opschrijft
+    /// ([`InputOrigin::EarlierDecretogram`]).
+    ///
+    /// De sleutel is altijd het zaakkenmerk van het **lopende** besluit, uit het
+    /// eigen sjabloon: een vaststelling leest de verlening over dezelfde zaak
+    /// terug, en nooit een zaak van een ander. Genomen wordt het laatste gram met
+    /// deze besluitnaam en dat kenmerk op of vóór het moment van dit besluit;
+    /// ligt er geen, dan valt het besluit om en wordt er niets vastgelegd.
+    FromDecretogram {
+        /// De besluit-definitie van dezelfde cel waarvan het gram teruggelezen
+        /// wordt.
+        besluit: String,
+        /// Het veld van dat gram dat de waarde draagt: een uitkomst, een vast
+        /// veld, of een van de inputs waarop dat besluit rekende.
+        field: String,
     },
 }
 
@@ -501,7 +538,7 @@ impl BesluitInput {
             Self::AcceptFrom {
                 cell, lexostatus, ..
             } => Some((cell, lexostatus)),
-            Self::FromChronicle { .. } | Self::Param { .. } => None,
+            Self::FromChronicle { .. } | Self::Param { .. } | Self::FromDecretogram { .. } => None,
         }
     }
 }
@@ -520,19 +557,21 @@ struct BesluitInputFields {
     accept_from: Option<String>,
     lexostatus: Option<String>,
     params: Option<BTreeMap<String, String>>,
+    from_decretogram: Option<String>,
 }
 
 impl TryFrom<BesluitInputFields> for BesluitInput {
     type Error = String;
 
     fn try_from(fields: BesluitInputFields) -> std::result::Result<Self, Self::Error> {
-        // Precies één van de drie ankers wijst de vorm aan. Twee ankers is geen
+        // Precies één van de vier ankers wijst de vorm aan. Twee ankers is geen
         // vorm met een extraatje maar een input waarvan niemand kan zeggen waar
         // ze vandaan komt, dus de melding noemt ze beide bij hun waarde.
         let anchors: Vec<(&str, &str)> = [
             ("from_chronicle", fields.from_chronicle.as_deref()),
             ("param", fields.param.as_deref()),
             ("accept_from", fields.accept_from.as_deref()),
+            ("from_decretogram", fields.from_decretogram.as_deref()),
         ]
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key, value)))
@@ -563,6 +602,20 @@ impl TryFrom<BesluitInputFields> for BesluitInput {
                 })?;
                 Ok(Self::FromChronicle {
                     chronicle: value.to_string(),
+                    field,
+                })
+            }
+            "from_decretogram" => {
+                reject_unused(kind, fields.lexostatus.is_some(), "`lexostatus`")?;
+                reject_unused(kind, fields.params.is_some(), "`params`")?;
+                let field = fields.field.ok_or_else(|| {
+                    format!(
+                        "input uit eerder besluit '{value}' mist `field`: zonder veld \
+                         weet de cel niet welke waarde van dat gram ze bedoelt"
+                    )
+                })?;
+                Ok(Self::FromDecretogram {
+                    besluit: value.to_string(),
                     field,
                 })
             }
@@ -678,6 +731,23 @@ pub enum InputOrigin {
         /// De (gesimuleerde) ondertekening van die vraag.
         signature: String,
     },
+    /// Teruggelezen uit een **eerder besluit** van dezelfde cel over dezelfde
+    /// zaak.
+    ///
+    /// Een eigen variant en niet [`Self::OwnChronicle`] met de stroom
+    /// `beschikkingen` erin: wie het gram leest, hoort te zien dát er een besluit
+    /// is teruggelezen. Het is geen eigen feit — er is niets nieuws vastgesteld —
+    /// en geen herberekening: het bedrag komt uit het gram zoals het toen
+    /// vastgelegd is, onder het recht dat toen gold.
+    EarlierDecretogram {
+        /// De besluit-definitie waarvan het gram gelezen is.
+        besluit: String,
+        /// De zaak waarover beide besluiten gaan; hetzelfde kenmerk, per
+        /// definitie.
+        zaakkenmerk: String,
+        /// Het moment van dat eerdere besluit — niet dat van dit besluit.
+        moment: NaiveDate,
+    },
 }
 
 impl InputOrigin {
@@ -729,6 +799,19 @@ impl InputOrigin {
                 ("asked_by".to_string(), Value::String(asked_by.clone())),
                 ("signature".to_string(), Value::String(signature.clone())),
             ])),
+            Self::EarlierDecretogram {
+                besluit,
+                zaakkenmerk,
+                moment,
+            } => Value::Object(BTreeMap::from([
+                (
+                    "herkomst".to_string(),
+                    Value::String("eerder_besluit".to_string()),
+                ),
+                (BESLUIT.to_string(), Value::String(besluit.clone())),
+                (ZAAKKENMERK.to_string(), Value::String(zaakkenmerk.clone())),
+                ("moment".to_string(), Value::String(moment.to_string())),
+            ])),
         }
     }
 
@@ -741,7 +824,23 @@ impl InputOrigin {
     pub fn accepted_from(&self) -> Option<&str> {
         match self {
             Self::Accepted { cell, .. } => Some(cell),
-            Self::OwnChronicle { .. } | Self::Parameter { .. } => None,
+            Self::OwnChronicle { .. }
+            | Self::Parameter { .. }
+            | Self::EarlierDecretogram { .. } => None,
+        }
+    }
+
+    /// Is deze waarde teruggelezen uit een eerder besluit, en uit welk?
+    ///
+    /// De tegenhanger van [`Self::accepted_from`], en om dezelfde reden hier:
+    /// teruglezen is de derde mogelijkheid naast "van een ander geaccepteerd" en
+    /// "hier zelf vastgesteld". Zonder deze vraag zou een scenario een
+    /// teruggelezen waarde alleen als "niet geaccepteerd" kunnen aanmerken, en
+    /// dat is precies het etiket dat te ruim zit.
+    pub fn earlier_besluit(&self) -> Option<&str> {
+        match self {
+            Self::EarlierDecretogram { besluit, .. } => Some(besluit),
+            Self::OwnChronicle { .. } | Self::Parameter { .. } | Self::Accepted { .. } => None,
         }
     }
 
@@ -765,6 +864,11 @@ impl InputOrigin {
                 "geaccepteerd van cel '{cell}' ({lexostatus}.{field} op {op_moment}), \
                  gevraagd door {asked_by} [{signature}]"
             ),
+            Self::EarlierDecretogram {
+                besluit,
+                zaakkenmerk,
+                moment,
+            } => format!("uit eerder besluit '{besluit}' over zaak '{zaakkenmerk}' ({moment})"),
         }
     }
 }
@@ -856,6 +960,20 @@ impl Decretogram {
             .iter()
             .map(|accepted| (accepted.output.as_str(), accepted.authority.as_str()));
         from_inputs.chain(from_receipt).collect()
+    }
+
+    /// Elke waarde in dit gram die uit een **eerder besluit** van deze cel is
+    /// teruggelezen, op naam, met de besluit-definitie waar ze vandaan komt.
+    ///
+    /// Naast [`Self::accepted_values`] en niet erin: geaccepteerd komt van een
+    /// andere organisatie, teruggelezen uit de eigen kroniek. Wat de twee delen
+    /// is dat het besluit ze geen van beide zelf heeft vastgesteld, en dat is
+    /// wat een scenario per waarde moet kunnen aanwijzen.
+    pub fn read_back_values(&self) -> BTreeMap<&str, &str> {
+        self.inputs
+            .iter()
+            .filter_map(|(name, input)| Some((name.as_str(), input.origin.earlier_besluit()?)))
+            .collect()
     }
 
     /// Het decretogram als kroniekgebeurtenis.
@@ -965,6 +1083,67 @@ impl Decretogram {
     }
 }
 
+/// De waarde van één input uit een gram, of `None` als het gram haar niet draagt.
+///
+/// De tegenhanger van wat [`Decretogram::event`] hierboven schrijft, en daarom
+/// hier: de vorm van dat ene veld — `inputs.<naam>.value` — hoort op één plek te
+/// staan. Hoofdletterongevoelig, net als elders bij veldnamen.
+pub(crate) fn recorded_input<'a>(
+    fields: &'a BTreeMap<String, Value>,
+    name: &str,
+) -> Option<&'a Value> {
+    let Some(Value::Object(inputs)) = fields.get(INPUTS) else {
+        return None;
+    };
+    let (_, entry) = inputs
+        .iter()
+        .find(|(input, _)| input.eq_ignore_ascii_case(name))?;
+    let Value::Object(parts) = entry else {
+        return None;
+    };
+    parts.get("value")
+}
+
+/// Wat een gram van één besluit draagt, in de twee lagen waarin het dat doet.
+///
+/// Los van elkaar en niet op één hoop, want ze liggen in het gram ook niet op
+/// één hoop: de uitkomsten en de vaste velden staan er bovenaan, de inputs een
+/// laag dieper onder [`INPUTS`]. Een naam die in beide lagen voorkomt zou
+/// daarmee twee waarden aanwijzen, en dan is het niet aan de lezer van
+/// `from_decretogram: … + field: …` om te raden welke gepakt wordt — zie
+/// [`SimulatorError::AmbiguousEarlierBesluitField`].
+#[derive(Debug, Clone, Default)]
+pub(crate) struct GramFields {
+    /// De velden van het gram zelf: de uitkomsten waarop besloten is, plus de
+    /// vaste velden van elk decretogram.
+    pub(crate) own: BTreeSet<String>,
+    /// De inputs waarop dat besluit rekende, elk met hun eigen herkomst.
+    pub(crate) inputs: BTreeSet<String>,
+}
+
+impl GramFields {
+    /// In welke laag ligt dit veld? `None` als het gram het niet draagt.
+    ///
+    /// Hoofdletterongevoelig, net als elders bij veldnamen — en aan beide kanten
+    /// dezelfde toets als bij het lezen zelf, zodat het optuigen niets doorlaat
+    /// wat later toch niet gevonden wordt.
+    fn layers_with(&self, field: &str) -> (bool, bool) {
+        let has =
+            |names: &BTreeSet<String>| names.iter().any(|known| known.eq_ignore_ascii_case(field));
+        (has(&self.own), has(&self.inputs))
+    }
+
+    /// Alle namen die zo'n gram draagt, voor in een foutmelding.
+    fn listing(&self) -> String {
+        self.own
+            .iter()
+            .chain(self.inputs.iter())
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 /// Een tekst die er kan zijn, als vastlegbare waarde.
 ///
 /// `null` en niet "de lege tekst": dat de regeling geen bevoegd gezag noemt is
@@ -977,6 +1156,24 @@ impl BesluitDefinition {
     /// De uitkomsten die dit besluit vastlegt.
     pub fn recorded_outputs(&self) -> BTreeSet<&str> {
         published_outputs(Some(self.output.as_str()), &self.outputs)
+    }
+
+    /// De namen die een gram van dít besluit draagt, en die een volgend besluit
+    /// er dus met `from_decretogram` uit kan lezen.
+    ///
+    /// Bekend vóór het eerste besluit, en dat moet ook: een verwijzing die
+    /// hierbuiten valt hoort bij het optuigen te sneuvelen en niet pas op het
+    /// moment dat er teruggelezen wordt.
+    pub(crate) fn gram_fields(&self) -> GramFields {
+        GramFields {
+            own: self
+                .recorded_outputs()
+                .into_iter()
+                .map(str::to_string)
+                .chain(FIXED_FIELDS.iter().map(|field| (*field).to_string()))
+                .collect(),
+            inputs: self.inputs.keys().cloned().collect(),
+        }
     }
 
     /// Controleer de meegegeven parameters tegen de gedocumenteerde.
@@ -1234,6 +1431,51 @@ impl BesluitDefinition {
                     reference: param.clone(),
                 })
             }
+            BesluitInput::FromDecretogram {
+                besluit: earlier,
+                field,
+            } => {
+                // De cel moet het besluit kennen waaruit ze terugleest. Een
+                // typfout hier zou bij elk besluit "geen eerder besluit"
+                // opleveren, en dat is niet te onderscheiden van een zaak die
+                // nog geen geschiedenis heeft.
+                let Some(fields) = surface.besluit_fields.get(earlier) else {
+                    return Err(SimulatorError::UnknownEarlierBesluit {
+                        cell: cell.to_string(),
+                        besluit: self.name.clone(),
+                        earlier: earlier.clone(),
+                        known: surface
+                            .besluit_fields
+                            .keys()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    });
+                };
+                // Eén naam kan niet twee waarden aanwijzen. Draagt zo'n gram het
+                // veld in beide lagen — als uitkomst of vast veld én als input —
+                // dan is er geen volgorde te kiezen die niet af en toe het
+                // verkeerde getal oplevert, en het beeld van de wereld kiest hier
+                // al andersom dan een leesregel hier zou doen (zie
+                // `snapshot::gram_snapshot`). Dus bij het optuigen weigeren in
+                // plaats van stil een winnaar aanwijzen.
+                match fields.layers_with(field) {
+                    (true, true) => Err(SimulatorError::AmbiguousEarlierBesluitField {
+                        cell: cell.to_string(),
+                        besluit: self.name.clone(),
+                        earlier: earlier.clone(),
+                        field: field.clone(),
+                    }),
+                    (false, false) => Err(SimulatorError::UnknownEarlierBesluitField {
+                        cell: cell.to_string(),
+                        besluit: self.name.clone(),
+                        earlier: earlier.clone(),
+                        field: field.clone(),
+                        known: fields.listing(),
+                    }),
+                    _ => Ok(()),
+                }
+            }
             BesluitInput::AcceptFrom {
                 cell: peer, params, ..
             } => {
@@ -1249,7 +1491,20 @@ impl BesluitDefinition {
                         input: input.to_string(),
                     });
                 }
-                for reference in params.values().filter_map(|binding| binding_name(binding)) {
+                for binding in params.values() {
+                    // De ingebouwde verwijzing naar het zaakkenmerk van het
+                    // lopende besluit is geen parameter en hoeft dus niet
+                    // gedocumenteerd te zijn — ze moet alleen iets te betekenen
+                    // hebben. Documenteert de definitie tóch een parameter die
+                    // zo heet, dan staat er één naam voor twee dingen; dan is de
+                    // vraag niet meer te lezen zoals ze er staat.
+                    if binding == ZAAKKENMERK_REFERENCE {
+                        self.check_zaakkenmerk_reference(cell, input)?;
+                        continue;
+                    }
+                    let Some(reference) = binding_name(binding) else {
+                        continue;
+                    };
                     if !documents(&self.params, reference) {
                         return Err(SimulatorError::UnknownReference {
                             cell: cell.to_string(),
@@ -1267,18 +1522,56 @@ impl BesluitDefinition {
         }
     }
 
+    /// Mag `$zaakkenmerk` in de vraag van deze input staan?
+    ///
+    /// Twee dingen moeten kloppen, en allebei bij het optuigen: er moet een
+    /// zaakkenmerk-sjabloon zijn om in te vullen, en de naam mag niet ook een
+    /// gedocumenteerde parameter zijn. Het sjabloon is vandaag verplicht, dus de
+    /// eerste toets vangt de lege vorm; zou het ooit weg mogen blijven, dan blijft
+    /// de regel staan in plaats van stil een lege tekst over de grens te sturen.
+    fn check_zaakkenmerk_reference(&self, cell: &str, input: &str) -> Result<()> {
+        if self.zaakkenmerk.trim().is_empty() {
+            return Err(SimulatorError::ZaakkenmerkReferenceWithoutTemplate {
+                cell: cell.to_string(),
+                besluit: self.name.clone(),
+                input: input.to_string(),
+            });
+        }
+        if documents(&self.params, ZAAKKENMERK) {
+            return Err(SimulatorError::AmbiguousZaakkenmerkReference {
+                cell: cell.to_string(),
+                besluit: self.name.clone(),
+                input: input.to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// De waarden die dit besluit bij een andere cel moet ophalen.
     ///
     /// Aanroepen ná [`Self::check_params`]: de verwijzingen in `params` zijn bij
     /// het optuigen aan gedocumenteerde parameters gebonden, en die zijn dan
-    /// aanwezig.
+    /// aanwezig. `zaakkenmerk` is het ingevulde kenmerk van dit besluit, want een
+    /// vraag mag ernaar verwijzen ([`ZAAKKENMERK_REFERENCE`]) en de definitie
+    /// kent het pas als de parameters erin zitten.
     ///
     /// Leeg is het normale geval: een besluit dat alles zelf weet, vraagt
     /// niemand iets.
     pub(crate) fn acceptance_requests(
         &self,
         params: &BTreeMap<String, Value>,
+        zaakkenmerk: &str,
     ) -> Vec<AcceptanceRequest> {
+        // Het kenmerk gaat als gewone waarde de invuller in, en overschrijft
+        // daarmee een parameter die toevallig zo heet. Dat kan alleen bij een
+        // definitie die `$zaakkenmerk` nergens gebruikt — die combinatie is bij
+        // het optuigen geweigerd — en het houdt het invullen op één plek.
+        let mut params = params.clone();
+        params.insert(
+            ZAAKKENMERK.to_string(),
+            Value::String(zaakkenmerk.to_string()),
+        );
+        let params = &params;
         self.inputs
             .iter()
             .filter_map(|(input, origin)| match origin {
@@ -1294,7 +1587,9 @@ impl BesluitDefinition {
                     field: field.clone(),
                     params: engine_parameters(bindings, params),
                 }),
-                BesluitInput::FromChronicle { .. } | BesluitInput::Param { .. } => None,
+                BesluitInput::FromChronicle { .. }
+                | BesluitInput::Param { .. }
+                | BesluitInput::FromDecretogram { .. } => None,
             })
             .collect()
     }
@@ -1753,13 +2048,54 @@ mod tests {
     }
 
     #[test]
-    fn een_input_zonder_vorm_noemt_de_drie_vormen() {
+    fn een_input_zonder_vorm_noemt_de_vier_vormen() {
         let err = input("{}\n").expect_err("een input zonder vorm hoort te falen");
         assert!(
             err.contains("`from_chronicle`")
                 && err.contains("`param`")
-                && err.contains("`accept_from`"),
+                && err.contains("`accept_from`")
+                && err.contains("`from_decretogram`"),
             "de melding moet vertellen welke vormen er zijn, kreeg: {err}"
+        );
+    }
+
+    #[test]
+    fn een_input_uit_een_eerder_besluit_wordt_gelezen() {
+        let parsed = input("from_decretogram: toekenning\nfield: hoogte_zorgtoeslag\n")
+            .unwrap_or_else(|e| panic!("de teruglees-vorm moet gelezen worden: {e}"));
+        assert_eq!(
+            parsed,
+            BesluitInput::FromDecretogram {
+                besluit: "toekenning".to_string(),
+                field: "hoogte_zorgtoeslag".to_string(),
+            }
+        );
+        assert_eq!(
+            parsed.accepts_from(),
+            None,
+            "teruglezen is geen vraag over een celgrens"
+        );
+    }
+
+    #[test]
+    fn een_input_uit_een_eerder_besluit_zonder_veld_wordt_geweigerd() {
+        let err =
+            input("from_decretogram: toekenning\n").expect_err("zonder `field` hoort het te falen");
+        assert!(
+            err.contains("`field`") && err.contains("toekenning"),
+            "de melding moet zeggen wat er mist en waaruit, kreeg: {err}"
+        );
+    }
+
+    /// Teruglezen gebeurt over de eigen kroniek en niet over een celgrens; een
+    /// `lexostatus` ernaast leest als een vraag aan een ander en is er geen.
+    #[test]
+    fn een_teruglezing_met_een_veld_van_een_andere_vorm_wordt_geweigerd() {
+        let err = input("from_decretogram: toekenning\nfield: bedrag\nlexostatus: beschikking\n")
+            .expect_err("een veld van een andere vorm hoort te falen");
+        assert!(
+            err.contains("`lexostatus`") && err.contains("from_decretogram"),
+            "de melding moet zeggen welk veld niet bij welke vorm hoort, kreeg: {err}"
         );
     }
 
@@ -1868,6 +2204,219 @@ mod tests {
         );
     }
 
+    /// Teruglezen uit een naam die de cel niet als besluit kent, faalt bij het
+    /// optuigen: anders zou elke zaak "geen eerder besluit" opleveren en is een
+    /// typfout niet van een lege geschiedenis te onderscheiden.
+    #[test]
+    fn terug_lezen_uit_een_onbekend_besluit_wordt_geweigerd() {
+        let definition = definition("zorgtoeslag/{bsn}");
+        let origin = BesluitInput::FromDecretogram {
+            besluit: "verlening".to_string(),
+            field: "heeft_recht_op_zorgtoeslag".to_string(),
+        };
+
+        let err = definition
+            .validate_input(
+                "toeslagen",
+                &surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag"),
+                "is_verzekerde",
+                &origin,
+            )
+            .expect_err("een besluit dat de cel niet kent hoort te falen");
+        let SimulatorError::UnknownEarlierBesluit { known, .. } = &err else {
+            panic!("verwachtte UnknownEarlierBesluit, kreeg {err}");
+        };
+        assert_eq!(known, "toekenning");
+    }
+
+    /// Welke velden een gram draagt staat vast zodra de definities er zijn: de
+    /// uitkomsten, de vaste velden en de inputs waarop het besluit rekende.
+    #[test]
+    fn terug_lezen_kent_de_uitkomsten_en_de_vaste_velden_van_dat_gram() {
+        let definition = definition("zorgtoeslag/{bsn}");
+        let surface = surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag");
+        let read = |field: &str| {
+            definition.validate_input(
+                "toeslagen",
+                &surface,
+                "is_verzekerde",
+                &BesluitInput::FromDecretogram {
+                    besluit: "toekenning".to_string(),
+                    field: field.to_string(),
+                },
+            )
+        };
+
+        for field in ["heeft_recht_op_zorgtoeslag", ZAAKKENMERK, RECEIPT] {
+            read(field).unwrap_or_else(|e| panic!("veld '{field}' hoort gelezen te mogen: {e}"));
+        }
+
+        let err = read("hoogte_zorgtoeslag")
+            .expect_err("een veld dat zo'n gram niet draagt hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::UnknownEarlierBesluitField { .. }),
+            "verwachtte UnknownEarlierBesluitField, kreeg {err}"
+        );
+    }
+
+    /// De inputs waarop dat besluit rekende horen er ook bij: die liggen in het
+    /// gram een laag dieper, maar `from_decretogram` kan ze lezen.
+    #[test]
+    fn terug_lezen_kent_ook_de_inputs_waarop_dat_gram_rekende() {
+        let mut earlier = definition("zorgtoeslag/{bsn}");
+        earlier.inputs.insert(
+            "is_verzekerde".to_string(),
+            BesluitInput::FromChronicle {
+                chronicle: "inkomensleveringen".to_string(),
+                field: "is_verzekerde".to_string(),
+            },
+        );
+        let mut surface = surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag");
+        surface
+            .besluit_fields
+            .insert("toekenning".to_string(), earlier.gram_fields());
+
+        definition("zorgtoeslag/{bsn}")
+            .validate_input(
+                "toeslagen",
+                &surface,
+                "is_verzekerde",
+                &BesluitInput::FromDecretogram {
+                    besluit: "toekenning".to_string(),
+                    field: "is_verzekerde".to_string(),
+                },
+            )
+            .unwrap_or_else(|e| panic!("een input van dat gram hoort gelezen te mogen: {e}"));
+    }
+
+    /// Draagt zo'n gram één naam in beide lagen — als vast veld of uitkomst én
+    /// als input — dan wijst `field` twee waarden aan. Welke van de twee gepakt
+    /// wordt, is niets om te raden: bij het optuigen geweigerd, net als een
+    /// uitkomst die een vast veld zou overschrijven.
+    #[test]
+    fn terug_lezen_van_een_naam_die_het_gram_twee_keer_draagt_wordt_geweigerd() {
+        let mut earlier = definition("zorgtoeslag/{bsn}");
+        earlier.inputs.insert(
+            ZAAKKENMERK.to_string(),
+            BesluitInput::Param {
+                param: "bsn".to_string(),
+            },
+        );
+        let mut surface = surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag");
+        surface
+            .besluit_fields
+            .insert("toekenning".to_string(), earlier.gram_fields());
+
+        let err = definition("zorgtoeslag/{bsn}")
+            .validate_input(
+                "toeslagen",
+                &surface,
+                "is_verzekerde",
+                &BesluitInput::FromDecretogram {
+                    besluit: "toekenning".to_string(),
+                    field: ZAAKKENMERK.to_string(),
+                },
+            )
+            .expect_err("een naam die twee waarden aanwijst hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::AmbiguousEarlierBesluitField { .. }),
+            "verwachtte AmbiguousEarlierBesluitField, kreeg {err}"
+        );
+    }
+
+    /// `$zaakkenmerk` is geen parameter en hoeft dus niet gedocumenteerd te zijn:
+    /// het komt uit het eigen sjabloon van de definitie.
+    #[test]
+    fn het_zaakkenmerk_mag_in_de_vraag_over_de_celgrens() {
+        let definition = definition("zorgtoeslag/{bsn}");
+        let origin = BesluitInput::AcceptFrom {
+            cell: "belastingdienst".to_string(),
+            lexostatus: "betaald_tot_nu_toe".to_string(),
+            field: "bedrag".to_string(),
+            params: BTreeMap::from([(
+                "zaakkenmerk".to_string(),
+                ZAAKKENMERK_REFERENCE.to_string(),
+            )]),
+        };
+
+        definition
+            .validate_input(
+                "toeslagen",
+                &surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag"),
+                "toetsingsinkomen",
+                &origin,
+            )
+            .unwrap_or_else(|e| {
+                panic!("een verwijzing naar het eigen kenmerk hoort te mogen: {e}")
+            });
+    }
+
+    /// Zonder sjabloon valt er niets in te vullen, en zou de bevraagde cel een
+    /// lege tekst als zaak krijgen.
+    #[test]
+    fn het_zaakkenmerk_in_de_vraag_zonder_sjabloon_wordt_geweigerd() {
+        let mut definition = definition("zorgtoeslag/{bsn}");
+        definition.zaakkenmerk = String::new();
+        let origin = BesluitInput::AcceptFrom {
+            cell: "belastingdienst".to_string(),
+            lexostatus: "betaald_tot_nu_toe".to_string(),
+            field: "bedrag".to_string(),
+            params: BTreeMap::from([(
+                "zaakkenmerk".to_string(),
+                ZAAKKENMERK_REFERENCE.to_string(),
+            )]),
+        };
+
+        let err = definition
+            .validate_input(
+                "toeslagen",
+                &surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag"),
+                "toetsingsinkomen",
+                &origin,
+            )
+            .expect_err("zonder sjabloon is er geen kenmerk om mee te sturen");
+        assert!(
+            matches!(
+                err,
+                SimulatorError::ZaakkenmerkReferenceWithoutTemplate { .. }
+            ),
+            "verwachtte ZaakkenmerkReferenceWithoutTemplate, kreeg {err}"
+        );
+    }
+
+    /// Eén naam kan niet twee dingen betekenen: het ingevulde kenmerk van dit
+    /// besluit, én wat de aanroeper meegaf.
+    #[test]
+    fn het_zaakkenmerk_naast_een_parameter_met_die_naam_wordt_geweigerd() {
+        let mut definition = definition("zorgtoeslag/{bsn}");
+        definition.params.push(DocumentedParameter {
+            name: ZAAKKENMERK.to_string(),
+            value_type: crate::cell::ParameterType::String,
+        });
+        let origin = BesluitInput::AcceptFrom {
+            cell: "belastingdienst".to_string(),
+            lexostatus: "betaald_tot_nu_toe".to_string(),
+            field: "bedrag".to_string(),
+            params: BTreeMap::from([(
+                "zaakkenmerk".to_string(),
+                ZAAKKENMERK_REFERENCE.to_string(),
+            )]),
+        };
+
+        let err = definition
+            .validate_input(
+                "toeslagen",
+                &surface_met_uitkomst(&[], "heeft_recht_op_zorgtoeslag"),
+                "toetsingsinkomen",
+                &origin,
+            )
+            .expect_err("dezelfde naam voor twee dingen hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::AmbiguousZaakkenmerkReference { .. }),
+            "verwachtte AmbiguousZaakkenmerkReference, kreeg {err}"
+        );
+    }
+
     #[test]
     fn de_verzoeken_van_een_besluit_vullen_hun_verwijzingen_in() {
         let mut definition = definition("zorgtoeslag/{bsn}");
@@ -1891,7 +2440,7 @@ mod tests {
             ("bsn".to_string(), Value::String("999993653".to_string())),
             ("jaar".to_string(), Value::String("2024".to_string())),
         ]);
-        let requests = definition.acceptance_requests(&params);
+        let requests = definition.acceptance_requests(&params, "zorgtoeslag/999993653");
 
         assert_eq!(
             requests,
@@ -1906,6 +2455,46 @@ mod tests {
                 )]),
             }],
             "alleen de accepteervorm levert een verzoek, met de waarde erin"
+        );
+    }
+
+    /// `$zaakkenmerk` levert het ingevulde kenmerk van dít besluit, en niet de
+    /// tekst `$zaakkenmerk` of een lege plek.
+    #[test]
+    fn een_verzoek_kan_naar_het_eigen_zaakkenmerk_verwijzen() {
+        let mut definition = definition("zorgtoeslag/{bsn}");
+        definition.inputs.insert(
+            "betaald".to_string(),
+            BesluitInput::AcceptFrom {
+                cell: "belastingdienst".to_string(),
+                lexostatus: "betaald_tot_nu_toe".to_string(),
+                field: "bedrag".to_string(),
+                params: BTreeMap::from([
+                    ("zaakkenmerk".to_string(), ZAAKKENMERK_REFERENCE.to_string()),
+                    ("jaar".to_string(), "$jaar".to_string()),
+                ]),
+            },
+        );
+
+        let params = BTreeMap::from([
+            ("bsn".to_string(), Value::String("999993653".to_string())),
+            ("jaar".to_string(), Value::String("2024".to_string())),
+        ]);
+        let requests = definition.acceptance_requests(&params, "zorgtoeslag/999993653");
+
+        assert_eq!(
+            requests
+                .first()
+                .map(|request| request.params.clone())
+                .unwrap_or_default(),
+            BTreeMap::from([
+                (
+                    "zaakkenmerk".to_string(),
+                    Value::String("zorgtoeslag/999993653".to_string())
+                ),
+                ("jaar".to_string(), Value::String("2024".to_string())),
+            ]),
+            "de ingebouwde verwijzing en een gewone parameter horen naast elkaar te werken"
         );
     }
 
@@ -2036,6 +2625,10 @@ params:
             regulation_inputs: BTreeMap::new(),
             streams: BTreeMap::new(),
             stream_keys: BTreeMap::new(),
+            besluit_fields: BTreeMap::from([(
+                "toekenning".to_string(),
+                definition("zorgtoeslag/{bsn}").gram_fields(),
+            )]),
         }
     }
 
