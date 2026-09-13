@@ -83,15 +83,34 @@ function saveName(e) {
       <div class="footer">
         <div class="footer-row">
           <span class="counter" :aria-label="`Dia ${p.index.value + 1} van ${p.total.value}`">{{ counter }}</span>
-          <div class="nav">
-            <button type="button" class="round" aria-label="Vorige dia" :disabled="p.index.value === 0" @click="p.prev()">
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-            <button v-if="isLast" type="button" class="pill" @click="p.stop()">Sluiten</button>
-            <button v-else type="button" class="round" aria-label="Volgende dia" @click="p.next()">
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-          </div>
+          <!-- Knoppen uit het design system in plaats van eigen <button>'s met
+               ingetekende chevrons. De `inherit`-varianten zijn hier precies
+               voor gemaakt: ze leiden hun kleur af van `currentColor`, dus ze
+               kloppen op het donkerblauwe vlak zonder eigen kleurregels. -->
+          <nldd-button-bar>
+            <nldd-icon-button
+              variant="inherit-tinted"
+              icon="back"
+              text="Vorige dia"
+              tooltip-timing="never"
+              :disabled="p.index.value === 0 || undefined"
+              @click="p.prev()"
+            ></nldd-icon-button>
+            <nldd-button
+              v-if="isLast"
+              variant="inherit-tinted"
+              text="Sluiten"
+              @click="p.stop()"
+            ></nldd-button>
+            <nldd-icon-button
+              v-else
+              variant="inherit-tinted"
+              icon="forward"
+              text="Volgende dia"
+              tooltip-timing="never"
+              @click="p.next()"
+            ></nldd-icon-button>
+          </nldd-button-bar>
         </div>
         <div class="hints">
           <span>pijltjes of spatie</span>
@@ -380,40 +399,6 @@ function saveName(e) {
   font-weight: 600;
   color: var(--ink-72);
   font-variant-numeric: tabular-nums;
-}
-.nav {
-  display: flex;
-  gap: 0.5rem;
-}
-.round,
-.pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 2.6rem;
-  border-radius: 999px;
-  border: 1.5px solid var(--ink-55);
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-  font: inherit;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.round {
-  width: 2.6rem;
-}
-.pill {
-  padding: 0 1.2rem;
-  font-weight: 600;
-}
-.round:hover,
-.pill:hover {
-  background: color-mix(in srgb, var(--ink) 14%, transparent);
-  border-color: var(--ink);
-}
-.round:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 .hints {
   display: flex;
