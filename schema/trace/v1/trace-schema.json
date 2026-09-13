@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.9/trace-schema.json",
-  "title": "RegelRecht Execution Trace Schema v0.5.9",
-  "description": "An execution trace: the tree of steps an engine took to reach a result, addressable and anchored to the provisions the steps came from (RFC-039). Versioned independently of the law schema, like the note sidecar. A conformant engine produces this document; the box-drawing text rendering is a presentation of it and is not part of the contract.",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/trace/v1/trace-schema.json",
+  "title": "RegelRecht Execution Trace Schema v1",
+  "description": "An execution trace: the tree of steps an engine took to reach a result, addressable and anchored to the provisions the steps came from (RFC-039). Versioned on its own axis, under schema/trace/v<trace_version>/, because a trace shape and a law shape change for different reasons. The note sidecar went under a law-schema version directory and froze there in v0.5.3, which is the coupling this avoids. A conformant engine produces this document; a text rendering of it is a presentation and not part of the contract.",
   "type": "object",
   "required": ["trace_version", "root"],
   "properties": {
@@ -77,7 +77,7 @@
         },
         "anchor": {
           "$ref": "#/definitions/LegalAnchor",
-          "description": "Where the engine was when it took this step. Reported whenever the engine knows the provision, independent of what the law document happens to cite."
+          "description": "Where the engine was when it took this step, independent of what the law document happens to cite. The article is the innermost one the step was evaluated within, so every step inside an article carries that article even when the step is a bare arithmetic operation. 'paragraph' and 'sentence' are reported only where the engine genuinely knows them and are otherwise absent rather than guessed. A step evaluated within no article at all, such as the resolution of a parameter the caller supplied, carries the law without an article, or no anchor if it is outside any law."
         },
         "legal_basis": {
           "$ref": "#/definitions/LegalAnchor",
@@ -85,12 +85,12 @@
         },
         "yaml_path": {
           "type": "string",
-          "description": "Address of the element within the law document, as a dotted path whose segments are keys, and for a list item the value of its 'output', 'name' or 'number' rather than its index: 'articles.2.machine_readable.execution.actions.hoogte_zorgtoeslag.value.values.1'. A dot inside a label is written as an underscore, so article '2.34' is addressed as '2_34'. Addresses an element that has no name of its own, such as one branch of a nested operation, which no regelrecht:// URI can name."
+          "description": "Address of the element within the law document, as a dotted path whose segments are keys, and for a list item the value of its 'output', 'name' or 'number' rather than its index: 'articles.2.machine_readable.execution.actions.hoogte_zorgtoeslag.value.values.1'. A dot inside a label is written as an underscore, so article '2.34' is addressed as '2_34'. This addresses an element that has no name of its own, such as one branch of a nested operation, which no regelrecht:// URI can name. The path names the element AS WRITTEN, so an action that carries its operation inline is 'actions.X.values.1' while one that nests it under 'value' is 'actions.X.value.values.1'; an engine that normalizes the two forms internally either keeps the distinction or omits this field, because a path that does not select the element it names is worse than none."
         },
         "uri": {
           "type": "string",
           "pattern": "^regelrecht://",
-          "description": "Address of the value this step denotes, as a regelrecht:// URI. Present on a step that denotes a value rather than a piece of work."
+          "description": "Convenience address of the value this step denotes, as a regelrecht:// URI. A convenience and not the primary address: anchor.law_id plus yaml_path already name the law and the element, and this field cannot always be written. The scheme is regelrecht://<law_id>/<output>#<field>, so it cannot express a law whose id contains '/' (30 of the 79 law ids in corpus/demo do) and it has nothing to put in the output segment for a step naming an input or an open term. Absent in each of those cases; a consumer must not treat absence as meaning the step denotes no value."
         },
         "source": {
           "$ref": "#/definitions/ValueSource",
@@ -98,7 +98,7 @@
         },
         "type_spec": {
           "$ref": "#/definitions/TypeSpec",
-          "description": "Unit and precision of 'result', so a consumer can present 209692 as an amount in euros. Present when the value's declaration carries one, which parameters, inputs, outputs and definitions do; an intermediate operation result has no declaration and therefore no type_spec."
+          "description": "Unit and precision of 'result' as the law declares them, so a consumer can present 209692 as an amount in euros. Present when the value has a declaration that carries one, which parameters, inputs, outputs and definitions can; a result computed mid-expression has no declaration and so no type_spec in version 1, even where an engine could infer a unit for it. Only 'unit' and 'precision' are meaningful here: 'min' and 'max' are part of the declaration's shape and say nothing about a result."
         },
         "duration_us": {
           "type": "integer",
