@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { formatMoment, humanize } from '../world/format.js';
 import { fieldValue } from '../world/events.js';
-import { decidedAlready, describeEffect, emptyForm, gramKind } from '../world/snapshot.js';
+import { decidedAlready, describeEffect, gramKind, initialForm, isPrefilled } from '../world/snapshot.js';
 
 // Eén actie uit het wereldbestand: wie haar doet, wat ze uitwerkt, wat de actor
 // invult, en of ze nu kan.
@@ -11,6 +11,11 @@ import { decidedAlready, describeEffect, emptyForm, gramKind } from '../world/sn
 // heet zoals de wereld het noemt en heeft het type dat de cel accepteert. Een
 // actie die nu niet kan blijft staan met de reden erbij; ze is uit te voeren
 // zodra de wereld zegt dat het kan.
+//
+// Wat de wereld al weet, staat er al in: `prefill` uit het beeld vult de velden
+// voordat iemand iets typt, en het veld zegt erbij dat het voorgevuld is. Het
+// blijft een voorstel — wie er iets anders van maakt, verstuurt dat, en dan is
+// het ook geen voorinvulling meer.
 //
 // Elk type heeft zijn eigen veld, en een datum dus ook: `nldd-date-field`, net
 // als "Spoel vooruit tot" op de tijdlijn. Dat veld toont de Nederlandse notatie
@@ -37,17 +42,25 @@ const props = defineProps({
 
 const emit = defineEmits(['run']);
 
-const values = ref(emptyForm(props.action));
+const values = ref(initialForm(props.action));
 /** De velden die nog leeg zijn en bij de laatste poging ingevuld hadden moeten zijn. */
 const missing = ref([]);
+/** De velden waar de bezoeker zelf iets van maakte; die volgen de wereld niet meer. */
+const typed = ref([]);
 
-// Een nieuw beeld geeft dezelfde actie opnieuw; het formulier hoort dan leeg te
-// beginnen wanneer de velden zelf veranderen, en anders te blijven staan zoals de
-// bezoeker het invulde.
+/** Wat de bezoeker zelf invulde, op naam. */
+function typedValues() {
+  return Object.fromEntries(typed.value.map((name) => [name, values.value[name]]));
+}
+
+// Een nieuw beeld geeft dezelfde actie opnieuw; het formulier hoort dan opnieuw
+// te beginnen wanneer de velden zelf veranderen, en anders te blijven staan zoals
+// de bezoeker het invulde.
 watch(
   () => (props.action.form ?? []).map((field) => `${field.name}:${field.type}`).join(','),
   () => {
-    values.value = emptyForm(props.action);
+    typed.value = [];
+    values.value = initialForm(props.action);
     missing.value = [];
   },
 );
@@ -110,12 +123,35 @@ const confirmation = computed(() => {
     + 'bestaande blijft staan, want een kroniek wordt nooit overschreven.';
 });
 
+// Komt de wereld met een ander voorstel — de klok is doorgelopen, of er ligt nu
+// een aanvraag waar er eerst geen was — dan volgen de velden die niemand
+// aanraakte dat voorstel. Anders zou het datumveld de klok van bij het laden
+// blijven tonen, en zou een `$last` die net gevuld raakte alleen na een verse
+// pagina zichtbaar zijn. Wat de bezoeker zelf typte, blijft van hem.
+watch(
+  () => JSON.stringify(props.action.prefill ?? {}),
+  () => {
+    values.value = initialForm(props.action, typedValues());
+    // Een veld dat de wereld zojuist invulde, staat niet meer leeg; de melding
+    // dat het ontbreekt hoort er dan ook niet meer bij te staan.
+    missing.value = missing.value.filter((name) => {
+      const field = fields.value.find((candidate) => candidate.name === name);
+      return field !== undefined && isEmpty(field);
+    });
+  },
+);
+
 function errorId(field) {
   return `${props.action.id}-${field.name}-fout`;
 }
 
 function isMissing(field) {
   return missing.value.includes(field.name);
+}
+
+/** Staat hier nog wat de wereld voorstelde? */
+function wasPrefilled(field) {
+  return isPrefilled(props.action, field.name, values.value[field.name]);
 }
 
 /**
@@ -146,11 +182,18 @@ function setValue(field, event) {
     ...values.value,
     [field.name]: field.type === 'number' ? (raw === '' || raw === null ? null : Number(raw)) : raw,
   };
+  markTyped(field);
   missing.value = missing.value.filter((name) => name !== field.name);
 }
 
 function setChecked(field, event) {
   values.value = { ...values.value, [field.name]: Boolean(event?.detail?.checked ?? event?.target?.checked) };
+  markTyped(field);
+}
+
+/** Dit veld is nu van de bezoeker: een later voorstel overschrijft het niet meer. */
+function markTyped(field) {
+  if (!typed.value.includes(field.name)) typed.value = [...typed.value, field.name];
 }
 
 function submit() {
@@ -221,7 +264,9 @@ function run() {
         <form @submit.prevent="submit">
           <template v-for="field in fields" :key="field.name">
             <!-- Een ja/nee-veld draagt zijn label zelf; het zou anders twee keer
-                 boven hetzelfde veld staan. -->
+                 boven hetzelfde veld staan. Een voorgevulde stand staat er
+                 zichtbaar in — de schakelaar ís de weergave van haar waarde —
+                 dus er hoort geen tweede melding bij. -->
             <nldd-switch-field
               v-if="field.type === 'boolean'"
               :label="humanize(field.name)"
@@ -233,6 +278,11 @@ function run() {
               :label="humanize(field.name)"
               :supporting-label="supportingLabel(field)"
             >
+              <!-- Licht gemarkeerd, en in de woorden van wat het is: een
+                   voorstel van de wereld, geen vastgelegd feit. -->
+              <nldd-form-field-help-text v-if="wasPrefilled(field)">
+                Voorgevuld met wat de wereld al weet; pas het aan als het anders is.
+              </nldd-form-field-help-text>
               <nldd-number-field
                 v-if="field.type === 'number'"
                 :value="values[field.name] ?? undefined"

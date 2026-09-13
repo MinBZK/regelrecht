@@ -8,12 +8,13 @@ import {
   decidedAlready,
   describeEffect,
   describeOrigin,
-  emptyForm,
   gramCounts,
   gramFields,
   gramKind,
   gramsInTimeOrder,
+  initialForm,
   isNewGram,
+  isPrefilled,
   missedDeadlines,
   newGrams,
   obligationsOf,
@@ -166,13 +167,65 @@ describe('de acties', () => {
   });
 
   it('maakt een leeg formulier met het type van elk veld', () => {
-    const action = worldFixture.actions.find((candidate) => candidate.form.length > 1);
-    const form = emptyForm(action);
+    const action = structuredClone(worldFixture.actions.find((candidate) => candidate.form.length > 1));
+    delete action.prefill;
+    const form = initialForm(action);
     for (const field of action.form) {
       expect(form).toHaveProperty(field.name);
       if (field.type === 'number') expect(form[field.name]).toBeNull();
       if (field.type === 'string') expect(form[field.name]).toBe('');
     }
+  });
+
+  // De voorinvulling is al opgelost door de wereld: hier staat een waarde en
+  // geen verwijzing, dus deze app hoeft niets in de kronieken op te zoeken.
+  it('begint met wat de wereld al weet, en houdt het soort van de waarde', () => {
+    const action = worldFixture.actions.find((candidate) => candidate.form.length > 1);
+    const form = initialForm(action);
+    expect(Object.keys(action.prefill).length).toBeGreaterThan(0);
+    for (const [name, value] of Object.entries(action.prefill)) {
+      expect(form[name]).toStrictEqual(value);
+      expect(isPrefilled(action, name, form[name])).toBe(true);
+    }
+  });
+
+  it('laat een veld leeg waarover de wereld niets aanlevert', () => {
+    const action = structuredClone(worldFixture.actions.find((candidate) => candidate.form.length > 1));
+    const [eerste] = action.form;
+    delete action.prefill[eerste.name];
+    const form = initialForm(action);
+    expect(form[eerste.name]).toBe(eerste.type === 'number' ? null : '');
+    expect(isPrefilled(action, eerste.name, form[eerste.name])).toBe(false);
+  });
+
+  // Zodra iemand er iets anders van maakt, is het zijn opgave en niet meer een
+  // voorinvulling — anders zou het label iets beweren wat niet meer waar is.
+  it('rekent een gewijzigde waarde niet meer als voorgevuld', () => {
+    const action = worldFixture.actions.find((candidate) => candidate.form.length > 1);
+    const [name] = Object.keys(action.prefill);
+    expect(isPrefilled(action, name, 'iets anders')).toBe(false);
+  });
+
+  // De klok loopt door en er komen feiten bij, dus een veld dat niemand
+  // aanraakte hoort te zeggen wat de wereld *nu* al weet. Wat de invuller zelf
+  // typte, blijft van hem.
+  it('laat een onaangeraakt veld het nieuwe voorstel volgen en houdt wat er getypt is', () => {
+    const action = structuredClone(worldFixture.actions.find((candidate) => candidate.form.length > 1));
+    const [eerste, tweede] = action.form;
+    const getypt = { [eerste.name]: 'zelf ingevuld' };
+
+    action.prefill[tweede.name] = 1999;
+    const form = initialForm(action, getypt);
+
+    expect(form[eerste.name]).toBe('zelf ingevuld');
+    expect(form[tweede.name]).toBe(1999);
+    expect(isPrefilled(action, tweede.name, form[tweede.name])).toBe(true);
+    expect(isPrefilled(action, eerste.name, form[eerste.name])).toBe(false);
+  });
+
+  it('valt terug op een leeg formulier als het beeld geen voorinvulling geeft', () => {
+    expect(initialForm({ form: [{ name: 'bsn', type: 'string' }] })).toStrictEqual({ bsn: '' });
+    expect(initialForm(undefined)).toStrictEqual({});
   });
 
   it('schrijft uit wat een actie uitwerkt, in de woorden van de wereld', () => {

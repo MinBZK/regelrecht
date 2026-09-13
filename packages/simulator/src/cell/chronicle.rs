@@ -211,6 +211,35 @@ impl ChronicleStore {
             })
     }
 
+    /// De laatste waarde die één veld in deze stroom kreeg, op of vóór
+    /// `op_moment`.
+    ///
+    /// Over álle sleutelwaarden heen, en dat is het verschil met
+    /// [`Self::latest_recording`]: die beantwoordt een vraag over één onderwerp,
+    /// deze zoekt de laatste waarde die er hoe dan ook ligt. Dat is precies wat
+    /// een voorinvulling nodig heeft — welk onderwerp het wordt, is wat de
+    /// invuller nog moet kiezen (zie [`crate::cell::Prefill`]).
+    ///
+    /// Dezelfde tijdregel als overal: de dag is de korrel, en bij twee
+    /// vastleggingen op één dag wint de laatste. `None` is een antwoord en geen
+    /// fout: hierover ligt nog niets, en dan blijft het veld leeg.
+    pub(crate) fn last_value(
+        &self,
+        stream: &str,
+        name: &str,
+        op_moment: NaiveDate,
+    ) -> Option<&Value> {
+        self.streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)?
+            .events
+            .iter()
+            .filter(|event| event.op_moment <= op_moment)
+            .filter(|event| field(&event.fields, name).is_some())
+            .max_by_key(|event| event.op_moment)
+            .and_then(|event| field(&event.fields, name))
+    }
+
     /// Het sleutelveld van één stroom; `None` als de cel haar niet houdt.
     pub(crate) fn key_of(&self, stream: &str) -> Option<&str> {
         self.streams
@@ -742,6 +771,49 @@ mod tests {
             found.fields.get("partnerschap_type"),
             Some(&Value::String("GEEN".to_string())),
             "het kroniekfilter moet dezelfde vastlegging kiezen als de tijdreductie"
+        );
+    }
+
+    #[test]
+    fn de_laatste_waarde_volgt_dezelfde_tijdregel_als_het_filter() {
+        // `last_value` kijkt over álle sleutelwaarden heen — welk onderwerp het
+        // wordt, is wat de invuller van een formulier nog moet kiezen — maar
+        // verder gelden dezelfde twee regels als overal: wat na het gevraagde
+        // moment ligt telt niet mee, en bij twee vastleggingen op één dag wint
+        // de laatste. Die laatste leunt op de belofte van `max_by_key` dat bij
+        // gelijke sleutel het laatste element wint; een andere formulering zou
+        // hier stil een ander voorstel opleveren dan de tijdreductie ernaast.
+        let store = store(vec![
+            event("2024-01-01", &[("bsn", Value::String("1".to_string()))]),
+            event("2024-07-01", &[("bsn", Value::String("2".to_string()))]),
+            event("2024-07-01", &[("bsn", Value::String("3".to_string()))]),
+            event("2024-09-01", &[("bsn", Value::String("4".to_string()))]),
+        ]);
+
+        assert_eq!(
+            store.last_value("relatie", "bsn", date("2024-07-01")),
+            Some(&Value::String("3".to_string())),
+            "over alle sleutels heen, en op één dag wint de laatste uit de configuratie"
+        );
+        assert_eq!(
+            store.last_value("relatie", "bsn", date("2024-06-01")),
+            Some(&Value::String("1".to_string())),
+            "wat na het gevraagde moment ligt, bestaat voor deze vraag niet"
+        );
+        assert_eq!(
+            store.last_value("relatie", "bsn", date("2023-12-31")),
+            None,
+            "hierover ligt nog niets; dat is een antwoord en geen fout"
+        );
+        assert_eq!(
+            store.last_value("relatie", "partnerschap_type", date("2025-01-01")),
+            None,
+            "een veld dat nergens in de stroom ligt, levert niets op"
+        );
+        assert_eq!(
+            store.last_value("onbekend", "bsn", date("2025-01-01")),
+            None,
+            "een stroom die de cel niet houdt evenmin"
         );
     }
 

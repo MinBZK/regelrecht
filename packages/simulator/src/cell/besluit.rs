@@ -2066,6 +2066,7 @@ params:
         let params = vec![DocumentedParameter {
             name: "jaar".to_string(),
             value_type: crate::cell::ParameterType::String,
+            prefill: None,
         }];
         obligation.validate(
             "toeslagen",

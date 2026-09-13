@@ -183,13 +183,58 @@ export function actionsByActor(snapshot) {
   return [...groups.values()];
 }
 
-/** Een leeg formulier voor een actie: elk veld uit `form`, met zijn type. */
-export function emptyForm(action) {
+/**
+ * Het beginformulier van een actie: elk veld uit `form`, voorgevuld waar het
+ * beeld iets aanlevert en anders leeg naar zijn type.
+ *
+ * De voorinvulling is al opgelost door de wereld (`action.prefill`): daar staat
+ * een waarde en geen verwijzing, dus deze app zoekt niets op in de kronieken.
+ * Wat er niet in staat, begint leeg — een veld waarover niets bekend is, hoort
+ * niet met `null` gevuld te worden, want dat is in een formulier een ingevulde
+ * afwezigheid.
+ *
+ * `typed` houdt de velden die de invuller zelf invulde: die zijn van hem en
+ * blijven staan, ook als de wereld intussen iets anders voorstelt. De rest volgt
+ * het nieuwe beeld, en dat is het punt — de klok loopt door en er komen feiten
+ * bij, dus een veld dat niemand aanraakte hoort te zeggen wat de wereld *nu* al
+ * weet en niet wat zij een paar dagen geleden wist.
+ */
+export function initialForm(action, typed = {}) {
   const values = {};
+  const prefill = prefillOf(action);
   for (const field of Array.isArray(action?.form) ? action.form : []) {
-    values[field.name] = field.type === 'number' ? null : field.type === 'boolean' ? false : '';
+    if (field.name in typed) {
+      values[field.name] = typed[field.name];
+      continue;
+    }
+    const suggested = prefill[field.name];
+    values[field.name] = suggested === undefined || suggested === null ? emptyValue(field.type) : suggested;
   }
   return values;
+}
+
+/** Hoe een leeg veld van dit type eruitziet. */
+function emptyValue(type) {
+  if (type === 'number') return null;
+  if (type === 'boolean') return false;
+  return '';
+}
+
+/** De voorinvulling die het beeld bij deze actie geeft; leeg als ze er niet is. */
+function prefillOf(action) {
+  const prefill = action?.prefill;
+  return prefill && typeof prefill === 'object' ? prefill : {};
+}
+
+/**
+ * Staat dit veld nog op wat de wereld voorstelde?
+ *
+ * Zodra iemand er iets anders van maakt, is het zijn opgave en niet meer een
+ * voorinvulling — dus dan hoort het label dat ook niet meer te zeggen.
+ */
+export function isPrefilled(action, name, value) {
+  const prefill = prefillOf(action);
+  return name in prefill && prefill[name] === value;
 }
 
 /**

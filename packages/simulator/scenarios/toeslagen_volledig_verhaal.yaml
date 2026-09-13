@@ -172,8 +172,11 @@ cells:
           - hoogte_zorgtoeslag
         zaakkenmerk: zorgtoeslag/{bsn}
         params:
+          # De persoon uit de aanvraag die deze cel geleverd kreeg; vóór de
+          # aanvraag ligt daar niets en blijft het veld leeg.
           - name: bsn
             type: string
+            prefill: $last:toeslagen.aanvragen.bsn
         inputs:
           bsn:
             param: bsn
@@ -203,8 +206,11 @@ cells:
           - hoogte_zorgtoeslag
         zaakkenmerk: zorgtoeslag/{bsn}
         params:
+          # De persoon uit de aanvraag die deze cel geleverd kreeg; vóór de
+          # aanvraag ligt daar niets en blijft het veld leeg.
           - name: bsn
             type: string
+            prefill: $last:toeslagen.aanvragen.bsn
         inputs:
           bsn:
             param: bsn
@@ -273,13 +279,18 @@ actions:
       intake: aanvraag
       grondslag: Awir art. 15
       fields:
+        # Voorgevuld: dit verhaal gaat over deze persoon en dit jaar, en dat
+        # hoort een invuller niet elke keer over te typen. Het blijft een
+        # voorstel — wat vastligt, is wat verstuurd wordt.
         - name: bsn
           type: string
+          prefill: '999993653'
         - name: jaar
           type: number
+          prefill: 2024
         # Een datum als parameter: ISO op de draad, en bij het binden door
         # `NaiveDate` gehaald. De Nederlandse notatie hoort bij het scherm en
-        # niet bij wat er vastligt.
+        # niet bij wat er vastligt. Zonder `prefill` staat de klok erin.
         - name: ondertekend_op
           type: date
       delivers_to:

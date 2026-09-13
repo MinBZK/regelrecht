@@ -1362,6 +1362,9 @@ Twee vormen, en precies één per actie:
   het besluit**: de `params` die de besluit-definitie al documenteert. Een tweede
   lijst in de actie zou daarvan gaan afwijken.
 
+Elk veld van zo'n formulier mag voorgevuld staan met wat de wereld al weet; zie
+[Voorinvulling](#voorinvulling-wat-de-wereld-al-weet).
+
 `available_when` is één simpele voorwaarde: *er ligt in kroniek X van cel Y een
 feit waarin veld Z de waarde W heeft.* Daarmee kan een actie wachten tot het
 verhaal zover is — beslissen pas als er een aanvraag ligt — zonder dat die
@@ -1391,6 +1394,81 @@ bestaat. Een actie die pas bij de eerste klik omvalt, is een typfout die op het
 verkeerde moment boven water komt. De stroom met decretogrammen
 (`beschikkingen`) is geen doel voor een actie: daar ontstaat een gram door te
 besluiten.
+
+### Voorinvulling: wat de wereld al weet
+
+Een formulier hoort niet te vragen wat de wereld al weet. Elk veld — een
+`fields`-veld van een `records`-actie, en een `params`-veld van een besluit dat
+een actie start — mag daarom een `prefill` dragen:
+
+```yaml
+fields:
+  - name: bsn
+    type: string
+    prefill: $last:brp.relaties.bsn   # de laatst vastgelegde waarde
+  - name: jaar
+    type: number
+    prefill: 2024                     # een letterlijke waarde
+  - name: ondertekend_op
+    type: date                        # zonder prefill: de klok
+  - name: gemeld_op
+    type: date
+    prefill: $clock                   # of met zoveel woorden
+```
+
+Drie vormen, en ze staan in het **wereldbestand**: een voorinvulling is
+casusdata, net als het label van de actie. Er staat geen Rust die weet dat een
+BSN bestaat.
+
+| vorm | wat er komt te staan |
+|---|---|
+| een letterlijke waarde | die waarde, met haar soort — `2024` is een getal en niet de tekst `"2024"` |
+| `$clock` | de stand van de logische klok, als `jjjj-mm-dd` |
+| `$last:<cel>.<kroniek>.<veld>` | de laatste waarde die dat veld in die kroniek kreeg, op of vóór de klok |
+
+Een **datumveld zonder `prefill`** krijgt de klok. Een actie draagt geen eigen
+moment — ze gebeurt op de stand van de wereld — dus elke andere datum is een
+correctie die de invuller bewust maakt, en de klok overtypen is nooit het werk.
+Staat er wél een `prefill`, dan wint die: een opgave in het bestand is een keuze.
+
+`$last` levert **niets** als er nog niets ligt, en dat is een antwoord en geen
+fout: het veld staat dan leeg en de actie kan gewoon. Zo volgt een voorinvulling
+de kroniek in plaats van er een tweede kopie van te zijn — de besluit-parameter
+die naar de ontvangen aanvraag wijst, is leeg vóór de aanvraag en gevuld erna.
+Waar de verwijzing naar wijst wordt bij het optuigen getoetst, maar alleen tot en
+met de **kroniek**: welke velden een stroom kent, blijkt uit wat erin ligt, en een
+kroniek die pas tijdens de run gevuld wordt, kent er bij het optuigen nog geen.
+
+Een `$`-woord dat geen van beide verwijzingen is, wordt geweigerd in plaats van
+als letterlijke tekst doorgegeven. Anders staat er straks `$clok` in een kroniek,
+en niemand die het merkt. Om dezelfde reden gaat een voorinvulling die nu al een
+waarde ís — een letterlijke waarde of `$clock` — bij het optuigen door de
+typetoets van haar veld: `2024` in een `string`-veld valt daar, en niet pas als
+iemand op "uitvoeren" drukt over een waarde die hij nooit getypt heeft. Waar een
+`$last` op uitkomt is bij het optuigen nog niet bekend; die staat gewoon in het
+veld en valt bij het versturen door dezelfde toets als wat de invuller zelf typt.
+
+Een `$last` mag naar een **andere cel** wijzen dan die het formulier draagt — het
+aanvraagformulier van de burger stelt het BSN voor dat het register al kent — en
+dat is geen celgrensoverschrijding. De wereld leest hier haar eigen cellen zoals
+ze dat voor het beeld ook doet, buiten de veiligheidscontext en het transport om:
+er komt geen `crossing` van en geen regel in het observatielog, want er wordt
+geen vraag gesteld. Wat eruit komt is een suggestie op een scherm; een feit wordt
+het pas als de invuller het verstuurt, en dan legt de cel het op eigen naam vast.
+
+Een voorinvulling is een **voorstel**, geen feit. De invuller kan er iets anders
+van maken, en wat vastgelegd wordt is wat hij verstuurt; aan het gram is later
+niet te zien wat er voorgesteld stond. Het beeld van de wereld draagt de
+voorinvulling dan ook per actie en **opgelost** (`actions[].prefill`) — de
+verwijzing blijft in het bestand, want wie haar naar buiten zou sturen, laat de
+frontend zelf in de kronieken zoeken.
+
+Wat er met opzet níet in zit, is een berekening: dit is geen tweede
+reductietaal. Een voorinvulling wijst iets aan dat er al ligt, of ze noemt een
+waarde. Wie een bedrag uit de wet wil voorstellen, laat de wet rekenen.
+
+De `inputs` van een lexostatus dragen dezelfde parametervorm, maar daar is geen
+formulier: een vraag aan een cel komt van een consument en niet uit een invulveld.
 
 ### Termijnen: waarschuwen zonder te blokkeren
 
@@ -1480,6 +1558,7 @@ is het vastgepinde voorbeeld):
 | `cells[].chronicles[].grams` | elk gram met zijn soort (`lexogram`/`decretogram`/`executogram`), moment, kanaal, grondslag en velden |
 | `…grams[].fields[].origin` | de herkomst per waarde |
 | `actions` | elke actie met haar formulier, en of ze nu kan |
+| `actions[].prefill` | de [voorinvulling](#voorinvulling-wat-de-wereld-al-weet) per veld, opgelost op de stand van de klok |
 | `crossings` | wat er over een celgrens ging |
 | `warnings` | de termijnen die verstreken zonder dat het feit er lag |
 
