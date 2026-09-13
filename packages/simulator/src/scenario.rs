@@ -12,7 +12,7 @@ use crate::invariant::{
     Traffic,
 };
 use crate::journal::{self, JournalEntry};
-use crate::security::{Identity, SecurityContext, SignedAnswer};
+use crate::security::{SecurityContext, SignedAnswer};
 use crate::snapshot::Snapshot;
 use crate::transport::InProcessTransport;
 use crate::values::equivalent;
@@ -668,15 +668,13 @@ impl ScenarioRun {
 
 /// Het rechtskarakter en het bevoegd gezag van een decretogram, voor het verslag.
 ///
-/// Leeg als de regeling er niets over zegt, en dan staat het er ook niet:
-/// een besluit waarvan de wet het karakter niet noemt, hoort niet met een lege
-/// haak te suggereren dat het er wel een heeft.
+/// Het karakter staat er altijd — een decretogram is een beschikking — het gezag
+/// alleen als de regeling het noemt: een besluit waarvan de wet geen gezag
+/// aanwijst, hoort niet met een lege haak te suggereren dat het er wel een heeft.
 fn describe_authority(gram: &Decretogram) -> String {
-    match (&gram.legal_character, &gram.competent_authority) {
-        (Some(character), Some(authority)) => format!(", {character} door {authority}"),
-        (Some(character), None) => format!(", {character}"),
-        (None, Some(authority)) => format!(", door {authority}"),
-        (None, None) => String::new(),
+    match &gram.competent_authority {
+        Some(authority) => format!(", {} door {authority}", gram.legal_character),
+        None => format!(", {}", gram.legal_character),
     }
 }
 
@@ -1039,7 +1037,9 @@ impl Scenario {
             }
 
             let transport = InProcessTransport::over(world.cells());
-            let context = SecurityContext::new(Identity::for_cell(&via.from), &transport);
+            // Dezelfde identiteit als een besluit van deze cel zou dragen: de
+            // wereld bindt haar, en de sonde tekent er niet met een andere naam.
+            let context = SecurityContext::new(world.identity_of(&via.from), &transport);
             let signed = context.query(
                 &query.cell,
                 &query.lexostatus,

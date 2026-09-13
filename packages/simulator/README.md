@@ -112,9 +112,11 @@ Precies de drie dingen die er in de praktijk bij gedacht worden (RFC-022 §2):
   een vraag beantwoord wordt, zitten in de veiligheidscontext, niet in de cel.
 - **Geen bevoegd gezag.** `competent_authority` (RFC-002) is een juridisch feit
   van het besluit, geen eigenschap van de opslag. Een cel houdt kronieken van
-  besluiten waarvoor een ander bevoegd is. Wat een cel wél heeft, is een
-  **identiteit** — wie ze zegt te zijn — en dat is iets anders dan een
-  bevoegdheid: zie [Wie mag besluiten](#wie-mag-besluiten).
+  besluiten waarvoor een ander bevoegd is. Ook wie de cel *zegt te zijn* — haar
+  **identiteit** — houdt ze niet zelf: die bewering is wat een ondertekening
+  straks moet bewijzen, en woont daarom in de veiligheidscontext. Ze komt bij
+  een besluit van buiten mee en wordt dan naast de wet gelegd: zie
+  [Wie mag besluiten](#wie-mag-besluiten).
 - **Geen synthese.** Een reductie raakt uitsluitend de eigen kronieken.
   Combineren over cellen heen doet een consument, nooit een cel.
 
@@ -405,11 +407,12 @@ uitbreiding van RFC-013 stil achterlopen.
 | `zaakkenmerk` | waaronder deze zaak terug te vinden is, uit het sjabloon van de definitie |
 | `op_moment` | wanneer besloten is (het gram is een gewoon executogram) |
 | `regulation` + `regulation_valid_from` | welke regeling, en **welke versie daarvan gold** |
-| `competent_authority` | het bevoegd gezag dat de regeling noemt (RFC-002); `null` als ze er geen noemt |
+| `competent_authority` | het bevoegd gezag dat de regeling noemt (RFC-002): dat van het artikel dat de aansturende uitkomst voortbrengt, anders dat van het document; `null` als ze er geen noemt |
 | `besloten_door` | de identiteit van de cel die besloot — zie [Wie mag besluiten](#wie-mag-besluiten) |
-| `legal_character` | wat de wet ervan maakt: `BESCHIKKING`, `TOETS`, … |
+| `legal_character` | altijd `BESCHIKKING`: dat is wat een decretogram is (RFC-022 §1.2), en een besluit over iets anders wordt bij het optuigen geweigerd |
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
-| `inputs` | elke waarde waarop besloten is, **met haar herkomst** |
+| `inputs` | wat de besluit-definitie zelf aanleverde, **met herkomst per waarde**: uit een eigen kroniek (met het moment van die vastlegging), uit een parameter, of geaccepteerd van een andere cel |
+| `chronicle_sources` | de eigen kronieken die als databron klaarstonden, elk met haar stand op het moment van het besluit: aantal grammen en een hash erover (RFC-022 §1.3). Wat de engine daaruit las, staat in de trace van het receipt |
 | `obligations` | het betalingsschema dat uit dit besluit volgt: per termijn een vervaldatum, een bedrag en een volgnummer |
 | `receipt` | het volledige Execution Receipt |
 
@@ -431,8 +434,15 @@ Drie regels, en ze horen in deze volgorde gelezen te worden:
 1. **De wet bepaalt wie het bevoegd gezag is.** Dat staat in de regeling
    (`competent_authority`, RFC-002) en nergens anders. Het platform leest het uit
    het law-model; een celconfiguratie kan zichzelf geen gezag toebedelen.
+   RFC-002 legt het op het **artikel** — één wet kan meer dan één gezag kennen —
+   dus het artikel dat de aansturende uitkomst voortbrengt gaat voor; het
+   document is de terugvaloptie voor een artikel dat zelf zwijgt.
 2. **De cel beweert wie zij is.** `identity: <naam>` op de cel in het
-   wereldbestand, standaard haar cel-id.
+   wereldbestand, standaard haar cel-id. Die naam landt niet in de cel maar in
+   haar **veiligheidscontext** (`Identity`, RFC-022 §2): het is dezelfde
+   identiteit die elke vraag over de grens ondertekent, en de wereld reikt haar
+   bij een besluit aan. Eén register, zodat wie tekent en wie besluit nooit
+   twee namen worden.
 3. **De bewering geldt voor nu als waar.** Er wordt niets bewezen: er is geen
    sleutelmateriaal en de ondertekening is gesimuleerd (zie
    [Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd)). Bewijs is
@@ -465,7 +475,10 @@ kan worden.
 `competent_authority` mag in de wet een `#`-verwijzing zijn naar een uitkomst van
 de regeling zelf (`competent_authority: '#bevoegd_gezag'`, zoals in
 `wet_op_de_zorgtoeslag`). Die wordt opgelost vóór de vergelijking — anders zou de
-toets op de tekst `#bevoegd_gezag` gaan en was geen enkele cel ooit bevoegd.
+toets op de tekst `#bevoegd_gezag` gaan en was geen enkele cel ooit bevoegd. Komt
+zo'n verwijzing nergens op uit — geen actie zet die uitkomst op een letterlijke
+naam — dan is dat een **fout** en geen zwijgende wet: de regeling zegt iets wat
+niet te lezen is, en doorgaan alsof ze niets zegt zou de toets stil uitzetten.
 
 Dat `besloten_door` naast `competent_authority` in het gram staat, is met opzet:
 ze zijn gelijk zodra er een gezag is, maar ze zeggen verschillende dingen — het
@@ -615,10 +628,13 @@ naar het besluit heet te vragen maar de wetsvorm gebruikt, rekent dus nog steeds
 
 ### Wat van RFC-022 §1.2 hier wel en niet in zit
 
-**Wel**: dat een decretogram een engine-uitkomst met een `legal_character` is en
-het RFC-013 receipt haar lichaam; dat elk gram elementair is en co-ontstane
-uitkomsten samen draagt; het `zaakkenmerk` als de sleutel waaronder de grammen van
-één zaak een kroniek vormen; het moment.
+**Wel**: dat een decretogram een engine-uitkomst met `legal_character:
+BESCHIKKING` is en het RFC-013 receipt haar lichaam — een besluit-definitie over
+een toets of een waardebepaling wordt bij het optuigen geweigerd; dat elk gram
+elementair is en co-ontstane uitkomsten samen draagt; het `zaakkenmerk` als de
+sleutel waaronder de grammen van één zaak een kroniek vormen; het moment; en uit
+§1.3 dat de eigen kronieken die aan de uitvoering bijdroegen met inhoud en versie
+in het gram staan (`chronicle_sources`).
 
 **Niet**: de RFC-008-stages (BESLUIT, BEKENDMAKING, BEZWAAR — er is één soort gram
 en geen stage-decretogrammen, dus "de huidige stap" bestaat hier niet); `modality`
@@ -639,12 +655,14 @@ let signed = context.query("brp", "partnerschap", &params, op_moment)?;
 ```
 
 - **`SecurityContext`** — identiteit, ondertekening, transportkeuze. Gebonden aan
-  precies één cel, en de **enige** die het transport aanroept. De identiteit is
-  het **cel-id**: waarop het transport de peer vindt en waarop het vraaggraf
-  gaat. De naam waaronder een cel zich *uitgeeft* (`identity:` in het
-  wereldbestand) staat níet hier maar op de cel, en komt alleen bij een besluit
-  ter sprake — zie [Wie mag besluiten](#wie-mag-besluiten). Twee registers voor
-  "wie is dit" zouden bij de eerste echte ondertekening uiteen gaan lopen.
+  precies één cel, en de **enige** die het transport aanroept. De identiteit
+  draagt twee namen: het **cel-id** — het adres, waarop het transport de peer
+  vindt en waarop het vraaggraf gaat — en de **naam** waaronder de cel zich
+  uitgeeft (`identity:` in het wereldbestand, standaard het id). Die tweede is
+  de bewering die bij een besluit naast de wet komt te liggen, zie
+  [Wie mag besluiten](#wie-mag-besluiten), en ze staat hier en niet op de cel:
+  het is wat een ondertekening straks bewijst. Eén register voor "wie is dit",
+  want twee zouden bij de eerste echte ondertekening uiteen gaan lopen.
 - **`CellTransport`** — de naad: `query(cel, lexostatus, params, op_moment)`.
   Exact de vorm van de publieke ingang van een cel en met opzet niets meer; een
   transport dat een reductie of een filter kon meesturen, zou de autonomie van de
@@ -684,7 +702,10 @@ dus ze staat niet in de wet. Diezelfde lijst is wat de engine haar cel-tier geef
 alleen gedeclareerde cel-ids bereiken de resolver, dus een cel die er niet in staat
 kan niet per ongeluk bevraagd worden — invariant I3 als capability. Een afspraak
 die géén van de eigen wetten noemt, wordt bij het optuigen geweigerd, en een cel-id
-dat een eigen regeling overschaduwt ook.
+dat een eigen regeling overschaduwt ook. Breder nog: een cel-id dat de `$id` is
+van een regeling die *welke cel dan ook* in de wereld laadt, valt bij het optuigen
+van de wereld — RFC-022 §4.2 maakt daar onvoorwaardelijk een laadfout van, want
+een vraag aan die cel zou door die regeling beantwoord worden zonder spoor.
 
 **Een cel haalt niets zelf op.** Ook op het besluit-pad niet: ze zegt wat ze nodig
 heeft (`Cell::acceptance_requests`) en krijgt het aangereikt. Het ophalen gebeurt
@@ -781,13 +802,12 @@ Ze komen niet uit de RFC en horen niet als vaststaand gelezen te worden.
   trait blijkt te vragen die cel↔cel niet gebruikt, was de andere lezing de juiste.
   Vandaag bestaat alleen de cel↔cel-kant, dus het bewijs is nog niet geleverd.
 - **Open Question 2 — waaraan bindt de veiligheidscontext?** Onbeslist in de RFC.
-  Hier: één context per cel, met één identiteit die de cel zélf is
-  (`cel:toeslagen`). Geen medewerker, geen zaak, geen mandaat, geen autorisatie.
-  Dat is de dunste vorm die de vraag openhoudt; komt er een fijnere binding, dan
-  krijgt `Identity` velden en verandert er aan de aanroepers niets. De naam
-  waaronder een cel zich uitgeeft hoort daar niet bij: die staat op de cel en
-  wordt alleen bij een besluit naast de wet gelegd, zodat er één register blijft
-  voor wie er ondertekent.
+  Hier: één context per cel, met één identiteit — het cel-id als adres
+  (`cel:toeslagen`) en de naam waaronder de cel zich uitgeeft als bewering. Het
+  wereldbestand is de plek waar die context aan de cel gebonden wordt. Geen
+  medewerker, geen zaak, geen mandaat, geen autorisatie. Dat is de dunste vorm
+  die de vraag openhoudt; komt er een fijnere binding, dan krijgt `Identity`
+  velden en verandert er aan de aanroepers niets.
 
 ## Het observatielog (buiten de band)
 
@@ -1742,32 +1762,31 @@ in het beeld en `ScenarioRun::journal` zijn dezelfde lijst.
 ### Kroniekstromen en tijd
 
 Per stroom geldt: alleen vastleggingen met `op_moment <= ` het gevraagde moment
-tellen mee, en van de rest wint per sleutelwaarde en per veld de laatste
-vastlegging. Dit is de weg naar de engine; een kroniekfilter kiest één hele
-vastlegging en merge't niets (zie
-[Twee reductievormen](#twee-reductievormen)). Een vraag over een moment in het
-verleden levert dus het beeld van toen. De stromen worden aan de engine
-aangeboden als databronnen, waar ze de inputs van de eigen regelingen invullen.
-Twee stromen met dezelfde naam worden geweigerd: de stroomnaam is tevens de naam
-van de databron, dus daar zou de tweede de eerste stil schaduwen.
+tellen mee, en van de rest wint per sleutelwaarde de laatste vastlegging — **in
+haar geheel**. Dit is de weg naar de engine, en het is dezelfde regel als die
+van het kroniekfilter (zie [Twee reductievormen](#twee-reductievormen)): een
+bron-cel en een engine horen over dezelfde kroniek hetzelfde te zien. Een vraag
+over een moment in het verleden levert dus het beeld van toen. De stromen worden
+aan de engine aangeboden als databronnen, waar ze de inputs van de eigen
+regelingen invullen. Twee stromen met dezelfde naam worden geweigerd: de
+stroomnaam is tevens de naam van de databron, dus daar zou de tweede de eerste
+stil schaduwen.
 
-Dat "per veld wint de laatste vastlegging" is een **bewuste vereenvoudiging**,
-geen eigenschap om trots op te zijn. Het is een toestandsmerge: de velden van
-verschillende vastleggingen, op verschillende momenten, worden over elkaar
-gelegd tot één record dat als vastlegging nooit bestaan heeft. Dat gebeurt omdat
-de engine records als databron wil. De paper legt de nadruk op het omgekeerde —
-niet de resulterende toestand opslaan, maar de procesrelatieve vaststelling ("op
-moment T heeft actor X vastgesteld dat …") en bij hergebruik expliciet
-herinterpreteren. Wat samen ontstond hoort samen te blijven; wat apart ontstond
-hoort niet stil samengevoegd te worden. De vastlegging draagt inmiddels wél
-`recording_actor`, `grondslag`, `intake`, een naam en een moment (zie [De
-executogram-vorm](#de-executogram-vorm)); wat nog mist is een reductie die
-daarover filtert en aggregeert in plaats van alleen te overschrijven. De
-gegevens zijn er dus al voordat de reductie ze gebruikt.
+In haar geheel, en niet veld voor veld — dat is geen detail. Een toestandsmerge
+zou de velden van verschillende vastleggingen, op verschillende momenten, over
+elkaar leggen tot één record dat als vastlegging nooit bestaan heeft. De paper
+legt de nadruk op het omgekeerde: niet de resulterende toestand opslaan, maar de
+procesrelatieve vaststelling ("op moment T heeft actor X vastgesteld dat …"), en
+RFC-022 zegt het de engine na — de reductie redeneert over *vaststellingen op
+momenten*, niet over een toestand van de wereld. Wat samen ontstond blijft samen;
+wat apart ontstond wordt niet stil samengevoegd. Een veld dat de laatste
+vastlegging niet draagt, is op dat moment dus niet vastgesteld, ook als een
+eerdere het wél droeg. Wie dat veld toch nodig heeft, legt het opnieuw vast — en
+dan staat er ook bij wanneer en waarlangs.
 
-Het kroniekfilter van een bron-cel doet dat al niet: dat kiest één vastlegging en
-geeft die in haar geheel terug. Die vorm kan hier omdat er geen engine tussen zit
-die records wil.
+Wat een besluit uit die stromen las, is na te lopen: het gram draagt per stroom
+haar stand op dat moment (`chronicle_sources`), zie
+[Wat een decretogram draagt](#wat-een-decretogram-draagt).
 
 De dag is de fijnste korrel van de tijdas. Twee vastleggingen op hetzelfde
 `op_moment` vallen daar niet uit elkaar te houden; dan beslist de volgorde in het

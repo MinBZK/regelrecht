@@ -399,8 +399,9 @@ pub struct DecisionView {
     pub zaakkenmerk: String,
     /// Het moment waarop besloten is.
     pub op_moment: NaiveDate,
-    /// Het rechtskarakter dat de regeling aan de uitkomst geeft.
-    pub legal_character: Option<String>,
+    /// Het rechtskarakter dat de regeling aan de uitkomst geeft: altijd
+    /// `BESCHIKKING`, want dat is wat een decretogram is (RFC-022 §1.2).
+    pub legal_character: String,
     /// Hoeveel contacten dit besluit over een celgrens nodig had. De contacten
     /// zelf staan in `snapshot.crossings`.
     pub crossings: usize,

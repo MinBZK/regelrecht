@@ -390,6 +390,48 @@ pub enum SimulatorError {
         defined: String,
     },
 
+    /// Een besluit-definitie stuurt op een uitkomst die geen beschikking is.
+    ///
+    /// Een decretogram is een engine-uitkomst met `legal_character: BESCHIKKING`
+    /// (RFC-022 §1.2). Een toets of een waardebepaling als besluit vastleggen zou
+    /// een gram in de stroom met beschikkingen leggen dat geen beschikking is.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' stuurt op uitkomst '{output}' van regeling \
+         '{regulation}', maar die is geen beschikking (rechtskarakter: {found}); een \
+         decretogram is een uitkomst met `legal_character: BESCHIKKING` (RFC-022 §1.2)"
+    )]
+    BesluitNotABeschikking {
+        /// De cel waarin de definitie staat.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De regeling die het besluit uitvoert, bij `$id`.
+        regulation: String,
+        /// De aansturende uitkomst.
+        output: String,
+        /// Wat de geladen versies er wél van maken.
+        found: String,
+    },
+
+    /// Een cel-id in de wereld is ook de `$id` van een regeling die een cel laadt.
+    ///
+    /// RFC-022 §4.2 maakt daar een laadfout van, onvoorwaardelijk: een vraag aan
+    /// die cel zou door de gelijknamige regeling beantwoord worden, zonder dat
+    /// iemand het ziet. De engine weigert het al per cel; de wereld is de enige
+    /// die álle cellen en álle geladen regelingen naast elkaar heeft, en toetst
+    /// het daarom ook over de cellen heen.
+    #[error(
+        "cel-id '{cell}' is ook de $id van een regeling die cel '{loaded_by}' laadt; \
+         een vraag aan die cel zou door die regeling beantwoord worden (RFC-022 §4.2). \
+         Hernoem de cel"
+    )]
+    CellIdShadowsRegulation {
+        /// Het cel-id dat een regeling overschaduwt.
+        cell: String,
+        /// De cel die de gelijknamige regeling laadt.
+        loaded_by: String,
+    },
+
     /// De cel die wil besluiten, is niet het bevoegd gezag van de regeling.
     ///
     /// De wet bepaalt wie mag besluiten; de cel beweert wie zij is. Lopen die
@@ -897,6 +939,41 @@ pub enum SimulatorError {
         parameter: String,
         /// Het scheidingsteken dat in die waarde voorkomt.
         separator: String,
+    },
+
+    /// De stand van een kroniekstroom kon niet gehasht worden.
+    ///
+    /// Een fout en geen stille constante: een hash die er als een hash uitziet
+    /// maar niets identificeert, zou in een decretogram voor bewijs doorgaan.
+    #[error("kon de stand van kroniekstroom '{stream}' niet hashen: {source}")]
+    ChronicleHashing {
+        /// De stroom waarvan de grammen niet te serialiseren waren.
+        stream: String,
+        /// De onderliggende serialisatiefout.
+        source: serde_yaml_ng::Error,
+    },
+
+    /// De regeling wijst een bevoegd gezag aan met een `#`-verwijzing die
+    /// nergens op uitkomt.
+    ///
+    /// Dat is iets anders dan een regeling die zwijgt: er ís een gezag
+    /// gedeclareerd, alleen niet te lezen. Doorgaan alsof de wet niets zegt zou
+    /// de toets op het bevoegd gezag stil uitzetten, en dat is precies de kant
+    /// die niet mag: dan besluit iedereen.
+    #[error(
+        "cel '{cell}': regeling '{regulation}' wijst het bevoegd gezag aan als '#{reference}', \
+         maar geen actie van die regeling zet die uitkomst op een letterlijke naam \
+         (besluit '{besluit}')"
+    )]
+    CompetentAuthorityUnresolvable {
+        /// De cel die wilde besluiten.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De regeling, bij `$id`.
+        regulation: String,
+        /// De uitkomstnaam achter de `#`.
+        reference: String,
     },
 
     /// Het receipt van een besluit kon niet als kroniekveld worden opgeslagen.

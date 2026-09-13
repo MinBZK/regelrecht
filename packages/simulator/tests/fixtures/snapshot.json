@@ -784,6 +784,37 @@
                     }
                   }
                 },
+                "chronicle_sources": {
+                  "value": [
+                    {
+                      "chronicle": "aanvragen",
+                      "content_hash": "sha256:5334c0f80ccf8444015ade39117d2541f77b564b8d44c2842cf91f5740f7cafd",
+                      "grams": 1,
+                      "op_moment": "2024-04-01"
+                    },
+                    {
+                      "chronicle": "relaties",
+                      "content_hash": "sha256:34599b9d11d0d748d4611e6c5a85ba2e05b08ac5a7b9f7b82275479ec1f8b934",
+                      "grams": 1,
+                      "op_moment": "2024-04-01"
+                    },
+                    {
+                      "chronicle": "inkomensleveringen",
+                      "content_hash": "sha256:1bb0aa5824de2ad8d31e4c8b27ae86886a19966fca271b8a84c4e7e22fa29f9a",
+                      "grams": 1,
+                      "op_moment": "2024-04-01"
+                    },
+                    {
+                      "chronicle": "betalingen",
+                      "content_hash": "sha256:43ea551ec14c232a5d351e91706af91a4ee381567771c54c3f09358cd6533518",
+                      "grams": 0,
+                      "op_moment": "2024-04-01"
+                    }
+                  ],
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "competent_authority": {
                   "value": "Dienst Toeslagen",
                   "origin": {
@@ -920,6 +951,37 @@
                       "herkomst": "parameter",
                       "parameter": "bsn"
                     }
+                  }
+                },
+                "chronicle_sources": {
+                  "value": [
+                    {
+                      "chronicle": "aanvragen",
+                      "content_hash": "sha256:5334c0f80ccf8444015ade39117d2541f77b564b8d44c2842cf91f5740f7cafd",
+                      "grams": 1,
+                      "op_moment": "2024-12-15"
+                    },
+                    {
+                      "chronicle": "relaties",
+                      "content_hash": "sha256:34599b9d11d0d748d4611e6c5a85ba2e05b08ac5a7b9f7b82275479ec1f8b934",
+                      "grams": 1,
+                      "op_moment": "2024-12-15"
+                    },
+                    {
+                      "chronicle": "inkomensleveringen",
+                      "content_hash": "sha256:1bb0aa5824de2ad8d31e4c8b27ae86886a19966fca271b8a84c4e7e22fa29f9a",
+                      "grams": 1,
+                      "op_moment": "2024-12-15"
+                    },
+                    {
+                      "chronicle": "betalingen",
+                      "content_hash": "sha256:4ad1bd73cab8e5f6feda16393bea0a4f5dedd7fa7feb53c9fda512c0df416f34",
+                      "grams": 3,
+                      "op_moment": "2024-12-15"
+                    }
+                  ],
+                  "origin": {
+                    "herkomst": "besluit"
                   }
                 },
                 "competent_authority": {

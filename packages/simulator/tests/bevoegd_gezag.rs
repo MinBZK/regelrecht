@@ -102,6 +102,67 @@ fn een_besluit_van_het_bevoegd_gezag_draagt_beide_namen() {
     );
 }
 
+/// **Wie de vraag ondertekent, is wie het besluit draagt.**
+///
+/// De naam waaronder een cel zich uitgeeft, woont in haar veiligheidscontext en
+/// niet in de cel (RFC-022 §2): het is wat een ondertekening straks moet
+/// bewijzen. Eén register, dus de identiteit die een vraag over de grens
+/// ondertekende en de naam in `besloten_door` van het gram komen van dezelfde
+/// plek. Zouden dat er twee zijn, dan tekent bij de eerste echte handtekening
+/// een ander dan wie besloot.
+#[test]
+fn de_identiteit_die_ondertekent_is_de_identiteit_die_besluit() {
+    let run = run(&scenario_path("toeslagen_accepteert_toetsingsinkomen.yaml"));
+    let decision = run
+        .decisions
+        .iter()
+        .find(|decision| !decision.crossings.is_empty())
+        .unwrap_or_else(|| panic!("dit scenario heeft een besluit dat over de grens vraagt"));
+
+    let signer = decision.crossings[0].signature.signer();
+    assert_eq!(signer.cell(), "toeslagen", "het adres: het cel-id");
+    assert_eq!(
+        signer.name(),
+        decision.decretogram.besloten_door,
+        "de naam die tekende is de naam die besloot"
+    );
+    assert_eq!(
+        decision.decretogram.besloten_door, "Dienst Toeslagen",
+        "en dat is wat het wereldbestand aan de veiligheidscontext van de cel bond"
+    );
+}
+
+/// **Ook de sonde tekent met de naam die de wereld aan de cel bond.**
+///
+/// `query_via_transport` is een losse vraag over de grens, buiten een besluit.
+/// Zou die met een andere naam tekenen dan een besluit van dezelfde cel, dan
+/// waren er alsnog twee registers voor "wie is dit".
+#[test]
+fn de_sonde_tekent_met_dezelfde_identiteit_als_een_besluit() {
+    let path = scenario_path("transport_toeslagen_brp.yaml");
+    let mut scenario = scenario(&path);
+    let cel = scenario
+        .cells
+        .iter_mut()
+        .find(|config| config.id == "toeslagen")
+        .unwrap_or_else(|| panic!("{}: 'toeslagen' hoort erin te staan", path.display()));
+    cel.identity = Some("Dienst Toeslagen".to_string());
+
+    let run = scenario
+        .run(&regulation_root())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    assert!(run.passed(), "{}", run.report());
+    let signer = run
+        .transport_outcomes
+        .first()
+        .unwrap_or_else(|| panic!("dit scenario stelt een vraag over de grens"))
+        .signed
+        .signature
+        .signer();
+    assert_eq!(signer.cell(), "toeslagen");
+    assert_eq!(signer.name(), "Dienst Toeslagen");
+}
+
 /// **Een `#`-verwijzing wordt opgelost, niet doorgegeven.**
 ///
 /// `wet_op_de_zorgtoeslag` schrijft `competent_authority: '#bevoegd_gezag'`: geen
