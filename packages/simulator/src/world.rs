@@ -46,8 +46,9 @@
 
 use crate::accept::CellBridge;
 use crate::cell::{
-    check_documented_params, BesluitDefinition, Cell, CellConfig, ChronicleEvent, Decretogram,
-    DocumentedParameter, Intake, Lexostatus, ObligationDue, Prefill, BETALINGEN, ZAAKKENMERK,
+    check_documented_params, check_prefill_values, BesluitDefinition, Cell, CellConfig,
+    ChronicleEvent, Decretogram, DocumentedParameter, Intake, Lexostatus, ObligationDue, Prefill,
+    BETALINGEN, ZAAKKENMERK,
 };
 use crate::error::{Result, SimulatorError, Subject};
 use crate::security::{Identity, SignedAnswer};
@@ -1610,7 +1611,7 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                     &fields,
                     cells,
                 )?;
-                check_prefill(&action.id, &records.fields, cells)?;
+                check_prefill(&records.cell, &action.id, &records.fields, cells)?;
                 if let Some(delivery) = &records.delivers_to {
                     if delivery.cell == records.cell {
                         return Err(SimulatorError::DeliveryToSelf {
@@ -1634,7 +1635,7 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
                         cell: decides.cell.clone(),
                     })?
                     .besluit_definition(&decides.besluit)?;
-                check_prefill(&action.id, &definition.params, cells)?;
+                check_prefill(&decides.cell, &action.id, &definition.params, cells)?;
             }
         }
 
@@ -1655,23 +1656,34 @@ fn check_actions(actions: &[ActionDefinition], cells: &BTreeMap<String, Cell>) -
     Ok(())
 }
 
-/// Wijst elke voorinvulling van dit formulier naar een kroniek die bestaat?
+/// Houdt elke voorinvulling van dit formulier zich aan wat ze belooft?
+///
+/// Twee dingen, en allebei omdat de fout anders nooit boven water komt.
 ///
 /// Een verwijzing naar een cel of een stroom die er niet is, vult nooit iets in
 /// — en dat zou niemand merken, want "nog niets vastgelegd" is hier een geldige
 /// uitkomst. Een typfout in `$last:` hoort dus bij het optuigen te vallen, net
-/// als een typfout in `available_when`.
+/// als een typfout in `available_when`. De **stroom** wel en het **veld** niet,
+/// en dat is geen slordigheid: welke velden een stroom kent, wordt afgeleid uit
+/// wat erin ligt, en een kroniek die pas tijdens de run gevuld wordt kent er bij
+/// het optuigen nog geen. Een veldnaam afkeuren zou dan precies de
+/// voorinvulling weigeren die na de eerste actie zou gaan werken.
 ///
-/// De **stroom** wel en het **veld** niet, en dat is geen slordigheid: welke
-/// velden een stroom kent, wordt afgeleid uit wat erin ligt, en een kroniek die
-/// pas tijdens de run gevuld wordt kent er bij het optuigen nog geen. Een
-/// veldnaam afkeuren zou dan precies de voorinvulling weigeren die na de eerste
-/// actie zou gaan werken.
+/// En een voorinvulling die nu al een waarde ís, gaat door dezelfde typetoets
+/// als wat de invuller zelf typt (zie [`check_prefill_values`]): een `2024` in
+/// een `string`-veld hoort hier te stranden en niet pas als iemand op
+/// "uitvoeren" drukt.
+///
+/// `cell` is de cel die het formulier draagt — die het gram vastlegt of het
+/// besluit neemt — en niet de cel waar een `$last` naar wijst: een bezwaar tegen
+/// dit veld gaat over dit formulier.
 fn check_prefill(
+    cell: &str,
     action: &str,
     form: &[DocumentedParameter],
     cells: &BTreeMap<String, Cell>,
 ) -> Result<()> {
+    check_prefill_values(cell, Subject::Actie, action, form)?;
     for param in form {
         let Some(Prefill::Last {
             cell, chronicle, ..
@@ -3022,7 +3034,7 @@ records:
     /// `bsn` krijgt wat de test wil onderzoeken, `jaar` een letterlijke waarde,
     /// `gemeld_op` de klok bij naam, en `ondertekend_op` niets — dat laatste is
     /// het datumveld dat de klok hoort te krijgen omdat het een datumveld is.
-    fn voorinvul_actie(bsn: &str) -> ActionDefinition {
+    fn voorinvul_actie(bsn: &str, jaar: &str) -> ActionDefinition {
         let yaml = format!(
             r"
 id: burger.aanvraag
@@ -3039,7 +3051,7 @@ records:
       prefill: {bsn}
     - name: jaar
       type: number
-      prefill: 2024
+      prefill: {jaar}
     - name: gemeld_op
       type: date
       prefill: $clock
@@ -3058,8 +3070,14 @@ records:
 
     /// Een wereld met die voorgevulde actie erin.
     fn voorinvul_wereld(bsn: &str) -> Result<World> {
+        voorinvul_wereld_met(bsn, "2024")
+    }
+
+    /// Dezelfde wereld, maar dan met een eigen opgave voor het `number`-veld —
+    /// waarmee te toetsen is wat er gebeurt als die niet bij het type past.
+    fn voorinvul_wereld_met(bsn: &str, jaar: &str) -> Result<World> {
         let mut spec = definition(&actie_cellen(), "2024-01-01", &[], &no_settings());
-        spec.actions = vec![voorinvul_actie(bsn)];
+        spec.actions = vec![voorinvul_actie(bsn, jaar)];
         World::from_definition(&spec, &regulation_root())
     }
 
@@ -3151,6 +3169,40 @@ records:
         assert!(
             matches!(err, SimulatorError::UnknownCell { .. }),
             "verwachtte UnknownCell, kreeg {err}"
+        );
+    }
+
+    /// Een voorinvulling gaat door dezelfde typetoets als wat de invuller zelf
+    /// typt, en een opgave die daar niet doorheen komt hoort bij het optuigen te
+    /// vallen.
+    ///
+    /// De aantrekkelijke fout is haar te laten staan: het veld staat dan netjes
+    /// voorgevuld en het bezwaar komt pas als iemand op "uitvoeren" drukt — over
+    /// een waarde die hij nooit getypt heeft. `$clock` telt mee, want de klok is
+    /// een datum en geen getal.
+    #[test]
+    fn een_voorinvulling_die_niet_bij_het_type_past_faalt_bij_het_optuigen() {
+        let err =
+            voorinvul_wereld("2024").expect_err("een getal in een string-veld hoort te falen");
+        let SimulatorError::ParameterType {
+            parameter,
+            expected,
+            actual,
+            ..
+        } = &err
+        else {
+            panic!("verwachtte ParameterType, kreeg {err}");
+        };
+        assert_eq!(
+            (parameter.as_str(), *expected, *actual),
+            ("bsn", "string", "integer")
+        );
+
+        let err = voorinvul_wereld_met("'999993653'", "$clock")
+            .expect_err("de klok in een number-veld hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ParameterType { .. }),
+            "verwachtte ParameterType, kreeg {err}"
         );
     }
 

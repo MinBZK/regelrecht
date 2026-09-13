@@ -206,6 +206,23 @@ describe('de acties', () => {
     expect(isPrefilled(action, name, 'iets anders')).toBe(false);
   });
 
+  // De klok loopt door en er komen feiten bij, dus een veld dat niemand
+  // aanraakte hoort te zeggen wat de wereld *nu* al weet. Wat de invuller zelf
+  // typte, blijft van hem.
+  it('laat een onaangeraakt veld het nieuwe voorstel volgen en houdt wat er getypt is', () => {
+    const action = structuredClone(worldFixture.actions.find((candidate) => candidate.form.length > 1));
+    const [eerste, tweede] = action.form;
+    const getypt = { [eerste.name]: 'zelf ingevuld' };
+
+    action.prefill[tweede.name] = 1999;
+    const form = initialForm(action, getypt);
+
+    expect(form[eerste.name]).toBe('zelf ingevuld');
+    expect(form[tweede.name]).toBe(1999);
+    expect(isPrefilled(action, tweede.name, form[tweede.name])).toBe(true);
+    expect(isPrefilled(action, eerste.name, form[eerste.name])).toBe(false);
+  });
+
   it('valt terug op een leeg formulier als het beeld geen voorinvulling geeft', () => {
     expect(initialForm({ form: [{ name: 'bsn', type: 'string' }] })).toStrictEqual({ bsn: '' });
     expect(initialForm(undefined)).toStrictEqual({});

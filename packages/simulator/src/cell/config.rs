@@ -191,6 +191,15 @@ pub enum Prefill {
     /// iets op het moment dat de wereld staat.
     Clock,
     /// De laatste waarde die één veld in één kroniek kreeg, op of vóór de klok.
+    ///
+    /// De cel mag een **andere** zijn dan die het formulier draagt, en dat is
+    /// nadrukkelijk geen celgrensoverschrijding: de wereld leest hier haar eigen
+    /// cellen zoals ze dat voor het beeld ook doet (zie
+    /// [`crate::Cell::last_value`]), buiten de veiligheidscontext en het
+    /// transport om. Er komt dus geen `crossing` en geen regel in het
+    /// observatielog van — er wordt geen vraag gesteld. Wat hier uitkomt is een
+    /// suggestie op een scherm; een feit wordt het pas als de invuller het
+    /// verstuurt, en dán legt de cel het op eigen naam vast.
     Last {
         /// De cel die de kroniek houdt.
         cell: String,
@@ -208,6 +217,11 @@ const PREFILL_CLOCK: &str = "$clock";
 
 /// Waarmee een verwijzing naar de laatst vastgelegde waarde begint.
 const PREFILL_LAST: &str = "$last:";
+
+/// Een willekeurige geldige dag, waarmee de *vorm* van [`Prefill::Clock`] te
+/// toetsen is: welke dag de klok straks aanwijst, doet voor het type van het
+/// veld niet ter zake — dat het een ISO-datum is, wel.
+const CLOCK_SHAPE: &str = "2000-01-01";
 
 impl TryFrom<Value> for Prefill {
     type Error = String;
@@ -748,30 +762,76 @@ pub(crate) fn check_documented_params(
                 parameter: input.name.clone(),
             });
         };
-        match input.value_type.bind(value) {
-            Ok(()) => {}
-            Err(Mismatch::Type) => {
-                return Err(SimulatorError::ParameterType {
-                    cell: cell.to_string(),
-                    subject,
-                    name: name.to_string(),
-                    parameter: input.name.clone(),
-                    expected: input.value_type.label(),
-                    actual: value.type_name(),
-                })
-            }
-            Err(Mismatch::Date) => {
-                return Err(SimulatorError::ParameterDate {
-                    cell: cell.to_string(),
-                    subject,
-                    name: name.to_string(),
-                    parameter: input.name.clone(),
-                    value: value.to_string(),
-                })
-            }
-        }
+        check_parameter_value(cell, subject, name, input, value)?;
     }
 
+    Ok(())
+}
+
+/// Past één waarde bij het gedocumenteerde type van haar parameter?
+///
+/// Eén plek voor die toets en voor haar melding, want er zijn twee momenten
+/// waarop ze gesteld wordt: bij een vraag op de draad, en bij het optuigen over
+/// een voorinvulling die al in het wereldbestand staat. Twee formuleringen
+/// zouden dezelfde fout verschillend uitleggen.
+fn check_parameter_value(
+    cell: &str,
+    subject: Subject,
+    name: &str,
+    input: &DocumentedParameter,
+    value: &Value,
+) -> Result<()> {
+    match input.value_type.bind(value) {
+        Ok(()) => Ok(()),
+        Err(Mismatch::Type) => Err(SimulatorError::ParameterType {
+            cell: cell.to_string(),
+            subject,
+            name: name.to_string(),
+            parameter: input.name.clone(),
+            expected: input.value_type.label(),
+            actual: value.type_name(),
+        }),
+        Err(Mismatch::Date) => Err(SimulatorError::ParameterDate {
+            cell: cell.to_string(),
+            subject,
+            name: name.to_string(),
+            parameter: input.name.clone(),
+            value: value.to_string(),
+        }),
+    }
+}
+
+/// Past elke voorinvulling die nu al een waarde ís bij het type van haar veld?
+///
+/// Een voorinvulling gaat straks door dezelfde typetoets als wat de invuller
+/// zelf typt. Staat er een waarde die daar niet doorheen komt, dan is dat een
+/// fout in het wereldbestand, en die hoort bij het optuigen te vallen — anders
+/// staat ze straks netjes voorgevuld in het formulier en komt het bezwaar pas
+/// als iemand op "uitvoeren" drukt, met een melding over een waarde die hij
+/// nooit getypt heeft.
+///
+/// Twee van de drie vormen zijn hier te toetsen: een letterlijke waarde en
+/// [`Prefill::Clock`] (een ISO-datum, dus tekst of een `date`). De derde niet:
+/// waar [`Prefill::Last`] op uitkomt, ligt pas tijdens de run in een kroniek, en
+/// wat daar dan staat valt bij het versturen door — zie
+/// [`crate::ActionSnapshot::prefill`].
+pub(crate) fn check_prefill_values(
+    cell: &str,
+    subject: Subject,
+    name: &str,
+    documented: &[DocumentedParameter],
+) -> Result<()> {
+    for input in documented {
+        let value = match &input.prefill {
+            Some(Prefill::Literal(value)) => value.clone(),
+            // De klok staat als ISO-datum in het formulier; welke dag ze straks
+            // aanwijst doet voor de typetoets niet ter zake, dus hier volstaat
+            // een willekeurige geldige dag om de vorm mee te toetsen.
+            Some(Prefill::Clock) => Value::String(CLOCK_SHAPE.to_string()),
+            Some(Prefill::Last { .. }) | None => continue,
+        };
+        check_parameter_value(cell, subject, name, input, &value)?;
+    }
     Ok(())
 }
 

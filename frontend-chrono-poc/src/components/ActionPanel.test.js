@@ -113,6 +113,27 @@ describe('het actiepaneel', () => {
     expect(card.findAll('nldd-form-field-help-text')).toHaveLength(2);
   });
 
+  // Een nieuw beeld komt met een nieuw voorstel: de klok staat verder, of er
+  // ligt nu een feit waar er eerst geen was. Een veld dat niemand aanraakte
+  // hoort dat te volgen — anders staat de klok van bij het laden nog in het
+  // formulier — en een veld dat wél ingevuld is, blijft van de invuller.
+  it('volgt een nieuw voorstel in de velden die niemand aanraakte', async () => {
+    const wrapper = mountPanel();
+    const card = wrapper.findAll('nldd-card')[0];
+    await fill(wrapper, card.find('nldd-text-field'), '999993756');
+
+    const verder = cloneWorld();
+    verder.actions[0].prefill.bsn = '999999999';
+    verder.actions[0].prefill.ondertekend_op = '2025-03-01';
+    await wrapper.setProps({ snapshot: verder });
+    await wrapper.vm.$nextTick();
+
+    const bijgewerkt = wrapper.findAll('nldd-card')[0];
+    expect(bijgewerkt.find('nldd-text-field').attributes('value')).toBe('999993756');
+    expect(bijgewerkt.find('nldd-date-field').attributes('value')).toBe('2025-03-01');
+    expect(bijgewerkt.findAll('nldd-form-field-help-text')).toHaveLength(2);
+  });
+
   it('vraagt eerst om een leeg veld in plaats van het als niets te versturen', async () => {
     // Zonder voorinvulling, want dit gaat over het veld dat leeg blijft: met een
     // voorstel erin is er niets om over te struikelen.

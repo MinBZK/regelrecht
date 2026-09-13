@@ -45,15 +45,21 @@ const emit = defineEmits(['run']);
 const values = ref(initialForm(props.action));
 /** De velden die nog leeg zijn en bij de laatste poging ingevuld hadden moeten zijn. */
 const missing = ref([]);
+/** De velden waar de bezoeker zelf iets van maakte; die volgen de wereld niet meer. */
+const typed = ref([]);
+
+/** Wat de bezoeker zelf invulde, op naam. */
+function typedValues() {
+  return Object.fromEntries(typed.value.map((name) => [name, values.value[name]]));
+}
 
 // Een nieuw beeld geeft dezelfde actie opnieuw; het formulier hoort dan opnieuw
 // te beginnen wanneer de velden zelf veranderen, en anders te blijven staan zoals
-// de bezoeker het invulde. Een voorinvulling die intussen op iets anders uitkomt
-// — er ligt nu een aanvraag waar er eerst geen was — verandert de velden niet, en
-// overschrijft dus ook niet wat er half ingetypt staat.
+// de bezoeker het invulde.
 watch(
   () => (props.action.form ?? []).map((field) => `${field.name}:${field.type}`).join(','),
   () => {
+    typed.value = [];
     values.value = initialForm(props.action);
     missing.value = [];
   },
@@ -117,6 +123,24 @@ const confirmation = computed(() => {
     + 'bestaande blijft staan, want een kroniek wordt nooit overschreven.';
 });
 
+// Komt de wereld met een ander voorstel — de klok is doorgelopen, of er ligt nu
+// een aanvraag waar er eerst geen was — dan volgen de velden die niemand
+// aanraakte dat voorstel. Anders zou het datumveld de klok van bij het laden
+// blijven tonen, en zou een `$last` die net gevuld raakte alleen na een verse
+// pagina zichtbaar zijn. Wat de bezoeker zelf typte, blijft van hem.
+watch(
+  () => JSON.stringify(props.action.prefill ?? {}),
+  () => {
+    values.value = initialForm(props.action, typedValues());
+    // Een veld dat de wereld zojuist invulde, staat niet meer leeg; de melding
+    // dat het ontbreekt hoort er dan ook niet meer bij te staan.
+    missing.value = missing.value.filter((name) => {
+      const field = fields.value.find((candidate) => candidate.name === name);
+      return field !== undefined && isEmpty(field);
+    });
+  },
+);
+
 function errorId(field) {
   return `${props.action.id}-${field.name}-fout`;
 }
@@ -158,11 +182,18 @@ function setValue(field, event) {
     ...values.value,
     [field.name]: field.type === 'number' ? (raw === '' || raw === null ? null : Number(raw)) : raw,
   };
+  markTyped(field);
   missing.value = missing.value.filter((name) => name !== field.name);
 }
 
 function setChecked(field, event) {
   values.value = { ...values.value, [field.name]: Boolean(event?.detail?.checked ?? event?.target?.checked) };
+  markTyped(field);
+}
+
+/** Dit veld is nu van de bezoeker: een later voorstel overschrijft het niet meer. */
+function markTyped(field) {
+  if (!typed.value.includes(field.name)) typed.value = [...typed.value, field.name];
 }
 
 function submit() {

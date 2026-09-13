@@ -775,6 +775,49 @@ mod tests {
     }
 
     #[test]
+    fn de_laatste_waarde_volgt_dezelfde_tijdregel_als_het_filter() {
+        // `last_value` kijkt over álle sleutelwaarden heen — welk onderwerp het
+        // wordt, is wat de invuller van een formulier nog moet kiezen — maar
+        // verder gelden dezelfde twee regels als overal: wat na het gevraagde
+        // moment ligt telt niet mee, en bij twee vastleggingen op één dag wint
+        // de laatste. Die laatste leunt op de belofte van `max_by_key` dat bij
+        // gelijke sleutel het laatste element wint; een andere formulering zou
+        // hier stil een ander voorstel opleveren dan de tijdreductie ernaast.
+        let store = store(vec![
+            event("2024-01-01", &[("bsn", Value::String("1".to_string()))]),
+            event("2024-07-01", &[("bsn", Value::String("2".to_string()))]),
+            event("2024-07-01", &[("bsn", Value::String("3".to_string()))]),
+            event("2024-09-01", &[("bsn", Value::String("4".to_string()))]),
+        ]);
+
+        assert_eq!(
+            store.last_value("relatie", "bsn", date("2024-07-01")),
+            Some(&Value::String("3".to_string())),
+            "over alle sleutels heen, en op één dag wint de laatste uit de configuratie"
+        );
+        assert_eq!(
+            store.last_value("relatie", "bsn", date("2024-06-01")),
+            Some(&Value::String("1".to_string())),
+            "wat na het gevraagde moment ligt, bestaat voor deze vraag niet"
+        );
+        assert_eq!(
+            store.last_value("relatie", "bsn", date("2023-12-31")),
+            None,
+            "hierover ligt nog niets; dat is een antwoord en geen fout"
+        );
+        assert_eq!(
+            store.last_value("relatie", "partnerschap_type", date("2025-01-01")),
+            None,
+            "een veld dat nergens in de stroom ligt, levert niets op"
+        );
+        assert_eq!(
+            store.last_value("onbekend", "bsn", date("2025-01-01")),
+            None,
+            "een stroom die de cel niet houdt evenmin"
+        );
+    }
+
+    #[test]
     fn een_voorwaarde_op_een_veld_dat_de_vastlegging_niet_heeft_voldoet_niet() {
         // "Onbekend" is geen gelijkheid: een vastlegging die het veld niet draagt
         // doet niet mee, ook niet als ze op de tijdas de laatste zou zijn.

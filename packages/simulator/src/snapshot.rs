@@ -219,6 +219,14 @@ pub struct ActionSnapshot {
     /// Het blijft een **voorstel**. De invuller kan er iets anders van maken, en
     /// wat vastgelegd wordt, is wat hij verstuurt. Een voorinvulling is een gemak,
     /// geen feit — en ze is bij het vastleggen dan ook niet aan het gram te zien.
+    ///
+    /// Daarom staat hier ook een waarde die niet bij het type van haar veld past.
+    /// Wat in het wereldbestand al een waarde ís, wordt bij het optuigen getoetst
+    /// (zie [`crate::cell::Prefill`]), maar waar een `$last` op uitkomt ligt in
+    /// een kroniek en kan van alles zijn. Zo'n voorstel staat gewoon in het veld
+    /// en valt bij het versturen door dezelfde typetoets als wat de invuller zelf
+    /// typt: één weigering, met de melding die bij de waarde hoort. Hem hier al
+    /// wegfilteren zou een leeg veld opleveren zonder uitleg waarom.
     pub prefill: BTreeMap<String, Value>,
     /// Kan de actie nu?
     pub available: bool,

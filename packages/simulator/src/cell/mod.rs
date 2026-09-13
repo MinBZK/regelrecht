@@ -42,7 +42,7 @@ pub(crate) use besluit::{fixed_fields, INPUTS, RECEIPT, REGULATION};
 // parameters van een lexostatus of een besluit: precies wat gedocumenteerd is,
 // niets erbij en niets van het verkeerde type.
 pub use chronicle::{ChronicleEvent, ChronicleStore, ChronicleStream, Intake};
-pub(crate) use config::check_documented_params;
+pub(crate) use config::{check_documented_params, check_prefill_values};
 pub use config::{
     AcceptedSource, Aggregate, CellConfig, DocumentedParameter, LexostatusDefinition,
     ParameterType, Prefill, Reduction,

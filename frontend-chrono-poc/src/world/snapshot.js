@@ -192,11 +192,21 @@ export function actionsByActor(snapshot) {
  * Wat er niet in staat, begint leeg — een veld waarover niets bekend is, hoort
  * niet met `null` gevuld te worden, want dat is in een formulier een ingevulde
  * afwezigheid.
+ *
+ * `typed` houdt de velden die de invuller zelf invulde: die zijn van hem en
+ * blijven staan, ook als de wereld intussen iets anders voorstelt. De rest volgt
+ * het nieuwe beeld, en dat is het punt — de klok loopt door en er komen feiten
+ * bij, dus een veld dat niemand aanraakte hoort te zeggen wat de wereld *nu* al
+ * weet en niet wat zij een paar dagen geleden wist.
  */
-export function initialForm(action) {
+export function initialForm(action, typed = {}) {
   const values = {};
   const prefill = prefillOf(action);
   for (const field of Array.isArray(action?.form) ? action.form : []) {
+    if (field.name in typed) {
+      values[field.name] = typed[field.name];
+      continue;
+    }
     const suggested = prefill[field.name];
     values[field.name] = suggested === undefined || suggested === null ? emptyValue(field.type) : suggested;
   }

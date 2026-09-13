@@ -1441,7 +1441,20 @@ kroniek die pas tijdens de run gevuld wordt, kent er bij het optuigen nog geen.
 
 Een `$`-woord dat geen van beide verwijzingen is, wordt geweigerd in plaats van
 als letterlijke tekst doorgegeven. Anders staat er straks `$clok` in een kroniek,
-en niemand die het merkt.
+en niemand die het merkt. Om dezelfde reden gaat een voorinvulling die nu al een
+waarde ís — een letterlijke waarde of `$clock` — bij het optuigen door de
+typetoets van haar veld: `2024` in een `string`-veld valt daar, en niet pas als
+iemand op "uitvoeren" drukt over een waarde die hij nooit getypt heeft. Waar een
+`$last` op uitkomt is bij het optuigen nog niet bekend; die staat gewoon in het
+veld en valt bij het versturen door dezelfde toets als wat de invuller zelf typt.
+
+Een `$last` mag naar een **andere cel** wijzen dan die het formulier draagt — het
+aanvraagformulier van de burger stelt het BSN voor dat het register al kent — en
+dat is geen celgrensoverschrijding. De wereld leest hier haar eigen cellen zoals
+ze dat voor het beeld ook doet, buiten de veiligheidscontext en het transport om:
+er komt geen `crossing` van en geen regel in het observatielog, want er wordt
+geen vraag gesteld. Wat eruit komt is een suggestie op een scherm; een feit wordt
+het pas als de invuller het verstuurt, en dan legt de cel het op eigen naam vast.
 
 Een voorinvulling is een **voorstel**, geen feit. De invuller kan er iets anders
 van maken, en wat vastgelegd wordt is wat hij verstuurt; aan het gram is later
