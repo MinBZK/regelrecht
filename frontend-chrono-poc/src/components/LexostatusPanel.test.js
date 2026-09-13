@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import LexostatusPanel from './LexostatusPanel.vue';
-import { worldFixture } from '../testing/worldFixture.js';
+import { cloneWorld, worldFixture } from '../testing/worldFixture.js';
 
 const established = {
   cell: 'belastingdienst',
@@ -77,6 +77,48 @@ describe('een vraag aan een cel', () => {
     await submit(wrapper);
 
     expect(ask).toHaveBeenCalledWith(expect.any(String), expect.any(String), {}, '2024-06-01');
+  });
+
+  // Wie zelf niets kiest, vraagt naar nu — en "nu" verschuift met de klok. Bleef
+  // de oude klokstand als waarde in het veld staan, dan gaf dezelfde knop na het
+  // vooruitspoelen stil een antwoord over gisteren.
+  it('volgt de klok zolang de bezoeker zelf geen moment koos', async () => {
+    const { wrapper, ask } = mountPanel(established);
+    const later = cloneWorld();
+    later.clock = '2025-06-01';
+    await wrapper.setProps({ snapshot: later });
+
+    expect(wrapper.find('nldd-date-field').attributes('value')).toBe('2025-06-01');
+    await submit(wrapper);
+    expect(ask).toHaveBeenCalledWith(expect.any(String), expect.any(String), {}, '2025-06-01');
+  });
+
+  // Een gekozen moment is een keuze en geen afspiegeling van de klok:
+  // vooruitspoelen maakt een eerder moment niet ongeldig.
+  it('houdt een gekozen moment vast als de klok vooruit gaat', async () => {
+    const { wrapper, ask } = mountPanel(established);
+    await fill(wrapper, wrapper.find('nldd-date-field'), '2024-06-01');
+    const later = cloneWorld();
+    later.clock = '2025-06-01';
+    await wrapper.setProps({ snapshot: later });
+
+    expect(wrapper.find('nldd-date-field').attributes('value')).toBe('2024-06-01');
+    await submit(wrapper);
+    expect(ask).toHaveBeenCalledWith(expect.any(String), expect.any(String), {}, '2024-06-01');
+  });
+
+  // `POST /api/reset` zet de klok terug op de startdag. Een keuze van ná die dag
+  // zou daar stil een 409 opleveren; ze vervalt, en het veld volgt de klok weer.
+  it('laat een keuze los die na een reset ná de klok zou liggen', async () => {
+    const { wrapper } = mountPanel(established);
+    await fill(wrapper, wrapper.find('nldd-date-field'), '2024-06-01');
+    const start = cloneWorld();
+    start.clock = '2024-01-01';
+    await wrapper.setProps({ snapshot: start });
+
+    const moment = wrapper.find('nldd-date-field');
+    expect(moment.attributes('value')).toBe('2024-01-01');
+    expect(moment.attributes('invalid')).toBeUndefined();
   });
 
   // Ná de klok heeft nog niets vastgelegd; een antwoord "op" zo'n moment zou een

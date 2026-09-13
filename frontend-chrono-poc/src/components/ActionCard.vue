@@ -67,20 +67,37 @@ watch(decided, () => {
   confirming.value = false;
 });
 
-/** Wat de tag zegt: wat de wereld over de actie zegt, of wat er al ligt. */
-const state = computed(() => {
-  if (decided.value) {
-    return {
-      color: gramKind('decretogram').color,
-      icon: gramKind('decretogram').icon,
-      text: `al besloten op ${formatMoment(decided.value.opMoment)}`,
-    };
-  }
-  return {
-    color: props.action.available ? 'success' : 'warning',
-    icon: props.action.available ? 'check-mark-circle' : 'clock',
-    text: props.action.available ? 'kan nu' : 'kan nu niet',
-  };
+/** Wat er al ligt, als tag; `null` zolang er niets ligt. */
+const decidedTag = computed(() =>
+  decided.value
+    ? {
+        color: gramKind('decretogram').color,
+        icon: gramKind('decretogram').icon,
+        text: `al besloten op ${formatMoment(decided.value.opMoment)}`,
+      }
+    : null,
+);
+
+/** Wat de wereld over de actie zegt: kan ze nu? */
+const availabilityTag = computed(() => ({
+  color: props.action.available ? 'success' : 'warning',
+  icon: props.action.available ? 'check-mark-circle' : 'clock',
+  text: props.action.available ? 'kan nu' : 'kan nu niet',
+}));
+
+/**
+ * De tags op de kaart: wat er al ligt gaat voorop.
+ *
+ * "Al besloten op …" komt in de plaats van "kan nu" — dat er al iets ligt is dan
+ * het nieuws, en dat de actie kan spreekt uit de knop eronder. Maar het komt
+ * nooit in de plaats van **"kan nu niet"**: een actie die niet kan is iets anders
+ * dan een actie die al besloot, en die twee onder één tag schuiven zou de kaart
+ * groen laten lijken terwijl de wereld de klik weigert.
+ */
+const tags = computed(() => {
+  const list = decidedTag.value ? [decidedTag.value] : [];
+  if (!decidedTag.value || !props.action.available) list.push(availabilityTag.value);
+  return list;
 });
 
 /** Waarom er bevestigd moet worden, in de woorden van wat er ligt. */
@@ -165,7 +182,14 @@ function run() {
         <span slot="subtitle">{{ effect }}</span>
       </nldd-title>
       <nldd-container layout="wrap" gap="4">
-        <nldd-tag size="sm" :color="state.color" :icon="state.icon" :text="state.text"></nldd-tag>
+        <nldd-tag
+          v-for="tag in tags"
+          :key="tag.text"
+          size="sm"
+          :color="tag.color"
+          :icon="tag.icon"
+          :text="tag.text"
+        ></nldd-tag>
       </nldd-container>
     </nldd-container>
 
@@ -246,9 +270,9 @@ function run() {
                Een inline dialoog en geen modaal venster — er hoeft niets
                weggeklikt te worden om de kaart te kunnen lezen. -->
           <nldd-inline-dialog
-            v-if="confirming"
+            v-if="confirming && decidedTag"
             horizontal-alignment="left"
-            :icon="state.icon"
+            :icon="decidedTag.icon"
             text="Er ligt al een besluit"
             :supporting-text="confirmation"
           >

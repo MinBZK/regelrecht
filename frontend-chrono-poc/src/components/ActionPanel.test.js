@@ -132,6 +132,25 @@ describe('het actiepaneel', () => {
       expect(card.find('nldd-tag').attributes('text')).toBe('al besloten op 01-04-2024');
     });
 
+    // "Al besloten op …" komt in de plaats van "kan nu", nooit in de plaats van
+    // "kan nu niet": een actie die de wereld nú weigert, hoort dat te blijven
+    // zeggen. Anders staat er een tag die zegt dat er iets ligt boven een knop
+    // die niets kan.
+    it('laat "kan nu niet" staan naast wat er al ligt', async () => {
+      const snapshot = cloneWorld();
+      const index = snapshot.actions.findIndex((action) => action.effect.soort === 'decides');
+      snapshot.actions[index].available = false;
+      snapshot.actions[index].unavailable_reason = 'de aanvraag ligt er nog niet';
+      const wrapper = mountPanel(snapshot);
+      const card = wrapper.findAll('nldd-card')[index];
+      await fill(wrapper, card.find('nldd-text-field'), '999993653');
+
+      expect(card.findAll('nldd-tag').map((tag) => tag.attributes('text'))).toStrictEqual([
+        'al besloten op 01-04-2024',
+        'kan nu niet',
+      ]);
+    });
+
     it('laat "kan nu" staan voor een zaak waarover nog niets ligt', async () => {
       const { card } = await decisionCard('999999999');
       expect(card.find('nldd-tag').attributes('text')).toBe('kan nu');

@@ -14,10 +14,11 @@ import { cells, readLexostatus } from '../world/snapshot.js';
 // geeft ze daarom zelf op, met naam en waarde, zoals de cel ze documenteert.
 //
 // Het **moment** is wat deze vraag tot tijdreizen maakt: niet "wat weet deze cel
-// nu", maar "wat wist deze cel op T". Het veld begint op de klok en komt er nooit
-// voorbij — ná de klok heeft niets vastgelegd, dus een antwoord "op" zo'n moment
-// zou een voorspelling zijn die zich voordoet als een reductie. De server bewaakt
-// dezelfde grens (409); dit veld is de vriendelijke kant ervan.
+// nu", maar "wat wist deze cel op T". Het veld volgt de klok zolang de bezoeker
+// zelf niets koos, en komt er nooit voorbij — ná de klok heeft niets vastgelegd,
+// dus een antwoord "op" zo'n moment zou een voorspelling zijn die zich voordoet
+// als een reductie. De server bewaakt dezelfde grens (409); dit veld is de
+// vriendelijke kant ervan.
 
 const props = defineProps({
   /** Het beeld van de wereld. */
@@ -39,21 +40,30 @@ const asking = ref(false);
 /** Waar de klok van de wereld staat; de bovengrens van het moment. */
 const clock = computed(() => props.snapshot?.clock ?? null);
 
-/** Het moment waarop de vraag gaat. Begint op de klok. */
-const moment = ref('');
+/**
+ * Het moment dat de bezoeker zelf koos; leeg zolang hij niets koos.
+ *
+ * Het onderscheid tussen "gekozen" en "niet gekozen" is wat het veld eerlijk
+ * houdt. Wie niets kiest, vraagt naar nu — en "nu" verschuift met de klok. Stond
+ * de laatste klokstand als waarde in het veld, dan zou vooruitspoelen de vraag
+ * stil op de oude klok laten staan: hetzelfde formulier, hetzelfde knopje, een
+ * antwoord over gisteren. Dat is precies het soort verkeerd antwoord dat niemand
+ * opmerkt.
+ */
+const chosen = ref('');
 
-watch(
-  clock,
-  (value) => {
-    // Leeg, of voorbij de klok: dan is de klok zelf het moment. Een klok die
-    // terugloopt bestaat niet, maar `POST /api/reset` zet hem wel terug op de
-    // startdag, en een moment van daarna zou dan stil een 409 opleveren.
-    // Verder blijft staan wat de bezoeker koos: vooruitspoelen maakt een eerder
-    // moment niet ongeldig, en juist dat eerdere moment is waar hij naar keek.
-    if (!moment.value || (value && moment.value > value)) moment.value = value ?? '';
-  },
-  { immediate: true },
-);
+/** Het moment waarop de vraag gaat: wat de bezoeker koos, anders de klok. */
+const moment = computed(() => chosen.value || clock.value || '');
+
+watch(clock, (value) => {
+  // Een klok die terugloopt bestaat niet, maar `POST /api/reset` zet hem wel
+  // terug op de startdag, en een keuze van ná die dag zou dan stil een 409
+  // opleveren. De keuze vervalt dan en het veld volgt de klok weer. Blijft de
+  // keuze vóór de klok, dan blijft ze staan: vooruitspoelen maakt een eerder
+  // moment niet ongeldig, en juist dat eerdere moment is waar de bezoeker
+  // naar keek.
+  if (value && chosen.value > value) chosen.value = '';
+});
 
 watch(
   publishers,
@@ -145,8 +155,8 @@ async function submit() {
             :value="moment"
             :max="clock || undefined"
             :invalid="momentAfterClock || undefined"
-            @input="moment = fieldValue($event, moment)"
-            @change="moment = fieldValue($event, moment)"
+            @input="chosen = fieldValue($event, moment)"
+            @change="chosen = fieldValue($event, moment)"
           ></nldd-date-field>
           <nldd-form-field-error-text v-if="momentAfterClock">
             De klok staat op {{ formatMoment(clock) }}; over een moment daarna heeft nog niets vastgelegd.
