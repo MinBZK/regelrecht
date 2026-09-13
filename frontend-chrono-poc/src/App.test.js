@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import { cloneWorld, worldFixture } from './testing/worldFixture.js';
+import { allGrams } from './world/snapshot.js';
 import { useWorld } from './world/useWorld.js';
 
 // De hele pagina op het beeld van de fixture: de kolommen, de bediening en de
@@ -71,25 +72,83 @@ describe('de pagina', () => {
     expect(wrapper.findAll('nldd-step-indicator-item').length).toBeGreaterThan(0);
   });
 
-  it('laat de vier panelen van de bediening kiezen', async () => {
+  it('laat de vijf panelen van de bediening kiezen', async () => {
     const wrapper = await mountApp();
     const tabs = wrapper.findAll('nldd-tab-bar-item');
     expect(tabs.map((tab) => tab.attributes('text'))).toStrictEqual([
       'Acties',
       'Instellingen',
       'Lexostatus',
+      'Grammen',
       'Observatielog',
     ]);
     expect(tabs[0].attributes('selected')).toBe('true');
 
     // De tab-bar meldt de keuze; de pagina wisselt van paneel.
     wrapper.find('nldd-tab-bar').element.dispatchEvent(
-      new CustomEvent('tabchange', { detail: { item: tabs[3].element } }),
+      new CustomEvent('tabchange', { detail: { item: tabs[4].element } }),
     );
     await flushPromises();
     const banner = wrapper.findAll('nldd-banner').find((item) => item.attributes('icon') === 'binoculars');
     expect(banner.attributes('text')).toBe('Meetinstrument van de testopstelling');
     expect(complaints).toStrictEqual([]);
+  });
+
+  it('zet elk gram van de wereld in het grammenpaneel', async () => {
+    const wrapper = await mountApp();
+    const tabs = wrapper.findAll('nldd-tab-bar-item');
+    wrapper.find('nldd-tab-bar').element.dispatchEvent(
+      new CustomEvent('tabchange', { detail: { item: tabs[3].element } }),
+    );
+    await flushPromises();
+
+    const table = wrapper
+      .findAll('nldd-list')
+      .find((list) => list.attributes('accessible-label')?.startsWith('Alle grammen'));
+    expect(table.findAll('nldd-list-item')).toHaveLength(allGrams(worldFixture).length);
+    expect(complaints).toStrictEqual([]);
+  });
+
+  // Waar het om begonnen was: naast elkaar paste geen kolom meer heel.
+  it('zet de bediening boven en de cellen eronder, met de tijdlijn onderaan', async () => {
+    const wrapper = await mountApp();
+
+    // Eén split view, en die stapelt: de panelen liggen boven elkaar en niet
+    // meer naast elkaar. Dat er precies vier panelen zijn, pint de indeling vast
+    // — de inhoud, de twee helften, en de balk met de tijdlijn.
+    const split = wrapper.find('nldd-stacked-split-view');
+    expect(split.attributes('panes')).toBe('2');
+    expect(wrapper.findAll('nldd-split-view-pane').map((pane) => pane.attributes('slot'))).toStrictEqual([
+      'main',
+      'pane-1',
+      'pane-2',
+      'timeline-bar',
+    ]);
+
+    const panes = split.findAll('nldd-split-view-pane');
+    expect(panes[0].attributes('slot')).toBe('pane-1');
+    expect(panes[0].find('nldd-tab-bar').exists()).toBe(true);
+    expect(panes[0].find('nldd-collection').exists()).toBe(false);
+
+    expect(panes[1].attributes('slot')).toBe('pane-2');
+    expect(panes[1].find('nldd-collection').exists()).toBe(true);
+    expect(panes[1].findAll('nldd-card')).toHaveLength(worldFixture.cells.length);
+
+    // De tijdlijn hoort niet in de split view maar in haar eigen balk: die
+    // blijft onderaan staan, wat er in de panelen ook gebeurt.
+    const bar = wrapper.findAll('nldd-split-view-pane').find((pane) => pane.attributes('slot') === 'timeline-bar');
+    expect(bar.find('nldd-step-indicator').exists()).toBe(true);
+    expect(split.find('nldd-step-indicator').exists()).toBe(false);
+  });
+
+  it('geeft elke celkolom een vaste minimumbreedte en laat het paneel zelf opzij schuiven', async () => {
+    const wrapper = await mountApp();
+    const collection = wrapper.find('nldd-collection');
+
+    // De kolommen krimpen niet mee tot ze onleesbaar zijn; past het rijtje niet,
+    // dan scrolt de collectie binnen zichzelf (nooit de pagina).
+    expect(collection.attributes('layout')).toBe('horizontal-scroll');
+    expect(collection.attributes('item-width')).toMatch(/^\d+px$/);
   });
 
   it('noemt een verstreken termijn, zonder er een fout van te maken', async () => {

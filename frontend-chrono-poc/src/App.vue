@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import ActionPanel from './components/ActionPanel.vue';
 import CellColumn from './components/CellColumn.vue';
+import GramPanel from './components/GramPanel.vue';
 import LexostatusPanel from './components/LexostatusPanel.vue';
 import ObservationLog from './components/ObservationLog.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
@@ -10,9 +11,16 @@ import { formatMoment } from './world/format.js';
 import { cells, missedDeadlines } from './world/snapshot.js';
 import { useWorld } from './world/useWorld.js';
 
-// De testopstelling in één pagina: links een kolom per cel met haar kronieken,
-// rechts de bediening (acties, instellingen, een vraag aan een cel, en het
-// observatielog als meetinstrument), onderaan de tijdlijn met de klok.
+// De testopstelling in één pagina: bovenaan de bediening over de volle breedte
+// (acties, instellingen, een vraag aan een cel, alle grammen, en het
+// observatielog als meetinstrument), daaronder een kolom per cel met haar
+// kronieken, en onderaan de tijdlijn met de klok.
+//
+// Boven en onder, niet links en rechts: een cel is breed — een kroniekrij draagt
+// een naam, een moment, een kanaal en een grondslag — en in een halve pagina
+// paste geen enkele kolom nog heel. De bediening is smal van zichzelf, dus die
+// kan de volle breedte hebben zonder er iets mee te doen, en de cellen krijgen
+// de hele breedte om in te staan.
 //
 // Deze app kent geen casus. Elke naam die hier op het scherm komt — een cel, een
 // kroniek, een actie, een instelling — staat in het beeld dat de server geeft.
@@ -43,11 +51,18 @@ const {
 const columns = computed(() => cells(snapshot.value));
 const deadlines = computed(() => missedDeadlines(snapshot.value));
 
-/** De panelen rechts. De vierde is een meetinstrument en zegt dat zelf ook. */
+/**
+ * De panelen van de bediening bovenaan.
+ *
+ * De eerste drie doen iets met de wereld, de laatste twee kijken er alleen naar:
+ * "Grammen" legt alles wat er ligt naast elkaar, en het observatielog is een
+ * meetinstrument en zegt dat zelf ook.
+ */
 const tabs = [
   { key: 'acties', text: 'Acties', icon: 'hand' },
   { key: 'instellingen', text: 'Instellingen', icon: 'settings' },
   { key: 'lexostatus', text: 'Lexostatus', icon: 'radar' },
+  { key: 'grammen', text: 'Grammen', icon: 'table' },
   { key: 'log', text: 'Observatielog', icon: 'binoculars' },
 ];
 const tab = ref('acties');
@@ -117,10 +132,11 @@ const showBanner = computed(() => Boolean(error.value) && !(actionError.value &&
       </nldd-skip-link>
 
       <nldd-split-view-pane slot="main" has-content>
-        <nldd-side-by-side-split-view panes="2">
-          <!-- Links de wereld zelf: de kolommen zijn waar het om gaat, dus ze
-               staan vooraan en verdwijnen als laatste op een smal scherm. -->
-          <nldd-split-view-pane slot="pane-1" has-content>
+        <nldd-stacked-split-view panes="2">
+          <!-- Boven de bediening, over de volle breedte. Meldingen over de
+               wereld staan hier: dit is de bovenkant van de pagina, en een
+               melding die je pas ziet na scrollen is geen melding. -->
+          <nldd-split-view-pane slot="pane-1" has-content background="tinted">
             <nldd-page>
               <nldd-simple-section width="full">
                 <nldd-container layout="stack" gap="16">
@@ -147,6 +163,51 @@ const showBanner = computed(() => Boolean(error.value) && !(actionError.value &&
                     @dismiss="dismissResult()"
                   ></nldd-banner>
 
+                  <nldd-tab-bar accessible-label="Bediening van de wereld" @tabchange="onTabChange">
+                    <nldd-tab-bar-item
+                      v-for="item in tabs"
+                      :key="item.key"
+                      :data-tab-key="item.key"
+                      :text="item.text"
+                      :selected="tab === item.key || undefined"
+                    >
+                      <nldd-icon slot="icon" :name="item.icon"></nldd-icon>
+                    </nldd-tab-bar-item>
+                  </nldd-tab-bar>
+
+                  <ActionPanel
+                    v-if="tab === 'acties'"
+                    :snapshot="snapshot"
+                    :busy="busy"
+                    :error="actionError"
+                    @run="runAction"
+                  />
+                  <SettingsPanel
+                    v-else-if="tab === 'instellingen'"
+                    :snapshot="snapshot"
+                    :busy="busy"
+                    @save="saveSettings($event)"
+                    @reset="reset()"
+                  />
+                  <LexostatusPanel
+                    v-else-if="tab === 'lexostatus'"
+                    :snapshot="snapshot"
+                    :ask="askLexostatus"
+                  />
+                  <GramPanel v-else-if="tab === 'grammen'" :snapshot="snapshot" />
+                  <ObservationLog v-else :snapshot="snapshot" />
+                </nldd-container>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
+
+          <!-- Daaronder de wereld zelf: een kolom per cel, over de volle
+               breedte, en die kolommen schuiven binnen hun eigen paneel opzij
+               als er meer cellen zijn dan er naast elkaar passen. -->
+          <nldd-split-view-pane slot="pane-2" has-content>
+            <nldd-page>
+              <nldd-simple-section width="full">
+                <nldd-container layout="stack" gap="16">
                   <template v-if="deadlines.length > 0">
                     <nldd-title size="6">
                       <span>Verstreken termijnen</span>
@@ -193,50 +254,7 @@ const showBanner = computed(() => Boolean(error.value) && !(actionError.value &&
               </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
-
-          <!-- Rechts de bediening. Secundair, dus dit paneel gaat op een smal
-               scherm als eerste weg. -->
-          <nldd-split-view-pane slot="pane-2" has-content background="tinted">
-            <nldd-page>
-              <nldd-simple-section width="full">
-                <nldd-container layout="stack" gap="16">
-                  <nldd-tab-bar accessible-label="Bediening van de wereld" @tabchange="onTabChange">
-                    <nldd-tab-bar-item
-                      v-for="item in tabs"
-                      :key="item.key"
-                      :data-tab-key="item.key"
-                      :text="item.text"
-                      :selected="tab === item.key || undefined"
-                    >
-                      <nldd-icon slot="icon" :name="item.icon"></nldd-icon>
-                    </nldd-tab-bar-item>
-                  </nldd-tab-bar>
-
-                  <ActionPanel
-                    v-if="tab === 'acties'"
-                    :snapshot="snapshot"
-                    :busy="busy"
-                    :error="actionError"
-                    @run="runAction"
-                  />
-                  <SettingsPanel
-                    v-else-if="tab === 'instellingen'"
-                    :snapshot="snapshot"
-                    :busy="busy"
-                    @save="saveSettings($event)"
-                    @reset="reset()"
-                  />
-                  <LexostatusPanel
-                    v-else-if="tab === 'lexostatus'"
-                    :snapshot="snapshot"
-                    :ask="askLexostatus"
-                  />
-                  <ObservationLog v-else :snapshot="snapshot" />
-                </nldd-container>
-              </nldd-simple-section>
-            </nldd-page>
-          </nldd-split-view-pane>
-        </nldd-side-by-side-split-view>
+        </nldd-stacked-split-view>
       </nldd-split-view-pane>
 
       <nldd-split-view-pane slot="timeline-bar">
