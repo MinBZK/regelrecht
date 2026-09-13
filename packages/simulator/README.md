@@ -160,7 +160,10 @@ draad is een datum een string in ISO-notatie (`jjjj-mm-dd`), en dat blijft zo:
 het is de notatie die de engine leest en die een kroniek vastlegt. Wat het type
 toevoegt is de **toets** — de waarde gaat bij het binden door `NaiveDate`, dus
 `01-12-2026` en `2024-02-30` lopen hier stuk, met een melding die zegt welke
-notatie wél gelezen wordt. Zonder dat type is een datum gewoon tekst en valt
+notatie wél gelezen wordt. Ook `2026-1-1` loopt stuk, al leest `NaiveDate` die
+vorm gewoon: de engine eist verderop de canonieke vorm met nullen vooraan, omdat
+een niet-canonieke datum onder `>`/`<` chronologisch vergelijkt en onder `EQUALS`
+op de tekst. Zonder dat type is een datum gewoon tekst en valt
 dezelfde fout drie lagen verderop in een regeling die er een datum van probeert
 te maken, in het Engels van de engine en zonder dat er nog iets van het
 formulier bekend is. De Nederlandse schrijfwijze blijft iets van het scherm: de

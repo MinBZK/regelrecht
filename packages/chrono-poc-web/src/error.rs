@@ -168,10 +168,21 @@ const ENGINE_DATE_FAILURE: &str = "Failed to parse date '";
 /// moeite waard: het is de fout die een mens maakt door de Nederlandse notatie
 /// te typen in een veld dat ISO verwacht. Herkent dit de melding niet, dan gaat
 /// de fout als 500 naar buiten: minder behulpzaam, maar niet onwaar.
+///
+/// Eén vorm dus, en met opzet niet meer. De engine wijst daarnaast een
+/// niet-canonieke datum af ("Date '…' is not in canonical …"), maar die komt
+/// hier via een `date`-parameter niet langs — die strandt al bij het binden, met
+/// de melding van de cel zelf. Een tweede prefix zou dus een tweede breekbare
+/// tekstafspraak zijn voor een geval dat deze laag niet ziet.
+/// `een_andere_invalid_operation_wordt_geen_datumfout` pint vast dat hij als 500
+/// naar buiten gaat, zodat dat een keuze blijft en geen vergissing wordt.
 fn unreadable_date(message: &str) -> Option<&str> {
     message
         .strip_prefix(ENGINE_DATE_FAILURE)
         .and_then(|rest| rest.split('\'').next())
+        // Een melding die op de aanhef ophoudt draagt geen waarde om te noemen,
+        // en "'' is geen datum" helpt niemand verder.
+        .filter(|raw| !raw.is_empty())
 }
 
 impl From<SimulatorError> for ApiError {
@@ -295,5 +306,41 @@ mod tests {
             ApiError::from_simulator(&kapotte_wet).status(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
+    }
+
+    /// `InvalidOperation` is de variant waarin de engine haar datum-leesfout
+    /// stopt, maar ook van alles daarbuiten. Alleen de eerste soort wordt een
+    /// 400; de rest hoort onze schuld te blijven, met de melding van de engine
+    /// erbij in plaats van een verzonnen uitleg over datums.
+    ///
+    /// Dit pint de andere kant van de prefixherkenning vast: gaat de engine haar
+    /// melding anders schrijven, dan valt hier niets stil om — alles wordt dan
+    /// weer een 500, en dát is wat deze test bewaakt.
+    #[test]
+    fn een_andere_invalid_operation_wordt_geen_datumfout() {
+        for melding in [
+            "Unknown operation 'FROBNICATE'",
+            // Dezelfde functie in de engine, een paar regels verderop: dit is
+            // hoe ze een niet-canonieke datum afwijst. Een `date`-parameter komt
+            // hier niet meer langs (die strandt bij het binden); een waarde die
+            // pas ín een regeling een datum blijkt te zijn wel, en die valt
+            // bewust in de 500 in plaats van in een geraden vertaling.
+            "Date '2026-1-1' is not in canonical YYYY-MM-DD form (use zero-padded \
+             components, e.g. '2026-01-01')",
+        ] {
+            let fout = ApiError::from_simulator(&SimulatorError::Engine(
+                EngineError::InvalidOperation(melding.to_string()),
+            ));
+            assert_eq!(
+                fout.status(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "'{melding}' is geen datum-leesfout"
+            );
+            assert!(
+                !fout.message().contains("jjjj-mm-dd"),
+                "hier hoort geen uitleg over datumnotatie te staan: {}",
+                fout.message()
+            );
+        }
     }
 }

@@ -152,6 +152,13 @@ pub enum ParameterType {
     /// de **toets**: bij het binden wordt de waarde door [`NaiveDate`] gehaald,
     /// zodat `01-12-2026` hier stukloopt en niet drie lagen verderop in een
     /// regeling die er een datum van probeert te maken.
+    ///
+    /// De toets vraagt de *canonieke* vorm, met nullen vooraan. Dat is strenger
+    /// dan `NaiveDate` zelf: die leest `2026-1-1` ook. De engine weigert die
+    /// vorm juist, en met reden — een niet-canonieke datum vergelijkt
+    /// chronologisch onder `>`/`<` maar ongelijk onder `EQUALS`, dat op de
+    /// tekst kijkt. Zou dit hem doorlaten, dan lag hij daarna in een kroniek en
+    /// was precies die tegenspraak ingebakken.
     Date,
 }
 
@@ -202,9 +209,17 @@ impl ParameterType {
                 let Value::String(text) = value else {
                     return Err(Mismatch::Type);
                 };
-                return NaiveDate::parse_from_str(text, ISO_DATE)
-                    .map(|_| ())
-                    .map_err(|_| Mismatch::Date);
+                let parsed =
+                    NaiveDate::parse_from_str(text, ISO_DATE).map_err(|_| Mismatch::Date)?;
+                // De heenweg terug: `parse_from_str` is met `%Y-%m-%d` niet
+                // streng en leest ook `2026-1-1` en `+2026-01-01`. Wat er niet
+                // onveranderd uit komt, staat niet in de canonieke vorm die de
+                // engine verderop eist, en hoort hier te stranden en niet daar.
+                return if parsed.format(ISO_DATE).to_string() == *text {
+                    Ok(())
+                } else {
+                    Err(Mismatch::Date)
+                };
             }
         };
         if ok {
@@ -1057,13 +1072,29 @@ where:
     /// De ISO-notatie komt door; de Nederlandse notatie, een halve datum en een
     /// dag die niet bestaat niet. Dat laatste is het punt van parsen in plaats
     /// van een vormtoets: `2024-02-30` heeft de juiste vorm en is geen dag.
+    ///
+    /// `2026-1-1` en `+2026-01-01` staan er ook bij, en die zijn het makkelijkst
+    /// te vergeten: `NaiveDate` leest ze allebei. De engine weigert ze verderop
+    /// alsnog, dus wie ze hier doorlaat verplaatst de fout naar een plek waar
+    /// van het formulier niets meer bekend is — en legt hem intussen in een
+    /// kroniek vast.
     #[test]
     fn een_datum_bindt_alleen_in_iso_notatie() {
         assert_eq!(
             ParameterType::Date.bind(&Value::String("2026-12-01".to_string())),
             Ok(())
         );
-        for verkeerd in ["01-12-2026", "2026-12", "1-12-2026", "2024-02-30", ""] {
+        for verkeerd in [
+            "01-12-2026",
+            "2026-12",
+            "1-12-2026",
+            "2024-02-30",
+            "",
+            "2026-1-1",
+            "2026-01-1",
+            "+2026-01-01",
+            "2026-12-01T00:00:00",
+        ] {
             assert_eq!(
                 ParameterType::Date.bind(&Value::String(verkeerd.to_string())),
                 Err(Mismatch::Date),

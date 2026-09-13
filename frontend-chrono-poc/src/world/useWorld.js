@@ -41,8 +41,16 @@ export function createWorld(api = worldApi) {
   const ready = computed(() => snapshot.value !== null);
   const clock = computed(() => snapshot.value?.clock ?? null);
 
+  /**
+   * Eén plek waar een fout binnenkomt, en daarmee de plek die `actionError`
+   * leegmaakt. Zonder dat blijft de melding van een mislukte actie staan terwijl
+   * er allang iets anders misging, en omdat de banner bovenaan zwijgt zolang er
+   * een actiefout is, zou die nieuwe fout nergens meer te zien zijn. Wie hem
+   * daarna wél wil tonen, zet hem ná deze oproep (zie `act`).
+   */
   function fail(cause) {
     error.value = cause?.message || 'De server gaf geen leesbare fout.';
+    actionError.value = null;
     return null;
   }
 
@@ -111,11 +119,12 @@ export function createWorld(api = worldApi) {
 
   /** Een cel naar een lexostatus vragen. Verandert niets, dus geen nieuw beeld. */
   async function askLexostatus(cell, name, params) {
+    error.value = null;
+    actionError.value = null;
     try {
       return await api.askLexostatus(cell, name, params);
     } catch (cause) {
-      error.value = cause?.message || 'De server gaf geen leesbare fout.';
-      return null;
+      return fail(cause);
     }
   }
 

@@ -136,4 +136,29 @@ describe('de wereld in de browser', () => {
     expect(answer.cell).toBe('belastingdienst');
     expect(world.result.value).toBeNull();
   });
+
+  // De banner bovenaan zwijgt zolang er een actiefout staat, want die staat dan
+  // bij haar eigen kaart. Blijft die actiefout hangen terwijl er intussen iets
+  // anders misgaat, dan is die nieuwe fout nergens meer te zien: het
+  // lexostatuspaneel toont zelf niets en de kaart van de actie staat op een
+  // ander tabblad. Een nieuwe fout hoort de oude dus weg te nemen.
+  it('laat een oude actiefout geen verse fout wegdrukken', async () => {
+    const api = fakeApi({
+      runAction: vi.fn(async () => {
+        throw new Error("parameter 'ondertekend_op' is geen datum: '09-01-2024' (verwacht jjjj-mm-dd)");
+      }),
+      askLexostatus: vi.fn(async () => {
+        throw new Error("lexostatus 'toeslagen.recht' kent geen parameter 'bns'");
+      }),
+    });
+    const world = createWorld(api);
+    await world.load();
+    await world.act({ id: 'burger.aanvraag', label: 'Aanvraag indienen' }, {});
+    expect(world.actionError.value).not.toBeNull();
+
+    const answer = await world.askLexostatus('toeslagen', 'recht', { bns: '1' });
+    expect(answer).toBeNull();
+    expect(world.error.value).toContain("geen parameter 'bns'");
+    expect(world.actionError.value).toBeNull();
+  });
 });
