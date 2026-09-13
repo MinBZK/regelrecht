@@ -1,0 +1,229 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.9/trace-schema.json",
+  "title": "RegelRecht Execution Trace Schema v0.5.9",
+  "description": "An execution trace: the tree of steps an engine took to reach a result, addressable and anchored to the provisions the steps came from (RFC-039). Versioned independently of the law schema, like the note sidecar. A conformant engine produces this document; the box-drawing text rendering is a presentation of it and is not part of the contract.",
+  "type": "object",
+  "required": ["trace_version", "root"],
+  "properties": {
+    "trace_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version of this trace format. Incremented when a change would break a consumer; new optional fields do not."
+    },
+    "root": {
+      "$ref": "#/definitions/TraceNode",
+      "description": "The outermost step, which is the evaluation the caller asked for."
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "TraceNode": {
+      "type": "object",
+      "description": "One step. Children are the nested steps it took, in the order it took them.",
+      "required": ["node_type", "name"],
+      "properties": {
+        "node_type": {
+          "type": "string",
+          "description": "What kind of step this is.",
+          "enum": [
+            "resolve",
+            "operation",
+            "action",
+            "requirement",
+            "cross_law_reference",
+            "article",
+            "cached",
+            "open_term_resolution",
+            "hook_resolution",
+            "override_resolution"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "description": "What the step was about: a value name, an operation, or '<law>#<output>' for a cross-law reference. Not an address: two steps in different laws can share a name. Use node_id to address a step and uri to address the value."
+        },
+        "result": {
+          "description": "The value the step produced. Absent when the step produced none. The three absences are distinct (RFC-036): null is a value the data asserts, an unknown names the facts nobody has, and an omitted result means the step yielded nothing."
+        },
+        "resolve_type": {
+          "type": "string",
+          "description": "For a resolve step, where the value was looked up. Repeated inside source.kind for a consumer reading only source.",
+          "enum": [
+            "URI",
+            "PARAMETER",
+            "DEFINITION",
+            "OUTPUT",
+            "INPUT",
+            "LOCAL",
+            "CONTEXT",
+            "RESOLVED_INPUT",
+            "DATA_SOURCE",
+            "OPEN_TERM",
+            "OPEN_TERM_SILENT",
+            "HOOK",
+            "OVERRIDE"
+          ]
+        },
+        "children": {
+          "type": "array",
+          "description": "Nested steps, in execution order. Omitted when there are none.",
+          "items": { "$ref": "#/definitions/TraceNode" }
+        },
+        "node_id": {
+          "type": "string",
+          "pattern": "^n([0-9]+(\\.[0-9]+)*)?$",
+          "description": "Address of this step within this trace: the chain of child indices from the root. The root is 'n', its first child 'n0', that child's third child 'n0.2'. Unique within a trace and identical for the same inputs, so a fixture can pin one and a URL fragment can point at one. It addresses a position in this trace, not an identity across traces: two evaluations whose trees differ in shape, for instance because one reused a memoized cross-law result, address the same work differently."
+        },
+        "anchor": {
+          "$ref": "#/definitions/LegalAnchor",
+          "description": "Where the engine was when it took this step. Reported whenever the engine knows the provision, independent of what the law document happens to cite."
+        },
+        "legal_basis": {
+          "$ref": "#/definitions/LegalAnchor",
+          "description": "The citation the law document declares for the element at yaml_path, reported as written. Absent when that element declares none, which is not the same as the engine not knowing where it was: compare anchor. An engine that does not retain the law document reports none."
+        },
+        "yaml_path": {
+          "type": "string",
+          "description": "Address of the element within the law document, as a dotted path whose segments are keys, and for a list item the value of its 'output', 'name' or 'number' rather than its index: 'articles.2.machine_readable.execution.actions.hoogte_zorgtoeslag.value.values.1'. A dot inside a label is written as an underscore, so article '2.34' is addressed as '2_34'. Addresses an element that has no name of its own, such as one branch of a nested operation, which no regelrecht:// URI can name."
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^regelrecht://",
+          "description": "Address of the value this step denotes, as a regelrecht:// URI. Present on a step that denotes a value rather than a piece of work."
+        },
+        "source": {
+          "$ref": "#/definitions/ValueSource",
+          "description": "Where a resolved value came from, in fields rather than in prose."
+        },
+        "type_spec": {
+          "$ref": "#/definitions/TypeSpec",
+          "description": "Unit and precision of 'result', so a consumer can present 209692 as an amount in euros. Present when the value's declaration carries one, which parameters, inputs, outputs and definitions do; an intermediate operation result has no declaration and therefore no type_spec."
+        },
+        "duration_us": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How long the step took, in microseconds. Optional, and absent wherever an engine does not measure it, so no consumer may depend on it."
+        },
+        "message": {
+          "type": "string",
+          "description": "A line about this step for a person reading the trace in a terminal. Presentational: the wording is not a contract, it may be phrased in any language, and parsing it is a defect. Every fact it states is available in a field."
+        }
+      },
+      "additionalProperties": false
+    },
+    "LegalAnchor": {
+      "type": "object",
+      "description": "A reference to a provision. Same shape as the law schema's legal_basis, so the engine's account of where it was and the document's own citation are comparable rather than two dialects.",
+      "properties": {
+        "law_id": {
+          "type": "string",
+          "description": "Law identifier as the corpus knows it, e.g. 'wet_op_de_zorgtoeslag'."
+        },
+        "law": {
+          "type": "string",
+          "description": "Law name as cited in prose, e.g. 'Wet op de zorgtoeslag'."
+        },
+        "law_uuid": {
+          "type": "string",
+          "description": "Stable uuid of the law version, when it has one."
+        },
+        "bwb_id": {
+          "type": "string",
+          "pattern": "^BWBR[0-9]{7}$",
+          "description": "BWB identification number."
+        },
+        "article": {
+          "type": "string",
+          "description": "Article number as the law writes it: '2', '1a', 'B1'."
+        },
+        "paragraph": {
+          "type": "string",
+          "description": "Lid."
+        },
+        "sentence": {
+          "type": "string",
+          "description": "Sentence, for a reference finer than a lid."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Link to the provision on wetten.overheid.nl."
+        },
+        "juriconnect": {
+          "type": "string",
+          "pattern": "^jci1\\.3:c:BWBR[0-9]{7}(&[a-zA-Z_]+=.+)*$",
+          "description": "Juriconnect BWB 1.3 reference."
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date",
+          "description": "valid_from of the law version this anchor points into."
+        },
+        "explanation": {
+          "type": "string",
+          "description": "The modeller's note on how the element relates to the text. Occurs on a legal_basis and never on an anchor: an engine has no such note to report."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ValueSource": {
+      "type": "object",
+      "description": "Where a resolved value came from (RFC-039), replacing what a consumer used to read out of 'message'.",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "How the value was resolved. Same vocabulary as resolve_type.",
+          "enum": [
+            "URI",
+            "PARAMETER",
+            "DEFINITION",
+            "OUTPUT",
+            "INPUT",
+            "LOCAL",
+            "CONTEXT",
+            "RESOLVED_INPUT",
+            "DATA_SOURCE",
+            "OPEN_TERM",
+            "OPEN_TERM_SILENT",
+            "HOOK",
+            "OVERRIDE"
+          ]
+        },
+        "provider": {
+          "type": "string",
+          "description": "The registered data source that held the value, which is the organisation keeping the register. Absent for a kind that has no provider, such as a definition in the law itself."
+        },
+        "scope": {
+          "type": "string",
+          "description": "The law a scoped data source was registered for. Absent when the source is global."
+        }
+      },
+      "additionalProperties": false
+    },
+    "TypeSpec": {
+      "type": "object",
+      "description": "Unit and precision of a value, as the law schema declares them (RFC-023).",
+      "properties": {
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement, e.g. 'eurocent', 'ratio', 'days'. A label, never a computational constraint."
+        },
+        "precision": {
+          "type": "integer",
+          "description": "Number of decimal places for the value in its own unit."
+        },
+        "min": {
+          "type": "number",
+          "description": "Minimum allowed value."
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum allowed value."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
