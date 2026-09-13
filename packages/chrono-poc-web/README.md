@@ -86,6 +86,10 @@ de simulator, en die praat Nederlands.
 
 Alles onder `/api/` staat achter de rol uit `CHRONO_POC_REQUIRED_ROLE`. De
 frontend komt uit `STATIC_DIR` met een SPA-fallback, zoals editor-api dat doet.
+Eén pad valt buiten die fallback: `/favicon.ico` geeft `favicon.svg` uit de
+bundel, met het mediatype van dat bestand. Een browser vraagt dat pad uit zichzelf
+op en kreeg er anders `index.html` onder een 404 terug — HTML aangeboden als
+plaatje.
 
 ### Parameters van een lexostatus
 

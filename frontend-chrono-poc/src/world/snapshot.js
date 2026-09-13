@@ -193,6 +193,59 @@ export function emptyForm(action) {
 }
 
 /**
+ * Het besluit dat er al ligt voor de zaak die dit formulier aanwijst.
+ *
+ * Een `decides`-actie mag twee keer: een tweede besluit over dezelfde zaak is
+ * het verhaal en geen vergissing (een toekenning en daarna een vaststelling, of
+ * een herzien inkomen). Wat er niet hoort te gebeuren, is dat iemand het
+ * *onbedoeld* doet — twee keer klikken leverde twee decretogrammen zonder dat er
+ * iets over gezegd werd. Daarom geeft deze functie terug wat er al ligt, zodat
+ * de kaart het kan tonen en om bevestiging kan vragen.
+ *
+ * "Dezelfde zaak" leest deze app niet uit het zaakkenmerk-sjabloon — dat staat
+ * in het wereldbestand en niet in het beeld — maar uit de parameters van het
+ * besluit: een decretogram legt elke parameter vast onder haar eigen naam, dus
+ * het gram waarvan alle parameters overeenkomen met wat er in het formulier
+ * staat, gaat over dezelfde zaak. Het **zaakkenmerk** van dat gram komt mee,
+ * want dat is waaronder de zaak terug te vinden is.
+ *
+ * `null` zolang er niets te melden is: geen besluit-actie, een formulier dat nog
+ * niet ingevuld is, of geen gram dat erbij past. Grammen ná de klok tellen niet
+ * mee; de vraag is wat er nú al ligt.
+ */
+export function decidedAlready(snapshot, action, values) {
+  if (action?.effect?.soort !== 'decides') return null;
+  const params = (action.form ?? []).map((field) => field.name);
+  const given = params.map((param) => values?.[param]);
+  if (given.some((value) => value === '' || value === null || value === undefined)) return null;
+
+  const clock = snapshot?.clock ?? null;
+  const cell = cells(snapshot).find((candidate) => candidate.id === action.effect.cell);
+  const matches = [];
+  for (const chronicle of chronicles(cell)) {
+    for (const gram of chronicle.grams ?? []) {
+      if (gram.kind !== 'decretogram') continue;
+      if (gram.fields?.besluit?.value !== action.effect.besluit) continue;
+      if (clock && String(gram.op_moment) > clock) continue;
+      const sameCase = params.every(
+        (param, index) => String(gram.fields?.[param]?.value ?? '') === String(given[index]),
+      );
+      if (sameCase) matches.push(gram);
+    }
+  }
+  if (matches.length === 0) return null;
+
+  // Het laatste besluit is wat een lezer herkent; hoeveel er liggen zegt wat een
+  // volgende erbij doet.
+  const latest = matches.reduce((a, b) => (String(a.op_moment) > String(b.op_moment) ? a : b));
+  return {
+    opMoment: latest.op_moment,
+    zaakkenmerk: latest.fields?.zaakkenmerk?.value ?? null,
+    count: matches.length,
+  };
+}
+
+/**
  * Wat een actie uitwerkt, in één regel.
  *
  * Uit het beeld, dus in de woorden van de wereld: welke cel legt vast in welke

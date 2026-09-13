@@ -16,7 +16,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use regelrecht_simulator::{EngineError, SimulatorError};
+use regelrecht_simulator::{EngineError, SimulatorError, Subject};
 use serde::Serialize;
 
 /// Een mislukt verzoek: een HTTP-status plus wat er aan de hand is.
@@ -118,9 +118,72 @@ impl ApiError {
         };
         Self {
             status,
-            message: error.to_string(),
+            message: message_of(error),
         }
     }
+}
+
+/// De melding van een simulatorfout, met de actor er één keer in.
+///
+/// De simulator schrijft over een parameter van een lexostatus of een besluit
+/// `'<cel>.<naam>'`, en dat leest goed: de naam is van die cel. Bij een **actie**
+/// is de naam het actie-id uit het wereldbestand, en dat draagt de actor al —
+/// `toeslagen.toekenning`. Er stond dan "actie 'toeslagen.toeslagen.toekenning'",
+/// en wie dat leest zoekt naar een actie die zo niet heet.
+///
+/// De verdubbeling wordt hier weggenomen en niet in de simulator: welke vorm een
+/// actie-id heeft, is iets van het wereldbestand, en deze laag is de plek waar de
+/// melding een mens bereikt. Wat er weggehaald wordt, komt uit de velden van de
+/// fout zelf — de actor en het id zoals de fout ze draagt — en niet uit een
+/// patroon dat op een punt gokt.
+fn message_of(error: &SimulatorError) -> String {
+    let text = error.to_string();
+    let Some((actor, action)) = action_subject(error) else {
+        return text;
+    };
+    let prefix = format!("{actor}.");
+    if !action.starts_with(&prefix) {
+        return text;
+    }
+    text.replace(&format!("'{actor}.{action}'"), &format!("'{action}'"))
+}
+
+/// De actor en het actie-id waar deze melding over gaat, als ze over een actie
+/// gaat.
+///
+/// Alleen de varianten die `'{cell}.{name}'` schrijven; de andere meldingen over
+/// een actie noemen het id los en verdubbelen dus niets.
+fn action_subject(error: &SimulatorError) -> Option<(&str, &str)> {
+    use SimulatorError as E;
+
+    let (cell, subject, name) = match error {
+        E::MissingParameter {
+            cell,
+            subject,
+            name,
+            ..
+        }
+        | E::UndocumentedParameter {
+            cell,
+            subject,
+            name,
+            ..
+        }
+        | E::ParameterType {
+            cell,
+            subject,
+            name,
+            ..
+        }
+        | E::ParameterDate {
+            cell,
+            subject,
+            name,
+            ..
+        } => (cell, subject, name),
+        _ => return None,
+    };
+    matches!(subject, Subject::Actie).then_some((cell.as_str(), name.as_str()))
 }
 
 /// De Nederlandse melding als deze engine-fout over een **aangeleverde waarde**
@@ -257,6 +320,73 @@ mod tests {
         assert_eq!(
             ApiError::from_simulator(&gebroken_wereld).status(),
             StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    /// Een actie-id draagt de actor al, dus de melding hoort hem één keer te
+    /// noemen. Anders zoekt de lezer naar een actie
+    /// 'toeslagen.toeslagen.toekenning', en die bestaat niet.
+    #[test]
+    fn een_melding_over_een_actie_noemt_de_actor_een_keer() {
+        let fout = ApiError::from_simulator(&SimulatorError::ParameterDate {
+            cell: "toeslagen".to_string(),
+            subject: Subject::Actie,
+            name: "toeslagen.toekenning".to_string(),
+            parameter: "ondertekend_op".to_string(),
+            value: "09-01-2024".to_string(),
+        });
+        assert_eq!(fout.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            fout.message().contains("actie 'toeslagen.toekenning'"),
+            "{}",
+            fout.message()
+        );
+        assert!(
+            !fout.message().contains("toeslagen.toeslagen"),
+            "de actor hoort er niet twee keer te staan: {}",
+            fout.message()
+        );
+        // En de rest van de melding blijft staan: welke parameter, welke waarde.
+        assert!(
+            fout.message().contains("ondertekend_op"),
+            "{}",
+            fout.message()
+        );
+        assert!(fout.message().contains("09-01-2024"), "{}", fout.message());
+    }
+
+    /// Alleen de verdubbeling verdwijnt. Een lexostatus heet '<cel>.<naam>' —
+    /// daar hoort de cel juist wél voor de naam — en een actie-id dat de actor
+    /// niet als prefix draagt, blijft precies zoals het wereldbestand hem noemt.
+    #[test]
+    fn een_melding_zonder_verdubbeling_blijft_ongemoeid() {
+        let lexostatus = ApiError::from_simulator(&SimulatorError::UndocumentedParameter {
+            cell: "brp".to_string(),
+            subject: Subject::Lexostatus,
+            name: "partnerschap".to_string(),
+            parameter: "burgerservicenummer".to_string(),
+            documented: "bsn".to_string(),
+        });
+        assert!(
+            lexostatus
+                .message()
+                .contains("lexostatus 'brp.partnerschap'"),
+            "{}",
+            lexostatus.message()
+        );
+
+        let actie = ApiError::from_simulator(&SimulatorError::MissingParameter {
+            cell: "toeslagen".to_string(),
+            subject: Subject::Actie,
+            name: "beslis-op-de-aanvraag".to_string(),
+            parameter: "bsn".to_string(),
+        });
+        assert!(
+            actie
+                .message()
+                .contains("actie 'toeslagen.beslis-op-de-aanvraag'"),
+            "{}",
+            actie.message()
         );
     }
 

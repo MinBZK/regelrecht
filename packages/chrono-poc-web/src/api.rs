@@ -113,6 +113,12 @@ pub fn router(state: AppState) -> Router {
         .layer(TraceLayer::new_for_http())
 }
 
+/// Waar een browser uit zichzelf om vraagt als een pagina geen icoon aanwijst.
+const FAVICON_PATH: &str = "/favicon.ico";
+
+/// Het icoon zoals het in de frontend-bundel ligt.
+const FAVICON_FILE: &str = "favicon.svg";
+
 /// Statische bestanden met SPA-fallback, zoals editor-api ze serveert.
 ///
 /// `index.html` als not-found-service: een diepe link in de frontend is geen
@@ -120,17 +126,35 @@ pub fn router(state: AppState) -> Router {
 /// bestaat de map niet en antwoordt dit een gewone 404 — een server zonder
 /// frontend is nog steeds een werkende API.
 ///
+/// Eén uitzondering op die fallback: `/favicon.ico`. Een browser vraagt dat pad
+/// uit zichzelf op, en met de SPA-fallback kreeg hij daarop de hele pagina terug
+/// onder een 404 — HTML aangeboden als plaatje. Het pad krijgt daarom het icoon dat de bundel
+/// draagt, met het mediatype van het bestand zelf (`image/svg+xml`): een browser
+/// gaat op dat type af en niet op de extensie in de URL. De pagina wijst het
+/// icoon daarnaast zelf aan met een `<link rel="icon">`; dit is voor wie dat niet
+/// leest.
+///
 /// Geen precompressie zoals in editor-api: die leunt op `.br`/`.gz`-varianten
 /// die de bouwstap van díe frontend schrijft. Zodra hier hetzelfde gebeurt,
 /// horen de vlaggen erbij.
 fn static_service(static_dir: &str) -> MethodRouter {
-    let index = ServeFile::new(std::path::Path::new(static_dir).join("index.html"));
+    let root = std::path::Path::new(static_dir);
+    let index = ServeFile::new(root.join("index.html"));
     let files = ServeDir::new(static_dir).not_found_service(index);
+    let icon = ServeFile::new(root.join(FAVICON_FILE));
     get(move |request: Request| {
         let files = files.clone();
+        let icon = icon.clone();
         async move {
-            // Het foutype van `ServeDir` is `Infallible` zodra er een
-            // not-found-service staat, dus dit kan niet mislukken.
+            // Het foutype van beide diensten is `Infallible` — `ServeDir` zodra
+            // er een not-found-service staat — dus dit kan niet mislukken.
+            if request.uri().path() == FAVICON_PATH {
+                return icon
+                    .oneshot(request)
+                    .await
+                    .unwrap_or_else(|e| match e {})
+                    .map(axum::body::Body::new);
+            }
             files
                 .oneshot(request)
                 .await

@@ -74,6 +74,20 @@ describe('de routes', () => {
     expect(fetchStub.mock.calls[0][0]).toBe('/api/cells/belastingdienst/lexostatus/toetsingsinkomen?bsn=999993653');
   });
 
+  it('zet het moment van de vraag als gereserveerde parameter in de query', async () => {
+    const fetchStub = stubFetch({ cell: 'brp', name: 'partnerschap', outcome: {} });
+    await askLexostatus('brp', 'partnerschap', { bsn: '999993653' }, '2024-06-01');
+    expect(fetchStub.mock.calls[0][0]).toBe(
+      '/api/cells/brp/lexostatus/partnerschap?bsn=999993653&op_moment=2024-06-01',
+    );
+  });
+
+  it('laat het moment weg als er geen gekozen is; dan geldt de klok van de server', async () => {
+    const fetchStub = stubFetch({ cell: 'brp', name: 'partnerschap', outcome: {} });
+    await askLexostatus('brp', 'partnerschap', { bsn: '999993653' });
+    expect(fetchStub.mock.calls[0][0]).toBe('/api/cells/brp/lexostatus/partnerschap?bsn=999993653');
+  });
+
   it('zet de uitleg van de server in de fout, zonder de JSON eromheen', async () => {
     vi.stubGlobal(
       'fetch',

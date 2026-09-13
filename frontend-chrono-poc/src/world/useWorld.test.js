@@ -131,8 +131,13 @@ describe('de wereld in de browser', () => {
     const api = fakeApi();
     const world = createWorld(api);
     await world.load();
-    const answer = await world.askLexostatus('belastingdienst', 'toetsingsinkomen', { bsn: '1' });
-    expect(api.askLexostatus).toHaveBeenCalledWith('belastingdienst', 'toetsingsinkomen', { bsn: '1' });
+    const answer = await world.askLexostatus('belastingdienst', 'toetsingsinkomen', { bsn: '1' }, '2024-06-01');
+    expect(api.askLexostatus).toHaveBeenCalledWith(
+      'belastingdienst',
+      'toetsingsinkomen',
+      { bsn: '1' },
+      '2024-06-01',
+    );
     expect(answer.cell).toBe('belastingdienst');
     expect(world.result.value).toBeNull();
   });

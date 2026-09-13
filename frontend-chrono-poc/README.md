@@ -8,7 +8,7 @@ wereld aanbiedt, en die het woord van geen enkele casus kent.
   uit en toont per waarde waar ze vandaan komt;
 - **rechts** de bediening: de acties die de wereld nu aanbiedt (gegroepeerd per
   actor, met het formulier uit de actie zelf), de instellingen, een vraag aan een
-  cel, en het observatielog;
+  cel — op een moment naar keuze, tot aan de klok — en het observatielog;
 - **onderaan** de tijdlijn: waar de klok staat, elk moment waarop iets ligt als
   punt, en "spoel vooruit tot".
 
@@ -41,6 +41,16 @@ toetsen viel wie mocht besluiten**. Dat hoort bij het gram waar het over gaat en
 niet in de lijst verstreken termijnen elders op de pagina: een besluit waarvan de
 wet niemand aanwees, is iets anders dan een gemiste termijn. Wees er niet te snel
 overheen — het is de afwezigheid van een toets, niet de uitkomst ervan.
+
+## Een tweede besluit is een keuze, geen ongeluk
+
+Ligt er over de zaak in het formulier al een decretogram van dit besluit, dan
+zegt de kaart dat ("al besloten op …") en vraagt ze om bevestiging voordat ze het
+nog eens doet. De knop blijft bruikbaar — een tweede besluit over dezelfde zaak
+is juist het verhaal van deze opstelling — maar er komt een decretogram bij, en
+dat hoort een klik te zijn die iemand bedoelde. Welke zaak het is leest de app af
+aan de parameters van het besluit zoals het gram ze vastlegde; het
+zaakkenmerk-sjabloon staat in het wereldbestand en niet in het beeld.
 
 ## Het observatielog is een meetinstrument
 
@@ -92,7 +102,7 @@ lopen.
 | `POST /api/advance` | `{ "until": "jjjj-mm-dd" }` |
 | `PUT /api/settings` | instellingen wijzigen |
 | `POST /api/reset` | terug naar de startstand |
-| `GET /api/cells/{cel}/lexostatus/{naam}` | een reductie opvragen; "niets vastgesteld" is een gewoon antwoord met status 200 |
+| `GET /api/cells/{cel}/lexostatus/{naam}` | een reductie opvragen, met `op_moment` het moment van de vraag; "niets vastgesteld" is een gewoon antwoord met status 200 |
 
 Een antwoord op een wijziging mag het nieuwe beeld zelf zijn of het onder
 `snapshot` / `world` dragen; draagt het er geen, dan haalt de app het beeld

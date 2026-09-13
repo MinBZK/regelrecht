@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Body;
-use axum::http::header::{COOKIE, SET_COOKIE};
+use axum::http::header::{CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{Method, Request, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
@@ -40,6 +40,12 @@ fn world_file() -> PathBuf {
 /// De app zoals `just chrono-poc` hem start: login uit, publieke wereld, corpus
 /// uit deze checkout.
 async fn app() -> Router {
+    app_with_static("static").await
+}
+
+/// Dezelfde app, met een eigen map voor de statische bestanden. Waarmee te
+/// toetsen is wat de server met die map doet zonder een bundel te bouwen.
+async fn app_with_static(static_dir: &str) -> Router {
     let config = AppConfig {
         oidc: None,
         base_url: None,
@@ -47,7 +53,7 @@ async fn app() -> Router {
         world: Source::Local(world_file()),
         corpus: None,
         auth_ref: None,
-        static_dir: "static".to_string(),
+        static_dir: static_dir.to_string(),
         port: 8000,
     };
     let resolved = regelrecht_chrono_poc_web::sources::resolve(&config.world, None, None)
@@ -399,6 +405,63 @@ async fn niets_vastgesteld_is_een_gewoon_antwoord() {
     );
 }
 
+/// Het moment van de vraag is de weg terug: dezelfde cel, dezelfde naam, een
+/// eerder moment, een ander antwoord. Vooruit is geen moment maar een
+/// voorspelling, en dat weigert de wereld — met de klok in de melding, zodat de
+/// vrager weet waar de grens ligt.
+#[tokio::test]
+async fn een_moment_voor_de_klok_kijkt_terug_en_erna_niet() {
+    let mut browser = Browser::new().await;
+    browser
+        .post("/api/advance", json!({ "until": "2024-06-01" }))
+        .await;
+
+    // Vóór de vastlegging van 2023-03-01 wist deze cel nog niets; erna wel. Eén
+    // vraag, twee momenten, twee antwoorden.
+    let (status, eerder) = browser
+        .get("/api/cells/brp/lexostatus/partnerschap?bsn=999993653&op_moment=2023-02-28")
+        .await;
+    assert_eq!(status, StatusCode::OK, "{eerder}");
+    assert!(
+        eerder["outcome"]["not_established"]["reason"].is_string(),
+        "{eerder}"
+    );
+
+    let (status, later) = browser
+        .get("/api/cells/brp/lexostatus/partnerschap?bsn=999993653&op_moment=2023-03-01")
+        .await;
+    assert_eq!(status, StatusCode::OK, "{later}");
+    assert_eq!(later["op_moment"], json!("2023-03-01"), "{later}");
+    assert_eq!(
+        later["outcome"]["established"]["partnerschap_type"],
+        json!("GEEN"),
+        "{later}"
+    );
+
+    let (status, body) = browser
+        .get("/api/cells/brp/lexostatus/partnerschap?bsn=999993653&op_moment=2024-06-02")
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("2024-06-01")),
+        "de melding hoort te zeggen waar de klok staat: {body}"
+    );
+
+    // En een moment dat geen datum is, is een verzoekfout met de notatie erin.
+    let (status, body) = browser
+        .get("/api/cells/brp/lexostatus/partnerschap?bsn=999993653&op_moment=gisteren")
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("jjjj-mm-dd")),
+        "{body}"
+    );
+}
+
 /// Een BSN is tekst, ook al bestaat hij uit cijfers. Zonder de omzetting naar het
 /// gedocumenteerde type zou dezelfde vraag hier "niets vastgesteld" opleveren
 /// terwijl de vastlegging er ligt — het stilste soort verkeerd antwoord.
@@ -587,6 +650,78 @@ async fn een_formulier_dat_niet_klopt_wordt_geweigerd() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // En de melding noemt de actie zoals ze heet. Het actie-id draagt de actor
+    // al, dus wie er nog een keer een actor voor zet, stuurt de lezer op zoek
+    // naar een actie 'burger.burger.aanvraag' die niet bestaat.
+    let error = body["error"].as_str().expect("een fout heeft een melding");
+    assert!(error.contains("actie 'burger.aanvraag'"), "{error}");
+    assert!(!error.contains("burger.burger"), "{error}");
+}
+
+/// De server geeft een icoon op `/favicon.ico`, het pad waar een browser uit
+/// zichzelf om vraagt. Zonder dat kreeg hij de SPA-fallback: `index.html` met
+/// een 404 eronder, als plaatje aangeboden.
+#[tokio::test]
+async fn favicon_ico_geeft_het_icoon_en_niet_de_pagina() {
+    const ICON: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"></svg>"#;
+    const PAGE: &str = "<!doctype html><title>Testopstelling</title>";
+
+    let bundle = tempfile::tempdir().expect("een tijdelijke map moet te maken zijn");
+    std::fs::write(bundle.path().join("index.html"), PAGE)
+        .expect("index.html moet te schrijven zijn");
+    std::fs::write(bundle.path().join("favicon.svg"), ICON)
+        .expect("het icoon moet te schrijven zijn");
+    let app = app_with_static(bundle.path().to_str().expect("een pad in UTF-8")).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/favicon.ico")
+                .body(Body::empty())
+                .expect("verzoek moet te bouwen zijn"),
+        )
+        .await
+        .expect("de app moet antwoorden");
+    assert_eq!(response.status(), StatusCode::OK);
+    // Het mediatype is dat van het bestand zelf en niet van de extensie in de
+    // URL: daar gaat een browser op af.
+    assert_eq!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("image/svg+xml")
+    );
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body moet te lezen zijn")
+        .to_bytes();
+    assert_eq!(String::from_utf8_lossy(&body), ICON);
+
+    // En de fallback zelf blijft staan: een diepe link is geen bestand en krijgt
+    // de app terug — met de 404 die `not_found_service` eraan geeft, want die
+    // link bestaat als bestand inderdaad niet.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/een/diepe/link")
+                .body(Body::empty())
+                .expect("verzoek moet te bouwen zijn"),
+        )
+        .await
+        .expect("de app moet antwoorden");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body moet te lezen zijn")
+        .to_bytes();
+    assert_eq!(String::from_utf8_lossy(&body), PAGE);
 }
 
 /// De Nederlandse notatie in een datumveld: een 400 met een melding waar een

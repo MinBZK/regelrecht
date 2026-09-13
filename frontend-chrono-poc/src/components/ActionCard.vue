@@ -1,8 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { humanize } from '../world/format.js';
+import { formatMoment, humanize } from '../world/format.js';
 import { fieldValue } from '../world/events.js';
-import { describeEffect, emptyForm } from '../world/snapshot.js';
+import { decidedAlready, describeEffect, emptyForm, gramKind } from '../world/snapshot.js';
 
 // Eén actie uit het wereldbestand: wie haar doet, wat ze uitwerkt, wat de actor
 // invult, en of ze nu kan.
@@ -17,10 +17,18 @@ import { describeEffect, emptyForm } from '../world/snapshot.js';
 // (dd-mm-jjjj) en geeft ISO terug, wat precies het verschil is dat hier telt —
 // een tekstveld liet de invuller zelf gokken welke van de twee de server wilde,
 // en de Nederlandse notatie was daarbij de meest voor de hand liggende gok.
+//
+// Ligt er over deze zaak al een besluit, dan staat dat er ("al besloten op …")
+// en vraagt de kaart om bevestiging voordat ze het nog eens doet. De knop blijft
+// bruikbaar: een tweede besluit is legitiem — dat is juist het verhaal van deze
+// opstelling — maar het legt een tweede decretogram, en dat hoort niet per
+// ongeluk te gebeuren.
 
 const props = defineProps({
   /** De actie uit het beeld. */
   action: { type: Object, required: true },
+  /** Het beeld van de wereld; waaruit blijkt wat er al besloten is. */
+  snapshot: { type: Object, default: null },
   /** Staat er een wijziging onderweg? */
   busy: { type: Boolean, default: false },
   /** Waarom de server deze actie weigerde; `null` zolang er niets misging. */
@@ -46,6 +54,44 @@ watch(
 
 const fields = computed(() => props.action.form ?? []);
 const effect = computed(() => describeEffect(props.action.effect));
+
+/** Het besluit dat er al ligt over de zaak in dit formulier; `null` zo niet. */
+const decided = computed(() => decidedAlready(props.snapshot, props.action, values.value));
+
+/** Staat de bevestiging open? Alleen tussen een klik en het antwoord daarop. */
+const confirming = ref(false);
+
+// Een ander formulier is een andere zaak: de vraag die over de vorige ging, hoort
+// dan niet meer op het scherm te staan.
+watch(decided, () => {
+  confirming.value = false;
+});
+
+/** Wat de tag zegt: wat de wereld over de actie zegt, of wat er al ligt. */
+const state = computed(() => {
+  if (decided.value) {
+    return {
+      color: gramKind('decretogram').color,
+      icon: gramKind('decretogram').icon,
+      text: `al besloten op ${formatMoment(decided.value.opMoment)}`,
+    };
+  }
+  return {
+    color: props.action.available ? 'success' : 'warning',
+    icon: props.action.available ? 'check-mark-circle' : 'clock',
+    text: props.action.available ? 'kan nu' : 'kan nu niet',
+  };
+});
+
+/** Waarom er bevestigd moet worden, in de woorden van wat er ligt. */
+const confirmation = computed(() => {
+  if (!decided.value) return '';
+  const zaak = decided.value.zaakkenmerk ? ` over zaak '${decided.value.zaakkenmerk}'` : '';
+  const ligt = decided.value.count === 1 ? 'ligt er al één besluit' : `liggen er al ${decided.value.count} besluiten`;
+  return `In cel '${props.action.effect?.cell}'${zaak} ${ligt}, het laatste van `
+    + `${formatMoment(decided.value.opMoment)}. Nog een keer besluiten legt een decretogram erbij; het `
+    + 'bestaande blijft staan, want een kroniek wordt nooit overschreven.';
+});
 
 function errorId(field) {
   return `${props.action.id}-${field.name}-fout`;
@@ -93,7 +139,20 @@ function setChecked(field, event) {
 function submit() {
   const incomplete = fields.value.filter(isEmpty).map((field) => field.name);
   missing.value = incomplete;
-  if (incomplete.length === 0) emit('run', { action: props.action, values: values.value });
+  if (incomplete.length > 0) return;
+  // Ligt er al een besluit, dan is de eerste klik de vraag en de tweede het
+  // antwoord; anders gaat de actie meteen.
+  if (decided.value) {
+    confirming.value = true;
+    return;
+  }
+  run();
+}
+
+/** De actie echt uitvoeren. */
+function run() {
+  confirming.value = false;
+  emit('run', { action: props.action, values: values.value });
 }
 </script>
 
@@ -106,12 +165,7 @@ function submit() {
         <span slot="subtitle">{{ effect }}</span>
       </nldd-title>
       <nldd-container layout="wrap" gap="4">
-        <nldd-tag
-          size="sm"
-          :color="action.available ? 'success' : 'warning'"
-          :icon="action.available ? 'check-mark-circle' : 'clock'"
-          :text="action.available ? 'kan nu' : 'kan nu niet'"
-        ></nldd-tag>
+        <nldd-tag size="sm" :color="state.color" :icon="state.icon" :text="state.text"></nldd-tag>
       </nldd-container>
     </nldd-container>
 
@@ -187,7 +241,34 @@ function submit() {
             </nldd-form-field>
           </template>
 
-          <nldd-form-actions>
+          <!-- De bevestiging staat in het formulier en niet erboven: ze gaat
+               over deze klik, met de knoppen op de plek waar de vorige stond.
+               Een inline dialoog en geen modaal venster — er hoeft niets
+               weggeklikt te worden om de kaart te kunnen lezen. -->
+          <nldd-inline-dialog
+            v-if="confirming"
+            horizontal-alignment="left"
+            :icon="state.icon"
+            text="Er ligt al een besluit"
+            :supporting-text="confirmation"
+          >
+            <nldd-button
+              slot="actions"
+              variant="primary"
+              start-icon="send"
+              text="Toch besluiten"
+              :loading="busy || undefined"
+              @click="run()"
+            ></nldd-button>
+            <nldd-button
+              slot="actions"
+              variant="neutral-tinted"
+              text="Annuleren"
+              @click="confirming = false"
+            ></nldd-button>
+          </nldd-inline-dialog>
+
+          <nldd-form-actions v-else>
             <nldd-button-group>
               <nldd-button
                 variant="primary"
