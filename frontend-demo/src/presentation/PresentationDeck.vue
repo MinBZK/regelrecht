@@ -105,9 +105,20 @@ function saveName(e) {
 </template>
 
 <style scoped>
-/* Custom CSS on purpose: the design system has no presentation component. The
- * palette is the Rijkshuisstijl (donkerblauw #154273, lintblauw #01689b), the
- * type is RijksoverheidSerif for titles and RijksSans for the rest. */
+/* Custom CSS on purpose: the design system has no presentation component. De
+ * kleuren komen wél uit het design system, als tokens en niet als hex. Dat is
+ * niet alleen netter: de hexen die hier stonden bestónden niet in het palet
+ * (#154273 zat er 5 naast lintblauw-750, #ffb612 zelfs 19 naast donkergeel-200),
+ * en een vaste hex negeert `light-dark()`, waar het hele palet op gebouwd is.
+ * De typografie blijft RijksoverheidSerif voor titels en RijksSans voor de rest.
+ *
+ * Het dek is altijd donkerblauw met witte tekst, ook als de bezoeker in donkere
+ * modus kijkt: een presentatie heeft één verschijning, en op een beamer is dat
+ * die. Daarom `color-scheme: light` op het dek — niet omdat het licht is, maar
+ * omdat de kleurschalen omkeren: `lintblauw-750` is donkerblauw in lichte modus
+ * (L 0.39) en juist lichtblauw in donkere (L 0.76), en `donkergeel-200` gaat van
+ * helder geel naar donkerbruin. De lichte kant van de schaal is hier de goede,
+ * in beide modi. */
 .deck {
   /* De maat volgt de BREEDTE van het vlak waarin de tekst staat (`1cqw`), niet
      de kortste zijde. Met `cqmin` won op elk normaal venster de hoogte, en die
@@ -134,9 +145,25 @@ function saveName(e) {
   flex-direction: column;
   padding: 3rem 2.75rem 1.5rem;
   box-sizing: border-box;
-  color: #fff;
-  background: linear-gradient(160deg, #154273 0%, #1a4f86 100%);
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  color-scheme: light;
+  /* De inkt van het dek: één token, en elke doorzichtige variant eruit afgeleid
+     met `color-mix`. Zo staat de kleur één keer in het bestand in plaats van
+     twintig keer als `rgba(255, 255, 255, …)`, en volgt een wijziging in het
+     palet vanzelf. */
+  --ink: var(--primitives-color-neutral-0);
+  --ink-96: color-mix(in srgb, var(--ink) 96%, transparent);
+  --ink-85: color-mix(in srgb, var(--ink) 85%, transparent);
+  --ink-72: color-mix(in srgb, var(--ink) 72%, transparent);
+  --ink-55: color-mix(in srgb, var(--ink) 55%, transparent);
+  --ink-35: color-mix(in srgb, var(--ink) 35%, transparent);
+  --ink-18: color-mix(in srgb, var(--ink) 18%, transparent);
+  color: var(--ink);
+  background: linear-gradient(
+    160deg,
+    var(--primitives-color-lintblauw-750) 0%,
+    var(--primitives-color-lintblauw-700) 100%
+  );
+  box-shadow: 4px 0 24px rgb(0 0 0 / 0.25);
   font-family: 'RijksSans', system-ui, sans-serif;
   transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1), padding 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -214,7 +241,7 @@ function saveName(e) {
   flex: 0 0 auto;
   padding-top: 1.25rem;
   margin-top: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: 1px solid var(--ink-18);
 }
 
 /* Eén typografische ladder, in stappen van `--slide-unit` (een percentage van
@@ -226,7 +253,7 @@ function saveName(e) {
   font-size: max(0.72rem, calc(1.6 * var(--slide-unit)));
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--ink-72);
 }
 .title {
   font-family: 'RijksoverheidSerif', Georgia, serif;
@@ -236,7 +263,7 @@ function saveName(e) {
   letter-spacing: -0.015em;
   text-wrap: balance;
   margin: 0;
-  color: #fff;
+  color: var(--ink);
 }
 .title-hero {
   font-size: max(1.6rem, calc(8.5 * var(--slide-unit)));
@@ -268,7 +295,7 @@ function saveName(e) {
   font-style: italic;
   font-weight: 400;
   font-size: max(1rem, calc(3.6 * var(--slide-unit)));
-  color: rgba(255, 255, 255, 0.9);
+  color: color-mix(in srgb, var(--ink) 90%, transparent);
 }
 .bullets {
   font-size: max(0.8rem, calc(2.2 * var(--slide-unit)));
@@ -278,11 +305,11 @@ function saveName(e) {
   display: flex;
   flex-direction: column;
   gap: calc(0.9 * var(--slide-unit));
-  color: rgba(255, 255, 255, 0.96);
+  color: var(--ink-96);
   text-wrap: pretty;
 }
 .bullets li::marker {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ink-72);
 }
 .bullets-plain {
   list-style: none;
@@ -298,38 +325,38 @@ function saveName(e) {
   gap: 0.35rem;
   margin-top: calc(1.5 * var(--slide-unit));
   font-size: max(0.9rem, calc(1.9 * var(--slide-unit)));
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--ink-85);
 }
 .presenter {
   font: inherit;
   font-weight: 600;
-  color: #fff;
+  color: var(--ink);
   background: transparent;
   border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom: 1px solid var(--ink-35);
   padding: 0.1rem 0;
   width: min(24ch, 100%);
   outline: none;
 }
 .presenter::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--ink) 50%, transparent);
 }
 .presenter:focus {
-  border-bottom-color: #fff;
+  border-bottom-color: var(--ink);
 }
 .slide-link {
   align-self: flex-start;
   margin-top: calc(1.5 * var(--slide-unit));
   font-size: max(0.95rem, calc(2 * var(--slide-unit)));
   font-weight: 600;
-  color: #fff;
+  color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 .note {
   margin: 0;
   font-size: max(0.85rem, calc(1.6 * var(--slide-unit)));
-  color: rgba(255, 255, 255, 0.8);
+  color: color-mix(in srgb, var(--ink) 80%, transparent);
   line-height: 1.45;
 }
 
@@ -348,7 +375,7 @@ function saveName(e) {
 .counter {
   font-size: 0.95rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--ink-72);
   font-variant-numeric: tabular-nums;
 }
 .nav {
@@ -362,9 +389,9 @@ function saveName(e) {
   justify-content: center;
   height: 2.6rem;
   border-radius: 999px;
-  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  border: 1.5px solid var(--ink-55);
   background: transparent;
-  color: #fff;
+  color: var(--ink);
   cursor: pointer;
   font: inherit;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -378,8 +405,8 @@ function saveName(e) {
 }
 .round:hover,
 .pill:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: #fff;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  border-color: var(--ink);
 }
 .round:disabled {
   opacity: 0.35;
@@ -389,7 +416,7 @@ function saveName(e) {
   display: flex;
   gap: 1rem;
   font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--ink) 50%, transparent);
 }
 .progress {
   position: absolute;
@@ -397,11 +424,11 @@ function saveName(e) {
   right: 0;
   bottom: 0;
   height: 3px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--ink-18);
 }
 .progress-fill {
   height: 100%;
-  background: #ffb612;
+  background: var(--primitives-color-donkergeel-200);
   transition: width 0.3s ease;
 }
 @media (max-width: 1024px) {
