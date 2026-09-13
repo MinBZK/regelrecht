@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cloneWorld, fixtureGram, worldFixture } from '../testing/worldFixture.js';
 import {
   actionsByActor,
+  allGrams,
   clockIndex,
   competentAuthorityOf,
   decidedAlready,
@@ -383,5 +384,51 @@ describe('de instellingen', () => {
   it('laat een vrije instelling vrij', () => {
     const rows = settingRows({ settings: { ritme: 'maand' }, locked_settings: {} });
     expect(rows).toStrictEqual([{ name: 'ritme', value: 'maand', locked: null }]);
+  });
+});
+
+describe('alle grammen op één hoop', () => {
+  it('neemt elk gram van elke kroniek van elke cel mee', () => {
+    const counted = worldFixture.cells.reduce(
+      (total, cell) => total + cell.chronicles.reduce((sum, chronicle) => sum + chronicle.grams.length, 0),
+      0,
+    );
+    expect(allGrams(worldFixture)).toHaveLength(counted);
+  });
+
+  it('zet ze op volgorde van moment', () => {
+    const moments = allGrams(worldFixture).map((gram) => gram.opMoment);
+    expect(moments).toStrictEqual([...moments].sort());
+  });
+
+  it('houdt dezelfde dag in een vaste volgorde', () => {
+    // Cel, dan kroniek, dan de plek in die kroniek. De dag is de korrel, dus
+    // zonder die staart zou een tabel per beeld van volgorde wisselen.
+    const sameDay = [
+      {
+        id: 'b',
+        chronicles: [{ stream: 'tweede', grams: [{ name: 'y', op_moment: '2025-01-01' }] }],
+      },
+      {
+        id: 'a',
+        chronicles: [
+          { stream: 'eerste', grams: [{ name: 'x', op_moment: '2025-01-01' }] },
+          { stream: 'ander', grams: [{ name: 'w', op_moment: '2025-01-01' }] },
+        ],
+      },
+    ];
+    expect(allGrams({ cells: sameDay }).map((gram) => gram.name)).toStrictEqual(['w', 'x', 'y']);
+  });
+
+  it('draagt het gram zelf mee, ongefilterd', () => {
+    const { gram } = fixtureGram('toeslagen', 'decretogram');
+    const row = allGrams(worldFixture).find((candidate) => candidate.gram === gram);
+    expect(row.kind).toBe('decretogram');
+    expect(row.gram.fields).toBe(gram.fields);
+  });
+
+  it('valt op een leeg beeld terug op niets', () => {
+    expect(allGrams(null)).toStrictEqual([]);
+    expect(allGrams({ cells: [{ id: 'a' }] })).toStrictEqual([]);
   });
 });

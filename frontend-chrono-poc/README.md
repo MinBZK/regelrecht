@@ -3,14 +3,37 @@
 De frontend van de chronolexografie-testopstelling: één pagina die tekent wat de
 wereld aanbiedt, en die het woord van geen enkele casus kent.
 
-- **links** een kolom per cel, met per kroniek de grammen in tijdsvolgorde,
+- **bovenaan** de bediening, over de volle breedte: de acties die de wereld nu
+  aanbiedt (gegroepeerd per actor, met het formulier uit de actie zelf), de
+  instellingen, een vraag aan een cel — op een moment naar keuze, tot aan de
+  klok —, alle grammen op een rij, en het observatielog;
+- **daaronder** een kolom per cel, met per kroniek de grammen in tijdsvolgorde,
   gekleurd per soort (lexogram, decretogram, executogram); een decretogram klapt
   uit en toont per waarde waar ze vandaan komt;
-- **rechts** de bediening: de acties die de wereld nu aanbiedt (gegroepeerd per
-  actor, met het formulier uit de actie zelf), de instellingen, een vraag aan een
-  cel — op een moment naar keuze, tot aan de klok — en het observatielog;
 - **onderaan** de tijdlijn: waar de klok staat, elk moment waarop iets ligt als
   punt, en "spoel vooruit tot".
+
+Boven en onder, niet links en rechts: een kroniekrij draagt een naam, een moment,
+een kanaal en een grondslag, en in een halve pagina paste geen enkele cel nog
+heel. De bediening is smal van zichzelf en kan de volle breedte hebben zonder er
+iets mee te doen; de cellen krijgen de rest. Past het rijtje kolommen niet naast
+elkaar, dan schuift het **binnen zijn eigen paneel** opzij (`nldd-collection`
+met `layout="horizontal-scroll"` en een vaste `item-width`) en nooit de pagina.
+
+## Alle grammen op een rij
+
+Het tabblad **Grammen** legt elk gram van elke cel chronologisch naast elkaar:
+moment, cel, kroniek, type, naam, kanaal en grondslag, te filteren op cel en op
+type, en per rij uitklapbaar naar het ruwe gram als JSON.
+
+Dat is — net als het observatielog — een leesbeeld van de opstelling: geen cel
+kan dit overzicht opvragen, en er is niets in dit tabblad dat iets verandert. Het
+komt uit hetzelfde beeld als de kolommen; er wordt niets bij opgehaald en niets
+uit weggelaten. Eén ding zit er daarom niet in: het **receipt** van een besluit.
+`packages/simulator/src/snapshot.rs` laat dat bewust uit het beeld omdat het
+wandkloktijd draagt en een beeld dat per run verschilt geen contract is; wat een
+lezer van het receipt nodig heeft — de herkomst van elke waarde — staat er per
+veld wel in.
 
 ## Geen casus in deze app
 

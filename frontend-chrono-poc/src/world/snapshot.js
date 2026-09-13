@@ -466,3 +466,48 @@ export function warnings(snapshot) {
 export function missedDeadlines(snapshot) {
   return warnings(snapshot).filter((warning) => warning?.soort === 'gemiste_termijn');
 }
+
+/**
+ * Elk gram van elke cel, op één hoop en in chronologische volgorde.
+ *
+ * De kolommen per cel laten zien wat één cel weet; dit laat zien wat er in de
+ * hele wereld ligt, in de volgorde waarin het gebeurde. Dat is iets wat geen
+ * enkele cel kan zien — net als het observatielog is dit een leesbeeld van de
+ * opstelling en geen weg naar een kroniek van een ander.
+ *
+ * De volgorde is volledig bepaald: eerst het moment, dan de cel, dan de kroniek,
+ * dan de plek in die kroniek. De dag is de korrel, dus zonder die staartsortering
+ * zouden grammen van dezelfde dag per beeld van plek kunnen wisselen, en dan
+ * beweegt een tabel terwijl er niets gebeurd is.
+ *
+ * `gram` is het gram zoals het beeld het geeft — ongefilterd, want een lezer die
+ * het ruwe gram wil zien, wil precies dat zien en niet een uittreksel ervan.
+ */
+export function allGrams(snapshot) {
+  const rows = [];
+  for (const cell of cells(snapshot)) {
+    for (const chronicle of chronicles(cell)) {
+      (chronicle.grams ?? []).forEach((gram, index) => {
+        rows.push({
+          id: `${cell.id}|${chronicle.stream}|${index}`,
+          cell: cell.id,
+          chronicle: chronicle.stream,
+          index,
+          kind: gram.kind,
+          name: gram.name,
+          intake: gram.intake ?? '',
+          grondslag: gram.grondslag ?? '',
+          opMoment: gram.op_moment,
+          gram,
+        });
+      });
+    }
+  }
+  return rows.sort(
+    (a, b) =>
+      String(a.opMoment).localeCompare(String(b.opMoment)) ||
+      String(a.cell).localeCompare(String(b.cell)) ||
+      String(a.chronicle).localeCompare(String(b.chronicle)) ||
+      a.index - b.index,
+  );
+}
