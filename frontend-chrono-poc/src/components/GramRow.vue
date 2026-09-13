@@ -1,7 +1,14 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { formatMissing, formatMoment, formatValue, humanize } from '../world/format.js';
-import { describeOrigin, gramFields, gramKind, obligationsOf, regulationOf } from '../world/snapshot.js';
+import {
+  competentAuthorityOf,
+  describeOrigin,
+  gramFields,
+  gramKind,
+  obligationsOf,
+  regulationOf,
+} from '../world/snapshot.js';
 
 // Eén gram in een kroniek: wat er gebeurde, wanneer, langs welk kanaal, en — als
 // het een besluit is — waar elke waarde waarop besloten is vandaan komt.
@@ -36,6 +43,17 @@ const expandable = computed(() => props.gram.kind === 'decretogram');
 const status = computed(() => (props.clock && props.gram.op_moment > props.clock ? 'future' : 'past'));
 const regulation = computed(() => regulationOf(props.gram));
 const obligations = computed(() => obligationsOf(props.gram));
+
+// De wet bepaalt wie het bevoegd gezag is. Zegt ze er niets over, dan viel er
+// niet te toetsen wie mocht besluiten, en dat hoort bij het gram te staan waar
+// het over gaat — niet alleen in een lijst waarschuwingen ergens anders op de
+// pagina. Noemt de regeling wél een gezag, dan is het gelijk aan wie besloot
+// (anders was er geen gram) en staat het in de velden hieronder als elk ander
+// vast veld.
+const withoutAuthority = computed(() => {
+  const authority = competentAuthorityOf(props.gram);
+  return Boolean(authority) && authority.authority === null;
+});
 
 /** De velden van het gram, elk met zijn herkomst al uitgeschreven. */
 const fields = computed(() =>
@@ -103,6 +121,20 @@ function obligationText(row) {
         max-width="45%"
         horizontal-alignment="right"
         :text="regulation.regulation"
+      ></nldd-text-cell>
+    </nldd-list-item>
+
+    <!-- De regeling waaronder besloten is, wijst geen bevoegd gezag aan. Het
+         besluit staat — de cel kan er niets aan doen dat de wet zwijgt — maar er
+         viel niets te toetsen, en dat is iets anders dan een geslaagde toets. -->
+    <nldd-list-item v-if="expandable && withoutAuthority" slot="children" size="sm">
+      <nldd-spacer-cell size="20"></nldd-spacer-cell>
+      <nldd-icon-cell icon="warning" size="16" color="warning"></nldd-icon-cell>
+      <nldd-spacer-cell size="8"></nldd-spacer-cell>
+      <nldd-text-cell
+        size="sm"
+        text="Regeling declareert geen bevoegd gezag"
+        supporting-text="er viel niet te toetsen wie mocht besluiten"
       ></nldd-text-cell>
     </nldd-list-item>
 

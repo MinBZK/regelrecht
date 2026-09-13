@@ -50,6 +50,10 @@ cells:
           latest: true
 
   - id: toeslagen
+    # De naam waaronder deze cel zich uitgeeft. Het is een bewering: de
+    # regeling die ze uitvoert wijst dit gezag aan, en een besluit door een cel
+    # die iets anders beweert wordt geweigerd.
+    identity: Dienst Toeslagen
     laws:
       - test_partnerschapstoets
 

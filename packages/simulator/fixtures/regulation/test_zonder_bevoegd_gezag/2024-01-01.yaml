@@ -1,0 +1,52 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_zonder_bevoegd_gezag
+name: Testregeling zonder bevoegd gezag
+regulatory_layer: WET
+bwb_id: BWBR9999902
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_zonder_bevoegd_gezag
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont staat in wat er hierboven **niet** staat: er is geen
+# `competent_authority`. Dat is een gat in deze regeling — de wet wijst niemand
+# aan — en het platform vult het niet in. Een cel kan er dus op besluiten (de
+# opstelling blokkeren op een gat waar de cel niets aan kan doen, zet de
+# speeltuin dicht), maar er valt niets te toetsen: het gram draagt
+# `competent_authority: null` en de wereld waarschuwt erover.
+#
+# Een echte corpuswet verbouwen om dit te laten zien, is precies wat je niet
+# wilt: dan zou de opstelling het corpus sturen in plaats van andersom.
+articles:
+  - number: '1'
+    url: https://example.com/test_zonder_bevoegd_gezag#Artikel1
+    text: >-
+      De betrokkene komt in aanmerking indien hij verzekerd is.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: is_verzekerde
+            type: boolean
+            source:
+              description: >-
+                Wordt door de besluitende cel aangeleverd uit haar eigen
+                kroniek; deze regeling wijst geen bron aan.
+        output:
+          - name: komt_in_aanmerking
+            type: boolean
+        actions:
+          - output: komt_in_aanmerking
+            value:
+              operation: EQUALS
+              subject: $is_verzekerde
+              value: true

@@ -375,28 +375,87 @@ pub struct ExpectedFact {
     pub name: String,
 }
 
-/// Eén gemiste termijn, zoals de wereld haar meldt.
+/// Iets dat de wereld meldt zonder het tegen te houden.
+///
+/// Een waarschuwing is geen fout: ze zegt dat er iets niet klopt aan de wereld
+/// waar de lopende stap niets aan kan doen. Een variant erbij is dus een soort
+/// waarschuwing erbij en geen nieuw mechanisme; de soort staat in de JSON, zodat
+/// een lezer ze uit elkaar kan houden in plaats van ze op hun veldnamen te
+/// moeten herkennen.
 #[derive(Debug, Clone, Serialize)]
-pub struct Warning {
-    /// Het label van de termijn uit het wereldbestand.
-    pub label: String,
-    /// De dag waarop de termijn verstreek.
-    pub at: NaiveDate,
-    /// De cel waar het feit hoorde te liggen.
-    pub cell: String,
-    /// De kroniekstroom waarin het hoorde te liggen.
-    pub chronicle: String,
-    /// De naam van het gram dat ontbrak.
-    pub name: String,
+#[serde(tag = "soort", rename_all = "snake_case")]
+pub enum Warning {
+    /// Een termijn verstreek zonder dat het feit er lag.
+    GemisteTermijn {
+        /// Het label van de termijn uit het wereldbestand.
+        label: String,
+        /// De dag waarop de termijn verstreek.
+        at: NaiveDate,
+        /// De cel waar het feit hoorde te liggen.
+        cell: String,
+        /// De kroniekstroom waarin het hoorde te liggen.
+        chronicle: String,
+        /// De naam van het gram dat ontbrak.
+        name: String,
+    },
+    /// Er is besloten onder een regeling die geen bevoegd gezag declareert.
+    ///
+    /// Het besluit gaat door — de opstelling blokkeren op een gat in een
+    /// regeling zou de speeltuin dichtzetten — maar het gram draagt
+    /// `competent_authority: null`, en dan is er niets waaraan te toetsen viel
+    /// wie er mocht besluiten. Dat hoort te zien te zijn, want het is de
+    /// afwezigheid van een toets en niet de uitkomst ervan.
+    GeenBevoegdGezag {
+        /// De dag waarop besloten is.
+        at: NaiveDate,
+        /// De cel die besloot.
+        cell: String,
+        /// De besluit-definitie die uitgevoerd is.
+        besluit: String,
+        /// De regeling die niets declareert, bij `$id`.
+        regulation: String,
+    },
 }
 
 impl Warning {
+    /// Waaraan een scenario deze waarschuwing herkent (`expect_warnings`).
+    ///
+    /// Bij een termijn is dat het label uit het wereldbestand; bij een regeling
+    /// zonder bevoegd gezag is er geen label om te kiezen, dus staat er wat er
+    /// aan de hand is, met de regeling erin — anders zouden twee regelingen met
+    /// hetzelfde gat één verwachting delen.
+    pub fn label(&self) -> String {
+        match self {
+            Self::GemisteTermijn { label, .. } => label.clone(),
+            Self::GeenBevoegdGezag { regulation, .. } => {
+                format!("regeling '{regulation}' declareert geen bevoegd gezag")
+            }
+        }
+    }
+
     /// Leesbare waarschuwing, voor een verslag.
     pub fn describe(&self) -> String {
-        format!(
-            "{} ({}): cel '{}' had op dat moment geen '{}' in kroniek '{}'",
-            self.label, self.at, self.cell, self.name, self.chronicle
-        )
+        match self {
+            Self::GemisteTermijn {
+                label,
+                at,
+                cell,
+                chronicle,
+                name,
+            } => format!(
+                "{label} ({at}): cel '{cell}' had op dat moment geen '{name}' in kroniek \
+                 '{chronicle}'"
+            ),
+            // De regeling staat al in het label hierboven; haar er nog eens bij
+            // zetten zou dezelfde naam twee keer in één regel zetten.
+            Self::GeenBevoegdGezag {
+                at, cell, besluit, ..
+            } => format!(
+                "{} ({at}): cel '{cell}' besloot '{besluit}' zonder dat er iets te toetsen \
+                 viel",
+                self.label()
+            ),
+        }
     }
 }
 
@@ -1077,7 +1136,10 @@ impl World {
             });
         };
         let bridge = Rc::new(CellBridge::new(
-            Identity::for_cell(cell),
+            // De identiteit waaronder deze cel zich uitgeeft, en niet haar id:
+            // wat er over de grens gaat, draagt de naam die de cel beweert te
+            // zijn. Zonder declaratie zijn die twee hetzelfde.
+            Identity::new(cell, deciding.identity()),
             besluit,
             deciding.accepts_from().cloned().collect::<Vec<_>>(),
             std::mem::take(&mut self.cells),
@@ -1107,6 +1169,23 @@ impl World {
         // horen de contacten met de fout mee naar buiten.
         let decretogram = outcome?;
 
+        // Besloten onder een regeling die geen bevoegd gezag declareert. Het
+        // besluit staat — de cel kan er niets aan doen dat de wet zwijgt — maar
+        // er viel niets te toetsen, en dat hoort niet als stilte te eindigen.
+        // Hier en niet in de cel: waarschuwen is iets van de wereld, zoals een
+        // termijn die verstrijkt dat ook is.
+        let mut authority_warning = None;
+        if decretogram.competent_authority.is_none() {
+            let warning = Warning::GeenBevoegdGezag {
+                at: decretogram.op_moment,
+                cell: decretogram.cell.clone(),
+                besluit: decretogram.besluit.clone(),
+                regulation: decretogram.regulation.clone(),
+            };
+            self.warnings.push(warning.clone());
+            authority_warning = Some(warning);
+        }
+
         // Welke instellingen dit besluit gebruikte, staan daarmee vast. Hier, en
         // niet verderop: het gram ligt nu in de kroniek, en van dat moment af zou
         // een gewijzigd ritme het iets anders laten zeggen dan er gebeurd is. Gaat
@@ -1132,7 +1211,12 @@ impl World {
         for due in &decretogram.obligations {
             self.plan(due.vervaldatum, Trigger::Obligation(due.clone()));
         }
-        let events = self.fire_due(self.clock)?;
+        let mut events = self.fire_due(self.clock)?;
+        // Vooraan: de waarschuwing hoort bij het besluit, en dat ging vooraf aan
+        // de termijnen die er onderweg uit vervielen.
+        if let Some(warning) = authority_warning {
+            events.warnings.insert(0, warning);
+        }
 
         let crossings = bridge.crossings();
         self.crossings.extend(crossings.iter().cloned());
@@ -1179,7 +1263,7 @@ impl World {
         settings: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
     ) -> Result<Decretogram> {
-        let requests = deciding.acceptance_requests(besluit, params)?;
+        let requests = deciding.acceptance_requests(besluit, params, op_moment)?;
         let accepted = bridge.accept_all(&requests, op_moment)?;
         let shared: Rc<CellBridge> = Rc::clone(bridge);
         let resolver: Rc<dyn CellResolver> = shared;
@@ -1267,7 +1351,7 @@ impl World {
         if cell.has_recording_named(&expected.chronicle, &expected.name, at) {
             return None;
         }
-        Some(Warning {
+        Some(Warning::GemisteTermijn {
             label: deadline.label.clone(),
             at,
             cell: expected.cell.clone(),
@@ -1954,6 +2038,7 @@ record:
         let config: CellConfig = serde_yaml_ng::from_str(
             r"
 id: toeslagen
+identity: Dienst Toeslagen
 laws:
   - wet_op_de_zorgtoeslag
   - algemene_wet_inkomensafhankelijke_regelingen
@@ -2133,6 +2218,7 @@ lexostatus_definitions:
             parse(&format!(
                 r"
 id: toeslagen
+identity: Dienst Toeslagen
 laws:
   - wet_op_de_zorgtoeslag
   - algemene_wet_inkomensafhankelijke_regelingen

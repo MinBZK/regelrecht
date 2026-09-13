@@ -27,6 +27,20 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct CellConfig {
     /// Het cel-id, bijvoorbeeld `toeslagen`.
     pub id: String,
+    /// De naam waaronder deze cel zich uitgeeft; standaard het cel-id.
+    ///
+    /// Dit is een **bewering** en geen bevoegdheid. De wet bepaalt wie het
+    /// bevoegd gezag is (`competent_authority`, RFC-002); een cel zegt hier
+    /// alleen wie zij is. Bij een besluit legt het platform die twee naast
+    /// elkaar — zie [`crate::Cell::decide`] — en daarom staat hier een naam en
+    /// nooit een gezag: uit deze regel valt geen bevoegdheid te lezen die de
+    /// wet niet toekent.
+    ///
+    /// Het cel-id blijft waar het transport op vindt en waar het vraaggraf op
+    /// gaat; deze naam staat los daarvan, want een organisatie heet in de wet
+    /// zelden zoals haar systeem heet.
+    #[serde(default)]
+    pub identity: Option<String>,
     /// De regelingen die deze cel zelf laadt, bij `$id`.
     pub laws: Vec<String>,
     /// De kroniekstromen met de eigen feiten van de cel.

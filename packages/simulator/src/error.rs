@@ -369,6 +369,29 @@ pub enum SimulatorError {
         defined: String,
     },
 
+    /// De cel die wil besluiten, is niet het bevoegd gezag van de regeling.
+    ///
+    /// De wet bepaalt wie mag besluiten; de cel beweert wie zij is. Lopen die
+    /// twee uiteen, dan is er geen besluit te nemen en wordt er niets
+    /// vastgelegd — ook geen gram met een aantekening erbij, want een besluit
+    /// van een onbevoegde is geen besluit dat later nog goed te keuren valt.
+    #[error(
+        "cel '{cell}' beweert '{identity}' te zijn, maar regeling '{regulation}' wijst \
+         '{authority}' aan als bevoegd gezag (besluit '{besluit}')"
+    )]
+    NotCompetentAuthority {
+        /// Het cel-id van de cel die wilde besluiten.
+        cell: String,
+        /// De besluit-definitie die zij wilde uitvoeren.
+        besluit: String,
+        /// De naam waaronder die cel zich uitgeeft.
+        identity: String,
+        /// De regeling die het besluit uitvoert, bij `$id`.
+        regulation: String,
+        /// Het bevoegd gezag dat die regeling aanwijst.
+        authority: String,
+    },
+
     /// Twee besluit-definities met dezelfde naam in één cel.
     #[error("cel '{cell}' definieert besluit '{name}' twee keer")]
     DuplicateBesluit {

@@ -3,6 +3,7 @@ import { cloneWorld, fixtureGram, worldFixture } from '../testing/worldFixture.j
 import {
   actionsByActor,
   clockIndex,
+  competentAuthorityOf,
   describeEffect,
   describeOrigin,
   emptyForm,
@@ -11,6 +12,7 @@ import {
   gramKind,
   gramsInTimeOrder,
   isNewGram,
+  missedDeadlines,
   newGrams,
   obligationsOf,
   readLexostatus,
@@ -255,6 +257,40 @@ describe('het besluit zelf', () => {
 
   it('geeft geen verplichtingen waar er geen zijn', () => {
     expect(obligationsOf({ fields: {} })).toStrictEqual({ columns: [], rows: [] });
+  });
+
+  // De wet wijst het bevoegd gezag aan en de cel beweert wie ze is; het gram
+  // draagt allebei. Ze zijn hier gelijk, want een besluit door iemand anders
+  // wordt geweigerd en komt dus nooit in een kroniek terecht.
+  it('geeft het bevoegd gezag van de regeling naast wie besloot', () => {
+    expect(competentAuthorityOf(gram)).toStrictEqual({
+      authority: gram.fields.competent_authority.value,
+      decidedBy: gram.fields.besloten_door.value,
+    });
+  });
+
+  // Het geval waarvoor dit bestaat: de regeling zegt niets, dus er viel niets te
+  // toetsen. Dat hoort te onderscheiden te zijn van een gram dat geen besluit is.
+  it('onderscheidt "geen gezag aangewezen" van "geen besluit"', () => {
+    const zonder = { fields: { competent_authority: { value: null }, besloten_door: { value: 'uitvoerder' } } };
+    expect(competentAuthorityOf(zonder)).toStrictEqual({ authority: null, decidedBy: 'uitvoerder' });
+    expect(competentAuthorityOf({ fields: {} })).toBeNull();
+  });
+});
+
+describe('de waarschuwingen van de wereld', () => {
+  it('houdt de soorten uit elkaar', () => {
+    const world = cloneWorld();
+    world.warnings = [
+      { soort: 'gemiste_termijn', label: 'aanvraagtermijn', at: '2024-11-01' },
+      { soort: 'geen_bevoegd_gezag', at: '2024-06-01', cell: 'uitvoerder' },
+    ];
+    expect(missedDeadlines(world)).toStrictEqual([world.warnings[0]]);
+  });
+
+  it('geeft een lege lijst voor een beeld zonder waarschuwingen', () => {
+    expect(missedDeadlines(worldFixture)).toStrictEqual([]);
+    expect(missedDeadlines(undefined)).toStrictEqual([]);
   });
 });
 

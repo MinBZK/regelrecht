@@ -31,25 +31,49 @@ pub const SIMULATED_SIGNATURE_PREFIX: &str = "GESIMULEERDE-ONDERTEKENING door ";
 ///
 /// De binding van de veiligheidscontext is **Open Question 2** in RFC-022 en
 /// dus onbeslist. Deze versie kiest de eenvoudigste vorm die de vraag openhoudt:
-/// één identiteit per cel, die de cel zelf is. Er is nog geen medewerker, geen
-/// zaak en geen mandaat — komt dat er, dan krijgt dit type velden en hoeft geen
-/// enkele aanroeper te veranderen.
+/// één identiteit per cel. Er is nog geen medewerker, geen zaak en geen mandaat.
+///
+/// Twee namen en niet één, want ze beantwoorden twee vragen. [`Self::cell`] is
+/// het **cel-id**: waar het transport de peer vindt, en waarop het vraaggraf
+/// gaat. [`Self::name`] is de naam waaronder de cel zich **uitgeeft** — de naam
+/// die de wet zou moeten noemen als deze cel er het bevoegd gezag van is. Een
+/// wereldbestand declareert hem met `identity:` op de cel; staat hij er niet,
+/// dan is hij het cel-id.
+///
+/// Dat het een *bewering* is, is het hele punt: de cel zegt wie ze is, en voor
+/// nu geldt die bewering als waar. Ondertekening en verificatie zijn later werk
+/// (zie [`Signature`]); komt dat er, dan verandert er aan de aanroepers niets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
     cell: String,
+    name: String,
 }
 
 impl Identity {
-    /// De identiteit van een cel.
+    /// De identiteit van een cel die zich uitgeeft onder haar eigen id.
     pub fn for_cell(cell: &str) -> Self {
         Self {
             cell: cell.to_string(),
+            name: cell.to_string(),
+        }
+    }
+
+    /// De identiteit van een cel die zich onder een eigen naam uitgeeft.
+    pub fn new(cell: &str, name: &str) -> Self {
+        Self {
+            cell: cell.to_string(),
+            name: name.to_string(),
         }
     }
 
     /// De cel waarvoor deze identiteit staat.
     pub fn cell(&self) -> &str {
         &self.cell
+    }
+
+    /// De naam waaronder deze cel zich uitgeeft.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 

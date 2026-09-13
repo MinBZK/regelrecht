@@ -762,6 +762,12 @@
               "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
               "op_moment": "2024-04-01",
               "fields": {
+                "besloten_door": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "besluit": {
                   "value": "zorgtoeslag_toekenning",
                   "origin": {
@@ -894,6 +900,12 @@
               "grondslag": "wet_op_de_zorgtoeslag (versie 2024-01-01)",
               "op_moment": "2024-12-15",
               "fields": {
+                "besloten_door": {
+                  "value": "Dienst Toeslagen",
+                  "origin": {
+                    "herkomst": "besluit"
+                  }
+                },
                 "besluit": {
                   "value": "zorgtoeslag_vaststelling",
                   "origin": {

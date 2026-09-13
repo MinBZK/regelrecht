@@ -7,7 +7,7 @@ import ObservationLog from './components/ObservationLog.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import WorldTimeline from './components/WorldTimeline.vue';
 import { formatMoment } from './world/format.js';
-import { cells, warnings } from './world/snapshot.js';
+import { cells, missedDeadlines } from './world/snapshot.js';
 import { useWorld } from './world/useWorld.js';
 
 // De testopstelling in één pagina: links een kolom per cel met haar kronieken,
@@ -41,7 +41,7 @@ const {
 } = useWorld();
 
 const columns = computed(() => cells(snapshot.value));
-const deadlines = computed(() => warnings(snapshot.value));
+const deadlines = computed(() => missedDeadlines(snapshot.value));
 
 /** De panelen rechts. De vierde is een meetinstrument en zegt dat zelf ook. */
 const tabs = [
