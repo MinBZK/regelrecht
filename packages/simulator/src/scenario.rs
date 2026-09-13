@@ -12,7 +12,7 @@ use crate::invariant::{
     Traffic,
 };
 use crate::journal::{self, JournalEntry};
-use crate::security::{Identity, SecurityContext, SignedAnswer};
+use crate::security::{SecurityContext, SignedAnswer};
 use crate::snapshot::Snapshot;
 use crate::transport::InProcessTransport;
 use crate::values::equivalent;
@@ -1037,7 +1037,9 @@ impl Scenario {
             }
 
             let transport = InProcessTransport::over(world.cells());
-            let context = SecurityContext::new(Identity::for_cell(&via.from), &transport);
+            // Dezelfde identiteit als een besluit van deze cel zou dragen: de
+            // wereld bindt haar, en de sonde tekent er niet met een andere naam.
+            let context = SecurityContext::new(world.identity_of(&via.from), &transport);
             let signed = context.query(
                 &query.cell,
                 &query.lexostatus,

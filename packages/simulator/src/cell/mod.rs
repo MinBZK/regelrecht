@@ -790,32 +790,22 @@ impl Cell {
     /// of er gerekend of overgeschreven is. Terugzien doe je met een reductie
     /// over die stroom (`Cell::reduce`), en die komt niet langs de engine.
     ///
-    /// Geeft terug wélke stromen er klaargezet zijn, met hun stand op dit
-    /// moment: hoeveel grammen, en een hash over precies die grammen. Dat is
-    /// wat RFC-022 §1.3 aan een uitvoering vraagt die op een kroniek leunt —
-    /// inhoud en versie, zodat ze te reproduceren is — en het besluit-pad legt
-    /// het in het decretogram (zie [`Decretogram::chronicle_sources`]). Een
-    /// reductie gooit het weg: die legt niets vast.
+    /// Wat hier klaargezet wordt, legt het besluit-pad met stand en hash in
+    /// zijn gram (zie [`Decretogram::chronicle_sources`], RFC-022 §1.3); een
+    /// reductie legt niets vast en laat dat achterwege.
     fn register_own_facts(
         &self,
         service: &mut LawExecutionService,
         op_moment: NaiveDate,
-    ) -> Result<Vec<ChronicleSource>> {
+    ) -> Result<()> {
         service.clear_data_sources();
-        let mut sources = Vec::new();
         for stream in self.chronicles.reduce_to(op_moment) {
             if stream.stream == BESCHIKKINGEN {
                 continue;
             }
-            sources.push(ChronicleSource {
-                chronicle: stream.stream.clone(),
-                op_moment,
-                grams: stream.grams,
-                content_hash: stream.content_hash.clone(),
-            });
             service.register_dict_source(&stream.stream, &stream.key, stream.records)?;
         }
-        Ok(sources)
+        Ok(())
     }
 
     /// Geef de besluit-engine de cel-tier, voor de duur van dit ene besluit.
@@ -1054,7 +1044,7 @@ impl Cell {
         // En vóór het rekenen: wie niet het bevoegd gezag is, neemt geen besluit.
         // Dat dit hier staat en niet alleen bij de aanroeper, is het punt — een
         // cel weigert dit zelf, langs welke weg ze ook aangestuurd wordt.
-        let authority = self.competent_authority(&definition, op_moment);
+        let authority = self.competent_authority(&definition, op_moment)?;
         self.check_competent_authority(&definition, identity, authority.as_deref())?;
 
         let inputs = self.collect_inputs(&definition, params, accepted, &zaakkenmerk, op_moment)?;
@@ -1112,7 +1102,7 @@ impl Cell {
         let definition = self.definition(besluit)?;
         definition.check_params(&self.id, params)?;
         let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
-        let authority = self.competent_authority(&definition, op_moment);
+        let authority = self.competent_authority(&definition, op_moment)?;
         self.check_competent_authority(&definition, identity, authority.as_deref())?;
         Ok(definition.acceptance_requests(params, &zaakkenmerk))
     }
@@ -1134,20 +1124,46 @@ impl Cell {
     /// Op `op_moment` en niet op vandaag, want het is een eigenschap van de
     /// versie die toen gold: verandert de wet van gezag, dan blijft een besluit
     /// van toen door het gezag van toen genomen.
+    ///
+    /// `Ok(None)` is een regeling die zwijgt. Een regeling die wél iets
+    /// declareert maar met een `#`-verwijzing die nergens op uitkomt, is een
+    /// fout: doorgaan alsof ze zwijgt zou de toets stil uitzetten, en dan
+    /// besluit iedereen.
     fn competent_authority(
         &self,
         definition: &BesluitDefinition,
         op_moment: NaiveDate,
-    ) -> Option<String> {
-        let service = self.besluit_service.as_ref()?.borrow();
+    ) -> Result<Option<String>> {
+        let Some(service) = self.besluit_service.as_ref() else {
+            return Ok(None);
+        };
+        let service = service.borrow();
         let resolver = service.resolver();
-        let law = resolver.get_law_for_date(&definition.regulation, Some(op_moment))?;
+        let Some(law) = resolver.get_law_for_date(&definition.regulation, Some(op_moment)) else {
+            return Ok(None);
+        };
         let declared = resolver
             .get_article_by_output(&definition.regulation, &definition.output, Some(op_moment))
             .and_then(|article| article.machine_readable.as_ref())
             .and_then(|machine_readable| machine_readable.competent_authority.as_ref())
-            .or(law.competent_authority.as_ref())?;
-        competent_authority(law, declared)
+            .or(law.competent_authority.as_ref());
+        let Some(declared) = declared else {
+            return Ok(None);
+        };
+        match competent_authority(law, declared) {
+            Some(name) => Ok(Some(name)),
+            None => Err(SimulatorError::CompetentAuthorityUnresolvable {
+                cell: self.id.clone(),
+                besluit: definition.name.clone(),
+                regulation: definition.regulation.clone(),
+                reference: match declared {
+                    CompetentAuthority::String(text) => {
+                        text.strip_prefix('#').unwrap_or(text).to_string()
+                    }
+                    CompetentAuthority::Structured { name } => name.clone(),
+                },
+            }),
+        }
     }
 
     /// Is deze cel het bevoegd gezag van de regeling die ze wil uitvoeren?
@@ -1469,8 +1485,23 @@ impl Cell {
         };
 
         let mut service = service.borrow_mut();
-        let chronicle_sources = self.register_own_facts(&mut service, op_moment)?;
+        self.register_own_facts(&mut service, op_moment)?;
         self.grant_cell_tier(&mut service, resolver)?;
+        // De stand van elke stroom die zojuist klaargezet is, voor in het gram
+        // (RFC-022 §1.3). Hier en niet in een reductie: die legt niets vast en
+        // hoort er dus ook niet voor te betalen.
+        let chronicle_sources: Vec<ChronicleSource> = self
+            .chronicles
+            .stand(op_moment)?
+            .into_iter()
+            .filter(|stand| stand.stream != BESCHIKKINGEN)
+            .map(|stand| ChronicleSource {
+                chronicle: stand.stream,
+                op_moment,
+                grams: stand.grams,
+                content_hash: stand.content_hash,
+            })
+            .collect();
 
         let engine_params: BTreeMap<String, Value> = inputs
             .iter()
@@ -2641,6 +2672,75 @@ besluit_definitions:
             .unwrap_or_else(|e| panic!("het artikelgezag mag wél besluiten: {e}"));
         assert_eq!(gram.competent_authority.as_deref(), Some("Artikelgezag"));
         assert_eq!(gram.besloten_door, "Artikelgezag");
+    }
+
+    /// Een `#`-verwijzing die nergens op uitkomt, zet de toets niet stil.
+    ///
+    /// `test_gezag_onoplosbaar` wijst op het artikel naar `#bevoegd_gezag`, maar
+    /// geen actie zet die uitkomst; het document noemt een ander gezag. Zou het
+    /// platform dan naar het document terugvallen of het gezag als "niets" lezen,
+    /// dan besloot hier een cel die de wet niet aanwijst — of iedereen.
+    #[test]
+    fn een_onoplosbare_verwijzing_naar_het_gezag_is_een_fout() {
+        let config = config(
+            r"
+id: uitvoerder
+laws:
+  - test_gezag_onoplosbaar
+chronicles:
+  - stream: inkomensleveringen
+    key: bsn
+    events:
+      - name: inkomenslevering
+        intake: levering
+        recording_actor: uitvoerder
+        op_moment: 2023-11-15
+        fields:
+          bsn: '999993653'
+          is_verzekerde: true
+besluit_definitions:
+  - name: toekenning
+    regulation: test_gezag_onoplosbaar
+    output: komt_in_aanmerking
+    zaakkenmerk: 'toekenning/{bsn}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      bsn:
+        param: bsn
+      is_verzekerde:
+        from_chronicle: inkomensleveringen
+        field: is_verzekerde
+",
+        );
+        let mut cell = Cell::from_config(&config, &regulation_root(), &no_fixtures())
+            .unwrap_or_else(|e| panic!("de cel moet op te tuigen zijn: {e}"));
+
+        for identity in ["Documentgezag", "uitvoerder"] {
+            let err = cell
+                .decide(
+                    "toekenning",
+                    &bsn(),
+                    DecisionContext {
+                        identity,
+                        op_moment: moment(),
+                        settings: &no_settings(),
+                    },
+                    &no_accepted(),
+                    None,
+                )
+                .expect_err("een onoplosbaar gezag hoort het besluit te laten omvallen");
+            let SimulatorError::CompetentAuthorityUnresolvable { reference, .. } = &err else {
+                panic!("verwachtte CompetentAuthorityUnresolvable, kreeg {err}");
+            };
+            assert_eq!(reference, "bevoegd_gezag");
+        }
+        assert_eq!(
+            cell.chronicles.len_of(BESCHIKKINGEN),
+            Some(0),
+            "en er wordt niets vastgelegd"
+        );
     }
 
     /// Het gram zegt op welke stand van welke eigen kroniek de uitvoering leunde.

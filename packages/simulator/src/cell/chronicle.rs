@@ -102,10 +102,10 @@ pub struct ChronicleStore {
 
 /// Eén stroom zoals ze erbij ligt, geleend voor het inspectiebeeld.
 ///
-/// De tegenhanger van [`ReducedStream`]: die voegt samen wat de engine als
-/// databron wil, deze houdt elk gram zoals het vastgelegd is. Dat is wat een
-/// beeld van de wereld nodig heeft — wie kijkt, hoort de grammen te zien en niet
-/// een toestand die als vastlegging nooit bestaan heeft.
+/// De tegenhanger van [`ReducedStream`]: die kiest per onderwerp de laatste
+/// vastlegging voor de engine, deze houdt élk gram zoals het vastgelegd is. Dat
+/// is wat een beeld van de wereld nodig heeft — wie kijkt, hoort de hele kroniek
+/// te zien en niet alleen wat er op dit moment van telt.
 ///
 /// Geleend en niet in bezit: het inspectiebeeld maakt er zijn eigen doorsnede
 /// van (zie [`crate::Snapshot`]) en kan hier niets aan veranderen.
@@ -127,14 +127,23 @@ pub(crate) struct ReducedStream {
     /// Per sleutelwaarde de velden van de laatste vastlegging over dat
     /// onderwerp — één gram in zijn geheel, geen samenraapsel.
     pub(crate) records: Vec<BTreeMap<String, Value>>,
+}
+
+/// De stand van één stroom op een moment: hoeveel grammen, en welke.
+///
+/// Dit is de "inhoud en versie" die RFC-022 §1.3 vraagt van een kroniek die
+/// aan een uitvoering bijdraagt: een besluit dat deze hash draagt, is na te
+/// rekenen zolang de stroom tot dit moment dezelfde grammen draagt onder
+/// dezelfde naam en sleutel — en een kroniek groeit alleen, dus dat blijft zo.
+/// Apart van [`ReducedStream`], want een reductie heeft hem niet nodig en hoort
+/// er niet voor te betalen; alleen het besluit-pad vraagt erom.
+pub(crate) struct StreamStand {
+    /// Naam van de stroom.
+    pub(crate) stream: String,
     /// Hoeveel grammen er op het moment in de stroom lagen.
     pub(crate) grams: usize,
-    /// Een hash over precies die grammen, in de volgorde van de tijdas.
-    ///
-    /// Dit is de "inhoud en versie" die RFC-022 §1.3 vraagt van een kroniek die
-    /// aan een uitvoering bijdraagt: een besluit dat deze hash draagt, is na te
-    /// rekenen zolang de stroom tot dit moment dezelfde grammen draagt — en
-    /// een kroniek groeit alleen, dus dat blijft zo.
+    /// Een hash over de naam, de sleutel en precies die grammen, in de volgorde
+    /// van de tijdas.
     pub(crate) content_hash: String,
 }
 
@@ -465,29 +474,67 @@ impl ChronicleStore {
                         .into_values()
                         .map(|event| event.fields.clone())
                         .collect(),
-                    grams: events.len(),
-                    content_hash: content_hash(&events),
                 }
+            })
+            .collect()
+    }
+
+    /// De stand van elke stroom op `op_moment`: dezelfde grammen als
+    /// [`Self::reduce_to`] meetelt, geteld en gehasht.
+    ///
+    /// Alleen voor het besluit-pad, dat in zijn gram vastlegt waarop het leunde
+    /// (RFC-022 §1.3). Een gram dat niet te serialiseren is, is een fout en geen
+    /// stille constante: een hash die er als een hash uitziet maar niets
+    /// identificeert, is erger dan geen besluit.
+    pub(crate) fn stand(&self, op_moment: NaiveDate) -> Result<Vec<StreamStand>> {
+        self.streams
+            .iter()
+            .map(|stream| {
+                let mut events: Vec<&ChronicleEvent> = stream
+                    .events
+                    .iter()
+                    .filter(|event| event.op_moment <= op_moment)
+                    .collect();
+                events.sort_by_key(|event| event.op_moment);
+                Ok(StreamStand {
+                    stream: stream.stream.clone(),
+                    grams: events.len(),
+                    content_hash: content_hash(&stream.stream, &stream.key, &events)?,
+                })
             })
             .collect()
     }
 }
 
-/// Een hash over een rij grammen, zoals ze op de tijdas liggen.
+/// Een hash over een stroom: haar naam, haar sleutel en haar grammen zoals ze
+/// op de tijdas liggen.
 ///
 /// Over de serialisatie van de grammen zelf en niet over een samenvatting: twee
 /// stromen met dezelfde hash dragen dezelfde vastleggingen in dezelfde
-/// volgorde, en dat is precies wat een besluit nodig heeft om te zeggen waarop
-/// het leunde (RFC-022 §1.3). SHA-256, dezelfde keuze als de engine voor de
-/// hash van een regeling in het receipt.
-fn content_hash(events: &[&ChronicleEvent]) -> String {
-    // Onbereikbaar: een gram serialiseert altijd — de velden zijn `Value`s die
-    // uit YAML kwamen of door het platform gemaakt zijn. Zou het toch falen, dan
-    // is een lege tekst hashen erger dan een herkenbare, dus dat staat er.
+/// volgorde, onder dezelfde naam en gegroepeerd op dezelfde sleutel — want de
+/// sleutel bepaalt wat de engine ervan te zien krijgt, dus een andere sleutel
+/// is een andere bron. SHA-256, dezelfde keuze als de engine voor de hash van
+/// een regeling in het receipt.
+///
+/// De serialisatie is die van `serde_yaml_ng` over de velden in `BTreeMap`-
+/// volgorde: deterministisch bij gelijke afhankelijkheden, geen vastgepind
+/// draadformaat. Een nieuwe versie van die crate kan dus elke vastgelegde hash
+/// veranderen; dat is een prijs van deze eerste vorm en staat hier zodat niemand
+/// er in een vergelijking over struikelt.
+fn content_hash(stream: &str, key: &str, events: &[&ChronicleEvent]) -> Result<String> {
     let text =
-        serde_yaml_ng::to_string(events).unwrap_or_else(|_| "niet te serialiseren".to_string());
-    let digest = Sha256::digest(text.as_bytes());
-    format!("sha256:{digest:x}")
+        serde_yaml_ng::to_string(events).map_err(|source| SimulatorError::ChronicleHashing {
+            stream: stream.to_string(),
+            source,
+        })?;
+    let mut hasher = Sha256::new();
+    hasher.update(stream.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(key.as_bytes());
+    hasher.update(b"\n");
+    hasher.update(text.as_bytes());
+    let digest = hasher.finalize();
+    Ok(format!("sha256:{digest:x}"))
 }
 
 /// De waarde van een veld, hoofdletterongevoelig opgezocht.
@@ -660,13 +707,20 @@ mod tests {
         let eerste = event("2024-01-01", &[("bsn", Value::String("1".to_string()))]);
         let tweede = event("2024-06-01", &[("bsn", Value::String("1".to_string()))]);
 
-        let een = store(vec![eerste.clone()]).reduce_to(date("2025-01-01"));
-        let twee = store(vec![eerste.clone(), tweede]).reduce_to(date("2025-01-01"));
-        let twee_op_maart = store(vec![
-            eerste.clone(),
-            event("2024-06-01", &[("bsn", Value::String("1".to_string()))]),
-        ])
-        .reduce_to(date("2024-03-01"));
+        let stand = |events: Vec<ChronicleEvent>, moment: &str| {
+            store(events)
+                .stand(date(moment))
+                .unwrap_or_else(|e| panic!("de stand moet te bepalen zijn: {e}"))
+        };
+        let een = stand(vec![eerste.clone()], "2025-01-01");
+        let twee = stand(vec![eerste.clone(), tweede], "2025-01-01");
+        let twee_op_maart = stand(
+            vec![
+                eerste.clone(),
+                event("2024-06-01", &[("bsn", Value::String("1".to_string()))]),
+            ],
+            "2024-03-01",
+        );
 
         assert_eq!(een[0].grams, 1);
         assert_eq!(twee[0].grams, 2);
@@ -684,9 +738,27 @@ mod tests {
             "op een moment vóór het tweede gram is de stand dezelfde als zonder dat gram"
         );
         assert_eq!(
-            store(vec![eerste]).reduce_to(date("2025-01-01"))[0].content_hash,
+            stand(vec![eerste.clone()], "2025-01-01")[0].content_hash,
             een[0].content_hash,
             "dezelfde grammen, dezelfde hash"
+        );
+
+        // Dezelfde grammen onder een andere sleutel zijn een andere bron: de
+        // sleutel bepaalt wat de engine ervan te zien krijgt.
+        let anders_gesleuteld = ChronicleStore::from_streams(
+            "toeslagen",
+            vec![ChronicleStream {
+                stream: "relatie".to_string(),
+                key: "BSN".to_string(),
+                events: vec![eerste],
+            }],
+        )
+        .unwrap_or_else(|e| panic!("teststore moet op te bouwen zijn: {e}"))
+        .stand(date("2025-01-01"))
+        .unwrap_or_else(|e| panic!("de stand moet te bepalen zijn: {e}"));
+        assert_ne!(
+            anders_gesleuteld[0].content_hash, een[0].content_hash,
+            "een andere sleutel is een andere bron"
         );
     }
 

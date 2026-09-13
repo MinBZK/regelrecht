@@ -941,6 +941,41 @@ pub enum SimulatorError {
         separator: String,
     },
 
+    /// De stand van een kroniekstroom kon niet gehasht worden.
+    ///
+    /// Een fout en geen stille constante: een hash die er als een hash uitziet
+    /// maar niets identificeert, zou in een decretogram voor bewijs doorgaan.
+    #[error("kon de stand van kroniekstroom '{stream}' niet hashen: {source}")]
+    ChronicleHashing {
+        /// De stroom waarvan de grammen niet te serialiseren waren.
+        stream: String,
+        /// De onderliggende serialisatiefout.
+        source: serde_yaml_ng::Error,
+    },
+
+    /// De regeling wijst een bevoegd gezag aan met een `#`-verwijzing die
+    /// nergens op uitkomt.
+    ///
+    /// Dat is iets anders dan een regeling die zwijgt: er ís een gezag
+    /// gedeclareerd, alleen niet te lezen. Doorgaan alsof de wet niets zegt zou
+    /// de toets op het bevoegd gezag stil uitzetten, en dat is precies de kant
+    /// die niet mag: dan besluit iedereen.
+    #[error(
+        "cel '{cell}': regeling '{regulation}' wijst het bevoegd gezag aan als '#{reference}', \
+         maar geen actie van die regeling zet die uitkomst op een letterlijke naam \
+         (besluit '{besluit}')"
+    )]
+    CompetentAuthorityUnresolvable {
+        /// De cel die wilde besluiten.
+        cell: String,
+        /// De besluit-definitie.
+        besluit: String,
+        /// De regeling, bij `$id`.
+        regulation: String,
+        /// De uitkomstnaam achter de `#`.
+        reference: String,
+    },
+
     /// Het receipt van een besluit kon niet als kroniekveld worden opgeslagen.
     #[error("cel '{cell}': kon het receipt van besluit '{besluit}' niet vastleggen: {source}")]
     ReceiptEncoding {

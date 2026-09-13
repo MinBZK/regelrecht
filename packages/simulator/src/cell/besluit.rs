@@ -887,14 +887,17 @@ impl InputOrigin {
     }
 }
 
-/// Eén eigen kroniek waarop een uitvoering leunde, met haar stand op dat moment.
+/// Eén eigen kroniek die bij een uitvoering als databron klaarstond, met haar
+/// stand op dat moment.
 ///
 /// RFC-022 §1.3: draagt een kroniekstroom bij aan een uitvoering, dan worden
 /// haar inhoud en versie vastgelegd zodat de uitvoering te reproduceren is. Voor
 /// een kroniek is "de versie" haar stand op `op_moment` — alles wat toen
-/// vastlag — en "de inhoud" een hash over precies die grammen. De waarden die
-/// de engine eruit las, staan per stuk in de trace van het receipt; dit zegt
-/// waaruit ze gelezen zijn, en of dat nog dezelfde stroom is.
+/// vastlag — en "de inhoud" een hash over precies die grammen. Élke stroom die
+/// klaarstond staat erin, ook een lege (`grams: 0`): dat er niets lag, is net
+/// zo goed een stand waarop de uitvoering leunde. Welke waarden de engine
+/// werkelijk las, staat per stuk in de trace van het receipt; dit zegt waaruit
+/// ze gelezen konden worden, en of dat nog dezelfde stroom is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChronicleSource {
     /// De eigen stroom die als databron klaarstond.

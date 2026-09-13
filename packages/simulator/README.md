@@ -475,7 +475,10 @@ kan worden.
 `competent_authority` mag in de wet een `#`-verwijzing zijn naar een uitkomst van
 de regeling zelf (`competent_authority: '#bevoegd_gezag'`, zoals in
 `wet_op_de_zorgtoeslag`). Die wordt opgelost vóór de vergelijking — anders zou de
-toets op de tekst `#bevoegd_gezag` gaan en was geen enkele cel ooit bevoegd.
+toets op de tekst `#bevoegd_gezag` gaan en was geen enkele cel ooit bevoegd. Komt
+zo'n verwijzing nergens op uit — geen actie zet die uitkomst op een letterlijke
+naam — dan is dat een **fout** en geen zwijgende wet: de regeling zegt iets wat
+niet te lezen is, en doorgaan alsof ze niets zegt zou de toets stil uitzetten.
 
 Dat `besloten_door` naast `competent_authority` in het gram staat, is met opzet:
 ze zijn gelijk zodra er een gezag is, maar ze zeggen verschillende dingen — het

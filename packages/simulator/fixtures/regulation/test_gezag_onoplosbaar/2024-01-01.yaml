@@ -1,0 +1,51 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_gezag_onoplosbaar
+name: Testregeling met een onoplosbaar bevoegd gezag
+regulatory_layer: WET
+bwb_id: BWBR9999905
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_gezag_onoplosbaar
+competent_authority:
+  name: Documentgezag
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven.
+#
+# Wat ze aantoont: het artikel wijst het bevoegd gezag aan met een
+# `#`-verwijzing naar een uitkomst die geen enkele actie zet. Dat is geen
+# regeling die zwijgt maar een regeling die iets zegt wat niet te lezen is —
+# en dan mag het platform niet naar het document terugvallen of doen alsof er
+# niets aangewezen is, want dan besluit hier een ander dan de wet bedoelt.
+articles:
+  - number: '1'
+    url: https://example.com/test_gezag_onoplosbaar#Artikel1
+    text: >-
+      De betrokkene komt in aanmerking indien hij verzekerd is.
+    machine_readable:
+      competent_authority: '#bevoegd_gezag'
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: is_verzekerde
+            type: boolean
+            source:
+              description: >-
+                Wordt door de besluitende cel aangeleverd uit haar eigen
+                kroniek; deze regeling wijst geen bron aan.
+        output:
+          - name: komt_in_aanmerking
+            type: boolean
+        actions:
+          - output: komt_in_aanmerking
+            value:
+              operation: EQUALS
+              subject: $is_verzekerde
+              value: true

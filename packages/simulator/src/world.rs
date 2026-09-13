@@ -1372,9 +1372,11 @@ impl World {
     /// (`identity:` op de cel, standaard het id). De wereld houdt die binding —
     /// niet de cel, want wie zij zegt te zijn is geen eigenschap van haar
     /// kronieken (RFC-022 §2) — en geeft haar mee aan elke vraag over de grens
-    /// en aan elk besluit. Een cel die de wereld niet kent, komt hier niet: elke
-    /// aanroeper heeft haar bestaan al vastgesteld.
-    fn identity_of(&self, cell: &str) -> Identity {
+    /// en aan elk besluit — ook aan de sonde `query_via_transport` van een
+    /// scenario, zodat er één register is voor wie er tekent. Een cel die de
+    /// wereld niet kent, komt hier niet: elke aanroeper heeft haar bestaan al
+    /// vastgesteld.
+    pub(crate) fn identity_of(&self, cell: &str) -> Identity {
         let name = self
             .definition
             .cells
