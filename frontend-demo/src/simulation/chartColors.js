@@ -7,15 +7,20 @@
  * 1x1 canvas, which also turns oklch() into rgb. Same approach as the editor's
  * harvester charts.
  */
+// Eén token per kleur, zonder `light-dark()` eromheen: de schalen keren zelf al
+// om tussen licht en donker, dus een token in `light-dark()` zetten kiest in
+// donkere modus juist de verkeerde kant (zie de toelichting bij de graaf-kleuren
+// in css/main.css). `success-*` en `neutral-*` bestonden bovendien niet — de
+// neutrale schaal heet hier `coolgray`, en groen is gewoon `groen`.
 const TOKEN_EXPRESSIONS = {
-  primary: 'light-dark(var(--primitives-color-donkerblauw-600), var(--primitives-color-donkerblauw-450))',
-  secondary: 'light-dark(var(--primitives-color-hemelblauw-500), var(--primitives-color-hemelblauw-450))',
-  tertiary: 'light-dark(var(--primitives-color-mintgroen-600), var(--primitives-color-mintgroen-450))',
-  quaternary: 'light-dark(var(--primitives-color-oranje-600), var(--primitives-color-oranje-450))',
-  success: 'light-dark(var(--primitives-color-success-450), var(--primitives-color-success-550))',
+  primary: 'var(--primitives-color-donkerblauw-600)',
+  secondary: 'var(--primitives-color-hemelblauw-500)',
+  tertiary: 'var(--primitives-color-mintgroen-600)',
+  quaternary: 'var(--primitives-color-oranje-600)',
+  success: 'var(--primitives-color-groen-600)',
   text: 'var(--semantics-content-color)',
   textSecondary: 'var(--semantics-content-secondary-color)',
-  grid: 'light-dark(var(--primitives-color-neutral-150), var(--primitives-color-neutral-250))',
+  grid: 'var(--primitives-color-coolgray-200)',
 };
 
 export const SERIES_KEYS = ['primary', 'secondary', 'tertiary', 'quaternary'];

@@ -44,22 +44,26 @@ html.rr-presenting .rr-hide-presenting {
   display: none;
 }
 
-/* The part of the demo the presenter points at: a swelling Rijksblauw ring. */
+/* The part of the demo the presenter points at: a swelling Rijksblauw ring.
+ * De kleur komt uit het palet en niet als hex: `rgb(21 66 115)` stond hier, en
+ * die waarde bestaat niet in het design system. Anders dan het dek staat deze
+ * ring op de demo zelf, dus hij volgt wél het thema van de gebruiker. */
 .rr-present-pulse {
+  --pulse: var(--primitives-color-lintblauw-750);
   animation: rr-present-pulse 1.4s ease-in-out;
 }
 @keyframes rr-present-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(21, 66, 115, 0);
-    outline: 2px solid rgba(21, 66, 115, 0);
+    box-shadow: 0 0 0 0 transparent;
+    outline: 2px solid transparent;
   }
   50% {
-    box-shadow: 0 0 0 10px rgba(21, 66, 115, 0.4);
-    outline: 2px solid rgba(21, 66, 115, 0.9);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--pulse) 40%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--pulse) 90%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(21, 66, 115, 0);
-    outline: 2px solid rgba(21, 66, 115, 0);
+    box-shadow: 0 0 0 0 transparent;
+    outline: 2px solid transparent;
   }
 }
 
@@ -74,7 +78,7 @@ html.rr-presenting .rr-hide-presenting {
   }
   .rr-present-pulse {
     animation: none;
-    outline: 2px solid rgba(21, 66, 115, 0.9);
+    outline: 2px solid color-mix(in srgb, var(--pulse) 90%, transparent);
     outline-offset: 2px;
   }
 }

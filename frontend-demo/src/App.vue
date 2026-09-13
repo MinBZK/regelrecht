@@ -62,7 +62,8 @@ onMounted(() => window.addEventListener('keydown', onGlobalKey));
 onUnmounted(() => window.removeEventListener('keydown', onGlobalKey));
 
 const tabs = computed(() => [
-  { name: 'presentatie', text: 'Presentatie', icon: 'display', to: '/' },
+  { name: 'home', text: 'Home', icon: 'home', to: '/', iconOnly: true },
+  { name: 'presentatie', text: 'Presentatie', icon: 'display', to: '/presentatie' },
   { name: 'wetten', text: 'Wetten', icon: 'books', to: '/wetten' },
   { name: 'graaf', text: 'Graaf', icon: 'centralized-network', to: '/graaf' },
   { name: 'scenarios', text: "Scenario's", icon: 'checklist', to: '/scenarios' },
@@ -211,10 +212,17 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
               accessible-label="Demo-onderdeel"
               :variant="tabVariant"
             >
+              <!-- Home draagt alleen zijn huisje: het icoon is eenduidig genoeg
+                   en het achtste tabblad kostte de balk anders de breedte die
+                   de tekstvariant net tot 1240px overeind hield. Een item mag
+                   zijn eigen `variant` zetten; de tab-bar leest die bij het
+                   koppelen en laat hem voorgaan op die van de balk. `text`
+                   blijft staan en is dan de toegankelijke naam. -->
               <nldd-tab-bar-item
                 v-for="tab in tabs"
                 :key="tab.name"
                 :text="tab.text"
+                :variant="tab.iconOnly ? 'icon' : undefined"
                 :href="tab.to"
                 :selected="isActive(tab) || undefined"
                 @click.prevent="router.push(tab.to)"
