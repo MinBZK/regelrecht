@@ -38,8 +38,8 @@ const onderdelen = [
 
 const links = [
   { icon: 'home', title: 'regelrecht.rijks.app', text: 'Wat RegelRecht is, voor wie, en hoe je meedoet.', href: 'https://regelrecht.rijks.app' },
-  { icon: 'document', title: 'Documentatie', text: 'Het wetformaat, de engine, de RFC’s en hoe je zelf een wet toevoegt.', href: 'https://docs.regelrecht.rijks.app' },
-  { icon: 'library', title: 'Onderzoek', text: 'Het position paper Rules as Executed en het onderzoek eromheen.', href: 'https://regelrecht.rijks.app/#research' },
+  { icon: 'document', title: 'Documentatie', text: 'Het wetformaat, de engine, de RFC’s en hoe je zelf een wet toevoegt.', href: 'https://docs.regelrecht.rijks.app/docs/' },
+  { icon: 'library', title: 'Onderzoek', text: 'Het position paper Rules as Executed en het onderzoek eromheen.', href: 'https://regelrecht.rijks.app/research/' },
 ];
 
 function start() {
