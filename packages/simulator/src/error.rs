@@ -516,6 +516,90 @@ pub enum SimulatorError {
         field: String,
     },
 
+    /// Een besluit leest terug uit een besluit dat deze cel niet kent.
+    ///
+    /// De tegenhanger van [`SimulatorError::DecretogramAsBesluitInput`] aan de
+    /// goede kant: teruglezen mag, maar dan wel uit een besluit dat er is. Een
+    /// naam die nergens op uitkomt zou bij elke zaak "geen eerder besluit"
+    /// opleveren, en dat is niet te onderscheiden van een zaak die nog geen
+    /// geschiedenis heeft.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' leest terug uit besluit '{earlier}', \
+         maar die cel kent dat besluit niet (wel: {known})"
+    )]
+    UnknownEarlierBesluit {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit dat terugleest.
+        besluit: String,
+        /// De besluitnaam waaruit gelezen zou worden.
+        earlier: String,
+        /// Komma-gescheiden lijst van besluiten die de cel wél kent.
+        known: String,
+    },
+
+    /// Een besluit leest een veld terug dat een gram van dat eerdere besluit
+    /// niet draagt.
+    ///
+    /// Bij het optuigen en niet bij het besluit: welke velden een gram draagt —
+    /// de uitkomsten, de vaste velden en de inputs — staat vast zodra de
+    /// definities er zijn, en een typfout hoort niet te wachten tot er een zaak
+    /// is om op stuk te lopen.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' leest veld '{field}' uit eerder besluit \
+         '{earlier}', maar een gram van dat besluit draagt dat veld niet (wel: {known})"
+    )]
+    UnknownEarlierBesluitField {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit dat terugleest.
+        besluit: String,
+        /// Het besluit waaruit gelezen wordt.
+        earlier: String,
+        /// Het veld dat gelezen zou worden.
+        field: String,
+        /// Komma-gescheiden lijst van velden die zo'n gram wél draagt.
+        known: String,
+    },
+
+    /// Een vraag over de celgrens geeft `$zaakkenmerk` mee, maar het besluit
+    /// heeft geen zaakkenmerk-sjabloon.
+    ///
+    /// Dan is er niets in te vullen, en zou de bevraagde cel een lege tekst als
+    /// zaak krijgen. Bij het optuigen, want het hangt niet van de zaak af.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' geeft '$zaakkenmerk' mee in de vraag voor \
+         input '{input}', maar de definitie heeft geen zaakkenmerk-sjabloon"
+    )]
+    ZaakkenmerkReferenceWithoutTemplate {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit dat de vraag stelt.
+        besluit: String,
+        /// De input die met het antwoord gevuld zou worden.
+        input: String,
+    },
+
+    /// `$zaakkenmerk` staat naast een gedocumenteerde parameter met dezelfde
+    /// naam.
+    ///
+    /// Eén naam voor twee dingen: het ingevulde kenmerk van dit besluit, en wat
+    /// de aanroeper meegaf. De ingebouwde verwijzing wint, en dan zou de
+    /// parameter stil iets anders betekenen dan er staat.
+    #[error(
+        "cel '{cell}': besluit '{besluit}' gebruikt '$zaakkenmerk' in de vraag voor input \
+         '{input}' én documenteert een parameter 'zaakkenmerk'; die naam kan niet twee \
+         dingen betekenen"
+    )]
+    AmbiguousZaakkenmerkReference {
+        /// Cel waarin de definitie staat.
+        cell: String,
+        /// Het besluit dat de vraag stelt.
+        besluit: String,
+        /// De input die met het antwoord gevuld zou worden.
+        input: String,
+    },
+
     /// Een besluit kan een van zijn inputs op dit moment niet ophalen.
     ///
     /// Geen "niets vastgesteld" zoals bij een reductie, maar een fout: een

@@ -1,0 +1,69 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_nabetaling
+name: Testregeling nabetaling
+regulatory_layer: WET
+bwb_id: BWBR9999903
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://example.com/test_nabetaling
+competent_authority: Dienst Toeslagen
+
+# Een testregeling, met opzet **niet** in het corpus: ze bestaat om een
+# eigenschap van de opstelling aan te tonen en niet om recht weer te geven. Zie
+# `test_partnerschapstoets` voor dezelfde afweging.
+#
+# Wat ze aantoont is de vorm van een **vaststelling**: een besluit dat terugslaat
+# op een eerder besluit over dezelfde zaak. Daarvoor zijn twee bedragen nodig die
+# geen enkele corpuswet als input kent — wat er eerder is toegekend, en wat er
+# sindsdien betaald is — en een wet verbouwen omdat een testopstelling iets wil
+# laten zien, is precies wat je niet wilt.
+#
+# De twee komen langs verschillende wegen binnen, en dat is de hele demonstratie:
+# het toegekende bedrag leest de cel terug uit haar eigen eerdere gram
+# (`from_decretogram`), het betaalde bedrag **accepteert** ze van de cel die
+# betaalde (`accept_from`, met `$zaakkenmerk` als vraag). Hier wordt alleen het
+# verschil uitgerekend.
+articles:
+  - number: '1'
+    url: https://example.com/test_nabetaling#Artikel1
+    text: >-
+      Nog te betalen is het bedrag dat bij de toekenning is vastgesteld,
+      verminderd met hetgeen op die toekenning reeds is betaald.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          # Geen `source`: deze twee komen van buiten de wet. Het besluit levert
+          # ze aan als parameter — het ene teruggelezen uit een eerder gram, het
+          # andere geaccepteerd van de cel die betaalde — en de wet zegt alleen
+          # wat ze met de twee doet.
+          - name: toegekend_bedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+          - name: betaald_bedrag
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: nog_te_betalen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: nog_te_betalen
+            value:
+              operation: SUBTRACT
+              values:
+                - $toegekend_bedrag
+                - $betaald_bedrag

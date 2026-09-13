@@ -37,7 +37,7 @@ pub use besluit::{
 // uitkomst van een besluit van een vast veld kunnen onderscheiden om de herkomst
 // van elke waarde te kunnen noemen. `pub(crate)`, want het is geen contract naar
 // buiten — wat een gram draagt, staat in [`Decretogram`].
-pub(crate) use besluit::{fixed_fields, INPUTS, RECEIPT, REGULATION};
+pub(crate) use besluit::{fixed_fields, recorded_input, INPUTS, RECEIPT, REGULATION};
 // Het formulier van een actie wordt tegen dezelfde toets gehouden als de
 // parameters van een lexostatus of een besluit: precies wat gedocumenteerd is,
 // niets erbij en niets van het verkeerde type.
@@ -291,6 +291,11 @@ impl Cell {
                 .unwrap_or_default(),
             stream_keys: chronicles.declared_keys(),
             streams: declared,
+            besluit_fields: config
+                .besluit_definitions
+                .iter()
+                .map(|definition| (definition.name.clone(), definition.gram_fields()))
+                .collect(),
         };
 
         let mut published: BTreeMap<String, LexostatusDefinition> = BTreeMap::new();
@@ -959,7 +964,7 @@ impl Cell {
         let authority = self.competent_authority(&definition, op_moment);
         self.check_competent_authority(&definition, authority.as_deref())?;
 
-        let inputs = self.collect_inputs(&definition, params, accepted, op_moment)?;
+        let inputs = self.collect_inputs(&definition, params, accepted, &zaakkenmerk, op_moment)?;
         let mut decretogram = self.execute(
             &definition,
             zaakkenmerk,
@@ -1012,10 +1017,10 @@ impl Cell {
     ) -> Result<Vec<AcceptanceRequest>> {
         let definition = self.definition(besluit)?;
         definition.check_params(&self.id, params)?;
-        definition.zaakkenmerk(&self.id, params)?;
+        let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
         let authority = self.competent_authority(&definition, op_moment);
         self.check_competent_authority(&definition, authority.as_deref())?;
-        Ok(definition.acceptance_requests(params))
+        Ok(definition.acceptance_requests(params, &zaakkenmerk))
     }
 
     /// Het bevoegd gezag dat de regeling van dit besluit noemt, op dit moment.
@@ -1113,6 +1118,7 @@ impl Cell {
         definition: &BesluitDefinition,
         params: &BTreeMap<String, Value>,
         accepted: &BTreeMap<String, DecretogramInput>,
+        zaakkenmerk: &str,
         op_moment: NaiveDate,
     ) -> Result<BTreeMap<String, DecretogramInput>> {
         let mut collected: BTreeMap<String, DecretogramInput> = BTreeMap::new();
@@ -1160,6 +1166,17 @@ impl Cell {
                 BesluitInput::FromChronicle { chronicle, field } => {
                     self.read_own_chronicle(definition, input, chronicle, field, params, op_moment)?
                 }
+                BesluitInput::FromDecretogram {
+                    besluit: earlier,
+                    field,
+                } => self.read_earlier_decretogram(
+                    definition,
+                    input,
+                    earlier,
+                    field,
+                    zaakkenmerk,
+                    op_moment,
+                )?,
             };
             collected.insert(input.clone(), gathered);
         }
@@ -1224,6 +1241,82 @@ impl Cell {
                 chronicle: chronicle.to_string(),
                 field: field.to_string(),
                 recorded_op_moment: event.op_moment,
+            },
+        })
+    }
+
+    /// Eén input uit een **eerder besluit** van deze cel over dezelfde zaak.
+    ///
+    /// De sleutel is het zaakkenmerk van het lopende besluit en komt dus uit het
+    /// eigen sjabloon: een vaststelling leest de verlening over déze zaak terug.
+    /// Van de grammen met die naam en dat kenmerk wint het laatste op of vóór het
+    /// moment van dit besluit — dezelfde regel als bij een eigen kroniek, want
+    /// het is dezelfde tijdas.
+    ///
+    /// Ligt er geen zo'n gram, dan valt het besluit om en wordt er niets
+    /// vastgelegd. Dat is geen "niets vastgesteld": een vaststelling zonder de
+    /// verlening waarop ze terugslaat, hoort niet met een gat verder te rekenen.
+    fn read_earlier_decretogram(
+        &self,
+        definition: &BesluitDefinition,
+        input: &str,
+        earlier: &str,
+        field: &str,
+        zaakkenmerk: &str,
+        op_moment: NaiveDate,
+    ) -> Result<DecretogramInput> {
+        let missing = |reason: String| SimulatorError::BesluitInputMissing {
+            cell: self.id.clone(),
+            besluit: definition.name.clone(),
+            input: input.to_string(),
+            reason,
+        };
+        let key_value = Value::String(zaakkenmerk.to_string());
+        // De naam van het gram is de naam van de besluit-definitie (zie
+        // [`Decretogram::event`]), en die staat óók als veld in het gram. Op het
+        // veld filteren en niet op de naam: dat is de weg die elke andere
+        // reductie over deze stroom ook gaat.
+        let conditions = BTreeMap::from([(
+            besluit::BESLUIT.to_string(),
+            Value::String(earlier.to_string()),
+        )]);
+        let event = self
+            .chronicles
+            .latest_recording(
+                BESCHIKKINGEN,
+                besluit::ZAAKKENMERK,
+                &key_value,
+                &conditions,
+                op_moment,
+            )
+            .ok_or_else(|| {
+                missing(format!(
+                    "geen eerder besluit '{earlier}' voor zaak '{zaakkenmerk}' \
+                     op of vóór {op_moment}"
+                ))
+            })?;
+
+        // Eerst de velden van het gram zelf — de uitkomsten en de vaste velden —
+        // en daarna de inputs waarop dat besluit rekende. Die liggen in het gram
+        // een laag dieper, elk met hun eigen herkomst; wat hier meekomt is de
+        // waarde, en dat er teruggelezen is staat in de herkomst hieronder.
+        let value = chronicle::field(&event.fields, field)
+            .or_else(|| recorded_input(&event.fields, field))
+            .cloned()
+            .ok_or_else(|| {
+                missing(format!(
+                    "het besluit '{earlier}' van {} over zaak '{zaakkenmerk}' draagt \
+                     veld '{field}' niet",
+                    event.op_moment
+                ))
+            })?;
+
+        Ok(DecretogramInput {
+            value,
+            origin: InputOrigin::EarlierDecretogram {
+                besluit: earlier.to_string(),
+                zaakkenmerk: zaakkenmerk.to_string(),
+                moment: event.op_moment,
             },
         })
     }
@@ -2608,6 +2701,142 @@ besluit_definitions:
       is_verzekerde:
         from_chronicle: inkomensleveringen
         field: is_verzekerde";
+
+    /// Een tweede besluit ernaast dat het eerste over dezelfde zaak terugleest.
+    ///
+    /// Het leest `is_verzekerde` terug: dat is een **input** van het eerste gram,
+    /// en die ligt daar een laag dieper dan de uitkomsten. Wat er getoetst wordt
+    /// is dus beide wegen tegelijk — de zaak wordt gevonden, en het veld ook.
+    const HERZIENING: &str = "  - name: zorgtoeslag_herziening
+    regulation: wet_op_de_zorgtoeslag
+    output: heeft_recht_op_zorgtoeslag
+    zaakkenmerk: 'zorgtoeslag/{bsn}'
+    params:
+      - name: bsn
+        type: string
+    inputs:
+      bsn:
+        param: bsn
+      is_verzekerde:
+        from_decretogram: zorgtoeslag_vaststelling
+        field: is_verzekerde";
+
+    /// Een cel met het besluit én de herziening die het terugleest.
+    fn herziene_toeslagen() -> Cell {
+        besluitende_toeslagen(&format!("{VASTSTELLING}\n{HERZIENING}"))
+    }
+
+    /// Neem één besluit over deze persoon op dit moment.
+    fn beslis(cell: &mut Cell, besluit: &str, op_moment: NaiveDate) -> Result<Decretogram> {
+        cell.decide(
+            besluit,
+            &bsn(),
+            &no_settings(),
+            op_moment,
+            &no_accepted(),
+            None,
+        )
+    }
+
+    /// Het eerste besluit ligt er; dan leest de herziening het terug, met de
+    /// herkomst die zegt dát het teruggelezen is.
+    #[test]
+    fn een_besluit_leest_een_eerder_besluit_over_dezelfde_zaak_terug() {
+        let mut cell = herziene_toeslagen();
+        beslis(&mut cell, "zorgtoeslag_vaststelling", moment())
+            .unwrap_or_else(|e| panic!("het eerste besluit moet genomen kunnen worden: {e}"));
+
+        // Op dezelfde dag: "op of vóór" telt het gram van vandaag mee.
+        let gram = beslis(&mut cell, "zorgtoeslag_herziening", moment())
+            .unwrap_or_else(|e| panic!("de herziening moet genomen kunnen worden: {e}"));
+
+        let teruggelezen = gram
+            .inputs
+            .get("is_verzekerde")
+            .unwrap_or_else(|| panic!("de teruggelezen input hoort in het gram te staan"));
+        assert_eq!(teruggelezen.value, Value::Bool(true));
+        assert_eq!(
+            teruggelezen.origin,
+            InputOrigin::EarlierDecretogram {
+                besluit: "zorgtoeslag_vaststelling".to_string(),
+                zaakkenmerk: "zorgtoeslag/999993653".to_string(),
+                moment: moment(),
+            },
+            "de herkomst noemt het besluit, de zaak en het moment van dat besluit"
+        );
+    }
+
+    /// Zonder eerder besluit is er niets om op terug te slaan. Dat is een fout en
+    /// geen "niets vastgesteld": er wordt niets vastgelegd.
+    #[test]
+    fn een_herziening_zonder_eerder_besluit_faalt_en_legt_niets_vast() {
+        let mut cell = herziene_toeslagen();
+        let err = beslis(&mut cell, "zorgtoeslag_herziening", moment())
+            .expect_err("zonder eerder besluit valt er niets terug te lezen");
+        let SimulatorError::BesluitInputMissing { reason, .. } = &err else {
+            panic!("verwachtte BesluitInputMissing, kreeg {err}");
+        };
+        assert!(
+            reason.contains("geen eerder besluit 'zorgtoeslag_vaststelling'")
+                && reason.contains("zorgtoeslag/999993653")
+                && reason.contains("2025-01-01"),
+            "de melding moet het besluit, de zaak en het moment noemen, kreeg: {reason}"
+        );
+        assert_eq!(
+            cell.chronicles.len_of(BESCHIKKINGEN),
+            Some(0),
+            "een besluit dat niet doorging, hoort geen gram achter te laten"
+        );
+    }
+
+    /// Het besluit van een ándere zaak telt niet mee: de sleutel is het
+    /// zaakkenmerk van het lopende besluit, uit het eigen sjabloon.
+    #[test]
+    fn een_besluit_over_een_andere_zaak_wordt_niet_teruggelezen() {
+        let mut cell = herziene_toeslagen();
+        beslis(&mut cell, "zorgtoeslag_vaststelling", moment())
+            .unwrap_or_else(|e| panic!("het eerste besluit moet genomen kunnen worden: {e}"));
+
+        let andere_zaak =
+            BTreeMap::from([("bsn".to_string(), Value::String("999993654".to_string()))]);
+        let err = cell
+            .decide(
+                "zorgtoeslag_herziening",
+                &andere_zaak,
+                &no_settings(),
+                moment(),
+                &no_accepted(),
+                None,
+            )
+            .expect_err("het besluit over een andere zaak hoort niet gepakt te worden");
+        let SimulatorError::BesluitInputMissing { reason, .. } = &err else {
+            panic!("verwachtte BesluitInputMissing, kreeg {err}");
+        };
+        assert!(
+            reason.contains("zorgtoeslag/999993654"),
+            "de melding hoort over de zaak van dít besluit te gaan, kreeg: {reason}"
+        );
+    }
+
+    /// Een besluit van ná dit moment bestaat voor deze vraag niet — dezelfde
+    /// tijdas als bij elke andere reductie.
+    #[test]
+    fn een_later_besluit_telt_niet_mee_bij_het_teruglezen() {
+        let mut cell = herziene_toeslagen();
+        beslis(&mut cell, "zorgtoeslag_vaststelling", moment())
+            .unwrap_or_else(|e| panic!("het eerste besluit moet genomen kunnen worden: {e}"));
+
+        let err = beslis(
+            &mut cell,
+            "zorgtoeslag_herziening",
+            moment().pred_opt().unwrap_or_else(|| moment()),
+        )
+        .expect_err("een besluit van morgen telt vandaag niet mee");
+        assert!(
+            matches!(err, SimulatorError::BesluitInputMissing { .. }),
+            "verwachtte BesluitInputMissing, kreeg {err}"
+        );
+    }
 
     fn besluitende_toeslagen(besluit: &str) -> Cell {
         Cell::from_config(

@@ -451,6 +451,13 @@ pub(crate) struct CellSurface<'a> {
     pub(crate) streams: StreamFields,
     /// Per kroniekstroom het sleutelveld waarop ze groepeert.
     pub(crate) stream_keys: BTreeMap<String, String>,
+    /// Per besluit van deze cel de velden die een gram ervan draagt.
+    ///
+    /// Hiermee is een `from_decretogram` bij het optuigen na te lopen: kent de
+    /// cel dat besluit, en draagt zo'n gram dat veld? Beide antwoorden staan vast
+    /// zodra de definities er zijn, dus een typfout hoort hier te vallen en niet
+    /// pas bij de eerste zaak.
+    pub(crate) besluit_fields: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// Per kroniekstroom de veldnamen die een cel van die stroom kent.

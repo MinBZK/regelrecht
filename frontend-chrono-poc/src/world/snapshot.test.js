@@ -281,6 +281,29 @@ describe('de herkomst van een waarde', () => {
     expect(origin.details.map((detail) => detail.term)).toContain('kanaal');
   });
 
+  it('noemt een teruggelezen besluit een besluit, met de zaak en het moment', () => {
+    // Een literal en niet de fixture: deze wereld leest geen eerder besluit terug
+    // (zie `scenarios/toeslagen_nabetaling.yaml` voor een wereld die dat wel
+    // doet). Wat hier getoetst wordt is de weergave van de vorm die het gram
+    // opschrijft.
+    const origin = describeOrigin({
+      herkomst: 'besluit_input',
+      recorded_origin: {
+        herkomst: 'eerder_besluit',
+        besluit: 'zorgtoeslag_toekenning',
+        zaakkenmerk: 'zorgtoeslag/999993653',
+        moment: '2026-12-01',
+      },
+    });
+    expect(origin.kind).toBe('eerder_besluit');
+    expect(origin.label).toContain("eerder besluit 'zorgtoeslag_toekenning'");
+    expect(origin.label).toContain('01-12-2026');
+    expect(origin.details).toStrictEqual([
+      { term: 'zaak', value: 'zorgtoeslag/999993653' },
+      { term: 'besloten op', value: '01-12-2026' },
+    ]);
+  });
+
   it('blijft leesbaar als de herkomst niet in het gram staat', () => {
     expect(describeOrigin(undefined).label).toBe('herkomst niet vastgelegd');
     expect(describeOrigin({ herkomst: 'besluit_input', recorded_origin: null }).label).toContain('niet te lezen');

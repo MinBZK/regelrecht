@@ -315,9 +315,61 @@ Die stroom is **voorbehouden**, aan drie kanten:
   tussen de echte, en kon een reductie de twee niet onderscheiden — dan bewijst
   het kernscenario hieronder niets meer;
 - een besluit kan er geen input uit halen (`from_chronicle: beschikkingen`).
-  Daar liggen besluiten en geen feiten: een besluit leest geen besluit.
+  Daar liggen besluiten en geen feiten: een besluit leest geen besluit — niet
+  vermomd als eigen feit, althans. Zie de vierde inputvorm hieronder voor de
+  benoemde vorm waarin het wél mag.
 
 Alleen besluiten legt er iets in, en alleen een reductie haalt er iets uit.
+
+### De vier inputvormen van een besluit
+
+`inputs` zegt wat de cel de engine aanlevert, op de naam van een parameter of
+input van de regeling. Waar die waarde vandaan komt, staat erbij — en dat is
+telkens precies één van deze vier:
+
+| vorm | velden | waar de waarde vandaan komt |
+|---|---|---|
+| parameter | `param` | de gedocumenteerde parameters van dit besluit |
+| eigen kroniek | `from_chronicle` + `field` | de laatste vastlegging in die eigen stroom op of vóór het moment, gezocht op het sleutelveld van de stroom (tier 1) |
+| geaccepteerd | `accept_from` + `lexostatus` + `field` (+ `params`) | een andere cel stelt haar vast; deze cel rekent haar niet na (tier 2, invariant I5) |
+| eerder besluit | `from_decretogram` + `field` | het laatste gram van dát besluit over **dezelfde zaak**, op of vóór het moment |
+
+De laatste is de smalle uitzondering op "een besluit leest geen besluit", en ze
+is smal op drie manieren:
+
+- **Benoemd.** Er staat een besluitnaam, geen kroniekstroom. `from_chronicle:
+  beschikkingen` blijft geweigerd: dan zou een gram als eigen feit binnenkomen en
+  was niet meer te zien dat er teruggelezen is.
+- **Aan de eigen zaak vast.** De sleutel is het zaakkenmerk van het **lopende**
+  besluit, ingevuld uit het eigen sjabloon. Er is geen parameter waarmee een
+  besluit de zaak van een ander kan aanwijzen. Ligt er geen gram van dat besluit
+  met dat kenmerk op of vóór dit moment, dan faalt het besluit — *geen eerder
+  besluit '…' voor zaak '…' op of vóór …* — en wordt er niets vastgelegd. Dat is
+  geen "niets vastgesteld": een vaststelling zonder de verlening waarop ze
+  terugslaat, hoort niet met een gat verder te rekenen.
+- **Zichtbaar in het gram.** De herkomst is een eigen vorm
+  (`eerder_besluit`, met het besluit, de zaak en het moment), naast eigen
+  kroniek, parameter en geaccepteerd. Wie het gram leest, ziet dát er een eerder
+  besluit is teruggelezen; het is geen eigen feit en geen herberekening — het
+  bedrag komt uit het gram zoals het toen is vastgelegd, onder het recht dat toen
+  gold.
+
+`field` mag een uitkomst van dat gram zijn, een van zijn vaste velden, of een van
+de inputs waarop het rekende; wat een gram draagt staat vast zodra de definities
+er zijn, dus een typfout valt bij het optuigen en niet bij de eerste zaak.
+
+In `accept_from.params` staat naast `$parameter` en letterlijke tekst één
+ingebouwde verwijzing: **`$zaakkenmerk`**, het ingevulde kenmerk van het lopende
+besluit. Daarmee is "wat is er op déze zaak betaald?" een vraag die een besluit
+kan stellen zonder dat het kenmerk via een vrije parameter langs de aanroeper
+loopt. Er is geen algemeen `{…}`-sjabloon in `params`, en bij het optuigen wordt
+geweigerd wat de naam dubbelzinnig zou maken: een definitie zonder
+zaakkenmerk-sjabloon, en een definitie die zelf een parameter `zaakkenmerk`
+documenteert.
+
+`scenarios/toeslagen_nabetaling.yaml` speelt de twee samen af: een vaststelling
+die het toegekende bedrag uit haar eigen toekenning terugleest en het betaalde
+bedrag accepteert van de cel die betaalde.
 
 ### Twee paden, twee engines
 
@@ -1099,6 +1151,10 @@ cells:
             field: toetsingsinkomen             # de uitkomst daarvan
             params:
               bsn: $bsn                         # $naam = parameter van dit besluit
+              zaakkenmerk: $zaakkenmerk         # de zaak van dít besluit
+          toegekend_bedrag:                     # uit een eerder besluit van deze
+            from_decretogram: zorgtoeslag_toekenning  # cel over dezelfde zaak
+            field: hoogte_zorgtoeslag           # een uitkomst of input van dat gram
         obligations:                            # wat er betaald moet worden
           - amount: $hoogte_zorgtoeslag         # een uitkomst van dit besluit
             payer: belastingdienst              # de cel die de verplichting draagt
