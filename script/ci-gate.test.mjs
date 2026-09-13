@@ -22,12 +22,12 @@ const lines = source.split('\n');
  * De `branches:`-lijst van één trigger onder `on:`, in beide YAML-vormen
  * (`[main, x]` en een blok met streepjes).
  */
-function triggerBranches(event) {
-  const start = lines.findIndex((line) => /^on:\s*$/.test(line));
+function triggerBranches(event, from = lines) {
+  const start = from.findIndex((line) => /^on:\s*$/.test(line));
   assert.ok(start !== -1, 'ci.yml heeft geen `on:`-blok');
 
   const body = [];
-  for (const line of lines.slice(start + 1)) {
+  for (const line of from.slice(start + 1)) {
     if (/^\S/.test(line)) break;
     body.push(line);
   }
@@ -35,7 +35,12 @@ function triggerBranches(event) {
   const index = body.findIndex((line) => new RegExp(`^ {2}${event}:\\s*$`).test(line));
   assert.ok(index !== -1, `ci.yml heeft geen \`${event}\`-trigger`);
 
-  for (const line of body.slice(index + 1)) {
+  // Op regelnummer verder lezen en niet op regelinhoud: in de blokvorm is
+  // `    branches:` bij beide triggers dezelfde tekst, en zoeken op inhoud
+  // leverde voor allebei de lijst van de eerste trigger op — waarmee de twee
+  // asserties hieronder elkaar zouden bevestigen zonder iets te meten.
+  for (let cursor = index + 1; cursor < body.length; cursor += 1) {
+    const line = body[cursor];
     if (/^ {0,2}\S/.test(line)) break; // volgende trigger
     const inline = /^ {4}branches:\s*\[(.*)\]\s*$/.exec(line);
     if (inline) {
@@ -45,9 +50,8 @@ function triggerBranches(event) {
         .filter((n) => n !== '');
     }
     if (/^ {4}branches:\s*$/.test(line)) {
-      const at = body.indexOf(line);
       const names = [];
-      for (const item of body.slice(at + 1)) {
+      for (const item of body.slice(cursor + 1)) {
         if (/^\s*#/.test(item) || item.trim() === '') continue;
         const match = /^ {6}-\s*(.+?)\s*$/.exec(item);
         if (!match) break;
@@ -181,6 +185,40 @@ test('push en pull_request dekken dezelfde branches', () => {
   // Alleen `pull_request` uitbreiden geeft groene PR's en een ongeteste branch
   // na de merge; alleen `push` geeft het omgekeerde.
   assert.deepEqual(triggerBranches('pull_request'), triggerBranches('push'));
+});
+
+test('de lezer haalt per trigger zijn eigen branches-lijst op, ook in de blokvorm', () => {
+  // De twee asserties hierboven meten alleen iets als de lezer de triggers uit
+  // elkaar houdt. In de blokvorm is `    branches:` bij beide triggers dezelfde
+  // regel, dus een lezer die op tekst zoekt geeft twee keer de lijst van `push`
+  // terug: de lijsten lopen dan uiteen zonder dat er iets rood wordt.
+  const blok = [
+    'on:',
+    '  push:',
+    '    branches:',
+    '      - main',
+    '      - integratie',
+    '  pull_request:',
+    '    branches:',
+    '      - main',
+    '',
+    'permissions:',
+  ];
+  assert.deepEqual(triggerBranches('push', blok), ['main', 'integratie']);
+  assert.deepEqual(triggerBranches('pull_request', blok), ['main']);
+
+  const gemengd = [
+    'on:',
+    '  push:',
+    '    branches: [main, integratie]',
+    '  pull_request:',
+    '    branches:',
+    '      - main',
+    '',
+    'permissions:',
+  ];
+  assert.deepEqual(triggerBranches('push', gemengd), ['main', 'integratie']);
+  assert.deepEqual(triggerBranches('pull_request', gemengd), ['main']);
 });
 
 test('elke baan in ci.yml blokkeert, via de poort of als eigen required check', () => {
