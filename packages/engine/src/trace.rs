@@ -42,7 +42,12 @@ use std::time::Instant;
 ///
 /// Nodes can have children, forming a tree structure that mirrors the
 /// nested nature of law evaluation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// `PartialEq` compares a node structurally, which is what a test asserting
+/// two traces are the same wants. Note that it does not survive a JSON round
+/// trip for every value: `Value::Decimal` serializes through `f64` and a whole
+/// decimal comes back as `Value::Int`, so compare a round trip as JSON text
+/// rather than by node identity (RFC-039).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PathNode {
     /// Type of this execution step
     pub node_type: PathNodeType,
@@ -1303,24 +1308,55 @@ mod tests {
         );
     }
 
-    /// The same evaluation traced twice gives every step the same id, which is
-    /// what lets a fixture pin one and a URL fragment point at one.
+    /// The same evaluation traced twice comes out identical, ids included,
+    /// which is what lets a fixture pin one and a URL fragment point at one.
+    /// Timing is the one thing that would differ, and an untimed builder
+    /// records none.
     #[test]
-    fn node_ids_are_stable_across_runs() {
-        fn ids(node: &PathNode) -> Vec<String> {
-            let mut out = vec![node.node_id.clone().unwrap_or_default()];
-            for child in &node.children {
-                out.extend(ids(child));
-            }
-            out
-        }
+    fn the_same_evaluation_traces_identically() {
+        assert_eq!(addressed_trace(), addressed_trace());
+    }
 
-        assert_eq!(ids(&addressed_trace()), ids(&addressed_trace()));
+    /// A whole decimal does not survive a round trip, in the value tree or in
+    /// the document: `Value::Decimal` serializes through `f64` as `100.0`,
+    /// reads back as `Value::Int`, and re-serializes as `100`.
+    ///
+    /// Pinned because it bounds what "a recorded trace is a fixture" can mean
+    /// (RFC-039). A golden JSON fixture has to be compared against a freshly
+    /// serialized trace, in one direction. Comparing it against a
+    /// re-serialization of its own parse would fail on any trace that carries a
+    /// whole decimal, for a reason that has nothing to do with the trace.
+    #[test]
+    fn a_whole_decimal_does_not_survive_a_round_trip() {
+        let mut builder = TraceBuilder::new_untimed();
+        builder.push("bedrag", PathNodeType::Resolve);
+        builder.set_result(Value::Decimal(rust_decimal::Decimal::from(100)));
+        let original = builder.build().unwrap();
+
+        let json = serde_json::to_string(&original).expect("serializes");
+        assert!(json.contains("\"result\":100.0"), "got {json}");
+
+        let parsed: PathNode = serde_json::from_str(&json).expect("deserializes");
+        assert_eq!(parsed.result, Some(Value::Int(100)));
+        assert_ne!(parsed, original);
+
+        let reserialized = serde_json::to_string(&parsed).expect("serializes again");
+        assert!(
+            reserialized.contains("\"result\":100"),
+            "got {reserialized}"
+        );
+        assert_ne!(
+            json, reserialized,
+            "if these ever match, Value round-trips and this test can go"
+        );
     }
 
     /// `PathNode` deserializes, so a recorded trace is a fixture: a renderer
     /// can be built against one with no engine in the loop, and a stored trace
     /// can be read back (RFC-039).
+    ///
+    /// The sample holds integers, booleans and strings. A decimal is the
+    /// exception and has its own test below.
     #[test]
     fn a_trace_survives_a_json_round_trip() {
         let original = addressed_trace();
