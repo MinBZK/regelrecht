@@ -137,6 +137,14 @@ impl Lexostatus {
 pub struct Cell {
     /// Het cel-id, alleen voor foutmeldingen en herkomst in het antwoord.
     id: String,
+    /// De naam waaronder deze cel zich uitgeeft; standaard het cel-id.
+    ///
+    /// Een **bewering**, geen bevoegdheid (RFC-022 §2: een cel houdt geen
+    /// bevoegd gezag). Wat de cel ermee mag, staat in de wet: bij een besluit
+    /// legt [`Self::decide`] deze naam naast de `competent_authority` van de
+    /// regeling. Dat is ook de enige plek waar hij iets doet — er is geen weg
+    /// waarlangs een celconfiguratie zichzelf een gezag toebedeelt.
+    identity: String,
     /// De regelingen die deze cel laadt, bij `$id`.
     ///
     /// Niet om er iets mee te doen — daarvoor is er een engine — maar omdat het
@@ -320,6 +328,7 @@ impl Cell {
 
         Ok(Self {
             id: config.id.clone(),
+            identity: config.identity.clone().unwrap_or_else(|| config.id.clone()),
             laws: config.laws.clone(),
             service: service.map(RefCell::new),
             besluit_service: besluit_service.map(RefCell::new),
@@ -944,10 +953,21 @@ impl Cell {
         // eenduidig is, hoort er helemaal niet te komen — en dan hoeft de engine
         // er ook niet voor te draaien.
         let zaakkenmerk = definition.zaakkenmerk(&self.id, params)?;
+        // En vóór het rekenen: wie niet het bevoegd gezag is, neemt geen besluit.
+        // Dat dit hier staat en niet alleen bij de aanroeper, is het punt — een
+        // cel weigert dit zelf, langs welke weg ze ook aangestuurd wordt.
+        let authority = self.competent_authority(&definition, op_moment);
+        self.check_competent_authority(&definition, authority.as_deref())?;
 
         let inputs = self.collect_inputs(&definition, params, accepted, op_moment)?;
-        let mut decretogram =
-            self.execute(&definition, zaakkenmerk, inputs, resolver, op_moment)?;
+        let mut decretogram = self.execute(
+            &definition,
+            zaakkenmerk,
+            inputs,
+            resolver,
+            op_moment,
+            authority,
+        )?;
         // Ná de uitvoering, want het bedrag komt uit de uitkomst waarop besloten
         // is; vóór het vastleggen, want het schema hoort ín het gram.
         decretogram.obligations = definition.schedule_obligations(
@@ -980,15 +1000,76 @@ impl Cell {
     /// dat om zijn eigen kenmerk toch al niet genomen kan worden. Zonder deze
     /// regel zou de orde van `decide` ("eerst het kenmerk, dan ophalen en
     /// rekenen") wél in de cel staan en niet meer gelden.
+    ///
+    /// Om diezelfde reden komt ook de toets op het bevoegd gezag hier al langs.
+    /// Een cel die de regeling niet mag uitvoeren, hoort een andere organisatie
+    /// niet eerst te laten zien dat er iets over iemand werd opgevraagd.
     pub(crate) fn acceptance_requests(
         &self,
         besluit: &str,
         params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
     ) -> Result<Vec<AcceptanceRequest>> {
         let definition = self.definition(besluit)?;
         definition.check_params(&self.id, params)?;
         definition.zaakkenmerk(&self.id, params)?;
+        let authority = self.competent_authority(&definition, op_moment);
+        self.check_competent_authority(&definition, authority.as_deref())?;
         Ok(definition.acceptance_requests(params))
+    }
+
+    /// Het bevoegd gezag dat de regeling van dit besluit noemt, op dit moment.
+    ///
+    /// Uit het **law-model** en niet uit de celconfiguratie: de wet bepaalt wie
+    /// het bevoegd gezag is. `None` betekent dat de regeling er niets over zegt
+    /// — een gat in die regeling, niet iets dat het platform invult.
+    ///
+    /// Op `op_moment` en niet op vandaag, want het is een eigenschap van de
+    /// versie die toen gold: verandert de wet van gezag, dan blijft een besluit
+    /// van toen door het gezag van toen genomen.
+    fn competent_authority(
+        &self,
+        definition: &BesluitDefinition,
+        op_moment: NaiveDate,
+    ) -> Option<String> {
+        let service = self.besluit_service.as_ref()?.borrow();
+        let resolver = service.resolver();
+        resolver
+            .get_law_for_date(&definition.regulation, Some(op_moment))
+            .and_then(competent_authority)
+    }
+
+    /// Is deze cel het bevoegd gezag van de regeling die ze wil uitvoeren?
+    ///
+    /// De vergelijking gaat over **genormaliseerde tekst** (zie [`normalised`]):
+    /// een spatie vooraan of een hoofdletter is een schrijfwijze en geen andere
+    /// organisatie. Verder wordt er niets geïnterpreteerd — een afkorting is een
+    /// andere naam, en die hoort in het wereldbestand of in de wet rechtgezet te
+    /// worden en niet hier geraden.
+    ///
+    /// Noemt de regeling geen bevoegd gezag, dan is er niets te toetsen en gaat
+    /// het besluit door. Dat is een keuze: de opstelling blokkeren op een gat in
+    /// een regeling zou de speeltuin dichtzetten voor iets waar de cel niets aan
+    /// kan doen. Het gram draagt dan `competent_authority: null` en de wereld
+    /// waarschuwt erover, zodat het gat zichtbaar is in plaats van stil.
+    fn check_competent_authority(
+        &self,
+        definition: &BesluitDefinition,
+        authority: Option<&str>,
+    ) -> Result<()> {
+        let Some(authority) = authority else {
+            return Ok(());
+        };
+        if normalised(authority) == normalised(&self.identity) {
+            return Ok(());
+        }
+        Err(SimulatorError::NotCompetentAuthority {
+            cell: self.id.clone(),
+            besluit: definition.name.clone(),
+            identity: self.identity.clone(),
+            regulation: definition.regulation.clone(),
+            authority: authority.to_string(),
+        })
     }
 
     /// Eén besluit-definitie van deze cel, of een nette fout die opsomt wat de
@@ -1154,6 +1235,11 @@ impl Cell {
     /// aantoonbaar op precies de feiten die het verzamelde. De rest van wat de
     /// regeling nodig heeft, komt uit de eigen kronieken als databron — dezelfde
     /// weg als bij een reductie, want dat is nog altijd tier 1.
+    ///
+    /// `competent_authority` is al opgelost — in [`Self::decide`], want daar
+    /// wordt er ook op geweigerd. Het hier nóg eens opzoeken zou twee antwoorden
+    /// op dezelfde vraag mogelijk maken, en dan kon een gram een ander gezag
+    /// dragen dan het gezag waarop het is toegelaten.
     fn execute(
         &self,
         definition: &BesluitDefinition,
@@ -1161,6 +1247,7 @@ impl Cell {
         inputs: BTreeMap<String, DecretogramInput>,
         resolver: Option<Rc<dyn CellResolver>>,
         op_moment: NaiveDate,
+        competent_authority: Option<String>,
     ) -> Result<Decretogram> {
         // Onbereikbaar: `validate` weigert een besluit over een regeling die de
         // cel niet zelf laadt, en een cel zonder engine laadt er geen enkele.
@@ -1201,7 +1288,6 @@ impl Cell {
         );
 
         let resolver = service.resolver();
-        let law = resolver.get_law_for_date(&definition.regulation, Some(op_moment));
         // Het rechtskarakter hoort bij het artikel dat de aansturende uitkomst
         // voortbrengt: díe uitkomst *is* het besluit. Een uitkomst die erbij
         // meegaat kan uit een ander artikel komen, en dat artikel zegt niets
@@ -1219,7 +1305,8 @@ impl Cell {
             op_moment,
             regulation: definition.regulation.clone(),
             regulation_valid_from: result.regulation_valid_from.clone(),
-            competent_authority: law.and_then(competent_authority),
+            competent_authority,
+            besloten_door: self.identity.clone(),
             legal_character,
             outputs: definition
                 .recorded_outputs()
@@ -1337,6 +1424,9 @@ impl Cell {
 /// altijd als `output` gedeclareerd — vaak zet één actie haar rechtstreeks — dus
 /// ze is niet via de engine op te vragen; het geladen law-model is de plek waar
 /// ze wél staat.
+///
+/// Wat er met de uitkomst gebeurt, staat in [`Cell::check_competent_authority`]:
+/// de cel die besluit moet deze naam dragen, en anders is er geen besluit.
 fn competent_authority(law: &ArticleBasedLaw) -> Option<String> {
     match law.competent_authority.as_ref()? {
         CompetentAuthority::Structured { name } => Some(name.clone()),
@@ -1362,6 +1452,17 @@ fn resolve_reference(law: &ArticleBasedLaw, reference: &str) -> Option<String> {
             regelrecht_engine::ActionValue::Literal(Value::String(text)) => Some(text.clone()),
             _ => None,
         })
+}
+
+/// Twee namen vergelijkbaar maken: zonder witruimte eromheen, zonder kasus.
+///
+/// Meer niet. Een organisatienaam is tekst die een mens intikt, dus `' Dienst
+/// Toeslagen'` en `'dienst toeslagen'` zijn dezelfde organisatie. Wat er wél
+/// verschil in maakt — een afkorting, een oude naam, een afdeling erbij — blijft
+/// verschil: dat is een vraag over wie er bevoegd is, en die hoort in de wet of
+/// in het wereldbestand beantwoord te worden en niet hier geraden.
+fn normalised(name: &str) -> String {
+    name.trim().to_lowercase()
 }
 
 /// Waar een kroniekfilter naar kijkt: één stroom, één onderwerp, één filter.
@@ -1763,6 +1864,7 @@ lexostatus_definitions:
         config(&format!(
             r"
 id: toeslagen
+identity: Dienst Toeslagen
 laws:
   - wet_op_de_zorgtoeslag
   - algemene_wet_inkomensafhankelijke_regelingen
@@ -2464,6 +2566,7 @@ lexostatus_definitions:
         config(&format!(
             r"
 id: toeslagen
+identity: Dienst Toeslagen
 laws:
   - wet_op_de_zorgtoeslag
   - algemene_wet_inkomensafhankelijke_regelingen

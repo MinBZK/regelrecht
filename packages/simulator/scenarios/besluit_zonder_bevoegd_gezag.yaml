@@ -1,0 +1,99 @@
+---
+name: een regeling die geen bevoegd gezag declareert, waarschuwt
+description: >-
+  De wet bepaalt wie het bevoegd gezag is. Zegt een regeling daar niets over,
+  dan is dat een gat in die regeling en niet iets dat het platform invult. Het
+  besluit gaat wél door — de cel kan er niets aan doen dat de wet zwijgt, en de
+  opstelling dichtzetten op een gat zou de speeltuin dichtzetten — maar er valt
+  niets te toetsen, en dat hoort zichtbaar te zijn in plaats van stil.
+
+  Wat dit scenario vastlegt: het gram draagt `competent_authority: null` naast
+  het `besloten_door` dat er wél is, en de run meldt een waarschuwing. De cel
+  declareert hier met opzet geen `identity`, zodat te zien is dat een besluit
+  zonder gezag om te toetsen ook zonder declaratie doorgaat.
+
+clock:
+  start: 2024-01-01
+
+cells:
+  - id: uitvoerder
+    laws:
+      - test_zonder_bevoegd_gezag
+
+    chronicles:
+      - stream: inkomensleveringen
+        key: bsn
+        events:
+          - name: inkomenslevering
+            intake: levering
+            recording_actor: uitvoerder
+            grondslag: jaarlijkse inkomenslevering
+            op_moment: 2023-11-15
+            fields:
+              bsn: '999993653'
+              is_verzekerde: true
+
+    besluit_definitions:
+      - name: toekenning
+        doc: >-
+          Een besluit onder een regeling die geen bevoegd gezag noemt. Er is dus
+          niets om de identiteit van deze cel naast te leggen.
+        regulation: test_zonder_bevoegd_gezag
+        output: komt_in_aanmerking
+        zaakkenmerk: toekenning/{bsn}
+        params:
+          - name: bsn
+            type: string
+        inputs:
+          bsn:
+            param: bsn
+          is_verzekerde:
+            from_chronicle: inkomensleveringen
+            field: is_verzekerde
+
+    lexostatus_definitions:
+      - name: toekenningsbeschikking
+        doc: wat deze cel over deze zaak besloten heeft
+        inputs:
+          - name: zaakkenmerk
+            type: string
+        outputs:
+          - komt_in_aanmerking
+          - competent_authority
+          - besloten_door
+        reduction:
+          chronicle: beschikkingen
+          key: zaakkenmerk
+          latest: true
+
+decide:
+  - description: de cel besluit, en er is geen gezag om haar aan te toetsen
+    cell: uitvoerder
+    besluit: toekenning
+    params:
+      bsn: '999993653'
+    op_moment: 2024-06-01
+    expect:
+      komt_in_aanmerking: true
+
+queries:
+  - description: >-
+      Het gram zegt letterlijk dat er geen bevoegd gezag is aangewezen, en zegt
+      er even letterlijk bij wie besloot. Dat die twee los staan, is wat een
+      lezer later nodig heeft: een lege `competent_authority` is de afwezigheid
+      van een toets en niet de afwezigheid van een besluiter.
+    cell: uitvoerder
+    lexostatus: toekenningsbeschikking
+    params:
+      zaakkenmerk: toekenning/999993653
+    op_moment: 2024-06-01
+    expect:
+      komt_in_aanmerking: true
+      competent_authority: null
+      besloten_door: uitvoerder
+
+# De waarschuwing hoort bij de run en niet bij de stap: ze zegt iets over de
+# regeling waaronder besloten is. Zonder deze regel zou dit scenario falen, want
+# een waarschuwing die niemand verwacht laat een run vallen.
+expect_warnings:
+  - regeling 'test_zonder_bevoegd_gezag' declareert geen bevoegd gezag

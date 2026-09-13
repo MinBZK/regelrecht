@@ -35,6 +35,13 @@ lijkt (invariant I5). Een uitgeklapt decretogram zegt daarom per veld:
 
 Plus de wetsversie waaronder besloten is en de verplichtingen die eruit volgen.
 
+En één ding dat er juist níet staat: declareert de regeling geen bevoegd gezag
+(`competent_authority: null`), dan meldt het uitgeklapte gram dat er **niet te
+toetsen viel wie mocht besluiten**. Dat hoort bij het gram waar het over gaat en
+niet in de lijst verstreken termijnen elders op de pagina: een besluit waarvan de
+wet niemand aanwees, is iets anders dan een gemiste termijn. Wees er niet te snel
+overheen — het is de afwezigheid van een toets, niet de uitkomst ervan.
+
 ## Het observatielog is een meetinstrument
 
 Het log staat náást de opstelling, niet erin, en de UI zegt dat: geen enkele cel

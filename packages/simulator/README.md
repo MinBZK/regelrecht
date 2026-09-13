@@ -112,7 +112,9 @@ Precies de drie dingen die er in de praktijk bij gedacht worden (RFC-022 §2):
   een vraag beantwoord wordt, zitten in de veiligheidscontext, niet in de cel.
 - **Geen bevoegd gezag.** `competent_authority` (RFC-002) is een juridisch feit
   van het besluit, geen eigenschap van de opslag. Een cel houdt kronieken van
-  besluiten waarvoor een ander bevoegd is.
+  besluiten waarvoor een ander bevoegd is. Wat een cel wél heeft, is een
+  **identiteit** — wie ze zegt te zijn — en dat is iets anders dan een
+  bevoegdheid: zie [Wie mag besluiten](#wie-mag-besluiten).
 - **Geen synthese.** Een reductie raakt uitsluitend de eigen kronieken.
   Combineren over cellen heen doet een consument, nooit een cel.
 
@@ -347,7 +349,8 @@ uitbreiding van RFC-013 stil achterlopen.
 | `zaakkenmerk` | waaronder deze zaak terug te vinden is, uit het sjabloon van de definitie |
 | `op_moment` | wanneer besloten is (het gram is een gewoon executogram) |
 | `regulation` + `regulation_valid_from` | welke regeling, en **welke versie daarvan gold** |
-| `competent_authority` | het bevoegd gezag dat de regeling noemt (RFC-002) |
+| `competent_authority` | het bevoegd gezag dat de regeling noemt (RFC-002); `null` als ze er geen noemt |
+| `besloten_door` | de identiteit van de cel die besloot — zie [Wie mag besluiten](#wie-mag-besluiten) |
 | `legal_character` | wat de wet ervan maakt: `BESCHIKKING`, `TOETS`, … |
 | de uitkomsten | de uitkomst die het besluit *is*, plus wat `outputs` erbij noemt |
 | `inputs` | elke waarde waarop besloten is, **met haar herkomst** |
@@ -364,6 +367,62 @@ cel zelf overkwam (zie [Wat een cel is](#wat-een-cel-is)).
 Eén besluit is één gram. Wat tegelijk ontstaat, wordt samen vastgelegd (RFC-022
 §1.2 — elk chronolexogram is *elementair*): het recht en het bedrag staan in
 hetzelfde gram, niet in twee.
+
+### Wie mag besluiten
+
+Drie regels, en ze horen in deze volgorde gelezen te worden:
+
+1. **De wet bepaalt wie het bevoegd gezag is.** Dat staat in de regeling
+   (`competent_authority`, RFC-002) en nergens anders. Het platform leest het uit
+   het law-model; een celconfiguratie kan zichzelf geen gezag toebedelen.
+2. **De cel beweert wie zij is.** `identity: <naam>` op de cel in het
+   wereldbestand, standaard haar cel-id.
+3. **De bewering geldt voor nu als waar.** Er wordt niets bewezen: er is geen
+   sleutelmateriaal en de ondertekening is gesimuleerd (zie
+   [Ondertekening is gesimuleerd](#ondertekening-is-gesimuleerd)). Bewijs is
+   later werk; wat er nu gebeurt, is de toets tegen de wet.
+
+Bij een besluit legt het platform die twee naast elkaar, op genormaliseerde tekst
+— witruimte eromheen en kasus tellen niet mee, en verder wordt er niets
+geïnterpreteerd. Een afkorting is een andere naam, en of die dezelfde organisatie
+aanwijst is een vraag over het recht; die hoort in de wet of in het wereldbestand
+beantwoord te worden en niet hier geraden. Drie uitkomsten:
+
+| de regeling | wat er gebeurt |
+|---|---|
+| wijst deze identiteit aan | het besluit gaat door; het gram draagt `competent_authority` (uit de regeling) en `besloten_door` (de identiteit) |
+| wijst een ander aan | het besluit wordt **geweigerd** en er wordt niets vastgelegd: *cel 'toeslagen' beweert 'Belastingdienst' te zijn, maar regeling 'wet\_op\_de\_zorgtoeslag' wijst 'Dienst Toeslagen' aan als bevoegd gezag* |
+| wijst niemand aan | het besluit gaat door met `competent_authority: null`, en de wereld **waarschuwt**: *regeling '…' declareert geen bevoegd gezag* |
+
+Dat de derde regel doorgaat en niet weigert, is een keuze: een regeling die geen
+gezag declareert is een gat in díe regeling, en de opstelling dichtzetten voor
+iets waar de besluitende cel niets aan kan doen, zet de speeltuin dicht. Maar er
+viel dan niets te toetsen, en dat is iets anders dan een geslaagde toets — dus
+het staat in het gram (`competent_authority: null`), in het verslag, in het beeld
+van de wereld en in het gram-detail van de frontend.
+
+De weigering valt **vóór de eerste vraag over een celgrens**, om dezelfde reden
+als bij het zaakkenmerk: een vraag is bij de bevraagde organisatie een
+gebeurtenis, en die hoort niet te vallen voor een besluit dat toch niet genomen
+kan worden.
+
+`competent_authority` mag in de wet een `#`-verwijzing zijn naar een uitkomst van
+de regeling zelf (`competent_authority: '#bevoegd_gezag'`, zoals in
+`wet_op_de_zorgtoeslag`). Die wordt opgelost vóór de vergelijking — anders zou de
+toets op de tekst `#bevoegd_gezag` gaan en was geen enkele cel ooit bevoegd.
+
+Dat `besloten_door` naast `competent_authority` in het gram staat, is met opzet:
+ze zijn gelijk zodra er een gezag is, maar ze zeggen verschillende dingen — het
+ene is wat de wet aanwijst, het andere wie er feitelijk besloot. Wie er later een
+handtekening onder zet, heeft dan een veld om die aan te hangen.
+
+De scenario's: [`besluit_zonder_bevoegd_gezag.yaml`](scenarios/besluit_zonder_bevoegd_gezag.yaml)
+voor het ontbrekende gezag, en
+[`scenarios/geweigerd/`](scenarios/geweigerd/) voor de weigering — die laatste
+kan geen gewoon scenario zijn, want een besluit dat omvalt breekt de run af. Ze
+worden afgerekend in [`tests/bevoegd_gezag.rs`](tests/bevoegd_gezag.rs), op
+dezelfde manier als de negatieve fixtures van de gate: niet alleen *dat* ze
+falen, maar waaróp.
 
 ### Verplichtingen: wat een besluit achterlaat
 
@@ -524,7 +583,12 @@ let signed = context.query("brp", "partnerschap", &params, op_moment)?;
 ```
 
 - **`SecurityContext`** — identiteit, ondertekening, transportkeuze. Gebonden aan
-  precies één cel, en de **enige** die het transport aanroept.
+  precies één cel, en de **enige** die het transport aanroept. De identiteit is
+  het **cel-id**: waarop het transport de peer vindt en waarop het vraaggraf
+  gaat. De naam waaronder een cel zich *uitgeeft* (`identity:` in het
+  wereldbestand) staat níet hier maar op de cel, en komt alleen bij een besluit
+  ter sprake — zie [Wie mag besluiten](#wie-mag-besluiten). Twee registers voor
+  "wie is dit" zouden bij de eerste echte ondertekening uiteen gaan lopen.
 - **`CellTransport`** — de naad: `query(cel, lexostatus, params, op_moment)`.
   Exact de vorm van de publieke ingang van een cel en met opzet niets meer; een
   transport dat een reductie of een filter kon meesturen, zou de autonomie van de
@@ -656,7 +720,10 @@ Ze komen niet uit de RFC en horen niet als vaststaand gelezen te worden.
   Hier: één context per cel, met één identiteit die de cel zélf is
   (`cel:toeslagen`). Geen medewerker, geen zaak, geen mandaat, geen autorisatie.
   Dat is de dunste vorm die de vraag openhoudt; komt er een fijnere binding, dan
-  krijgt `Identity` velden en verandert er aan de aanroepers niets.
+  krijgt `Identity` velden en verandert er aan de aanroepers niets. De naam
+  waaronder een cel zich uitgeeft hoort daar niet bij: die staat op de cel en
+  wordt alleen bij een besluit naast de wet gelegd, zodat er één register blijft
+  voor wie er ondertekent.
 
 ## Het observatielog (buiten de band)
 
@@ -806,6 +873,12 @@ met opzet één invariant schenden en die **moeten** falen:
 | `declaratie_buiten_de_definities.yaml` | het vraaggraf staat een vraag toe waar geen enkele definitie om vraagt |
 | `reductie_combineert_twee_cellen.yaml` | een cel legt buiten een besluit-pad twee celantwoorden bij elkaar (I4) |
 
+Naast die map staat [`scenarios/geweigerd/`](scenarios/geweigerd/), met dezelfde
+opzet maar voor iets anders: scenario's die de gate niet eens halen omdat ze
+eerder omvallen — vandaag het besluit van een cel die niet het bevoegd gezag is
+(zie [Wie mag besluiten](#wie-mag-besluiten)). Ze worden gedraaid en afgerekend in
+[`tests/bevoegd_gezag.rs`](tests/bevoegd_gezag.rs).
+
 Ze vallen buiten de gewone scenariosuite, want die verwacht van elk bestand dat het
 groen is. [`tests/invarianten.rs`](tests/invarianten.rs) draait ze en rekent ze af
 op twee dingen: dát ze falen, en waaróp. Dat tweede is het eigenlijke werk — een
@@ -906,7 +979,7 @@ is de kern van de opzet:
 | sleutel | wat |
 |---|---|
 | `clock` | waar de logische klok begint; verplicht |
-| `cells` | de organisaties, elk met `laws`, `chronicles`, `lexostatus_definitions`, `besluit_definitions` (met `obligations`) en `accepts_from` |
+| `cells` | de organisaties, elk met `identity`, `laws`, `chronicles`, `lexostatus_definitions`, `besluit_definitions` (met `obligations`) en `accepts_from` |
 | `settings` | casusdata die geen wet is, bijvoorbeeld een betalingsritme |
 | `fixtures` | de startstand: vastleggingen met een moment |
 | `actions` | wat een actor op de tijdlijn kan doen |
@@ -922,7 +995,7 @@ opleveren:
 | `queries` | een consument bevraagt een cel |
 | `query_via_transport` | een cel bevraagt een andere cel (een sonde) |
 | `query_graph` | het toegestane vraaggraf: welke cel welke andere mag bevragen |
-| `expect_warnings` | de termijnen die deze run moet melden |
+| `expect_warnings` | de waarschuwingen die deze run moet melden: gemiste termijnen, en regelingen zonder bevoegd gezag |
 
 Elke stap draagt zijn eigen verwachting. De assertie hoort bij het bestand, niet
 bij Rust: een nieuw testgeval is een nieuw bestand.
@@ -944,6 +1017,8 @@ settings:                                       # instellingen van deze wereld
 
 cells:
   - id: toeslagen                               # het cel-id
+    identity: Dienst Toeslagen                  # wie de cel zegt te zijn; mag
+                                                # weg, dan is het het cel-id
     laws:                                       # regelingen bij $id; de loader
       - wet_op_de_zorgtoeslag                   # laadt alle versies uit de map
       - regeling_standaardpremie
@@ -1339,6 +1414,15 @@ Een scenario rekent erop af met `expect_warnings`. Die lijst wordt **altijd**
 vergeleken, ook als hij niet in het bestand staat: dan is de verwachting "geen
 enkele". Een waarschuwing die niemand verwachtte, hoort een run te laten falen in
 plaats van stil in het verslag te belanden.
+
+Een gemiste termijn is niet de enige waarschuwing. Ze dragen allemaal hun
+`soort`, zodat een lezer — en de frontend — ze uit elkaar kan houden in plaats
+van ze op hun veldnamen te moeten herkennen:
+
+| `soort` | waar ze over gaat | waaraan `expect_warnings` haar herkent |
+|---|---|---|
+| `gemiste_termijn` | een termijn verstreek zonder dat het feit er lag | het `label` uit het wereldbestand |
+| `geen_bevoegd_gezag` | er is besloten onder een regeling die geen bevoegd gezag declareert (zie [Wie mag besluiten](#wie-mag-besluiten)) | `regeling '<$id>' declareert geen bevoegd gezag` |
 
 ### De wereld besturen
 

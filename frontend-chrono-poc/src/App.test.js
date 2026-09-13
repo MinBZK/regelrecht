@@ -96,6 +96,9 @@ describe('de pagina', () => {
     const world = cloneWorld();
     world.warnings = [
       {
+        // De soort hoort erbij: de lijst gaat over termijnen, en een
+        // waarschuwing van een andere soort staat bij het gram waar ze over gaat.
+        soort: 'gemiste_termijn',
         label: 'aanvraagtermijn',
         at: '2024-11-01',
         cell: 'toeslagen',

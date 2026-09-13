@@ -74,6 +74,13 @@ pub const REGULATION: &str = "regulation";
 pub const REGULATION_VALID_FROM: &str = "regulation_valid_from";
 /// Veld met het bevoegd gezag dat de regeling noemt (RFC-002).
 pub const COMPETENT_AUTHORITY: &str = "competent_authority";
+/// Veld met de identiteit van de cel die besloot.
+///
+/// Naast [`COMPETENT_AUTHORITY`] en niet in plaats daarvan: het eerste is wat de
+/// wet aanwijst, dit is wie er feitelijk besloot. Ze zijn hier gelijk — anders
+/// was het besluit geweigerd — en dat ze los in het gram staan, is wat dat
+/// leesbaar houdt zodra er ooit ondertekend wordt.
+pub const BESLOTEN_DOOR: &str = "besloten_door";
 /// Veld met het rechtskarakter dat de regeling aan deze uitkomst geeft.
 pub const LEGAL_CHARACTER: &str = "legal_character";
 /// Veld met de inputs van het besluit, elk met hun herkomst.
@@ -84,12 +91,13 @@ pub const OBLIGATIONS: &str = "obligations";
 pub const RECEIPT: &str = "receipt";
 
 /// De vaste velden van een decretogram, in de volgorde waarin ze hierboven staan.
-const FIXED_FIELDS: [&str; 9] = [
+const FIXED_FIELDS: [&str; 10] = [
     ZAAKKENMERK,
     BESLUIT,
     REGULATION,
     REGULATION_VALID_FROM,
     COMPETENT_AUTHORITY,
+    BESLOTEN_DOOR,
     LEGAL_CHARACTER,
     INPUTS,
     OBLIGATIONS,
@@ -797,7 +805,18 @@ pub struct Decretogram {
     pub regulation_valid_from: Option<String>,
     /// Het bevoegd gezag dat de regeling noemt (RFC-002). Een juridisch feit van
     /// het besluit, geen eigenschap van de cel (RFC-022 §2).
+    ///
+    /// `None` betekent dat de regeling er niets over zegt. Dat is een gat in die
+    /// regeling en geen uitnodiging om het hier in te vullen: het gram zegt dan
+    /// letterlijk dat er niets aangewezen is, en de wereld waarschuwt erover.
     pub competent_authority: Option<String>,
+    /// De identiteit van de cel die besloot.
+    ///
+    /// Gelijk aan [`Self::competent_authority`] zodra die er is — een besluit
+    /// door iemand anders wordt geweigerd — en dat ze allebei in het gram staan
+    /// is met opzet: wie het terugleest, hoort te zien wie besloot zonder het
+    /// uit de afwezigheid van een weigering af te moeten leiden.
+    pub besloten_door: String,
     /// Het rechtskarakter dat de regeling aan deze uitkomst geeft
     /// (`produces.legal_character`), bijvoorbeeld `BESCHIKKING`.
     pub legal_character: Option<String>,
@@ -863,6 +882,10 @@ impl Decretogram {
             (
                 COMPETENT_AUTHORITY.to_string(),
                 optional_text(self.competent_authority.as_deref()),
+            ),
+            (
+                BESLOTEN_DOOR.to_string(),
+                Value::String(self.besloten_door.clone()),
             ),
             (
                 LEGAL_CHARACTER.to_string(),

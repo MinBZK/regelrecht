@@ -1179,10 +1179,7 @@ fn describe_origin(gram: &Decretogram, value: &str) -> String {
 /// ze zegt dat er iets níet gebeurd is wat er hoorde te gebeuren, en dat is
 /// precies het soort stilte waar een scenario voor bestaat.
 fn check_warnings(expected: &[String], actual: &[Warning]) -> Vec<ExpectationFailure> {
-    let mut found: Vec<String> = actual
-        .iter()
-        .map(|warning| warning.label.clone())
-        .collect::<Vec<_>>();
+    let mut found: Vec<String> = actual.iter().map(Warning::label).collect::<Vec<_>>();
     found.sort();
     let mut wanted = expected.to_vec();
     wanted.sort();

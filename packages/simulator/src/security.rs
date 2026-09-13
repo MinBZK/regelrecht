@@ -34,6 +34,14 @@ pub const SIMULATED_SIGNATURE_PREFIX: &str = "GESIMULEERDE-ONDERTEKENING door ";
 /// één identiteit per cel, die de cel zelf is. Er is nog geen medewerker, geen
 /// zaak en geen mandaat — komt dat er, dan krijgt dit type velden en hoeft geen
 /// enkele aanroeper te veranderen.
+///
+/// Eén naam en niet twee: het **cel-id**, waar het transport de peer op vindt en
+/// waarop het vraaggraf gaat. De naam waaronder een cel zich *uitgeeft*
+/// (`identity:` in het wereldbestand) staat met opzet níet hier maar op de cel,
+/// en wordt alleen bij een besluit naast de wet gelegd — zie
+/// [`crate::Cell::decide`]. Twee registers voor "wie is dit" zouden bij de
+/// eerste echte ondertekening uiteen gaan lopen, en dan is niet meer te zeggen
+/// wie er getekend heeft.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
     cell: String,

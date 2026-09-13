@@ -310,6 +310,24 @@ function pairs(entries) {
 }
 
 /**
+ * Wie er volgens dit gram mocht besluiten, en wie er besloot.
+ *
+ * `authority` is wat de **regeling** aanwijst (RFC-002) en `decidedBy` de
+ * identiteit van de cel die besloot. Ze zijn gelijk zodra er een gezag is — een
+ * besluit door iemand anders wordt geweigerd — dus het geval dat er iets te
+ * tonen valt, is juist `authority: null`: dan declareert de regeling geen
+ * bevoegd gezag en viel er niets te toetsen. `null` voor het geheel betekent dat
+ * dit gram helemaal geen besluit is.
+ */
+export function competentAuthorityOf(gram) {
+  const field = gram?.fields?.competent_authority;
+  if (!field) return null;
+  const authority = field.value === null || field.value === undefined ? null : String(field.value);
+  const decidedBy = gram.fields.besloten_door?.value;
+  return { authority, decidedBy: decidedBy === undefined ? null : String(decidedBy) };
+}
+
+/**
  * De regeling waaronder een decretogram genomen is, met haar versie.
  *
  * Uit de vaste velden van het gram; een bron-cel die zelf iets vaststelt heeft
@@ -380,7 +398,18 @@ export function crossings(snapshot) {
   return Array.isArray(snapshot?.crossings) ? snapshot.crossings : [];
 }
 
-/** De termijnen die verstreken zonder dat het feit er lag. */
+/**
+ * Alles wat de wereld meldde zonder het tegen te houden.
+ *
+ * Meer dan één soort, elk met haar eigen `soort`: een verstreken termijn is iets
+ * anders dan een regeling die geen bevoegd gezag declareert. Wie ze op één hoop
+ * toont, zegt over de ene wat er over de andere staat.
+ */
 export function warnings(snapshot) {
   return Array.isArray(snapshot?.warnings) ? snapshot.warnings : [];
+}
+
+/** De termijnen die verstreken zonder dat het feit er lag. */
+export function missedDeadlines(snapshot) {
+  return warnings(snapshot).filter((warning) => warning?.soort === 'gemiste_termijn');
 }

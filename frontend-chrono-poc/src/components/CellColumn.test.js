@@ -165,6 +165,27 @@ describe('de herkomst in een decretogram', () => {
     expect(supporting.some((text) => text.includes('vervaldatum:'))).toBe(true);
   });
 
+  // De wet bepaalt wie het bevoegd gezag is. Declareert ze niemand, dan viel er
+  // niets te toetsen, en dat hoort bij het gram te staan waar het over gaat —
+  // niet alleen in een lijst waarschuwingen elders op de pagina. De besluiten
+  // van de fixture zijn wél door hun bevoegd gezag genomen, dus de melding hoort
+  // daar juist niet te staan: zonder dat tweede geval meet de eerste niets.
+  it('meldt bij een gram dat de regeling geen bevoegd gezag declareert', async () => {
+    const wrapper = mountCell('toeslagen');
+    await decisionRow(wrapper).trigger('click');
+    expect(attrs(wrapper, 'nldd-text-cell', 'text')).not.toContain('Regeling declareert geen bevoegd gezag');
+
+    const cell = structuredClone(fixtureCell('toeslagen'));
+    for (const chronicle of cell.chronicles) {
+      for (const gram of chronicle.grams) {
+        if (gram.kind === 'decretogram') gram.fields.competent_authority.value = null;
+      }
+    }
+    const zonder = mount(CellColumn, { props: { cell, clock } });
+    await decisionRow(zonder).trigger('click');
+    expect(attrs(zonder, 'nldd-text-cell', 'text')).toContain('Regeling declareert geen bevoegd gezag');
+  });
+
   it('klapt weer dicht', async () => {
     const wrapper = mountCell('toeslagen');
     const row = decisionRow(wrapper);
