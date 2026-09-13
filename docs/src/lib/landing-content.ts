@@ -68,6 +68,9 @@ export interface LandingContent {
       p: string
       bullets: string[]
       reverse?: boolean
+      // Set where the screenshot shows a screen a reader can actually open.
+      // The editor has none: it sits behind a login.
+      link?: NavLink
     }[]
   }
   innovation: {
@@ -337,6 +340,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Volledige traceerbaarheid: kan een pad van wet naar persoonlijke situatie gelegd worden?',
             'Proactieve communicatie: kunnen burgers automatisch geïnformeerd worden bij regelwijzigingen?',
           ],
+          link: {
+            label: 'Bekijk in de demo',
+            href: 'https://demo.regelrecht.rijks.app/portaal',
+          },
         },
         {
           img: '/simulatie-screenshot.png',
@@ -350,6 +357,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Kwaliteitscontrole: kunnen inconsistenties vóór implementatie worden gedetecteerd?',
           ],
           reverse: true,
+          link: {
+            label: 'Bekijk in de demo',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
+          },
         },
         {
           img: '/editor-notities-screenshot.png',
@@ -794,6 +805,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Full traceability: can a path be drawn from law to personal situation?',
             'Proactive communication: can citizens be informed automatically when rules change?',
           ],
+          link: {
+            label: 'See it in the demo',
+            href: 'https://demo.regelrecht.rijks.app/portaal',
+          },
         },
         {
           img: '/simulatie-screenshot.png',
@@ -807,6 +822,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Quality control: can inconsistencies be detected before implementation?',
           ],
           reverse: true,
+          link: {
+            label: 'See it in the demo',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
+          },
         },
         {
           img: '/editor-notities-screenshot.png',
