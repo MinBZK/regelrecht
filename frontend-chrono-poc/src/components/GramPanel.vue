@@ -64,7 +64,22 @@ function isOpen(id) {
   return open.value.has(id);
 }
 
-function toggle(id) {
+/**
+ * Een rij open- of dichtdoen.
+ *
+ * Een klik ín de uitklap telt niet mee. Die bubbelt over de rij heen, en de rij
+ * is zelf de knop, dus zonder deze toets zou de kopieerknop van de viewer — of
+ * het aanwijzen van een regel JSON om hem te selecteren — de rij onder je handen
+ * dichtdoen. Het ontwerpsysteem maakt in `nldd-list-item` dezelfde afweging: dat
+ * toetst zijn eigen activering ook aan het pad waarlangs de klik kwam.
+ *
+ * De kinderrijen staan in `slot="children"`, dus daar is het aan te zien. Een
+ * klik in de schaduw-DOM van een component daarbinnen wijst na retargeting naar
+ * dat component zelf, en dat staat in dezelfde boom; het toetsenbord van de boom
+ * klikt de knop van de rij aan en wijst daarmee naar de rij.
+ */
+function toggle(id, event) {
+  if (event?.target?.closest?.('nldd-list-item[slot="children"]')) return;
   const next = new Set(open.value);
   if (!next.delete(id)) next.add(id);
   open.value = next;
@@ -138,7 +153,7 @@ function gramJson(row) {
         button
         :hidden="!matches(row) || undefined"
         :expanded="isOpen(row.id) || undefined"
-        @click="toggle(row.id)"
+        @click="toggle(row.id, $event)"
       >
         <nldd-icon-cell :icon="gramKind(row.kind).icon" size="16" color="secondary"></nldd-icon-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>

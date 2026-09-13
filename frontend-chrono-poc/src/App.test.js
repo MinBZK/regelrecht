@@ -109,7 +109,7 @@ describe('de pagina', () => {
     expect(complaints).toStrictEqual([]);
   });
 
-  // De klacht die dit ticket ophaalde: naast elkaar paste geen kolom meer heel.
+  // Waar het om begonnen was: naast elkaar paste geen kolom meer heel.
   it('zet de bediening boven en de cellen eronder, met de tijdlijn onderaan', async () => {
     const wrapper = await mountApp();
 

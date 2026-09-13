@@ -156,6 +156,47 @@ describe('het grammenoverzicht', () => {
     expect(row.find('nldd-code-viewer').exists()).toBe(false);
   });
 
+  it('laat de lijst zelf "niets gevonden" zeggen als het filter alles wegneemt', async () => {
+    // Het ontwerpsysteem toont `no-results` als de lijst rijen hééft en ze
+    // allemaal `hidden` zijn. Die twee samen zijn waar deze aanpak op leunt: de
+    // rijen blijven staan, dus de filters blijven de weg terug.
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
+    const all = allGrams(worldFixture);
+    const leeg = all
+      .flatMap((row) => all.map((other) => ({ cell: row.cell, kind: other.kind })))
+      .find((pair) => !all.some((row) => row.cell === pair.cell && row.kind === pair.kind));
+    expect(leeg).toBeDefined();
+
+    choose(wrapper, 0, leeg.cell);
+    choose(wrapper, 1, leeg.kind);
+    await wrapper.vm.$nextTick();
+
+    expect(visibleRows(wrapper)).toHaveLength(0);
+    expect(rows(wrapper).length).toBeGreaterThan(0);
+    const noResults = wrapper
+      .findAll('nldd-list > nldd-inline-dialog')
+      .find((item) => item.attributes('slot') === 'no-results');
+    expect(noResults.attributes('text')).toBe('Geen gram voldoet aan het filter');
+  });
+
+  it('laat een rij open staan bij een klik in de uitklap zelf', async () => {
+    // De rij is de knop, dus een klik in de uitklap bubbelt erover heen. Zonder
+    // toets zou de kopieerknop van de viewer — of het aanwijzen van een regel
+    // JSON om hem te selecteren — de rij onder je handen dichtdoen.
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
+    const index = allGrams(worldFixture).findIndex((gram) => gram.kind === 'decretogram');
+    const row = rows(wrapper)[index];
+
+    await row.trigger('click');
+    expect(row.attributes('expanded')).toBe('true');
+
+    row.find('nldd-code-viewer').element.dispatchEvent(new Event('click', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+
+    expect(row.attributes('expanded')).toBe('true');
+    expect(row.find('nldd-code-viewer').exists()).toBe(true);
+  });
+
   it('zegt het zelf als er niets ligt', () => {
     const world = cloneWorld();
     world.cells = [];
