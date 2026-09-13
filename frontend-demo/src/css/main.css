@@ -184,11 +184,13 @@ body {
    ernaast. Op 12px stonden twee vrijwel identieke balken naast elkaar een rij
    verschoven, en dat viel meteen op. De maat is opgebouwd uit de delen die het
    dek eronder zet (voetrand 1.5rem + bedieningsregel 0.8rem×1.5 + tussenruimte
-   0.6rem), zodat hij meebeweegt als die regel van formaat verandert. */
+   0.6rem), zodat hij meebeweegt als die regel van formaat verandert. De
+   dia-knoppen staan gecentreerd over de teller- en toetsenregel samen, dus de
+   helft van dat verschil komt er nog af. */
 .graph-zoom {
   position: absolute;
   left: 12px;
-  bottom: calc(1.5rem + 0.8rem * 1.5 + 0.6rem);
+  bottom: calc(3rem + 0.25rem);
   z-index: 5;
 }
 

@@ -81,42 +81,65 @@ function saveName(e) {
       </div>
 
       <div class="footer">
-        <div class="footer-row">
+        <!-- De tellerregel en de toetsenregel staan links onder elkaar; de
+             knoppen staan daar rechts naast, gecentreerd over allebei. Eerder
+             stonden ze op de tellerregel, waardoor ze hoog naast een lege regel
+             hingen terwijl de toetsen eronder de breedte vulden. -->
+        <div class="footer-text">
           <span class="counter" :aria-label="`Dia ${p.index.value + 1} van ${p.total.value}`">{{ counter }}</span>
-          <!-- Knoppen uit het design system in plaats van eigen <button>'s met
-               ingetekende chevrons. De `inherit`-varianten zijn hier precies
-               voor gemaakt: ze leiden hun kleur af van `currentColor`, dus ze
-               kloppen op het donkerblauwe vlak zonder eigen kleurregels. -->
-          <nldd-button-bar>
-            <nldd-icon-button
-              variant="inherit-tinted"
-              icon="back"
-              text="Vorige dia"
-              tooltip-timing="never"
-              :disabled="p.index.value === 0 || undefined"
-              @click="p.prev()"
-            ></nldd-icon-button>
-            <nldd-button
-              v-if="isLast"
-              variant="inherit-tinted"
-              text="Sluiten"
-              @click="p.stop()"
-            ></nldd-button>
-            <nldd-icon-button
-              v-else
-              variant="inherit-tinted"
-              icon="forward"
-              text="Volgende dia"
-              tooltip-timing="never"
-              @click="p.next()"
-            ></nldd-icon-button>
-          </nldd-button-bar>
+          <!-- De toetsen als echte toetsen: nldd-keyboard-shortcut rendert een
+               <kbd> per toets, met de OS-detectie en de semantiek erbij. Dit
+               waren drie <span>'s met een eigen tekstkleur. `color="inherit"`
+               is er voor een gevuld vlak zoals dit dek. -->
+          <div class="hints">
+            <!-- Elke pijl apart, niet `←+→`: dat zet er een plusteken tussen en
+                 leest als 'allebei tegelijk', terwijl het hier om de een of de
+                 ander gaat. -->
+            <span class="hint">
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="←" always-visible></nldd-keyboard-shortcut>
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="→" always-visible></nldd-keyboard-shortcut>
+              of
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="Space" always-visible></nldd-keyboard-shortcut>
+              bladeren
+            </span>
+            <span class="hint">
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="Esc" always-visible></nldd-keyboard-shortcut>
+              sluit
+            </span>
+            <span class="hint">
+              <nldd-keyboard-shortcut size="sm" color="inherit" keys="F" always-visible></nldd-keyboard-shortcut>
+              volledig scherm
+            </span>
+          </div>
         </div>
-        <div class="hints">
-          <span>pijltjes of spatie</span>
-          <span>Esc sluit</span>
-          <span>f volledig scherm</span>
-        </div>
+        <!-- Knoppen uit het design system in plaats van eigen <button>'s met
+             ingetekende chevrons. De `inherit`-varianten zijn hier precies voor
+             gemaakt: ze leiden hun kleur af van `currentColor`, dus ze kloppen
+             op het donkerblauwe vlak zonder eigen kleurregels. -->
+        <nldd-button-bar>
+          <nldd-icon-button
+            variant="inherit-tinted"
+            icon="back"
+            text="Vorige dia"
+            tooltip-timing="never"
+            :disabled="p.index.value === 0 || undefined"
+            @click="p.prev()"
+          ></nldd-icon-button>
+          <nldd-button
+            v-if="isLast"
+            variant="inherit-tinted"
+            text="Sluiten"
+            @click="p.stop()"
+          ></nldd-button>
+          <nldd-icon-button
+            v-else
+            variant="inherit-tinted"
+            icon="forward"
+            text="Volgende dia"
+            tooltip-timing="never"
+            @click="p.next()"
+          ></nldd-icon-button>
+        </nldd-button-bar>
       </div>
       <div class="progress" aria-hidden="true"><div class="progress-fill" :style="{ width: progress }"></div></div>
     </div>
@@ -162,7 +185,10 @@ function saveName(e) {
   z-index: 80;
   display: flex;
   flex-direction: column;
-  padding: 3rem 2.75rem 1.5rem;
+  /* Onder ruimer dan eerst (1.5rem): de bedieningsregel bestaat nu uit echte
+     keycaps in plaats van platte tekst, en die zijn hoger. Ze stonden daardoor
+     tegen de voortgangsbalk aan geplakt. */
+  padding: 3rem 2.75rem 3rem;
   box-sizing: border-box;
   color-scheme: light;
   /* De inkt van het dek: één token, en elke doorzichtige variant eruit afgeleid
@@ -195,7 +221,9 @@ function saveName(e) {
    over voor een regel van 26px, en de dia was vooral leeg blauw. */
 .deck.full {
   width: 100vw;
-  padding: 2vh 0 0;
+  /* Onderin ruimte voor de bedieningsregel: die bestaat uit keycaps en die
+     stonden anders tegen de voortgangsbalk aan. */
+  padding: 2vh 0 1.5rem;
   /* De deck zelf meet niets meer: het podium binnenin is de container. */
   container-type: normal;
 }
@@ -385,14 +413,18 @@ function saveName(e) {
 .footer {
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding-top: 1rem;
-}
-.footer-row {
-  display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+/* Teller en toetsenregel onder elkaar; de knoppen ernaast zijn over die twee
+   regels heen gecentreerd (`align-items: center` op de footer). */
+.footer-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
 }
 .counter {
   font-size: 0.95rem;
@@ -402,9 +434,16 @@ function saveName(e) {
 }
 .hints {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
   font-size: 0.8rem;
-  color: color-mix(in srgb, var(--ink) 50%, transparent);
+  color: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+/* De toetsen staan op de regel van hun uitleg, met de tekst ertussen. */
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 .progress {
   position: absolute;
