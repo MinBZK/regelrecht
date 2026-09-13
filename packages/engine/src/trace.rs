@@ -29,8 +29,8 @@
 //! let trace = builder.build();
 //! ```
 
-use crate::types::{PathNodeType, ResolveType, Value};
-use serde::Serialize;
+use crate::types::{PathNodeType, ResolveType, TypeSpec, Value};
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 /// A node in the execution trace tree.
@@ -42,7 +42,7 @@ use std::time::Instant;
 ///
 /// Nodes can have children, forming a tree structure that mirrors the
 /// nested nature of law evaluation.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathNode {
     /// Type of this execution step
     pub node_type: PathNodeType,
@@ -51,24 +51,170 @@ pub struct PathNode {
     pub name: String,
 
     /// The result value produced by this step, if any
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
 
     /// For resolve nodes, indicates how the value was resolved
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolve_type: Option<ResolveType>,
 
     /// Child nodes representing nested execution steps
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<PathNode>,
 
-    /// Execution duration in microseconds
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Execution duration in microseconds.
+    ///
+    /// Always absent under WebAssembly: the traced entry points there force
+    /// [`TraceBuilder::new_untimed`], because `Instant::now()` trips RefCell
+    /// aliasing in wasm-bindgen. No consumer may depend on it (RFC-039).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_us: Option<u64>,
 
-    /// Free-form message for trace output (e.g., "Resolving from PARAMETERS: 999993653")
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Free-form message for trace output (e.g., "Resolving from PARAMETERS: 999993653").
+    ///
+    /// **Presentational.** This string exists to be read by a person in a
+    /// terminal, and its phrasing is not a contract. Parsing it is a defect
+    /// (RFC-039); every fact it states is available as a field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+
+    /// Stable address of this node within the trace: the chain of child
+    /// indices from the root, written `n0.2.1` (RFC-039).
+    ///
+    /// Deterministic, so the same inputs produce the same id on a later run,
+    /// and unique by construction. This is what lets a consumer name a step
+    /// without matching on `name`, which cannot tell apart two steps
+    /// resolving the same input in different laws.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+
+    /// Where the engine was when it took this step (RFC-039).
+    ///
+    /// Comes from the law model, so it is present whenever the engine knows
+    /// the article, independent of what the corpus happens to cite.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<LegalAnchor>,
+
+    /// The citation the authored YAML element carries, as written (RFC-039).
+    ///
+    /// Kept apart from [`Self::anchor`] on purpose: a `legal_basis` hung on
+    /// the wrong provision stays visible instead of being normalised into
+    /// agreement with where the engine actually was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_basis: Option<LegalAnchor>,
+
+    /// Dotted, name-keyed path to the element inside the article's
+    /// `machine_readable` (RFC-039), e.g.
+    /// `articles.2.machine_readable.execution.actions.hoogte_zorgtoeslag.value.values.1`.
+    ///
+    /// The same path language the corpus already speaks: `YamlNode` stamps it
+    /// on every rendered node, and `expanded_paths` in `demo-config.yaml`
+    /// keys on it. A dot inside a label would split one segment into two, so
+    /// labels have their dots replaced by underscores (article `2.34` is
+    /// addressed as `2_34`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yaml_path: Option<String>,
+
+    /// The `regelrecht://{law_id}/{output}#{field}` address, on nodes that
+    /// denote a value rather than a step (RFC-039).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+
+    /// Where the value came from, structured (RFC-039). The field that
+    /// replaces reading it out of [`Self::message`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<ValueSource>,
+
+    /// Unit and precision of [`Self::result`] (RFC-023), so a renderer can
+    /// show an amount as euros instead of a bare count of cents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub type_spec: Option<TypeSpec>,
+}
+
+/// A reference to a provision, in the shape of the schema's `legal_basis`
+/// reference object (RFC-039).
+///
+/// One type for both [`PathNode::anchor`] and [`PathNode::legal_basis`], so
+/// the engine's own account of where it was and the corpus's citation are
+/// comparable rather than two dialects of the same idea.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct LegalAnchor {
+    /// Law identifier as the corpus knows it (`wet_op_de_zorgtoeslag`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub law_id: Option<String>,
+
+    /// Law name as cited in prose ("Wet op de zorgtoeslag").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub law: Option<String>,
+
+    /// Stable uuid of the law version, when it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub law_uuid: Option<String>,
+
+    /// BWB identification number (`BWBR0018451`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bwb_id: Option<String>,
+
+    /// Article number as the law writes it (`2`, `1a`, `B1`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+
+    /// Lid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraph: Option<String>,
+
+    /// Sentence, for a reference finer than a lid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sentence: Option<String>,
+
+    /// Link to the provision on wetten.overheid.nl.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+
+    /// Juriconnect BWB 1.3 reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub juriconnect: Option<String>,
+
+    /// `valid_from` of the law version this anchor points into.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_from: Option<String>,
+
+    /// The modeller's note on how the element relates to the text. Present
+    /// only on a `legal_basis`, never on an `anchor`: the engine has no
+    /// opinion to record here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+}
+
+impl LegalAnchor {
+    /// Whether this anchor says nothing at all, in which case it is left off
+    /// the node rather than serialized as an empty object.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Where a resolved value came from (RFC-039).
+///
+/// The structured form of what the demo's lineage view used to extract from
+/// [`PathNode::message`] with a regular expression.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ValueSource {
+    /// How the value was resolved. Same vocabulary as
+    /// [`PathNode::resolve_type`], repeated here so a consumer reading
+    /// `source` does not have to correlate two fields.
+    pub kind: ResolveType,
+
+    /// The registered data source that held the value, which for the demo is
+    /// the organisation that keeps the register. Absent for a kind that has
+    /// no provider, such as a definition in the law itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+
+    /// The law a scoped data source was registered for, when the source is
+    /// scoped rather than global.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
 }
 
 impl PathNode {
@@ -82,6 +228,13 @@ impl PathNode {
             children: Vec::new(),
             duration_us: None,
             message: None,
+            node_id: None,
+            anchor: None,
+            legal_basis: None,
+            yaml_path: None,
+            uri: None,
+            source: None,
+            type_spec: None,
         }
     }
 
@@ -112,6 +265,48 @@ impl PathNode {
     /// Set a free-form message for trace output.
     pub fn with_message(mut self, message: impl Into<String>) -> Self {
         self.message = Some(message.into());
+        self
+    }
+
+    /// Set the stable address of this node within the trace (RFC-039).
+    pub fn with_node_id(mut self, node_id: impl Into<String>) -> Self {
+        self.node_id = Some(node_id.into());
+        self
+    }
+
+    /// Set where the engine was when it took this step (RFC-039).
+    pub fn with_anchor(mut self, anchor: LegalAnchor) -> Self {
+        self.anchor = Some(anchor);
+        self
+    }
+
+    /// Set the citation the authored element carries (RFC-039).
+    pub fn with_legal_basis(mut self, legal_basis: LegalAnchor) -> Self {
+        self.legal_basis = Some(legal_basis);
+        self
+    }
+
+    /// Set the dotted path to the element inside `machine_readable` (RFC-039).
+    pub fn with_yaml_path(mut self, yaml_path: impl Into<String>) -> Self {
+        self.yaml_path = Some(yaml_path.into());
+        self
+    }
+
+    /// Set the `regelrecht://` address of the value this node denotes (RFC-039).
+    pub fn with_uri(mut self, uri: impl Into<String>) -> Self {
+        self.uri = Some(uri.into());
+        self
+    }
+
+    /// Set where the resolved value came from (RFC-039).
+    pub fn with_source(mut self, source: ValueSource) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    /// Set the unit and precision of the result (RFC-023).
+    pub fn with_type_spec(mut self, type_spec: TypeSpec) -> Self {
+        self.type_spec = Some(type_spec);
         self
     }
 
@@ -662,6 +857,25 @@ fn resolve_type_name(rt: &ResolveType) -> &'static str {
 struct BuildingNode {
     node: PathNode,
     start_time: Option<Instant>,
+    /// Chain of child indices from the root down to this node, which
+    /// [`format_node_id`] renders as the node's `node_id` (RFC-039).
+    path: Vec<usize>,
+}
+
+/// Render a node's index chain as its `node_id`: `n`, `n0`, `n0.2.1`.
+///
+/// The root is `n` (an empty chain). Depth and sibling order are the whole
+/// address, which is why it is stable across runs of the same inputs.
+fn format_node_id(path: &[usize]) -> String {
+    let mut id = String::with_capacity(1 + path.len() * 2);
+    id.push('n');
+    for (i, index) in path.iter().enumerate() {
+        if i > 0 {
+            id.push('.');
+        }
+        id.push_str(&index.to_string());
+    }
+    id
 }
 
 /// Builder for constructing execution traces using a stack-based approach.
@@ -732,7 +946,19 @@ impl TraceBuilder {
             return;
         }
 
-        let node = PathNode::new(node_type, name);
+        // A node's index among its siblings is the number of siblings already
+        // popped, so it is final the moment the node is pushed and there is no
+        // need to wait for pop to address it (RFC-039).
+        let path = match self.stack.last() {
+            Some(parent) => {
+                let mut path = parent.path.clone();
+                path.push(parent.node.children.len());
+                path
+            }
+            None => Vec::new(),
+        };
+
+        let node = PathNode::new(node_type, name).with_node_id(format_node_id(&path));
         self.stack.push(BuildingNode {
             node,
             start_time: if self.timed {
@@ -740,6 +966,7 @@ impl TraceBuilder {
             } else {
                 None
             },
+            path,
         });
     }
 
@@ -782,6 +1009,87 @@ impl TraceBuilder {
         if let Some(current) = self.stack.last_mut() {
             current.node.resolve_type = Some(resolve_type);
         }
+    }
+
+    /// Set where the engine was when it took the current step (RFC-039).
+    ///
+    /// An anchor that says nothing is dropped rather than recorded as an
+    /// empty object.
+    pub fn set_anchor(&mut self, anchor: LegalAnchor) {
+        if !self.enabled || anchor.is_empty() {
+            return;
+        }
+
+        if let Some(current) = self.stack.last_mut() {
+            current.node.anchor = Some(anchor);
+        }
+    }
+
+    /// Set the citation the authored element carries on the current node
+    /// (RFC-039).
+    pub fn set_legal_basis(&mut self, legal_basis: LegalAnchor) {
+        if !self.enabled || legal_basis.is_empty() {
+            return;
+        }
+
+        if let Some(current) = self.stack.last_mut() {
+            current.node.legal_basis = Some(legal_basis);
+        }
+    }
+
+    /// Set the dotted path into `machine_readable` for the current node
+    /// (RFC-039).
+    pub fn set_yaml_path(&mut self, yaml_path: impl Into<String>) {
+        if !self.enabled {
+            return;
+        }
+
+        if let Some(current) = self.stack.last_mut() {
+            current.node.yaml_path = Some(yaml_path.into());
+        }
+    }
+
+    /// Set the `regelrecht://` address of the value the current node denotes
+    /// (RFC-039).
+    pub fn set_uri(&mut self, uri: impl Into<String>) {
+        if !self.enabled {
+            return;
+        }
+
+        if let Some(current) = self.stack.last_mut() {
+            current.node.uri = Some(uri.into());
+        }
+    }
+
+    /// Set where the current node's value came from (RFC-039).
+    pub fn set_source(&mut self, source: ValueSource) {
+        if !self.enabled {
+            return;
+        }
+
+        if let Some(current) = self.stack.last_mut() {
+            current.node.source = Some(source);
+        }
+    }
+
+    /// Set the unit and precision of the current node's result (RFC-023).
+    pub fn set_type_spec(&mut self, type_spec: TypeSpec) {
+        if !self.enabled {
+            return;
+        }
+
+        if let Some(current) = self.stack.last_mut() {
+            current.node.type_spec = Some(type_spec);
+        }
+    }
+
+    /// The `node_id` of the current node, for a caller that needs to refer to
+    /// a step it is in the middle of recording.
+    pub fn current_node_id(&self) -> Option<&str> {
+        if !self.enabled {
+            return None;
+        }
+        self.stack.last().and_then(|s| s.node.node_id.as_deref())
     }
 
     /// Pop the current node from the stack, making it a child of the parent.
@@ -918,6 +1226,143 @@ mod tests {
         assert_eq!(root.children.len(), 1);
         assert_eq!(root.children[0].name, "add_values");
         assert_eq!(root.children[0].result, Some(Value::Int(30)));
+    }
+
+    /// A trace the shape of a small cross-law evaluation, for the addressing
+    /// tests below. Built twice by the id-stability test, so it has to be a
+    /// function and not a constant.
+    fn addressed_trace() -> PathNode {
+        let mut builder = TraceBuilder::new_untimed();
+        builder.push(
+            "wet_op_de_zorgtoeslag (hoogte_zorgtoeslag)",
+            PathNodeType::Article,
+        );
+
+        builder.push("bsn", PathNodeType::Resolve);
+        builder.set_resolve_type(ResolveType::Parameter);
+        builder.set_result(Value::String("999993653".to_string()));
+        builder.pop();
+
+        builder.push(
+            "zorgverzekeringswet#is_verzekerd",
+            PathNodeType::CrossLawReference,
+        );
+        builder.push("polis_status", PathNodeType::Resolve);
+        builder.set_resolve_type(ResolveType::DataSource);
+        builder.set_source(ValueSource {
+            kind: ResolveType::DataSource,
+            provider: Some("Zorgverzekeraar".to_string()),
+            scope: Some("zorgverzekeringswet".to_string()),
+        });
+        builder.set_result(Value::String("ACTIEF".to_string()));
+        builder.pop();
+        builder.set_result(Value::Bool(true));
+        builder.pop();
+
+        builder.set_result(Value::Int(209692));
+        builder.build().unwrap()
+    }
+
+    /// Every `node_id` in a trace is different. The ids are the index chain,
+    /// so this holds by construction; the test is here because a consumer
+    /// addressing a step by id has no way to notice a collision.
+    #[test]
+    fn node_ids_are_unique_within_a_trace() {
+        fn collect(node: &PathNode, out: &mut Vec<String>) {
+            out.push(
+                node.node_id
+                    .clone()
+                    .expect("every built node carries a node_id"),
+            );
+            for child in &node.children {
+                collect(child, out);
+            }
+        }
+
+        let mut ids = Vec::new();
+        collect(&addressed_trace(), &mut ids);
+
+        assert_eq!(ids.len(), 4, "root, bsn, the reference, and polis_status");
+        let unique: std::collections::BTreeSet<_> = ids.iter().collect();
+        assert_eq!(unique.len(), ids.len(), "duplicate node_id in {ids:?}");
+    }
+
+    /// The root is `n`, a first child `n0`, and depth and sibling order are
+    /// the whole address. A consumer builds a URL fragment out of this, so the
+    /// spelling is part of the contract (RFC-039).
+    #[test]
+    fn node_ids_spell_the_index_chain_from_the_root() {
+        let root = addressed_trace();
+
+        assert_eq!(root.node_id.as_deref(), Some("n"));
+        assert_eq!(root.children[0].node_id.as_deref(), Some("n0"));
+        assert_eq!(root.children[1].node_id.as_deref(), Some("n1"));
+        assert_eq!(
+            root.children[1].children[0].node_id.as_deref(),
+            Some("n1.0")
+        );
+    }
+
+    /// The same evaluation traced twice gives every step the same id, which is
+    /// what lets a fixture pin one and a URL fragment point at one.
+    #[test]
+    fn node_ids_are_stable_across_runs() {
+        fn ids(node: &PathNode) -> Vec<String> {
+            let mut out = vec![node.node_id.clone().unwrap_or_default()];
+            for child in &node.children {
+                out.extend(ids(child));
+            }
+            out
+        }
+
+        assert_eq!(ids(&addressed_trace()), ids(&addressed_trace()));
+    }
+
+    /// `PathNode` deserializes, so a recorded trace is a fixture: a renderer
+    /// can be built against one with no engine in the loop, and a stored trace
+    /// can be read back (RFC-039).
+    #[test]
+    fn a_trace_survives_a_json_round_trip() {
+        let original = addressed_trace();
+        let json = serde_json::to_string(&original).expect("serializes");
+
+        let parsed: PathNode = serde_json::from_str(&json).expect("deserializes");
+        let reserialized = serde_json::to_string(&parsed).expect("serializes again");
+
+        assert_eq!(json, reserialized, "round trip is not stable");
+        assert_eq!(parsed.node_id.as_deref(), Some("n"));
+        assert_eq!(
+            parsed.children[1].children[0]
+                .source
+                .as_ref()
+                .and_then(|s| s.provider.as_deref()),
+            Some("Zorgverzekeraar"),
+            "the structured source survives the round trip"
+        );
+    }
+
+    /// An anchor with nothing in it is left off the node instead of appearing
+    /// as an empty object, so a consumer can read "absent" as "the corpus does
+    /// not cite this element" rather than having to check every field.
+    #[test]
+    fn an_empty_anchor_is_not_recorded() {
+        let mut builder = TraceBuilder::new_untimed();
+        builder.push("artikel_1", PathNodeType::Article);
+        builder.set_anchor(LegalAnchor::default());
+        builder.set_legal_basis(LegalAnchor {
+            article: Some("2".to_string()),
+            paragraph: Some("1".to_string()),
+            ..LegalAnchor::default()
+        });
+        let root = builder.build().unwrap();
+
+        assert!(root.anchor.is_none(), "empty anchor was recorded");
+        assert_eq!(
+            root.legal_basis
+                .as_ref()
+                .and_then(|b| b.paragraph.as_deref()),
+            Some("1")
+        );
     }
 
     #[test]
