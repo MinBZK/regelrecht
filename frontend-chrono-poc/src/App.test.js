@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import { cloneWorld, worldFixture } from './testing/worldFixture.js';
+import { useWorld } from './world/useWorld.js';
 
 // De hele pagina op het beeld van de fixture: de kolommen, de bediening en de
 // tijdlijn, zonder één klacht van Vue over een onbekend element of een ontbrekende
@@ -15,6 +16,18 @@ function jsonResponse(body) {
     headers: { get: () => 'application/json' },
     json: async () => body,
     text: async () => JSON.stringify(body),
+  };
+}
+
+/** De weigering van de server, in diezelfde vorm: `{"error": "…"}` bij een 400. */
+function rejection(message) {
+  const body = JSON.stringify({ error: message });
+  return {
+    ok: false,
+    status: 400,
+    headers: { get: () => 'application/json' },
+    json: async () => JSON.parse(body),
+    text: async () => body,
   };
 }
 
@@ -95,5 +108,45 @@ describe('de pagina', () => {
     const rows = wrapper.findAll('nldd-text-cell').map((cell) => cell.attributes('supporting-text'));
     expect(rows.some((text) => text?.includes("cel 'toeslagen' had geen 'aanvraag_ontvangen'"))).toBe(true);
     expect(wrapper.findAll('nldd-banner').filter((item) => item.attributes('variant') === 'critical')).toHaveLength(0);
+  });
+
+  // De store is er één per pagina, dus deze test maakt hem achteraf weer leeg;
+  // hij is de enige die er een fout in achterlaat.
+  it('zet een geweigerde actie bovenaan zodra haar eigen paneel niet meer in beeld is', async () => {
+    const melding = "parameter 'ondertekend_op' is geen datum: '09-01-2024' (verwacht jjjj-mm-dd)";
+    const wrapper = await mountApp();
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url, init) => (init?.method === 'POST' ? rejection(melding) : jsonResponse(worldFixture))),
+      );
+
+      const world = useWorld();
+      await world.act({ id: worldFixture.actions[0].id, label: 'Aanvraag' }, {});
+      await flushPromises();
+      expect(world.actionError.value.message).toBe(melding);
+
+      // Zolang het actiepaneel op het scherm staat, staat de melding bij de
+      // kaart en zwijgt de banner bovenaan: anders zou dezelfde zin er twee
+      // keer staan.
+      const met = (titel) =>
+        wrapper
+          .findAll('nldd-banner')
+          .filter((item) => item.attributes('text') === titel && item.attributes('supporting-text') === melding);
+      expect(met('Deze actie is niet uitgevoerd')).toHaveLength(1);
+      expect(met('De server kon dit niet doen')).toHaveLength(0);
+
+      // Een ander tabblad haalt die kaart weg. Bleef de banner dan zwijgen, dan
+      // stond de melding nergens meer op het scherm.
+      const tabs = wrapper.findAll('nldd-tab-bar-item');
+      wrapper.find('nldd-tab-bar').element.dispatchEvent(
+        new CustomEvent('tabchange', { detail: { item: tabs[2].element } }),
+      );
+      await flushPromises();
+      expect(met('Deze actie is niet uitgevoerd')).toHaveLength(0);
+      expect(met('De server kon dit niet doen')).toHaveLength(1);
+    } finally {
+      useWorld().dismissError();
+    }
   });
 });

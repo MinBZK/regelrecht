@@ -368,6 +368,14 @@
                     "intake": "aanvraag",
                     "grondslag": "Awir art. 15"
                   }
+                },
+                "ondertekend_op": {
+                  "value": "2024-01-09",
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "aanvraag",
+                    "grondslag": "Awir art. 15"
+                  }
                 }
               }
             }
@@ -414,6 +422,14 @@
                 },
                 "jaar": {
                   "value": 2024,
+                  "origin": {
+                    "herkomst": "recorded",
+                    "intake": "aanvraag",
+                    "grondslag": "levering door cel 'burger' met actie 'burger.aanvraag'"
+                  }
+                },
+                "ondertekend_op": {
+                  "value": "2024-01-09",
                   "origin": {
                     "herkomst": "recorded",
                     "intake": "aanvraag",
@@ -999,6 +1015,10 @@
         {
           "name": "jaar",
           "type": "number"
+        },
+        {
+          "name": "ondertekend_op",
+          "type": "date"
         }
       ],
       "available": true,

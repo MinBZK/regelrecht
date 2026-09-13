@@ -116,6 +116,10 @@ pub use invariant::{
     InvariantFailure, QueryEdge, Traffic,
 };
 pub use regelrecht_engine::Value;
+// Om dezelfde reden: `SimulatorError::Engine` draagt hem, dus wie de fouten van
+// deze crate uitpakt — bijvoorbeeld om er een HTTP-status bij te kiezen — heeft
+// hem nodig zonder de engine als eigen dependency op te voeren.
+pub use regelrecht_engine::EngineError;
 pub use scenario::{
     check_provenance, Act, ActOutcome, Decision, DecisionOutcome, ExpectationFailure, Query,
     QueryOutcome, Scenario, ScenarioRun, TransportOutcome, TransportQuery,

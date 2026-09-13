@@ -505,6 +505,13 @@ fn coerce(
         ParameterType::Boolean => serde_json::from_str::<bool>(raw)
             .map(Value::Bool)
             .map_err(|_| wrong("waar of niet waar")),
+        // Een datum gaat als ISO-tekst door naar de cel; dát is de vorm waarin
+        // ze op de draad staat en waarin een kroniek haar draagt. Of het ook
+        // écht een datum is, toetst de cel bij het binden — dezelfde toets die
+        // een besluit en een actie doorlopen, met dezelfde melding eruit. Hier
+        // een tweede parser zetten zou betekenen dat een query en een formulier
+        // over dezelfde waarde iets anders kunnen zeggen.
+        ParameterType::Date => Ok(Value::String(raw.to_string())),
     }
 }
 

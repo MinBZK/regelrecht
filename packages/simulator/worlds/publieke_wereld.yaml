@@ -309,6 +309,11 @@ actions:
           type: string
         - name: jaar
           type: number
+        # Een datum als parameter. Op de draad ISO (jjjj-mm-dd); het scherm toont
+        # de Nederlandse notatie, want dat is een kwestie van weergave en niet
+        # van wat er vastligt.
+        - name: ondertekend_op
+          type: date
       delivers_to:
         cell: toeslagen
         chronicle: aanvragen

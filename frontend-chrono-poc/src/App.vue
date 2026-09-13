@@ -26,6 +26,7 @@ const {
   loading,
   busy,
   error,
+  actionError,
   result,
   ready,
   clock,
@@ -70,6 +71,17 @@ const resultText = computed(() => {
 function runAction({ action, values }) {
   act(action, values);
 }
+
+/**
+ * Staat de fout bovenaan de pagina, of bij het formulier dat hem uitlokte?
+ *
+ * Bij de actie zelf als het er een van een actie is én dat paneel op het scherm
+ * staat. Dat tweede is geen detail: de panelen wisselen elkaar af, dus wie na
+ * een mislukte actie naar een ander tabblad gaat, zou de melding anders nergens
+ * meer zien staan — niet in de kaart, want die is weg, en niet bovenaan, want
+ * die zweeg voor de kaart.
+ */
+const showBanner = computed(() => Boolean(error.value) && !(actionError.value && tab.value === 'acties'));
 </script>
 
 <template>
@@ -112,8 +124,13 @@ function runAction({ action, values }) {
             <nldd-page>
               <nldd-simple-section width="full">
                 <nldd-container layout="stack" gap="16">
+                  <!-- Een fout op een actie staat bij haar eigen formulier (zie
+                       ActionCard); die hier nog eens herhalen zou dezelfde zin
+                       twee keer op één scherm zetten. Staat dat formulier niet
+                       op het scherm, dan staat hij hier alsnog: zie
+                       `showBanner`. -->
                   <nldd-banner
-                    v-if="error"
+                    v-if="showBanner"
                     variant="critical"
                     text="De server kon dit niet doen"
                     :supporting-text="error"
@@ -199,6 +216,7 @@ function runAction({ action, values }) {
                     v-if="tab === 'acties'"
                     :snapshot="snapshot"
                     :busy="busy"
+                    :error="actionError"
                     @run="runAction"
                   />
                   <SettingsPanel

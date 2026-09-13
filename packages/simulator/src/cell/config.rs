@@ -16,6 +16,7 @@
 use crate::cell::besluit::BesluitDefinition;
 use crate::cell::chronicle::ChronicleStream;
 use crate::error::{Result, SimulatorError, Subject};
+use chrono::NaiveDate;
 use regelrecht_engine::Value;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -143,7 +144,45 @@ pub enum ParameterType {
     Number,
     /// Waar of niet waar.
     Boolean,
+    /// Een kalenderdag, in ISO-notatie (`jjjj-mm-dd`).
+    ///
+    /// Op de draad is dat een string, en dat blijft zo: het is de notatie die de
+    /// engine leest en die een kroniek vastlegt, dus een tweede vorm ernaast zou
+    /// alleen maar heen en weer vertaald moeten worden. Wat dit type toevoegt is
+    /// de **toets**: bij het binden wordt de waarde door [`NaiveDate`] gehaald,
+    /// zodat `01-12-2026` hier stukloopt en niet drie lagen verderop in een
+    /// regeling die er een datum van probeert te maken.
+    ///
+    /// De toets vraagt de *canonieke* vorm, met nullen vooraan. Dat is strenger
+    /// dan `NaiveDate` zelf: die leest `2026-1-1` ook. De engine weigert die
+    /// vorm juist, en met reden — een niet-canonieke datum vergelijkt
+    /// chronologisch onder `>`/`<` maar ongelijk onder `EQUALS`, dat op de
+    /// tekst kijkt. Zou dit hem doorlaten, dan lag hij daarna in een kroniek en
+    /// was precies die tegenspraak ingebakken.
+    Date,
 }
+
+/// Waarom een waarde niet bij haar gedocumenteerde type past.
+///
+/// Twee soorten bezwaar, en ze horen een lezer verschillende dingen te
+/// vertellen: "dit is een getal en er hoorde tekst te staan" is iets anders dan
+/// "dit is tekst, maar geen datum". Eén melding voor beide zou bij een datum
+/// altijd "verwacht date, kreeg string" opleveren — waar staat voor de invuller
+/// die `01-12-2026` typte, en nutteloos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Mismatch {
+    /// De waarde is van een ander soort dan gedocumenteerd.
+    Type,
+    /// Tekst die een datum hoort te zijn, maar niet in ISO-notatie staat.
+    Date,
+}
+
+/// De notatie waarin een `date`-parameter aangeleverd wordt.
+///
+/// Dezelfde als die van de engine en van [`crate::Query::op_moment`]: één
+/// notatie op de draad, en de Nederlandse schrijfwijze blijft iets van het
+/// scherm.
+const ISO_DATE: &str = "%Y-%m-%d";
 
 impl ParameterType {
     /// De naam zoals die in foutmeldingen verschijnt.
@@ -152,15 +191,41 @@ impl ParameterType {
             Self::String => "string",
             Self::Number => "number",
             Self::Boolean => "boolean",
+            Self::Date => "date",
         }
     }
 
-    /// Past deze waarde bij het gedocumenteerde type?
-    fn accepts(self, value: &Value) -> bool {
-        match self {
+    /// Bind één aangeleverde waarde aan dit gedocumenteerde type.
+    ///
+    /// Dit is de plek waar een gedocumenteerde parameter zijn belofte waarmaakt:
+    /// wat hier doorkomt, mag de rest van de simulator als van dit type
+    /// beschouwen.
+    pub(crate) fn bind(self, value: &Value) -> std::result::Result<(), Mismatch> {
+        let ok = match self {
             Self::String => matches!(value, Value::String(_)),
             Self::Number => matches!(value, Value::Int(_) | Value::Decimal(_)),
             Self::Boolean => matches!(value, Value::Bool(_)),
+            Self::Date => {
+                let Value::String(text) = value else {
+                    return Err(Mismatch::Type);
+                };
+                let parsed =
+                    NaiveDate::parse_from_str(text, ISO_DATE).map_err(|_| Mismatch::Date)?;
+                // De heenweg terug: `parse_from_str` is met `%Y-%m-%d` niet
+                // streng en leest ook `2026-1-1` en `+2026-01-01`. Wat er niet
+                // onveranderd uit komt, staat niet in de canonieke vorm die de
+                // engine verderop eist, en hoort hier te stranden en niet daar.
+                return if parsed.format(ISO_DATE).to_string() == *text {
+                    Ok(())
+                } else {
+                    Err(Mismatch::Date)
+                };
+            }
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(Mismatch::Type)
         }
     }
 }
@@ -563,15 +628,27 @@ pub(crate) fn check_documented_params(
                 parameter: input.name.clone(),
             });
         };
-        if !input.value_type.accepts(value) {
-            return Err(SimulatorError::ParameterType {
-                cell: cell.to_string(),
-                subject,
-                name: name.to_string(),
-                parameter: input.name.clone(),
-                expected: input.value_type.label(),
-                actual: value.type_name(),
-            });
+        match input.value_type.bind(value) {
+            Ok(()) => {}
+            Err(Mismatch::Type) => {
+                return Err(SimulatorError::ParameterType {
+                    cell: cell.to_string(),
+                    subject,
+                    name: name.to_string(),
+                    parameter: input.name.clone(),
+                    expected: input.value_type.label(),
+                    actual: value.type_name(),
+                })
+            }
+            Err(Mismatch::Date) => {
+                return Err(SimulatorError::ParameterDate {
+                    cell: cell.to_string(),
+                    subject,
+                    name: name.to_string(),
+                    parameter: input.name.clone(),
+                    value: value.to_string(),
+                })
+            }
         }
     }
 
@@ -980,5 +1057,129 @@ where:
             err.contains("`key`"),
             "de melding moet `key` noemen, kreeg: {err}"
         );
+    }
+
+    /// Het type staat in het wereldbestand, dus het hoort er ook uit gelezen te
+    /// worden — `date` is geen vierde Rust-geval maar een vierde woord in YAML.
+    #[test]
+    fn het_datumtype_wordt_uit_de_configuratie_gelezen() {
+        let parameter: DocumentedParameter =
+            serde_yaml_ng::from_str("name: besluitdatum\ntype: date\n")
+                .unwrap_or_else(|e| panic!("`type: date` moet gelezen worden: {e}"));
+        assert_eq!(parameter.value_type, ParameterType::Date);
+    }
+
+    /// De ISO-notatie komt door; de Nederlandse notatie, een halve datum en een
+    /// dag die niet bestaat niet. Dat laatste is het punt van parsen in plaats
+    /// van een vormtoets: `2024-02-30` heeft de juiste vorm en is geen dag.
+    ///
+    /// `2026-1-1` en `+2026-01-01` staan er ook bij, en die zijn het makkelijkst
+    /// te vergeten: `NaiveDate` leest ze allebei. De engine weigert ze verderop
+    /// alsnog, dus wie ze hier doorlaat verplaatst de fout naar een plek waar
+    /// van het formulier niets meer bekend is — en legt hem intussen in een
+    /// kroniek vast.
+    #[test]
+    fn een_datum_bindt_alleen_in_iso_notatie() {
+        assert_eq!(
+            ParameterType::Date.bind(&Value::String("2026-12-01".to_string())),
+            Ok(())
+        );
+        for verkeerd in [
+            "01-12-2026",
+            "2026-12",
+            "1-12-2026",
+            "2024-02-30",
+            "",
+            "2026-1-1",
+            "2026-01-1",
+            "+2026-01-01",
+            "2026-12-01T00:00:00",
+        ] {
+            assert_eq!(
+                ParameterType::Date.bind(&Value::String(verkeerd.to_string())),
+                Err(Mismatch::Date),
+                "'{verkeerd}' hoort geen datum te zijn"
+            );
+        }
+    }
+
+    /// Een getal is geen datum met een leesfout maar een waarde van een ander
+    /// soort, en dat hoort een andere melding op te leveren.
+    #[test]
+    fn een_waarde_die_geen_tekst_is_valt_op_het_soort() {
+        assert_eq!(
+            ParameterType::Date.bind(&Value::Int(20_261_201)),
+            Err(Mismatch::Type)
+        );
+        assert_eq!(
+            ParameterType::Date.bind(&Value::Null),
+            Err(Mismatch::Type),
+            "leeg is geen datum, en ook geen leesfout"
+        );
+    }
+
+    /// De drie manieren waarop een formulier met een datum erin fout kan gaan,
+    /// elk met de melding die erbij hoort: goed, onleesbaar, en ontbrekend.
+    #[test]
+    fn een_formulier_met_een_datum_wordt_gebonden_getoetst() {
+        let documented = vec![
+            DocumentedParameter {
+                name: "bsn".to_string(),
+                value_type: ParameterType::String,
+            },
+            DocumentedParameter {
+                name: "besluitdatum".to_string(),
+                value_type: ParameterType::Date,
+            },
+        ];
+        let check = |params: BTreeMap<String, Value>| {
+            check_documented_params(
+                "toeslagen",
+                Subject::Besluit,
+                "toekenning",
+                &documented,
+                &params,
+            )
+        };
+
+        let goed: BTreeMap<String, Value> = [
+            ("bsn".to_string(), Value::String("999993653".to_string())),
+            (
+                "besluitdatum".to_string(),
+                Value::String("2026-12-01".to_string()),
+            ),
+        ]
+        .into_iter()
+        .collect();
+        assert!(check(goed).is_ok(), "een ISO-datum hoort door te komen");
+
+        let verkeerd_formaat: BTreeMap<String, Value> = [
+            ("bsn".to_string(), Value::String("999993653".to_string())),
+            (
+                "besluitdatum".to_string(),
+                Value::String("01-12-2026".to_string()),
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let err = check(verkeerd_formaat).expect_err("de Nederlandse notatie hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::ParameterDate { .. }),
+            "verwachtte ParameterDate, kreeg {err}"
+        );
+        let melding = err.to_string();
+        assert!(melding.contains("01-12-2026"), "{melding}");
+        assert!(melding.contains("jjjj-mm-dd"), "{melding}");
+
+        let ontbreekt: BTreeMap<String, Value> =
+            [("bsn".to_string(), Value::String("999993653".to_string()))]
+                .into_iter()
+                .collect();
+        let err = check(ontbreekt).expect_err("een ontbrekende datum hoort te falen");
+        assert!(
+            matches!(err, SimulatorError::MissingParameter { .. }),
+            "verwachtte MissingParameter, kreeg {err}"
+        );
+        assert!(err.to_string().contains("besluitdatum"), "{err}");
     }
 }

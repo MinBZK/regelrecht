@@ -26,14 +26,31 @@ export function createWorld(api = worldApi) {
   const busy = ref(false);
   /** De laatste fout, in de woorden van de server. */
   const error = ref(null);
+  /**
+   * Dezelfde fout, maar dan van een actie: `{ action, message }`.
+   *
+   * Een formulier dat geweigerd wordt hoort dat bij zichzelf te laten zien en
+   * niet alleen bovenaan de pagina — wie een veld verkeerd invult, kijkt naar
+   * dat veld. Daarom staat hier ook bij wélke actie het was; zonder dat zou de
+   * melding onder elke kaart tegelijk staan.
+   */
+  const actionError = ref(null);
   /** Wat de laatste wijziging opleverde. */
   const result = ref(null);
 
   const ready = computed(() => snapshot.value !== null);
   const clock = computed(() => snapshot.value?.clock ?? null);
 
+  /**
+   * Eén plek waar een fout binnenkomt, en daarmee de plek die `actionError`
+   * leegmaakt. Zonder dat blijft de melding van een mislukte actie staan terwijl
+   * er allang iets anders misging, en omdat de banner bovenaan zwijgt zolang er
+   * een actiefout is, zou die nieuwe fout nergens meer te zien zijn. Wie hem
+   * daarna wél wil tonen, zet hem ná deze oproep (zie `act`).
+   */
   function fail(cause) {
     error.value = cause?.message || 'De server gaf geen leesbare fout.';
+    actionError.value = null;
     return null;
   }
 
@@ -41,6 +58,7 @@ export function createWorld(api = worldApi) {
   async function load() {
     loading.value = true;
     error.value = null;
+    actionError.value = null;
     try {
       snapshot.value = await api.fetchWorld();
       previousCounts.value = null;
@@ -59,6 +77,7 @@ export function createWorld(api = worldApi) {
   async function step(label, run) {
     busy.value = true;
     error.value = null;
+    actionError.value = null;
     result.value = null;
     const before = snapshot.value ? gramCounts(snapshot.value) : null;
     try {
@@ -76,7 +95,15 @@ export function createWorld(api = worldApi) {
     }
   }
 
-  const act = (action, values) => step(action.label ?? action.id, () => api.runAction(action.id, values));
+  /**
+   * Eén actie uitvoeren. Gaat het mis, dan wordt de melding óók aan de actie
+   * gehangen, zodat haar eigen kaart hem kan tonen.
+   */
+  async function act(action, values) {
+    const next = await step(action.label ?? action.id, () => api.runAction(action.id, values));
+    if (next === null) actionError.value = { action: action.id, message: error.value };
+    return next;
+  }
 
   const advance = (until) => step(`Vooruitgespoeld tot ${until}`, () => api.advanceTo(until));
 
@@ -92,11 +119,12 @@ export function createWorld(api = worldApi) {
 
   /** Een cel naar een lexostatus vragen. Verandert niets, dus geen nieuw beeld. */
   async function askLexostatus(cell, name, params) {
+    error.value = null;
+    actionError.value = null;
     try {
       return await api.askLexostatus(cell, name, params);
     } catch (cause) {
-      error.value = cause?.message || 'De server gaf geen leesbare fout.';
-      return null;
+      return fail(cause);
     }
   }
 
@@ -106,6 +134,7 @@ export function createWorld(api = worldApi) {
 
   function dismissError() {
     error.value = null;
+    actionError.value = null;
   }
 
   return {
@@ -114,6 +143,7 @@ export function createWorld(api = worldApi) {
     loading,
     busy,
     error,
+    actionError,
     result,
     ready,
     clock,

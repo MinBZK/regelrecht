@@ -105,6 +105,29 @@ pub enum SimulatorError {
         actual: &'static str,
     },
 
+    /// Een parameter van het type `date` draagt geen ISO-datum.
+    ///
+    /// Een eigen melding naast [`Self::ParameterType`], want het bezwaar is een
+    /// ander: de waarde is wél tekst, ze is alleen geen datum. "verwacht date,
+    /// kreeg string" zou hier staan en zou de invuller die `01-12-2026` typte
+    /// niets zeggen; deze melding noemt de notatie die wél gelezen wordt.
+    #[error(
+        "parameter '{parameter}' van {subject} '{cell}.{name}' is geen datum: '{value}' \
+         (verwacht jjjj-mm-dd)"
+    )]
+    ParameterDate {
+        /// Cel waaraan gevraagd werd.
+        cell: String,
+        /// Of dit over een lexostatus, een besluit of een actie gaat.
+        subject: Subject,
+        /// De gevraagde lexostatus, het uitgevoerde besluit of de actie.
+        name: String,
+        /// De parameter met de onleesbare datum.
+        parameter: String,
+        /// Wat er stond.
+        value: String,
+    },
+
     /// De definitie verwijst met `$naam` of `{naam}` naar een
     /// niet-gedocumenteerde parameter.
     #[error(
