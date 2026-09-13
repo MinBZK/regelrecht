@@ -40,6 +40,7 @@ function errorOf(action) {
         v-for="action in group.actions"
         :key="action.id"
         :action="action"
+        :snapshot="snapshot"
         :busy="busy"
         :error="errorOf(action)"
         @run="emit('run', $event)"

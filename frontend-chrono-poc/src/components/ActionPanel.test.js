@@ -113,6 +113,80 @@ describe('het actiepaneel', () => {
     expect(card.findAll('nldd-form-field-error-text')).toHaveLength(1);
   });
 
+  // De kaart van een besluit dat er al ligt. In de fixture besloot cel
+  // 'toeslagen' op 01-04-2024 over deze zaak; wie hetzelfde besluit opnieuw
+  // aanroept legt een tweede decretogram, en dat hoort niet per ongeluk te
+  // gebeuren.
+  describe('een besluit waarover al besloten is', () => {
+    /** De kaart van een `decides`-actie, met de zaak ingevuld. */
+    async function decisionCard(bsn) {
+      const wrapper = mountPanel();
+      const index = worldFixture.actions.findIndex((action) => action.effect.soort === 'decides');
+      const card = wrapper.findAll('nldd-card')[index];
+      await fill(wrapper, card.find('nldd-text-field'), bsn);
+      return { wrapper, card };
+    }
+
+    it('zegt "al besloten op" in plaats van "kan nu"', async () => {
+      const { card } = await decisionCard('999993653');
+      expect(card.find('nldd-tag').attributes('text')).toBe('al besloten op 01-04-2024');
+    });
+
+    // "Al besloten op …" komt in de plaats van "kan nu", nooit in de plaats van
+    // "kan nu niet": een actie die de wereld nú weigert, hoort dat te blijven
+    // zeggen. Anders staat er een tag die zegt dat er iets ligt boven een knop
+    // die niets kan.
+    it('laat "kan nu niet" staan naast wat er al ligt', async () => {
+      const snapshot = cloneWorld();
+      const index = snapshot.actions.findIndex((action) => action.effect.soort === 'decides');
+      snapshot.actions[index].available = false;
+      snapshot.actions[index].unavailable_reason = 'de aanvraag ligt er nog niet';
+      const wrapper = mountPanel(snapshot);
+      const card = wrapper.findAll('nldd-card')[index];
+      await fill(wrapper, card.find('nldd-text-field'), '999993653');
+
+      expect(card.findAll('nldd-tag').map((tag) => tag.attributes('text'))).toStrictEqual([
+        'al besloten op 01-04-2024',
+        'kan nu niet',
+      ]);
+    });
+
+    it('laat "kan nu" staan voor een zaak waarover nog niets ligt', async () => {
+      const { card } = await decisionCard('999999999');
+      expect(card.find('nldd-tag').attributes('text')).toBe('kan nu');
+    });
+
+    it('vraagt eerst om bevestiging en voert daarna wél uit', async () => {
+      const { wrapper, card } = await decisionCard('999993653');
+      await card.find('form').trigger('submit');
+
+      // Nog niets uitgevoerd: er staat een vraag.
+      expect(wrapper.emitted('run')).toBeUndefined();
+      const dialog = card.find('nldd-inline-dialog');
+      expect(dialog.attributes('text')).toBe('Er ligt al een besluit');
+      expect(dialog.attributes('supporting-text')).toContain('zorgtoeslag/999993653');
+      expect(dialog.attributes('supporting-text')).toContain('01-04-2024');
+
+      // Een tweede besluit is legitiem, dus de weg ernaartoe blijft open.
+      const confirm = dialog.findAll('nldd-button').find((button) => button.attributes('text') === 'Toch besluiten');
+      await confirm.trigger('click');
+      expect(wrapper.emitted('run')).toHaveLength(1);
+      expect(wrapper.emitted('run')[0][0].values).toStrictEqual({ bsn: '999993653' });
+    });
+
+    it('laat de bevestiging weer los zonder iets te doen', async () => {
+      const { wrapper, card } = await decisionCard('999993653');
+      await card.find('form').trigger('submit');
+      const annuleren = card
+        .findAll('nldd-button')
+        .find((button) => button.attributes('text') === 'Annuleren');
+      await annuleren.trigger('click');
+
+      expect(wrapper.emitted('run')).toBeUndefined();
+      expect(card.find('nldd-inline-dialog').exists()).toBe(false);
+    });
+  });
+
   it('zegt het als het wereldbestand geen acties beschrijft', () => {
     const snapshot = cloneWorld();
     snapshot.actions = [];

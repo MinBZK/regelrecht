@@ -106,14 +106,27 @@ export function resetWorld() {
 }
 
 /**
- * Vraag een cel naar een lexostatus. Alleen lezen.
+ * De queryparameter waarmee de server het moment van de vraag leest.
+ *
+ * Gereserveerd: de server weigert een lexostatus die zelf een parameter zo
+ * noemt, juist omdat deze naam hier iets anders betekent. Hij staat daarom als
+ * eigen argument in `askLexostatus` en niet tussen de parameters van de cel.
+ */
+export const MOMENT_PARAM = 'op_moment';
+
+/**
+ * Vraag een cel naar een lexostatus, op een moment. Alleen lezen.
+ *
+ * `opMoment` leeg laten betekent "op de stand van de klok"; een moment ná de
+ * klok weigert de server met een 409, want wat na de klok gebeurt heeft nog
+ * niets vastgelegd.
  *
  * "In deze cel is hierover niets vastgesteld" is een gewoon antwoord met status
  * 200, dus hier hoeft niets opgevangen te worden: het staat in de uitkomst.
  */
-export function askLexostatus(cell, name, params = {}) {
+export function askLexostatus(cell, name, params = {}, opMoment = null) {
   const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries({ ...params, [MOMENT_PARAM]: opMoment })) {
     if (key && value !== '' && value !== null && value !== undefined) query.set(key, String(value));
   }
   const search = query.toString();

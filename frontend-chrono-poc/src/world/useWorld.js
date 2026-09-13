@@ -117,12 +117,15 @@ export function createWorld(api = worldApi) {
     return next;
   }
 
-  /** Een cel naar een lexostatus vragen. Verandert niets, dus geen nieuw beeld. */
-  async function askLexostatus(cell, name, params) {
+  /**
+   * Een cel naar een lexostatus vragen, op een moment. Verandert niets, dus
+   * geen nieuw beeld: het antwoord is van de cel en de wereld blijft staan.
+   */
+  async function askLexostatus(cell, name, params, opMoment) {
     error.value = null;
     actionError.value = null;
     try {
-      return await api.askLexostatus(cell, name, params);
+      return await api.askLexostatus(cell, name, params, opMoment);
     } catch (cause) {
       return fail(cause);
     }

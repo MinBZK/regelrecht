@@ -4,6 +4,7 @@ import {
   actionsByActor,
   clockIndex,
   competentAuthorityOf,
+  decidedAlready,
   describeEffect,
   describeOrigin,
   emptyForm,
@@ -180,6 +181,57 @@ describe('de acties', () => {
 
     const decides = worldFixture.actions.find((action) => action.effect.soort === 'decides');
     expect(describeEffect(decides.effect)).toContain(`besluit '${decides.effect.besluit}'`);
+  });
+});
+
+describe('een besluit dat er al ligt', () => {
+  /** De eerste besluit-actie uit de fixture; in het beeld ligt haar gram al. */
+  const decides = worldFixture.actions.find((action) => action.effect.soort === 'decides');
+
+  it('vindt het gram van dezelfde zaak, met zijn zaakkenmerk en moment', () => {
+    const decided = decidedAlready(worldFixture, decides, { bsn: '999993653' });
+    expect(decided).toStrictEqual({
+      opMoment: '2024-04-01',
+      zaakkenmerk: 'zorgtoeslag/999993653',
+      count: 1,
+    });
+  });
+
+  it('houdt zaken uit elkaar: een andere parameter is een andere zaak', () => {
+    expect(decidedAlready(worldFixture, decides, { bsn: '999999999' })).toBeNull();
+  });
+
+  it('zwijgt zolang het formulier niet ingevuld is, en over een actie die vastlegt', () => {
+    expect(decidedAlready(worldFixture, decides, { bsn: '' })).toBeNull();
+    expect(decidedAlready(worldFixture, decides, {})).toBeNull();
+    const records = worldFixture.actions.find((action) => action.effect.soort === 'records');
+    expect(decidedAlready(worldFixture, records, { bsn: '999993653' })).toBeNull();
+  });
+
+  it('telt elk besluit over dezelfde zaak, en niets van ná de klok', () => {
+    const world = cloneWorld();
+    const chronicle = world.cells
+      .find((cell) => cell.id === decides.effect.cell)
+      .chronicles.find((stream) => stream.grams.some((gram) => gram.kind === 'decretogram'));
+    const first = chronicle.grams.find((gram) => gram.fields.besluit?.value === decides.effect.besluit);
+
+    const later = structuredClone(first);
+    later.op_moment = '2024-09-01';
+    chronicle.grams.push(later);
+    expect(decidedAlready(world, decides, { bsn: '999993653' })).toMatchObject({
+      opMoment: '2024-09-01',
+      count: 2,
+    });
+
+    // Wat na de klok ligt, ligt er nog niet: daar hoort geen bevestiging over te
+    // gaan.
+    const ahead = structuredClone(first);
+    ahead.op_moment = '2099-01-01';
+    chronicle.grams.push(ahead);
+    expect(decidedAlready(world, decides, { bsn: '999993653' })).toMatchObject({
+      opMoment: '2024-09-01',
+      count: 2,
+    });
   });
 });
 
