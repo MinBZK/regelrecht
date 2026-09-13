@@ -28,6 +28,11 @@ function saveName(e) {
 <template>
   <Teleport to="body">
     <div v-if="p.active.value && p.current.value" class="deck" :class="{ full: p.isFull.value }" role="region" aria-label="Presentatie">
+      <!-- Het podium: de tekstkolom van de dia. Op het hele scherm is dat een
+           gecentreerde kolom van hooguit 1600px, in de rail de hele kolom. In
+           beide gevallen is dit de container waar de typografie zich op meet,
+           zodat één ladder voor allebei volstaat. -->
+      <div class="stage">
       <div class="content">
         <div class="content-main">
           <!-- Title slide -->
@@ -73,6 +78,7 @@ function saveName(e) {
           <p class="note">{{ p.current.value.note }}</p>
         </div>
       </div>
+      </div>
 
       <div class="footer">
         <div class="footer-row">
@@ -103,14 +109,23 @@ function saveName(e) {
  * palette is the Rijkshuisstijl (donkerblauw #154273, lintblauw #01689b), the
  * type is RijksoverheidSerif for titles and RijksSans for the rest. */
 .deck {
-  /* Size the type against the deck's own box, not the viewport: the deck is a
-     40vw rail on a demo slide and the whole screen on an intro, so a viewport
-     unit would be wrong in one of the two. `container-type: size` makes 1cqmin
-     one percent of the deck's shorter side, and every size below is a multiple
-     of it, so a short window shrinks the text instead of pushing it past the
-     bottom edge. */
-  container-type: size;
-  --slide-unit: 1cqmin;
+  /* De maat volgt de BREEDTE van het vlak waarin de tekst staat (`1cqw`), niet
+     de kortste zijde. Met `cqmin` won op elk normaal venster de hoogte, en die
+     zegt niets over hoe groot een letter mag zijn: op een breed scherm stond de
+     titel op 26px in een vlak van 720px, met de rest van de dia leeg. Een dia
+     vult zijn regel; de hoogte begrenst, maar is geen maatstaf. */
+  container-type: inline-size;
+  /* Twee rollen, twee schalen. Op het hele scherm is de dia het beeld en mag
+     de titel de regel vullen; in de rail is hij een bijschrift naast de demo,
+     en daar is diezelfde maat schreeuwerig. `--scale` is de enige knop: de
+     rail zet hem lager, de rest van de typografie hieronder is één ladder. */
+  /* De rail is geen verkleinde dia maar een leespaneel naast de demo. Eén
+     procent van een kolom van 630px is 6,3px, en de dia-ladder maakte daar
+     titels van 28px en opsommingen van 13px van: kleiner dan de tekst van de
+     demo ernaast. De ondergrens tilt de hele ladder in één keer op, zodat de
+     verhoudingen blijven kloppen en alleen het formaat leesbaar wordt. */
+  --scale: 1;
+  --slide-floor: 11px;
   position: fixed;
   inset: 0 auto 0 0;
   width: 36vw;
@@ -125,17 +140,62 @@ function saveName(e) {
   font-family: 'RijksSans', system-ui, sans-serif;
   transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1), padding 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
+/* Een dia op het hele scherm is geen vlak met marges eromheen maar een
+   gecentreerde tekstkolom met een begrensde regellengte. Zonder die grens
+   bepaalde het vensterformaat de regel: op 2000px bleef er na de marges 1680px
+   over voor een regel van 26px, en de dia was vooral leeg blauw. */
 .deck.full {
   width: 100vw;
-  padding: clamp(1.25rem, calc(4 * var(--slide-unit, 1vw)), 4rem) clamp(3rem, 9vw, 10rem) clamp(0.75rem, calc(2 * var(--slide-unit, 1vw)), 2rem);
+  padding: 2vh 0 0;
+  /* De deck zelf meet niets meer: het podium binnenin is de container. */
+  container-type: normal;
+}
+.deck.full .stage {
+  /* Het podium vult de vrije ruimte; het dwingt géén 16:9 af. Dat deed het
+     eerder wel, en dan bepaalde de vorm van het vlak of de tekst paste: de
+     titeldia is hoger dan 16:9 bij deze lettergrootte, en "Nederlandse
+     Digitale Dienst" werd er onderaan afgesneden.
+     De maat komt nu van de breedte (`--slide-measure`), begrensd op een
+     leesbare regellengte, en de hoogte is vrij. Zo bepaalt de inhoud de
+     hoogte en de regellengte de typografie, in plaats van andersom. */
+  --scale: 1;
+  --slide-floor: 0px;
+  container-type: inline-size;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: min(100%, 1600px);
+  margin: 0 auto;
+  padding: 3vh clamp(2rem, 5vw, 6rem);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+/* De voettekst en de voortgangsbalk horen bij de deck, niet bij de dia: ze
+   staan naast het verhaal en mogen het podium niet uit verhouding duwen. */
+.deck.full .footer {
+  padding-inline: clamp(1.5rem, 4vw, 4rem);
+}
+
+/* In de rail is het podium gewoon de kolom: geen 16:9, want daar staat de dia
+   naast de demo en is hij een bijschrift, geen beeld. */
+.stage {
+  /* `--slide-unit` staat hier en niet op de deck: `1cqw` moet zich meten aan
+     het podium, en `--scale` moet de waarde van dít element zijn. Op de deck
+     werd de rail-schaal van 0.62 ook op een volledige dia toegepast. */
+  --slide-unit: max(var(--slide-floor, 0px), calc(1cqw * var(--scale)));
+  container-type: inline-size;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* A slide never scrolls. Scrolling hides the bottom of an argument behind a
  * gesture nobody makes while presenting, and on a projector the speaker cannot
- * see that there is more. The type shrinks with the slide instead: every size
- * below scales on the smaller of width and height (`min(1vw, …)`-style through
- * `--slide-unit`), so a short window makes the text smaller rather than taller
- * than the slide. `clamp()` keeps a floor, so it never becomes unreadable. */
+ * see that there is more. De typografie schaalt in plaats daarvan mee met de
+ * breedte van het podium (`--slide-unit`, een percentage daarvan), met een
+ * ondergrens in de rail zodat het bijschrift daar niet kleiner wordt dan de
+ * tekst van de demo ernaast. */
 .content {
   flex: 1 1 auto;
   display: flex;
@@ -148,7 +208,7 @@ function saveName(e) {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: clamp(0.5rem, calc(1.4 * var(--slide-unit, 1vw)), 1.4rem);
+  gap: max(0.5rem, calc(1.6 * var(--slide-unit)));
 }
 .content-foot {
   flex: 0 0 auto;
@@ -157,8 +217,13 @@ function saveName(e) {
   border-top: 1px solid rgba(255, 255, 255, 0.18);
 }
 
+/* Eén typografische ladder, in stappen van `--slide-unit` (een percentage van
+   de podiumbreedte maal `--scale`). Geen `clamp()`-plafonds meer: die kapten
+   op een beamer juist af wat daar goed was, en de vloer is overbodig zolang de
+   dia een podium met vaste verhoudingen is dat zelf niet kleiner wordt dan het
+   venster. Alleen een ondergrens blijft, voor een heel smal venster. */
 .overline {
-  font-size: clamp(0.7rem, calc(1.5 * var(--slide-unit, 1vw)), 1.6rem);
+  font-size: max(0.72rem, calc(1.6 * var(--slide-unit)));
   font-weight: 600;
   letter-spacing: 0.02em;
   color: rgba(255, 255, 255, 0.72);
@@ -166,18 +231,21 @@ function saveName(e) {
 .title {
   font-family: 'RijksoverheidSerif', Georgia, serif;
   font-weight: 700;
-  font-size: clamp(1.15rem, calc(4.2 * var(--slide-unit, 1vw)), 5.4rem);
-  line-height: 1.08;
+  font-size: max(1.2rem, calc(5.2 * var(--slide-unit)));
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
   margin: 0;
   color: #fff;
 }
 .title-hero {
-  font-size: clamp(1.5rem, calc(7 * var(--slide-unit, 1vw)), 9rem);
+  font-size: max(1.6rem, calc(8.5 * var(--slide-unit)));
 }
 .statement {
-  font-size: clamp(1.05rem, calc(3.8 * var(--slide-unit, 1vw)), 5rem);
-  line-height: 1.2;
+  font-size: max(1.1rem, calc(5.2 * var(--slide-unit)));
+  line-height: 1.18;
   font-weight: 400;
+  letter-spacing: -0.01em;
 }
 /* One authored line per block; a line that still has to wrap balances its
  * halves instead of leaving one word behind. */
@@ -189,27 +257,29 @@ function saveName(e) {
   font-weight: 700;
 }
 .lead {
-  font-size: clamp(0.8rem, calc(2 * var(--slide-unit, 1vw)), 2.3rem);
+  font-size: max(0.85rem, calc(2.6 * var(--slide-unit)));
   line-height: 1.4;
   margin: 0;
   font-weight: 500;
+  text-wrap: pretty;
 }
 .lead-hero {
   font-family: 'RijksoverheidSerif', Georgia, serif;
   font-style: italic;
   font-weight: 400;
-  font-size: clamp(0.9rem, calc(3 * var(--slide-unit, 1vw)), 3.6rem);
+  font-size: max(1rem, calc(3.6 * var(--slide-unit)));
   color: rgba(255, 255, 255, 0.9);
 }
 .bullets {
-  font-size: clamp(0.75rem, calc(1.75 * var(--slide-unit, 1vw)), 2rem);
+  font-size: max(0.8rem, calc(2.2 * var(--slide-unit)));
   line-height: 1.45;
   margin: 0;
-  padding-left: 1.3rem;
+  padding-left: 1.3em;
   display: flex;
   flex-direction: column;
-  gap: clamp(0.3rem, calc(0.9 * var(--slide-unit, 1vw)), 0.9rem);
+  gap: calc(0.9 * var(--slide-unit));
   color: rgba(255, 255, 255, 0.96);
+  text-wrap: pretty;
 }
 .bullets li::marker {
   color: rgba(255, 255, 255, 0.7);
@@ -217,7 +287,7 @@ function saveName(e) {
 .bullets-plain {
   list-style: none;
   padding-left: 0;
-  font-size: clamp(0.85rem, calc(2.4 * var(--slide-unit, 1vw)), 2.8rem);
+  font-size: max(0.9rem, calc(3 * var(--slide-unit)));
 }
 .bullets :deep(strong) {
   font-weight: 700;
@@ -226,8 +296,8 @@ function saveName(e) {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  margin-top: 0.6rem;
-  font-size: clamp(1rem, 1.5vw, 1.7rem);
+  margin-top: calc(1.5 * var(--slide-unit));
+  font-size: max(0.9rem, calc(1.9 * var(--slide-unit)));
   color: rgba(255, 255, 255, 0.85);
 }
 .presenter {
@@ -249,8 +319,8 @@ function saveName(e) {
 }
 .slide-link {
   align-self: flex-start;
-  margin-top: 0.8rem;
-  font-size: clamp(1.2rem, 1.6vw, 1.5rem);
+  margin-top: calc(1.5 * var(--slide-unit));
+  font-size: max(0.95rem, calc(2 * var(--slide-unit)));
   font-weight: 600;
   color: #fff;
   text-decoration: underline;
@@ -258,7 +328,7 @@ function saveName(e) {
 }
 .note {
   margin: 0;
-  font-size: clamp(0.95rem, 1.3vw, 1.3rem);
+  font-size: max(0.85rem, calc(1.6 * var(--slide-unit)));
   color: rgba(255, 255, 255, 0.8);
   line-height: 1.45;
 }
