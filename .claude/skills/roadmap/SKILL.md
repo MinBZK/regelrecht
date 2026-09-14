@@ -86,6 +86,7 @@ onderzoek: ''
 bouw: ''
 rfcs: []
 onderzoeksvragen: []
+afhankelijkVan: []
 samenhangIds: []
 ---
 ```
@@ -141,6 +142,28 @@ je er later tussen schuiven zonder alles te hernummeren.
 `samenhangIds` — UUID's van andere werkpakketten. De build controleert of ze
 bestaan. Dit is eenrichtingsverkeer: zet je A → B, dan verschijnt B niet
 automatisch bij A. Zet 'm er handmatig bij als de relatie wederzijds is.
+
+`afhankelijkVan` — UUID's van werkpakketten die af moeten zijn voordat dit
+werkpakket kan beginnen. Een andere soort relatie dan `samenhangIds`, en houd
+die twee uit elkaar: samenhang is wederzijds en zegt niets over volgorde,
+afhankelijkheid is een richting in de tijd. De matrix tekent alleen voor dit
+veld een pijl, van het werkpakket dat eerst af moet naar het werkpakket dat
+wacht.
+
+Zet het alleen neer waar het echt zo is. "Hangt hiermee samen" en "gaat hier
+logisch op volgen" zijn geen afhankelijkheid; de toets is of het tweede
+werkpakket zonder het eerste niet uitgevoerd kan worden.
+
+Je schrijft één kant op. De werkpakketpagina leidt de andere kant er zelf uit
+af en toont onder "Afhankelijkheden" allebei: waar dit werkpakket op wacht, en
+wat op dit werkpakket wacht. Zet de omgekeerde verwijzing dus niet handmatig in
+het andere bestand, want dan staat er een kring.
+
+De build valt op een id dat niet bestaat, op een werkpakket dat naar zichzelf
+wijst, en op een kring (`afhankelijkheden lopen rond: A → B → C → A`, met de
+titels in de volgorde waarin hij ze tegenkwam). Een kring betekent dat geen van
+die werkpakketten ooit kan beginnen; welke pijl de verkeerde is, is een
+inhoudelijk oordeel en geen bestandsfout.
 
 ## Onderzoeksvragen
 
@@ -306,6 +329,8 @@ aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 - een onbekende `faseId` of `disciplineId`
 - een discipline die in geen, of in meer dan één, swimlane staat
 - een `samenhangId` dat nergens heen wijst
+- een `afhankelijkVan` dat nergens heen wijst, naar zichzelf wijst, of in een
+  kring loopt
 - twee bestanden met hetzelfde `id`, of een bestandsnaam die niet het `id` is
 - een `paper:`-anker dat niet in het paper staat
 - een RFC-nummer in `rfcs` dat niet bestaat

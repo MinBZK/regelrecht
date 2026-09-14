@@ -57,6 +57,7 @@ export interface WerkpakketData {
   volgorde: number;
   onderzoeksvragen: (string | { vraag: string; paper: string })[];
   samenhangIds: string[];
+  afhankelijkVan: string[];
   onderzoek: string;
   bouw: string;
   rfcs: number[];
@@ -292,6 +293,94 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
       (w) => w.data.faseId === faseId && w.data.disciplineId === disciplineId,
     )
     .sort((a, b) => a.data.volgorde - b.data.volgorde);
+}
+
+/**
+ * How far right a card has to sit inside its own fase column so that it lands
+ * clear of every werkpakket it waits for: the longest chain of `afhankelijkVan`
+ * behind it *within the same fase*. Nothing to wait for in this fase is 0.
+ *
+ * Same fase only, because the matrix already orders the fases left to right. A
+ * werkpakket in fase II that waits for one in fase I is past it by sitting in
+ * a later column, and indenting it again would push it across an empty stretch
+ * of its own column for nothing.
+ *
+ * Safe to compute without a visited-guard for cycles because
+ * assertReferencesResolve() has already failed the build on one; the `bezig`
+ * set is there so a cycle that somehow reached this function loops once
+ * instead of forever.
+ */
+export function afhankelijkheidsDiepte<T extends { data: WerkpakketData }>(
+  alle: T[],
+): Map<string, number> {
+  const fase = new Map(alle.map(({ data }) => [data.id, data.faseId]));
+  const voorwaarden = new Map(
+    alle.map(({ data }) => [
+      data.id,
+      data.afhankelijkVan.filter((v) => fase.get(v) === data.faseId),
+    ]),
+  );
+  const diepte = new Map<string, number>();
+  const bezig = new Set<string>();
+  const bereken = (id: string): number => {
+    const bekend = diepte.get(id);
+    if (bekend !== undefined) return bekend;
+    if (bezig.has(id)) return 0;
+    bezig.add(id);
+    const eigen = (voorwaarden.get(id) ?? []).map((v) => bereken(v) + 1);
+    bezig.delete(id);
+    const uitkomst = eigen.length ? Math.max(...eigen) : 0;
+    diepte.set(id, uitkomst);
+    return uitkomst;
+  };
+  for (const { data } of alle) bereken(data.id);
+  return diepte;
+}
+
+/**
+ * Where every card in one matrix cell goes: a column (how far right) and a row
+ * (how far down) inside the cell's own little grid.
+ *
+ * The column is afhankelijkheidsDiepte(): as far left as the dependencies
+ * allow. The row keeps a chain on one line — a card joins the row of the
+ * werkpakket it waits for, so the arrow between them runs straight across
+ * instead of stepping down. A card with nothing in front of it in this cell
+ * starts a row of its own, so two werkpakketten only ever end up side by side
+ * when one really does wait for the other.
+ *
+ * Order within the cell stays `volgorde`: it decides which card claims a row
+ * first, and a chain therefore lands in the order it was written.
+ */
+export function celIndeling<T extends { data: WerkpakketData }>(
+  cel: T[],
+  diepte: Map<string, number>,
+): { wp: T; kolom: number; rij: number }[] {
+  const geplaatst = new Map<string, { kolom: number; rij: number }>();
+  const bezet: Set<number>[] = [];
+  const uitkomst: { wp: T; kolom: number; rij: number }[] = [];
+
+  for (const wp of cel) {
+    const kolom = diepte.get(wp.data.id) ?? 0;
+    // The deepest one already placed here: sitting on its row puts this card
+    // right of every prerequisite in this cell, not just that one.
+    const voorganger = wp.data.afhankelijkVan
+      .map((id) => geplaatst.get(id))
+      .filter((plek): plek is { kolom: number; rij: number } => plek !== undefined)
+      .sort((a, b) => b.kolom - a.kolom)[0];
+
+    let rij: number;
+    if (voorganger !== undefined && !bezet[voorganger.rij]?.has(kolom)) {
+      rij = voorganger.rij;
+    } else {
+      rij = bezet.length;
+      bezet.push(new Set());
+    }
+    bezet[rij].add(kolom);
+    geplaatst.set(wp.data.id, { kolom, rij });
+    uitkomst.push({ wp, kolom, rij });
+  }
+
+  return uitkomst;
 }
 
 /**
@@ -554,7 +643,48 @@ export function assertReferencesResolve(
         problems.push(`${waar}: samenhangId "${samenhangId}" bestaat niet`);
       }
     }
+    for (const afhankelijkheid of data.afhankelijkVan) {
+      if (!ids.has(afhankelijkheid)) {
+        problems.push(
+          `${waar}: afhankelijkVan "${afhankelijkheid}" bestaat niet`,
+        );
+      }
+      if (afhankelijkheid === data.id) {
+        problems.push(`${waar}: afhankelijkVan wijst naar zichzelf`);
+      }
+    }
   }
+
+  /*
+   * A cycle means none of the werkpakketten in it can ever start, which is a
+   * statement about the plan and not about the file it was written in. The
+   * build says which ones, in the order it walked them, because the fix is a
+   * judgement about which of those arrows is the wrong one.
+   */
+  const kleur = new Map<string, 'bezig' | 'klaar'>();
+  const pad: string[] = [];
+  const titel = new Map(werkpakketten.map(({ data }) => [data.id, data.titel]));
+  const afhankelijkheden = new Map(
+    werkpakketten.map(({ data }) => [data.id, data.afhankelijkVan]),
+  );
+  const loop = (id: string) => {
+    if (kleur.get(id) === 'klaar') return;
+    if (kleur.get(id) === 'bezig') {
+      const kring = [...pad.slice(pad.indexOf(id)), id]
+        .map((stap) => titel.get(stap) ?? stap)
+        .join(' → ');
+      problems.push(`afhankelijkheden lopen rond: ${kring}`);
+      return;
+    }
+    kleur.set(id, 'bezig');
+    pad.push(id);
+    for (const volgende of afhankelijkheden.get(id) ?? []) {
+      if (ids.has(volgende)) loop(volgende);
+    }
+    pad.pop();
+    kleur.set(id, 'klaar');
+  };
+  for (const { data } of werkpakketten) loop(data.id);
 
   if (problems.length) {
     throw new Error(

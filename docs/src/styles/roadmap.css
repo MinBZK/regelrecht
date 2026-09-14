@@ -109,8 +109,8 @@
  * the cells into it, so the columns line up across every row while the table
  * semantics stay intact in the accessibility tree.
  *
- * Three fixed tracks — the swimlane bar, the row-header, and the fases,
- * repeated to whatever count roadmap-config.json declares (--rr-fase-count).
+ * Three kinds of track — the swimlane bar, the row-header, and one per fase,
+ * written out by the template (see --rr-fase-kolommen below).
  *
  * grid-column/grid-row spans on the header cells (set inline, matching their
  * colspan/rowspan attributes) are what makes the corner and the swimlane bar
@@ -119,12 +119,15 @@
  */
 .rr-roadmap .rr-matrix {
   display: grid;
-  grid-template-columns:
-    36px
-    200px
-    repeat(var(--rr-fase-count, 5), minmax(240px, 1fr));
+  /* The fase tracks are written out by the template (--rr-fase-kolommen): each
+     one is wide enough for the deepest dependency indent in that fase, so an
+     indented card keeps its full width instead of being squeezed. */
+  grid-template-columns: 36px 200px var(--rr-fase-kolommen);
   gap: var(--primitives-space-8, 0.5rem);
   border-collapse: separate;
+  /* Above the samenhang overlay, so a curve passes behind the cards. */
+  position: relative;
+  z-index: 1;
 }
 
 .rr-roadmap .rr-matrix thead,
@@ -225,14 +228,103 @@
   flex-direction: column;
   padding: var(--primitives-space-8, 0.5rem);
   border-radius: var(--semantics-surfaces-corner-radius, 8px);
-  background: var(--semantics-surfaces-base-background-color);
   min-height: var(--primitives-space-48, 3rem);
+  /* No surface of its own: the cards carry it. A filled cell would paint over
+     every arrow crossing the matrix, which is what made them invisible. */
+  background: transparent;
 }
 
 .rr-roadmap .rr-matrix__cell > nldd-container {
   width: 100%;
 }
 
+
+/* --- Afhankelijkheidspijlen ---------------------------------------------------- */
+
+/*
+ * Curves from a werkpakket to the ones that cannot start before it is
+ * delivered (`afhankelijkVan`), drawn by the script in index.astro. The design
+ * system has no component for a relation between two cards, so this is
+ * hand-written: a positioned wrapper, an SVG over the table, and the stroke
+ * styling below.
+ *
+ * The overlay sits under the cards (z-index 0 against auto), so a line never
+ * covers a title, and it takes no pointer events, so it never swallows a
+ * click meant for the card underneath.
+ */
+.rr-roadmap .rr-matrix-canvas {
+  position: relative;
+}
+
+.rr-roadmap .rr-afhankelijk {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/*
+ * The cards have to be opaque, or the lines show through them. They inherit
+ * the cell's surface, which is the same token the cell itself paints with.
+ */
+/*
+ * The cards inside one cell, on two axes: a column per step of dependency (set
+ * inline by the template from celIndeling()), and a row that keeps a chain on
+ * one line so its arrows run straight across.
+ *
+ * Columns are a fixed card width apart with the arrow's room between them, so
+ * a card never overlaps the one it waits for.
+ */
+.rr-roadmap .rr-cel-raster {
+  display: grid;
+  grid-auto-columns: var(--rr-kaart-breedte, 240px);
+  grid-auto-flow: row;
+  column-gap: var(--rr-pijl-ruimte, 56px);
+  row-gap: var(--primitives-space-8, 0.5rem);
+  align-items: start;
+  justify-content: start;
+}
+
+/*
+ * Opaque on purpose: arrows pass behind the cards, and a see-through card
+ * would have a line running across its title.
+ */
 .rr-roadmap .rr-wp-card {
   display: block;
+  background: var(--semantics-surfaces-base-background-color);
+  border-radius: var(--semantics-surfaces-corner-radius, 8px);
+}
+
+.rr-roadmap .rr-afhankelijk__lijn {
+  fill: none;
+  stroke: var(--semantics-content-accent-color, var(--semantics-content-secondary-color));
+  stroke-width: 2;
+  opacity: 0.85;
+  transition: opacity 120ms ease-out;
+}
+
+.rr-roadmap .rr-afhankelijk__lijn polygon,
+.rr-roadmap .rr-afhankelijk marker polygon {
+  fill: var(--semantics-content-accent-color, var(--semantics-content-secondary-color));
+}
+
+/* One card at a time: its own relations stay, the rest fades back so the
+   bundle does not compete with them. */
+.rr-roadmap .rr-matrix-canvas--accent .rr-afhankelijk__lijn {
+  opacity: 0.2;
+}
+
+.rr-roadmap .rr-afhankelijk__lijn--actief {
+  opacity: 1;
+  stroke-width: 3;
+}
+
+/* A line that moves while the page is being read is worse than no animation
+   at all for anyone who asked not to have motion. */
+@media (prefers-reduced-motion: reduce) {
+  .rr-roadmap .rr-afhankelijk__lijn {
+    transition: none;
+  }
 }

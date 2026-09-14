@@ -7,6 +7,7 @@
  * instead of being inlined once per fase column in the matrix template.
  */
 import {
+  celIndeling,
   GEEN_CATEGORIE,
   getPrioriteit,
   getCategorie,
@@ -19,15 +20,25 @@ interface Props {
   class?: string;
   /** Space-separated header ids: swimlane, discipline, fase — see index.astro. */
   headers: string;
+  /** Column per werkpakket id: how far right it sits inside the cell. */
+  diepte: Map<string, number>;
 }
 
-const { cel, class: className, headers } = Astro.props;
+const { cel, class: className, headers, diepte } = Astro.props;
+
+// Column and row per card; see celIndeling() for what decides them.
+const indeling = celIndeling(cel, diepte);
 ---
 
 <td class:list={['rr-matrix__cell', className]} headers={headers}>
-  <nldd-container gap="8">
+  {/*
+     A grid of its own, not an nldd-container: the cards inside one cell are
+     placed on two axes (a column per step of dependency, a row per chain),
+     and a container stacks them in one direction.
+  */}
+  <div class="rr-cel-raster">
     {
-      cel.map((wp) => {
+      indeling.map(({ wp, kolom, rij }) => {
         const prioriteit = getPrioriteit(wp.data.prioriteit);
         const categorie = getCategorie(wp.data.categorie);
         const capability = getCapability(wp.data.capability);
@@ -65,6 +76,9 @@ const { cel, class: className, headers } = Astro.props;
                 : []),
             ].join(', ')}
             data-categorie={wp.data.categorie || GEEN_CATEGORIE}
+            data-wp-id={wp.data.id}
+            style={`grid-column: ${kolom + 1}; grid-row: ${rij + 1}`}
+            data-afhankelijk-van={wp.data.afhankelijkVan.join(' ') || undefined}
           >
             {/* nldd-card leaves padding to a nested container by design;
                 without one the content sits flush against the border. */}
@@ -98,5 +112,5 @@ const { cel, class: className, headers } = Astro.props;
         );
       })
     }
-  </nldd-container>
+  </div>
 </td>

@@ -30,6 +30,7 @@ import {
   getDiscipline,
   FILTER_OPTIES,
   werkpakkettenInCel,
+  afhankelijkheidsDiepte,
   assertReferencesResolve,
   assertFilterRules,
   type Discipline,
@@ -40,7 +41,8 @@ import '~/styles/roadmap.css';
 import roadmapCss from '~/styles/roadmap.css?raw';
 
 const werkpakketten = await getCollection('werkpakketten');
-// Fails the build on a faseId, disciplineId or samenhangId that goes nowhere.
+// Fails the build on a faseId, disciplineId, samenhangId or afhankelijkVan
+// that goes nowhere, and on a dependency graph that runs in a circle.
 // check-links.mjs cannot see these: they end up on NLDD component attributes,
 // not on <a href>.
 assertReferencesResolve(werkpakketten);
@@ -92,6 +94,36 @@ const matrixRijen: MatrixRow[] = swimlanes.flatMap((lane) => {
           }
         : undefined,
   }));
+});
+
+/*
+ * Where a card sits inside its column: as far left as its dependencies allow,
+ * and a step right for every werkpakket that has to be delivered before it.
+ * That is afhankelijkheidsDiepte() — the longest chain behind the card within
+ * the same fase — so a card with nothing in front of it starts at the column's
+ * left edge and no card is further right than it needs to be.
+ *
+ * A step is a whole card plus the room an arrow needs to curve, so the two
+ * never overlap. The chain is counted per fase because the matrix already
+ * orders the fases left to right; a werkpakket that waits for one in an
+ * earlier fase is past it by sitting in a later column.
+ *
+ * Columns grow to fit. That makes the matrix wider than a viewport, which it
+ * already was; it scrolls sideways inside its own region.
+ */
+const RR_KAART_BREEDTE = 240;
+const RR_PIJL_RUIMTE = 56;
+const RR_INSPRING_STAP = RR_KAART_BREEDTE + RR_PIJL_RUIMTE;
+// The cell's own padding on both sides, so a card at the deepest indent is not
+// cut off by the column's right edge.
+const RR_KOLOM_BASIS = RR_KAART_BREEDTE + 16;
+const diepte = afhankelijkheidsDiepte(werkpakketten);
+const kolomBreedtes = fases.map((fase) => {
+  const stappen = werkpakketten
+    .filter((w) => w.data.faseId === fase.id)
+    .map((w) => diepte.get(w.data.id) ?? 0);
+  const diepst = stappen.length ? Math.max(...stappen) : 0;
+  return `minmax(${RR_KOLOM_BASIS + diepst * RR_INSPRING_STAP}px, 1fr)`;
 });
 
 // Ids for the `headers` attribute below: with two levels of row header (the
@@ -177,7 +209,23 @@ const pathname = '/roadmap';
         role="region"
         aria-label="Roadmapmatrix, horizontaal scrollbaar"
       >
-        <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
+        {/*
+          The dependency overlay sits in its own positioned wrapper so the SVG
+          can be placed against the table's own box rather than the scroll
+          container's: the container scrolls, the table does not move inside
+          it, and anchoring to the scroller would slide every line out of
+          place the moment you pan sideways.
+
+          aria-hidden: every werkpakket page lists the same dependencies under
+          "Afhankelijk van", as links. Reading the curves to a screen reader
+          adds nothing that is not already there in text.
+        */}
+        <div class="rr-matrix-canvas">
+          <svg class="rr-afhankelijk" aria-hidden="true" focusable="false"></svg>
+          <table
+            class="rr-matrix"
+            style={`--rr-fase-kolommen: ${kolomBreedtes.join(' ')}; --rr-kaart-breedte: ${RR_KAART_BREEDTE}px; --rr-pijl-ruimte: ${RR_PIJL_RUIMTE}px`}
+          >
           <caption class="rr-matrix__caption">
             Werkpakketten per fase (kolommen) en discipline (rijen). De vijf
             fases zijn Wat (in twee stappen), Hoe, Waar en Garantie. De
@@ -260,6 +308,7 @@ const pathname = '/roadmap';
                             fase.id,
                             rij.discipline.id,
                           )}
+                          diepte={diepte}
                         />
                       ))
                     }
@@ -267,8 +316,146 @@ const pathname = '/roadmap';
               ))
             }
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </nldd-container>
   </nldd-simple-section>
 </Base>
+
+{/*
+  The only script on this page, and the only one on the docs site. The filter
+  above deliberately runs on :has() alone, and the lines cannot: where two
+  cards sit is decided by the grid at layout time, so a curve between them can
+  only be drawn after measuring. Without this script the page is exactly what
+  it was — the overlay stays an empty <svg>.
+*/}
+<script>
+  const canvas = document.querySelector<HTMLElement>('.rr-matrix-canvas');
+  const svg = canvas?.querySelector<SVGSVGElement>('.rr-afhankelijk');
+  const table = canvas?.querySelector<HTMLElement>('.rr-matrix');
+  if (canvas && svg && table) {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+
+    /** `van` has to be delivered before `naar` can start. */
+    type Pijl = { van: string; naar: string };
+
+    const PIJLEN: Pijl[] = [
+      ...table.querySelectorAll<HTMLElement>('[data-afhankelijk-van]'),
+    ].flatMap((card) =>
+      card
+        .dataset!.afhankelijkVan!.split(' ')
+        .filter(Boolean)
+        .map((van) => ({ van, naar: card.dataset.wpId! })),
+    );
+
+    /** Zero-sized means the categorie filter has it hidden; no arrow for it. */
+    function box(id: string) {
+      const el = table!.querySelector<HTMLElement>(`[data-wp-id="${id}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return null;
+      const c = canvas!.getBoundingClientRect();
+      return {
+        left: r.left - c.left,
+        right: r.right - c.left,
+        mid: r.top - c.top + r.height / 2,
+      };
+    }
+
+    /*
+     * The arrow leaves the prerequisite on the side that faces the dependent
+     * card and enters that card on the side facing back — right to left where
+     * the plan runs left to right, mirrored where a later fase is a
+     * precondition for an earlier one. Routing that case the other way round
+     * would send the curve straight back across the card it starts on.
+     *
+     * Stacked cards (same column, one above the other) both anchor right and
+     * the curve bulges out beside the column.
+     */
+    function pad(van: NonNullable<ReturnType<typeof box>>, naar: NonNullable<ReturnType<typeof box>>) {
+      const gestapeld = Math.abs(van.left - naar.left) < 8;
+      const naarRechts = van.right <= naar.left;
+      const x1 = gestapeld || naarRechts ? van.right : van.left;
+      const x2 = gestapeld ? naar.right : naarRechts ? naar.left : naar.right;
+      const bocht = gestapeld ? 64 : Math.max(48, Math.abs(x2 - x1) * 0.45);
+      const richting = gestapeld || naarRechts ? 1 : -1;
+      return `M ${x1} ${van.mid} C ${x1 + bocht * richting} ${van.mid}, ${x2 + bocht * (gestapeld ? 1 : -richting)} ${naar.mid}, ${x2} ${naar.mid}`;
+    }
+
+    function teken() {
+      svg!.replaceChildren();
+      // scrollWidth, not offsetWidth: the grid is wider than the scroll
+      // container that clips it, and offsetWidth reports the clipped box — an
+      // SVG that size cuts off every arrow past the fold.
+      const breed = table!.scrollWidth;
+      const hoog = table!.scrollHeight;
+      svg!.setAttribute('width', String(breed));
+      svg!.setAttribute('height', String(hoog));
+      svg!.setAttribute('viewBox', `0 0 ${breed} ${hoog}`);
+
+      const defs = document.createElementNS(SVG_NS, 'defs');
+      const marker = document.createElementNS(SVG_NS, 'marker');
+      marker.setAttribute('id', 'rr-pijlpunt');
+      marker.setAttribute('viewBox', '0 0 10 8');
+      marker.setAttribute('refX', '9');
+      marker.setAttribute('refY', '4');
+      marker.setAttribute('markerWidth', '11');
+      marker.setAttribute('markerHeight', '11');
+      marker.setAttribute('orient', 'auto-start-reverse');
+      marker.setAttribute('markerUnits', 'userSpaceOnUse');
+      const punt = document.createElementNS(SVG_NS, 'polygon');
+      punt.setAttribute('points', '0,0 10,4 0,8');
+      marker.appendChild(punt);
+      defs.appendChild(marker);
+      svg!.appendChild(defs);
+
+      for (const pijl of PIJLEN) {
+        const van = box(pijl.van);
+        const naar = box(pijl.naar);
+        if (!van || !naar) continue;
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', pad(van, naar));
+        path.setAttribute('class', 'rr-afhankelijk__lijn');
+        path.setAttribute('marker-end', 'url(#rr-pijlpunt)');
+        path.dataset.van = pijl.van;
+        path.dataset.naar = pijl.naar;
+        svg!.appendChild(path);
+      }
+    }
+
+    /*
+     * Hovering or focusing a card lifts its own arrows out of the bundle: what
+     * it waits for, and what waits for it. The whole graph at once reads as
+     * texture rather than as an order of work.
+     */
+    function accent(id: string | null) {
+      canvas!.classList.toggle('rr-matrix-canvas--accent', id !== null);
+      for (const path of svg!.querySelectorAll<SVGPathElement>('.rr-afhankelijk__lijn')) {
+        path.classList.toggle(
+          'rr-afhankelijk__lijn--actief',
+          id !== null && (path.dataset.van === id || path.dataset.naar === id),
+        );
+      }
+    }
+
+    for (const card of table.querySelectorAll<HTMLElement>('[data-wp-id]')) {
+      const id = card.dataset.wpId!;
+      card.addEventListener('pointerenter', () => accent(id));
+      card.addEventListener('pointerleave', () => accent(null));
+      card.addEventListener('focusin', () => accent(id));
+      card.addEventListener('focusout', () => accent(null));
+    }
+
+    teken();
+    new ResizeObserver(teken).observe(table);
+    // The filter reflects `checked` onto the checkbox host; that changes which
+    // cards have a box, and the arrows have to follow.
+    for (const optie of document.querySelectorAll('.rr-filter__option')) {
+      new MutationObserver(teken).observe(optie, {
+        attributes: true,
+        attributeFilter: ['checked'],
+      });
+    }
+  }
+</script>
