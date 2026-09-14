@@ -440,9 +440,11 @@ const pathname = '/roadmap';
       const marker = document.createElementNS(SVG_NS, 'marker');
       marker.setAttribute('id', 'rr-pijlpunt');
       marker.setAttribute('viewBox', '0 0 10 8');
-      // refX at the polygon's tip: the head sits entirely behind the path's end
-      // point, over the stretch pad() left out of the stroke.
-      marker.setAttribute('refX', '10');
+      // refX at the polygon's base, so the head sits in front of the path's end
+      // point and its tip lands on the card. With refX at the tip instead, the
+      // marker covers the same stretch the stroke still runs along, and the
+      // line reads as ending in the point of the arrow.
+      marker.setAttribute('refX', '0');
       marker.setAttribute('refY', '4');
       marker.setAttribute('markerWidth', String(PIJL_LENGTE));
       marker.setAttribute('markerHeight', String(PIJL_LENGTE));
