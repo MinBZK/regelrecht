@@ -329,7 +329,12 @@
   opacity: 0.12;
 }
 
-.rr-roadmap .rr-afhankelijk__lijn--actief {
+/*
+ * The canvas class has to be in this selector, not just `--actief`: without it
+ * the rule counts two classes against the three of the dim rule above, loses,
+ * and the chain you are pointing at fades along with everything else.
+ */
+.rr-roadmap .rr-matrix-canvas--accent .rr-afhankelijk__lijn--actief {
   opacity: 1;
   stroke-width: 3;
 }
