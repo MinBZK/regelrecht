@@ -334,3 +334,36 @@
     transition: none;
   }
 }
+
+/* --- De weergave zonder afhankelijkheden -------------------------------- */
+
+/*
+ * Unchecking "Afhankelijkheden" takes the whole dependency view away: no
+ * arrows, no indenting, no row packing. What is left is the plain stack of
+ * cards per cell the matrix had before, at the column width it had then.
+ *
+ * `!important` is needed and not laziness: the column and row of a card are
+ * set inline by the template (celIndeling decides them at build time), and an
+ * inline style beats any selector. This is the one place that has to override
+ * them.
+ *
+ * Same mechanism as the categorie filter, and the same warning: the id in
+ * `:has()` is what gives these rules the specificity to win. Rewrite it as a
+ * class and the cards stay where the inline styles put them.
+ */
+.rr-roadmap:not(:has(#rr-afhankelijkheden[checked])) .rr-afhankelijk {
+  display: none;
+}
+
+.rr-roadmap:not(:has(#rr-afhankelijkheden[checked])) .rr-wp-card {
+  grid-column: 1 !important;
+  grid-row: auto !important;
+  width: auto;
+}
+
+.rr-roadmap:not(:has(#rr-afhankelijkheden[checked])) .rr-matrix {
+  grid-template-columns:
+    36px
+    200px
+    repeat(var(--rr-fase-count, 5), minmax(var(--rr-kolom-vlak, 260px), 1fr));
+}

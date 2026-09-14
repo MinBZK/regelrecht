@@ -203,6 +203,28 @@ const pathname = '/roadmap';
             ))
           }
         </fieldset>
+
+        {/*
+          Turns the whole dependency view off: the arrows, the indenting and
+          the row packing. Same mechanism as the filter — nldd-checkbox-field
+          reflects `checked` onto its host, so roadmap.css reads the state
+          without a script. It starts checked, because the dependencies are
+          the reason the matrix is laid out the way it is; unchecking gives
+          back the plain stack of cards per cell.
+        */}
+        <fieldset class="rr-filter">
+          <legend class="rr-filter__legend">
+            <nldd-text size="sm" weight="medium" color="secondary">
+              Weergave
+            </nldd-text>
+          </legend>
+          <nldd-checkbox-field
+            class="rr-weergave__option"
+            id="rr-afhankelijkheden"
+            label="Afhankelijkheden"
+            checked
+          />
+        </fieldset>
       </nldd-container>
 
       {/* tabindex + role make the horizontally scrolling matrix reachable by
@@ -228,7 +250,7 @@ const pathname = '/roadmap';
           <svg class="rr-afhankelijk" aria-hidden="true" focusable="false"></svg>
           <table
             class="rr-matrix"
-            style={`--rr-fase-kolommen: ${kolomBreedtes.join(' ')}; --rr-kaart-breedte: ${RR_KAART_BREEDTE}px; --rr-pijl-ruimte: ${RR_PIJL_RUIMTE}px; --rr-matrix-gat: ${RR_MATRIX_GAT}px`}
+            style={`--rr-fase-kolommen: ${kolomBreedtes.join(' ')}; --rr-kaart-breedte: ${RR_KAART_BREEDTE}px; --rr-pijl-ruimte: ${RR_PIJL_RUIMTE}px; --rr-matrix-gat: ${RR_MATRIX_GAT}px; --rr-fase-count: ${fases.length}; --rr-kolom-vlak: ${RR_KOLOM_BASIS}px`}
           >
           <caption class="rr-matrix__caption">
             Werkpakketten per fase (kolommen) en discipline (rijen). De vijf
@@ -397,8 +419,14 @@ const pathname = '/roadmap';
       return `M ${x1} ${van.mid} C ${x1 + bocht * richting} ${van.mid}, ${c2} ${naar.mid}, ${eind} ${naar.mid}`;
     }
 
+    const schakelaar = document.querySelector('#rr-afhankelijkheden');
+    const aan = () => schakelaar?.hasAttribute('checked') ?? true;
+
     function teken() {
       svg!.replaceChildren();
+      // Off means off: no arrows, and the stylesheet has already put the cards
+      // back in one stack, so the positions these would be drawn from are gone.
+      if (!aan()) return;
       // scrollWidth, not offsetWidth: the grid is wider than the scroll
       // container that clips it, and offsetWidth reports the clipped box — an
       // SVG that size cuts off every arrow past the fold.
@@ -467,8 +495,15 @@ const pathname = '/roadmap';
     new ResizeObserver(teken).observe(table);
     // The filter reflects `checked` onto the checkbox host; that changes which
     // cards have a box, and the arrows have to follow.
-    for (const optie of document.querySelectorAll('.rr-filter__option')) {
-      new MutationObserver(teken).observe(optie, {
+    // The filter reflects `checked` onto the checkbox host; so does the
+    // weergave-schakelaar. Both change which cards have a box and where, and
+    // the arrows have to follow. Two classes, not one: `rr-filter__option`
+    // carries the categorie filter's own hide-rule, and a checked
+    // weergave-schakelaar would then hide every card on the matrix.
+    for (const optie of document.querySelectorAll(
+      '.rr-filter__option, .rr-weergave__option',
+    )) {
+      new MutationObserver(() => requestAnimationFrame(teken)).observe(optie, {
         attributes: true,
         attributeFilter: ['checked'],
       });
