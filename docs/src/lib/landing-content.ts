@@ -40,6 +40,7 @@ export interface LandingContent {
     signup: string
     docs: string
     research: string
+    notes: string
   }
   hero: { title: string; intro: string }
   whatIsIt: { title: string; lede: string; cards: { h: string; p: string }[] }
@@ -180,6 +181,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       signup: 'Aanmelden',
       docs: 'Documentatie',
       research: 'Onderzoek',
+      notes: 'Notities',
     },
     hero: {
       title: 'Van wet naar digitale werking',
@@ -588,6 +590,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Op de hoogte blijven', href: SIGNUP_NL_PATH },
         { label: 'Documentatie (Engels)', href: '/docs/' },
         { label: 'Onderzoek (Engels)', href: '/research/' },
+        { label: 'Notities', href: '/notes' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -645,6 +648,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       signup: 'Sign up',
       docs: 'Documentation',
       research: 'Research',
+      notes: 'Notes (Dutch)',
     },
     hero: {
       title: 'From statute to digital execution',
@@ -1052,6 +1056,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Stay informed', href: SIGNUP_EN_PATH },
         { label: 'Documentation', href: '/docs/' },
         { label: 'Research', href: '/research/' },
+        { label: 'Notes (Dutch)', href: '/notes' },
       ],
       partOf: [
         'Bureau Architectuur',
