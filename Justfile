@@ -136,6 +136,36 @@ ci-gate-test:
 nldd-imports-test:
     node --test script/nldd-imports.test.mjs
 
+# Een `slot="..."` die het component niet kent, is nergens een fout: het
+# element blijft in de light-DOM, wordt nooit toegewezen en is 0x0. Zo stonden
+# de persona-tags op het portaal en de startknop van de presentatie er wel,
+# maar zag niemand ze. Deze guard laat de build erop omvallen.
+[doc("Check that every nldd slot assignment exists")]
+nldd-slots:
+    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src
+
+[doc("Check the design-system slot guard")]
+nldd-slots-test:
+    node --test script/nldd-slots.test.mjs
+
+# De Awb staat in twee corpora en moet daar hetzelfde zeggen. Het overzetten
+# ging twee keer mis op een weggevallen laatste regel — één keer de termijn in
+# artikel 6:8, waardoor de einddatum van de bezwaartermijn gelijk werd aan de
+# bekendmakingsdatum. Geldige YAML, dus de schemacontrole zag het niet, en geen
+# scenario raakt 6:8.
+[doc("Check that the Awb says the same in both corpora")]
+awb-parity-test:
+    node --test script/awb-parity.test.mjs
+
+# Welke organisatie een wet uitvoert staat in services.yaml en niet in het
+# wetsbestand: het stuurt logo's, kleuren en groepering, en waarden als
+# GEMEENTE_ROTTERDAM volgen uit geen wet. Een wet die in die kaart ontbreekt
+# krijgt stil `service: null`: geen logo, geen kleur, geen foutmelding. Deze
+# controle is wat de garantie vervangt die het oude veld gratis gaf.
+[doc("Check that services.yaml covers every demo law")]
+service-map-check:
+    node frontend-demo/scripts/check-service-map.mjs
+
 # Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
 # of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
 # bestaat. Die drie zijn stringliteralen die verder niets nakijkt.
@@ -165,7 +195,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test nldd-imports-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
 
 # --- Tests ---
 
@@ -203,9 +233,16 @@ test-db:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
-# Bucket A over the demo corpus: REGULATION_PATH points laws and scenarios at corpus/demo
+# Bucket A over de democorpus: REGULATION_PATH wijst wetten en scenario's naar corpus/demo.
+#
+# De Awb-levensloop draait er achteraan, over hetzelfde corpus. Een scenario
+# toetst één wet; de levensloop-test toetst wat de Awb aan elk besluit toevoegt
+# (RFC-007, RFC-008) en daar kwam een fout in dit corpus aan het licht die geen
+# enkel scenario zag: artikel 6:8 rekende met een afgekapte formule en gaf de
+# bekendmakingsdatum terug als einddatum van de bezwaartermijn.
 bdd-demo:
     cd packages/engine && {{ci_flags}} BDD_BUCKET=corpus REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+    cd packages/engine && {{ci_flags}} REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test awb_lifecycle
 
 # Start the demo and open it. One command for anyone who just wants to see it:
 # it builds the engine to WASM, starts Vite and opens the browser on the
@@ -236,7 +273,7 @@ dev-demo: wasm-build
 # app still broken on a stale WASM build. This is the one command to run before
 # pushing anything demo-related; CI runs the same four steps in its own jobs.
 [doc("Check the whole demo: laws, scenarios, frontend tests, WASM and build")]
-demo-check: validate-demo bdd-demo
+demo-check: validate-demo awb-parity-test service-map-check bdd-demo
     cd frontend-demo && npx vitest run
     just wasm-build
     cd frontend-demo && npx vite build

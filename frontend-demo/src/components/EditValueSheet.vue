@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 import OrgLogo from './OrgLogo.vue';
-import { fieldSpec, formatValue, humanize } from '../data/format.js';
+import { fieldSpec, formatValue, humanize, isUnknown } from '../data/format.js';
 import { columnKind as columnKindOf, decimalsFor, editKind, emptyRow, parseCell, parseDutchNumber, stepFor, tableColumns, unitLabel, valueKind } from '../data/editKinds.js';
 import { useDemo } from '../store/demoStore.js';
 
@@ -26,7 +26,7 @@ const props = defineProps({
   caseId: { type: String, default: null },
 });
 const emit = defineEmits(['close', 'submitted']);
-const { corpus, submitClaim, profile } = useDemo();
+const { corpus, submitClaim, profile, features } = useDemo();
 
 // The hardship clauses the POC offered (web/templates/partials/edit_form.html).
 const HARDSHIP_CLAUSES = [
@@ -109,7 +109,14 @@ watch(
     reason.value = '';
     hardship.value = '';
     evidence.value = null;
-    const v = props.node?.value;
+    // An unknown value (RFC-036) carries no value to edit: the engine does not
+    // have the fact. It arrives as `{__unknown: true, missing: [...]}`, so
+    // without this the box would open on the literal text "[object Object]".
+    // The field then starts from nothing, like an absent value does, and the
+    // citizen fills in what the register lacks. (A number field renders that
+    // as 0, which is the design system's own empty state.)
+    const raw = props.node?.value;
+    const v = isUnknown(raw) ? null : raw;
     if (kind.value === 'amount' && typeof v === 'number') newValue.value = (v / 100).toFixed(2).replace('.', ',');
     else if (kind.value === 'boolean') newValue.value = v ? 'true' : 'false';
     else if (kind.value === 'rows') rows.value = (v ?? []).map((r) => ({ ...r }));
@@ -200,7 +207,11 @@ function submit() {
     input: props.node.name,
     keyField: props.node.keyField ?? 'bsn',
     keyValue: props.node.keyValue ?? props.bsn ?? profile.value?.bsn,
-    oldValue: props.node.value,
+    // Alleen de waarde meegeven als ze van het register komt. Bij een gegeven
+    // dat al gecorrigeerd is, toont de rij de gecorrigeerde waarde, en die als
+    // "oud" vastleggen zou de correctie ervóór wegpoetsen. `null` laat de store
+    // opzoeken wat er zonder correcties staat.
+    oldValue: props.node.corrected ? null : props.node.value,
     newValue: value,
     reason: reason.value.trim(),
     evidence: evidence.value,
@@ -317,7 +328,7 @@ function submit() {
           </nldd-form-field>
           <nldd-form-field :label="selfDeclared ? 'Toelichting' : 'Waarom klopt het geregistreerde gegeven niet?'" :optional="selfDeclared || undefined">
             <nldd-multi-line-text-field :value="reason" rows="3" :placeholder="caseworker ? 'Bijvoorbeeld: bewijsstuk van de burger ontvangen en gecontroleerd.' : 'Bijvoorbeeld: mijn inkomen is dit jaar lager door minder opdrachten.'" @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
-            <nldd-form-field-help-text>{{ caseworker ? 'De correctie geldt direct en komt in het dossier van de zaak; de burger ziet haar op het portaal.' : hardship ? 'Een beroep op een hardheidsclausule beoordeelt een behandelaar altijd; tot die tijd rekent de wet met het geregistreerde gegeven.' : selfDeclared || profile?.feature_flags?.AUTO_APPROVE_CLAIMS ? 'Uw opgave wordt direct gebruikt in de berekening.' : 'Een behandelaar beoordeelt de correctie; tot die tijd rekent de wet met het geregistreerde gegeven.' }}</nldd-form-field-help-text>
+            <nldd-form-field-help-text>{{ caseworker ? 'De correctie geldt direct en komt in het dossier van de zaak; de burger ziet haar op het portaal.' : hardship ? 'Een beroep op een hardheidsclausule beoordeelt een behandelaar altijd; uw aanvraag rekent ondertussen met wat u opgeeft.' : selfDeclared || features.AUTO_APPROVE_CLAIMS ? 'Uw opgave wordt direct gebruikt in de berekening.' : 'Uw aanvraag rekent meteen met wat u opgeeft; een behandelaar beoordeelt de correctie voordat de uitkomst vaststaat.' }}</nldd-form-field-help-text>
           </nldd-form-field>
           <nldd-form-field label="Beroep op een hardheidsclausule" optional>
             <nldd-dropdown width="full">

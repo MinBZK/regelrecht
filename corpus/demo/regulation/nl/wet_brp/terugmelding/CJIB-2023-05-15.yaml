@@ -8,7 +8,6 @@ valid_from: '2023-05-15'
 name: BRP Terugmeldplicht CJIB
 bwb_id: BWBR0033715
 url: https://wetten.overheid.nl/BWBR0033715/2023-05-15
-service: CJIB
 uuid: 8e3f7a2c-4d9b-4e1f-9a6c-2f7e4d8a3b5c
 articles:
   - number: '2.34'
@@ -43,8 +42,8 @@ articles:
         obr_drempel_herhaald: 2
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

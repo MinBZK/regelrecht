@@ -206,7 +206,6 @@ function loadLaws(nlDir) {
       relDir: relative(nlDir, dirname(file)),
       doc,
       validFrom: isoDate(doc.valid_from),
-      service: doc.service,
       ...analyseLaw(doc),
     };
     if (!versions.has(doc.$id)) versions.set(doc.$id, []);

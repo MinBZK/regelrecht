@@ -8,7 +8,6 @@ valid_from: '2022-01-01'
 name: Bepalen forensische zorg status
 bwb_id: BWBR0040635
 url: https://wetten.overheid.nl/BWBR0040635/2022-01-01
-service: DJI
 uuid: c2124946-50d3-4aa8-b510-bccd04fc2cf9
 articles:
   - number: '1.1'
@@ -74,8 +73,8 @@ articles:
           - VOORLOPIGE_HECHTENIS
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

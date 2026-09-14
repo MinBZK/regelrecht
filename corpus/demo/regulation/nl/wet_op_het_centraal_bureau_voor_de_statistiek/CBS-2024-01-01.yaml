@@ -8,7 +8,6 @@ valid_from: '2024-01-01'
 name: Bepalen levensverwachting 2025
 bwb_id: BWBR0015926
 url: https://wetten.overheid.nl/BWBR0015926/2024-01-01
-service: CBS
 uuid: bfc4ce3d-1c52-4fb8-ad96-4f1b9d836c4a
 articles:
   - number: '3'
@@ -25,8 +24,8 @@ articles:
     machine_readable:
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           # Art. 3, eerste lid: het CBS voert onderzoek uit en maakt statistieken openbaar
           # (levensverwachting); de tekst kent geen aanwijzing van een individuele burger.

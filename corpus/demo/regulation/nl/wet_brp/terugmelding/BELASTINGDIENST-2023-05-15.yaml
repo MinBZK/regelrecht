@@ -8,7 +8,6 @@ valid_from: '2023-05-15'
 name: BRP Terugmeldplicht Belastingdienst
 bwb_id: BWBR0033715
 url: https://wetten.overheid.nl/BWBR0033715/2023-05-15
-service: BELASTINGDIENST
 uuid: 2a5c7e9f-4d8b-4e6a-9c1f-7e4d2a8b5c3e
 articles:
   - number: '2.34'
@@ -42,8 +41,8 @@ articles:
         twijfel_langdurig_afwezig: Persoon langdurig in buitenland, mogelijk geen ingezetene
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

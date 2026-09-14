@@ -25,7 +25,6 @@ async function fetchYaml(url) {
  * @property {string} id
  * @property {string} name
  * @property {string|null} service
- * @property {string|null} discoverable
  * @property {string} valid_from
  * @property {string} path
  * @property {string} law_path

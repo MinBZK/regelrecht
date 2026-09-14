@@ -178,3 +178,23 @@ describe('numbers', () => {
     expect(editKind(67.25, { type: 'number', type_spec: { unit: 'years', precision: 2 } })).toBe('number');
   });
 });
+
+// RFC-036: an unknown value is a marker object, not a value. The edit box used
+// to seed its field from it, so a citizen opening "Woonlandfactor" was shown
+// the literal text "[object Object]" to correct.
+describe('an unknown value', () => {
+  const unknown = { __unknown: true, missing: [{ law: 'wkb', name: 'kinderen_woonlanden', kind: 'no_data' }] };
+
+  it('follows the declared type, like an absent value does', () => {
+    expect(editKind(unknown, { type: 'number' })).toBe('number');
+    expect(editKind(unknown, { type: 'date' })).toBe('date');
+    expect(editKind(unknown, { type: 'boolean' })).toBe('boolean');
+    expect(editKind(unknown, { type: 'amount', type_spec: { unit: 'eurocent' } })).toBe('amount');
+  });
+
+  it('is never read as a record, whatever its shape', () => {
+    expect(editKind(unknown)).toBe('text');
+    expect(editKind(unknown, { type: 'object' })).toBe('record');
+    expect(valueKind(unknown)).toBe('text');
+  });
+});

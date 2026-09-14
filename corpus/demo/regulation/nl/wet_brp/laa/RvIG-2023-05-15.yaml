@@ -8,7 +8,6 @@ valid_from: '2023-05-15'
 name: Landelijke Aanpak Adreskwaliteit (LAA)
 bwb_id: BWBR0034306
 url: https://wetten.overheid.nl/BWBR0034306/2023-05-15
-service: RvIG
 uuid: 7f3e9a2b-5c4d-4e8f-9b1a-3d6c8f2e4a5b
 articles:
   - number: 28a
@@ -25,8 +24,8 @@ articles:
         onderzoekstermijn_maanden: 6
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string

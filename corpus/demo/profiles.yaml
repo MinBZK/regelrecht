@@ -4086,6 +4086,15 @@ profiles:
             volgende_deadline: '2026-06-30'
             gebruikt_rgs_boekhouding: true
             rgs_versie: '3.5'
+      DOUANE:
+        # Een accijnsgoederenplaats is een vergunde ruimte waar accijnsgoederen
+        # onveraccijnsd mogen liggen (art. 40 Wet op de accijns). Een café koopt
+        # zijn drank veraccijnsd in en heeft er dus geen; dat maakt het verschil
+        # zichtbaar tussen wie accijns verschuldigd is en wie een vergunning
+        # nodig heeft.
+        agp_vergunningen:
+          - kvk_nummer: '85234567'
+            heeft_agp_vergunning: false
       KIESRAAD: *id002
       JenV: *id003
       RvIG:

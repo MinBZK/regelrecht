@@ -106,6 +106,34 @@ repos:
         pass_filenames: false
         files: ^script/(check-)?nldd-imports(\.test)?\.mjs$
 
+      - id: nldd-slots
+        name: Elke slot-toewijzing bestaat in het ontwerpsysteem
+        entry: just nldd-slots
+        language: system
+        pass_filenames: false
+        files: ^(frontend|frontend-demo|frontend-lawmaking)/src/.*\.(vue|html|js|ts)$
+
+      - id: nldd-slots-tests
+        name: Slot-guard doet wat hij belooft
+        entry: just nldd-slots-test
+        language: system
+        pass_filenames: false
+        files: ^script/(check-)?nldd-slots(\.test)?\.mjs$
+
+      - id: awb-parity
+        name: De Awb zegt in beide corpora hetzelfde
+        entry: just awb-parity-test
+        language: system
+        pass_filenames: false
+        files: ^(corpus/(regulation/nl/wet|demo/regulation/nl)/algemene_wet_bestuursrecht/.*\.yaml|script/awb-parity\.test\.mjs)$
+
+      - id: service-map
+        name: services.yaml dekt elke demowet
+        entry: just service-map-check
+        language: system
+        pass_filenames: false
+        files: ^(corpus/demo/(services\.yaml|regulation/.*\.yaml)|frontend-demo/scripts/check-service-map\.mjs)$
+
       - id: dockerfile-consistency
         name: Rust-Dockerfiles blijven bij de cargo-workspace
         entry: just dockerfile-consistency-test

@@ -8,7 +8,6 @@ valid_from: '2020-01-01'
 name: UWV Werkgegevens
 bwb_id: BWBR0013060
 url: https://wetten.overheid.nl/BWBR0013060/2020-01-01
-service: UWV
 uuid: 7e3f6b1c-8d2a-4e9b-9c5d-3a8f7b2e6d4a
 articles:
   - number: '54'
@@ -128,8 +127,8 @@ articles:
     machine_readable:
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: INFORMATIEF
+          decision_type: GEEN_BESLUIT
         parameters:
           - name: bsn
             type: string
