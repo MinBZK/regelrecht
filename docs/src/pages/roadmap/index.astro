@@ -469,16 +469,56 @@ const pathname = '/roadmap';
     }
 
     /*
-     * Hovering or focusing a card lifts its own arrows out of the bundle: what
-     * it waits for, and what waits for it. The whole graph at once reads as
-     * texture rather than as an order of work.
+     * Hovering or focusing a card lifts its whole chain out of the matrix:
+     * everything it waits for, everything that waits for it, and so on in both
+     * directions, plus the arrows between them. Everything else fades back,
+     * cards included — the arrows alone were too little to read as an order of
+     * work, because the cards they run between stayed just as loud.
+     *
+     * Both directions from the hovered card, so hovering halfway along a chain
+     * shows the whole chain and not just the tail.
      */
+    const buren = new Map<string, Set<string>>();
+    for (const pijl of PIJLEN) {
+      for (const [a, b] of [
+        [pijl.van, pijl.naar],
+        [pijl.naar, pijl.van],
+      ]) {
+        if (!buren.has(a)) buren.set(a, new Set());
+        buren.get(a)!.add(b);
+      }
+    }
+
+    function keten(id: string): Set<string> {
+      const gezien = new Set<string>([id]);
+      const wachtrij = [id];
+      while (wachtrij.length) {
+        for (const buur of buren.get(wachtrij.pop()!) ?? []) {
+          if (gezien.has(buur)) continue;
+          gezien.add(buur);
+          wachtrij.push(buur);
+        }
+      }
+      return gezien;
+    }
+
     function accent(id: string | null) {
-      canvas!.classList.toggle('rr-matrix-canvas--accent', id !== null);
+      // A card with no dependencies has no chain to show, and dimming the rest
+      // of the matrix for it would be noise on every pass of the mouse.
+      const leden = id !== null && buren.has(id) ? keten(id) : null;
+      canvas!.classList.toggle('rr-matrix-canvas--accent', leden !== null);
+      for (const card of table!.querySelectorAll<HTMLElement>('[data-wp-id]')) {
+        card.classList.toggle(
+          'rr-wp-card--in-keten',
+          leden !== null && leden.has(card.dataset.wpId!),
+        );
+      }
       for (const path of svg!.querySelectorAll<SVGPathElement>('.rr-afhankelijk__lijn')) {
         path.classList.toggle(
           'rr-afhankelijk__lijn--actief',
-          id !== null && (path.dataset.van === id || path.dataset.naar === id),
+          leden !== null &&
+            leden.has(path.dataset.van!) &&
+            leden.has(path.dataset.naar!),
         );
       }
     }

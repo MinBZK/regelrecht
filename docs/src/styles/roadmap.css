@@ -316,10 +316,17 @@
   fill: var(--semantics-content-accent-color, var(--semantics-content-secondary-color));
 }
 
-/* One card at a time: its own relations stay, the rest fades back so the
-   bundle does not compete with them. */
+/*
+ * One chain at a time. Hovering a card fades everything that is not in its
+ * chain, cards as well as arrows, so what is left standing is the order of
+ * work around that card.
+ *
+ * Opacity rather than a darker colour: the site follows the reader's theme,
+ * and a value that reads as "receded" on a dark ground reads as "highlighted"
+ * on a light one.
+ */
 .rr-roadmap .rr-matrix-canvas--accent .rr-afhankelijk__lijn {
-  opacity: 0.2;
+  opacity: 0.12;
 }
 
 .rr-roadmap .rr-afhankelijk__lijn--actief {
@@ -327,10 +334,20 @@
   stroke-width: 3;
 }
 
+.rr-roadmap .rr-matrix-canvas--accent .rr-wp-card {
+  opacity: 0.3;
+  transition: opacity 120ms ease-out;
+}
+
+.rr-roadmap .rr-matrix-canvas--accent .rr-wp-card--in-keten {
+  opacity: 1;
+}
+
 /* A line that moves while the page is being read is worse than no animation
    at all for anyone who asked not to have motion. */
 @media (prefers-reduced-motion: reduce) {
-  .rr-roadmap .rr-afhankelijk__lijn {
+  .rr-roadmap .rr-afhankelijk__lijn,
+  .rr-roadmap .rr-matrix-canvas--accent .rr-wp-card {
     transition: none;
   }
 }
