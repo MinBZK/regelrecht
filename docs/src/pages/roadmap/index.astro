@@ -340,6 +340,9 @@ const pathname = '/roadmap';
   const table = canvas?.querySelector<HTMLElement>('.rr-matrix');
   if (canvas && svg && table) {
     const SVG_NS = 'http://www.w3.org/2000/svg';
+    /* The arrowhead's length in the same units the paths are drawn in; the
+       marker below is set to match, and the paths stop this far short. */
+    const PIJL_LENGTE = 11;
 
     /** `van` has to be delivered before `naar` can start. */
     type Pijl = { van: string; naar: string };
@@ -384,7 +387,14 @@ const pathname = '/roadmap';
       const x2 = gestapeld ? naar.right : naarRechts ? naar.left : naar.right;
       const bocht = gestapeld ? 64 : Math.max(48, Math.abs(x2 - x1) * 0.45);
       const richting = gestapeld || naarRechts ? 1 : -1;
-      return `M ${x1} ${van.mid} C ${x1 + bocht * richting} ${van.mid}, ${x2 + bocht * (gestapeld ? 1 : -richting)} ${naar.mid}, ${x2} ${naar.mid}`;
+      // The curve arrives horizontally (its last control point shares the end
+      // point's y), so the stroke has to stop one arrowhead short of the card
+      // or it runs through the head and out the tip. PIJL_LENGTE is the marker
+      // drawn at the end; the head then covers exactly the trimmed stretch.
+      const aankomst = gestapeld ? 1 : richting;
+      const eind = x2 - PIJL_LENGTE * aankomst;
+      const c2 = eind + bocht * (gestapeld ? 1 : -richting);
+      return `M ${x1} ${van.mid} C ${x1 + bocht * richting} ${van.mid}, ${c2} ${naar.mid}, ${eind} ${naar.mid}`;
     }
 
     function teken() {
@@ -402,10 +412,12 @@ const pathname = '/roadmap';
       const marker = document.createElementNS(SVG_NS, 'marker');
       marker.setAttribute('id', 'rr-pijlpunt');
       marker.setAttribute('viewBox', '0 0 10 8');
-      marker.setAttribute('refX', '9');
+      // refX at the polygon's tip: the head sits entirely behind the path's end
+      // point, over the stretch pad() left out of the stroke.
+      marker.setAttribute('refX', '10');
       marker.setAttribute('refY', '4');
-      marker.setAttribute('markerWidth', '11');
-      marker.setAttribute('markerHeight', '11');
+      marker.setAttribute('markerWidth', String(PIJL_LENGTE));
+      marker.setAttribute('markerHeight', String(PIJL_LENGTE));
       marker.setAttribute('orient', 'auto-start-reverse');
       marker.setAttribute('markerUnits', 'userSpaceOnUse');
       const punt = document.createElementNS(SVG_NS, 'polygon');
