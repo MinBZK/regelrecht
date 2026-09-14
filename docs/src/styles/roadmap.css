@@ -123,7 +123,7 @@
      one is wide enough for the deepest dependency indent in that fase, so an
      indented card keeps its full width instead of being squeezed. */
   grid-template-columns: 36px 200px var(--rr-fase-kolommen);
-  gap: var(--primitives-space-8, 0.5rem);
+  gap: var(--rr-matrix-gat, 8px);
   border-collapse: separate;
   /* Above the samenhang overlay, so a curve passes behind the cards. */
   position: relative;
@@ -226,7 +226,13 @@
 .rr-roadmap .rr-matrix__cell {
   display: flex;
   flex-direction: column;
-  padding: var(--primitives-space-8, 0.5rem);
+  /* Inline padding carries the rest of the arrow's room: two of these plus the
+     grid's own gap make one --rr-pijl-ruimte over a column border, the same
+     distance two cards have inside a cell. */
+  padding-block: var(--primitives-space-8, 0.5rem);
+  padding-inline: calc(
+    (var(--rr-pijl-ruimte, 72px) - var(--rr-matrix-gat, 8px)) / 2
+  );
   border-radius: var(--semantics-surfaces-corner-radius, 8px);
   min-height: var(--primitives-space-48, 3rem);
   /* No surface of its own: the cards carry it. A filled cell would paint over

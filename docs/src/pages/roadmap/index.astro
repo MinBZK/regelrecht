@@ -112,11 +112,15 @@ const matrixRijen: MatrixRow[] = swimlanes.flatMap((lane) => {
  * already was; it scrolls sideways inside its own region.
  */
 const RR_KAART_BREEDTE = 240;
-const RR_PIJL_RUIMTE = 56;
+// The room an arrow gets between two cards. It is the gap inside a cell and,
+// through the cell's inline padding below, also the gap over a column border:
+// the last card of one fase and the first of the next sit exactly this far
+// apart, so a step to the right reads the same everywhere on the matrix.
+const RR_PIJL_RUIMTE = 72;
+// The gap the grid itself puts between cells; the cells make up the rest.
+const RR_MATRIX_GAT = 8;
 const RR_INSPRING_STAP = RR_KAART_BREEDTE + RR_PIJL_RUIMTE;
-// The cell's own padding on both sides, so a card at the deepest indent is not
-// cut off by the column's right edge.
-const RR_KOLOM_BASIS = RR_KAART_BREEDTE + 16;
+const RR_KOLOM_BASIS = RR_KAART_BREEDTE + (RR_PIJL_RUIMTE - RR_MATRIX_GAT);
 const diepte = afhankelijkheidsDiepte(werkpakketten);
 const kolomBreedtes = fases.map((fase) => {
   const stappen = werkpakketten
@@ -224,7 +228,7 @@ const pathname = '/roadmap';
           <svg class="rr-afhankelijk" aria-hidden="true" focusable="false"></svg>
           <table
             class="rr-matrix"
-            style={`--rr-fase-kolommen: ${kolomBreedtes.join(' ')}; --rr-kaart-breedte: ${RR_KAART_BREEDTE}px; --rr-pijl-ruimte: ${RR_PIJL_RUIMTE}px`}
+            style={`--rr-fase-kolommen: ${kolomBreedtes.join(' ')}; --rr-kaart-breedte: ${RR_KAART_BREEDTE}px; --rr-pijl-ruimte: ${RR_PIJL_RUIMTE}px; --rr-matrix-gat: ${RR_MATRIX_GAT}px`}
           >
           <caption class="rr-matrix__caption">
             Werkpakketten per fase (kolommen) en discipline (rijen). De vijf
