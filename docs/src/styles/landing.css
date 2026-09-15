@@ -80,6 +80,14 @@ html {
   max-width: 46rem;
 }
 
+/* The run panel is the exception: a trace is wide by nature, and at 46rem the
+   names broke over two lines, which puts half a name under the tree drawing.
+   Wider than the rest, though not the full strip, and it keeps to the right so
+   the alternation carries on through it. */
+.rr-beat--wide {
+  max-width: 60rem;
+}
+
 /* Odd panels sit left, even panels right. */
 .rr-beat:nth-of-type(even) {
   margin-inline-start: auto;
@@ -263,6 +271,9 @@ html {
 .rr-run__steps-scroll {
   max-height: 26rem;
   overflow-y: auto;
+  /* Sideways too, for the deepest rows on a narrow window: the names do not
+     wrap, so they need somewhere to go. */
+  overflow-x: auto;
   overscroll-behavior: contain;
 
   /* The bar itself is hidden, the scrolling is not: the region keeps its
@@ -322,8 +333,11 @@ html {
   font-weight: 700;
 }
 
+/* Never wrapped: a name that breaks over two lines puts the second half under
+   the tree drawing, and the connectors then point at nothing. The row scrolls
+   sideways instead, which keeps the picture intact. */
 .rr-trace__name {
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 /* The tree drawn with the same box characters the engine's own renderer uses:
