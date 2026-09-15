@@ -116,13 +116,6 @@ html {
   opacity: 0.7;
 }
 
-.rr-beat__source {
-  margin: 0.5rem 0 0;
-  font-size: 0.8125rem;
-  opacity: 0.7;
-  overflow-wrap: anywhere;
-}
-
 /* Reveal. Only enhanced pages hide anything, so no-JS shows every panel. */
 .rr-scrolly[data-enhanced] .rr-beat[data-visible='false'] {
   opacity: 0;
