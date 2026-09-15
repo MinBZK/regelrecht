@@ -331,7 +331,7 @@ mod tests {
         .await
         .expect("aanvraag fixture");
 
-        demo_reset(State(state.clone()), beoordelaar_session().await)
+        let _ = demo_reset(State(state.clone()), beoordelaar_session().await)
             .await
             .expect("reset met beoordelaarsessie");
 

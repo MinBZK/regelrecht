@@ -277,6 +277,7 @@ articles:
                 Nederlandse nationaliteit (personas-databron)
           - name: verblijfstitel_code
             type: number
+            nullable: true
             source:
               description: >-
                 Code van de verblijfsrechtelijke status zoals in het Register
@@ -327,6 +328,7 @@ articles:
                 school te Den Haag (eerste lid) (personas-databron)
           - name: oordeel_bevoegd_gezag
             type: string
+            nullable: true
             source:
               description: >-
                 Oordeel van het bevoegd gezag, ASIELZOEKER of
