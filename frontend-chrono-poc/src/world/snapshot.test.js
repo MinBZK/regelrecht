@@ -24,6 +24,7 @@ import {
   missedDeadlines,
   newGrams,
   obligationsOf,
+  placeholderFor,
   readLexostatus,
   regulationOf,
   settingRows,
@@ -561,6 +562,17 @@ describe('wat een cel publiceert', () => {
     // Geen besluit van deze cel legt in die kroniek, dus er is geen vorm.
     expect(bsn.patterns).toStrictEqual([]);
     expect(describeParam(bsn)).toBe("sleutel van kroniek 'aanvragen'");
+  });
+
+  // Het geestschrift in het veld is één welgevormde waarde, of niets. Twee
+  // sjablonen aaneenrijgen zou een tekst in het veld zetten die zelf geen geldig
+  // kenmerk is; er één uitkiezen zou die vorm stelliger maken dan ze is.
+  it('geeft een voorbeeld in het veld zolang er precies één vorm is', () => {
+    const [zaak] = lexostatusParams(toeslagen, beschikking);
+    expect(placeholderFor(zaak)).toBe('zorgtoeslag/{bsn}');
+    expect(placeholderFor({ patterns: ['a/{x}', 'b/{y}'] })).toBe('');
+    expect(placeholderFor({ patterns: [] })).toBe('');
+    expect(placeholderFor(undefined)).toBe('');
   });
 
   it('noemt bij de wetsvorm geen sleutel, want daar valt niets op te zoeken', () => {

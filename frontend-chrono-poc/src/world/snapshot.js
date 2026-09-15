@@ -110,6 +110,24 @@ export function describeParam(param) {
 }
 
 /**
+ * Het voorbeeld dat als geestschrift in het invoerveld staat; leeg als er geen
+ * eenduidig voorbeeld te geven is.
+ *
+ * Een placeholder staat op de plek waar de invuller zo zelf iets neerzet, dus
+ * het hoort één **welgevormde** waarde te zijn. Bij precies één vorm is dat die
+ * vorm. Zijn er meer — twee besluiten met elk een eigen sjabloon in dezelfde
+ * kroniek — dan is er geen voorbeeld dat de andere niet tegenspreekt: er één
+ * uitkiezen laat de vorm stelliger lijken dan ze is, en ze aaneenrijgen zet een
+ * tekst in het veld die zelf geen geldige waarde is. Dan blijft het veld leeg en
+ * doet [`describeParam`] het werk: die somt ze alle op in het label erboven, en
+ * dat is de plek voor een opsomming.
+ */
+export function placeholderFor(param) {
+  const patterns = param?.patterns ?? [];
+  return patterns.length === 1 ? patterns[0] : '';
+}
+
+/**
  * De zaakkenmerk-sjablonen van de besluiten die in deze kroniek leggen.
  *
  * Uit de besluiten van deze cel en niet uit een lijst hier: welke vorm een
