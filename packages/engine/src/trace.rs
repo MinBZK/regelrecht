@@ -165,7 +165,40 @@ pub struct PathNode {
     /// Unit and precision of [`Self::result`] (RFC-023), so a renderer can
     /// show an amount as euros instead of a bare count of cents.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub type_spec: Option<TypeSpec>,
+    pub type_spec: Option<ValueTypeSpec>,
+}
+
+/// Unit and precision of a value that has been computed (RFC-039).
+///
+/// Deliberately narrower than the law schema's `type_spec`, which also carries
+/// `min` and `max`. Those constrain what a value *may* be; a trace reports what
+/// a value *is*, and a bound the engine never enforced would read on a step as
+/// though it had been checked.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ValueTypeSpec {
+    /// Unit of measurement, from the same closed set the law schema allows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+
+    /// Number of decimal places for the value, in its own unit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precision: Option<i64>,
+}
+
+impl ValueTypeSpec {
+    /// Keep only what describes the value, dropping the declared bounds.
+    pub fn from_declaration(spec: &TypeSpec) -> Self {
+        Self {
+            unit: spec.unit.clone(),
+            precision: spec.precision,
+        }
+    }
+
+    /// Whether this says nothing, in which case it is left off the node rather
+    /// than serialized as an empty object.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// A reference to a provision, in the shape of the schema's `legal_basis`
@@ -390,9 +423,10 @@ impl PathNode {
         self
     }
 
-    /// Set the unit and precision of the result (RFC-023).
+    /// Set the unit and precision of the result (RFC-023), keeping the part of
+    /// the law's declaration that describes a computed value.
     pub fn with_type_spec(mut self, type_spec: TypeSpec) -> Self {
-        self.type_spec = Some(type_spec);
+        self.type_spec = Some(ValueTypeSpec::from_declaration(&type_spec));
         self
     }
 
@@ -1159,13 +1193,23 @@ impl TraceBuilder {
     }
 
     /// Set the unit and precision of the current node's result (RFC-023).
+    ///
+    /// Takes the law's declaration and keeps the part that describes a computed
+    /// value. A declaration that says nothing about unit or precision is left
+    /// off entirely, so an absent `type_spec` means "nothing was declared"
+    /// rather than "an empty object was declared".
     pub fn set_type_spec(&mut self, type_spec: TypeSpec) {
         if !self.enabled {
             return;
         }
 
+        let spec = ValueTypeSpec::from_declaration(&type_spec);
+        if spec.is_empty() {
+            return;
+        }
+
         if let Some(current) = self.stack.last_mut() {
-            current.node.type_spec = Some(type_spec);
+            current.node.type_spec = Some(spec);
         }
     }
 

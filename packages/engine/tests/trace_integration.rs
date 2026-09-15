@@ -508,4 +508,26 @@ fn a_declared_value_reports_its_unit() {
         with_unit.iter().any(|(_, u)| *u == "eurocent"),
         "expected an amount in eurocent, got {with_unit:?}"
     );
+
+    // A trace reports what a value is, not what it was allowed to be. The
+    // law's declaration also carries `min` and `max`; carrying those onto a
+    // step would read as though the engine had checked them, and it never
+    // did. Serialized, a reported spec is unit and precision and nothing else.
+    let spec = nodes
+        .iter()
+        .find_map(|n| n.type_spec.as_ref())
+        .expect("at least one step reports a spec");
+    let json = serde_json::to_value(spec).expect("a spec serializes");
+    let keys: Vec<&str> = json
+        .as_object()
+        .expect("a spec is an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    for key in &keys {
+        assert!(
+            matches!(*key, "unit" | "precision"),
+            "a reported spec carries only unit and precision, found {key:?} in {keys:?}"
+        );
+    }
 }
