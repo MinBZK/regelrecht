@@ -144,9 +144,13 @@ class ScrollyDemo extends HTMLElement {
       const height = Math.round(pane?.getBoundingClientRect().height ?? 0);
       if (height <= 0) return;
 
+      // Padding goes in the same sheet: the code sat flush against the frame,
+      // and the viewer's own `simple` variant carries none. Room at the top is
+      // left for the copy button so the first line does not run under it.
       sheet.replaceSync(
         `.code-viewer, .cm-editor { height: ${height}px; max-height: ${height}px; }` +
-          ' .cm-scroller { overflow: auto; }',
+          ' .cm-scroller { overflow: auto; padding: 1rem 1.25rem 1.25rem; }' +
+          ' .cm-content { padding-inline-end: 3rem; }',
       );
       root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
     } catch {
@@ -198,13 +202,18 @@ class ScrollyDemo extends HTMLElement {
         const box = wipe.getBoundingClientRect();
         const viewport = window.innerHeight;
 
-        // The wipe follows the panel's travel up the viewport, from "its top
-        // has reached three quarters up" to "its top is halfway up". Ending
-        // halfway rather than near the top means the YAML is fully uncovered
-        // while the panel is still square in view: run it to the top and the
-        // reveal only completes as the panel is leaving.
-        const start = viewport * 0.75;
-        const end = viewport * 0.5;
+        // The wipe holds until the panel is fully in view, and only then
+        // follows the scroll. Reading comes first: the covering text is there
+        // to be read, and a reveal that starts while the panel is still coming
+        // up takes it away before it has been.
+        //
+        // So the travel runs from "the panel's bottom has reached the bottom of
+        // the viewport", which is the moment it is all on screen, to a panel
+        // height further on. Measured against the panel rather than against
+        // fixed fractions of the window, because a tall panel needs longer to
+        // arrive than a short one.
+        const start = viewport - box.height;
+        const end = start - box.height;
         const travelled = (start - box.top) / (start - end);
 
         // Position alone is not enough. On a short page, or when the panel
