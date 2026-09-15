@@ -90,7 +90,7 @@
         "uri": {
           "type": "string",
           "pattern": "^regelrecht://",
-          "description": "Convenience address of the value this step denotes, as a regelrecht:// URI. A convenience and not the primary address: anchor.law_id plus yaml_path already name the law and the element, and this field cannot always be written. The scheme is regelrecht://<law_id>/<output>#<field>, so it cannot express a law whose id contains '/' (31 of the 79 law ids in corpus/demo do) and it has nothing to put in the output segment for a step naming an input or an open term. Absent in each of those cases; a consumer must not treat absence as meaning the step denotes no value."
+          "description": "Convenience address of the value this step denotes, as a regelrecht:// URI. A convenience and not the primary address: anchor.law_id plus yaml_path already name the law and the element, and this field cannot always be written. The scheme is regelrecht://<law_id>/<output>#<field>, so it cannot express a law whose id itself contains '/', which is common in the corpus (alcoholwet/vergunning/rotterdam is one such id), and it has nothing to put in the output segment for a step naming an input or an open term. Absent in each of those cases; a consumer must not treat absence as meaning the step denotes no value."
         },
         "source": {
           "$ref": "#/definitions/ValueSource",
