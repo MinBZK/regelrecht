@@ -4,8 +4,8 @@
     "law": "wet_op_de_zorgtoeslag",
     "output": "hoogte_zorgtoeslag",
     "scenario": "corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature",
-    "total_duration_us": 3766,
-    "total_steps": 131
+    "total_duration_us": 3629,
+    "total_steps": 141
   },
   "root": {
     "children": [
@@ -28,7 +28,7 @@
               "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
               "valid_from": "2025-01-01"
             },
-            "duration_us": 1,
+            "duration_us": 2,
             "name": "bsn",
             "node_id": "n0.0",
             "node_type": "resolve",
@@ -83,7 +83,7 @@
               "law_id": "zorgverzekeringswet",
               "url": "https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel2"
             },
-            "duration_us": 53,
+            "duration_us": 52,
             "message": "Computing is_verzekerd",
             "name": "is_verzekerd",
             "node_id": "n0.3",
@@ -91,7 +91,7 @@
             "result": true
           }
         ],
-        "duration_us": 135,
+        "duration_us": 132,
         "name": "zorgverzekeringswet#is_verzekerd",
         "node_id": "n0",
         "node_type": "cross_law_reference",
@@ -131,7 +131,7 @@
               "law_id": "algemene_wet_inkomensafhankelijke_regelingen",
               "url": "https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel3"
             },
-            "duration_us": 1,
+            "duration_us": 0,
             "message": "Resolving from SOURCE relationship_data: GEEN",
             "name": "partnerschap_type",
             "node_id": "n1.1",
@@ -159,7 +159,7 @@
             "result": false
           }
         ],
-        "duration_us": 56,
+        "duration_us": 51,
         "name": "algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner",
         "node_id": "n1",
         "node_type": "cross_law_reference",
@@ -199,11 +199,11 @@
               "law_id": "algemene_wet_inkomensafhankelijke_regelingen",
               "url": "https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8"
             },
-            "duration_us": 198,
+            "duration_us": 197,
             "name": "wet_inkomstenbelasting_2001#toetsingsinkomen",
             "node_id": "n2.1",
             "node_type": "cross_law_reference",
-            "result": 79547,
+            "result": 3000000,
             "type_spec": {
               "unit": "eurocent"
             }
@@ -239,22 +239,22 @@
               "law_id": "algemene_wet_inkomensafhankelijke_regelingen",
               "url": "https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8"
             },
-            "duration_us": 10,
+            "duration_us": 9,
             "message": "Computing toetsingsinkomen",
             "name": "toetsingsinkomen",
             "node_id": "n2.3",
             "node_type": "action",
-            "result": 79547,
+            "result": 3000000,
             "type_spec": {
               "unit": "eurocent"
             }
           }
         ],
-        "duration_us": 250,
+        "duration_us": 245,
         "name": "algemene_wet_inkomensafhankelijke_regelingen#toetsingsinkomen",
         "node_id": "n2",
         "node_type": "cross_law_reference",
-        "result": 79547,
+        "result": 3000000,
         "type_spec": {
           "unit": "eurocent"
         }
@@ -278,7 +278,7 @@
               "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
               "valid_from": "2025-01-01"
             },
-            "duration_us": 30,
+            "duration_us": 29,
             "message": "Open term 'standaardpremie' implemented by regeling_standaardpremie article 1",
             "name": "standaardpremie",
             "node_id": "n3.0",
@@ -298,7 +298,7 @@
               "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel4",
               "valid_from": "2025-01-01"
             },
-            "duration_us": 4,
+            "duration_us": 3,
             "message": "Computing standaardpremie",
             "name": "standaardpremie",
             "node_id": "n3.1",
@@ -309,7 +309,7 @@
             }
           }
         ],
-        "duration_us": 59,
+        "duration_us": 54,
         "message": "Internal reference: wet_op_de_zorgtoeslag#standaardpremie",
         "name": "wet_op_de_zorgtoeslag#standaardpremie",
         "node_id": "n3",
@@ -339,7 +339,7 @@
               "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
               "valid_from": "2025-01-01"
             },
-            "duration_us": 70,
+            "duration_us": 73,
             "name": "wet_inkomstenbelasting_2001#rendementsgrondslag",
             "node_id": "n4.0",
             "node_type": "cross_law_reference",
@@ -357,7 +357,7 @@
               "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
               "valid_from": "2025-01-01"
             },
-            "duration_us": 9,
+            "duration_us": 75,
             "name": "algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner",
             "node_id": "n4.1",
             "node_type": "cross_law_reference",
@@ -380,7 +380,7 @@
             "result": true
           }
         ],
-        "duration_us": 140,
+        "duration_us": 205,
         "message": "Internal reference: wet_op_de_zorgtoeslag#vermogen_onder_grens",
         "name": "wet_op_de_zorgtoeslag#vermogen_onder_grens",
         "node_id": "n4",
@@ -415,7 +415,7 @@
             "result": true
           }
         ],
-        "duration_us": 22,
+        "duration_us": 23,
         "message": "Hook PreActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:3:46",
         "name": "algemene_wet_bestuursrecht:3:46",
         "node_id": "n5",
@@ -440,15 +440,15 @@
               "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
               "valid_from": "2025-01-01"
             },
-            "duration_us": 215,
-            "message": "Compute ROUND(...) = 157731",
+            "duration_us": 134,
+            "message": "Compute ROUND(...) = 133084",
             "name": "ROUND",
             "node_id": "n6.0",
             "node_type": "operation",
-            "result": 157731
+            "result": 133084
           }
         ],
-        "duration_us": 238,
+        "duration_us": 151,
         "legal_basis": {
           "article": "2",
           "bwb_id": "BWBR0018451",
@@ -462,7 +462,7 @@
         "name": "hoogte_zorgtoeslag",
         "node_id": "n6",
         "node_type": "action",
-        "result": 157731,
+        "result": 133084,
         "type_spec": {
           "unit": "eurocent"
         }
@@ -486,7 +486,7 @@
               "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
               "valid_from": "2025-01-01"
             },
-            "duration_us": 20,
+            "duration_us": 14,
             "message": "Compute AND(...) = True",
             "name": "AND",
             "node_id": "n7.0",
@@ -494,7 +494,7 @@
             "result": true
           }
         ],
-        "duration_us": 33,
+        "duration_us": 19,
         "legal_basis": {
           "article": "2",
           "bwb_id": "BWBR0018451",
@@ -536,19 +536,19 @@
             "result": 6
           }
         ],
-        "duration_us": 38,
+        "duration_us": 25,
         "message": "Hook PostActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:6:7",
         "name": "algemene_wet_bestuursrecht:6:7",
         "node_id": "n8",
         "node_type": "hook_resolution"
       }
     ],
-    "duration_us": 1152,
+    "duration_us": 1048,
     "message": "wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)",
     "name": "wet_op_de_zorgtoeslag (hoogte_zorgtoeslag)",
     "node_id": "n",
     "node_type": "article",
-    "result": 157731,
+    "result": 133084,
     "type_spec": {
       "unit": "eurocent"
     }

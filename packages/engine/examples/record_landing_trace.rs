@@ -6,12 +6,18 @@
 //! at build time, and the page replays what it recorded at a pace a person can
 //! follow. Every step the visitor sees was really taken.
 //!
-//! The inputs are the ones in the scenario that already lives beside the law
+//! The inputs are those of "Inkomen boven het drempelinkomen bouwt de
+//! zorgtoeslag af", in the scenario file beside the law
 //! (`corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature`),
 //! which CI runs on every push. So the number on the landing page is the number
-//! a failing test would catch, and the Gherkin the page displays is a real file
-//! rather than an illustration. The BSN is the fictional test number that
-//! scenario uses.
+//! a failing test would catch, and the Gherkin the page displays is the very
+//! scenario recorded here rather than an illustration. The BSN is the fictional
+//! test number that scenario uses.
+//!
+//! That scenario and not one of the others: it sits above the threshold, where
+//! the allowance tapers off. Below the threshold every income yields the same
+//! amount, which shows nothing of the rule the memorandum quoted on the page
+//! works out.
 //!
 //! Usage:
 //!   cargo run --example record_landing_trace -- <output.json>
@@ -29,7 +35,7 @@ const DATE: &str = "2025-01-01";
 /// What the scenario asserts. Recording a trace that computes something else
 /// means the corpus moved, and the landing page should not quietly show the new
 /// number: a demo that silently re-baselines proves nothing.
-const EXPECTED: i64 = 157731;
+const EXPECTED: i64 = 133084;
 
 fn record(entries: Vec<(&str, Value)>) -> BTreeMap<String, Value> {
     entries
@@ -142,7 +148,7 @@ fn main() {
             "personal_data",
             record(vec![
                 ("bsn", Value::String(BSN.to_string())),
-                ("geboortedatum", Value::String("2005-01-01".to_string())),
+                ("geboortedatum", Value::String("1990-01-01".to_string())),
             ]),
         ),
         (
@@ -164,7 +170,7 @@ fn main() {
             "box1",
             record(vec![
                 ("bsn", Value::String(BSN.to_string())),
-                ("loon_uit_dienstbetrekking", Value::Int(79547)),
+                ("loon_uit_dienstbetrekking", Value::Int(3000000)),
                 ("uitkeringen_en_pensioenen", Value::Int(0)),
                 ("winst_uit_onderneming", Value::Int(0)),
                 ("resultaat_overige_werkzaamheden", Value::Int(0)),

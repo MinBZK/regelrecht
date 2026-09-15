@@ -87,9 +87,16 @@ function computationYaml(yaml: string): string {
     .trimEnd();
 }
 
-/** The scenario that CI runs, from `Scenario:` to the end of its Then block. */
+/**
+ * The scenario that CI runs, from `Scenario:` to the end of its Then block.
+ *
+ * The taper one, because it is the scenario the memorandum panel above it
+ * quotes: an income above the threshold, where the allowance runs down. A
+ * scenario below the threshold produces a flat amount and shows nothing of the
+ * rule the legislature works out.
+ */
 function scenario(feature: string): string {
-  const start = feature.indexOf('  Scenario: Meerderjarige');
+  const start = feature.indexOf('  Scenario: Inkomen boven het drempelinkomen');
   if (start === -1) throw new Error(`${SCENARIO}: the demo scenario is missing`);
   const rest = feature.slice(start);
   const end = rest.indexOf('\n\n  Scenario:');
@@ -100,14 +107,21 @@ function scenario(feature: string): string {
     .trimEnd();
 }
 
-/** The explanatory-memorandum quotation attached to the words of lid 1. */
+/**
+ * The passage from the parliamentary papers that the scenario rests on.
+ *
+ * Anchored on the sentence that opens this specific annotation, not on a
+ * generic "memorie van toelichting" phrase: the file holds several quotations
+ * and the generic one matched whichever came first, which was the definition
+ * of the allowance rather than the worked example the scenario executes.
+ */
 function memorandum(annotations: string): string {
-  const marker = 'Memorie van toelichting, artikelsgewijze toelichting bij artikel 2:';
+  const marker = 'Verslag houdende een lijst van vragen en antwoorden bij de';
   const start = annotations.indexOf(marker);
-  if (start === -1) throw new Error(`${ANNOTATIONS}: the MvT annotation is missing`);
-  const rest = annotations.slice(start + marker.length);
+  if (start === -1) throw new Error(`${ANNOTATIONS}: the worked-example annotation is missing`);
+  const rest = annotations.slice(start);
   const end = rest.indexOf('\n        purpose:');
-  if (end === -1) throw new Error(`${ANNOTATIONS}: the MvT annotation body has no end`);
+  if (end === -1) throw new Error(`${ANNOTATIONS}: the annotation body has no end`);
   return rest
     .slice(0, end)
     .split('\n')

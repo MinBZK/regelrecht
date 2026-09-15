@@ -25,7 +25,7 @@ const nl = {
   steps: [
     { tag: 'Wettekst', h: 'Wat de wet zegt', p: 'Artikel 2, eerste lid. De tekst die iedereen kan opzoeken.' },
     { tag: 'Machineleesbaar', h: 'Wat de machine leest', p: 'Dezelfde regel, uitvoerbaar. De verwijzing naar het lid staat erbij, dus een uitkomst kan later zeggen waar ze vandaan komt.' },
-    { tag: 'Toelichting', h: 'Waarom het er zo staat', p: 'De wetgever aan het woord, letterlijk uit de memorie van toelichting.' },
+    { tag: 'Toelichting', h: 'Waarom het er zo staat', p: 'De wetgever aan het woord, letterlijk uit de parlementaire stukken.' },
     { tag: 'Scenario', h: 'Hoe we het controleren', p: 'De wetgever rekent de zorgtoeslag zelf voor in de Kamerstukken. Die tabel is hier een uitvoerbaar scenario: dezelfde formule, nagerekend tot op de euro. Het draait bij elke wijziging; gaat het om, dan is de wet veranderd.' },
     { tag: 'Uitvoering', h: 'De engine rekent', p: 'Precies dat scenario, echt uitgevoerd.' },
   ],
@@ -49,7 +49,7 @@ const en = {
   steps: [
     { tag: 'Statute', h: 'What the law says', p: 'Article 2, first paragraph. The text anyone can look up.' },
     { tag: 'Machine-readable', h: 'What the machine reads', p: 'The same rule, executable. It carries the citation, so a result can say later where it came from.' },
-    { tag: 'Memorandum', h: 'Why it reads that way', p: 'The legislature in its own words, quoted from the explanatory memorandum.' },
+    { tag: 'Memorandum', h: 'Why it reads that way', p: 'The legislature in its own words, quoted from the parliamentary papers.' },
     { tag: 'Scenario', h: 'How we check it', p: 'The legislature works the allowance out itself in the parliamentary papers. That table is an executable scenario here: the same formula, checked to the euro. It runs on every change; if it breaks, the law moved.' },
     { tag: 'Execution', h: 'The engine runs', p: 'That very scenario, actually executed.' },
   ],
@@ -201,7 +201,7 @@ const amount = demo.trace.root.result;
       <nldd-spacer size="16" />
       <nldd-blockquote>
         <p>{demo.memorandum}</p>
-        <span slot="attribution">Kamerstukken II 2004/05, 29 762, nr. 3</span>
+        <span slot="attribution">Kamerstukken II 2021/22, 35 925 XVI, nr. 14</span>
       </nldd-blockquote>
     </article>
 
