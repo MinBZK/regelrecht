@@ -1047,6 +1047,12 @@ jobs:
       # Parity met de andere npm-jobs: de workspace kan @nldd-pakketten van
       # npm.pkg.github.com halen.
       packages: read
+    # Geen `Install mold linker`, anders dan bij de Rust-banen hierboven: de
+    # `RUSTFLAGS` van deze workflow overschrijft de `rustflags` uit
+    # packages/.cargo/config.toml, dus de mold-link-arg daaruit komt hier nooit
+    # aan en de standaardlinker doet het werk. De banen die mold wél willen
+    # zetten die link-arg zelf in hun RUSTFLAGS; deze baan bouwt één binary en
+    # heeft die snelheid niet nodig.
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
