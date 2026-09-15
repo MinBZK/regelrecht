@@ -98,10 +98,17 @@ function computationYaml(yaml: string): string {
 function scenario(feature: string): string {
   const start = feature.indexOf('  Scenario: Inkomen boven het drempelinkomen');
   if (start === -1) throw new Error(`${SCENARIO}: the demo scenario is missing`);
-  const rest = feature.slice(start);
-  const end = rest.indexOf('\n\n  Scenario:');
-  return (end === -1 ? rest : rest.slice(0, end))
-    .split('\n')
+  // Stop at the blank line that ends this scenario's block. Looking for the
+  // next `Scenario:` is not enough: the one after this is introduced by a
+  // comment, so the search ran past it and the panel showed two scenarios
+  // where the text promises one.
+  const lines = feature.slice(start).split('\n');
+  const body: string[] = [];
+  for (const line of lines) {
+    if (body.length > 0 && line.trim() === '') break;
+    body.push(line);
+  }
+  return body
     .map((line) => line.slice(2))
     .join('\n')
     .trimEnd();
