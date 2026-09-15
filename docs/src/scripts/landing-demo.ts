@@ -147,9 +147,14 @@ class ScrollyDemo extends HTMLElement {
       // Padding goes in the same sheet: the code sat flush against the frame,
       // and the viewer's own `simple` variant carries none. Room at the top is
       // left for the copy button so the first line does not run under it.
+      // The scrollbars are hidden, the scrolling is not: the data tables in a
+      // scenario are wider than the frame and still have to be reachable, but
+      // a bar drawn across the bottom of a code block reads as a defect.
       sheet.replaceSync(
         `.code-viewer, .cm-editor { height: ${height}px; max-height: ${height}px; }` +
-          ' .cm-scroller { overflow: auto; padding: 1rem 1.25rem 1.25rem; }' +
+          ' .cm-scroller { overflow: auto; padding: 1rem 1.25rem 1.25rem;' +
+          ' scrollbar-width: none; -ms-overflow-style: none; }' +
+          ' .cm-scroller::-webkit-scrollbar { width: 0; height: 0; }' +
           ' .cm-content { padding-inline-end: 3rem; }',
       );
       root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
