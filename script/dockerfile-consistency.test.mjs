@@ -135,23 +135,22 @@ test('de rust-tag van elk basisimage volgt rust-toolchain.toml', () => {
   assert.ok(seen >= 3, `slechts ${seen} rust-basisimages gevonden`);
 });
 
-// Uit op main sinds juli 2026, en daarom nog niet scherp gezet.
-//
 // De test hierboven kijkt naar de tag, en een tag zegt niets: `rust:1.96-alpine`
-// wijst in drie Dockerfiles naar het ene image en in drie andere naar een ander,
+// wijst in de ene Dockerfile naar het ene image en in de andere naar een ander,
 // allebei geldig en allebei groen. Het image dat achterloopt bouwt tegen een
 // andere toolchain dan de rest en niets wijst erop.
 //
 // Hoe het zo kwam: dependabot bumpt alleen `/packages/admin` en
-// `/packages/pipeline` (zie de bumps van 10 juli 2026 naar `a41f774`), en de
-// andere Dockerfiles staan nog op de digest van juni. `a41f774` is dus de
-// actuele; gelijktrekken raakt drie images buiten deze branch, dus dat is een
-// eigen wijziging en geen bijvangst hiervan.
+// `/packages/pipeline` (de bumps van 10 juli 2026 naar `a41f774`), en wat het
+// niet volgt bleef op de digest van juni staan. De vier Dockerfiles onder
+// `packages/` staan nu gelijk, op de actuele `a41f774`.
 //
-// Tot dat moment meldt deze test het verschil zonder te falen: hem nu hard
-// zetten legt elke pull request stil voor iets dat niemand hier introduceerde.
-// Zet `skip` weg zodra de digests gelijk zijn, en hij bewaakt het.
-test('één rust-tag betekent één digest', { skip: 'divergentie staat al op main' }, () => {
+// `frontend/Dockerfile` en `frontend-demo/Dockerfile` staan nog op de oude.
+// Dat is zo op main en komt hier niet vandaan, dus die gelijktrekken is een
+// eigen wijziging; tot dan meldt deze test het verschil zonder te falen, want
+// hem hard zetten zou elke pull request stilleggen voor iets dat niemand hier
+// introduceerde. Haal `skip` weg zodra die twee mee zijn, en hij bewaakt het.
+test('één rust-tag betekent één digest', { skip: 'frontend en frontend-demo lopen op main achter' }, () => {
   const perTag = new Map();
   for (const path of DOCKERFILES) {
     for (const [, tag, digest] of read(path).matchAll(

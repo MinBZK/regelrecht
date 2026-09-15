@@ -150,7 +150,14 @@ const GROEPEN = [
     rijen: [
       { key: 'dk', label: 'Draagkrachtmetingen', hint: 'debiteuren met een meting', kind: 'aantal', beter: 'neutraal', kern: true, get: (m) => m.uitvoering?.draagkrachtmetingen ?? null },
       { key: 'oo', label: 'Partner-opt-outs', hint: 'partnerinkomen niet laten meetellen', kind: 'aantal', beter: 'neutraal', get: (m) => m.uitvoering?.partnerOptOuts ?? null },
-      { key: 'pv', label: 'Peiljaarverleggingen', hint: 'artikel 6.12', kind: 'aantal', beter: 'neutraal', get: (m) => m.uitvoering?.peiljaarverleggingen ?? null },
+      // Peiljaarverleggingen (artikel 6.12) stond hier en telde altijd 0:
+      // `population.js` zet die keuze op elk record hard op false en
+      // `distributions.yaml` heeft er geen prior voor, anders dan voor
+      // draagkrachtmetingen en partner-opt-outs. Een rij die per constructie
+      // nul toont, leest als "dit gebeurt niet" in plaats van "dit wordt niet
+      // gesimuleerd". Terug zodra er een onderbouwd percentage is: een
+      // `peiljaarverlegging_prior` erbij, samplen zoals de andere twee, en
+      // deze rij terugzetten.
     ],
   },
 ];

@@ -16,6 +16,20 @@ const ready = ref(false);
 const initError = ref(null);
 const lawIndex = ref([]);
 
+/**
+ * Maakt van wat de engine gooit een Error met een leesbare `message`.
+ *
+ * De WASM-laag gooit een kale string (of een object zonder `message`), en elk
+ * foutpaneel toont `initError.message`. Dat gaf "De rekenmachine kon niet
+ * worden geladen:" met niets erachter — de enige plek waar de echte oorzaak
+ * stond, was de console.
+ */
+function alsError(e) {
+  if (e instanceof Error && e.message) return e;
+  const tekst = e == null ? '' : typeof e === 'string' ? e : (e.message ?? e.toString?.() ?? '');
+  return new Error(tekst || 'onbekende fout uit de engine');
+}
+
 async function fetchText(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Ophalen mislukt (${res.status}): ${url}`);
@@ -49,8 +63,8 @@ async function initEngine() {
       ready.value = true;
       return engineInstance;
     } catch (e) {
-      initError.value = e;
-      throw e;
+      initError.value = alsError(e);
+      throw initError.value;
     }
   })();
 

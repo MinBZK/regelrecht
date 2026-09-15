@@ -12,7 +12,7 @@
 
 # Stage 1a: WASM-engine voor de browser-pocs.
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
-FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS wasm-builder
+FROM rust:1.96-alpine@sha256:a41f7740f8b45d45795624eec13a8b42263cc700f19f7e4e86e04d3dda08a479 AS wasm-builder
 RUN apk add --no-cache musl-dev curl
 RUN rustup target add wasm32-unknown-unknown
 ARG TARGETARCH
@@ -90,7 +90,7 @@ RUN cd /assistent && npm install --omit=dev --ignore-scripts --no-package-lock
 
 # Stage 2: chef-basis voor de Rust-kant.
 # Rust version: keep in sync with rust-toolchain.toml (source of truth).
-FROM rust:1.96-alpine@sha256:2ea3db105d38fdfa4e31f366674287fcaa828087e2fe3973befdc537f2d443b1 AS chef
+FROM rust:1.96-alpine@sha256:a41f7740f8b45d45795624eec13a8b42263cc700f19f7e4e86e04d3dda08a479 AS chef
 RUN apk add --no-cache musl-dev curl xz
 ARG TARGETARCH
 ARG CARGO_CHEF_VERSION=0.1.77
