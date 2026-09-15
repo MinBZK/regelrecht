@@ -9,7 +9,7 @@
  *   {type:'tool', naam, input}
  *   {type:'wijziging', document_key, toelichting}
  *   {type:'simulatie', doel, n?, metrics?}
- *   {type:'klaar', overlays: {document_key: yaml}}
+ *   {type:'klaar', overlays: {document_key: yaml}, handelingen: yaml|null}
  *   {type:'fout', melding}
  */
 import { ref } from 'vue';
@@ -48,14 +48,14 @@ export function useAssistent() {
     controller?.abort();
   }
 
-  async function run({ modus, prompt, documenten = [] }, onEvent) {
+  async function run({ modus, prompt, documenten = [], handelingen = null }, onEvent) {
     streaming.value = true;
     controller = new AbortController();
     try {
       const res = await fetch(b('/api/assistent'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modus, prompt, documenten }),
+        body: JSON.stringify({ modus, prompt, documenten, handelingen }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error(`Backend gaf ${res.status}`);

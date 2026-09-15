@@ -145,6 +145,37 @@ function resetOverrides() {
   }
 }
 
+/**
+ * Het effectieve model van een kolom als yaml-tekst, voor de beleidsassistent.
+ * Inclusief de sessie-overrides, want de assistent moet lezen en rekenen op
+ * wat de gebruiker ziet -- net als bij de regelgeving. Zonder dit kreeg hij
+ * altijd de basis, en bestond een handeling die alleen in een variant staat
+ * (de po-accountant van nk-3) voor hem niet.
+ */
+function handelingenYamlFor(variantId = null) {
+  const doc = handelingenFor(variantId);
+  return doc ? yaml.dump(doc, { lineWidth: 100, noRefs: true }) : null;
+}
+
+/**
+ * Neem het uitvoeringslastmodel over dat de beleidsassistent heeft bewerkt.
+ * Dit vervangt de basis, niet een variant-doc: de assistent werkt op de
+ * werkversie, en handelingenFor() valt voor elke kolom zonder eigen
+ * handelingen.yaml op die basis terug. De sessie-overrides blijven staan,
+ * zodat een knop die de gebruiker zelf verzette niet stil terugspringt.
+ */
+function applyHandelingenYaml(yamlText) {
+  if (typeof yamlText !== 'string' || !yamlText.trim()) return false;
+  try {
+    const doc = yaml.load(yamlText);
+    if (!doc || !Array.isArray(doc.handelingen)) return false;
+    base.value = doc;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function useHandelingen() {
   return {
     base,
@@ -158,6 +189,8 @@ export function useHandelingen() {
     fetchHandelingen,
     ensureVariantDoc,
     handelingenFor,
+    handelingenYamlFor,
+    applyHandelingenYaml,
     setMinuten,
     setTarief,
     setFractie,

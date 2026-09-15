@@ -11,18 +11,23 @@
  * vertaalt ze naar SSE. Zo blijft de bestaande engine/validatie-logica intact.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
+import { pathToFileURL } from 'url';
 import { resolve } from 'path';
-import { simulate } from '../app/src/sim/simulate.js';
-import { generatePopulation } from '../app/src/sim/population.js';
-import { aggregate } from '../app/src/sim/metrics.js';
-import { patchDefinitionValue, readDefinitionValue } from '../app/src/lib/yamlPatch.js';
 import {
+  appSrc,
   createEngine,
   corpusMetOverlays,
   loadDistributions,
   loadPersonas,
   validateYaml,
-} from './engine.js';
+} from '../engine.js';
+
+// Per casus een eigen app-map, dus dynamisch; zie nieuwkomersbekostiging.mcp.js.
+const mod = (rel) => import(pathToFileURL(resolve(appSrc, rel)).href);
+const { simulate } = await mod('sim/simulate.js');
+const { generatePopulation } = await mod('sim/population.js');
+const { aggregate } = await mod('sim/metrics.js');
+const { patchDefinitionValue, readDefinitionValue } = await mod('lib/yamlPatch.js');
 
 const SIM_OPTIONS = { startJaar: 2026 };
 const SESSION_DIR = process.env.OCW_SESSION_DIR;

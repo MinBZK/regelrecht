@@ -9,7 +9,10 @@
  *     {type: "tool", naam, input}       toolaanroep van de assistent
  *     {type: "wijziging", document_key, toelichting}
  *     {type: "simulatie", doel, n?, metrics?}
- *     {type: "klaar", overlays: {key: yaml}}   eindstand van de regelgeving
+ *     {type: "klaar", overlays: {key: yaml}, handelingen: yaml|null}
+ *                                       eindstand van de regelgeving, en van
+ *                                       het uitvoeringslastmodel als de
+ *                                       assistent dat wijzigde
  *     {type: "fout", melding}
  *
  * Motor: de lokaal geïnstalleerde Claude Code CLI (`claude -p`), headless. Er is
@@ -89,6 +92,16 @@ function leesOverlays(sessieDir) {
 }
 
 /**
+ * De bewerkte handelingen.yaml van deze sessie, of null als de assistent het
+ * uitvoeringslastmodel niet heeft aangeraakt. Ligt naast overlays/ omdat het
+ * geen wet is en niet door de engine gaat.
+ */
+function leesHandelingen(sessieDir) {
+  const file = path.join(sessieDir, 'handelingen.yaml');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : null;
+}
+
+/**
  * Lees nieuwe event-bestanden die de MCP-server heeft neergelegd (oplopend
  * genummerd) en geef ze door. `gezien` houdt bij welke al verstuurd zijn.
  */
@@ -140,6 +153,11 @@ async function handleAssistent(req, res) {
   // als beginstand in de overlays, zodat de assistent leest en rekent op wat
   // de gebruiker ziet (inclusief eigen bewerkingen en variant-bestanden).
   const documenten = Array.isArray(payload.documenten) ? payload.documenten : [];
+  // Idem voor het uitvoeringslastmodel. Zonder dit leest de assistent altijd
+  // de basis-handelingen.yaml, terwijl een variant er een eigen kan meebrengen
+  // -- de po-accountant bestaat bijvoorbeeld alleen in nk-3-harmonisatie-po-vo.
+  // Een instructie over die handeling liep dan dood op "bestaat niet".
+  const handelingen = typeof payload.handelingen === 'string' ? payload.handelingen : null;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -156,6 +174,10 @@ async function handleAssistent(req, res) {
     fs.writeFileSync(path.join(sessieDir, 'overlays', `${encodeURIComponent(d.key)}.yaml`), d.yaml);
     beginstand.set(String(d.key), d.yaml);
   }
+  // Beginstand van het uitvoeringslastmodel, zodat `klaar` straks alleen
+  // meldt dat het gewijzigd is als het echt afwijkt van wat de browser stuurde.
+  const handelingenBegin = handelingen;
+  if (handelingen) fs.writeFileSync(path.join(sessieDir, 'handelingen.yaml'), handelingen);
   const gezienEvents = new Set();
   // Poll de MCP-event-map zodat wijziging/simulatie-events tijdens de run
   // binnenkomen, niet pas aan het eind.
@@ -177,10 +199,16 @@ async function handleAssistent(req, res) {
     },
   });
 
+  // De unie over alle casus: een tool die een casus niet aanbiedt, staat
+  // simpelweg niet in zijn tools/list en is dan onbereikbaar. Toestaan wat er
+  // niet is kan dus geen kwaad; omgekeerd wel — een tool die de MCP-server
+  // aanbiedt maar hier ontbreekt, weigert de CLI stil.
   const mcpTools = [
     'mcp__regelrecht__lees_regelgeving',
     'mcp__regelrecht__wijzig_definitie',
     'mcp__regelrecht__wijzig_regelgeving',
+    'mcp__regelrecht__lees_handelingen',
+    'mcp__regelrecht__wijzig_handelingen',
     'mcp__regelrecht__simuleer_personas',
     'mcp__regelrecht__simuleer_populatie',
   ];
@@ -233,7 +261,16 @@ async function handleAssistent(req, res) {
       for (const [key, tekst] of Object.entries(leesOverlays(sessieDir))) {
         if (beginstand.get(key) !== tekst) overlays[key] = tekst;
       }
-      send({ type: 'klaar', overlays });
+      // Het uitvoeringslastmodel apart: het gaat niet door de engine en wordt
+      // in de app niet door de lawStore maar door useHandelingen opgepakt.
+      // Alleen doorsturen als het echt afwijkt van de beginstand, anders zou
+      // elke run een "wijziging" melden die er niet is.
+      const handelingenEind = leesHandelingen(sessieDir);
+      send({
+        type: 'klaar',
+        overlays,
+        handelingen: handelingenEind !== handelingenBegin ? handelingenEind : null,
+      });
     }
     ruimSessieOp(sessieDir);
     res.end();
