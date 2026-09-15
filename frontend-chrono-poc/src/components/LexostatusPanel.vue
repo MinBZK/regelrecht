@@ -182,7 +182,7 @@ async function submit() {
     const given = Object.fromEntries(
       params.value
         .map((param) => [param.name, values.value[param.name] ?? ''])
-        .filter(([, value]) => value !== '' && value !== null && value !== undefined),
+        .filter(([, value]) => value !== ''),
     );
     const payload = await props.ask(cellId.value, name.value, given, moment.value || null);
     answer.value = payload ? readLexostatus(payload) : null;
