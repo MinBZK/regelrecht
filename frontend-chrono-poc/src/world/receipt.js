@@ -23,10 +23,11 @@ import { regulationOf } from './snapshot.js';
  * de vraag "welke wet, welke versie" en eindigt bij de instelling van de engine.
  * Wat hier niet in staat, komt er in de volgorde van het antwoord achteraan.
  */
-const SECTION_ORDER = ['provenance', 'scope', 'execution', 'results', 'engine_config'];
+const SECTION_ORDER = ['gram', 'provenance', 'scope', 'execution', 'results', 'engine_config'];
 
 /** Hoe een sectie heet in gewone woorden. */
 const SECTION_LABELS = {
+  gram: 'Het gram waar dit receipt bij hoort',
   provenance: 'Herkomst van de uitvoering',
   scope: 'Bereik van de uitvoering',
   execution: 'Uitvoering',
@@ -36,6 +37,7 @@ const SECTION_LABELS = {
 
 /** Wat een sectie in één regel betekent. */
 const SECTION_NOTES = {
+  gram: 'in wiens kroniek het ligt, over welke zaak het gaat, en het moment in de logische tijd',
   provenance: 'welke regeling in welke versie, door welke engine',
   scope: 'wat er tijdens de uitvoering geladen was',
   execution: 'op welke datum en met welke waarden er gerekend is',
@@ -46,8 +48,13 @@ const SECTION_NOTES = {
 /**
  * De velden van het receipt die deze module apart toont en dus niet nog eens in
  * een sectie moeten opduiken.
+ *
+ * `gram` staat er niet bij: dat heeft geen eigen weergave nodig en hoort gewoon
+ * als eerste sectie in beeld. Het draagt het moment in de **logische** tijd, en
+ * dat dat náást de wandkloktijd te lezen is, is precies waarom de server de twee
+ * uit elkaar houdt.
  */
-const OWN_VIEW = ['gram', 'accepted_values', 'timestamp'];
+const OWN_VIEW = ['accepted_values', 'timestamp'];
 
 /** De lijst binnen `scope` die als tabel getoond wordt in plaats van als regels. */
 const LOADED_REGULATIONS = 'loaded_regulations';
@@ -70,12 +77,6 @@ const LOADED_REGULATIONS = 'loaded_regulations';
  */
 export function carriesReceipt(gram) {
   return gram?.kind === 'decretogram' && regulationOf(gram) !== null;
-}
-
-/** Het gram waar dit receipt bij hoort; leeg als het antwoord het niet draagt. */
-export function receiptGram(receipt) {
-  const gram = receipt?.gram;
-  return gram && typeof gram === 'object' ? gram : {};
 }
 
 /**

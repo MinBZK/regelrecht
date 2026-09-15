@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cloneReceipt, receiptFixture } from '../testing/receiptFixture.js';
-import {
-  acceptedValues,
-  loadedRegulations,
-  receiptGram,
-  receiptSections,
-  receiptTimestamp,
-} from './receipt.js';
+import { acceptedValues, loadedRegulations, receiptSections, receiptTimestamp } from './receipt.js';
 
 // Het receipt lezen: ordenen en benoemen, nooit selecteren.
 
@@ -14,6 +8,7 @@ describe('het uitvoeringsreceipt lezen', () => {
   it('zet de secties in leesvolgorde en laat er geen weg', () => {
     const sections = receiptSections(receiptFixture);
     expect(sections.map((section) => section.key)).toStrictEqual([
+      'gram',
       'provenance',
       'scope',
       'execution',
@@ -22,7 +17,7 @@ describe('het uitvoeringsreceipt lezen', () => {
     ]);
     // Elke sectie die het receipt draagt komt in beeld — dat is de belofte, en
     // daarom staat hier de lijst van het antwoord zelf en niet een tweede lijst.
-    const own = ['gram', 'accepted_values', 'timestamp'];
+    const own = ['accepted_values', 'timestamp'];
     const expected = Object.keys(receiptFixture).filter((key) => !own.includes(key));
     expect([...sections.map((section) => section.key)].sort()).toStrictEqual(expected.sort());
   });
@@ -90,6 +85,17 @@ describe('het uitvoeringsreceipt lezen', () => {
     expect(loadedRegulations(null)).toStrictEqual([]);
     expect(acceptedValues(null)).toStrictEqual([]);
     expect(receiptTimestamp(null)).toBeNull();
-    expect(receiptGram(null)).toStrictEqual({});
+  });
+
+  it('zet het gram met zijn moment in de logische tijd als eerste sectie', () => {
+    // Naast de wandkloktijd van de uitvoering, en dat die twee náást elkaar te
+    // lezen zijn is waarom de server ze uit elkaar houdt.
+    const [gram] = receiptSections(receiptFixture);
+    expect(gram.key).toBe('gram');
+    expect(gram.rows).toContainEqual({ name: 'op_moment', value: receiptFixture.gram.op_moment });
+    expect(gram.rows).toContainEqual({
+      name: 'zaakkenmerk',
+      value: receiptFixture.gram.zaakkenmerk,
+    });
   });
 });
