@@ -424,6 +424,60 @@ fn an_action_carries_the_provision_the_corpus_cites() {
     );
 }
 
+/// A value read from a register says so in a field (RFC-039), which is what
+/// replaced parsing it back out of the human-readable message. A consumer that
+/// asks where a value came from must get an answer without reading prose.
+#[test]
+fn a_value_from_a_register_names_its_source() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+    let root = result.trace.expect("traced evaluation produces a trace");
+
+    fn walk<'a>(
+        node: &'a regelrecht_engine::trace::PathNode,
+        out: &mut Vec<&'a regelrecht_engine::trace::PathNode>,
+    ) {
+        out.push(node);
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&root, &mut nodes);
+
+    let sourced: Vec<(&str, &str)> = nodes
+        .iter()
+        .filter_map(|n| {
+            let s = n.source.as_ref()?;
+            Some((n.name.as_str(), s.provider.as_deref()?))
+        })
+        .collect();
+
+    assert!(
+        !sourced.is_empty(),
+        "no step named the register it read from; this evaluation reads several"
+    );
+    assert!(
+        sourced.iter().any(|(name, _)| *name == "polis_status"),
+        "the insurance status is read from a register, got {sourced:?}"
+    );
+    assert!(
+        sourced.iter().any(|(_, provider)| *provider == "insurance"),
+        "expected the insurance register to be named, got {sourced:?}"
+    );
+}
+
 /// A trace travels as a document with its version inside it, not as a bare
 /// step (RFC-039). Consumers read `root`.
 #[test]

@@ -350,6 +350,18 @@ impl<'a> ArticleEngine<'a> {
 
             if tracing_active {
                 context.trace_set_result(value.clone());
+                // The unit the law declares for this output (RFC-023, RFC-039).
+                // An action producing a declared output is not a value computed
+                // mid-expression: the law states its unit, so the step can
+                // report it and a reader sees an amount rather than a bare
+                // count of cents.
+                if let Some(ts) = self
+                    .article
+                    .find_output(output_name)
+                    .and_then(|o| o.type_spec.as_ref())
+                {
+                    context.trace_set_type_spec(ts.clone());
+                }
             }
 
             // An absence is a value only where the law declared it one. An

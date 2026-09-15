@@ -38,6 +38,72 @@ fn record(entries: Vec<(&str, Value)>) -> BTreeMap<String, Value> {
         .collect()
 }
 
+/// How deep the page shows the tree. Two levels is the reading unit: the beats
+/// under the root (is this person insured, what is their income, what is the
+/// standard premium) and, under each, the step that answered it.
+const DISPLAY_DEPTH: usize = 2;
+
+fn count(node: &regelrecht_engine::trace::PathNode) -> usize {
+    1 + node.children.iter().map(count).sum::<usize>()
+}
+
+fn sum_duration(node: &regelrecht_engine::trace::PathNode) -> u64 {
+    node.duration_us.unwrap_or(0) + node.children.iter().map(sum_duration).sum::<u64>()
+}
+
+/// Keep the top of the tree and drop what hangs below it.
+///
+/// Only ever removes: every step the page shows is a step the engine really
+/// took, with the result it really produced. A pruned branch keeps its own
+/// result, so the visitor sees the answer without the arithmetic that reached
+/// it, and the full count is reported alongside so nothing looks smaller than
+/// it was.
+fn prune(
+    node: &regelrecht_engine::trace::PathNode,
+    depth: usize,
+) -> regelrecht_engine::trace::PathNode {
+    let mut copy = node.clone();
+
+    // A cross-law call carries the result of the law it called, and the unit
+    // sits on the step inside that law which produced it. Lifting it up keeps
+    // the declaration the law really made, rather than the display guessing
+    // later which numbers are money.
+    if copy.type_spec.is_none() {
+        if let Some(found) = declared_unit(node) {
+            copy.type_spec = Some(found);
+        }
+    }
+
+    if depth >= DISPLAY_DEPTH {
+        copy.children = Vec::new();
+    } else {
+        copy.children = node.children.iter().map(|c| prune(c, depth + 1)).collect();
+    }
+    copy
+}
+
+/// The unit declared by the step that produced this node's value.
+///
+/// Only accepts a descendant whose result is the same value, so a unit is never
+/// borrowed from an unrelated sibling: an amount is reported as an amount
+/// because some law said so, not because a number nearby happened to be money.
+fn declared_unit(
+    node: &regelrecht_engine::trace::PathNode,
+) -> Option<regelrecht_engine::trace::ValueTypeSpec> {
+    let want = node.result.as_ref()?;
+    for child in &node.children {
+        if child.result.as_ref() == Some(want) {
+            if let Some(ts) = &child.type_spec {
+                return Some(ts.clone());
+            }
+            if let Some(found) = declared_unit(child) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(out_path) = args.first() else {
@@ -162,10 +228,29 @@ fn main() {
     let trace = result
         .trace
         .expect("a traced evaluation produces a trace document");
-    let document = regelrecht_engine::trace::TraceDocument::new(trace);
 
-    let json = serde_json::to_string_pretty(&document).expect("the trace serializes");
-    std::fs::write(out_path, json).unwrap_or_else(|e| panic!("could not write {out_path}: {e}"));
+    let total_steps = count(&trace);
+    let total_us: u64 = sum_duration(&trace);
+
+    let pruned = prune(&trace, 0);
+    let document = regelrecht_engine::trace::TraceDocument::new(pruned);
+
+    // The page states how long the real evaluation took and how many steps it
+    // really had, so pruning the tree for display never shrinks the claim.
+    let mut json = serde_json::to_value(&document).expect("the trace serializes");
+    json["recording"] = serde_json::json!({
+        "law": LAW,
+        "output": OUTPUT,
+        "date": DATE,
+        "total_steps": total_steps,
+        "total_duration_us": total_us,
+        "scenario": "corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature",
+    });
+
+    let text = serde_json::to_string_pretty(&json).expect("the document serializes");
+    std::fs::write(out_path, text).unwrap_or_else(|e| panic!("could not write {out_path}: {e}"));
+
+    eprintln!("{total_steps} steps in {:.2} ms", total_us as f64 / 1000.0);
 
     eprintln!("Recorded {OUTPUT} = {EXPECTED} to {out_path}");
 }

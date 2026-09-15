@@ -35,7 +35,7 @@ use crate::config;
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::trace::{LegalAnchor, TraceBuilder};
-use crate::types::{MissingKind, PathNodeType, ResolveType, Value};
+use crate::types::{MissingKind, PathNodeType, ResolveType, TypeSpec, Value};
 use chrono::{Datelike, NaiveDate};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -300,6 +300,14 @@ impl RuleContext {
     pub fn trace_set_resolve_type(&self, rt: ResolveType) {
         if let Some(ref trace) = self.trace {
             trace.borrow_mut().set_resolve_type(rt);
+        }
+    }
+
+    /// Record the unit and precision the law declares for the current step's
+    /// value (RFC-023). No-op if trace is None.
+    pub fn trace_set_type_spec(&self, type_spec: TypeSpec) {
+        if let Some(ref trace) = self.trace {
+            trace.borrow_mut().set_type_spec(type_spec);
         }
     }
 

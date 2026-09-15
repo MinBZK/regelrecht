@@ -1549,6 +1549,42 @@ articles:
         assert_eq!(anchor.sentence, None);
     }
 
+    /// A declaration that constrains a value without describing it leaves no
+    /// spec on the step at all. `min`/`max` alone say nothing about what a
+    /// value became, and an empty object would read as a declaration that was
+    /// made and turned out blank.
+    #[test]
+    fn a_declaration_without_unit_or_precision_is_not_recorded() {
+        let mut builder = TraceBuilder::new_untimed();
+        builder.push("bedrag", PathNodeType::Action);
+        builder.set_type_spec(TypeSpec {
+            min: Some(rust_decimal::Decimal::ZERO),
+            max: Some(rust_decimal::Decimal::ONE_HUNDRED),
+            ..TypeSpec::default()
+        });
+        let root = builder.build().expect("a built trace");
+
+        assert!(
+            root.type_spec.is_none(),
+            "bounds alone are not a description of a value, got {:?}",
+            root.type_spec
+        );
+
+        // And a declaration that does describe the value is kept.
+        let mut builder = TraceBuilder::new_untimed();
+        builder.push("bedrag", PathNodeType::Action);
+        builder.set_type_spec(TypeSpec {
+            unit: Some("eurocent".to_string()),
+            min: Some(rust_decimal::Decimal::ZERO),
+            ..TypeSpec::default()
+        });
+        let root = builder.build().expect("a built trace");
+        assert_eq!(
+            root.type_spec.as_ref().and_then(|t| t.unit.as_deref()),
+            Some("eurocent")
+        );
+    }
+
     /// `from_provision` carries the corpus citation across field for field,
     /// including the ones the zorgtoeslag corpus happens not to write. Each is
     /// asserted separately for the same reason as the anchor's: a dropped
