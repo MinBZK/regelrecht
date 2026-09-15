@@ -326,6 +326,13 @@ async fn a_config_without_a_password_refuses_to_start() {
     // The failure mode this guards is a PoC in the register that is served to
     // anyone because its env var was forgotten.
     std::env::set_var("POC_COOKIE_SECRET", SECRET);
+    // Ook de wachtwoorden van het basisregister zetten, en niet erop vertrouwen
+    // dat een andere test dat al deed: de omgeving is procesbreed en de tests
+    // draaien parallel. Liep deze eerst, dan struikelde `from_env` over
+    // POC_PW_ALFA en ging de assertie over gamma nooit op -- een test die faalt
+    // op de volgorde waarin hij toevallig draait, niet op wat hij bewaakt.
+    std::env::set_var("POC_PW_ALFA", "alfa-geheim");
+    std::env::set_var("POC_PW_BETA", "beta-geheim");
     std::env::remove_var("POC_PW_GAMMA");
     let register = format!(
         "{REGISTER}  - slug: gamma\n    titel: G\n    samenvatting: S\n    soort: statisch\n    \
