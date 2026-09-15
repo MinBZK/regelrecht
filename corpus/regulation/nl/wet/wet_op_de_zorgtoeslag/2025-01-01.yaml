@@ -36,14 +36,16 @@ articles:
 
 
       2. De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een
-      percentage van het toetsingsinkomen van de verzekerde. Ingeval de verzekerde een toeslagpartner heeft, wordt het
-      gezamenlijk toetsingsinkomen van de verzekerde en de toeslagpartner in aanmerking genomen.
+      percentage van het toetsingsinkomen van de verzekerde in dat jaar voorzover dat toetsingsinkomen het
+      drempelinkomen te boven gaat. Voor een verzekerde met een partner wordt daarbij het gezamenlijke toetsingsinkomen
+      in aanmerking genomen.
 
 
-      3. De percentages, bedoeld in het tweede lid, bedragen voor een verzekerde met een toeslagpartner 4,273 procent van
-      het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen, en voor een verzekerde zonder
-      toeslagpartner 1,896 procent van het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen. Bij
-      ministeriële regeling kunnen deze percentages worden gewijzigd.
+      3. De percentages worden voor verzekerden met een partner vastgesteld op 4,273% van het drempelinkomen,
+      vermeerderd met 13,700% van het toetsingsinkomen voor zover dat boven het drempelinkomen uitgaat en voor een
+      verzekerde zonder partner op 1,896% van het drempelinkomen, vermeerderd met 13,700% van het toetsingsinkomen voor
+      zover dat boven het drempelinkomen uitgaat. Deze percentages kunnen bij algemene maatregel van bestuur worden
+      gewijzigd.
 
 
       4. In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag voor een verzekerde met een partner die
@@ -64,13 +66,28 @@ articles:
         # RFC-023: constants declare their quantity-kind. Money is eurocent;
         # the percentages here are stored as 0-1 ratios (1,896% = 0.01896), so
         # they carry unit: ratio — not percentage. The label never divides by 100.
+        # Artikel 1, onderdeel f: het drempelinkomen is "108% van het twaalfvoud
+        # van het voor de maand januari van het berekeningsjaar geldende [...]
+        # bedrag per maand" uit de Wet minimumloon. Voor 2025: 1,08 x 12 x
+        # 2.176,00 = 28.200,96 euro.
+        #
+        # De wet kent EEN drempelinkomen; alleen de percentages verschillen per
+        # huishoudtype (lid 3). Beide constanten dragen daarom dezelfde waarde;
+        # de keuze tussen de twee in de berekening hieronder is daarmee een
+        # no-op geworden en kan later verdwijnen.
+        #
+        # Hier stonden eerder 39.719 en 55.875. Dat zijn geen drempelinkomens
+        # maar inkomensgrenzen: het maximale inkomen waarbij nog recht bestaat,
+        # dat zelf uit de drempel, de percentages en de standaardpremie volgt.
+        # Met die waarden werd de afbouwtak nooit geraakt en keerde de wet voor
+        # elk inkomen onder de grens hetzelfde bedrag uit (issue #1429).
         drempelinkomen_alleenstaande:
-          value: 3971900
+          value: 2820096
           type: amount
           type_spec:
             unit: eurocent
         drempelinkomen_aanvrager_met_toeslagpartner:
-          value: 5587500
+          value: 2820096
           type: amount
           type_spec:
             unit: eurocent
@@ -145,6 +162,25 @@ articles:
               unit: eurocent
         actions:
           - output: hoogte_zorgtoeslag
+            # RFC-039: the action states which sentence of the law it carries out,
+            # so a trace step can cite the text it came from instead of only naming
+            # the article it was reached through.
+            legal_basis:
+              law: Wet op de zorgtoeslag
+              bwb_id: BWBR0018451
+              article: '2'
+              paragraph: '1'
+              # De url wijst op artikelniveau: wetten.overheid.nl heeft geen
+              # stabiel anker per lid. Het lid staat in `paragraph` en in de
+              # juriconnect, met `z`/`g` op de datum van deze versie, zodat de
+              # verwijzing de tekst van toen aanwijst en niet die van vandaag.
+              url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
+              juriconnect: jci1.3:c:BWBR0018451&artikel=2&lid=1&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                Het verschil tussen de standaardpremie en de normpremie. Lid 1
+                verdubbelt de standaardpremie bij een toeslagpartner; de
+                normpremie zelf volgt uit lid 2 en lid 3. Lid 4 (vijftig procent
+                bij een partner die geen verzekerde is) is nog niet gemodelleerd.
             # RFC-024: round the toeslag to whole eurocent (rekenkundig/half-up).
             # The engine no longer rounds eurocent outputs implicitly; the rounding
             # is stated explicitly here as a law-modeled instruction.
@@ -180,17 +216,24 @@ articles:
                                     value: true
                                   then: $percentage_drempelinkomen_partner
                               default: $percentage_drempelinkomen_alleenstaande
-                            - operation: MIN
-                              values:
-                                - $toetsingsinkomen
-                                - operation: IF
-                                  cases:
-                                    - when:
-                                        operation: EQUALS
-                                        subject: $heeft_toeslagpartner
-                                        value: true
-                                      then: $drempelinkomen_aanvrager_met_toeslagpartner
-                                  default: $drempelinkomen_alleenstaande
+                            # Lid 3 zegt "van het drempelinkomen", zonder
+                            # voorbehoud: het eerste percentage gaat over de
+                            # volle drempel, ook als het inkomen lager is.
+                            # Hier stond een MIN met het toetsingsinkomen, die
+                            # lage inkomens een te lage normpremie en dus een te
+                            # hoge toeslag gaf (issue #1429). De tabel in
+                            # kst-35925-XVI-14 vraag 374 wijst dat uit: bij een
+                            # inkomen onder de drempel houdt de gepubliceerde
+                            # toeslag een vast bedrag aan, wat alleen klopt
+                            # zonder deze MIN.
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $heeft_toeslagpartner
+                                    value: true
+                                  then: $drempelinkomen_aanvrager_met_toeslagpartner
+                              default: $drempelinkomen_alleenstaande
                         - operation: IF
                           cases:
                             - when:
@@ -222,6 +265,23 @@ articles:
                                   - $percentage_toetsingsinkomen
                           default: 0
           - output: heeft_recht_op_zorgtoeslag
+            # Deze verwijzing blijft bewust op artikelniveau. De drie
+            # voorwaarden komen uit drie bepalingen: verzekerd zijn uit artikel
+            # 1 onderdeel a, de vermogenstoets uit artikel 3, en alleen het
+            # positieve verschil uit artikel 2 lid 1. Een verwijzing naar lid 1
+            # zou preciezer lijken dan ze is, en dat is erger dan grof: wie de
+            # diepe link volgt vindt daar twee van de drie voorwaarden niet.
+            legal_basis:
+              law: Wet op de zorgtoeslag
+              bwb_id: BWBR0018451
+              article: '2'
+              url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
+              juriconnect: jci1.3:c:BWBR0018451&artikel=2&z=2025-01-01&g=2025-01-01
+              explanation: >-
+                De aanspraak ontstaat pas als het verschil uit artikel 2 lid 1
+                positief is. Daarnaast gelden twee voorwaarden van buiten dit
+                lid: verzekerd zijn (artikel 1 onderdeel a) en de vermogenstoets
+                (artikel 3), die als uitsluitingsgrond is geformuleerd.
             value:
               operation: AND
               conditions:
@@ -243,10 +303,20 @@ articles:
     url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel3
     machine_readable:
       definitions:
+        # Artikel 3 noemt deze grenzen in euro's (141.896 en 179.429); ze staan
+        # hier in eurocent, net als de andere bedragen in deze wet. De eenheid
+        # stond er niet bij, waardoor een spoor ze als kaal getal meldde
+        # (RFC-023).
         vermogensgrens_alleenstaand:
           value: 14189600
+          type: amount
+          type_spec:
+            unit: eurocent
         vermogensgrens_aanvrager_met_toeslagpartner:
           value: 17942900
+          type: amount
+          type_spec:
+            unit: eurocent
       execution:
         produces:
           legal_character: TOETS

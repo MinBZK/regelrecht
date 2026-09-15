@@ -5,7 +5,7 @@
 
 mod common;
 
-use regelrecht_engine::{LawExecutionService, Value};
+use regelrecht_engine::{LawExecutionService, PathNodeType, Value};
 use std::collections::BTreeMap;
 use walkdir::WalkDir;
 
@@ -247,4 +247,369 @@ fn test_simple_law_trace() {
         rendered,
         expected
     );
+}
+
+/// Every step of a real cross-law evaluation names the provision it came from,
+/// and a step inside another law names *that* law (RFC-039).
+///
+/// This is the claim the RFC rests on, so it is asserted against the zorgtoeslag
+/// chain rather than a synthetic tree: the anchor has to survive a cross-law
+/// hop and come back, which is where a naive implementation loses it.
+#[test]
+fn every_step_is_anchored_to_the_provision_it_came_from() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+    let root = result.trace.expect("traced evaluation produces a trace");
+
+    fn walk<'a>(
+        node: &'a regelrecht_engine::trace::PathNode,
+        out: &mut Vec<&'a regelrecht_engine::trace::PathNode>,
+    ) {
+        out.push(node);
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&root, &mut nodes);
+
+    // The root is pushed before any article is selected, so it is the one step
+    // that legitimately has no provision yet. Everything under it has one.
+    let unanchored: Vec<&str> = nodes
+        .iter()
+        .skip(1)
+        .filter(|n| n.anchor.is_none())
+        .map(|n| n.name.as_str())
+        .collect();
+    assert!(
+        unanchored.is_empty(),
+        "steps without an anchor: {unanchored:?}"
+    );
+
+    // An anchor names a law and an article, and the article is the one the
+    // engine was in, not the one the caller started from.
+    let laws: std::collections::BTreeSet<&str> = nodes
+        .iter()
+        .filter_map(|n| n.anchor.as_ref()?.law_id.as_deref())
+        .collect();
+    assert!(
+        laws.contains("wet_op_de_zorgtoeslag"),
+        "the calling law should appear: {laws:?}"
+    );
+    assert!(
+        laws.len() > 1,
+        "a cross-law chain should anchor steps in more than one law, got {laws:?}"
+    );
+
+    // The anchor carries what makes a step clickable through to the statute.
+    let with_article = nodes
+        .iter()
+        .filter(|n| n.anchor.as_ref().is_some_and(|a| a.article.is_some()))
+        .count();
+    assert!(
+        with_article > 0,
+        "at least one step should name its article number"
+    );
+}
+
+/// What the corpus cites travels with the step that carries it out (RFC-039),
+/// and stays distinct from the anchor: the anchor is where the engine was, the
+/// legal basis is the provision the modeller holds the action to. Here they
+/// refer to the same article and the citation is the finer of the two, naming
+/// the lid the engine cannot infer on its own.
+#[test]
+fn an_action_carries_the_provision_the_corpus_cites() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+    let root = result.trace.expect("traced evaluation produces a trace");
+
+    fn walk<'a>(
+        node: &'a regelrecht_engine::trace::PathNode,
+        out: &mut Vec<&'a regelrecht_engine::trace::PathNode>,
+    ) {
+        out.push(node);
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&root, &mut nodes);
+
+    let step = nodes
+        .iter()
+        .find(|n| n.name == "hoogte_zorgtoeslag" && n.legal_basis.is_some())
+        .expect("the toeslag action states the provision it carries out");
+    let basis = step.legal_basis.as_ref().unwrap();
+
+    assert_eq!(basis.article.as_deref(), Some("2"));
+    assert_eq!(basis.paragraph.as_deref(), Some("1"));
+    assert_eq!(basis.bwb_id.as_deref(), Some("BWBR0018451"));
+    // The juriconnect carries `z`/`g`, so it resolves to the text as it stood
+    // on this law version's date rather than to the text of today. It is the
+    // only part of a citation that carries time at all.
+    assert_eq!(
+        basis.juriconnect.as_deref(),
+        Some("jci1.3:c:BWBR0018451&artikel=2&lid=1&z=2025-01-01&g=2025-01-01")
+    );
+    assert!(
+        basis
+            .explanation
+            .as_deref()
+            .is_some_and(|e| e.contains("standaardpremie")),
+        "the citation carries the modeller's wording: {:?}",
+        basis.explanation
+    );
+
+    // A citation names a provision, not the file it was loaded from.
+    assert_eq!(basis.law_id, None, "a citation carries no corpus id");
+    assert_eq!(basis.valid_from, None, "a citation carries no load date");
+
+    // The anchor is the engine's own account, and it is coarser: it knows the
+    // article it was evaluating, never the lid.
+    let anchor = step.anchor.as_ref().expect("the step is anchored too");
+    assert_eq!(anchor.law_id.as_deref(), Some("wet_op_de_zorgtoeslag"));
+    assert_eq!(anchor.article.as_deref(), Some("2"));
+    assert_eq!(
+        anchor.paragraph, None,
+        "the engine does not guess a lid it was never told"
+    );
+
+    // Every action that states a basis gets one, not just the first: stamping
+    // only the first action would otherwise pass unnoticed.
+    let cited: Vec<&str> = nodes
+        .iter()
+        .filter(|n| n.legal_basis.is_some())
+        .map(|n| n.name.as_str())
+        .collect();
+    assert_eq!(
+        cited,
+        vec!["hoogte_zorgtoeslag", "heeft_recht_op_zorgtoeslag"],
+        "both actions of article 2 cite their basis"
+    );
+
+    // The entitlement test draws on three provisions, so it cites the article
+    // and no lid. A citation is allowed to be coarse; it is not allowed to
+    // claim a precision the rule does not have.
+    let recht = nodes
+        .iter()
+        .find(|n| n.name == "heeft_recht_op_zorgtoeslag")
+        .and_then(|n| n.legal_basis.as_ref())
+        .expect("the entitlement action cites its basis");
+    assert_eq!(recht.article.as_deref(), Some("2"));
+    assert_eq!(
+        recht.paragraph, None,
+        "a rule spanning three provisions cites no single lid"
+    );
+}
+
+/// A value read from a register says so in a field (RFC-039), which is what
+/// replaced parsing it back out of the human-readable message. A consumer that
+/// asks where a value came from must get an answer without reading prose.
+#[test]
+fn a_value_from_a_register_names_its_source() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+    let root = result.trace.expect("traced evaluation produces a trace");
+
+    fn walk<'a>(
+        node: &'a regelrecht_engine::trace::PathNode,
+        out: &mut Vec<&'a regelrecht_engine::trace::PathNode>,
+    ) {
+        out.push(node);
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&root, &mut nodes);
+
+    let sourced: Vec<(&str, &str)> = nodes
+        .iter()
+        .filter_map(|n| {
+            let s = n.source.as_ref()?;
+            Some((n.name.as_str(), s.provider.as_deref()?))
+        })
+        .collect();
+
+    assert!(
+        !sourced.is_empty(),
+        "no step named the register it read from; this evaluation reads several"
+    );
+    assert!(
+        sourced.iter().any(|(name, _)| *name == "polis_status"),
+        "the insurance status is read from a register, got {sourced:?}"
+    );
+    assert!(
+        sourced.iter().any(|(_, provider)| *provider == "insurance"),
+        "expected the insurance register to be named, got {sourced:?}"
+    );
+}
+
+/// A trace travels as a document with its version inside it, not as a bare
+/// step (RFC-039). Consumers read `root`.
+#[test]
+fn a_trace_is_published_as_a_versioned_document() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+
+    let doc = regelrecht_engine::trace::TraceDocument::new(
+        result.trace.expect("traced evaluation produces a trace"),
+    );
+    let json = serde_json::to_value(&doc).expect("serializes");
+
+    // The two top-level keys the schema requires, and nothing else.
+    let obj = json.as_object().expect("an object");
+    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    keys.sort();
+    assert_eq!(keys, vec!["root", "trace_version"]);
+    assert_eq!(obj["trace_version"], serde_json::json!(1));
+
+    // The root is a step, and it is anchored all the way down.
+    assert!(obj["root"].get("node_type").is_some(), "root is a step");
+    assert!(obj["root"].get("node_id").is_some(), "root is addressable");
+
+    // It reads back as a document.
+    let parsed: regelrecht_engine::trace::TraceDocument =
+        serde_json::from_value(json).expect("deserializes");
+    assert_eq!(parsed.trace_version, doc.trace_version);
+    assert_eq!(parsed.root.node_id, doc.root.node_id);
+}
+
+/// A step whose value the law declares with a unit reports that unit, so a
+/// reader sees an amount rather than a bare count of cents (RFC-023, RFC-039).
+#[test]
+fn a_declared_value_reports_its_unit() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+    let root = result.trace.expect("traced evaluation produces a trace");
+
+    fn walk<'a>(
+        n: &'a regelrecht_engine::trace::PathNode,
+        out: &mut Vec<&'a regelrecht_engine::trace::PathNode>,
+    ) {
+        out.push(n);
+        for c in &n.children {
+            walk(c, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&root, &mut nodes);
+
+    let with_unit: Vec<(&str, &str)> = nodes
+        .iter()
+        .filter_map(|n| Some((n.name.as_str(), n.type_spec.as_ref()?.unit.as_deref()?)))
+        .collect();
+    assert!(
+        !with_unit.is_empty(),
+        "no step reported a declared unit; zorgtoeslag has amounts in eurocent"
+    );
+    assert!(
+        with_unit.iter().any(|(_, u)| *u == "eurocent"),
+        "expected an amount in eurocent, got {with_unit:?}"
+    );
+
+    // Two separate paths stamp the unit, and each is asserted on a step only it
+    // can produce. A single "some step has a unit" check passes while either
+    // one is silently gutted, which is exactly what a mutation found.
+    //
+    // An action reporting the unit the law declares for its output: this one
+    // goes through the rule context.
+    assert_eq!(
+        nodes
+            .iter()
+            .find(|n| n.name == "hoogte_zorgtoeslag" && n.node_type == PathNodeType::Action)
+            .and_then(|n| n.type_spec.as_ref()?.unit.as_deref()),
+        Some("eurocent"),
+        "the action computing the amount reports the unit its output declares"
+    );
+
+    // An input resolved from a register, carrying the unit its declaration
+    // gives it: this one goes through the resolution context.
+    let resolved_with_unit: Vec<&str> = nodes
+        .iter()
+        .filter(|n| n.node_type == PathNodeType::Resolve)
+        .filter(|n| n.type_spec.as_ref().and_then(|t| t.unit.as_deref()) == Some("eurocent"))
+        .map(|n| n.name.as_str())
+        .collect();
+    assert!(
+        !resolved_with_unit.is_empty(),
+        "a resolved amount reports the unit its input declares; none did"
+    );
+
+    // A trace reports what a value is, not what it was allowed to be. The
+    // law's declaration also carries `min` and `max`; carrying those onto a
+    // step would read as though the engine had checked them, and it never
+    // did. Serialized, a reported spec is unit and precision and nothing else.
+    let spec = nodes
+        .iter()
+        .find_map(|n| n.type_spec.as_ref())
+        .expect("at least one step reports a spec");
+    let json = serde_json::to_value(spec).expect("a spec serializes");
+    let keys: Vec<&str> = json
+        .as_object()
+        .expect("a spec is an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    for key in &keys {
+        assert!(
+            matches!(*key, "unit" | "precision"),
+            "a reported spec carries only unit and precision, found {key:?} in {keys:?}"
+        );
+    }
 }

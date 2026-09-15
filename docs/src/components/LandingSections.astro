@@ -11,6 +11,7 @@ import { Image, type ImageMetadata } from 'astro:assets';
 import { content } from '~/lib/landing-content';
 import SignupForm from './SignupForm.astro';
 import LinkCard from './LinkCard.astro';
+import LandingDemo from './LandingDemo.astro';
 
 interface Props {
   lang: 'nl' | 'en';
@@ -157,6 +158,8 @@ function exampleImage(key: string): ImageMetadata {
             ))}
           </nldd-collection>
         </nldd-simple-section>
+
+        <LandingDemo lang={lang} />
 
         {showJobs && (
           <nldd-simple-section

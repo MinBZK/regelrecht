@@ -53,3 +53,439 @@
 html {
   color-scheme: light;
 }
+
+/* --- Scrollytelling demo (LandingDemo.astro) ---
+   Custom CSS on top of the design system, reported to the user as the project
+   requires. The NLDD components own the section, titles, spacing and rich text;
+   what is here is the part the design system has no component for: a
+   before/after wipe, a scroll-triggered reveal, and code blocks.
+
+   All colour comes from existing semantic tokens; nothing new is invented, so
+   the panel follows the light/dark theme with the rest of the page. */
+
+/* Elements written here sit outside the nldd-* components, and a bare <p>,
+   <blockquote> or <output> in this section otherwise falls back to the
+   browser's serif default instead of the page's own face. Take the family
+   from the design system once, at the top, so every panel inherits it; the
+   code blocks override it back to monospace on purpose. */
+/* The strip runs the full body width, but each panel inside it is narrower and
+   alternates side to side. Reading one law five ways is a sequence, and the
+   shift gives the scroll a rhythm instead of one long column. */
+.rr-scrolly {
+  display: block;
+  font-family: var(--primitives-font-family-body);
+}
+
+.rr-beat {
+  max-width: 46rem;
+}
+
+/* The run panel is the exception: a trace is wide by nature, and at 46rem the
+   names broke over two lines, which puts half a name under the tree drawing.
+   Wider than the rest, though not the full strip, and it keeps to the right so
+   the alternation carries on through it. */
+.rr-beat--wide {
+  max-width: 60rem;
+}
+
+/* Odd panels sit left, even panels right. */
+.rr-beat:nth-of-type(even) {
+  margin-inline-start: auto;
+}
+
+.rr-beat + .rr-beat {
+  margin-top: 5rem;
+}
+
+/* One column on a narrow screen: alternating needs room to be legible as a
+   rhythm rather than as a wobble. */
+@media (max-width: 60rem) {
+  .rr-beat {
+    max-width: none;
+  }
+  .rr-beat:nth-of-type(even) {
+    margin-inline-start: 0;
+  }
+}
+
+.rr-beat__tag {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* Reveal. Only enhanced pages hide anything, so no-JS shows every panel. */
+.rr-scrolly[data-enhanced] .rr-beat[data-visible='false'] {
+  opacity: 0;
+  transform: translateY(1.5rem);
+}
+.rr-scrolly[data-enhanced] .rr-beat {
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
+}
+
+/* --- The wipe between statute and machine-readable rule --- */
+.rr-wipe {
+  --rr-wipe: 100%;
+  /* Overridden per instance where the content nearly fits (see LandingWipe). */
+  --rr-wipe-height: 30rem;
+  position: relative;
+  border: 1px solid var(--semantics-dividers-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--semantics-surfaces-base-background-color);
+}
+
+/* Tall enough that the statute is readable in one go and the YAML shows enough
+   of itself to be worth scrolling. Both panes share the height, because they
+   are stacked and the wipe slides between them. */
+.rr-wipe__pane {
+  margin: 0;
+  min-height: var(--rr-wipe-height);
+}
+
+/* Clipped, never resized. Narrowing the pane to reveal what is under it would
+   reflow the text inside as it goes, so a sentence rewraps while it is being
+   wiped away. Clipping leaves the layout untouched: the words stay exactly
+   where they are and only stop being painted. */
+.rr-wipe__pane--over {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  overflow: hidden;
+  background: var(--semantics-surfaces-base-background-color);
+  clip-path: inset(0 calc(100% - var(--rr-wipe)) 0 0);
+}
+
+/* Mirrored: the covering pane retreats to the left instead of to the right.
+   Same component, same behaviour, the other way round, so the two wipes on the
+   page read as one move made from either side. */
+.rr-wipe--rtl .rr-wipe__pane--over {
+  clip-path: inset(0 0 0 calc(100% - var(--rr-wipe)));
+}
+
+.rr-wipe--rtl .rr-wipe__rule {
+  left: auto;
+  right: var(--rr-wipe);
+}
+
+.rr-wipe--rtl .rr-wipe__handle {
+  direction: rtl;
+}
+
+/* nldd-code-viewer brings its own scrolling, keyboard handling and label, so
+   the pane hands it the height and stays out of the way. It used to clip here
+   instead, which cut the YAML off mid-file with no way to read the rest. */
+.rr-wipe__pane--under {
+  height: var(--rr-wipe-height);
+  overflow: hidden;
+}
+
+/* The height the viewer is held to. It sizes itself to its content otherwise,
+   and offers no hook to cap it from outside: no `part`, no height custom
+   property, and a height here alone leaves the element inside its shadow root
+   free to grow. The script adopts one rule into that shadow root to finish the
+   job (see `capCodeViewer`); reported to the user, since a component that
+   cannot be given a height is the thing that is missing. */
+.rr-wipe__pane--under nldd-code-viewer {
+  display: block;
+  height: 100%;
+}
+
+/* The divider itself, painted the full height of the pane. Drawn separately
+   from the control so the control can be narrow. */
+.rr-wipe__rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--rr-wipe);
+  width: 1px;
+  background: var(--semantics-dividers-color);
+  pointer-events: none;
+}
+
+/* A grip drawn on the divider, because a first-time visitor could not tell the
+   edge was draggable at all: it read as scroll-driven only. Small, centred, and
+   out of the way of the text, but present. The arrows say which way it moves. */
+.rr-wipe__rule::after {
+  content: '\00A0\2039\00A0\203A\00A0';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0.35rem 0.1rem;
+  border-radius: 999px;
+  border: 1px solid var(--semantics-dividers-color);
+  background: var(--semantics-surfaces-base-background-color);
+  font-size: 0.8125rem;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  opacity: 0.85;
+}
+
+/* The control spans the pane, because a range input drags along its own width
+   and cutting it short would cut the travel short too. It lets everything
+   through, though: pointer events pass to whatever is underneath, so the YAML
+   stays scrollable, and a narrow strip on the divider is put back in front to
+   catch the drag. */
+.rr-wipe__handle {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  cursor: ew-resize;
+}
+
+/* The thumb takes the pointer events but is not painted: the divider already
+   marks the position, and a pill floating over the text read as an artefact.
+   It is as tall as the pane so the whole edge can be grabbed. Both engines'
+   spellings are written out separately — an unknown pseudo-element would drop
+   the whole rule. */
+.rr-wipe__handle::-webkit-slider-thumb {
+  appearance: none;
+  width: 1.75rem;
+  height: var(--rr-wipe-height);
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: ew-resize;
+}
+
+.rr-wipe__handle::-moz-range-thumb {
+  width: 1.75rem;
+  height: var(--rr-wipe-height);
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: ew-resize;
+}
+
+/* Keyboard users get the divider highlighted instead of an invisible thumb. */
+.rr-wipe__handle:focus-visible {
+  outline: 2px solid var(--semantics-dividers-color);
+  outline-offset: -2px;
+}
+
+.rr-wipe__handle::-moz-range-track {
+  background: transparent;
+}
+
+.rr-wipe__legend {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  opacity: 0.7;
+}
+
+/* The statute quotation sits inside the wipe, where the pane already supplies
+   the frame. It fills the pane and gets an opaque ground of its own: the two
+   panes are stacked, so anything the top one does not paint shows the YAML
+   through it, and a quotation that only covers half the width reads as the two
+   texts running into each other. */
+.rr-wipe__prose {
+  min-height: 100%;
+  padding: 1.5rem;
+  background: var(--semantics-surfaces-base-background-color);
+}
+
+.rr-wipe__prose nldd-blockquote {
+  display: block;
+}
+
+/* --- The run ---
+   nldd-card draws the frame; the trace rows below are hand-built (see there).
+   The card slots its content edge to edge, so the inset is set here. */
+.rr-run {
+  padding: 1.5rem;
+}
+
+/* Letter-spacing on an uppercase label adds a trailing gap that clips the last
+   character in a tight box; the padding gives it back. */
+.rr-run__status {
+  margin: 0 0 1rem;
+  padding-inline-end: 0.08em;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* The whole trace is long, so the list scrolls inside the card rather than
+   pushing the rest of the page down. It is focusable and labelled, because a
+   scroll region has to be reachable by keyboard. */
+.rr-run__steps-scroll {
+  max-height: 26rem;
+  overflow-y: auto;
+  /* Sideways too, for the deepest rows on a narrow window: the names do not
+     wrap, so they need somewhere to go. */
+  overflow-x: auto;
+  overscroll-behavior: contain;
+
+  /* The bar itself is hidden, the scrolling is not: the region keeps its
+     tabindex and its keyboard handling, and the wheel and trackpad work as
+     before. Only the painted track goes, because it cut through the column of
+     values that the panel is there to show. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.rr-run__steps-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* --- The trace, rendered as a trace ---
+   Monospace and column-aligned on purpose: this is the engine's own account of
+   what it did, and an engineer scans it down the columns. The design system has
+   no component for this (reported to the user); nldd-list was tried first and
+   its rows read as a records list, which flattens exactly the structure that
+   carries the meaning here. */
+.rr-trace {
+  display: grid;
+  grid-template-columns: max-content 1fr auto 3.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--primitives-font-family-monospace);
+  font-size: 0.78125rem;
+  line-height: 1.5;
+}
+
+/* The columns size themselves to their widest content instead of to a guess:
+   at six levels deep an address runs to ten characters, and a fixed column let
+   it overrun the kind beside it. The list is the grid and each row a subgrid of
+   it, so every row shares one set of widths measured over the whole trace. */
+.rr-trace__row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  gap: 0 0.75rem;
+  align-items: baseline;
+  padding: 0.15rem 0;
+}
+
+
+.rr-trace__kind {
+  opacity: 0.75;
+  font-size: 0.72rem;
+}
+
+/* The two kinds that carry the structure stand out from the arithmetic. */
+.rr-trace__kind[data-kind='xlaw'],
+.rr-trace__row[data-type='cross_law_reference'] .rr-trace__kind,
+.rr-trace__row[data-type='action'] .rr-trace__kind {
+  opacity: 1;
+  font-weight: 700;
+}
+
+/* Never wrapped: a name that breaks over two lines puts the second half under
+   the tree drawing, and the connectors then point at nothing. The row scrolls
+   sideways instead, which keeps the picture intact. */
+.rr-trace__name {
+  white-space: nowrap;
+}
+
+/* The tree drawn with the same box characters the engine's own renderer uses:
+   double rules where a cross-law call opens a scope, single ones for the
+   arithmetic within it. `white-space: pre` keeps the runs of spaces that align
+   the connectors, and it is aria-hidden because a screen reader should read the
+   step, not the picture of the tree. */
+.rr-trace__tree {
+  white-space: pre;
+  opacity: 0.35;
+}
+
+
+/* Inline spans in a grid cell need their own space: without it the name, the
+   law and the register run together into one word. */
+.rr-trace__law,
+.rr-trace__src {
+  display: inline-block;
+  margin-inline-start: 0.6rem;
+  opacity: 0.55;
+}
+
+.rr-trace__value {
+  font-weight: 700;
+  text-align: end;
+}
+
+/* Timings are the least of it, and mostly zero; present but quiet. */
+/* An operation is scaffolding between the steps that matter. */
+.rr-trace__row[data-type='operation'] {
+  opacity: 0.72;
+}
+
+/* Steps land one by one while replaying; without JS they are simply all there. */
+.rr-scrolly[data-enhanced] .rr-trace__row[data-done='false'] {
+  opacity: 0.25;
+}
+.rr-scrolly[data-enhanced] .rr-trace__row {
+  transition: opacity 0.25s ease;
+}
+
+.rr-run__result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding-top: 1rem;
+  border-top: 2px solid var(--semantics-dividers-color);
+}
+
+.rr-run__amount {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.rr-run__facts {
+  margin: 0.75rem 0 0;
+  font-size: 0.8125rem;
+  opacity: 0.7;
+}
+
+/* A custom element has no default display, so the `hidden` attribute does not
+   hide it on its own. Scoped to this widget rather than set page-wide. */
+.rr-scrolly [hidden] {
+  display: none !important;
+}
+
+.rr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Motion is an enhancement; the content never depends on it. */
+@media (prefers-reduced-motion: reduce) {
+  .rr-scrolly[data-enhanced] .rr-beat,
+  .rr-scrolly[data-enhanced] .rr-trace__row {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 40rem) {
+  .rr-wipe__pane {
+    min-height: 20rem;
+  }
+  .rr-run__amount {
+    font-size: 1.375rem;
+  }
+}

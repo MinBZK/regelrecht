@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { parseFeature, dispatch, quotedValue, bareValue, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
+import { parseFeature, dispatch, quotedValue, bareValue, traceRoot, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
 import { matchStep, renderStepNl, FEATURE_KEYWORDS_NL } from '../data/gherkinNl.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 import { loadFailureFor, loadFailures, prepareScenarioEngine } from '../engine/useDemoEngine.js';
@@ -224,7 +224,7 @@ function evaluateWithTrace(ctx, e, lawId, outputs, state) {
     ctx.result = result;
     ctx.executed = true;
     ctx.error = null;
-    state.trace = result.trace ?? null;
+    state.trace = traceRoot(result.trace);
     state.traceText = result.trace_text ?? '';
     state.outputs = result.outputs ?? {};
   } catch (err) {

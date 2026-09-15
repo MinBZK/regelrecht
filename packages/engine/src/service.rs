@@ -34,9 +34,9 @@ use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::{RuleResolver, SelectionReason};
-use crate::trace::TraceBuilder;
+use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
-    Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType,
+    Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType, TypeSpec,
     UntranslatableMode, Value,
 };
 use crate::uri::RegelrechtUri;
@@ -102,6 +102,12 @@ struct ResolutionContext<'a> {
     /// The law that initiated the current execution chain (for override scoping).
     /// Overrides only apply when declared by this law.
     contextual_law_id: Option<String>,
+    /// Where the engine is right now: the innermost provision being evaluated
+    /// (RFC-039). Every trace step pushed while this is set inherits it as its
+    /// `anchor`, so a step can name its article without each push site having
+    /// to know one. Independent of `legal_basis`, which is what the law
+    /// document cites rather than where the engine was.
+    anchor: Option<LegalAnchor>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -143,6 +149,7 @@ impl<'a> ResolutionContext<'a> {
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
+            anchor: None,
         })
     }
 
@@ -175,10 +182,26 @@ impl<'a> ResolutionContext<'a> {
         self.visited.contains(key)
     }
 
+    /// Enter a provision, returning the previous one so the caller can restore
+    /// it. Cross-law evaluation nests, so this is a stack discipline rather
+    /// than an assignment (RFC-039).
+    fn enter_anchor(&mut self, anchor: Option<LegalAnchor>) -> Option<LegalAnchor> {
+        std::mem::replace(&mut self.anchor, anchor)
+    }
+
     /// Push a new trace node. No-op if tracing is disabled.
+    ///
+    /// Every step pushed here inherits the provision the engine is currently
+    /// in as its `anchor` (RFC-039), which is why no push site has to know an
+    /// article: a bare arithmetic step inside an article carries that article
+    /// just as a resolve does.
     fn trace_push(&self, name: impl Into<String>, node_type: PathNodeType) {
         if let Some(ref tb) = self.trace {
-            tb.borrow_mut().push(name, node_type);
+            let mut tb = tb.borrow_mut();
+            tb.push(name, node_type);
+            if let Some(ref anchor) = self.anchor {
+                tb.set_anchor(anchor.clone());
+            }
         }
     }
 
@@ -200,6 +223,21 @@ impl<'a> ResolutionContext<'a> {
     fn trace_set_resolve_type(&self, rt: ResolveType) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_resolve_type(rt);
+        }
+    }
+
+    /// Record where the current node's value came from (RFC-039).
+    fn trace_set_source(&self, source: ValueSource) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_source(source);
+        }
+    }
+
+    /// Record the declared unit and precision of the current node's result
+    /// (RFC-023, RFC-039).
+    fn trace_set_type_spec(&self, type_spec: TypeSpec) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_type_spec(type_spec);
         }
     }
 
@@ -1217,6 +1255,12 @@ impl LawExecutionService {
         // Clone parameters for cache storage before moving into evaluation
         let params_for_cache = parameters.clone();
 
+        // From here the engine is inside this provision, so every trace step it
+        // pushes carries it (RFC-039). Restored afterwards rather than cleared:
+        // a cross-law reference returns to the article that made it, and
+        // clearing would leave the caller's remaining steps unanchored.
+        let outer_anchor = res_ctx.enter_anchor(Some(LegalAnchor::from_article(law, article)));
+
         // Execute with service provider (default stage BESLUIT for cross-law calls)
         let result = self.evaluate_article_with_service(
             article,
@@ -1225,7 +1269,9 @@ impl LawExecutionService {
             Some(output_name),
             "BESLUIT",
             res_ctx,
-        )?;
+        );
+        res_ctx.enter_anchor(outer_anchor);
+        let result = result?;
 
         // --- Cache store (only on success) ---
         // Note: on a hash collision (astronomically unlikely, ~1e-18 per pair),
@@ -1647,6 +1693,11 @@ impl LawExecutionService {
         // Attach trace builder if available
         if let Some(ref tb) = res_ctx.trace {
             context.set_trace(Rc::clone(tb));
+            // Same provision as the resolution context is entering, set here
+            // too: the input-resolution steps this context pushes (a parameter
+            // handed to a cross-law call, say) belong to the article making the
+            // call, not to the one being called (RFC-039).
+            context.set_anchor(LegalAnchor::from_article(law, article));
         }
 
         // Set definitions from article
@@ -2136,6 +2187,24 @@ impl LawExecutionService {
                     let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
                     res_ctx.trace_set_resolve_type(ResolveType::DataSource);
                     res_ctx.trace_set_result(data_match.value.clone());
+                    // Which organization supplied this fact, in a field
+                    // (RFC-039). The message below says the same thing for a
+                    // person reading a terminal; it used to be the only place
+                    // it was said, so consumers matched a regular expression
+                    // against it.
+                    res_ctx.trace_set_source(ValueSource {
+                        kind: ResolveType::DataSource,
+                        provider: Some(data_match.source_name.clone()),
+                        scope: data_match.law_scope.clone(),
+                    });
+                    // The unit the law declares for this input, so a reader
+                    // sees an amount and not a bare count of cents (RFC-023,
+                    // RFC-039). Only where a declaration carries one; a value
+                    // computed mid-expression has none, and version 1 does not
+                    // infer one.
+                    if let Some(ref ts) = input.type_spec {
+                        res_ctx.trace_set_type_spec(ts.clone());
+                    }
                     res_ctx.trace_set_message(format!(
                         "Resolving from SOURCE {}: {}",
                         data_match.source_name, data_match.value

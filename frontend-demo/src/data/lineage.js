@@ -4,17 +4,17 @@
  * that computed it), and which law owns the input so a correction can be
  * registered against the right law.
  *
- * Trace shape (engine `executeMultipleWithTrace`):
- *   { node_type: 'article'|'cross_law_reference'|'resolve'|'action'|'operation',
- *     name, result, resolve_type?, message?, children[] }
+ * Trace shape: `schema/trace/v1/trace-schema.json` (RFC-039). A step carries
+ *   { node_type, name, result?, resolve_type?, source?, anchor?, children[] }
  * A `cross_law_reference` is named `<law>#<output>`; a `resolve` with
- * resolve_type DATA_SOURCE carries "Resolving from SOURCE <name>: <value>" in
- * its message, where <name> is the source we registered (the organisation, or
- * `correcties` for an approved claim).
+ * resolve_type DATA_SOURCE names its register in `source.provider` (the
+ * organisation, or `correcties` for an approved claim).
+ *
+ * That provider used to be recovered by matching a regular expression against
+ * the step's `message`, an English sentence written for a terminal. RFC-039
+ * put it in a field; `message` is presentation and parsing it is a defect.
  */
 import { CLAIMS_SOURCE } from '../engine/useDemoEngine.js';
-
-const SOURCE_RE = /^Resolving from SOURCE ([^:]+):/;
 
 /**
  * @typedef {object} LineageNode
@@ -55,7 +55,7 @@ function collect(node, lawId, key, seen) {
       const dedupe = `${lawId}|${child.name}`;
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
-      const source = SOURCE_RE.exec(child.message ?? '')?.[1] ?? null;
+      const source = child.source?.provider ?? null;
       out.push({
         kind: 'value',
         law: lawId,
