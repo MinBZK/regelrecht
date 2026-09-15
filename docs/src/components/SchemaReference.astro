@@ -1,0 +1,538 @@
+---
+/*
+ * The generated half of /reference/schema.
+ *
+ * Everything here is derived from src/data/schema-latest.json (the committed
+ * snapshot of schema/latest), so the page cannot describe a schema other than
+ * the released one. The surrounding prose — the version history, the tag-URL
+ * explanation — stays hand-written in schema.mdx, because it records *why* a
+ * version exists, which is not in the schema.
+ *
+ * Headings are h2/h3 and carry explicit ids, so DocsOutline picks them up and
+ * check-links.mjs can verify inbound anchors. Heading depth never skips a
+ * level (check-heading-order.mjs enforces that on the built HTML).
+ */
+import SchemaFieldTable from './SchemaFieldTable.astro';
+import '~/styles/schema.css';
+import {
+  topLevelFields,
+  layerRules,
+  machineReadableFields,
+  executionFields,
+  fieldKinds,
+  operations,
+  enumBlocks,
+  schemaStats,
+  legalBasisFields,
+  operandForms,
+  articleFields,
+  machineReadableSubStructures,
+  actionFields,
+  subStructuresFor,
+  topLevelLegalBasisFields,
+  otherSubStructures,
+} from '~/lib/schema-reference';
+
+const stats = schemaStats();
+const rules = layerRules();
+const ops = operations();
+const kinds = fieldKinds();
+const enums = enumBlocks();
+const operands = operandForms();
+const subStructures = machineReadableSubStructures();
+const others = otherSubStructures();
+---
+
+{/*
+  The filter. Rendered hidden and unhidden by the script at the bottom of the
+  page, so a browser without JavaScript never shows a dead input. CSS cannot
+  compare a typed string to a row's text, so this is the one thing on the page
+  that genuinely needs a script.
+*/}
+<nldd-container class="rr-schema-zoek" gap="4" hidden>
+  <nldd-search-field
+    id="rr-schema-zoek-veld"
+    placeholder="Filter fields and operations"
+    accessible-label="Filter the schema reference"
+    no-spellcheck
+  ></nldd-search-field>
+  <nldd-text
+    id="rr-schema-zoek-count"
+    class="rr-schema-zoek__count"
+    size="sm"
+    color="secondary"
+    role="status"
+    aria-live="polite"
+  ></nldd-text>
+</nldd-container>
+
+<h2 id="law-file">The law file</h2>
+
+<p>
+  A law file is one regulation at one point in time. These {stats.topLevel} keys
+  sit at the top level; <code>articles</code> carries the text and, where a
+  provision has been translated, its <code>machine_readable</code> section.
+</p>
+
+<SchemaFieldTable fields={topLevelFields()} label="Top-level fields of a law file" />
+
+<h3 id="identifiers-per-layer">Identifiers per regulatory layer</h3>
+
+<p>
+  Which identifier a file must carry depends on what kind of instrument it is.
+  A national law is identified by its BWB number, an EU regulation by its CELEX
+  number, a municipal ordinance by the CBS municipality code plus its official
+  title. The schema states this as conditional requirements:
+</p>
+
+<nldd-table
+  class="rr-schema-table"
+  accessible-label="Required identifiers per regulatory layer"
+  background="tinted"
+  columns="minmax(220px, 1fr) minmax(200px, 1fr)"
+>
+  <nldd-table-row slot="header">
+    <nldd-cell width="full"><nldd-text weight="bold">Regulatory layer</nldd-text></nldd-cell>
+    <nldd-cell width="full"><nldd-text weight="bold">Required</nldd-text></nldd-cell>
+  </nldd-table-row>
+  {
+    rules.map((rule) => (
+      <nldd-table-row
+        class="rr-schema-row"
+        data-zoek={[...rule.layers, ...rule.requires].join(' ').toLowerCase()}
+      >
+        <nldd-cell width="full" vertical-alignment="top">
+          <nldd-container layout="wrap" gap="4">
+            {rule.layers.map((l) => (
+              <nldd-tag size="sm" color="neutral" text={l} />
+            ))}
+          </nldd-container>
+        </nldd-cell>
+        <nldd-cell width="full" vertical-alignment="top">
+          <nldd-container layout="wrap" gap="4">
+            {rule.requires.map((r) => (
+              <nldd-tag size="sm" color="accent" text={r} />
+            ))}
+          </nldd-container>
+        </nldd-cell>
+      </nldd-table-row>
+    ))
+  }
+</nldd-table>
+
+<div class="rr-schema-nested rr-schema-row" data-zoek="legal_basis law_id article grondslag">
+  <h4 id="top-legal-basis">legal_basis</h4>
+  <nldd-text size="sm" color="secondary"><code>legal_basis[]</code></nldd-text>
+  <p>
+    The articles of higher law that authorize this regulation. Not the same
+    shape as the <a href="#legal-basis">legal basis</a> a field or action
+    carries: this one names a law by <code>law_id</code> and nothing finer
+    than an article.
+  </p>
+  <SchemaFieldTable
+    fields={topLevelLegalBasisFields()}
+    label="Fields of the top-level legal_basis"
+  />
+</div>
+
+
+{
+  (others['procedure'] ?? []).map((sub) => (
+    <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
+      <h4 id={sub.slug}>{sub.title}</h4>
+      <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+      {sub.description && <p set:html={sub.description} />}
+      <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+    </div>
+  ))
+}
+
+{
+  (others['law-file'] ?? []).map((sub) => (
+    <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
+      <h4 id={sub.slug}>{sub.title}</h4>
+      <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+      {sub.description && <p set:html={sub.description} />}
+      <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+    </div>
+  ))
+}
+
+<h3 id="articles">Articles</h3>
+
+<p>
+  Each entry of <code>articles</code> is one provision: its number, its verbatim
+  text, and the URL it was taken from. <code>machine_readable</code> is present
+  only where the provision has been translated, which for most of the corpus is
+  not yet the case. An article without it is carried as text and nothing more.
+</p>
+
+<SchemaFieldTable fields={articleFields()} label="Fields of an article" />
+
+{
+  (others['articles'] ?? []).map((sub) => (
+    <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
+      <h4 id={sub.slug}>{sub.title}</h4>
+      <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+      {sub.description && <p set:html={sub.description} />}
+      <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+    </div>
+  ))
+}
+
+
+<h2 id="machine-readable">The machine_readable section</h2>
+
+<p>
+  An article carries this when it has been translated. It holds the executable
+  part (<code>execution</code>) and the annotations around it: what the article
+  delegates, what it implements, which authority decides, and what could not be
+  translated.
+</p>
+
+<SchemaFieldTable fields={machineReadableFields()} label="Fields of the machine_readable section" />
+
+{
+  subStructures.map((sub) => (
+    <div class="rr-schema-row rr-schema-op rr-schema-sub" data-zoek={sub.zoek}>
+      <h3 id={sub.slug}>{sub.title}</h3>
+      <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+      {sub.description && <p set:html={sub.description} />}
+      <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+    </div>
+  ))
+}
+
+{
+  (others['enables'] ?? []).map((sub) => (
+    <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
+      <h4 id={sub.slug}>{sub.title}</h4>
+      <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+      {sub.description && <p set:html={sub.description} />}
+      <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+    </div>
+  ))
+}
+
+
+{
+  (others['hooks'] ?? []).map((sub) => (
+    <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
+      <h4 id={sub.slug}>{sub.title}</h4>
+      <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+      {sub.description && <p set:html={sub.description} />}
+      <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+    </div>
+  ))
+}
+
+<h3 id="execution">execution</h3>
+
+<p>
+  The executable core. Values come in as <code>parameters</code> and
+  <code>input</code>, <code>actions</code> compute, and <code>output</code>
+  declares what the article yields.
+</p>
+
+<SchemaFieldTable fields={executionFields()} label="Fields of the execution block" />
+
+{
+  (others['execution'] ?? []).map((sub) => (
+    <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
+      <h4 id={sub.slug}>{sub.title}</h4>
+      <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+      {sub.description && <p set:html={sub.description} />}
+      <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+    </div>
+  ))
+}
+
+
+<h3 id="action">Action</h3>
+
+<p>
+  One assignment to one output. It either states a literal <code>value</code>
+  or computes one with an <code>operation</code>, never both.
+</p>
+
+<SchemaFieldTable fields={actionFields()} label="Fields of an action" />
+
+{
+  (others['action'] ?? []).map((sub) => (
+    <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
+      <h4 id={sub.slug}>{sub.title}</h4>
+      <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+      {sub.description && <p set:html={sub.description} />}
+      <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+    </div>
+  ))
+}
+
+
+<h2 id="fields">Fields</h2>
+
+<p>
+  Parameters, inputs and outputs share one shape and add to it. Note the
+  singular spelling: the keys are <code>input</code> and <code>output</code>,
+  not their plurals.
+</p>
+
+{
+  kinds.map((kind) => (
+    <>
+      <h3 id={kind.slug}>{kind.name}</h3>
+      {kind.description && <p set:html={kind.description} />}
+      {kind.fields.length > 0 && <SchemaFieldTable fields={kind.fields} label={`Fields of ${kind.name.toLowerCase()}`} />}
+
+      {/* A nested object belongs to the section above it, so it is rendered
+          inside that section on a card rather than as another h3 in the same
+          run. Flat, `source` read as a sibling of Output and appeared to
+          describe it. The h4 keeps the outline and the heading-order gate
+          honest about the nesting. */}
+      {subStructuresFor(kind.slug).map((sub) => (
+        <div class="rr-schema-nested rr-schema-row" data-zoek={sub.zoek}>
+          <h4 id={sub.slug}>{sub.title}</h4>
+          <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+          {sub.description && <p set:html={sub.description} />}
+          <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+        </div>
+      ))}
+    </>
+  ))
+}
+
+<h3 id="legal-basis">Legal basis</h3>
+
+<p>
+  A citation back to the provision a value or a step rests on. Any field, any
+  action and any operation may carry one; it is what lets an execution trace
+  name the article behind each number rather than only the number.
+</p>
+
+<SchemaFieldTable fields={legalBasisFields()} label="Fields of a legal basis citation" />
+
+<h2 id="operations">Operations</h2>
+
+<p>
+  An action either states a literal <code>value</code> or computes one with an
+  <code>operation</code>. There are {ops.length} forms. Each is a closed object:
+  the <code>operation</code> key picks the form and the schema rejects any other
+  combination of keys, so a malformed action fails validation rather than
+  executing as something unintended.
+</p>
+
+<h3 id="operation-value">Operand value</h3>
+
+<p>
+  Wherever an operation below takes a value, three things may stand there:
+</p>
+
+<ul>
+  {
+    operands.map((form) => (
+      <li>
+        <strong>{form.label}.</strong> {form.detail}
+      </li>
+    ))
+  }
+</ul>
+
+{
+  ops.map((op) => (
+    <div class="rr-schema-op rr-schema-row" data-zoek={op.zoek}>
+      <h3 id={op.slug}>{op.title}</h3>
+      <nldd-container layout="wrap" gap="4" class="rr-schema-keywords">
+        {op.keywords.map((k) => (
+          <nldd-tag size="sm" color="lintblauw" text={k} />
+        ))}
+      </nldd-container>
+      {op.description && <p set:html={op.description} />}
+      {op.examples.map((ex) => (
+        <nldd-code-viewer language="yaml" variant="box-tinted">{ex}</nldd-code-viewer>
+      ))}
+      {op.fields.length > 0 && <SchemaFieldTable fields={op.fields} label={`Operands of the ${op.title} operation`} />}
+      {(others[op.slug] ?? []).map((sub) => (
+        <div class="rr-schema-nested" data-zoek={sub.zoek}>
+          <h4 id={sub.slug}>{sub.title}</h4>
+          <nldd-text size="sm" color="secondary"><code>{sub.path}</code></nldd-text>
+          {sub.description && <p set:html={sub.description} />}
+          <SchemaFieldTable fields={sub.fields} label={`Fields of ${sub.title}`} />
+        </div>
+      ))}
+      {op.concept && (
+        <p class="rr-schema-meta">
+          <a href={op.concept.href}>{op.concept.label}</a>
+        </p>
+      )}
+    </div>
+  ))
+}
+
+<h2 id="vocabulary">Vocabulary</h2>
+
+<p>
+  The closed value sets a law picks from. These are the terms the rest of the
+  documentation uses, so each one links to where it is explained.
+</p>
+
+{
+  enums.map((block) => (
+    <div class="rr-schema-row rr-schema-op" data-zoek={block.zoek}>
+      <h3 id={block.slug}>{block.title}</h3>
+      <nldd-text size="sm" color="secondary"><code>{block.path}</code></nldd-text>
+      {block.description && <p set:html={block.description} />}
+      <nldd-container layout="wrap" gap="4">
+        {block.values.map((v) => (
+          <nldd-tag size="sm" color="neutral" text={v} />
+        ))}
+      </nldd-container>
+      {block.glossary && (
+        <nldd-link href={block.glossary.href} size="sm">{block.glossary.label}</nldd-link>
+      )}
+    </div>
+  ))
+}
+
+<script>
+  /*
+   * The filter over the generated reference.
+   *
+   * A module script, so it is bundled and `normaliseerZoekterm` is the very
+   * function the build used to write every `data-zoek` — the two sides of a
+   * comparison cannot drift. It imports lib/schema-zoek.ts rather than
+   * lib/schema-reference.ts for a hard reason: the latter imports the schema
+   * JSON, which a client bundle would then have to carry in full.
+   */
+  import { normaliseerZoekterm } from '~/lib/schema-zoek';
+
+  function wireSchemaZoek() {
+    const field = document.getElementById('rr-schema-zoek-veld');
+    const count = document.getElementById('rr-schema-zoek-count');
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>('.rr-schema-row[data-zoek]'),
+    );
+    if (!field || !count || !rows.length) return;
+
+    // Hidden in the markup so the control never appears without this script
+    // behind it. `hidden` sits on the wrapper, which also holds the counter.
+    field.closest<HTMLElement>('.rr-schema-zoek')?.removeAttribute('hidden');
+
+    /*
+     * A section whose rows all hid would otherwise leave its heading floating
+     * above an empty table. Hiding the whole block when nothing inside it
+     * matches keeps the page readable as a filtered outline rather than a list
+     * of headings with nothing under them.
+     *
+     * A table is hidden through the nldd-table itself: it keeps rendering its
+     * header row even when every body row is gone.
+     */
+    const blocks = Array.from(
+      document.querySelectorAll<HTMLElement>('nldd-table.rr-schema-table'),
+    );
+
+    /*
+     * Say how much is left, measured from what is actually on screen rather
+     * than from the match count, so the number always describes the page the
+     * reader is looking at. Always call this through `hertelStraks`:
+     * offsetHeight is only meaningful once the class change has been styled.
+     */
+    const hertel = (raw: string) => {
+      const heeftQuery = normaliseerZoekterm(raw).length > 0;
+      const zichtbaar = rows.filter((row) => row.offsetHeight > 0).length;
+
+      // Silent while the field is empty: with nothing typed the count would
+      // state the obvious on every page load and read as a result.
+      if (!heeftQuery) {
+        count.textContent = '';
+      } else if (zichtbaar === 0) {
+        count.textContent = 'No matching fields or operations.';
+      } else {
+        count.textContent = `${zichtbaar} of ${rows.length} entries shown.`;
+      }
+    };
+
+    /*
+     * Recount on the next frame, after the class changes above have been
+     * styled: offsetHeight measured from inside the handler would read the
+     * layout from before them.
+     *
+     * The timer is a fallback, not a belt-and-braces duplicate.
+     * requestAnimationFrame does not fire in a backgrounded or throttled tab,
+     * and there the count would simply never be written — the rows filter
+     * (that part is synchronous) while the live region keeps announcing the
+     * previous number. Whichever lands first cancels the other.
+     */
+    let gepland = 0;
+    let geplandeTimer = 0;
+    const hertelStraks = (raw: string) => {
+      cancelAnimationFrame(gepland);
+      clearTimeout(geplandeTimer);
+      const doe = () => {
+        cancelAnimationFrame(gepland);
+        clearTimeout(geplandeTimer);
+        hertel(raw);
+      };
+      gepland = requestAnimationFrame(doe);
+      geplandeTimer = window.setTimeout(doe, 100);
+    };
+
+    const filter = (raw: string) => {
+      const terms = normaliseerZoekterm(raw).split(' ').filter(Boolean);
+
+      for (const row of rows) {
+        const haystack = row.dataset.zoek ?? '';
+        const match = terms.every((term) => haystack.includes(term));
+        // A class, never element.style: the stylesheet owns `display` here.
+        row.classList.toggle('rr-schema-row--geen-treffer', !match);
+      }
+
+      // Second pass, after the rows have their classes: a wrapper is empty
+      // when none of its own rows survived.
+      for (const block of blocks) {
+        const own = Array.from(
+          block.querySelectorAll<HTMLElement>('.rr-schema-row[data-zoek]'),
+        );
+        const leeg =
+          own.length > 0 &&
+          own.every((r) => r.classList.contains('rr-schema-row--geen-treffer'));
+        block.classList.toggle('rr-schema-block--leeg', leeg);
+      }
+
+      hertelStraks(raw);
+    };
+
+    /*
+     * `input` covers typing and the component's own clear button; `search`
+     * fires on Enter with the same value, so re-running is harmless.
+     *
+     * The query is read from the field's `.value`, never from `event.detail`.
+     * Base.astro:866 records why, from a bug this repo already had on this
+     * same component and these same two events: detail's `.value` is not
+     * reliably a plain string, and here it would reach normaliseerZoekterm(),
+     * which calls .normalize() on it.
+     */
+    for (const event of ['input', 'search']) {
+      field.addEventListener(event, () => filter(fieldValue(field)));
+    }
+  }
+
+  /**
+   * The field's current text, via the property the component reflects. The
+   * typeof guard means a non-string value becomes an empty query (showing
+   * everything) rather than a thrown handler that freezes the page on the
+   * previous result.
+   */
+  function fieldValue(field: HTMLElement): string {
+    const value = (field as HTMLElement & { value?: unknown }).value;
+    return typeof value === 'string' ? value : '';
+  }
+
+  /*
+   * Bound on astro:page-load, not at top level. Base.astro renders
+   * <ClientRouter />, and a module script runs once per document: on a
+   * ClientRouter navigation back to this page the DOM is swapped in fresh —
+   * `hidden` back on the wrapper, no listeners — and a top-level binding would
+   * never run again. astro:page-load also fires on the initial load.
+   */
+  document.addEventListener('astro:page-load', wireSchemaZoek);
+</script>

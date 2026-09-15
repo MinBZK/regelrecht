@@ -33,8 +33,10 @@ corpus/regulation/nl/
 
 ### Header Metadata
 
+The `$schema` line pins the exact schema version the file was written against, by immutable git tag. The current version and the full URL to copy are on the [Schema Reference](/reference/schema#current-version).
+
 ```yaml
-$schema: https://raw.githubusercontent.com/.../refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$schema: https://raw.githubusercontent.com/.../refs/tags/schema-vX.Y.Z/schema/vX.Y.Z/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2025-01-01'

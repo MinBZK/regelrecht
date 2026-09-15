@@ -61,8 +61,13 @@ jobs:
               # de bundel meegaan.
               - corpus-registry.yaml
               # The schema reference doc is version-locked to schema/latest by
-              # provenance-checks; edit it and that guard must re-run.
-              - docs/src/content/docs/reference/schema.md
+              # provenance-checks; edit it and that guard must re-run. The
+              # committed snapshot the page renders from is part of that lock
+              # (the guard asserts it matches schema/latest byte for byte), so
+              # it and the script that writes it belong here too.
+              - docs/src/content/docs/reference/schema.mdx
+              - docs/src/data/schema-latest.json
+              - docs/scripts/sync-schema.mjs
               - docs/scripts/check-schema-version.mjs
               - Justfile
               - .pre-commit-config.yaml

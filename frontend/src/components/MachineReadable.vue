@@ -107,11 +107,15 @@ const produces = computed(() => execution.value?.produces ?? null);
 
 // Enum values copied from the law schema. Keep in sync with
 // schema/latest/schema.json → execution.produces.legal_character.enum
-// and .decision_type.enum. Currently identical across v0.4.0..v0.5.2;
-// if the schema adds a value here, add it here too or the dropdown
-// silently can't set it.
+// and .decision_type.enum. If the schema adds a value here, add it here
+// too or the dropdown silently can't set it.
+//
+// That is not hypothetical: RECHTSPOSITIE was added to legal_character in
+// schema v0.5.9 (RFC-038) and this list was not updated, so the editor could
+// not set it on a law for the whole of that release. Current as of v0.6.0.
 const LEGAL_CHARACTERS = [
   'BESCHIKKING', 'TOETS', 'WAARDEBEPALING', 'BESLUIT_VAN_ALGEMENE_STREKKING', 'INFORMATIEF',
+  'RECHTSPOSITIE',
 ];
 const DECISION_TYPES = [
   'TOEKENNING', 'AFWIJZING', 'GOEDKEURING', 'GEEN_BESLUIT',
