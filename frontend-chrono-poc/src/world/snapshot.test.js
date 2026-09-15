@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { cloneWorld, fixtureGram, worldFixture } from '../testing/worldFixture.js';
+import { cloneWorld, fixtureCell, fixtureGram, worldFixture } from '../testing/worldFixture.js';
 import {
   actionsByActor,
   allGrams,
+  besluitDefinitions,
   clockIndex,
   competentAuthorityOf,
   decidedAlready,
   describeEffect,
   describeHerkomst,
   describeOrigin,
+  describeParam,
   describeReductie,
+  describeZaak,
+  gramByRef,
   gramCounts,
   gramFields,
   gramKind,
@@ -17,6 +21,8 @@ import {
   initialForm,
   isNewGram,
   isPrefilled,
+  lexostatusDefinitions,
+  lexostatusParams,
   missedDeadlines,
   newGrams,
   obligationsOf,
@@ -24,6 +30,7 @@ import {
   regulationOf,
   settingRows,
   timelineMoments,
+  zaakkenmerkOf,
 } from './snapshot.js';
 
 describe('het beeld lezen', () => {
@@ -294,8 +301,9 @@ describe('een besluit dat er al ligt', () => {
 describe('de herkomst van een waarde', () => {
   const { gram } = fixtureGram('toeslagen', 'decretogram');
 
-  it('zet de vaste velden van het besluit vooraan', () => {
+  it('zet het zaakkenmerk voorop en de andere vaste velden daarna', () => {
     const fields = gramFields(gram);
+    expect(fields[0].name).toBe('zaakkenmerk');
     const firstOther = fields.findIndex((field) => field.origin?.herkomst !== 'besluit');
     expect(fields.slice(0, firstOther).every((field) => field.origin.herkomst === 'besluit')).toBe(true);
   });
@@ -583,5 +591,84 @@ describe('alle grammen op één hoop', () => {
   it('valt op een leeg beeld terug op niets', () => {
     expect(allGrams(null)).toStrictEqual([]);
     expect(allGrams({ cells: [{ id: 'a' }] })).toStrictEqual([]);
+  });
+});
+
+describe('wat een cel publiceert', () => {
+  const toeslagen = fixtureCell('toeslagen');
+  const beschikking = lexostatusDefinitions(toeslagen).find(
+    (definition) => definition.key?.chronicle === 'beschikkingen',
+  );
+
+  it('geeft per definitie haar toelichting, parameters en uitkomsten', () => {
+    expect(beschikking.doc).toBeTruthy();
+    expect(beschikking.inputs.map((input) => input.name)).toContain('zaakkenmerk');
+    expect(beschikking.outputs.length).toBeGreaterThan(0);
+  });
+
+  it('geeft per besluit het zaakkenmerk-sjabloon en de kroniek waarin het legt', () => {
+    for (const besluit of besluitDefinitions(toeslagen)) {
+      expect(besluit.zaakkenmerk).toContain('{');
+      expect(besluit.chronicle).toBe('beschikkingen');
+    }
+  });
+
+  it('valt op een cel zonder definities terug op niets', () => {
+    expect(lexostatusDefinitions(null)).toStrictEqual([]);
+    expect(besluitDefinitions({ id: 'a' })).toStrictEqual([]);
+  });
+
+  // De sleutel van de reductie is wat het zaakkenmerk uit het niets laat komen:
+  // zonder die aanwijzing is er geen manier om te weten wat er in dat veld hoort.
+  it('wijst de sleutel van de reductie aan, met vorm en bekende waarden', () => {
+    const params = lexostatusParams(toeslagen, beschikking);
+    expect(params).toHaveLength(1);
+    const [zaak] = params;
+    expect(zaak.name).toBe('zaakkenmerk');
+    expect(zaak.chronicle).toBe('beschikkingen');
+    expect(zaak.patterns).toStrictEqual(['zorgtoeslag/{bsn}']);
+    expect(zaak.known).toStrictEqual(['zorgtoeslag/999993653']);
+    expect(describeParam(zaak)).toBe("sleutel van kroniek 'beschikkingen', vorm 'zorgtoeslag/{bsn}'");
+  });
+
+  it('laat een gewone parameter een gewone parameter', () => {
+    const aanvraag = lexostatusDefinitions(toeslagen).find((definition) => definition.name === 'ontvangen_aanvraag');
+    const [bsn] = lexostatusParams(toeslagen, aanvraag);
+    expect(bsn.chronicle).toBe('aanvragen');
+    // Geen besluit van deze cel legt in die kroniek, dus er is geen vorm.
+    expect(bsn.patterns).toStrictEqual([]);
+    expect(describeParam(bsn)).toBe("sleutel van kroniek 'aanvragen'");
+  });
+
+  it('noemt bij de wetsvorm geen sleutel, want daar valt niets op te zoeken', () => {
+    const wet = { inputs: [{ name: 'bsn', type: 'string' }], key: null };
+    const [bsn] = lexostatusParams(toeslagen, wet);
+    expect(bsn.chronicle).toBeNull();
+    expect(bsn.known).toStrictEqual([]);
+    expect(describeParam(bsn)).toBe('string');
+  });
+});
+
+describe('de zaak van een gram', () => {
+  it('leest het zaakkenmerk uit het gram zelf', () => {
+    const { gram } = fixtureGram('toeslagen', 'decretogram');
+    expect(zaakkenmerkOf(gram)).toBe('zorgtoeslag/999993653');
+    expect(describeZaak(gram)).toBe('zaak zorgtoeslag/999993653');
+  });
+
+  it('zwijgt over een gram dat er geen draagt', () => {
+    expect(zaakkenmerkOf({ fields: { bsn: { value: '1' } } })).toBeNull();
+    expect(describeZaak(null)).toBe('');
+  });
+
+  it('vindt het gram terug waar een journaalregel naar wijst', () => {
+    const row = allGrams(worldFixture).find((candidate) => candidate.kind === 'decretogram');
+    expect(gramByRef(worldFixture, { id: row.id })).toBe(row.gram);
+  });
+
+  it('valt op een onleesbare verwijzing terug op niets', () => {
+    expect(gramByRef(worldFixture, { id: 'toeslagen|beschikkingen' })).toBeNull();
+    expect(gramByRef(worldFixture, { id: 'nergens|iets|0' })).toBeNull();
+    expect(gramByRef(worldFixture, null)).toBeNull();
   });
 });
