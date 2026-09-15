@@ -144,67 +144,73 @@ const pathname = '/roadmap';
         </nldd-title>
 
         {/*
-          The categorie filter works without any JavaScript of our own:
-          nldd-checkbox-field reflects `checked` onto its host element, so the
-          :has() rules in roadmap.css can read the state straight off the
-          component. A <fieldset> and <legend> group the controls, which is
-          what a group of checkboxes needs and what the design system has no
-          component for.
+          Both filters on one row: the categorie checkboxes on the left, the
+          zoekveld on the right. They are two ways of narrowing the same
+          matrix, so they read as one band of controls rather than as two
+          stacked blocks — and it saves the vertical space that pushed the
+          matrix itself below the fold.
 
-          It composes with the zoekfilter above rather than overriding it: a
-          card shows when both allow it. The specificity that makes that hold
-          is spelled out in roadmap.css.
+          The row wraps on a narrow screen (see .rr-controls in roadmap.css),
+          where the zoekveld drops under the checkboxes and both go full width.
         */}
-        {/*
-          The zoekfilter. Unlike the categorie filter below it this one needs a
-          script: CSS cannot compare a typed string to a card's text. It is
-          progressive — with no JavaScript the field never appears (the script
-          unhides it), so a dead input is never shown.
-
-          `rr-zoek-count` is the live region that says how much is left; it is
-          the only feedback that a search which matches nothing did anything,
-          since an empty matrix on its own reads as a broken page.
-        */}
-        <nldd-container class="rr-zoek" gap="8" hidden>
+        <div class="rr-controls">
           {/*
-            `width` is the component's own attribute, so the cap needs no CSS
-            of ours. It pairs with the component's max-width:100%, so the field
-            still shrinks below this on a narrow screen instead of overflowing.
-            Left to stretch, it would run the full docs measure and read as a
-            field for a paragraph rather than for a couple of words.
-          */}
-          <nldd-search-field
-            id="rr-zoek-veld"
-            placeholder="Zoek in werkpakketten"
-            accessible-label="Zoek in werkpakketten"
-            width="420px"
-            no-spellcheck
-          ></nldd-search-field>
-          <nldd-text
-            id="rr-zoek-count"
-            size="sm"
-            color="secondary"
-            role="status"
-            aria-live="polite"
-          ></nldd-text>
-        </nldd-container>
+            The categorie filter works without any JavaScript of our own:
+            nldd-checkbox-field reflects `checked` onto its host element, so
+            the :has() rules in roadmap.css can read the state straight off the
+            component. A <fieldset> and <legend> group the controls, which is
+            what a group of checkboxes needs and what the design system has no
+            component for.
 
-        <fieldset class="rr-filter">
-          <legend class="rr-filter__legend">
-            <nldd-text size="sm" weight="medium" color="secondary">
-              Filter op categorie
-            </nldd-text>
-          </legend>
-          {
-            FILTER_OPTIES.map((optie) => (
-              <nldd-checkbox-field
-                class="rr-filter__option"
-                id={`rr-cat-${optie.id}`}
-                label={optie.label}
-              />
-            ))
-          }
-        </fieldset>
+            It composes with the zoekfilter beside it rather than overriding
+            it: a card shows when both allow it. The specificity that makes
+            that hold is spelled out in roadmap.css.
+          */}
+          <fieldset class="rr-filter">
+            <legend class="rr-filter__legend">
+              <nldd-text size="sm" weight="medium" color="secondary">
+                Filter op categorie
+              </nldd-text>
+            </legend>
+            {
+              FILTER_OPTIES.map((optie) => (
+                <nldd-checkbox-field
+                  class="rr-filter__option"
+                  id={`rr-cat-${optie.id}`}
+                  label={optie.label}
+                />
+              ))
+            }
+          </fieldset>
+
+          {/*
+            The zoekfilter. Unlike the categorie filter beside it this one
+            needs a script: CSS cannot compare a typed string to a card's text.
+            It is progressive — with no JavaScript the field never appears (the
+            script unhides it), so a dead input is never shown.
+
+            `rr-zoek-count` is the live region that says how much is left; it
+            is the only feedback that a search which matches nothing did
+            anything, since an empty matrix on its own reads as a broken page.
+            It sits under the field, so a growing count never shifts the field
+            sideways while someone is typing in it.
+          */}
+          <nldd-container class="rr-zoek" gap="4" hidden>
+            <nldd-search-field
+              id="rr-zoek-veld"
+              placeholder="Zoek in werkpakketten"
+              accessible-label="Zoek in werkpakketten"
+              no-spellcheck
+            ></nldd-search-field>
+            <nldd-text
+              id="rr-zoek-count"
+              size="sm"
+              color="secondary"
+              role="status"
+              aria-live="polite"
+            ></nldd-text>
+          </nldd-container>
+        </div>
       </nldd-container>
 
       {/* tabindex + role make the horizontally scrolling matrix reachable by

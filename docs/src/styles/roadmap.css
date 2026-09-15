@@ -50,6 +50,42 @@
 
 /* --- Filter ------------------------------------------------------------- */
 
+/*
+ * The two filters side by side: categorie checkboxes left, zoekveld right.
+ *
+ * `align-items: end` lines the controls up on their bottom edge, so the
+ * checkbox row and the input sit on one line despite the legend above the one
+ * and the counter below the other. Aligning on the top instead leaves the
+ * input floating level with the word "Filter op categorie".
+ *
+ * The zoekfilter takes the leftover width (`flex: 1`) with a floor of 260px.
+ * Below that the row wraps: the field drops under the checkboxes and runs the
+ * full measure, which is what the space allows on a phone. The design system
+ * has no two-control filter bar, so this is the layout it does not cover.
+ */
+.rr-roadmap .rr-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--primitives-space-16, 1rem);
+}
+
+/*
+ * The zoekfilter takes the leftover width, but stops at 420px: on a wide
+ * screen the row leaves ~900px over, and an input that long reads as a field
+ * for a paragraph rather than for the one or two words people type in it.
+ * `margin-inline-start: auto` then parks it against the right edge, in line
+ * with the matrix below and the heading above.
+ *
+ * Below the 260px basis the row wraps and the field runs the full measure,
+ * where the whole width is genuinely needed.
+ */
+.rr-roadmap .rr-controls .rr-zoek {
+  flex: 1 1 260px;
+  max-width: 420px;
+  margin-inline-start: auto;
+}
+
 .rr-roadmap .rr-filter {
   display: flex;
   flex-wrap: wrap;
@@ -122,11 +158,9 @@
 }
 
 /*
- * The field's width is set through nldd-search-field's own `width` attribute
- * (see index.astro), not from here: the component has an API for it, and a
- * hardcoded pixel override in this file would be a second opinion about a
- * measure the design system already owns. Nothing else about the zoekfilter's
- * layout needs CSS — nldd-container handles the spacing.
+ * The field's width comes from the row it sits in (.rr-controls above): it
+ * takes the leftover space next to the checkboxes. nldd-search-field stretches
+ * to fill its container by default, so it needs no width of its own here.
  */
 
 /* --- Matrix ------------------------------------------------------------- */
