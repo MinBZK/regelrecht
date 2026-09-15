@@ -63,43 +63,30 @@ fn omhulsel(titel: &str, inhoud: &str) -> String {
     )
 }
 
+/// One card on the public index.
+///
+/// Carries the public title and summary and nothing else. The subject tags name
+/// the department that owns the dossier and the status says how far along it is;
+/// both belong to the case, so both wait behind the password. The status is not
+/// softened away by leaving it out here — every page that shows an actual
+/// outcome still carries it, and those are all behind the gate.
 fn kaart(poc: &Poc) -> String {
-    // The status tag goes first, before the subject tags: it is the thing a
-    // reader needs before they read anything the PoC computes.
-    let tags = std::iter::once(format!(
-        r#"<nldd-tag color="{}" size="md">{}</nldd-tag>"#,
-        poc.status.kleur(),
-        poc.status.label(),
-    ))
-    .chain(poc.tags.iter().map(|t| {
-        format!(
-            r#"<nldd-tag color="neutral" size="md">{}</nldd-tag>"#,
-            esc(t)
-        )
-    }))
-    .collect::<Vec<_>>()
-    .join("\n            ");
-
     format!(
         r#"        <nldd-card accessible-label="{titel}">
           <nldd-container padding="20" padding-bottom="12">
             <nldd-title size="3"><h3>{titel}</h3></nldd-title>
-            <nldd-spacer size="8"></nldd-spacer>
-            <nldd-container layout="wrap" gap="8">
-            {tags}
-            </nldd-container>
             <nldd-spacer size="12"></nldd-spacer>
             <nldd-rich-text><p>{samenvatting}</p></nldd-rich-text>
           </nldd-container>
           <nldd-container slot="footer" padding="20" padding-top="0">
             <nldd-button variant="secondary" width="full" href="/{slug}/"
-              text="Openen" accessible-label="Open {titel}"></nldd-button>
+              start-icon="lock" text="Openen"
+              accessible-label="Open {titel}"></nldd-button>
           </nldd-container>
         </nldd-card>"#,
         titel = esc(&poc.titel),
         samenvatting = esc(&poc.samenvatting),
         slug = esc(&poc.slug),
-        tags = tags,
     )
 }
 
@@ -120,10 +107,9 @@ pub fn index(registry: &Registry) -> String {
     <nldd-title size="1"><h1>Proof-of-concepts</h1></nldd-title>
     <nldd-spacer size="16"></nldd-spacer>
     <nldd-rich-text>
-      <p>Uitwerkingen van wet- en regelgeving als machine-uitvoerbare modellen,
-      elk met een eigen demo-omgeving. Ze tonen wat er met de
-      regelrecht-engine mogelijk is; het zijn geen productiesystemen en er
-      kunnen geen rechten aan worden ontleend.</p>
+      <p>Verkenningen rond wet- en regelgeving, elk in een eigen omgeving. Het
+      zijn geen productiesystemen en er kunnen geen rechten aan worden
+      ontleend.</p>
       <p>Elke omgeving zit achter een eigen wachtwoord.</p>
     </nldd-rich-text>
     <nldd-spacer size="24"></nldd-spacer>
@@ -136,27 +122,14 @@ pub fn index(registry: &Registry) -> String {
     omhulsel("Proof-of-concepts — regelrecht", &inhoud)
 }
 
-/// What this PoC is and is not, as a banner.
-///
-/// Shown before the visitor is in (on the password screen) and again inside the
-/// PoC itself, because those reach different people: a forwarded deep link
-/// skips the index entirely, and a screenshot taken inside a PoC travels
-/// without any of the surrounding text.
-///
-/// `warning`, not `critical`: this is a standing property of the page, not
-/// something that just went wrong, and `critical` carries role="alert" — which
-/// would interrupt a screen reader on every page load.
-pub fn voorbehoud_banner(poc: &Poc) -> String {
-    format!(
-        r#"<nldd-banner variant="warning" text="Demonstratie — {status}"
-          supporting-text="{uitleg} {voorbehoud}"></nldd-banner>"#,
-        status = esc(poc.status.label()),
-        uitleg = esc(poc.status.uitleg()),
-        voorbehoud = esc(poc.voorbehoud.trim()),
-    )
-}
-
 /// The strip the portal injects into a PoC's own pages.
+///
+/// This is now the only place the status and the voorbehoud are rendered. They
+/// used to appear on the login screen too, but that screen is public, and both
+/// of them describe the case: which dossier, how far along, what does not hold
+/// yet. The reason they exist is unchanged — a screenshot from inside a PoC
+/// travels without any surrounding text — and every page that shows an outcome
+/// sits behind the password, so the strip reaches all of them.
 ///
 /// A PoC is a separate application that knows nothing about this portal, so the
 /// notice cannot live in its source without editing all three of them (and
@@ -176,17 +149,18 @@ pub fn voorbehoud_strip(poc: &Poc) -> String {
     // raw string would carry this file's indentation into it.
     //
     // The strip stays one row high. Its job here is to be present on every
-    // screenshot and every deep link, not to repeat the argument — the full
-    // text is on the password screen, which nobody reaches this page without
-    // passing, and it is in the `title` for anyone who wants it again.
+    // screenshot and every deep link, not to repeat the argument; the full text
+    // is in the `title` attribute for anyone who wants it in full.
     let stijl = "position:sticky;top:0;z-index:2147483647;display:flex;gap:.75rem;\
                  align-items:baseline;padding:.4rem 1rem;background:#fef3c7;color:#4b3a05;\
                  font:500 .8125rem/1.4 system-ui,sans-serif;border-bottom:1px solid #d7b95c";
     let tekst = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
     format!(
-        r#"<div data-poc-portaal style="{stijl}" title="{voorbehoud}"><strong style="flex:none">Demonstratie — {status}</strong>"#,
+        r#"<div data-poc-portaal style="{stijl}" title="{uitleg} {voorbehoud}"><strong style="flex:none">{titel} — demonstratie, {status}</strong>"#,
         stijl = stijl,
+        titel = esc(poc.titel_achter_de_poort()),
         status = esc(poc.status.label()),
+        uitleg = esc(poc.status.uitleg()),
         voorbehoud = esc(poc.voorbehoud.trim()),
     ) + &format!(
         r#"<span style="{tekst}">{voorbehoud}</span><a href="/" style="flex:none;color:inherit">Alle proof-of-concepts</a></div>"#,
@@ -199,6 +173,11 @@ pub fn voorbehoud_strip(poc: &Poc) -> String {
 ///
 /// Served with 401, not a redirect: a deep link keeps its address, so signing
 /// in lands the visitor where they were going instead of on the index.
+///
+/// Public, and reachable by guessing a slug, so it shows the same public title
+/// and summary as the card and not a word more. It used to carry the internal
+/// summary plus the full voorbehoud — which named the dossier, the department
+/// and the bill — to anyone who typed the path.
 pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
     // `critical` rather than a quieter variant: the banner then carries
     // role="alert", which is what a screen reader needs after a failed attempt.
@@ -215,8 +194,6 @@ pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
       <nldd-title size="1"><h1>{titel}</h1></nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-rich-text><p>{samenvatting}</p></nldd-rich-text>
-      <nldd-spacer size="16"></nldd-spacer>
-      {voorbehoud}
       <nldd-spacer size="24"></nldd-spacer>
       <nldd-card accessible-label="Wachtwoord">
         <nldd-container padding="24">
@@ -246,7 +223,6 @@ pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
         slug = esc(&poc.slug),
         pad = esc(pad),
         melding = melding,
-        voorbehoud = voorbehoud_banner(poc),
     );
 
     omhulsel(&format!("{} — wachtwoord", poc.titel), &inhoud)
@@ -297,6 +273,65 @@ mod tests {
             !html.contains("POC_PW"),
             "the index must not name the secrets"
         );
+    }
+
+    /// Neither public page may carry anything the register marks as internal.
+    ///
+    /// Both are readable without a password — the login screen by guessing a
+    /// slug — so a `titel_intern` or `voorbehoud` that reaches either one names
+    /// the dossier to whoever walks past. That is how this shipped the first
+    /// time: the login screen carried the internal summary and the full
+    /// voorbehoud, which between them named the department, the internal
+    /// document and the bill.
+    ///
+    /// Checked against the real register rather than a fixture, because the
+    /// thing worth protecting is the text that is actually published.
+    #[test]
+    fn the_public_pages_carry_nothing_the_register_marks_internal() {
+        let r = registry();
+        for poc in &r.pocs {
+            let publiek = [
+                index(&r),
+                inloggen(poc, &format!("/{}/", poc.slug), false),
+                inloggen(poc, &format!("/{}/", poc.slug), true),
+            ];
+            for html in publiek {
+                for (veld, tekst) in [
+                    ("titel_intern", poc.titel_intern.as_deref()),
+                    ("samenvatting_intern", poc.samenvatting_intern.as_deref()),
+                    ("voorbehoud", Some(poc.voorbehoud.as_str())),
+                ] {
+                    let Some(tekst) = tekst else { continue };
+                    assert!(
+                        !html.contains(tekst.trim()),
+                        "{} of {} reached a public page",
+                        veld,
+                        poc.slug,
+                    );
+                }
+                // The status and the subject tags are checked as rendered tags
+                // rather than as bare words. Both words occur innocently: a
+                // public summary may open with "Een verkenning…", and a slug
+                // like `nieuwkomersbekostiging` contains the tag "bekostiging".
+                // What must not appear is the tag itself, and there is no other
+                // reason for this markup to be on a public page.
+                assert!(
+                    !html.contains("<nldd-tag"),
+                    "a tag on a public page of {} — status and subject tags are internal",
+                    poc.slug,
+                );
+            }
+        }
+    }
+
+    /// The internal title is what a visitor sees once they are in.
+    #[test]
+    fn the_strip_behind_the_gate_names_the_real_subject() {
+        let r = registry();
+        let poc = r.get("napp").expect("napp");
+        let html = voorbehoud_strip(poc);
+        assert!(html.contains(poc.titel_achter_de_poort()));
+        assert!(html.contains(poc.voorbehoud.trim()));
     }
 
     #[test]
@@ -373,6 +408,8 @@ mod tests {
             slug: "x".into(),
             titel: r#"A "quoted" <b>title</b>"#.into(),
             samenvatting: "5 > 3 & rising".into(),
+            titel_intern: Some(r#"Intern <i>onderwerp</i>"#.into()),
+            samenvatting_intern: Some("intern & geheim".into()),
             soort: crate::registry::Soort::Statisch,
             status: crate::registry::Status::Verkenning,
             voorbehoud: r#"Een "demo" & niets meer."#.into(),

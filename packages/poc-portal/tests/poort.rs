@@ -253,7 +253,7 @@ async fn a_poc_page_carries_the_notice_and_its_assets_do_not() {
 
     let (_, html) = get(&app, "/alfa/", Some(&cookie_voor("alfa"))).await;
     assert!(html.contains("data-poc-portaal"), "{html}");
-    assert!(html.contains("Demonstratie"), "{html}");
+    assert!(html.contains("demonstratie"), "{html}");
 
     let (_, js) = get(&app, "/alfa/app.js", Some(&cookie_voor("alfa"))).await;
     assert_eq!(js, "console.log(1)", "an asset must not be rewritten");

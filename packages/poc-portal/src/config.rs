@@ -124,6 +124,8 @@ mod tests {
             slug: "napp".into(),
             titel: "N".into(),
             samenvatting: "S".into(),
+            titel_intern: None,
+            samenvatting_intern: None,
             soort: Soort::Proxy,
             status: crate::registry::Status::Verkenning,
             voorbehoud: "Een demonstratie, geen geldend recht.".into(),

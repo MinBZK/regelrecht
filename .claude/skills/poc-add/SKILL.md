@@ -38,19 +38,40 @@ valt pas op als iemand de demo geeft. Begin bij het register en werk naar buiten
 
 ```yaml
   - slug: mijn-poc                # [a-z0-9-], begint met letter of cijfer
-    titel: Wat het is
-    samenvatting: >-
-      Een of twee zinnen: wat is dit en voor wie.
+                                  # publiek zichtbaar in de URL
+    titel: Wat voor verkenning dit is        # PUBLIEK
+    samenvatting: >-                         # PUBLIEK
+      Een of twee zinnen: wat voor soort verkenning is dit en waar dient hij
+      toe. Geen dossiernaam, geen intern stuk, geen departement.
+    titel_intern: Het echte onderwerp        # achter het wachtwoord
+    samenvatting_intern: >-                  # achter het wachtwoord
+      Waar dit werkelijk over gaat.
     soort: statisch               # statisch | proxy
     bron: poc-mijn-poc            # bij statisch: de npm-workspace
     corpus:
       - corpus-poc/mijn-poc
     assistent: false
-    tags: [OCW, bekostiging]
+    tags: [OCW, bekostiging]      # intern: het departement hoort niet publiek
     status: verkenning            # verkenning | in-ontwikkeling | gevalideerd
     voorbehoud: >-
       Waarom dit nog niet klopt, of waar het overheen loopt.
 ```
+
+**De overzichtspagina én het inlogscherm zijn publiek.** Het inlogscherm is
+bereikbaar door een slug te raden, dus alles wat daarop staat geeft de casus
+weg aan wie er langsloopt. Daarom heeft elke poc een publieke helft (`titel`,
+`samenvatting`, en de slug in de URL) en een interne helft (`titel_intern`,
+`samenvatting_intern`, `tags`, `status`, `voorbehoud`) die pas achter het
+wachtwoord te zien is.
+
+Schrijf de publieke tekst zo dat hij klopt zonder te verraden waar het over
+gaat: "een verkenning om verschillende regelingen te vergelijken", niet het
+dossier, het departement of het stuk waar het uit komt. Laat je de interne
+velden weg, dan valt de poc terug op de publieke tekst — dat is goed voor een
+casus die niets te verbergen heeft, en fout zodra dat wel zo is. Een test in
+`packages/poc-portal/src/pagina.rs` controleert dat geen intern veld op een
+publieke pagina belandt, maar die kan niet zien of je de publieke tekst zelf
+wel neutraal genoeg hebt geschreven.
 
 `status` en `voorbehoud` zijn **verplicht en hebben geen default**. Een
 uitgerekend bedrag ziet er even stellig uit of de regels erachter met juristen

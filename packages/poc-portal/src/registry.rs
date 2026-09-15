@@ -34,7 +34,7 @@ pub enum Status {
 }
 
 impl Status {
-    /// Short label, for the tag on the card.
+    /// Short label, for the strip inside a PoC.
     pub fn label(self) -> &'static str {
         match self {
             Status::Verkenning => "Verkenning",
@@ -43,7 +43,12 @@ impl Status {
         }
     }
 
-    /// What this status means, in one sentence, for the banner.
+    /// What this status means, in one sentence.
+    ///
+    /// Lives in the strip's tooltip, alongside the voorbehoud. It used to be on
+    /// the login screen, which is public; the status of a named dossier is
+    /// itself something not to hand out, so it moved behind the password with
+    /// the rest of the case.
     pub fn uitleg(self) -> &'static str {
         match self {
             Status::Verkenning => {
@@ -60,23 +65,29 @@ impl Status {
             }
         }
     }
-
-    /// Colour of the tag. `critical` for the least finished, so the eye lands
-    /// on the one that deserves the most doubt.
-    pub fn kleur(self) -> &'static str {
-        match self {
-            Status::Verkenning => "critical",
-            Status::InOntwikkeling => "warning",
-            Status::Gevalideerd => "success",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Poc {
     pub slug: String,
+    /// Public name. The index and the login screen are both readable without a
+    /// password (the latter by guessing a slug), so this says what kind of
+    /// exploration this is and not which dossier it is about.
     pub titel: String,
+    /// Public summary, under the same rule as `titel`.
     pub samenvatting: String,
+    /// The real subject, shown once the visitor is past the password: the
+    /// portal puts it in the strip it injects into the PoC's own pages. Falls
+    /// back to the public title when absent, so a PoC with nothing to hide
+    /// needs only the one field.
+    #[serde(default)]
+    pub titel_intern: Option<String>,
+    /// The full description, for the register's own readers. The portal renders
+    /// no summary behind the gate — a PoC's own pages say what it is — so this
+    /// keeps the real text next to the public one instead of only in git
+    /// history, and the leak test asserts it never reaches a public page.
+    #[serde(default)]
+    pub samenvatting_intern: Option<String>,
     pub soort: Soort,
     /// How finished this uitwerking is. No default: leaving it out would make
     /// every new PoC look as trustworthy as the most-checked one.
@@ -100,6 +111,16 @@ pub struct Poc {
 }
 
 impl Poc {
+    /// What this PoC is called behind the password.
+    ///
+    /// Named rather than read from the field directly, so that a page renders
+    /// the internal text only where it says so out loud. Getting this backwards
+    /// on a public page is the failure this split exists to prevent, and it is
+    /// invisible in review if both are plain fields.
+    pub fn titel_achter_de_poort(&self) -> &str {
+        self.titel_intern.as_deref().unwrap_or(&self.titel)
+    }
+
     /// Name of the environment variable carrying this PoC's password.
     ///
     /// `terugbetaalregimes` → `POC_PW_TERUGBETAALREGIMES`, and a hyphenated
