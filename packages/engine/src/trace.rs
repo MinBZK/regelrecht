@@ -1434,6 +1434,124 @@ mod tests {
     /// as an empty object, so a consumer can read "absent" as "the corpus does
     /// not cite this element" rather than having to check every field.
     #[test]
+    /// `from_article` reports every field the law header and the article
+    /// carry. Each is asserted separately because a dropped one is invisible:
+    /// the anchor still looks populated, and a reader silently loses the link
+    /// to the statute or the version it was read at.
+    #[test]
+    fn an_anchor_reports_what_the_law_and_article_state() {
+        let law: ArticleBasedLaw = serde_yaml_ng::from_str(
+            r#"
+$id: zorgverzekeringswet
+uuid: 11111111-2222-3333-4444-555555555555
+name: Zorgverzekeringswet
+bwb_id: BWBR0018450
+regulatory_layer: WET
+publication_date: '2024-12-20'
+valid_from: '2025-01-01'
+articles:
+  - number: '2'
+    text: De verzekering is verplicht.
+    url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel2
+"#,
+        )
+        .expect("fixture law parses");
+        let article = &law.articles[0];
+
+        let anchor = LegalAnchor::from_article(&law, article);
+
+        assert_eq!(anchor.law_id.as_deref(), Some("zorgverzekeringswet"));
+        assert_eq!(anchor.law.as_deref(), Some("Zorgverzekeringswet"));
+        assert_eq!(
+            anchor.law_uuid.as_deref(),
+            Some("11111111-2222-3333-4444-555555555555")
+        );
+        assert_eq!(anchor.bwb_id.as_deref(), Some("BWBR0018450"));
+        assert_eq!(anchor.article.as_deref(), Some("2"));
+        assert_eq!(
+            anchor.url.as_deref(),
+            Some("https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel2")
+        );
+        assert_eq!(anchor.valid_from.as_deref(), Some("2025-01-01"));
+
+        // The engine has no opinion to record about how an element relates to
+        // the text, and it does not guess a lid from a step's position.
+        assert_eq!(anchor.explanation, None);
+        assert_eq!(anchor.paragraph, None);
+        assert_eq!(anchor.sentence, None);
+    }
+
+    /// The addressing setters put their value on the current step, and each is
+    /// a no-op once tracing is off.
+    #[test]
+    fn the_addressing_setters_record_on_the_current_step() {
+        let mut builder = TraceBuilder::new_untimed();
+        builder.push("hoogte_zorgtoeslag", PathNodeType::Action);
+        builder.set_yaml_path("articles.2.machine_readable.execution.actions.hoogte_zorgtoeslag");
+        builder.set_uri("regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag");
+        builder.set_legal_basis(LegalAnchor {
+            article: Some("2".to_string()),
+            paragraph: Some("1".to_string()),
+            ..LegalAnchor::default()
+        });
+        builder.set_type_spec(TypeSpec {
+            unit: Some("eurocent".to_string()),
+            ..TypeSpec::default()
+        });
+        assert_eq!(builder.current_node_id(), Some("n"));
+
+        let root = builder.build().expect("a built trace");
+
+        assert_eq!(
+            root.yaml_path.as_deref(),
+            Some("articles.2.machine_readable.execution.actions.hoogte_zorgtoeslag")
+        );
+        assert_eq!(
+            root.uri.as_deref(),
+            Some("regelrecht://wet_op_de_zorgtoeslag/hoogte_zorgtoeslag")
+        );
+        assert_eq!(
+            root.legal_basis
+                .as_ref()
+                .and_then(|b| b.paragraph.as_deref()),
+            Some("1")
+        );
+        assert_eq!(
+            root.type_spec.as_ref().and_then(|t| t.unit.as_deref()),
+            Some("eurocent")
+        );
+    }
+
+    /// A disabled builder records nothing and has no current step, so a caller
+    /// that sets an address on every node costs nothing when tracing is off.
+    #[test]
+    fn a_disabled_builder_records_no_address() {
+        let mut builder = TraceBuilder::disabled();
+        builder.push("x", PathNodeType::Action);
+        builder.set_yaml_path("articles.1");
+        builder.set_uri("regelrecht://a/b");
+        builder.set_type_spec(TypeSpec::default());
+        builder.set_legal_basis(LegalAnchor {
+            article: Some("2".to_string()),
+            ..LegalAnchor::default()
+        });
+
+        assert_eq!(builder.current_node_id(), None);
+        assert!(builder.build().is_none());
+    }
+
+    /// An empty `legal_basis` is dropped like an empty anchor: absent means the
+    /// element cites nothing, which a reader must be able to rely on.
+    #[test]
+    fn an_empty_legal_basis_is_not_recorded() {
+        let mut builder = TraceBuilder::new_untimed();
+        builder.push("artikel_1", PathNodeType::Article);
+        builder.set_legal_basis(LegalAnchor::default());
+        let root = builder.build().expect("a built trace");
+
+        assert!(root.legal_basis.is_none());
+    }
+
     fn an_empty_anchor_is_not_recorded() {
         let mut builder = TraceBuilder::new_untimed();
         builder.push("artikel_1", PathNodeType::Article);
