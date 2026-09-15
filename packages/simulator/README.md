@@ -257,6 +257,74 @@ Dat dit een reductie is en geen teller, is het hele punt: "betaald tot nu toe" o
 een moment in het verleden blijft exact hetzelfde antwoord geven nadat er meer
 betaald is. Een saldo dat naast de kroniek wordt bijgehouden kan dat niet.
 
+Beide vormen leggen naast hun uitkomst vast **hoe** ze eraan kwamen; zie
+[Hoe het antwoord tot stand kwam](#hoe-het-antwoord-tot-stand-kwam).
+
+### Hoe het antwoord tot stand kwam
+
+Elk antwoord draagt een blok `reductie`: welke gegevens de cel gelezen heeft en
+hoe ze die tot dit ene antwoord heeft teruggebracht. Dat kan hier en alleen hier
+— een reductie leest uitsluitend de eigen kronieken van de eigen cel (RFC-022
+§4.1), dus de cel kan precies zeggen wát ze las. Een consument die dit naast de
+uitkomst legt, loopt de reductie na zonder de cel binnen te gaan.
+
+```json
+"reductie": {
+  "vorm": {
+    "soort": "kroniekfilter",
+    "chronicle": "beschikkingen",
+    "key": "zaakkenmerk",
+    "key_value": "zorgtoeslag/999993653",
+    "where": {},
+    "regel": {"regel": "laatste"},
+    "op_moment": "2026-12-01"
+  },
+  "grammen": [
+    {
+      "cell": "toeslagen",
+      "chronicle": "beschikkingen",
+      "id": "toeslagen|beschikkingen|0",
+      "kind": "decretogram",
+      "name": "zorgtoeslag_toekenning",
+      "volgnummer": 0,
+      "op_moment": "2026-04-01",
+      "regulation_valid_from": "2026-01-01",
+      "bijdrage": null
+    }
+  ]
+}
+```
+
+Wat er per vorm in staat:
+
+- **kroniekfilter**: de stroom, de sleutel met de waarde uit de vraag, de `where`
+  en de regel (`laatste`, of `som` met het gesommeerde veld), plus elk gelezen
+  gram. Bij een som staat elk meegeteld gram erin met zijn `bijdrage`: een som
+  waarvan alleen de uitkomst te zien is, valt niet na te rekenen.
+- **wetsvorm**: de regeling met de **versie** die op dat moment gold
+  (`regulation_valid_from`), de gevraagde uitkomst, en per input van die
+  uitvoering waar hij vandaan kwam — uit de vraag (`parameter`), uit een eigen
+  kroniek (met het gram dat hem droeg), of berekend door een andere regeling die
+  de cel zelf laadt. De grammen staan er net zo goed bij: welk gram van een
+  kroniekstroom de engine te zien kreeg, weet zij niet — zij ziet per onderwerp
+  één record, want de tijdreductie is er dan al overheen gegaan.
+- **niets vastgesteld** is geen derde vorm maar hetzelfde kroniekfilter zonder
+  één gram, met `gemist` erbij: hoeveel grammen er in die stroom lagen, en
+  hoeveel daarvan afvielen op het moment, op de sleutel of op de voorwaarden.
+  Zonder die telling is "hier ligt niets over deze zaak" niet te onderscheiden
+  van "hier ligt niets".
+
+Elk gram is een **verwijzing** en geen kopie — dezelfde `id` waarmee het
+journaal naar een gram wijst (`<cel>|<kroniek>|<plek>`), terug te vinden in het
+[beeld van de wereld](#het-beeld-van-de-wereld). En elke verwijzing noemt de cel
+die het antwoord gaf: een uitleg die een andere cel noemt, zou een weg
+beschrijven die deze opstelling niet heeft, en `tests/invarianten.rs` meet dat
+over elk scenario.
+
+Er staat geen wandkloktijd in. Wat hier staat, hangt alleen van de kronieken en
+van het gevraagde moment af, en daarmee is de uitleg net zo goed een contract als
+het antwoord zelf.
+
 ### "Niets vastgesteld" is een antwoord
 
 Dit is het antwoord van een kroniekfilter dat niets aantreft; de wetsvorm levert

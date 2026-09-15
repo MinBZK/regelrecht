@@ -411,6 +411,22 @@ pub(crate) fn gram_kind(intake: Intake) -> GramKind {
     }
 }
 
+/// Waaronder één gram in dit beeld terug te vinden is:
+/// `<cel>|<kroniek>|<plek in de kroniek>`.
+///
+/// De plek in de kroniek en niet een verzonnen sleutel: een kroniek groeit
+/// achteraan en wijzigt nooit, dus die plek is stabiel, en dit beeld geeft de
+/// grammen in precies die volgorde.
+///
+/// `pub(crate)` en op één plek, om dezelfde reden als [`gram_kind`]: een
+/// journaalregel wijst naar grammen ([`crate::GramRef`]) en een reductie zegt
+/// welke ze gelezen heeft ([`crate::Reductie`]). Drie plekken die dezelfde
+/// sleutel vormen, kunnen uiteen gaan lopen; dan wijst een verwijzing naar een
+/// gram dat er niet is.
+pub(crate) fn gram_id(cell: &str, chronicle: &str, index: usize) -> String {
+    format!("{cell}|{chronicle}|{index}")
+}
+
 /// Eén gram, met de herkomst van elke waarde erbij.
 fn gram_snapshot(event: &ChronicleEvent) -> GramSnapshot {
     let kind = gram_kind(event.intake);

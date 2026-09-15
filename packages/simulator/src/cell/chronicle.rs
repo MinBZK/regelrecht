@@ -14,6 +14,7 @@
 //! De store is bewust *niet* publiek bereikbaar vanaf een cel: zie
 //! [`crate::cell::Cell`].
 
+use super::reductie::Gemist;
 use crate::error::{Result, SimulatorError};
 use crate::values::equivalent;
 use chrono::NaiveDate;
@@ -327,9 +328,28 @@ impl ChronicleStore {
         // waarin de cel zelf vastlegt (zie [`Self::record`]) de volgorde waarin
         // dat gebeurde. Twee besluiten op één dag over dezelfde zaak leveren dus
         // het laatstgenomen besluit — de dag is hier de fijnste korrel.
-        self.recordings(stream, key, key_value, conditions, op_moment)
+        self.latest_recording_with_place(stream, key, key_value, conditions, op_moment)
+            .map(|(_, event)| event)
+    }
+
+    /// Dezelfde vastlegging, met haar plek in de stroom erbij.
+    ///
+    /// De plek is wat een verwijzing naar dit gram nodig heeft (zie
+    /// [`crate::GramRef`]): een kroniek groeit achteraan en wijzigt nooit, dus
+    /// ze is stabiel en het beeld van de wereld geeft de grammen in precies die
+    /// volgorde. Alleen de reductie-uitleg heeft haar nodig; wie de vastlegging
+    /// zelf wil, vraagt hierboven.
+    pub(crate) fn latest_recording_with_place(
+        &self,
+        stream: &str,
+        key: &str,
+        key_value: &Value,
+        conditions: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Option<(usize, &ChronicleEvent)> {
+        self.recordings_with_place(stream, key, key_value, conditions, op_moment)
             .into_iter()
-            .max_by_key(|event| event.op_moment)
+            .max_by_key(|(_, event)| event.op_moment)
     }
 
     /// Álle vastleggingen die op of vóór `op_moment` aan dit filter voldoen, in
@@ -347,19 +367,83 @@ impl ChronicleStore {
         conditions: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
     ) -> Vec<&ChronicleEvent> {
+        self.recordings_with_place(stream, key, key_value, conditions, op_moment)
+            .into_iter()
+            .map(|(_, event)| event)
+            .collect()
+    }
+
+    /// Dezelfde vastleggingen, elk met haar plek in de stroom.
+    ///
+    /// Het filter zelf staat hier en niet hierboven: welke vastleggingen
+    /// meedoen, is één vraag, en twee kopieën ervan zouden een uitleg kunnen
+    /// opleveren over andere grammen dan waaruit het antwoord komt.
+    pub(crate) fn recordings_with_place(
+        &self,
+        stream: &str,
+        key: &str,
+        key_value: &Value,
+        conditions: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Vec<(usize, &ChronicleEvent)> {
         self.streams
             .iter()
             .find(|candidate| candidate.stream == stream)
             .into_iter()
-            .flat_map(|found| found.events.iter())
-            .filter(|event| event.op_moment <= op_moment)
-            .filter(|event| field_equals(&event.fields, key, key_value))
-            .filter(|event| {
+            .flat_map(|found| found.events.iter().enumerate())
+            .filter(|(_, event)| event.op_moment <= op_moment)
+            .filter(|(_, event)| field_equals(&event.fields, key, key_value))
+            .filter(|(_, event)| {
                 conditions
                     .iter()
                     .all(|(field, expected)| field_equals(&event.fields, field, expected))
             })
             .collect()
+    }
+
+    /// Wat er in deze stroom lag en tóch niet meedeed, geteld.
+    ///
+    /// De tegenhanger van [`Self::recordings_with_place`]: die zegt welke
+    /// vastleggingen het filter haalden, deze waaróp de rest afviel. Een cel die
+    /// niets vaststelde, kan daarmee zeggen of ze te vroeg gevraagd is, over de
+    /// verkeerde zaak, of over een zaak waarover een voorwaarde niet uitkwam —
+    /// drie verschillende dingen die anders alle drie "niets" heten.
+    ///
+    /// Geteld en niet opgesomd: het zijn grammen waar het antwoord juist niet
+    /// over gaat.
+    pub(crate) fn missed(
+        &self,
+        stream: &str,
+        key: &str,
+        key_value: &Value,
+        conditions: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Gemist {
+        let events: &[ChronicleEvent] = self
+            .streams
+            .iter()
+            .find(|candidate| candidate.stream == stream)
+            .map_or(&[], |found| &found.events);
+
+        let mut gemist = Gemist {
+            in_de_stroom: events.len(),
+            na_het_moment: 0,
+            andere_sleutel: 0,
+            buiten_de_voorwaarden: 0,
+        };
+        for event in events {
+            if event.op_moment > op_moment {
+                gemist.na_het_moment += 1;
+            } else if !field_equals(&event.fields, key, key_value) {
+                gemist.andere_sleutel += 1;
+            } else if !conditions
+                .iter()
+                .all(|(field, expected)| field_equals(&event.fields, field, expected))
+            {
+                gemist.buiten_de_voorwaarden += 1;
+            }
+        }
+        gemist
     }
 
     /// Zou deze vastlegging in deze stroom mogen?
