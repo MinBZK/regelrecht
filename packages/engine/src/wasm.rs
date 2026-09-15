@@ -63,7 +63,7 @@ use crate::config;
 use crate::engine::OutputProvenance;
 use crate::error::EngineError;
 use crate::service::{ExecutionOutcome, LawExecutionService, StageState};
-use crate::trace::{PathNode, TraceBuilder, TraceDocument};
+use crate::trace::{TraceBuilder, TraceDocument};
 use crate::types::{RegulatoryLayer, Value};
 
 /// Does this annotation note target a law other than `law_id`?
