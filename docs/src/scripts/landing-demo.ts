@@ -193,9 +193,12 @@ class ScrollyDemo extends HTMLElement {
         const viewport = window.innerHeight;
 
         // The wipe follows the panel's travel up the viewport, from "its top
-        // has reached three quarters up" to "its top has reached one fifth up".
+        // has reached three quarters up" to "its top is halfway up". Ending
+        // halfway rather than near the top means the YAML is fully uncovered
+        // while the panel is still square in view: run it to the top and the
+        // reveal only completes as the panel is leaving.
         const start = viewport * 0.75;
-        const end = viewport * 0.2;
+        const end = viewport * 0.5;
         const travelled = (start - box.top) / (start - end);
 
         // Position alone is not enough. On a short page, or when the panel
@@ -203,8 +206,9 @@ class ScrollyDemo extends HTMLElement {
         // visitor has scrolled at all: the statute must be readable in full
         // first, or the promise of a before-and-after is broken on arrival.
         // So the panel's own travel is capped by how far the page has actually
-        // been scrolled, measured over one viewport.
-        const scrolled = window.scrollY / viewport;
+        // been scrolled, measured over half a viewport: enough to hold the wipe
+        // shut on arrival without slowing the rest of it down.
+        const scrolled = window.scrollY / (viewport * 0.5);
         const progress = Math.min(1, Math.max(0, Math.min(travelled, scrolled)));
         // 100% is the statute covering the whole pane, 0% is the YAML fully
         // uncovered. Scrolling down reveals the machine-readable rule, so
