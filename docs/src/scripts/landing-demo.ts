@@ -10,8 +10,17 @@
  * the replay decides only *when* to show a step that was already taken.
  */
 
-/** Steps appear this far apart while replaying. */
-const STEP_MS = 260;
+/**
+ * How long the replay takes from first step to last, in milliseconds.
+ *
+ * A fixed pace per step would run for half a minute over a full trace, so the
+ * whole walk-through is given a budget and the interval follows from the number
+ * of steps. Long enough to read as a sequence, short enough to sit through.
+ */
+const RUN_MS = 6000;
+
+/** Never faster than this, so a short trace still reads as one step at a time. */
+const MIN_STEP_MS = 40;
 
 const reduceMotion = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -76,6 +85,16 @@ class ScrollyDemo extends HTMLElement {
       );
     });
 
+    // The total is left empty here on purpose. Without JS the server-rendered
+    // amount stands in the markup and is simply read; with JS the replay fills
+    // it in at the end, because an outcome that is already on screen while the
+    // steps are still arriving gives the walk-through nothing to arrive at.
+    const out = this.querySelector<HTMLOutputElement>('[data-amount-out]');
+    if (out) out.textContent = '';
+  }
+
+  /** Reveal the computed total, in the same formatting the steps use. */
+  private showAmount(lang: string) {
     const out = this.querySelector<HTMLOutputElement>('[data-amount-out]');
     if (out) {
       out.textContent = formatValue(this.dataset.amount ?? 'null', 'eurocent', lang);
@@ -171,7 +190,13 @@ class ScrollyDemo extends HTMLElement {
           if (el.querySelector('[data-run]')) this.startRun(lang);
         });
       },
-      { rootMargin: '0px 0px -15% 0px', threshold: 0.25 },
+      // A panel can be taller than the viewport (the scenario one is), and a
+      // fractional threshold is a fraction of the *element*, so 0.25 of a
+      // 1300px panel can never be met in a 950px window: the observer would
+      // simply never fire for it. Threshold 0 asks the only question that
+      // always has an answer, "is any of it showing", and the bottom margin
+      // holds the reveal back until the panel is properly in view.
+      { rootMargin: '0px 0px -20% 0px', threshold: 0 },
     );
 
     // Hide only once the observer is actually watching, and only what is not
@@ -182,7 +207,6 @@ class ScrollyDemo extends HTMLElement {
       const box = b.getBoundingClientRect();
       const onScreen = box.top < window.innerHeight && box.bottom > 0;
       b.setAttribute('data-visible', onScreen ? 'true' : 'false');
-      if (onScreen && b.querySelector('[data-run]')) this.startRun(lang);
       this.observer?.observe(b);
     });
 
@@ -194,10 +218,13 @@ class ScrollyDemo extends HTMLElement {
     // visible: a first panel revealed here because it was already on screen
     // would otherwise satisfy the check while every panel below it stayed
     // hidden forever.
+    // It reveals the panels but does not finish the run: the run is the one
+    // thing that must not be over before the visitor has reached it, and a
+    // fallback that completes it would put the outcome on screen while the
+    // steps are still waiting to be walked.
     window.setTimeout(() => {
       if (this.observerFired) return;
       beats.forEach((b) => b.setAttribute('data-visible', 'true'));
-      this.finishRun(lang);
     }, 4000);
 
     const replay = this.querySelector<HTMLButtonElement>('[data-replay]');
@@ -235,16 +262,30 @@ class ScrollyDemo extends HTMLElement {
     steps.forEach((s) => s.setAttribute('data-done', 'false'));
     run.removeAttribute('data-complete');
 
+    const scroller = this.querySelector<HTMLElement>('[data-steps-scroll]');
+    if (scroller) scroller.scrollTop = 0;
+    const interval = Math.max(MIN_STEP_MS, RUN_MS / Math.max(1, steps.length));
+
     steps.forEach((step, i) => {
       window.setTimeout(() => {
         step.setAttribute('data-done', 'true');
+
+        // Follow the step that just landed, so a long trace plays out in view
+        // instead of running on below the fold. Only while the replay owns the
+        // list: once it is done the visitor scrolls it themselves.
+        if (scroller && i < steps.length - 1) {
+          const top = step.offsetTop - scroller.clientHeight * 0.6;
+          if (top > scroller.scrollTop) scroller.scrollTop = top;
+        }
+
         if (i === steps.length - 1) {
           run.setAttribute('data-state', 'done');
           run.setAttribute('data-complete', 'true');
           if (status) status.textContent = labels.done;
           if (replay) replay.hidden = false;
+          this.showAmount(lang);
         }
-      }, i * STEP_MS);
+      }, i * interval);
     });
   }
 
@@ -260,6 +301,7 @@ class ScrollyDemo extends HTMLElement {
       s.setAttribute('data-done', 'true'),
     );
     if (status) status.textContent = lang === 'en' ? 'Done' : 'Klaar';
+    this.showAmount(lang);
   }
 }
 

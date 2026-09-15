@@ -109,24 +109,28 @@ const humanise = (id: string) => id.replace(/_/g, ' ');
 const label = (id: string) => LABELS[id]?.[lang] ?? humanise(id);
 const lawLabel = (id: string) => LAW_LABELS[id]?.[lang] ?? humanise(id);
 
-const beats = demo.trace.root.children
-  // The Awb hooks are real steps and stay in the recording; they are left out
-  // of this list because they produce no value, and a row with a name and an
-  // empty column reads as something that failed rather than as procedural law
-  // being consulted. The step count underneath still counts them.
-  .filter((c: any) => c.result !== null && c.result !== undefined)
-  .map((c: any) => {
-  const [before, output] = c.name.includes('#') ? c.name.split('#') : [null, c.name];
-  return {
+// Every step the engine took, in the order it took them, with the nesting kept
+// as depth. The page claims this is what really happened, so it shows the whole
+// trace rather than its top layer: a list of seven under a line reading "131
+// steps" invites exactly the doubt the demo exists to remove.
+function flatten(node: any, depth: number, out: any[]) {
+  const raw: string = node.name ?? '';
+  const [before, output] = raw.includes('#') ? raw.split('#') : [null, raw];
+  out.push({
     name: label(output),
     identifier: output,
     law: before ? lawLabel(before) : null,
-    type: c.node_type,
-    result: c.result,
-    article: before ? null : (c.anchor?.article ?? null),
-    unit: c.type_spec?.unit ?? null,
-  };
-});
+    type: node.node_type,
+    result: node.result,
+    article: before ? null : (node.anchor?.article ?? null),
+    unit: node.type_spec?.unit ?? null,
+    depth,
+  });
+  for (const child of node.children ?? []) flatten(child, depth + 1, out);
+}
+
+const beats: any[] = [];
+for (const child of demo.trace.root.children ?? []) flatten(child, 0, beats);
 
 const amount = demo.trace.root.result;
 ---
@@ -229,9 +233,21 @@ const amount = demo.trace.root.result;
         <div class="rr-run" data-run>
           <p class="rr-run__status" data-run-status aria-live="polite">{t.runLabel}</p>
 
+          <div
+            class="rr-run__steps-scroll"
+            tabindex="0"
+            role="region"
+            aria-label={t.steps[4].h}
+            data-steps-scroll
+          >
           <nldd-list variant="simple" dividers="always" accessible-label={t.steps[4].h}>
             {beats.map((b: any, i: number) => (
-              <nldd-list-item size="sm" class="rr-run__step" data-step={i}>
+              <nldd-list-item
+                size="sm"
+                class="rr-run__step"
+                data-step={i}
+                data-depth={Math.min(b.depth, 6)}
+              >
                 <nldd-text-cell
                   text={b.name}
                   supporting-text={b.law ?? (b.article ? `artikel ${b.article}` : '')}
@@ -242,6 +258,7 @@ const amount = demo.trace.root.result;
               </nldd-list-item>
             ))}
           </nldd-list>
+          </div>
 
           <nldd-spacer size="16" />
 

@@ -44,10 +44,12 @@ fn record(entries: Vec<(&str, Value)>) -> BTreeMap<String, Value> {
         .collect()
 }
 
-/// How deep the page shows the tree. Two levels is the reading unit: the beats
-/// under the root (is this person insured, what is their income, what is the
-/// standard premium) and, under each, the step that answered it.
-const DISPLAY_DEPTH: usize = 2;
+/// How deep the page shows the tree.
+///
+/// The whole of it. A trace that says "131 steps" and lists seven is not the
+/// trace, and the claim the page makes is precisely that this is what really
+/// happened. The document is about 100 KB, which a landing page can carry.
+const DISPLAY_DEPTH: usize = usize::MAX;
 
 fn count(node: &regelrecht_engine::trace::PathNode) -> usize {
     1 + node.children.iter().map(count).sum::<usize>()

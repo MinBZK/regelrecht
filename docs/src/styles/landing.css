@@ -261,6 +261,24 @@ html {
   overflow-wrap: anywhere;
 }
 
+/* The whole trace is long, so the list scrolls inside the card rather than
+   pushing the rest of the page down. It is focusable and labelled, because a
+   scroll region has to be reachable by keyboard. */
+.rr-run__steps-scroll {
+  max-height: 26rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Nesting as indentation: a resolve inside a cross-law call is a step taken on
+   the way to that call's answer, and the depth is what says so. */
+.rr-run__step[data-depth='1'] { padding-inline-start: 1rem; }
+.rr-run__step[data-depth='2'] { padding-inline-start: 2rem; }
+.rr-run__step[data-depth='3'] { padding-inline-start: 3rem; }
+.rr-run__step[data-depth='4'] { padding-inline-start: 4rem; }
+.rr-run__step[data-depth='5'] { padding-inline-start: 5rem; }
+.rr-run__step[data-depth='6'] { padding-inline-start: 6rem; }
+
 /* Steps land one by one while replaying; without JS they are simply all there. */
 .rr-scrolly[data-enhanced] .rr-run__step[data-done='false'] {
   opacity: 0.25;
