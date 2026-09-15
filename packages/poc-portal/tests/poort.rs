@@ -170,7 +170,12 @@ async fn the_right_password_sets_a_cookie_scoped_to_that_poc() {
         .and_then(|v| v.to_str().ok())
         .expect("set-cookie");
     assert!(cookie.starts_with("poc_alfa="));
-    assert!(cookie.contains("Path=/alfa/"), "{cookie}");
+    // Zonder sluitende schuine streep: een browser stuurt een cookie met
+    // `Path=/alfa/` niet naar `/alfa` zelf. Een poc die zijn eigen basispad
+    // naar de kale vorm omleidt (napp doet dat) raakte het cookie daar kwijt,
+    // en de bezoeker kreeg met een goed wachtwoord het formulier terug.
+    assert!(cookie.contains("Path=/alfa;"), "{cookie}");
+    assert!(!cookie.contains("Path=/alfa/"), "{cookie}");
     assert!(cookie.contains("HttpOnly"), "{cookie}");
     assert!(cookie.contains("Secure"), "{cookie}");
     assert!(cookie.contains("SameSite=Lax"), "{cookie}");
