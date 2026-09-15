@@ -3,7 +3,10 @@
 //! Alles wat een client kan doen, doet hij met de wereld van zijn eigen sessie:
 //! kijken (`GET /api/world`), er iets in doen (`POST /api/actions/{id}`), de tijd
 //! laten lopen (`POST /api/advance`), een cel bevragen
-//! (`GET /api/cells/{cel}/lexostatus/{naam}`), een instelling wijzigen
+//! (`GET /api/cells/{cel}/lexostatus/{naam}`), het uitvoeringsreceipt van een
+//! decretogram nakijken
+//! (`GET /api/cells/{cel}/chronicles/{stroom}/grams/{n}/receipt`), een instelling
+//! wijzigen
 //! (`PUT /api/settings`) of opnieuw beginnen (`POST /api/reset`).
 //!
 //! **Veldnamen Engels, meldingen Nederlands.** De vorm van het antwoord is het
@@ -25,7 +28,8 @@ use axum::routing::{get, post, put, MethodRouter};
 use axum::{Json, Router};
 use chrono::NaiveDate;
 use regelrecht_simulator::{
-    Events, Lexostatus, ParameterType, Snapshot, Value, Warning, World, WorldDefinition,
+    Events, GramReceipt, Lexostatus, ParameterType, Snapshot, Value, Warning, World,
+    WorldDefinition,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -64,6 +68,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/actions/{action}", post(act))
         .route("/api/advance", post(advance))
         .route("/api/cells/{cell}/lexostatus/{name}", get(lexostatus))
+        .route(
+            "/api/cells/{cell}/chronicles/{stream}/grams/{index}/receipt",
+            get(receipt),
+        )
         .route("/api/settings", put(settings))
         .route("/api/reset", post(reset))
         .route_layer(axum_middleware::from_fn_with_state(
@@ -258,6 +266,37 @@ async fn lexostatus(
         })
         .await?;
     Ok(Json(answer))
+}
+
+/// `GET /api/cells/{cell}/chronicles/{stream}/grams/{index}/receipt` — het
+/// uitvoeringsreceipt van één decretogram.
+///
+/// Het beeld (`GET /api/world`) draagt het receipt met opzet niet: het bevat
+/// wandkloktijd, en een contract dat per run verschilt is geen contract. Het gram
+/// draagt het wél — een decretogram *is* het RFC-013 Execution Receipt van het
+/// besluit (RFC-022 §1.2) — en dit is de weg ernaartoe op verzoek. Het beeld
+/// blijft daarmee receipt-loos.
+///
+/// `index` is de plek in de kroniek, geteld vanaf nul, in precies de volgorde
+/// waarin het beeld de grammen van die stroom geeft. Een gram dat geen
+/// decretogram uit het besluit-pad is, draagt geen receipt en levert een 404: er
+/// is er geen, en dat is iets anders dan een leeg receipt.
+///
+/// Alleen lezen, zoals `GET /api/world` en de lexostatus-route: er verandert
+/// niets in de wereld door het op te vragen.
+async fn receipt(
+    State(state): State<AppState>,
+    session: Session,
+    Path((cell, stream, index)): Path<(String, String, usize)>,
+) -> Result<Json<GramReceipt>, ApiError> {
+    let key = world_key(&session).await?;
+    let receipt = state
+        .worlds
+        .with_world(&key, move |world| {
+            Ok(world.gram_receipt(&cell, &stream, index)?)
+        })
+        .await?;
+    Ok(Json(receipt))
 }
 
 /// `PUT /api/settings` — wijzig instellingen die nog niet vast staan.

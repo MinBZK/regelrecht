@@ -372,6 +372,10 @@ function describeRecordedOrigin(recorded) {
         label: `geaccepteerd van cel '${recorded.cell}'`,
         color: 'oranje',
         details: pairs([
+          // Het gezag dat de bron-cel bij haar antwoord noemde. Een cel-id is een
+          // adres; wie het gram terugleest, hoort te zien wiens vaststelling dit
+          // is. Zwijgt de bron erover, dan staat er niets — geen ingevuld gat.
+          ['bevoegd gezag', recorded.competent_authority],
           ['lexostatus', recorded.lexostatus],
           ['uitkomst', recorded.field],
           ['op moment', recorded.op_moment],

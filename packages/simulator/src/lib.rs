@@ -60,6 +60,13 @@
 //! elk label komt uit het wereldbestand. [`World::reset`] begint opnieuw uit
 //! datzelfde bestand.
 //!
+//! Wat het beeld met opzet **niet** draagt, is het uitvoeringsreceipt van een
+//! besluit: dat bevat wandkloktijd, en een contract dat per run verschilt is geen
+//! contract. Het gram draagt het wél — een decretogram *is* het RFC-013 Execution
+//! Receipt (RFC-022 §1.2) — en [`World::gram_receipt`] is de weg ernaartoe **op
+//! verzoek**, per gram, zodat dat na te kijken is zonder het beeld te vervuilen.
+//! Zie [`receipt`].
+//!
 //! Daarin zit ook het **journaal**: één verhaal in tijdsvolgorde van wie wat
 //! deed, met per regel de grammen die erdoor ontstonden en wat er aan de stand
 //! van de zaak veranderde. Welke lexostatussen die stand vormen, staat als
@@ -99,6 +106,7 @@ pub mod journal;
 // geen re-export hieronder — wie hem gebruikt, noemt hem bij zijn volle naam, en
 // geen ander bestand in `src/` mag dat doen.
 pub mod observation;
+pub mod receipt;
 pub mod scenario;
 pub mod security;
 pub mod snapshot;
@@ -131,6 +139,7 @@ pub use regelrecht_engine::Value;
 // Om dezelfde reden: `SimulatorError::Engine` draagt hem, dus wie de fouten van
 // deze crate uitpakt — bijvoorbeeld om er een HTTP-status bij te kiezen — heeft
 // hem nodig zonder de engine als eigen dependency op te voeren.
+pub use receipt::{GramReceipt, ReceiptAcceptedValue, ReceiptGram, ReceiptTimestamp};
 pub use regelrecht_engine::EngineError;
 pub use scenario::{
     check_provenance, Act, ActOutcome, Decision, DecisionOutcome, ExpectationFailure, Query,

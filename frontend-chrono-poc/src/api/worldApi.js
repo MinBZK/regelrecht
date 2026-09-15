@@ -106,6 +106,24 @@ export function resetWorld() {
 }
 
 /**
+ * Het uitvoeringsreceipt van één decretogram.
+ *
+ * Het beeld (`fetchWorld`) draagt het receipt met opzet niet: het bevat
+ * wandkloktijd, en een contract dat per run verschilt is geen contract. Het gram
+ * draagt het wél — een decretogram *is* het RFC-013 Execution Receipt van het
+ * besluit — en dit is de weg ernaartoe, op verzoek en per gram.
+ *
+ * `index` is de plek van het gram in zijn kroniek, geteld vanaf nul, in precies
+ * de volgorde waarin het beeld ze geeft. Een gram dat geen decretogram uit het
+ * besluit-pad is, draagt geen receipt; de server antwoordt dan met een 404 en de
+ * uitleg erin.
+ */
+export function fetchGramReceipt(cell, chronicle, index) {
+  const path = `/api/cells/${encodeURIComponent(cell)}/chronicles/${encodeURIComponent(chronicle)}`;
+  return request(`${path}/grams/${encodeURIComponent(index)}/receipt`);
+}
+
+/**
  * De queryparameter waarmee de server het moment van de vraag leest.
  *
  * Gereserveerd: de server weigert een lexostatus die zelf een parameter zo

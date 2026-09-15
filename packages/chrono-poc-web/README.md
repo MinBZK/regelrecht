@@ -81,6 +81,7 @@ de simulator, en die praat Nederlands.
 | `POST /api/actions/{id}` | voer een actie uit; body = het formulier van die actie. Antwoord: `{ "snapshot": …, "events": … }` |
 | `POST /api/advance` | `{"until": "2024-04-01"}`; de triggers gaan onderweg af. Zelfde antwoord |
 | `GET /api/cells/{cel}/lexostatus/{naam}` | één reductie, alleen lezen. Parameters als queryparameters, `op_moment` optioneel |
+| `GET /api/cells/{cel}/chronicles/{stroom}/grams/{n}/receipt` | het RFC-013 uitvoeringsreceipt van één decretogram, alleen lezen. `n` is de plek in de kroniek, geteld vanaf nul |
 | `PUT /api/settings` | wijzig instellingen die nog niet vast staan |
 | `POST /api/reset` | terug naar de startstand uit het wereldbestand |
 
@@ -109,6 +110,29 @@ gevraagd: een consument vraagt een gepubliceerde naam, hij inspecteert geen cel
 
 `op_moment` is gereserveerd en optioneel; afwezig betekent "op de stand van de
 klok". Een moment ná de klok is een 409 — dat zou een voorspelling zijn.
+
+### Het receipt van een decretogram
+
+Het beeld draagt het receipt **niet**: het bevat wandkloktijd, en een contract dat
+per run verschilt is geen contract. Het gram draagt het wél — een decretogram *is*
+het RFC-013 Execution Receipt van het besluit (RFC-022 §1.2) — en deze route is de
+weg ernaartoe op verzoek, zodat dat na te kijken is zonder het beeld te vervuilen.
+
+```
+GET /api/cells/toeslagen/chronicles/beschikkingen/grams/0/receipt
+```
+
+`n` telt vanaf nul, in precies de volgorde waarin `GET /api/world` de grammen van
+die stroom geeft. Het antwoord is het receipt zelf — `provenance`, `engine_config`,
+`scope`, `execution`, `results` gaan ongewijzigd door — met daarnaast `gram` (van
+welk gram dit het receipt is, met het zaakkenmerk en het moment in de *logische*
+tijd), `accepted_values` (per waarde de bron-cel, het bevoegd gezag dat die bron
+noemde, het moment en het zaakkenmerk) en `timestamp` (de wandkloktijd, met erbij
+dat het dát is).
+
+Wijst het pad naar een gram dat geen decretogram uit het besluit-pad is, dan is dat
+een **404**: er is geen receipt, want er heeft nooit een uitvoering gedraaid. Dat
+is iets anders dan een leeg receipt.
 
 ### Wat geen fout is
 

@@ -372,6 +372,151 @@ async fn een_besluit_accepteert_een_waarde_over_een_celgrens() {
     );
 }
 
+/// Het receipt van een decretogram is op verzoek op te vragen, terwijl het beeld
+/// receipt-loos blijft.
+///
+/// Dat onderscheid is het punt: een decretogram *is* het RFC-013 Execution
+/// Receipt van het besluit (RFC-022 §1.2), maar dat receipt draagt wandkloktijd
+/// en hoort dus niet in een contract dat per run hetzelfde moet zijn. Deze route
+/// is de weg ernaartoe zonder het beeld te vervuilen.
+#[tokio::test]
+async fn het_receipt_van_een_decretogram_is_op_te_vragen_naast_het_beeld() {
+    let mut browser = Browser::new().await;
+
+    browser
+        .post("/api/actions/burger.aanvraag", aanvraag())
+        .await;
+    browser
+        .post("/api/advance", json!({ "until": "2024-04-01" }))
+        .await;
+    browser
+        .post(
+            "/api/actions/toeslagen.toekenning",
+            json!({ "bsn": "999993653" }),
+        )
+        .await;
+
+    let world = browser.world().await;
+    let beschikkingen = grams(&world, "toeslagen", "beschikkingen");
+    assert_eq!(beschikkingen.len(), 1, "{world}");
+    assert!(
+        !serde_json::to_string(&world)
+            .expect("het beeld moet naar JSON te schrijven zijn")
+            .contains("\"receipt\""),
+        "het beeld van de wereld hoort receipt-loos te blijven"
+    );
+
+    let (status, receipt) = browser
+        .get("/api/cells/toeslagen/chronicles/beschikkingen/grams/0/receipt")
+        .await;
+    assert_eq!(status, StatusCode::OK, "{receipt}");
+
+    // Het gram waar dit receipt bij hoort, met de zaak erbij: een receipt dat los
+    // in handen komt, hoort zichzelf te kunnen plaatsen.
+    assert_eq!(receipt["gram"]["cell"], json!("toeslagen"));
+    assert_eq!(receipt["gram"]["chronicle"], json!("beschikkingen"));
+    assert_eq!(receipt["gram"]["index"], json!(0));
+    assert_eq!(
+        receipt["gram"]["zaakkenmerk"],
+        json!("zorgtoeslag/999993653")
+    );
+
+    for sectie in [
+        "provenance",
+        "engine_config",
+        "scope",
+        "execution",
+        "results",
+        "accepted_values",
+        "timestamp",
+    ] {
+        assert!(
+            receipt.get(sectie).is_some(),
+            "sectie '{sectie}' hoort in het receipt te staan: {receipt}"
+        );
+    }
+    assert_eq!(
+        receipt["provenance"]["regulation_id"],
+        json!("wet_op_de_zorgtoeslag")
+    );
+    assert!(
+        receipt["scope"]["loaded_regulations"]
+            .as_array()
+            .expect("loaded_regulations is een lijst")
+            .iter()
+            .all(|regulation| regulation["hash"].is_string()),
+        "elke geladen regeling draagt haar hash: {receipt}"
+    );
+
+    // De geaccepteerde waarde noemt de bron-cel én het bevoegd gezag dat die cel
+    // erbij noemde. Het adres alleen zou niet zeggen wiens vaststelling dit is.
+    let accepted = receipt["accepted_values"]
+        .as_array()
+        .expect("accepted_values is een lijst")
+        .iter()
+        .find(|value| value["output"] == json!("toetsingsinkomen"))
+        .unwrap_or_else(|| panic!("het toetsingsinkomen is geaccepteerd: {receipt}"));
+    assert_eq!(accepted["cell"], json!("belastingdienst"));
+    assert_eq!(accepted["authority"], json!("Belastingdienst"));
+    assert_eq!(accepted["value"], json!(81000));
+    assert_eq!(accepted["zaakkenmerk"], json!("zorgtoeslag/999993653"));
+
+    // De tijdstempel staat er mét het label dat zegt wat voor tijd het is.
+    assert!(receipt["timestamp"]["wall_clock"].is_string(), "{receipt}");
+    assert!(
+        receipt["timestamp"]["note"]
+            .as_str()
+            .is_some_and(|note| note.contains("wandkloktijd")),
+        "{receipt}"
+    );
+}
+
+/// Wijzen naar iets dat geen receipt heeft, is een 404 met de uitleg erin.
+///
+/// Drie keer "bestaat niet": een gram dat nooit een uitvoering was, een
+/// kroniekstroom die de cel niet houdt, en een plek waar niets ligt. Geen van
+/// drieën is een 500 en geen van drieën is een leeg receipt.
+#[tokio::test]
+async fn een_gram_zonder_receipt_is_een_404() {
+    let mut browser = Browser::new().await;
+    browser
+        .post("/api/actions/burger.aanvraag", aanvraag())
+        .await;
+
+    let (status, body) = browser
+        .get("/api/cells/toeslagen/chronicles/aanvragen/grams/0/receipt")
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("receipt")),
+        "{body}"
+    );
+
+    let (status, body) = browser
+        .get("/api/cells/toeslagen/chronicles/bestaat-niet/grams/0/receipt")
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("beschikkingen")),
+        "de melding hoort te noemen welke stromen er wél zijn: {body}"
+    );
+
+    let (status, body) = browser
+        .get("/api/cells/toeslagen/chronicles/beschikkingen/grams/0/receipt")
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("geen gram op plek 0")),
+        "{body}"
+    );
+}
+
 /// Een bron-cel zonder engine antwoordt net zo goed, en "niets vastgesteld" is
 /// een **antwoord** met een reden: 200, en te onderscheiden van een antwoord met
 /// waarden.
