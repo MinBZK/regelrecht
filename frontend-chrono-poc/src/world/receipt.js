@@ -178,6 +178,10 @@ const PATH_SEPARATOR = ' · ';
  * lijst of een leeg object komt er als regel in met wat er is — "geen" — in
  * plaats van te verdwijnen: dat een sectie niets te melden had, is zelf iets om
  * te zien.
+ *
+ * Staat er in zo'n uitgevouwen lijst iets dat géén object is, dan krijgt dat zijn
+ * eigen genummerde regel. Anders zou één losse waarde tussen objecten stil
+ * verdwijnen, en dat is precies wat deze module belooft niet te doen.
  */
 function rows(value, prefix = '') {
   if (!isSection(value)) return [];
@@ -188,7 +192,14 @@ function rows(value, prefix = '') {
       return nested.length > 0 ? nested : [{ name, value: null }];
     }
     if (Array.isArray(entry) && entry.some(isSection)) {
-      return entry.flatMap((item, index) => rows(item, `${name}${PATH_SEPARATOR}${index + 1}`));
+      return entry.flatMap((item, index) => {
+        const numbered = `${name}${PATH_SEPARATOR}${index + 1}`;
+        if (isSection(item)) {
+          const nested = rows(item, numbered);
+          return nested.length > 0 ? nested : [{ name: numbered, value: null }];
+        }
+        return [{ name: numbered, value: item }];
+      });
     }
     return [{ name, value: entry }];
   });

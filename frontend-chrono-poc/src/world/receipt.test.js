@@ -43,6 +43,29 @@ describe('het uitvoeringsreceipt lezen', () => {
     );
   });
 
+  it('laat niets weg uit een lijst waarin objecten en losse waarden door elkaar staan', () => {
+    // De belofte van deze module is "niets weggelaten". Een lijst met een object
+    // én een losse waarde erin zou zonder eigen regel die tweede stil kwijtraken.
+    const receipt = cloneReceipt();
+    receipt.nieuwe_sectie = { tags: [{ id: 1 }, 'extra', null] };
+    const nieuw = receiptSections(receipt).find((section) => section.key === 'nieuwe_sectie');
+    expect(nieuw.rows).toStrictEqual([
+      { name: 'tags · 1 · id', value: 1 },
+      { name: 'tags · 2', value: 'extra' },
+      { name: 'tags · 3', value: null },
+    ]);
+  });
+
+  it('geeft een leeg object in zo’n lijst een eigen regel in plaats van niets', () => {
+    const receipt = cloneReceipt();
+    receipt.nieuwe_sectie = { tags: [{ id: 1 }, {}] };
+    const nieuw = receiptSections(receipt).find((section) => section.key === 'nieuwe_sectie');
+    expect(nieuw.rows).toStrictEqual([
+      { name: 'tags · 1 · id', value: 1 },
+      { name: 'tags · 2', value: null },
+    ]);
+  });
+
   it('haalt de geladen regelingen uit `scope` en laat ze daar niet nog eens staan', () => {
     const loaded = loadedRegulations(receiptFixture);
     expect(loaded).toHaveLength(2);
