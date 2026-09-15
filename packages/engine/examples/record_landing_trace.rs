@@ -157,6 +157,64 @@ fn definition_units(
     units
 }
 
+/// The box-drawing prefix for each step, in the order the steps appear.
+///
+/// The same shapes the engine's own renderer uses, so the page draws the tree
+/// the way a terminal does rather than inventing a second visual language for
+/// it: `╟── ║ ╙──` where a cross-law call opens a scope, `├── │ └──` for the
+/// arithmetic inside one. Indentation alone loses that distinction, and at six
+/// levels deep it stops being readable at all.
+fn tree_prefixes(node: &regelrecht_engine::trace::PathNode, out: &mut Vec<String>) {
+    fn walk(
+        node: &regelrecht_engine::trace::PathNode,
+        cols: &mut Vec<&'static str>,
+        is_last: bool,
+        is_double: bool,
+        is_root: bool,
+        out: &mut Vec<String>,
+    ) {
+        if !is_root {
+            let connector = match (is_double, is_last) {
+                (true, true) => "╙──",
+                (true, false) => "╟──",
+                (false, true) => "└──",
+                (false, false) => "├──",
+            };
+            out.push(format!("{}{connector}", cols.concat()));
+        }
+
+        // A cross-law call opens a scope of its own, drawn with the double
+        // rules; everything else continues the scope it is in.
+        let opens_scope = matches!(
+            node.node_type,
+            regelrecht_engine::PathNodeType::CrossLawReference
+                | regelrecht_engine::PathNodeType::Article
+        );
+
+        if !is_root {
+            cols.push(if is_last {
+                "    "
+            } else if is_double {
+                "║   "
+            } else {
+                "│   "
+            });
+        }
+
+        let last = node.children.len().saturating_sub(1);
+        for (i, child) in node.children.iter().enumerate() {
+            walk(child, cols, i == last, opens_scope, false, out);
+        }
+
+        if !is_root {
+            cols.pop();
+        }
+    }
+
+    let mut cols = Vec::new();
+    walk(node, &mut cols, true, false, true, out);
+}
+
 /// The unit declared by the step that produced this node's value.
 ///
 /// Only accepts a descendant whose result is the same value, so a unit is never
@@ -323,6 +381,13 @@ fn main() {
 
     // The page states how long the real evaluation took and how many steps it
     // really had, so pruning the tree for display never shrinks the claim.
+    // The box-drawing prefix per step, in document order. Computed here because
+    // the shape depends on the whole tree (whether a step is the last of its
+    // siblings, which scope it sits in), which a renderer walking one node at a
+    // time cannot see.
+    let mut prefixes = Vec::new();
+    tree_prefixes(&document.root, &mut prefixes);
+
     let mut json = serde_json::to_value(&document).expect("the trace serializes");
     json["recording"] = serde_json::json!({
         "law": LAW,
@@ -330,6 +395,7 @@ fn main() {
         "date": DATE,
         "total_steps": total_steps,
         "total_duration_us": total_us,
+        "tree": prefixes,
         "scenario": "corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature",
     });
 

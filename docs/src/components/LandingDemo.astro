@@ -105,6 +105,26 @@ const LAW_LABELS: Record<string, { nl: string; en: string }> = {
   wet_inkomstenbelasting_2001: { nl: 'Wet inkomstenbelasting 2001', en: 'Income Tax Act 2001' },
 };
 
+/**
+ * Short tags for the kinds of step, the same vocabulary the terminal view uses.
+ * Kept in the engine's own words rather than translated: this panel is the
+ * machine's account of what it did, and `xlaw` says something `kruisverwijzing`
+ * does not, namely that it is the same token you would grep the trace for.
+ */
+const KINDS: Record<string, string> = {
+  article: 'article',
+  cross_law_reference: 'xlaw',
+  resolve: 'resolve',
+  action: 'action',
+  operation: 'op',
+  open_term_resolution: 'open_term',
+  hook_resolution: 'hook',
+  override_resolution: 'override',
+  requirement: 'req',
+  cached: 'cached',
+};
+const kindLabel = (t: string) => KINDS[t] ?? t;
+
 const humanise = (id: string) => id.replace(/_/g, ' ');
 const label = (id: string) => LABELS[id]?.[lang] ?? humanise(id);
 const lawLabel = (id: string) => LAW_LABELS[id]?.[lang] ?? humanise(id);
@@ -125,12 +145,27 @@ function flatten(node: any, depth: number, out: any[]) {
     article: before ? null : (node.anchor?.article ?? null),
     unit: node.type_spec?.unit ?? null,
     depth,
+    // The address RFC-039 gives the step, its kind, where a resolved value came
+    // from and what it cost. This is a trace, so it may look like one: these
+    // are the things an engineer reads it for.
+    nodeId: node.node_id ?? null,
+    resolve: node.resolve_type ?? null,
+    provider: node.source?.provider ?? null,
+    us: node.duration_us ?? null,
   });
   for (const child of node.children ?? []) flatten(child, depth + 1, out);
 }
 
 const beats: any[] = [];
 for (const child of demo.trace.root.children ?? []) flatten(child, 0, beats);
+
+// The box-drawing prefixes the recorder computed, one per step in this same
+// order. Drawn rather than indented: the shapes distinguish a cross-law scope
+// from the arithmetic inside it, which plain indentation flattens away.
+const tree: string[] = (demo.trace as any).recording?.tree ?? [];
+beats.forEach((b, i) => {
+  b.tree = tree[i] ?? '';
+});
 
 const amount = demo.trace.root.result;
 ---
@@ -240,24 +275,35 @@ const amount = demo.trace.root.result;
             aria-label={t.steps[4].h}
             data-steps-scroll
           >
-          <nldd-list variant="simple" dividers="never" accessible-label={t.steps[4].h}>
+          {/* A trace rendered as a trace: monospace, addressed, indented by the
+              nesting the engine recorded. nldd-list is deliberately not used
+              here (reported to the user): its rows are made for readable
+              records, and this is a machine's own account, where the alignment
+              of the columns is what makes it scannable. */}
+          <ol class="rr-trace">
             {beats.map((b: any, i: number) => (
-              <nldd-list-item
-                size="sm"
-                class="rr-run__step"
-                data-step={i}
-                data-depth={Math.min(b.depth, 6)}
-              >
-                <nldd-text-cell
-                  text={b.name}
-                  supporting-text={b.law ?? (b.article ? `artikel ${b.article}` : '')}
+              <li class="rr-trace__row" data-step={i} data-type={b.type}>
+                <code class="rr-trace__id">{b.nodeId}</code>
+                <span class="rr-trace__kind" data-kind={b.type}>{kindLabel(b.type)}</span>
+                <span class="rr-trace__name">
+                  <span class="rr-trace__tree" aria-hidden="true">{b.tree}</span>
+                  <code>{b.identifier}</code>
+                  {/* Only the law a cross-law call consults. The anchor says
+                      where the engine was, which is this article on nearly
+                      every step, so printing it per row adds nothing but
+                      noise. */}
+                  {b.law && <span class="rr-trace__law">{b.law}</span>}
+                  {b.provider && <span class="rr-trace__src">&larr; {b.provider}</span>}
+                </span>
+                <span
+                  class="rr-trace__value"
+                  data-value={JSON.stringify(b.result)}
+                  data-unit={b.unit ?? ''}
                 />
-                <nldd-text-cell width="fit-content" horizontal-alignment="right">
-                  <span data-value={JSON.stringify(b.result)} data-unit={b.unit ?? ''} />
-                </nldd-text-cell>
-              </nldd-list-item>
+                <span class="rr-trace__us">{b.us != null && b.us > 0 ? `${b.us}µs` : ''}</span>
+              </li>
             ))}
-          </nldd-list>
+          </ol>
           </div>
 
           <nldd-spacer size="16" />
