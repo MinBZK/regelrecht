@@ -1,7 +1,13 @@
 <script setup>
 import { computed } from 'vue';
 import GramRow from './GramRow.vue';
-import { chronicles, gramsInTimeOrder, isNewGram } from '../world/snapshot.js';
+import {
+  besluitDefinitions,
+  chronicles,
+  gramsInTimeOrder,
+  isNewGram,
+  lexostatusDefinitions,
+} from '../world/snapshot.js';
 
 // Eén kolom per cel: wat deze cel laadt, wat ze publiceert, waarover ze kan
 // besluiten, en per kroniek de grammen in tijdsvolgorde.
@@ -71,20 +77,23 @@ function isNew(stream, index) {
       <nldd-container layout="wrap" gap="4">
         <nldd-tag v-for="law in cell.laws ?? []" :key="law" size="sm" color="paars" icon="book" :text="law"></nldd-tag>
         <nldd-tag
-          v-for="name in cell.lexostatussen ?? []"
-          :key="`lexo-${name}`"
+          v-for="definition in lexostatusDefinitions(cell)"
+          :key="`lexo-${definition.name}`"
           size="sm"
           color="hemelblauw"
           icon="radar"
-          :text="name"
+          :text="definition.name"
         ></nldd-tag>
+        <!-- Het zaakkenmerk-sjabloon staat bij het besluit dat het invult: zo is
+             te zien welke vorm de sleutel van de kroniek met beschikkingen
+             heeft, op de plek waar die vorm vandaan komt. -->
         <nldd-tag
-          v-for="name in cell.besluiten ?? []"
-          :key="`besluit-${name}`"
+          v-for="definition in besluitDefinitions(cell)"
+          :key="`besluit-${definition.name}`"
           size="sm"
           color="donkerblauw"
           icon="certificate"
-          :text="name"
+          :text="definition.zaakkenmerk ? `${definition.name} · ${definition.zaakkenmerk}` : definition.name"
         ></nldd-tag>
       </nldd-container>
     </nldd-container>

@@ -138,8 +138,9 @@ pub use scenario::{
 };
 pub use security::{Identity, SecurityContext, Signature, SignedAnswer};
 pub use snapshot::{
-    ActionEffectSnapshot, ActionSnapshot, CellSnapshot, ChronicleSnapshot, CrossingSnapshot,
-    FieldOrigin, FieldSnapshot, GramKind, GramSnapshot, LockedSetting, Snapshot,
+    ActionEffectSnapshot, ActionSnapshot, BesluitDefinitionSnapshot, CellSnapshot,
+    ChronicleKeySnapshot, ChronicleSnapshot, CrossingSnapshot, FieldOrigin, FieldSnapshot,
+    GramKind, GramSnapshot, LexostatusDefinitionSnapshot, LockedSetting, Snapshot,
 };
 pub use transport::{CellTransport, InProcessTransport};
 pub use world::{

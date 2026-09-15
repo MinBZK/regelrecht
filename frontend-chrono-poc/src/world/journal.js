@@ -11,7 +11,7 @@
  * ook niet te proberen.
  */
 import { formatValue } from './format.js';
-import { cells } from './snapshot.js';
+import { cells, describeZaak, gramByRef } from './snapshot.js';
 
 /**
  * De soorten gebeurtenis, met hoe ze eruitzien.
@@ -133,6 +133,7 @@ export function journalRows(snapshot, { previousLength = null, actor = '', cell 
       actor: who,
       kind: journalKind(entry.kind),
       cells: inCells,
+      grams: journalGrams(snapshot, entry),
       isNew: isNewEntry(previousLength, entry),
       // Een vraag hangt onder het besluit dat haar uitlokte; los gelezen is ze een
       // vraag zonder aanleiding.
@@ -140,6 +141,18 @@ export function journalRows(snapshot, { previousLength = null, actor = '', cell 
       matches,
     };
   });
+}
+
+/**
+ * De grammen van één regel, met de zaak waar ze over gaan.
+ *
+ * De regel draagt alleen een **verwijzing** naar een gram, en dat is de bedoeling
+ * — het journaal houdt geen tweede administratie. Het kenmerk komt dus uit het
+ * gram zelf, opgezocht in de kroniek waarin het ligt. Een gram zonder zaak levert
+ * een lege regel op en geen ontbrekend veld.
+ */
+export function journalGrams(snapshot, entry) {
+  return (entry?.grams ?? []).map((ref) => ({ ...ref, zaak: describeZaak(gramByRef(snapshot, ref)) }));
 }
 
 /** De cellen om op te filteren: uit het beeld, ook als er nog niets gebeurde. */

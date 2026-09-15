@@ -10,6 +10,7 @@ import {
   journalActor,
   journalCells,
   journalEntries,
+  journalGrams,
   journalKind,
   journalRows,
 } from './journal.js';
@@ -109,6 +110,20 @@ describe('het journaal lezen', () => {
     expect(regel).toContain('accepteerde toetsingsinkomen');
     expect(regel).toContain('van belastingdienst');
     expect(regel).toContain('vastgesteld');
+  });
+
+  // Het kenmerk komt uit het gram waarnaar de regel wijst: het journaal draagt
+  // alleen een verwijzing, en houdt geen kopie van wat er in een kroniek ligt.
+  it('zet bij een besluit de zaak waar het over ging', () => {
+    const [gram] = journalGrams(worldFixture, besluit);
+    expect(gram.zaak).toBe('zaak zorgtoeslag/999993653');
+    expect(gram.id).toBe(besluit.grams[0].id);
+  });
+
+  it('laat de zaak leeg bij een gram dat er geen draagt', () => {
+    const grams = journalGrams(worldFixture, { grams: [{ id: 'burger|aanvragen|0', name: 'x' }] });
+    expect(grams[0].zaak).toBe('');
+    expect(journalGrams(worldFixture, null)).toStrictEqual([]);
   });
 
   it('geeft het antwoord op een cross-cel-vraag terug, ook als het er geen is', () => {

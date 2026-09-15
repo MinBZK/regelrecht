@@ -5,7 +5,8 @@ import { formatMoment } from '../world/format.js';
 import { allGrams, cells, gramKind } from '../world/snapshot.js';
 
 // Alle grammen van alle cellen in één chronologisch overzicht: moment, cel,
-// kroniek, type, naam, kanaal en grondslag, en per rij het ruwe gram als JSON.
+// kroniek, type, naam (met de zaak eronder als het gram er een draagt), kanaal en
+// grondslag, en per rij het ruwe gram als JSON.
 //
 // De kolommen per cel vertellen wat één cel weet; dit vertelt wat er in de hele
 // wereld ligt, op volgorde van gebeuren. Dat is — net als het observatielog —
@@ -167,7 +168,10 @@ function gramJson(row) {
         <nldd-cell width="132px">
           <nldd-tag size="sm" :color="gramKind(row.kind).color" :text="gramKind(row.kind).label"></nldd-tag>
         </nldd-cell>
-        <nldd-text-cell size="sm" min-width="160px" :text="row.name"></nldd-text-cell>
+        <!-- Bij een besluit staat de zaak onder de naam: dat kenmerk is waaronder
+             de zaak terug te vinden is, en het zegt waar dit gram bij hoort. Een
+             gram zonder zaak draagt hier niets, en dan blijft de rij één regel. -->
+        <nldd-text-cell size="sm" min-width="160px" :text="row.name" :supporting-text="row.zaak"></nldd-text-cell>
         <nldd-text-cell
           size="sm"
           width="120px"

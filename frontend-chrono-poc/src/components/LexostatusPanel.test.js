@@ -1,7 +1,13 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import LexostatusPanel from './LexostatusPanel.vue';
-import { cloneWorld, worldFixture } from '../testing/worldFixture.js';
+import { cloneWorld, fixtureCell, worldFixture } from '../testing/worldFixture.js';
+
+/** De cellen die iets publiceren, in de volgorde waarin het beeld ze geeft. */
+const publishers = worldFixture.cells.filter((cell) => cell.lexostatussen.length > 0);
+/** De cel en de naam waar het paneel uit zichzelf op staat. */
+const firstCell = publishers[0];
+const firstDefinition = firstCell.lexostatussen[0];
 
 const established = {
   cell: 'belastingdienst',
@@ -28,6 +34,14 @@ async function fill(wrapper, element, value) {
   await wrapper.vm.$nextTick();
 }
 
+/** Een keuze maken in de zoveelste dropdown, zoals het ontwerpsysteem dat meldt. */
+async function choose(wrapper, index, value) {
+  const dropdown = wrapper.findAll('nldd-dropdown')[index];
+  dropdown.element.dispatchEvent(new CustomEvent('change', { detail: { value } }));
+  await wrapper.vm.$nextTick();
+  await wrapper.vm.$nextTick();
+}
+
 /** Het formulier versturen en de ronde afwachten. */
 async function submit(wrapper) {
   await wrapper.find('form').trigger('submit');
@@ -39,30 +53,91 @@ describe('een vraag aan een cel', () => {
   it('biedt alleen cellen aan die iets publiceren, met hun eigen namen', () => {
     const { wrapper } = mountPanel(established);
     const selects = wrapper.findAll('select');
-    const publishers = worldFixture.cells.filter((cell) => cell.lexostatussen.length > 0);
     expect(selects[0].findAll('option').map((option) => option.attributes('value'))).toStrictEqual(
       publishers.map((cell) => cell.id),
     );
     expect(selects[1].findAll('option').map((option) => option.attributes('value'))).toStrictEqual(
-      publishers[0].lexostatussen,
+      firstCell.lexostatussen.map((definition) => definition.name),
     );
   });
 
-  it('stelt de vraag met de opgegeven parameters, op de stand van de klok', async () => {
+  // Het formulier komt uit de definitie: de cel accepteert precies deze namen,
+  // dus ze horen niet geraden te worden.
+  it('maakt van elke gedocumenteerde parameter een veld', () => {
+    const { wrapper } = mountPanel(established);
+    expect(wrapper.findAll('nldd-form-field').map((field) => field.attributes('label'))).toStrictEqual([
+      'Cel',
+      'Lexostatus',
+      'Op moment',
+      ...firstDefinition.inputs.map((input) => input.name),
+    ]);
+  });
+
+  it('zet de toelichting van de gekozen definitie erbij', () => {
+    const { wrapper } = mountPanel(established);
+    const dialogs = wrapper.findAll('nldd-inline-dialog');
+    const toelichting = dialogs.find((dialog) => dialog.attributes('text') === firstDefinition.name);
+    expect(toelichting.attributes('supporting-text')).toBe(firstDefinition.doc);
+  });
+
+  // Het zaakkenmerk "ontstaat uit het niets" zolang er nergens staat dat het de
+  // sleutel van een kroniek is en welke vorm het heeft.
+  it('zegt bij de sleutel van een reductie uit welke kroniek ze komt', () => {
+    const { wrapper } = mountPanel(established);
+    const field = wrapper
+      .findAll('nldd-form-field')
+      .find((candidate) => candidate.attributes('label') === firstDefinition.key.parameter);
+    expect(field.attributes('supporting-label')).toBe(`sleutel van kroniek '${firstDefinition.key.chronicle}'`);
+  });
+
+  // En de vorm erbij zodra de besluiten van de cel er een sjabloon voor hebben.
+  it('noemt de vorm van het zaakkenmerk bij de cel die erover besluit', async () => {
+    const { wrapper } = mountPanel(established);
+    const besluitende = worldFixture.cells.find((cell) => cell.besluiten.length > 0);
+    const beschikkingen = besluitende.lexostatussen.find((definition) => definition.key?.chronicle === 'beschikkingen');
+    await choose(wrapper, 0, besluitende.id);
+    await choose(wrapper, 1, beschikkingen.name);
+
+    const field = wrapper
+      .findAll('nldd-form-field')
+      .find((candidate) => candidate.attributes('label') === beschikkingen.key.parameter);
+    expect(field.attributes('supporting-label')).toBe(
+      `sleutel van kroniek 'beschikkingen', vorm '${besluitende.besluiten[0].zaakkenmerk}'`,
+    );
+  });
+
+  // De waarden die er nu liggen, als keuze. Vrije invoer blijft: een vraag over
+  // een zaak die er nog niet is, is een geldige vraag.
+  it('biedt de bekende sleutels van de kroniek aan, met vrije invoer', () => {
+    const { wrapper } = mountPanel(established);
+    const combo = wrapper.find('nldd-combo-box');
+    expect(combo.attributes('allow-custom')).toBeDefined();
+    const chronicle = fixtureCell(firstCell.id).chronicles.find(
+      (candidate) => candidate.stream === firstDefinition.key.chronicle,
+    );
+    const known = [...new Set(chronicle.grams.map((gram) => String(gram.fields[chronicle.key].value)))];
+    expect(wrapper.findAll('nldd-menu-item').map((item) => item.attributes('value'))).toStrictEqual(known);
+  });
+
+  it('stelt de vraag met de ingevulde parameters, op de stand van de klok', async () => {
     const { wrapper, ask } = mountPanel(established);
-    const params = wrapper.findAll('nldd-text-field');
-    params[0].element.dispatchEvent(new CustomEvent('input', { detail: { value: 'bsn' } }));
-    params[1].element.dispatchEvent(new CustomEvent('input', { detail: { value: '999993653' } }));
-    await wrapper.vm.$nextTick();
+    await fill(wrapper, wrapper.find('nldd-combo-box'), 'zorgtoeslag/999993653');
     await submit(wrapper);
 
-    const publishers = worldFixture.cells.filter((cell) => cell.lexostatussen.length > 0);
     expect(ask).toHaveBeenCalledWith(
-      publishers[0].id,
-      publishers[0].lexostatussen[0],
-      { bsn: '999993653' },
+      firstCell.id,
+      firstDefinition.name,
+      { [firstDefinition.key.parameter]: 'zorgtoeslag/999993653' },
       worldFixture.clock,
     );
+  });
+
+  // Een leeg veld gaat niet mee: dan weigert de cel de vraag met "parameter
+  // ontbreekt", en dat is de melding die erbij hoort.
+  it('laat een leeg veld weg in plaats van er een lege tekst van te maken', async () => {
+    const { wrapper, ask } = mountPanel(established);
+    await submit(wrapper);
+    expect(ask).toHaveBeenCalledWith(firstCell.id, firstDefinition.name, {}, worldFixture.clock);
   });
 
   // Het tijdreizen zelf: dezelfde cel, dezelfde naam, een eerder moment. Het
@@ -161,12 +236,15 @@ describe('een vraag aan een cel', () => {
     expect(wrapper.findAll('nldd-list-item')).toHaveLength(0);
   });
 
-  it('laat een parameter toevoegen en weglaten', async () => {
-    const { wrapper } = mountPanel(established);
-    expect(wrapper.findAll('nldd-text-field')).toHaveLength(2);
-    await wrapper.findAll('nldd-button')[1].trigger('click');
-    expect(wrapper.findAll('nldd-text-field')).toHaveLength(4);
-    await wrapper.findAll('nldd-icon-button')[0].trigger('click');
-    expect(wrapper.findAll('nldd-text-field')).toHaveLength(2);
+  // Een andere naam is een ander formulier; wat voor de vorige vraag ingevuld
+  // stond, hoort dan niet stil mee te gaan naar een parameter die anders heet.
+  it('laat een ingevulde waarde los zodra de parameter niet meer bestaat', async () => {
+    const { wrapper, ask } = mountPanel(established);
+    await fill(wrapper, wrapper.find('nldd-combo-box'), 'zorgtoeslag/999993653');
+    const anders = firstCell.lexostatussen.find((definition) => definition.name !== firstDefinition.name);
+    await choose(wrapper, 1, anders.name);
+    await submit(wrapper);
+
+    expect(ask).toHaveBeenCalledWith(firstCell.id, anders.name, {}, worldFixture.clock);
   });
 });

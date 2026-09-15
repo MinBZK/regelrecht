@@ -26,8 +26,9 @@
 //! is — staat er wel, per veld.
 
 use crate::cell::{
-    fixed_fields, Cell, ChronicleEvent, DocumentedParameter, Intake, Lexostatus, ParameterType,
-    Prefill, INPUTS, RECEIPT, REGULATION,
+    fixed_fields, BesluitDefinition, Cell, ChronicleEvent, DocumentedParameter, Intake, Lexostatus,
+    LexostatusDefinition, ParameterType, Prefill, Reduction, BESCHIKKINGEN, INPUTS, RECEIPT,
+    REGULATION,
 };
 use crate::journal::JournalEntry;
 use crate::security::SignedAnswer;
@@ -99,12 +100,75 @@ pub struct CellSnapshot {
     /// Dat is te zien, en dat hoort ook: het is de toets dat het
     /// lexostatus-contract engine-onafhankelijk is.
     pub laws: Vec<String>,
-    /// De namen die deze cel publiceert.
-    pub lexostatussen: Vec<String>,
-    /// De besluiten die deze cel kan nemen.
-    pub besluiten: Vec<String>,
+    /// Wat deze cel publiceert, zoals ze het documenteert.
+    pub lexostatussen: Vec<LexostatusDefinitionSnapshot>,
+    /// De besluiten die deze cel kan nemen, zoals ze ze documenteert.
+    pub besluiten: Vec<BesluitDefinitionSnapshot>,
     /// De kronieken van deze cel, met elk gram dat erin ligt.
     pub chronicles: Vec<ChronicleSnapshot>,
+}
+
+/// Eén gepubliceerde lexostatus, zoals de cel haar documenteert.
+///
+/// Niet het antwoord — dat is [`Lexostatus`] — maar de **belofte** eromheen:
+/// waar de naam over gaat, wat een vrager moet meegeven en wat hij terugkrijgt.
+/// Die belofte staat sinds het optuigen vast, en zonder haar in het beeld moet
+/// een vrager het wereldbestand al kennen om iets te kunnen vragen: hij typt dan
+/// een parameternaam die hij nergens ziet staan.
+#[derive(Debug, Clone, Serialize)]
+pub struct LexostatusDefinitionSnapshot {
+    /// De naam waarmee een consument deze lexostatus opvraagt.
+    pub name: String,
+    /// Waar deze naam over gaat, in de woorden van het wereldbestand.
+    pub doc: Option<String>,
+    /// De parameters die de vraag verlangt, met hun type.
+    ///
+    /// Precies wat de cel accepteert: iets anders of iets erbij wordt geweigerd.
+    pub inputs: Vec<DocumentedParameter>,
+    /// De uitkomsten die het antwoord draagt.
+    pub outputs: Vec<String>,
+    /// De sleutel waarop de reductie groepeert; `None` bij de wetsvorm.
+    pub key: Option<ChronicleKeySnapshot>,
+}
+
+/// Waarop een kroniekfilter groepeert: de stroom en het sleutelveld.
+///
+/// Dit is wat een parameter van "een waarde die u moet weten" tot "de sleutel van
+/// díe kroniek" maakt. Wie de kroniek in het beeld erbij pakt, ziet welke
+/// waarden er nu onder die sleutel liggen — en dan is een vraag te stellen zonder
+/// het wereldbestand ernaast te leggen.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChronicleKeySnapshot {
+    /// De kroniekstroom waarover gefilterd wordt.
+    pub chronicle: String,
+    /// Het sleutelveld, en daarmee de parameter die de waarde aanlevert.
+    ///
+    /// Eén naam voor beide, want dat is de regel die het optuigen afdwingt: het
+    /// veld waarop gezocht wordt, is de gedocumenteerde parameter die het
+    /// aanlevert (zie [`crate::SimulatorError::ChronicleKeyWithoutParameter`]).
+    pub parameter: String,
+}
+
+/// Eén besluit dat een cel kan nemen, zoals ze het documenteert.
+#[derive(Debug, Clone, Serialize)]
+pub struct BesluitDefinitionSnapshot {
+    /// De naam van het besluit.
+    pub name: String,
+    /// Waar dit besluit over gaat, in de woorden van het wereldbestand.
+    pub doc: Option<String>,
+    /// Het zaakkenmerk als **sjabloon**, met `{parameter}`-verwijzingen.
+    ///
+    /// Waaronder de zaak terug te vinden is, en daarmee de vorm van de sleutel
+    /// van de kroniek waarin de decretogrammen landen. Het sjabloon en niet een
+    /// ingevuld kenmerk: dit hoort bij de definitie, en wat eruit volgt staat in
+    /// het gram dat het draagt.
+    pub zaakkenmerk: String,
+    /// De kroniekstroom waarin de decretogrammen van dit besluit landen.
+    ///
+    /// Altijd [`BESCHIKKINGEN`], en juist daarom staat het erbij: een lezer die
+    /// wil weten welke vorm de sleutel van een kroniek heeft, koppelt haar aan de
+    /// besluiten die erin leggen — en hoort die naam niet zelf te hoeven kennen.
+    pub chronicle: String,
 }
 
 /// Eén kroniekstroom met haar grammen.
@@ -374,15 +438,10 @@ fn cell_snapshot(cell: &Cell) -> CellSnapshot {
         id: cell.id().to_string(),
         laws: cell.laws().to_vec(),
         lexostatussen: cell
-            .published_names()
-            .into_iter()
-            .map(str::to_string)
+            .published_definitions()
+            .map(lexostatus_snapshot)
             .collect(),
-        besluiten: cell
-            .besluit_names()
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+        besluiten: cell.besluit_definitions().map(besluit_snapshot).collect(),
         chronicles: cell
             .inspect()
             .into_iter()
@@ -392,6 +451,39 @@ fn cell_snapshot(cell: &Cell) -> CellSnapshot {
                 grams: view.events.iter().map(gram_snapshot).collect(),
             })
             .collect(),
+    }
+}
+
+/// Eén gepubliceerde lexostatus, zoals de cel haar documenteert.
+fn lexostatus_snapshot(definition: &LexostatusDefinition) -> LexostatusDefinitionSnapshot {
+    LexostatusDefinitionSnapshot {
+        name: definition.name.clone(),
+        doc: definition.doc.clone(),
+        inputs: definition.inputs.clone(),
+        outputs: definition
+            .published_outputs()
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        key: match &definition.reduction {
+            // De wetsvorm rekent met een regeling over de eigen feiten; daar is
+            // geen kroniek waarin een vrager een sleutel kan opzoeken.
+            Reduction::Law { .. } => None,
+            Reduction::Chronicle { chronicle, key, .. } => Some(ChronicleKeySnapshot {
+                chronicle: chronicle.clone(),
+                parameter: key.clone(),
+            }),
+        },
+    }
+}
+
+/// Eén besluit, zoals de cel het documenteert.
+fn besluit_snapshot(definition: &BesluitDefinition) -> BesluitDefinitionSnapshot {
+    BesluitDefinitionSnapshot {
+        name: definition.name.clone(),
+        doc: definition.doc.clone(),
+        zaakkenmerk: definition.zaakkenmerk.clone(),
+        chronicle: BESCHIKKINGEN.to_string(),
     }
 }
 

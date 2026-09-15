@@ -1647,6 +1647,8 @@ is het vastgepinde voorbeeld):
 | `clock` | waar de logische klok staat |
 | `settings` + `locked_settings` | wat geldt, en wat vast staat en waardoor |
 | `cells` | per cel haar `laws`, wat ze publiceert, wat ze kan besluiten, en haar kronieken |
+| `cells[].lexostatussen` | per gepubliceerde naam haar `doc`, de parameters met hun type, de uitkomsten, en — bij een kroniekfilter — de `key`: de stroom en het sleutelveld waarop gereduceerd wordt |
+| `cells[].besluiten` | per besluit zijn `doc`, het **zaakkenmerk-sjabloon** en de kroniek waarin de decretogrammen landen |
 | `cells[].chronicles[].grams` | elk gram met zijn soort (`lexogram`/`decretogram`/`executogram`), moment, kanaal, grondslag en velden |
 | `…grams[].fields[].origin` | de herkomst per waarde |
 | `actions` | elke actie met haar formulier, en of ze nu kan |
@@ -1656,6 +1658,16 @@ is het vastgepinde voorbeeld):
 | `journal` | het [journaal](#het-journaal-wie-deed-wat-en-wat-veranderde-er): één regel per gebeurtenis, in volgorde van ontstaan |
 
 Drie dingen om bij stil te staan:
+
+**Wat een cel belooft, staat erbij.** Een consument die een lexostatus vraagt,
+moet precies de gedocumenteerde parameters meegeven; wat die zijn stond tot nu toe
+alleen in het wereldbestand, en een vrager moest het dus al weten om het te kunnen
+vragen. Nu staat het in het beeld: de toelichting, de parameternamen met hun type,
+en of een parameter de **sleutel** van een kroniek is. Wie dat laatste weet, kan de
+kroniek in hetzelfde beeld erbij pakken en zien welke waarden er nu onder die
+sleutel liggen — en het zaakkenmerk-sjabloon bij de besluiten zegt welke *vorm* zo'n
+sleutel heeft. Het blijft een inspectiebeeld: er staat niets in wat niet al bij het
+optuigen vastlag.
 
 **Geen casusnamen.** Er staat geen naam in het contract die bij één casus hoort.
 Elk label komt uit het wereldbestand, dus een andere casus is een ander bestand en
