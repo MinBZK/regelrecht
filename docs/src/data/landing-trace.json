@@ -1,0 +1,557 @@
+{
+  "recording": {
+    "date": "2025-01-01",
+    "law": "wet_op_de_zorgtoeslag",
+    "output": "hoogte_zorgtoeslag",
+    "scenario": "corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature",
+    "total_duration_us": 3021,
+    "total_steps": 133
+  },
+  "root": {
+    "children": [
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 1,
+            "name": "bsn",
+            "node_id": "n0.0",
+            "node_type": "resolve",
+            "resolve_type": "PARAMETER",
+            "result": "999993653"
+          },
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018450",
+              "law": "#wet_naam",
+              "law_id": "zorgverzekeringswet",
+              "url": "https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel2"
+            },
+            "duration_us": 1,
+            "message": "Resolving from SOURCE insurance: ACTIEF",
+            "name": "polis_status",
+            "node_id": "n0.1",
+            "node_type": "resolve",
+            "resolve_type": "DATA_SOURCE",
+            "result": "ACTIEF",
+            "source": {
+              "kind": "DATA_SOURCE",
+              "provider": "insurance"
+            }
+          },
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018450",
+              "law": "#wet_naam",
+              "law_id": "zorgverzekeringswet",
+              "url": "https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel2"
+            },
+            "duration_us": 0,
+            "message": "Resolving from SOURCE insurance: false",
+            "name": "verdragsinschrijving",
+            "node_id": "n0.2",
+            "node_type": "resolve",
+            "resolve_type": "DATA_SOURCE",
+            "result": false,
+            "source": {
+              "kind": "DATA_SOURCE",
+              "provider": "insurance"
+            }
+          },
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018450",
+              "law": "#wet_naam",
+              "law_id": "zorgverzekeringswet",
+              "url": "https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel2"
+            },
+            "duration_us": 49,
+            "message": "Computing is_verzekerd",
+            "name": "is_verzekerd",
+            "node_id": "n0.3",
+            "node_type": "action",
+            "result": true
+          }
+        ],
+        "duration_us": 124,
+        "name": "zorgverzekeringswet#is_verzekerd",
+        "node_id": "n0",
+        "node_type": "cross_law_reference",
+        "result": true
+      },
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 1,
+            "name": "bsn",
+            "node_id": "n1.0",
+            "node_type": "resolve",
+            "resolve_type": "PARAMETER",
+            "result": "999993653"
+          },
+          {
+            "anchor": {
+              "article": "3",
+              "bwb_id": "BWBR0018472",
+              "law": "#wet_naam",
+              "law_id": "algemene_wet_inkomensafhankelijke_regelingen",
+              "url": "https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel3"
+            },
+            "duration_us": 0,
+            "message": "Resolving from SOURCE relationship_data: GEEN",
+            "name": "partnerschap_type",
+            "node_id": "n1.1",
+            "node_type": "resolve",
+            "resolve_type": "DATA_SOURCE",
+            "result": "GEEN",
+            "source": {
+              "kind": "DATA_SOURCE",
+              "provider": "relationship_data"
+            }
+          },
+          {
+            "anchor": {
+              "article": "3",
+              "bwb_id": "BWBR0018472",
+              "law": "#wet_naam",
+              "law_id": "algemene_wet_inkomensafhankelijke_regelingen",
+              "url": "https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel3"
+            },
+            "duration_us": 11,
+            "message": "Computing heeft_toeslagpartner",
+            "name": "heeft_toeslagpartner",
+            "node_id": "n1.2",
+            "node_type": "action",
+            "result": false
+          }
+        ],
+        "duration_us": 51,
+        "name": "algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner",
+        "node_id": "n1",
+        "node_type": "cross_law_reference",
+        "result": false
+      },
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 0,
+            "name": "bsn",
+            "node_id": "n2.0",
+            "node_type": "resolve",
+            "resolve_type": "PARAMETER",
+            "result": "999993653"
+          },
+          {
+            "anchor": {
+              "article": "8",
+              "bwb_id": "BWBR0018472",
+              "law": "#wet_naam",
+              "law_id": "algemene_wet_inkomensafhankelijke_regelingen",
+              "url": "https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8"
+            },
+            "duration_us": 186,
+            "name": "wet_inkomstenbelasting_2001#toetsingsinkomen",
+            "node_id": "n2.1",
+            "node_type": "cross_law_reference",
+            "result": 79547,
+            "type_spec": {
+              "unit": "eurocent"
+            }
+          },
+          {
+            "anchor": {
+              "article": "8",
+              "bwb_id": "BWBR0018472",
+              "law": "#wet_naam",
+              "law_id": "algemene_wet_inkomensafhankelijke_regelingen",
+              "url": "https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8"
+            },
+            "duration_us": 1,
+            "message": "Resolving from SOURCE box1: 0",
+            "name": "buitenlands_inkomen",
+            "node_id": "n2.2",
+            "node_type": "resolve",
+            "resolve_type": "DATA_SOURCE",
+            "result": 0,
+            "source": {
+              "kind": "DATA_SOURCE",
+              "provider": "box1"
+            },
+            "type_spec": {
+              "unit": "eurocent"
+            }
+          },
+          {
+            "anchor": {
+              "article": "8",
+              "bwb_id": "BWBR0018472",
+              "law": "#wet_naam",
+              "law_id": "algemene_wet_inkomensafhankelijke_regelingen",
+              "url": "https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8"
+            },
+            "duration_us": 7,
+            "message": "Computing toetsingsinkomen",
+            "name": "toetsingsinkomen",
+            "node_id": "n2.3",
+            "node_type": "action",
+            "result": 79547,
+            "type_spec": {
+              "unit": "eurocent"
+            }
+          }
+        ],
+        "duration_us": 230,
+        "name": "algemene_wet_inkomensafhankelijke_regelingen#toetsingsinkomen",
+        "node_id": "n2",
+        "node_type": "cross_law_reference",
+        "result": 79547,
+        "type_spec": {
+          "unit": "eurocent"
+        }
+      },
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 28,
+            "message": "Open term 'standaardpremie' implemented by regeling_standaardpremie article 1",
+            "name": "standaardpremie",
+            "node_id": "n3.0",
+            "node_type": "open_term_resolution",
+            "resolve_type": "OPEN_TERM",
+            "result": 211200,
+            "type_spec": {
+              "unit": "eurocent"
+            }
+          },
+          {
+            "anchor": {
+              "article": "4",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel4",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 2,
+            "message": "Computing standaardpremie",
+            "name": "standaardpremie",
+            "node_id": "n3.1",
+            "node_type": "action",
+            "result": 211200,
+            "type_spec": {
+              "unit": "eurocent"
+            }
+          }
+        ],
+        "duration_us": 55,
+        "message": "Internal reference: wet_op_de_zorgtoeslag#standaardpremie",
+        "name": "wet_op_de_zorgtoeslag#standaardpremie",
+        "node_id": "n3",
+        "node_type": "resolve",
+        "resolve_type": "RESOLVED_INPUT",
+        "result": 211200,
+        "type_spec": {
+          "unit": "eurocent"
+        }
+      },
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 69,
+            "name": "wet_inkomstenbelasting_2001#rendementsgrondslag",
+            "node_id": "n4.0",
+            "node_type": "cross_law_reference",
+            "result": 0,
+            "type_spec": {
+              "unit": "eurocent"
+            }
+          },
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 8,
+            "name": "algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner",
+            "node_id": "n4.1",
+            "node_type": "cross_law_reference",
+            "result": false
+          },
+          {
+            "anchor": {
+              "article": "3",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel3",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 21,
+            "message": "Computing vermogen_onder_grens",
+            "name": "vermogen_onder_grens",
+            "node_id": "n4.2",
+            "node_type": "action",
+            "result": true
+          }
+        ],
+        "duration_us": 131,
+        "message": "Internal reference: wet_op_de_zorgtoeslag#vermogen_onder_grens",
+        "name": "wet_op_de_zorgtoeslag#vermogen_onder_grens",
+        "node_id": "n4",
+        "node_type": "resolve",
+        "resolve_type": "RESOLVED_INPUT",
+        "result": true
+      },
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "3:46",
+              "bwb_id": "BWBR0005537",
+              "law": "Algemene wet bestuursrecht",
+              "law_id": "algemene_wet_bestuursrecht",
+              "url": "https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel3:46",
+              "valid_from": "1994-01-01"
+            },
+            "duration_us": 1,
+            "message": "Computing motivering_vereist",
+            "name": "motivering_vereist",
+            "node_id": "n5.0",
+            "node_type": "action",
+            "result": true
+          }
+        ],
+        "duration_us": 19,
+        "message": "Hook PreActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:3:46",
+        "name": "algemene_wet_bestuursrecht:3:46",
+        "node_id": "n5",
+        "node_type": "hook_resolution"
+      },
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 105,
+            "message": "Compute ROUND(...) = 209692",
+            "name": "ROUND",
+            "node_id": "n6.0",
+            "node_type": "operation",
+            "result": 209692
+          }
+        ],
+        "duration_us": 122,
+        "legal_basis": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "explanation": "Het verschil tussen de standaardpremie en de normpremie. Lid 1 verdubbelt de standaardpremie bij een toeslagpartner; de normpremie zelf volgt uit lid 2 en lid 3. Lid 4 (vijftig procent bij een partner die geen verzekerde is) is nog niet gemodelleerd.",
+          "juriconnect": "jci1.3:c:BWBR0018451&artikel=2&lid=1&z=2025-01-01&g=2025-01-01",
+          "law": "Wet op de zorgtoeslag",
+          "paragraph": "1",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2"
+        },
+        "message": "Computing hoogte_zorgtoeslag",
+        "name": "hoogte_zorgtoeslag",
+        "node_id": "n6",
+        "node_type": "action",
+        "result": 209692,
+        "type_spec": {
+          "unit": "eurocent"
+        }
+      },
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "2",
+              "bwb_id": "BWBR0018451",
+              "law": "#wet_naam",
+              "law_id": "wet_op_de_zorgtoeslag",
+              "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+              "valid_from": "2025-01-01"
+            },
+            "duration_us": 13,
+            "message": "Compute AND(...) = True",
+            "name": "AND",
+            "node_id": "n7.0",
+            "node_type": "operation",
+            "result": true
+          }
+        ],
+        "duration_us": 18,
+        "legal_basis": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "explanation": "De aanspraak ontstaat pas als het verschil uit artikel 2 lid 1 positief is. Daarnaast gelden twee voorwaarden van buiten dit lid: verzekerd zijn (artikel 1 onderdeel a) en de vermogenstoets (artikel 3), die als uitsluitingsgrond is geformuleerd.",
+          "juriconnect": "jci1.3:c:BWBR0018451&artikel=2&z=2025-01-01&g=2025-01-01",
+          "law": "Wet op de zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2"
+        },
+        "message": "Computing heeft_recht_op_zorgtoeslag",
+        "name": "heeft_recht_op_zorgtoeslag",
+        "node_id": "n7",
+        "node_type": "action",
+        "result": true
+      },
+      {
+        "anchor": {
+          "article": "2",
+          "bwb_id": "BWBR0018451",
+          "law": "#wet_naam",
+          "law_id": "wet_op_de_zorgtoeslag",
+          "url": "https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2",
+          "valid_from": "2025-01-01"
+        },
+        "children": [
+          {
+            "anchor": {
+              "article": "6:7",
+              "bwb_id": "BWBR0005537",
+              "law": "Algemene wet bestuursrecht",
+              "law_id": "algemene_wet_bestuursrecht",
+              "url": "https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:7",
+              "valid_from": "1994-01-01"
+            },
+            "duration_us": 1,
+            "message": "Computing bezwaartermijn_weken",
+            "name": "bezwaartermijn_weken",
+            "node_id": "n8.0",
+            "node_type": "action",
+            "result": 6
+          }
+        ],
+        "duration_us": 20,
+        "message": "Hook PostActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:6:7",
+        "name": "algemene_wet_bestuursrecht:6:7",
+        "node_id": "n8",
+        "node_type": "hook_resolution"
+      }
+    ],
+    "duration_us": 901,
+    "message": "wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)",
+    "name": "wet_op_de_zorgtoeslag (hoogte_zorgtoeslag)",
+    "node_id": "n",
+    "node_type": "article",
+    "result": 209692,
+    "type_spec": {
+      "unit": "eurocent"
+    }
+  },
+  "trace_version": 1
+}

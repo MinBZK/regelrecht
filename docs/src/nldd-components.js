@@ -8,6 +8,7 @@
 // here on purpose: such a name has to exist, not to be imported.
 //
 // Regenerate: npm run nldd:imports
+import '@nldd/design-system/blockquote';
 import '@nldd/design-system/box';
 import '@nldd/design-system/breadcrumbs';
 import '@nldd/design-system/button';

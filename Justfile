@@ -831,6 +831,16 @@ docs-preview:
 docs-a11y:
     cd docs && npm run a11y
 
+# Re-record the trace the landing page replays (RFC-039).
+#
+# The docs site ships no engine and a full evaluation takes about three
+# milliseconds, far too fast to watch, so the engine runs here and the page
+# replays what it recorded. Run this after changing the zorgtoeslag chain: the
+# recorder refuses to write if the outcome is no longer the amount the scenario
+# beside the law asserts, so the page can never quietly show a different number.
+record-landing-trace:
+    cd packages && cargo run --example record_landing_trace -- ../docs/src/data/landing-trace.json
+
 # --- Architecture model ---
 
 # Generate the code-derived architecture model

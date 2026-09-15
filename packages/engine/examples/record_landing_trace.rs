@@ -247,7 +247,9 @@ fn main() {
         "scenario": "corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/scenarios/eligibility.feature",
     });
 
-    let text = serde_json::to_string_pretty(&json).expect("the document serializes");
+    // Trailing newline: the repository's end-of-file hook adds one otherwise,
+    // and the recording would differ from what it just wrote every time.
+    let text = serde_json::to_string_pretty(&json).expect("the document serializes") + "\n";
     std::fs::write(out_path, text).unwrap_or_else(|e| panic!("could not write {out_path}: {e}"));
 
     eprintln!("{total_steps} steps in {:.2} ms", total_us as f64 / 1000.0);

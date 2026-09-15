@@ -1,0 +1,273 @@
+---
+/*
+ * The scrollytelling demo: one law, five representations, revealed one by one
+ * as the visitor scrolls.
+ *
+ * Everything here is read from the repository at build time (see
+ * ~/lib/landing-demo). The trace is a recording of the scenario that sits
+ * beside the law and that CI runs on every push, so the amount on this page is
+ * the amount a failing test would catch.
+ *
+ * No framework: the docs site ships no UI-framework integration, so this is
+ * plain custom elements plus an IntersectionObserver. Without JS every panel is
+ * simply visible, which is the whole content in reading order.
+ */
+import { demo } from '~/lib/landing-demo';
+
+interface Props {
+  lang: 'nl' | 'en';
+}
+const { lang } = Astro.props;
+
+const nl = {
+  title: 'Eén wet, vijf gedaanten',
+  lede: 'Scroll door een echte uitvoering van de Wet op de zorgtoeslag. Elk blok hieronder komt rechtstreeks uit deze repository; niets is nagemaakt voor de demo.',
+  steps: [
+    { tag: 'Wettekst', h: 'Wat de wet zegt', p: 'Artikel 2, eerste lid. De tekst die iedereen kan opzoeken.' },
+    { tag: 'Machineleesbaar', h: 'Wat de machine leest', p: 'Dezelfde regel, uitvoerbaar. De verwijzing naar het lid staat erbij, dus een uitkomst kan later zeggen waar ze vandaan komt.' },
+    { tag: 'Toelichting', h: 'Waarom het er zo staat', p: 'De wetgever aan het woord, letterlijk uit de memorie van toelichting.' },
+    { tag: 'Scenario', h: 'Hoe we het controleren', p: 'Een scenario naast de wet. Deze draait bij elke wijziging; gaat hij om, dan is de wet veranderd.' },
+    { tag: 'Uitvoering', h: 'De engine rekent', p: 'Precies dat scenario, echt uitgevoerd.' },
+  ],
+  runLabel: 'Uitvoeren',
+  running: 'Bezig met uitvoeren',
+  done: 'Klaar',
+  resultLabel: 'Zorgtoeslag per jaar',
+  factsPre: 'Werkelijk uitgevoerd:',
+  factsPost: (s: number, ms: string) => `${s} stappen in ${ms} ms, over zes wetten.`,
+  replay: 'Opnieuw afspelen',
+  slider: 'Sleep of scroll om de wettekst en de machineleesbare regel over elkaar te schuiven.',
+  sliderLeft: 'Wettekst',
+  sliderRight: 'Machineleesbaar',
+  sourceLaw: 'Bron: wetten.overheid.nl',
+  sourceScenario: 'Dit scenario in de repository',
+};
+
+const en = {
+  title: 'One law, five forms',
+  lede: 'Scroll through a real execution of the Dutch Healthcare Allowance Act. Every block below comes straight from this repository; nothing is mocked up for the demo.',
+  steps: [
+    { tag: 'Statute', h: 'What the law says', p: 'Article 2, first paragraph. The text anyone can look up.' },
+    { tag: 'Machine-readable', h: 'What the machine reads', p: 'The same rule, executable. It carries the citation, so a result can say later where it came from.' },
+    { tag: 'Memorandum', h: 'Why it reads that way', p: 'The legislature in its own words, quoted from the explanatory memorandum.' },
+    { tag: 'Scenario', h: 'How we check it', p: 'A scenario beside the law. It runs on every change; if it breaks, the law moved.' },
+    { tag: 'Execution', h: 'The engine runs', p: 'That very scenario, actually executed.' },
+  ],
+  runLabel: 'Run',
+  running: 'Running',
+  done: 'Done',
+  resultLabel: 'Allowance per year',
+  factsPre: 'Actually executed:',
+  factsPost: (s: number, ms: string) => `${s} steps in ${ms} ms, across six laws.`,
+  replay: 'Replay',
+  slider: 'Drag or scroll to wipe between the statute and the machine-readable rule.',
+  sliderLeft: 'Statute',
+  sliderRight: 'Machine-readable',
+  sourceLaw: 'Source: wetten.overheid.nl',
+  sourceScenario: 'This scenario in the repository',
+};
+
+const t = lang === 'en' ? en : nl;
+const ms = demo.durationMs.toFixed(2).replace('.', lang === 'en' ? '.' : ',');
+
+// The beats the replay walks through, as recorded. `result` is whatever the
+// engine produced; the renderer decides how to show it, never what it is.
+//
+// A cross-law step is named `other_law#output`, and its anchor says where the
+// engine was when it made the call, which is this law's article 2 every time.
+// Showing that anchor on every row would repeat one fact nine times and read
+// as though every value came from article 2. The law being consulted is the
+// half before the `#`, so that is what the row names; the plain article
+// reference is left to the steps that have no other law to name.
+// Readable names for the landing page. The trace keeps the identifiers the
+// law file uses, which is what makes a step traceable, but a visitor reading
+// `heeft_recht_op_zorgtoeslag` is reading a variable name. The identifier stays
+// underneath, so the page shows the human sentence and the thing it came from.
+// A step with no entry here falls back to its identifier with the underscores
+// opened up, which is still better than nothing and never wrong.
+const LABELS: Record<string, { nl: string; en: string }> = {
+  is_verzekerd: { nl: 'Is verzekerd voor de Zvw', en: 'Insured under the Zvw' },
+  heeft_toeslagpartner: { nl: 'Heeft een toeslagpartner', en: 'Has an allowance partner' },
+  toetsingsinkomen: { nl: 'Toetsingsinkomen', en: 'Assessment income' },
+  standaardpremie: { nl: 'Standaardpremie', en: 'Standard premium' },
+  vermogen_onder_grens: { nl: 'Vermogen onder de grens', en: 'Assets below the threshold' },
+  hoogte_zorgtoeslag: { nl: 'Hoogte van de zorgtoeslag', en: 'Amount of the allowance' },
+  heeft_recht_op_zorgtoeslag: { nl: 'Heeft recht op zorgtoeslag', en: 'Entitled to the allowance' },
+};
+
+const LAW_LABELS: Record<string, { nl: string; en: string }> = {
+  zorgverzekeringswet: { nl: 'Zorgverzekeringswet', en: 'Health Insurance Act' },
+  wet_op_de_zorgtoeslag: { nl: 'Wet op de zorgtoeslag', en: 'Healthcare Allowance Act' },
+  algemene_wet_inkomensafhankelijke_regelingen: {
+    nl: 'Awir',
+    en: 'Awir (income-related schemes)',
+  },
+  wet_inkomstenbelasting_2001: { nl: 'Wet inkomstenbelasting 2001', en: 'Income Tax Act 2001' },
+};
+
+const humanise = (id: string) => id.replace(/_/g, ' ');
+const label = (id: string) => LABELS[id]?.[lang] ?? humanise(id);
+const lawLabel = (id: string) => LAW_LABELS[id]?.[lang] ?? humanise(id);
+
+const beats = demo.trace.root.children
+  // The Awb hooks are real steps and stay in the recording; they are left out
+  // of this list because they produce no value, and a row with a name and an
+  // empty column reads as something that failed rather than as procedural law
+  // being consulted. The step count underneath still counts them.
+  .filter((c: any) => c.result !== null && c.result !== undefined)
+  .map((c: any) => {
+  const [before, output] = c.name.includes('#') ? c.name.split('#') : [null, c.name];
+  return {
+    name: label(output),
+    identifier: output,
+    law: before ? lawLabel(before) : null,
+    type: c.node_type,
+    result: c.result,
+    article: before ? null : (c.anchor?.article ?? null),
+    unit: c.type_spec?.unit ?? null,
+  };
+});
+
+const amount = demo.trace.root.result;
+---
+
+<nldd-simple-section
+  id="demo"
+  background="tinted"
+  sm-padding-block="32"
+  md-padding-block="64"
+  lg-padding-block="96"
+>
+  <nldd-title size="2">
+    <h2>{t.title}</h2>
+  </nldd-title>
+  <nldd-spacer size="8" />
+  <nldd-rich-text>
+    <p>{t.lede}</p>
+  </nldd-rich-text>
+  <nldd-spacer size="32" />
+
+  <rr-scrolly class="rr-scrolly" data-amount={String(amount)} data-lang={lang}>
+    {/* 1 + 2: the wipe between prose and YAML */}
+    <article class="rr-beat" data-beat="0">
+      <p class="rr-beat__tag">{t.steps[0].tag} &rarr; {t.steps[1].tag}</p>
+      <nldd-title size="3"><h3>{t.steps[0].h}</h3></nldd-title>
+      <nldd-rich-text><p>{t.steps[0].p}</p></nldd-rich-text>
+      <nldd-spacer size="16" />
+
+      <div class="rr-wipe" data-wipe>
+        {/* nldd-code-viewer brings the syntax highlighting, the copy button,
+            its own keyboard-reachable scroll region and the theme handling.
+            `wrap` matters here: without it the YAML scrolls sideways under the
+            wipe, and a line that is half-covered must not reflow. */}
+        <div class="rr-wipe__pane rr-wipe__pane--under">
+          <nldd-code-viewer language="yaml" variant="simple" wrap>{demo.yaml}</nldd-code-viewer>
+        </div>
+        <div class="rr-wipe__pane rr-wipe__pane--over" data-wipe-over>
+          <div class="rr-wipe__prose">
+            <nldd-blockquote cite={demo.lawUrl}>
+              <p>{demo.prose}</p>
+              <span slot="attribution">
+                <a href={demo.lawUrl} rel="noreferrer">{t.sourceLaw}</a>
+              </span>
+            </nldd-blockquote>
+          </div>
+        </div>
+        {/* The range input IS the handle: it sits on the divider rather than
+            in a bar of its own, so the thing you grab is the edge you move.
+            Keeping a real <input type="range"> means the keyboard, the arrow
+            keys and assistive technology all work without being rebuilt. */}
+        <input
+          class="rr-wipe__handle"
+          type="range"
+          min="0"
+          max="100"
+          value="100"
+          step="1"
+          aria-label={t.slider}
+          data-wipe-input
+        />
+      </div>
+      <p class="rr-wipe__legend">
+        <span>{t.sliderLeft}</span><span>{t.sliderRight}</span>
+      </p>
+    </article>
+
+    {/* 3: the memorandum */}
+    <article class="rr-beat" data-beat="1">
+      <p class="rr-beat__tag">{t.steps[2].tag}</p>
+      <nldd-title size="3"><h3>{t.steps[2].h}</h3></nldd-title>
+      <nldd-rich-text><p>{t.steps[2].p}</p></nldd-rich-text>
+      <nldd-spacer size="16" />
+      <nldd-blockquote>
+        <p>{demo.memorandum}</p>
+        <span slot="attribution">Kamerstukken II 2004/05, 29 762, nr. 3</span>
+      </nldd-blockquote>
+    </article>
+
+    {/* 4: the scenario */}
+    <article class="rr-beat" data-beat="2">
+      <p class="rr-beat__tag">{t.steps[3].tag}</p>
+      <nldd-title size="3"><h3>{t.steps[3].h}</h3></nldd-title>
+      <nldd-rich-text><p>{t.steps[3].p}</p></nldd-rich-text>
+      <nldd-spacer size="16" />
+      {/* Gherkin is one of the languages the viewer highlights. No `wrap`:
+          the data tables are aligned on their pipes and reflowing them would
+          destroy the alignment, so this one scrolls sideways instead. */}
+      <nldd-code-viewer language="gherkin" variant="box-base">{demo.gherkin}</nldd-code-viewer>
+      <p class="rr-beat__source"><code>{demo.scenarioPath}</code></p>
+    </article>
+
+    {/* 5: the run */}
+    <article class="rr-beat" data-beat="3">
+      <p class="rr-beat__tag">{t.steps[4].tag}</p>
+      <nldd-title size="3"><h3>{t.steps[4].h}</h3></nldd-title>
+      <nldd-rich-text><p>{t.steps[4].p}</p></nldd-rich-text>
+      <nldd-spacer size="16" />
+
+      <nldd-card background="base" accessible-label={t.steps[4].h}>
+        <div class="rr-run" data-run>
+          <p class="rr-run__status" data-run-status aria-live="polite">{t.runLabel}</p>
+
+          <nldd-list variant="simple" dividers="always" accessible-label={t.steps[4].h}>
+            {beats.map((b: any, i: number) => (
+              <nldd-list-item size="sm" class="rr-run__step" data-step={i}>
+                <nldd-text-cell
+                  text={b.name}
+                  supporting-text={b.law ?? (b.article ? `artikel ${b.article}` : '')}
+                />
+                <nldd-text-cell width="fit-content" horizontal-alignment="right">
+                  <span data-value={JSON.stringify(b.result)} data-unit={b.unit ?? ''} />
+                </nldd-text-cell>
+              </nldd-list-item>
+            ))}
+          </nldd-list>
+
+          <nldd-spacer size="16" />
+
+          <p class="rr-run__result">
+            <span>{t.resultLabel}</span>
+            <output class="rr-run__amount" data-amount-out></output>
+          </p>
+          <nldd-rich-text>
+            <p class="rr-run__facts">{t.factsPre} {t.factsPost(demo.steps, ms)}</p>
+          </nldd-rich-text>
+          <nldd-spacer size="8" />
+          {/* `text` rather than slotted content: the default slot is not the
+              label slot, so plain text between the tags renders nothing. */}
+          <nldd-button
+            variant="secondary"
+            size="sm"
+            text={t.replay}
+            data-replay
+            hidden
+          />
+        </div>
+      </nldd-card>
+    </article>
+  </rr-scrolly>
+</nldd-simple-section>
+
+<script>
+  import '~/scripts/landing-demo.ts';
+</script>
