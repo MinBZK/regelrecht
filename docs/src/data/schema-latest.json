@@ -53,7 +53,7 @@
         "PROVINCIALE_VERORDENING",
         "WATERSCHAPS_VERORDENING"
       ],
-      "description": "Type of legal instrument (regelgevingslaag). It fixes where the regulation sits in the hierarchy, and with it which identifier the file must carry and which regulations may delegate to or override it.",
+      "description": "Type of legal instrument (regelgevingslaag). It fixes which identifier the file must carry, and it ranks candidates when several regulations implement the same open term. Which layer may implement a term is set by that term's `delegation_type`, not by this field alone.",
       "examples": [
         "WET",
         "GEMEENTELIJKE_VERORDENING"
@@ -453,7 +453,7 @@
         },
         "type": {
           "type": "string",
-          "description": "Value type. `amount` is a number carrying money; the unit it is counted in is declared in `type_spec`, never assumed.",
+          "description": "Value type. What an `amount` is counted in is declared separately, in `type_spec.unit`; units are opt-in per law, and an un-annotated value has unit `unknown` and is never checked (RFC-023).",
           "enum": [
             "string",
             "number",
@@ -512,7 +512,7 @@
         },
         "temporal": {
           "type": "object",
-          "description": "How the value relates to time: whether it is measured at a moment or over a period, and which date it is anchored to. What a law means by 'inkomen' depends on the period it is counted over.",
+          "description": "How the value relates to time: whether it is measured at a moment or over a period, and which date it is anchored to (RFC-001). Declared in the schema but not yet read by the engine, and unused in the corpus.",
           "required": [
             "type"
           ],
@@ -913,7 +913,7 @@
         },
         "default": {
           "$ref": "#/definitions/operationValue",
-          "description": "Value when no case matches. Without it an IF over unmatched input yields no value rather than a zero."
+          "description": "Value when no case matches. Without it, an IF whose cases all fail evaluates to null (absence, RFC-036), so the validator refuses a defaultless IF on an output that is not `nullable`. A case whose condition is unknown takes neither its branch nor the default."
         },
         "legal_basis": {
           "$ref": "#/definitions/legalBasis",
@@ -1315,7 +1315,7 @@
       ]
     },
     "operation": {
-      "description": "An executable operation that computes a value. Operations nest: any operand may itself be an operation, which is how one action expresses a whole calculation rather than a single step.",
+      "description": "An executable operation that computes a value. Operations nest: any operand may itself be an operation.",
       "oneOf": [
         {
           "$ref": "#/definitions/arithmeticOperation"
@@ -1396,7 +1396,7 @@
         },
         "value": {
           "$ref": "#/definitions/operationValue",
-          "description": "A literal value for this output, used where the law states an amount or a term outright. Mutually exclusive with `operation`."
+          "description": "A literal value for this output, used where the law states an amount or a term outright. When the action also carries an `operation`, that operation wins and this field is read as one of its operands."
         },
         "operation": {
           "$ref": "#/definitions/operationType",
@@ -1417,7 +1417,7 @@
         },
         "resolve": {
           "type": "object",
-          "description": "Delegation resolution - resolve value from an implementing regulation.",
+          "description": "Look up the value in whichever regulation implements it. Accepted by the schema, but the Rust law-model has no field for it and drops it on load; no law in the corpus uses it.",
           "properties": {
             "type": {
               "type": "string",
@@ -1436,7 +1436,7 @@
         },
         "legal_basis": {
           "$ref": "#/definitions/legalBasis",
-          "description": "The article this particular step rests on. Set it where one action combines rules from several provisions and the operands come from different articles, so a trace can name the provision behind each step."
+          "description": "The provision this action rests on. Accepted by the schema, but the Rust law-model has no field for it and drops it on load, so it does not reach a trace today."
         }
       },
       "additionalProperties": false,
@@ -1496,7 +1496,7 @@
         "juriconnect": {
           "type": "string",
           "pattern": "^jci1\\.3:c:BWBR[0-9]{7}(&[a-zA-Z_]+=.+)*$",
-          "description": "Juriconnect BWB 1.3 reference, the standard machine-readable citation for Dutch law, which resolves to the exact provision at a given date."
+          "description": "Juriconnect BWB 1.3 reference. Optionally pinned to a date with the `z=`/`g=` parameters; most references in the corpus carry them, and the pattern does not require them."
         },
         "explanation": {
           "type": "string",
@@ -1527,7 +1527,7 @@
           ]
         },
         "competent_authority": {
-          "description": "Bevoegd gezag: the authority whose execution of this article produces a binding decision. The same calculation run by another body is informative, not a besluit.",
+          "description": "Bevoegd gezag: the authority whose execution of this article produces a binding decision. Another body may run the same calculation and get the same number, but its result carries no legal force (RFC-009). Annotation only: the engine computes the same either way.",
           "oneOf": [
             {
               "type": "string",
@@ -1862,7 +1862,7 @@
                     "ANDERE_HANDELING",
                     "AANSLAG"
                   ],
-                  "description": "The kind of decision this output is, within its legal character: a grant, a refusal, an assessment, or none at all."
+                  "description": "The kind of decision this output is, within its legal character. `GEEN_BESLUIT` is the value for an article that establishes a fact rather than deciding anything."
                 },
                 "procedure_id": {
                   "type": "string",
@@ -1967,7 +1967,7 @@
             "properties": {
               "law": {
                 "type": "string",
-                "description": "The `$id` of the law whose output is being replaced. The overriding article wins for that output, which is lex specialis written down."
+                "description": "The `$id` of the law whose output is being replaced: lex specialis written down. The override fires only when the overriding law is the law being executed, so with no such context it does not apply. The engine does not check that the override is legally valid (RFC-007)."
               },
               "article": {
                 "type": "string",
@@ -2010,7 +2010,7 @@
               },
               "suggestion": {
                 "type": "string",
-                "description": "The operation or schema feature that would close the gap. This is what makes the entry actionable: it points at what to build next, and several past entries named operations the engine has since gained."
+                "description": "The operation or schema feature that would close the gap. This is what makes the entry actionable: it points at what to build next. Twice now an entry here named an operation the engine went on to gain, rounding (RFC-024) and FOREACH (RFC-016)."
               },
               "legal_text_excerpt": {
                 "type": "string",
