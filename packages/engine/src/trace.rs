@@ -30,6 +30,7 @@
 //! ```
 
 use crate::types::{PathNodeType, ResolveType, TypeSpec, Value};
+use regelrecht_law_model::{Article, ArticleBasedLaw};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -196,6 +197,27 @@ impl LegalAnchor {
     /// the node rather than serialized as an empty object.
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// Where the engine is: the provision it is evaluating (RFC-039).
+    ///
+    /// Reports only what the law header and the article state. `paragraph` and
+    /// `sentence` stay absent, because an article is the finest the engine
+    /// genuinely knows; guessing a lid from an operation's position would be a
+    /// citation the engine cannot support. The article's `url` is the link to
+    /// the official text, which is what makes a step clickable through to
+    /// wetten.overheid.nl.
+    pub fn from_article(law: &ArticleBasedLaw, article: &Article) -> Self {
+        Self {
+            law_id: Some(law.id.clone()),
+            law: law.name.clone(),
+            law_uuid: law.uuid.clone(),
+            bwb_id: law.bwb_id.clone(),
+            article: Some(article.number.clone()),
+            url: article.url.clone(),
+            valid_from: law.valid_from.clone(),
+            ..Self::default()
+        }
     }
 }
 

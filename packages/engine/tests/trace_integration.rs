@@ -248,3 +248,77 @@ fn test_simple_law_trace() {
         expected
     );
 }
+
+/// Every step of a real cross-law evaluation names the provision it came from,
+/// and a step inside another law names *that* law (RFC-039).
+///
+/// This is the claim the RFC rests on, so it is asserted against the zorgtoeslag
+/// chain rather than a synthetic tree: the anchor has to survive a cross-law
+/// hop and come back, which is where a naive implementation loses it.
+#[test]
+fn every_step_is_anchored_to_the_provision_it_came_from() {
+    let service = setup_zorgtoeslag_service();
+
+    let mut params = BTreeMap::new();
+    params.insert("bsn".to_string(), Value::String("999993653".to_string()));
+
+    let result = service
+        .evaluate_law_output_with_trace(
+            "wet_op_de_zorgtoeslag",
+            "hoogte_zorgtoeslag",
+            params,
+            "2025-01-01",
+        )
+        .expect("Law evaluation should succeed");
+    let root = result.trace.expect("traced evaluation produces a trace");
+
+    fn walk<'a>(
+        node: &'a regelrecht_engine::trace::PathNode,
+        out: &mut Vec<&'a regelrecht_engine::trace::PathNode>,
+    ) {
+        out.push(node);
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    let mut nodes = Vec::new();
+    walk(&root, &mut nodes);
+
+    // The root is pushed before any article is selected, so it is the one step
+    // that legitimately has no provision yet. Everything under it has one.
+    let unanchored: Vec<&str> = nodes
+        .iter()
+        .skip(1)
+        .filter(|n| n.anchor.is_none())
+        .map(|n| n.name.as_str())
+        .collect();
+    assert!(
+        unanchored.is_empty(),
+        "steps without an anchor: {unanchored:?}"
+    );
+
+    // An anchor names a law and an article, and the article is the one the
+    // engine was in, not the one the caller started from.
+    let laws: std::collections::BTreeSet<&str> = nodes
+        .iter()
+        .filter_map(|n| n.anchor.as_ref()?.law_id.as_deref())
+        .collect();
+    assert!(
+        laws.contains("wet_op_de_zorgtoeslag"),
+        "the calling law should appear: {laws:?}"
+    );
+    assert!(
+        laws.len() > 1,
+        "a cross-law chain should anchor steps in more than one law, got {laws:?}"
+    );
+
+    // The anchor carries what makes a step clickable through to the statute.
+    let with_article = nodes
+        .iter()
+        .filter(|n| n.anchor.as_ref().is_some_and(|a| a.article.is_some()))
+        .count();
+    assert!(
+        with_article > 0,
+        "at least one step should name its article number"
+    );
+}

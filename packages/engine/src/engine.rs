@@ -23,7 +23,7 @@ use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
-use crate::trace::{PathNode, TraceBuilder};
+use crate::trace::{LegalAnchor, PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -215,6 +215,10 @@ impl<'a> ArticleEngine<'a> {
         // Attach trace builder if provided
         if let Some(ref tb) = trace {
             context.set_trace(Rc::clone(tb));
+            // This is where the engine knows both the law and the article, so
+            // it is where the provision gets attached. Every step the rules
+            // push from here carries it (RFC-039).
+            context.set_anchor(LegalAnchor::from_article(self.law, self.article));
         }
 
         // Set definitions from article

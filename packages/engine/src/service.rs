@@ -34,7 +34,7 @@ use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::{RuleResolver, SelectionReason};
-use crate::trace::TraceBuilder;
+use crate::trace::{LegalAnchor, TraceBuilder};
 use crate::types::{
     Connectivity, LegalStatus, MissingKind, PathNodeType, RegulatoryLayer, ResolveType,
     UntranslatableMode, Value,
@@ -102,6 +102,12 @@ struct ResolutionContext<'a> {
     /// The law that initiated the current execution chain (for override scoping).
     /// Overrides only apply when declared by this law.
     contextual_law_id: Option<String>,
+    /// Where the engine is right now: the innermost provision being evaluated
+    /// (RFC-039). Every trace step pushed while this is set inherits it as its
+    /// `anchor`, so a step can name its article without each push site having
+    /// to know one. Independent of `legal_basis`, which is what the law
+    /// document cites rather than where the engine was.
+    anchor: Option<LegalAnchor>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -143,6 +149,7 @@ impl<'a> ResolutionContext<'a> {
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
+            anchor: None,
         })
     }
 
@@ -175,10 +182,26 @@ impl<'a> ResolutionContext<'a> {
         self.visited.contains(key)
     }
 
+    /// Enter a provision, returning the previous one so the caller can restore
+    /// it. Cross-law evaluation nests, so this is a stack discipline rather
+    /// than an assignment (RFC-039).
+    fn enter_anchor(&mut self, anchor: Option<LegalAnchor>) -> Option<LegalAnchor> {
+        std::mem::replace(&mut self.anchor, anchor)
+    }
+
     /// Push a new trace node. No-op if tracing is disabled.
+    ///
+    /// Every step pushed here inherits the provision the engine is currently
+    /// in as its `anchor` (RFC-039), which is why no push site has to know an
+    /// article: a bare arithmetic step inside an article carries that article
+    /// just as a resolve does.
     fn trace_push(&self, name: impl Into<String>, node_type: PathNodeType) {
         if let Some(ref tb) = self.trace {
-            tb.borrow_mut().push(name, node_type);
+            let mut tb = tb.borrow_mut();
+            tb.push(name, node_type);
+            if let Some(ref anchor) = self.anchor {
+                tb.set_anchor(anchor.clone());
+            }
         }
     }
 
@@ -1217,6 +1240,12 @@ impl LawExecutionService {
         // Clone parameters for cache storage before moving into evaluation
         let params_for_cache = parameters.clone();
 
+        // From here the engine is inside this provision, so every trace step it
+        // pushes carries it (RFC-039). Restored afterwards rather than cleared:
+        // a cross-law reference returns to the article that made it, and
+        // clearing would leave the caller's remaining steps unanchored.
+        let outer_anchor = res_ctx.enter_anchor(Some(LegalAnchor::from_article(law, article)));
+
         // Execute with service provider (default stage BESLUIT for cross-law calls)
         let result = self.evaluate_article_with_service(
             article,
@@ -1225,7 +1254,9 @@ impl LawExecutionService {
             Some(output_name),
             "BESLUIT",
             res_ctx,
-        )?;
+        );
+        res_ctx.enter_anchor(outer_anchor);
+        let result = result?;
 
         // --- Cache store (only on success) ---
         // Note: on a hash collision (astronomically unlikely, ~1e-18 per pair),
@@ -1647,6 +1678,11 @@ impl LawExecutionService {
         // Attach trace builder if available
         if let Some(ref tb) = res_ctx.trace {
             context.set_trace(Rc::clone(tb));
+            // Same provision as the resolution context is entering, set here
+            // too: the input-resolution steps this context pushes (a parameter
+            // handed to a cross-law call, say) belong to the article making the
+            // call, not to the one being called (RFC-039).
+            context.set_anchor(LegalAnchor::from_article(law, article));
         }
 
         // Set definitions from article

@@ -34,7 +34,7 @@ use crate::article::{ActionValue, CombineOp, Definition};
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
-use crate::trace::TraceBuilder;
+use crate::trace::{LegalAnchor, TraceBuilder};
 use crate::types::{MissingKind, PathNodeType, ResolveType, Value};
 use chrono::{Datelike, NaiveDate};
 use std::cell::RefCell;
@@ -85,6 +85,12 @@ pub struct RuleContext {
     /// did not pass. A reference to one resolves to an Unknown for lack of that
     /// parameter, not to a `VariableNotFound` (RFC-036).
     unpassed_optional: Rc<BTreeSet<String>>,
+
+    /// The provision whose rules this context executes (RFC-039). Every trace
+    /// step pushed from here inherits it, which is what gives an arithmetic
+    /// step an article: the operation evaluator knows no law, but the context
+    /// it resolves against does.
+    anchor: Option<LegalAnchor>,
 }
 
 impl RuleContext {
@@ -110,6 +116,7 @@ impl RuleContext {
             trace: None,
             law_id: Rc::from(""),
             unpassed_optional: Rc::new(BTreeSet::new()),
+            anchor: None,
         })
     }
 
@@ -237,6 +244,7 @@ impl RuleContext {
             trace: self.trace.clone(), // Share the same trace builder
             law_id: Rc::clone(&self.law_id),
             unpassed_optional: Rc::clone(&self.unpassed_optional),
+            anchor: None,
         }
     }
 
@@ -254,10 +262,23 @@ impl RuleContext {
         self.trace.as_ref()
     }
 
+    /// The provision whose rules this context executes (RFC-039).
+    pub fn set_anchor(&mut self, anchor: LegalAnchor) {
+        self.anchor = Some(anchor);
+    }
+
     /// Push a new node onto the trace stack. No-op if trace is None.
+    ///
+    /// Stamps the provision this context is executing (RFC-039), so a bare
+    /// `ADD` inside an article names that article without the operation
+    /// evaluator having to know one.
     pub fn trace_push(&self, name: &str, node_type: PathNodeType) {
         if let Some(ref trace) = self.trace {
-            trace.borrow_mut().push(name, node_type);
+            let mut tb = trace.borrow_mut();
+            tb.push(name, node_type);
+            if let Some(ref anchor) = self.anchor {
+                tb.set_anchor(anchor.clone());
+            }
         }
     }
 
