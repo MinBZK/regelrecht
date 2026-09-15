@@ -85,13 +85,29 @@ export function listTarieven(yamlText) {
  * Controleer één veldwaarde tegen de vorm die de simulatie verwacht.
  * Geeft een foutmelding terug, of null als het veld in orde is.
  */
+/**
+ * Is dit een getal, of iets dat als getal bedoeld is?
+ *
+ * `Number()` alleen is hier niet genoeg: `Number(null)`, `Number('')`,
+ * `Number('  ')` en `Number([])` geven allemaal 0, en `Number(true)` geeft 1.
+ * `Number.isFinite` laat die dus door. Een assistent die "haal de minuten weg"
+ * bedoelt en `{minuten: ''}` stuurt, zette de handeling daarmee stil op nul
+ * minuten: hij bleef in het model staan maar kostte niets meer, en dat is
+ * precies de stille wijziging die deze module hoort te weigeren.
+ */
+function isGetalAchtig(waarde) {
+  if (typeof waarde === 'number') return Number.isFinite(waarde);
+  if (typeof waarde === 'string') return waarde.trim() !== '' && Number.isFinite(Number(waarde));
+  return false;
+}
+
 function keurVeld(veld, waarde, doc) {
   const verwacht = VELDEN[veld];
   if (!verwacht) {
     return `Onbekend veld "${veld}". Toegestaan: ${Object.keys(VELDEN).join(', ')}.`;
   }
   if (verwacht === 'number') {
-    if (!Number.isFinite(Number(waarde))) return `Veld "${veld}" moet een getal zijn.`;
+    if (!isGetalAchtig(waarde)) return `Veld "${veld}" moet een getal zijn.`;
     if (veld === 'minuten' && Number(waarde) < 0) return 'Veld "minuten" kan niet negatief zijn.';
     return null;
   }
@@ -157,7 +173,15 @@ export function addHandeling(yamlText, handeling) {
     if (fout) throw new Error(fout);
     nieuw[veld] = normaliseer(veld, waarde);
   }
-  if (handeling.grondslag && typeof handeling.grondslag === 'object') nieuw.grondslag = handeling.grondslag;
+  // `grondslag` is een vrije map (artikel, lid, toelichting) en gaat als enige
+  // buiten VELDEN om. Een verkeerde vorm weigeren in plaats van negeren: stil
+  // laten vallen is hier hetzelfde probleem als stil wijzigen.
+  if (handeling.grondslag !== undefined && handeling.grondslag !== null) {
+    if (typeof handeling.grondslag !== 'object' || Array.isArray(handeling.grondslag)) {
+      throw new Error('Veld "grondslag" moet een map zijn, bijvoorbeeld {artikel: "34", lid: "2"}.');
+    }
+    nieuw.grondslag = handeling.grondslag;
+  }
   doc.handelingen = [...doc.handelingen, nieuw];
   return { yaml: serialiseer(doc), toegevoegd: nieuw };
 }
@@ -203,8 +227,12 @@ export function patchTarief(yamlText, naam, eurocentPerUur) {
     const namen = Object.keys(doc.tarieven ?? {}).join(', ');
     throw new Error(`Onbekend tarief "${naam}". Bestaande tarieven: ${namen}.`);
   }
+  // Zie isGetalAchtig: `Number(null)` is 0 en kwam hier langs de guard, zodat
+  // een tarief stil op nul belandde en de assistent meldde dat dat een geldige
+  // wijziging was.
+  if (!isGetalAchtig(eurocentPerUur)) throw new Error('Een tarief is een niet-negatief getal in eurocent per uur.');
   const waarde = Number(eurocentPerUur);
-  if (!Number.isFinite(waarde) || waarde < 0) throw new Error('Een tarief is een niet-negatief getal in eurocent per uur.');
+  if (waarde < 0) throw new Error('Een tarief is een niet-negatief getal in eurocent per uur.');
   const oud = doc.tarieven[naam];
   doc.tarieven = { ...doc.tarieven, [naam]: waarde };
   return { yaml: serialiseer(doc), oud, nieuw: waarde };

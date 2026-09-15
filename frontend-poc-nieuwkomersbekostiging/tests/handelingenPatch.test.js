@@ -70,6 +70,33 @@ describe('handelingen lezen', () => {
 });
 
 describe('een handeling wijzigen', () => {
+  // Een lege of niet-numerieke waarde mag geen nul worden: de handeling blijft
+  // dan in het model staan maar kost niets meer, en die stille verdwijning uit
+  // de uitvoeringslast ziet niemand terug in het overzicht.
+  // `null` staat er bewust niet bij: dat is de gedocumenteerde manier om een
+  // veld te verwijderen, en die blijft werken.
+  it.each([[''], ['  '], [true], [[]]])(
+    'weigert %p als minuten in plaats van er nul van te maken',
+    (waarde) => {
+      expect(() =>
+        patchHandeling(leesBasis(), 'accountantsvalidatie_nieuwkomers', { minuten: waarde }),
+      ).toThrow(/moet een getal zijn/);
+    },
+  );
+
+  it('weigert een grondslag die geen map is', () => {
+    expect(() =>
+      addHandeling(leesBasis(), {
+        id: 'nieuw_met_foute_grondslag',
+        partij: 'school',
+        aanleiding: 'per_school_peildatum',
+        minuten: 10,
+        tarief: 'schooladministratie',
+        grondslag: 'artikel 34',
+      }),
+    ).toThrow(/grondslag/);
+  });
+
   it('past minuten aan en meldt wat er veranderde', () => {
     const { yaml: nieuw, veranderd } = patchHandeling(leesBasis(), 'accountantsvalidatie_nieuwkomers', { minuten: 45 });
     expect(veranderd).toEqual(['minuten: 90 -> 45']);
@@ -135,6 +162,24 @@ describe('een tarief wijzigen', () => {
     const { yaml: nieuw, oud, nieuw: na } = patchTarief(leesBasis(), 'accountant', 12000);
     expect([oud, na]).toEqual([15000, 12000]);
     expect(listTarieven(nieuw).accountant).toBe(12000);
+  });
+
+  it('weigert een onbekend tarief', () => {
+    expect(() => patchTarief(leesBasis(), 'bestaat-niet', 100)).toThrow(/Onbekend tarief/);
+  });
+
+  // Number(null) is 0 en Number('') ook, dus een guard op Number.isFinite laat
+  // ze door: het tarief ging stil naar nul en de assistent meldde dat als een
+  // geldige wijziging. De accountant werkte dan gratis in de uitvoeringslast.
+  it.each([[null], [''], ['  '], [true], [[]], [undefined], ['veel']])(
+    'weigert %p als tariefwaarde in plaats van er nul van te maken',
+    (waarde) => {
+      expect(() => patchTarief(leesBasis(), 'accountant', waarde)).toThrow(/niet-negatief getal/);
+    },
+  );
+
+  it('weigert een negatief tarief', () => {
+    expect(() => patchTarief(leesBasis(), 'accountant', -1)).toThrow(/niet-negatief getal/);
   });
 });
 
