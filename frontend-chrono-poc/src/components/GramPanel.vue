@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
+import ReceiptPanel from './ReceiptPanel.vue';
 import { fieldValue } from '../world/events.js';
 import { formatMoment } from '../world/format.js';
 import { allGrams, cells, gramKind } from '../world/snapshot.js';
@@ -14,11 +15,17 @@ import { allGrams, cells, gramKind } from '../world/snapshot.js';
 //
 // De uitklap toont het gram zoals het beeld het geeft, zonder uittreksel: elk
 // veld met zijn herkomst, en verder alles wat het gram draagt. Het **receipt**
-// zit er bewust niet in — `packages/simulator/src/snapshot.rs` laat het uit het
+// zit daar bewust niet in — `packages/simulator/src/snapshot.rs` laat het uit het
 // beeld omdat het wandkloktijd draagt en een beeld dat per run verschilt geen
-// contract is. Wat een lezer van het receipt nodig heeft, de herkomst van elke
-// waarde, staat er per veld wel. Draagt een beeld ooit méér, dan staat dat hier
-// vanzelf: er wordt niets weggelaten.
+// contract is. Draagt een beeld ooit méér, dan staat dat hier vanzelf: er wordt
+// niets weggelaten.
+//
+// Dat het receipt niet in het beeld zit, betekende wel dat van buitenaf niet te
+// zien was dát een decretogram het draagt — terwijl een decretogram het RFC-013
+// Execution Receipt van het besluit *is* (RFC-022 §1.2). Daarom heeft een
+// decretogram hier een tweede uitklap, **Receipt**, die het bij de server
+// opvraagt voor dat ene gram (zie `ReceiptPanel`). Op verzoek en per gram: zo
+// blijft het beeld receipt-loos en is het receipt toch na te kijken.
 
 const props = defineProps({
   /** Het beeld van de wereld. */
@@ -88,6 +95,27 @@ function toggle(id, event) {
 /** Het ruwe gram, zoals het beeld het geeft. */
 function gramJson(row) {
   return JSON.stringify(row.gram, null, 2);
+}
+
+// Welke rijen hun receipt open hebben staan. Apart van `open` hierboven, want het
+// zijn twee vragen: "laat dit gram zien" en "haal het receipt van dit gram op".
+// Dat tweede is een verzoek aan de server, en dat hoort niet te gebeuren omdat
+// iemand een rij opendeed.
+const receiptOpen = ref(new Set());
+
+/** Draagt dit gram een receipt om op te vragen? Alleen een decretogram. */
+function hasReceipt(row) {
+  return row.kind === 'decretogram';
+}
+
+function isReceiptOpen(id) {
+  return receiptOpen.value.has(id);
+}
+
+function toggleReceipt(id) {
+  const next = new Set(receiptOpen.value);
+  if (!next.delete(id)) next.add(id);
+  receiptOpen.value = next;
 }
 </script>
 
@@ -196,6 +224,40 @@ function gramJson(row) {
             <nldd-container layout="stack">
               <nldd-code-viewer language="json" variant="simple" wrap>{{ gramJson(row) }}</nldd-code-viewer>
             </nldd-container>
+          </nldd-cell>
+        </nldd-list-item>
+
+        <!-- De tweede uitklap: het receipt van dit besluit. Een eigen knop en
+             niet meteen zichtbaar, want erachter zit een verzoek aan de server —
+             het receipt staat niet in het beeld. -->
+        <nldd-list-item
+          v-if="isOpen(row.id) && hasReceipt(row)"
+          slot="children"
+          size="sm"
+          button
+          :expanded="isReceiptOpen(row.id) || undefined"
+          @click="toggleReceipt(row.id)"
+        >
+          <nldd-spacer-cell size="20"></nldd-spacer-cell>
+          <nldd-icon-cell icon="certificate" size="16" color="secondary"></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell
+            size="sm"
+            text="Receipt"
+            supporting-text="het RFC-013 uitvoeringsreceipt dat dit decretogram draagt"
+          ></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-icon-cell disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+        </nldd-list-item>
+
+        <nldd-list-item
+          v-if="isOpen(row.id) && hasReceipt(row) && isReceiptOpen(row.id)"
+          slot="children"
+          size="sm"
+        >
+          <nldd-spacer-cell size="20"></nldd-spacer-cell>
+          <nldd-cell width="full" vertical-alignment="top">
+            <ReceiptPanel :cell="row.cell" :chronicle="row.chronicle" :index="row.index" />
           </nldd-cell>
         </nldd-list-item>
       </nldd-list-item>

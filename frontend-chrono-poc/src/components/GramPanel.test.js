@@ -1,9 +1,17 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import GramPanel from './GramPanel.vue';
+import { receiptFixture } from '../testing/receiptFixture.js';
 import { cloneWorld, worldFixture } from '../testing/worldFixture.js';
 import { formatMoment } from '../world/format.js';
 import { allGrams } from '../world/snapshot.js';
+
+// Het receipt komt van de server en niet uit het beeld; deze tests gaan over de
+// uitklap die erom vraagt, niet over het verkeer.
+const fetchGramReceipt = vi.fn(async () => receiptFixture);
+vi.mock('../api/worldApi.js', () => ({
+  fetchGramReceipt: (...args) => fetchGramReceipt(...args),
+}));
 
 // Het overzicht van alle grammen: de volgorde, de twee filters en de uitklap.
 //
@@ -154,6 +162,44 @@ describe('het grammenoverzicht', () => {
     await row.trigger('click');
     expect(row.attributes('expanded')).toBeUndefined();
     expect(row.find('nldd-code-viewer').exists()).toBe(false);
+  });
+
+  it('geeft een decretogram een tweede uitklap voor zijn receipt, en een executogram niet', async () => {
+    // Het receipt staat niet in het beeld — het draagt wandkloktijd — dus de
+    // uitklap is een eigen verzoek aan de server, per gram en alleen op verzoek.
+    const wrapper = mount(GramPanel, { props: { snapshot: worldFixture } });
+    const grams = allGrams(worldFixture);
+    const decretogram = grams.findIndex((gram) => gram.kind === 'decretogram');
+    const executogram = grams.findIndex((gram) => gram.kind === 'executogram');
+
+    await rows(wrapper)[executogram].trigger('click');
+    expect(
+      rows(wrapper)[executogram]
+        .findAll('nldd-text-cell')
+        .some((cell) => cell.attributes('text') === 'Receipt'),
+    ).toBe(false);
+
+    const row = rows(wrapper)[decretogram];
+    await row.trigger('click');
+    const receiptRow = row
+      .findAll('nldd-list-item')
+      .find((item) => item.findAll('nldd-text-cell').some((cell) => cell.attributes('text') === 'Receipt'));
+    expect(receiptRow).toBeDefined();
+
+    // Dicht is nog niets opgehaald: een rij opendoen is geen verzoek.
+    expect(fetchGramReceipt).not.toHaveBeenCalled();
+
+    await receiptRow.trigger('click');
+    expect(receiptRow.attributes('expanded')).toBe('true');
+    await vi.waitFor(() =>
+      expect(fetchGramReceipt).toHaveBeenCalledWith(
+        grams[decretogram].cell,
+        grams[decretogram].chronicle,
+        grams[decretogram].index,
+      ),
+    );
+    // En de rij eronder blijft gewoon open staan: de klik zat in de uitklap.
+    expect(row.attributes('expanded')).toBe('true');
   });
 
   it('laat de lijst zelf "niets gevonden" zeggen als het filter alles wegneemt', async () => {

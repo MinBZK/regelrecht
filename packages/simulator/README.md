@@ -715,9 +715,9 @@ in [`tests/observation_log.rs`](tests/observation_log.rs), geen afspraak.
 
 Wat er met de waarde gebeurt, en vooral wat er níet met haar gebeurt:
 
-- ze gaat als parameter de besluit-engine in, en met bron, naam, moment en
-  ondertekening het decretogram in (`InputOrigin::Accepted`; bij tier 3 zet de
-  engine haar in `accepted_values` van het receipt);
+- ze gaat als parameter de besluit-engine in, en met bron, bevoegd gezag van die
+  bron, naam, moment en ondertekening het decretogram in (`InputOrigin::Accepted`;
+  bij tier 3 zet de engine haar in `accepted_values` van het receipt);
 - ze belandt **niet** in een kroniek en **niet** in het databronregister. Een
   volgend besluit vraagt opnieuw bij de bron. Anders zou er een
   schaduwboekhouding ontstaan die niet van eigen wetenschap te onderscheiden is;
@@ -1674,7 +1674,9 @@ vastlegging, want er heeft geen uitvoering gedraaid.
 **Het receipt gaat niet mee.** Een decretogram draagt het volledige RFC-013
 Execution Receipt, en dat draagt wandkloktijd. Een beeld dat per run verschilt is
 geen contract, dus het receipt blijft in de kroniek waar het hoort; wat een lezer
-eraan had, is de herkomst hierboven. Het `lexogram` in de lijst met gram-soorten
+eraan had, is de herkomst hierboven. Nakijken kan wél, **op verzoek en per gram**:
+`World::gram_receipt(cel, kroniek, plek)` geeft het receipt van één decretogram
+(zie hieronder). Het `lexogram` in de lijst met gram-soorten
 komt in geen enkele kroniek voor: de wet is generiek en van niemand in bijzonder,
 en welk recht een cel laadt staat in `cells[].laws`. De variant staat er zodat een
 lezer één vocabulaire voor alle drie de grammen heeft.
@@ -1685,6 +1687,39 @@ kan er dus niet de kroniek van een ander mee lezen. `crossings` is het materiaal
 van dat log, en een lezer hoort het als zodanig te labelen: wie deze lijst houdt,
 kent de unie van wat over de grenzen ging — precies het totaalbeeld waarvan geen
 enkele cel er een heeft.
+
+### Het receipt van één gram
+
+`World::gram_receipt(cel, kroniek, plek)` geeft het RFC-013 Execution Receipt van
+één decretogram. Alleen lezen, net als het beeld en een reductie; `plek` is de
+plek in de kroniek geteld vanaf nul, in precies de volgorde waarin het beeld de
+grammen geeft.
+
+Waarom dit er naast het beeld staat: een decretogram *ís* het receipt (RFC-022
+§1.2), maar het beeld kan het niet dragen (wandkloktijd), en daarmee was van
+buitenaf niet te zien dát het gram het draagt. Deze weg maakt dat na te kijken
+zonder het beeld te vervuilen — wie er niet om vraagt, ziet het niet.
+
+Wat eruit komt is het receipt zoals het gram het draagt, met drie dingen die het
+ruwe veld niet heeft (`src/receipt.rs`):
+
+| veld | wat het toevoegt |
+|---|---|
+| `gram` | van welk gram dit het receipt is: cel, kroniek, plek, naam, besluit, zaakkenmerk en het moment in de *logische* tijd |
+| `accepted_values` | de vereniging van beide acceptatiewegen (`accept_from` en een cel-bron van de wet), per waarde met de bron-cel, het **bevoegd gezag dat die bron noemde**, de lexostatus, het moment, het zaakkenmerk en de ondertekening |
+| `timestamp` | de wandkloktijd, met erbij dat het dát is en geen moment in de logische tijd van de wereld |
+
+Elke andere sectie gaat ongewijzigd door, dus een RFC-013 die morgen een sectie
+toevoegt staat hier morgen in beeld. Wijst de vraag naar een gram dat geen
+decretogram uit het besluit-pad is, dan is het antwoord
+`SimulatorError::GramWithoutReceipt` — "er is er geen" en niet een leeg receipt,
+want er heeft nooit een uitvoering gedraaid.
+
+Het gezag van de bron komt uit het antwoord zelf: publiceert de bevraagde
+lexostatus een uitkomst `competent_authority`, dan legt `InputOrigin::Accepted`
+hem vast bij het accepteren. Zegt zij er niets over, dan staat er `null` — een gat
+bij de bron, en geen reden om het cel-id onder een andere naam te herhalen: een
+adres is geen gezag.
 
 ### Het journaal: wie deed wat, en wat veranderde er
 
