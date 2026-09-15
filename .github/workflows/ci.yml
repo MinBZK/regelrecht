@@ -42,6 +42,12 @@ jobs:
               - frontend/**
               - frontend-lawmaking/**
               - frontend-demo/**
+              - frontend-poc-portal/**
+              - frontend-poc-terugbetaalregimes/**
+              - frontend-poc-nieuwkomersbekostiging/**
+              - frontend-poc-napp/**
+              - corpus-poc/**
+              - pocs/**
               - packages/frontend-shared/**
               - bdd/**
               - corpus/regulation/**
@@ -1001,6 +1007,16 @@ jobs:
       - name: Run mocked e2e suite
         if: needs.changes.outputs.ci == 'true'
         run: just test-e2e
+
+      # De poc-tests draaien de echte WASM-engine tegen het casus-corpus
+      # (Gherkin-scenario's incluis), dus ze horen in deze baan en niet bij de
+      # gewone frontend-tests: daar is geen wasm-artefact. `just test-e2e`
+      # hierboven heeft het al gebouwd.
+      - name: Run poc tests
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          npm test -w frontend-poc-terugbetaalregimes
+          npm test -w frontend-poc-nieuwkomersbekostiging
 
       - name: Upload Playwright report
         if: failure() && needs.changes.outputs.ci == 'true'
