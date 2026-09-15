@@ -6,12 +6,18 @@
  * Split out of index.astro so the (sizeable) card markup lives in one place
  * instead of being inlined once per fase column in the matrix template.
  *
- * Every card carries two attributes the filters read and nothing else uses:
- * `data-categorie` for the CSS-only categorie filter, and `data-zoek` for the
+ * Every card carries attributes that the page's scripts read and nothing else
+ * uses: `data-categorie` for the CSS-only categorie filter, `data-zoek` for the
  * zoekfilter — the werkpakket's full text, built here at build time so the
- * script does no more than an indexOf per card. That string holds text which
- * renders only on the detail page (toelichting, onderzoeksvragen); see
- * zoektekst() in lib/roadmap.ts for why.
+ * script does no more than an indexOf per card; that string holds text which
+ * renders only on the detail page (toelichting, onderzoeksvragen), see
+ * zoektekst() in lib/roadmap.ts for why — and `data-wp-id`,
+ * `data-afhankelijk-van` and `data-fase` for the afhankelijkhedenweergave.
+ *
+ * Where a card sits is not decided here. The dependency view places the cards
+ * in the browser, over the ones that are actually on screen; see the script in
+ * index.astro. Deciding it at build time put the layout and the two filters on
+ * different clocks, and a filtered-away card then left a hole in the matrix.
  */
 import {
   GEEN_CATEGORIE,
@@ -33,7 +39,13 @@ const { cel, class: className, headers } = Astro.props;
 ---
 
 <td class:list={['rr-matrix__cell', className]} headers={headers}>
-  <nldd-container gap="8">
+  {/*
+     A plain element rather than an nldd-container: with the dependency view on
+     this becomes a two-axis grid (a column per step of dependency, a row per
+     chain), and a container stacks in one direction only. Off, it is the same
+     stack of cards with the same gap the container gave it.
+  */}
+  <div class="rr-cel-raster">
     {
       cel.map((wp) => {
         const prioriteit = getPrioriteit(wp.data.prioriteit);
@@ -74,6 +86,9 @@ const { cel, class: className, headers } = Astro.props;
             ].join(', ')}
             data-categorie={wp.data.categorie || GEEN_CATEGORIE}
             data-zoek={zoektekst(wp.data)}
+            data-wp-id={wp.data.id}
+            data-fase={wp.data.faseId}
+            data-afhankelijk-van={wp.data.afhankelijkVan.join(' ') || undefined}
           >
             {/* nldd-card leaves padding to a nested container by design;
                 without one the content sits flush against the border. */}
@@ -107,5 +122,5 @@ const { cel, class: className, headers } = Astro.props;
         );
       })
     }
-  </nldd-container>
+  </div>
 </td>

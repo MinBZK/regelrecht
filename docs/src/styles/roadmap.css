@@ -211,8 +211,20 @@
     36px
     200px
     repeat(var(--rr-fase-count, 5), minmax(240px, 1fr));
-  gap: var(--primitives-space-8, 0.5rem);
+  gap: var(--rr-matrix-gat);
   border-collapse: separate;
+  /* Boven de afhankelijkhedenlaag, zodat een pijl achter de kaarten langs gaat. */
+  position: relative;
+  z-index: 1;
+
+  /*
+   * De maten van de afhankelijkhedenweergave, hier en nergens anders. Het
+   * script leest ze met getComputedStyle, zodat de kolombreedte die het
+   * uitrekent en de opmaak die hier staat niet uit elkaar kunnen lopen.
+   */
+  --rr-kaart-breedte: 240px;
+  --rr-pijl-ruimte: 72px;
+  --rr-matrix-gat: 8px;
 }
 
 .rr-roadmap .rr-matrix thead,
@@ -323,4 +335,148 @@
 
 .rr-roadmap .rr-wp-card {
   display: block;
+}
+
+/* --- Afhankelijkheden --------------------------------------------------- */
+
+/*
+ * De afhankelijkhedenweergave, achter de schakelaar "Afhankelijkheden". Uit is
+ * de standaard: de matrix is eerst een beeld van wat er te doen is, en dit is
+ * een tweede lezing die een flink bredere kolom kost.
+ *
+ * Alles hieronder wat alleen aan gezet geldt, hangt aan
+ * `:has(#rr-afhankelijkheden[checked])`, zodat de matrix uit precies is wat
+ * hij zonder deze regels ook zou zijn.
+ *
+ * Waar een kaart komt te staan bepaalt het script in index.astro, in de
+ * browser, over de kaarten die de twee filters op dat moment laten staan. Het
+ * ontwerpsysteem heeft geen component voor een verband tussen twee kaarten,
+ * dus de laag zelf is met de hand geschreven: een raster per cel, een SVG over
+ * de tabel, en de lijnstijl.
+ */
+
+.rr-roadmap .rr-matrix-canvas {
+  position: relative;
+}
+
+/*
+ * De cellen: uit een stapel, aan een raster op twee assen. De kolommen staan
+ * een hele kaartbreedte plus de pijlruimte uit elkaar, zodat een kaart nooit
+ * over de kaart valt waar hij op wacht.
+ */
+.rr-roadmap .rr-cel-raster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-8, 0.5rem);
+  width: 100%;
+}
+
+.rr-roadmap:has(#rr-afhankelijkheden[checked]) .rr-cel-raster {
+  display: grid;
+  grid-auto-columns: var(--rr-kaart-breedte);
+  grid-auto-flow: row;
+  column-gap: var(--rr-pijl-ruimte);
+  row-gap: var(--primitives-space-8, 0.5rem);
+  align-items: start;
+  justify-content: start;
+  width: auto;
+}
+
+/*
+ * De SVG ligt onder de kaarten, zodat een pijl er nooit overheen loopt, en
+ * vangt geen muis, zodat hij nooit een klik inslikt die voor de kaart eronder
+ * bedoeld was. Uit staat hij er wel, maar leeg.
+ */
+.rr-roadmap .rr-afhankelijk {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.rr-roadmap:not(:has(#rr-afhankelijkheden[checked])) .rr-afhankelijk {
+  display: none;
+}
+
+/*
+ * De kolommen die het script uitrekent (--rr-fase-kolommen), elk zo breed als
+ * de diepste keten die er op dat moment in staat. Zonder script of met de
+ * weergave uit geldt de regel in het matrixblok hierboven.
+ */
+.rr-roadmap:has(#rr-afhankelijkheden[checked]) .rr-matrix {
+  grid-template-columns: 36px 200px var(--rr-fase-kolommen);
+}
+
+/*
+ * De cel draagt de rest van de pijlruimte als inline padding: twee daarvan
+ * plus het gat van het grid maken samen één pijlruimte over een kolomgrens,
+ * dezelfde afstand die twee kaarten binnen een cel hebben.
+ */
+.rr-roadmap:has(#rr-afhankelijkheden[checked]) .rr-matrix__cell {
+  padding-inline: calc(
+    (var(--rr-pijl-ruimte) - var(--rr-matrix-gat)) / 2
+  );
+}
+
+/*
+ * Ondoorzichtig met opzet: de pijlen lopen achter de kaarten langs, en door
+ * een doorschijnende kaart zou een lijn dwars over de titel lopen.
+ */
+.rr-roadmap .rr-wp-card {
+  background: var(--semantics-surfaces-base-background-color);
+  border-radius: var(--semantics-surfaces-corner-radius, 8px);
+}
+
+.rr-roadmap .rr-afhankelijk__lijn {
+  fill: none;
+  stroke: var(--semantics-content-accent-color, var(--semantics-content-secondary-color));
+  stroke-width: 2;
+  opacity: 0.85;
+  transition: opacity 120ms ease-out;
+}
+
+.rr-roadmap .rr-afhankelijk marker polygon {
+  fill: var(--semantics-content-accent-color, var(--semantics-content-secondary-color));
+}
+
+/*
+ * Eén keten tegelijk. Wat niet in de keten zit valt terug, kaarten zowel als
+ * pijlen, zodat wat blijft staan de volgorde van werk rond die kaart is.
+ *
+ * Dat gaat met opacity en niet met een donkerder kleur: de site volgt het
+ * thema van de lezer, en een waarde die op een donkere ondergrond terugvalt
+ * springt op een lichte juist naar voren.
+ */
+.rr-roadmap .rr-matrix-canvas--accent .rr-afhankelijk__lijn {
+  opacity: 0.12;
+}
+
+/*
+ * De canvas-klasse hoort in deze selector en niet alleen `--actief`: zonder
+ * hem telt de regel twee klassen tegen de drie van de dim-regel hierboven,
+ * verliest hij, en vervaagt juist de keten die je aanwijst.
+ */
+.rr-roadmap .rr-matrix-canvas--accent .rr-afhankelijk__lijn--actief {
+  opacity: 1;
+  stroke-width: 3;
+}
+
+.rr-roadmap .rr-matrix-canvas--accent .rr-wp-card {
+  opacity: 0.3;
+  transition: opacity 120ms ease-out;
+}
+
+.rr-roadmap .rr-matrix-canvas--accent .rr-wp-card--in-keten {
+  opacity: 1;
+}
+
+/* Een lijn die beweegt terwijl iemand de pagina leest is erger dan geen
+   animatie, voor wie daar juist om vroeg. */
+@media (prefers-reduced-motion: reduce) {
+  .rr-roadmap .rr-afhankelijk__lijn,
+  .rr-roadmap .rr-matrix-canvas--accent .rr-wp-card {
+    transition: none;
+  }
 }
