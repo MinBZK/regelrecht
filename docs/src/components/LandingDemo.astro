@@ -226,8 +226,13 @@ const amount = demo.trace.root.result;
       <nldd-rich-text><p>{t.steps[3].p}</p></nldd-rich-text>
       <nldd-spacer size="16" />
 
+      {/* Taller than the first: the scenario runs to some 610 pixels, just over
+          a 30rem frame, so a little more room means no scrolling at all on a
+          screen that has it. The YAML in the first wipe is several times longer
+          and scrolls whatever height it is given. */}
       <LandingWipe
         direction="rtl"
+        height="40rem"
         label={t.slider2}
         leftLabel={t.steps[3].tag}
         rightLabel={t.steps[2].tag}

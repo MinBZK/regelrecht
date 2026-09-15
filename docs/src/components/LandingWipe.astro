@@ -19,12 +19,22 @@ interface Props {
   /** The captions under the two ends of the track. */
   leftLabel: string;
   rightLabel: string;
+  /**
+   * Height of both panes. Worth setting per instance: content that nearly
+   * fits needs no scrolling at all if the frame is a little taller, and a
+   * frame sized for the longest content would tower over the short one.
+   */
+  height?: string;
 }
 
-const { direction = 'ltr', label, leftLabel, rightLabel } = Astro.props;
+const { direction = 'ltr', label, leftLabel, rightLabel, height } = Astro.props;
 ---
 
-<div class:list={['rr-wipe', direction === 'rtl' && 'rr-wipe--rtl']} data-wipe>
+<div
+  class:list={['rr-wipe', direction === 'rtl' && 'rr-wipe--rtl']}
+  style={height ? `--rr-wipe-height: ${height}` : undefined}
+  data-wipe
+>
   <div class="rr-wipe__pane rr-wipe__pane--under">
     <slot name="under" />
   </div>

@@ -130,6 +130,8 @@ html {
 /* --- The wipe between statute and machine-readable rule --- */
 .rr-wipe {
   --rr-wipe: 100%;
+  /* Overridden per instance where the content nearly fits (see LandingWipe). */
+  --rr-wipe-height: 30rem;
   position: relative;
   border: 1px solid var(--semantics-dividers-color);
   border-radius: 8px;
@@ -142,7 +144,7 @@ html {
    are stacked and the wipe slides between them. */
 .rr-wipe__pane {
   margin: 0;
-  min-height: 30rem;
+  min-height: var(--rr-wipe-height);
 }
 
 /* Clipped, never resized. Narrowing the pane to reveal what is under it would
@@ -178,7 +180,7 @@ html {
    the pane hands it the height and stays out of the way. It used to clip here
    instead, which cut the YAML off mid-file with no way to read the rest. */
 .rr-wipe__pane--under {
-  height: 30rem;
+  height: var(--rr-wipe-height);
   overflow: hidden;
 }
 
@@ -230,7 +232,7 @@ html {
 .rr-wipe__handle::-webkit-slider-thumb {
   appearance: none;
   width: 1.25rem;
-  height: 30rem;
+  height: var(--rr-wipe-height);
   border: 0;
   background: transparent;
   pointer-events: auto;
@@ -239,7 +241,7 @@ html {
 
 .rr-wipe__handle::-moz-range-thumb {
   width: 1.25rem;
-  height: 30rem;
+  height: var(--rr-wipe-height);
   border: 0;
   background: transparent;
   pointer-events: auto;
