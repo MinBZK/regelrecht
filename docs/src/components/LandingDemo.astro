@@ -145,10 +145,10 @@ function flatten(node: any, depth: number, out: any[]) {
     article: before ? null : (node.anchor?.article ?? null),
     unit: node.type_spec?.unit ?? null,
     depth,
-    // The address RFC-039 gives the step, its kind, where a resolved value came
-    // from and what it cost. This is a trace, so it may look like one: these
-    // are the things an engineer reads it for.
-    nodeId: node.node_id ?? null,
+    // The kind of step, where a resolved value came from, and what it cost.
+    // This is a trace, so it may look like one: these are the things an
+    // engineer reads it for. The RFC-039 address stays in the recording but is
+    // not shown; see the row markup for why.
     resolve: node.resolve_type ?? null,
     provider: node.source?.provider ?? null,
     us: node.duration_us ?? null,
@@ -283,7 +283,11 @@ const amount = demo.trace.root.result;
           <ol class="rr-trace">
             {beats.map((b: any, i: number) => (
               <li class="rr-trace__row" data-step={i} data-type={b.type}>
-                <code class="rr-trace__id">{b.nodeId}</code>
+                {/* The address RFC-039 gives the step is in the recording and
+                    stays there; it is not printed. At ten levels deep it runs
+                    to 26 characters and would set the column width for all 140
+                    rows, crowding out the values and timings that are what the
+                    panel is for. The tree lines already show where a step sits. */}
                 <span class="rr-trace__kind" data-kind={b.type}>{kindLabel(b.type)}</span>
                 <span class="rr-trace__name">
                   <span class="rr-trace__tree" aria-hidden="true">{b.tree}</span>
