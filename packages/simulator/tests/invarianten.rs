@@ -381,3 +381,75 @@ fn een_contact_dat_het_gram_niet_laat_zien_faalt_op_i4() {
         "de melding hoort de actoren, de zaak en het moment te noemen, kreeg: {melding}"
     );
 }
+
+/// De uitleg bij een reductie noemt nooit een gram van een andere cel.
+///
+/// Een reductie leest de eigen kronieken van één cel en verder niets (RFC-022
+/// §4.1), dus de herkomst die ze erbij geeft, kan alleen over haar eigen
+/// grammen gaan. Zou er een vreemd gram in staan, dan beschrijft de uitleg een
+/// weg die de opstelling niet heeft — en dat is erger dan geen uitleg, want ze
+/// is bedoeld om nagelopen te worden.
+///
+/// Dit staat naast de andere invarianten en niet in de gate zelf: de gate leest
+/// de bewijsstukken van de veiligheidscontext, en dit gaat over de vorm van een
+/// antwoord. Het meet elk antwoord dat er in elke positieve run gegeven is, ook
+/// die over een celgrens: dáár is het onderscheid dat de bevraagde cel haar
+/// eigen grammen noemt en niet die van de vrager.
+#[test]
+fn geen_enkele_reductie_uitleg_noemt_een_andere_cel() {
+    let mut gemeten = 0;
+    for path in positieve_scenarios() {
+        let run = run(&path);
+        let van_de_run = run
+            .outcomes
+            .iter()
+            .map(|outcome| &outcome.lexostatus_value)
+            .chain(
+                run.transport_outcomes
+                    .iter()
+                    .map(|outcome| &outcome.signed.answer),
+            )
+            .chain(run.crossings().into_iter().map(|signed| &signed.answer));
+
+        for answer in van_de_run {
+            let uitleg = answer.reductie.as_ref().unwrap_or_else(|| {
+                panic!(
+                    "{}: {}.{} antwoordde zonder te zeggen hoe het tot stand kwam",
+                    path.display(),
+                    answer.cell,
+                    answer.name
+                )
+            });
+            gemeten += 1;
+            let vreemd: Vec<&str> = uitleg
+                .genoemde_cellen()
+                .filter(|cell| *cell != answer.cell)
+                .collect();
+            assert!(
+                vreemd.is_empty(),
+                "{}: de uitleg bij {}.{} noemt grammen van {vreemd:?}, en die liggen \
+                 niet in deze cel",
+                path.display(),
+                answer.cell,
+                answer.name
+            );
+        }
+    }
+    assert!(
+        gemeten > 0,
+        "zonder één gemeten antwoord bewijst deze toets niets"
+    );
+}
+
+/// Elk scenariobestand dat hoort te slagen: de map zelf, zonder `negatief/`.
+fn positieve_scenarios() -> Vec<PathBuf> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("scenarios");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("kan {} niet lezen: {e}", dir.display()))
+        .filter_map(std::result::Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "yaml"))
+        .collect();
+    files.sort();
+    files
+}

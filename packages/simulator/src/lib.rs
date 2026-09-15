@@ -109,9 +109,10 @@ pub mod world;
 pub use cell::{
     AcceptanceRequest, AcceptedSource, Aggregate, BesluitDefinition, BesluitInput, Cell,
     CellConfig, ChronicleEvent, ChronicleStore, ChronicleStream, Decretogram, DecretogramInput,
-    DocumentedParameter, InputOrigin, Intake, Lexostatus, LexostatusDefinition, LexostatusOutcome,
-    ObligationDefinition, ObligationDue, ParameterType, Prefill, Reduction, Schedule,
-    BESCHIKKINGEN, BETALINGEN,
+    DocumentedParameter, GebruiktGram, GebruikteInput, Gemist, InputHerkomst, InputOrigin, Intake,
+    Kroniekfilter, Lexostatus, LexostatusDefinition, LexostatusOutcome, ObligationDefinition,
+    ObligationDue, ParameterType, Prefill, Reductie, ReductieVorm, Reduction, Regel, Schedule,
+    Wetsvorm, BESCHIKKINGEN, BETALINGEN,
 };
 pub use corpus::regulation_root;
 // De waarde waarin deze crate praat. Ze komt uit de engine en blijft dat, maar

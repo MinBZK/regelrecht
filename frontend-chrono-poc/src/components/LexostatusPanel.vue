@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { formatMoment, formatValue, humanize } from '../world/format.js';
 import { fieldValue } from '../world/events.js';
-import { cells, readLexostatus } from '../world/snapshot.js';
+import { cells, gramKind, readLexostatus } from '../world/snapshot.js';
 
 // Een cel een vraag stellen: wat stelt u onder deze naam vast, op dit moment?
 //
@@ -26,6 +26,16 @@ const props = defineProps({
   /** De vraag stellen: `(cel, naam, params, opMoment) => antwoord | null`. */
   ask: { type: Function, required: true },
 });
+
+/**
+ * Een gram aanwijzen dat de cel gelezen heeft.
+ *
+ * Dit paneel toont de verwijzing en niet het gram zelf: het gram staat in het
+ * tabblad Grammen, met al zijn velden en hun herkomst, en dat hier herhalen zou
+ * er een tweede weergave van maken. Wie het kent, kent het al — de pagina brengt
+ * de bezoeker erheen. Dezelfde keuze als tussen de tijdlijn en het journaal.
+ */
+const emit = defineEmits(['show-gram']);
 
 /** Alleen cellen die iets publiceren zijn te bevragen. */
 const publishers = computed(() => cells(props.snapshot).filter((cell) => (cell.lexostatussen ?? []).length > 0));
@@ -83,6 +93,41 @@ watch(
   { immediate: true },
 );
 
+/**
+ * Staat de uitleg open?
+ *
+ * Dicht bij een nieuw antwoord: wie een vraag stelt, wil eerst de uitkomst zien.
+ * De uitleg staat eronder voor wie hem wil nalopen, en blijft open zolang de
+ * bezoeker hem openhoudt.
+ */
+const explanationOpen = ref(false);
+
+/** Hoe de cel aan dit antwoord kwam; `null` als het antwoord het niet zegt. */
+const explanation = computed(() => answer.value?.reductie ?? null);
+
+/**
+ * De uitleg open- of dichtdoen.
+ *
+ * Een klik ín de uitklap telt niet mee: die bubbelt over de rij heen, en de rij
+ * is zelf de knop. Dezelfde afweging als in het grammen- en het journaalpaneel.
+ */
+function toggleExplanation(event) {
+  if (event?.target?.closest?.('nldd-list-item[slot="children"]')) return;
+  explanationOpen.value = !explanationOpen.value;
+}
+
+/** Wat er in die stroom lag en toch niet meedeed, als één regel. */
+const missed = computed(() => {
+  const gemist = explanation.value?.gemist;
+  if (!gemist) return '';
+  return [
+    `${gemist.in_de_stroom} gram(men) in deze kroniek`,
+    `${gemist.na_het_moment} van ná dit moment`,
+    `${gemist.andere_sleutel} over een ander onderwerp`,
+    `${gemist.buiten_de_voorwaarden} buiten de voorwaarden`,
+  ].join(' · ');
+});
+
 function addParam() {
   params.value = [...params.value, { name: '', value: '' }];
 }
@@ -104,6 +149,7 @@ async function submit() {
   if (!cellId.value || !name.value || momentAfterClock.value) return;
   asking.value = true;
   answer.value = null;
+  explanationOpen.value = false;
   try {
     const given = Object.fromEntries(
       params.value.filter((param) => param.name).map((param) => [param.name, param.value]),
@@ -239,6 +285,115 @@ async function submit() {
         text="Niets vastgesteld"
         :supporting-text="answer.reason"
       ></nldd-inline-dialog>
+
+      <!-- Hoe de cel eraan kwam. Onder het antwoord en dichtgeklapt: de uitkomst
+           is waar de vraag over ging, de herkomst is waarmee je haar naloopt.
+           Staat er geen uitleg bij het antwoord, dan staat hier niets — een lege
+           uitklap belooft iets wat er niet is. -->
+      <nldd-list
+        v-if="explanation"
+        type="tree"
+        variant="box-tinted"
+        accessible-label="Hoe dit antwoord tot stand kwam"
+      >
+        <nldd-list-item
+          size="sm"
+          button
+          :expanded="explanationOpen || undefined"
+          @click="toggleExplanation($event)"
+        >
+          <nldd-icon-cell icon="search" size="16" color="secondary"></nldd-icon-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell
+            size="sm"
+            min-width="200px"
+            text="Zo is dit vastgesteld"
+            :supporting-text="explanation.zin"
+          ></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-icon-cell disclosure icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+
+          <!-- De gebruikte grammen. Knoppen: ze brengen de bezoeker naar het
+               gram zoals het in het tabblad Grammen staat. -->
+          <nldd-list-item
+            v-for="gram in explanationOpen ? explanation.grams : []"
+            :key="gram.id"
+            slot="children"
+            size="sm"
+            button
+            @click="emit('show-gram', gram.id)"
+          >
+            <nldd-spacer-cell size="20"></nldd-spacer-cell>
+            <nldd-icon-cell :icon="gramKind(gram.kind).icon" size="16" color="secondary"></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell size="sm" width="104px" :text="formatMoment(gram.opMoment)"></nldd-text-cell>
+            <nldd-cell width="132px">
+              <nldd-tag size="sm" :color="gramKind(gram.kind).color" :text="gramKind(gram.kind).label"></nldd-tag>
+            </nldd-cell>
+            <nldd-text-cell
+              size="sm"
+              min-width="160px"
+              :text="gram.name"
+              :supporting-text="`${gram.cell} · ${gram.chronicle} · nr. ${gram.volgnummer}`"
+            ></nldd-text-cell>
+            <!-- Wat dit gram aan een som bijdroeg, of onder welke versie van de
+                 regeling het besloten is; allebei alleen waar ze bestaan. -->
+            <nldd-text-cell
+              v-if="gram.bijdrage !== null"
+              size="sm"
+              width="fit-content"
+              horizontal-alignment="right"
+              :text="formatValue(gram.bijdrage)"
+            ></nldd-text-cell>
+            <nldd-text-cell
+              v-else-if="gram.regulationValidFrom"
+              size="sm"
+              width="fit-content"
+              color="secondary"
+              :text="`recht van ${formatMoment(gram.regulationValidFrom)}`"
+            ></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+          </nldd-list-item>
+
+          <!-- Bij een wetsvorm: waar elke input vandaan kwam. Geen gram, want
+               een berekende input ligt nergens in een kroniek. -->
+          <nldd-list-item
+            v-for="input in explanationOpen ? explanation.inputs : []"
+            :key="`input-${input.name}`"
+            slot="children"
+            size="sm"
+          >
+            <nldd-spacer-cell size="20"></nldd-spacer-cell>
+            <nldd-icon-cell icon="arrow-right" size="16" color="secondary"></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell
+              size="sm"
+              min-width="200px"
+              :text="humanize(input.name)"
+              :supporting-text="input.zin"
+            ></nldd-text-cell>
+          </nldd-list-item>
+
+          <!-- Niets gelezen: dan is wat er wél lag het enige wat er te melden
+               valt. -->
+          <nldd-list-item
+            v-if="explanationOpen && explanation.grams.length === 0"
+            slot="children"
+            size="sm"
+          >
+            <nldd-spacer-cell size="20"></nldd-spacer-cell>
+            <nldd-icon-cell icon="info" size="16" color="secondary"></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell
+              size="sm"
+              min-width="200px"
+              text="Geen gram gelezen"
+              :supporting-text="missed"
+            ></nldd-text-cell>
+          </nldd-list-item>
+        </nldd-list-item>
+      </nldd-list>
     </template>
   </nldd-container>
 </template>

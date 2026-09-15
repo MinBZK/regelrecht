@@ -1719,6 +1719,7 @@ query_via_transport:
                 name: "toeslagpartnerschap".to_string(),
                 op_moment: moment,
                 outcome: LexostatusOutcome::Established(BTreeMap::new()),
+                reductie: None,
             },
             failures: Vec::new(),
         };

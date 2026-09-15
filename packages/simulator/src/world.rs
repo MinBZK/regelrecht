@@ -56,7 +56,7 @@ use crate::journal::{
     Reading,
 };
 use crate::security::{Identity, SignedAnswer};
-use crate::snapshot::{crossing_snapshot, gram_kind, ActionState, Snapshot, WorldView};
+use crate::snapshot::{crossing_snapshot, gram_id, gram_kind, ActionState, Snapshot, WorldView};
 use chrono::NaiveDate;
 use regelrecht_engine::{CellResolver, Value};
 use serde::{Deserialize, Serialize};
@@ -492,14 +492,6 @@ impl RecordedFact {
             name: self.event.name.clone(),
         }
     }
-}
-
-/// Waaronder één gram in het beeld van de wereld terug te vinden is.
-///
-/// Dezelfde sleutel als de frontend zelf zou vormen uit cel, kroniek en plek;
-/// hier op één plek, zodat de twee niet uiteen kunnen lopen.
-fn gram_id(cell: &str, chronicle: &str, index: usize) -> String {
-    format!("{cell}|{chronicle}|{index}")
 }
 
 /// Wat er gebeurde tijdens één stap in de wereld.
