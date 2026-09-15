@@ -27,7 +27,19 @@
 node_modules/
 frontend/dist/
 frontend/public/wasm/pkg/
+frontend-poc-portal/dist/
 packages/admin/static/
+
+# PoC-frontends: alles wat copy-assets.js in public/ neerzet komt uit
+# corpus-poc/ en de wasm-build, en hoort dus niet ook in git.
+frontend-poc-*/dist/
+frontend-poc-*/public/laws/
+frontend-poc-*/public/data/
+frontend-poc-*/public/wasm/
+
+# PoC-portaal: wat `just poc` lokaal samenstelt om te serveren.
+.poc-static/
+.poc-shot.sh
 
 # Rust
 target/

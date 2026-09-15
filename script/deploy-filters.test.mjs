@@ -130,11 +130,54 @@ test('de handmatige paden buiten de graaf blijven werken', () => {
   assert.equal(namesOf(['frontend/src/main.ts']).editor, true);
   assert.equal(namesOf(['frontend/src/main.ts']).lawmaking, false);
 
-  // frontend-shared zit in drie frontends tegelijk.
+  // frontend-shared zit in elk image dat een frontend bouwt. De twee
+  // poc-images hoorden hier vanaf het begin bij en stonden er niet in: ze
+  // kopiëren het pakket wel en draaien `npm ci` op dezelfde lock.
   const shared = namesOf(['packages/frontend-shared/src/auth.ts']);
   assert.equal(shared.editor, true);
   assert.equal(shared.admin, true);
   assert.equal(shared.lawmaking, true);
+  assert.equal(shared.demo, true);
+  assert.equal(shared.poc, true);
+  assert.equal(shared['poc-napp'], true);
+});
+
+test('het poc-portaal volgt zijn register, zijn corpus en zijn frontends', () => {
+  // Het register bepaalt wat het portaal serveert en welke wachtwoorden het
+  // verwacht, dus het raakt beide images.
+  const register = namesOf(['pocs/registry.yaml']);
+  assert.equal(register.poc, true);
+  assert.equal(register['poc-napp'], true);
+
+  // Het portaal bakt heel corpus-poc/ in; napp alleen zijn eigen wetten. Een
+  // wijziging in de napp-casus raakt daarom allebei.
+  const nappCorpus = namesOf(['corpus-poc/napp/law/kieswet/1989-09-28.yaml']);
+  assert.equal(nappCorpus.poc, true);
+  assert.equal(nappCorpus['poc-napp'], true);
+
+  // Een andere casus raakt het portaal wel en napp niet.
+  const andereCasus = namesOf(['corpus-poc/terugbetaalregimes/data/personas.yaml']);
+  assert.equal(andereCasus.poc, true);
+  assert.equal(andereCasus['poc-napp'], false);
+
+  // De frontend van napp zit alleen in het napp-image.
+  const nappFrontend = namesOf(['frontend-poc-napp/src/main.js']);
+  assert.equal(nappFrontend['poc-napp'], true);
+  assert.equal(nappFrontend.poc, false);
+
+  // En de statische pocs alleen in het portaal.
+  assert.equal(namesOf(['frontend-poc-terugbetaalregimes/src/App.vue']).poc, true);
+  assert.equal(namesOf(['frontend-poc-terugbetaalregimes/src/App.vue'])['poc-napp'], false);
+});
+
+test('de beleidsassistent laat het poc-image bouwen', () => {
+  // De assistent is JavaScript, geen crate, dus de cargo-graaf vindt hem
+  // nooit — terwijl het portaal-image hem wel meekopieert. Zonder de
+  // handmatige regel in COMPONENTS bouwt een wijziging hier geen image en
+  // blijft productie stil op de oude assistent staan.
+  const assistent = namesOf(['packages/poc-assistent/index.js']);
+  assert.equal(assistent.poc, true);
+  assert.equal(assistent.editor, false);
 });
 
 test('de gedeelde nginx-headers raken beide nginx-images', () => {
