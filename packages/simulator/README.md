@@ -1244,11 +1244,8 @@ actions:                                        # wat een actor kan doen
       cell: toeslagen
       besluit: zorgtoeslag_vaststelling         # het formulier is dat van dit
                                                 # besluit (zijn `params`)
-    available_when:                             # optioneel: pas als het verhaal
-      cell: toeslagen                           # zover is
-      chronicle: aanvragen
-      field: jaar
-      equals: 2024
+                                                # of ze nu kan, volgt uit de
+                                                # inputs van dat besluit
 
 deadlines:                                      # termijnen die waarschuwen
   - label: aanvraag ontvangen vóór 1 maart      # wat een lezer ziet; casusdata
@@ -1457,20 +1454,30 @@ Twee vormen, en precies één per actie:
 Elk veld van zo'n formulier mag voorgevuld staan met wat de wereld al weet; zie
 [Voorinvulling](#voorinvulling-wat-de-wereld-al-weet).
 
-`available_when` is één simpele voorwaarde: *er ligt in kroniek X van cel Y een
-feit waarin veld Z de waarde W heeft.* Daarmee kan een actie wachten tot het
-verhaal zover is — beslissen pas als er een aanvraag ligt — zonder dat die
-volgorde in Rust komt te staan. Het is met opzet geen tweede reductietaal: er komt
-geen waarde naar buiten, alleen ja of nee. Kan een actie nu niet, dan is dat een
-leesbare weigering die zegt wát er nog niet ligt, en het beeld van de wereld toont
-haar met diezelfde reden erbij.
+**Of een actie nu kan, staat nergens in het wereldbestand.** Het volgt uit de
+definitie van het besluit dat ze start. Een besluit zegt daar al welke inputs het
+uit welke eigen kroniek leest (`from_chronicle`) en welk eerder besluit over
+dezelfde zaak het terugleest (`from_decretogram`); levert elk van die feiten op de
+stand van de klok een waarde op — voor de parameters zoals het formulier ze
+voorgevuld aanbiedt — dan kan de actie, en anders niet. Er is dus geen voorwaarde
+om te schrijven en geen die uit de pas kan lopen met de inputs waarover ze gaat.
 
-Die cel hoeft niet de actor te zijn: de wereld beantwoordt de vraag zelf, net zoals
-zij het beeld van alle kronieken maakt. Het is daarmee **geen contact over een
-celgrens** — het staat niet in het vraaggraf en niet in het observatielog, en er
-komt geen cel aan de kroniek van een ander. Moet de actor zélf weten dat er iets
-gebeurd is, dan hoort dat als levering in zijn eigen kroniek te liggen
-(`delivers_to`), en wijst de voorwaarde naar die kroniek.
+Kan een besluit nu niet, dan noemt de reden het **feit** dat ontbreekt: welke cel,
+welke kroniekstroom, welk onderwerp en op welke dag er gezocht is. Het beeld van de
+wereld draagt die reden bij de actie, en `act` weigert met dezelfde tekst — gewogen
+op de waarden die de invuller verstuurt en niet op de voorinvulling, want wie een
+ander onderwerp invult, vraagt om een besluit over díe zaak.
+
+Een `records`-actie kan altijd. Zij *is* het feit; haar laten wachten tot er iets
+ligt zou betekenen dat een actor niet kan vastleggen wat hem overkwam.
+
+Wat níet meetelt is een input die van een **andere organisatie** geaccepteerd wordt
+(`accept_from`). Daar zou een vraag over een celgrens voor nodig zijn, en het beeld
+van de wereld wordt bij elke stap opgevraagd — dan zou het openslaan van een scherm
+verkeer opleveren dat niemand vroeg (invariant I1). Of de ander iets vastgesteld
+heeft, weegt het besluit zelf, op het moment dat het genomen wordt. De check die
+hier wél gebeurt, leest uitsluitend in de kronieken van de besluitende cel zelf en
+staat dus niet in het vraaggraf en niet in het observatielog.
 
 Een actie ontsnapt niet aan de invarianten. Lokt ze een besluit uit dat een waarde
 van een andere cel accepteert, dan gaat dat contact over een celgrens en hoort de
@@ -1481,11 +1488,10 @@ Zie [De vijf invarianten](#de-vijf-invarianten-en-de-gate-eronder).
 
 Alles wat een actie belooft, wordt bij het optuigen getoetst: bestaat de actor,
 bestaat de cel, houdt ze de stroom, kan die stroom haar sleutelveld uit het
-formulier krijgen, bestaat het besluit, en gaat de voorwaarde over een veld dat
-bestaat. Een actie die pas bij de eerste klik omvalt, is een typfout die op het
-verkeerde moment boven water komt. De stroom met decretogrammen
-(`beschikkingen`) is geen doel voor een actie: daar ontstaat een gram door te
-besluiten.
+formulier krijgen, en bestaat het besluit. Een actie die pas bij de eerste klik
+omvalt, is een typfout die op het verkeerde moment boven water komt. De stroom met
+decretogrammen (`beschikkingen`) is geen doel voor een actie: daar ontstaat een
+gram door te besluiten.
 
 ### Voorinvulling: wat de wereld al weet
 
@@ -1833,11 +1839,13 @@ een eigen verplichting, en dat is nog nergens uitgewerkt. Een verplichting kan o
 niet gewijzigd of ingetrokken worden: het schema staat in het gram, en een gram
 verandert niet.
 
-**Een voorwaarde op een actie is één gelijkheid.** `available_when` kijkt naar één
-veld in één kroniek van één cel. Er is geen "en", geen "of", geen "ligt er iets"
-zonder waarde, en geen voorwaarde over een gram-naam. Wat er nu kan, is genoeg voor
-"het verhaal is zover"; een voorwaarde die meer nodig heeft, is een aanwijzing dat
-het wereldbestand een stap mist.
+**Beschikbaarheid kijkt alleen naar de eigen feiten van een besluit.** Een besluit
+dat alles van een ander accepteert, heet dus altijd mogelijk, ook als die ander nog
+niets heeft vastgesteld — dat blijkt pas bij het besluit zelf. Dat is geen
+omissie maar de prijs van invariant I1: een check die het wél zou weten, zou een
+vraag over een celgrens moeten stellen bij elk beeld van de wereld. Wie een actie
+op zo'n feit wil laten wachten, laat het als levering in de eigen kroniek van de
+besluitende cel landen; dan is het een eigen feit en telt het gewoon mee.
 
 **Een gemiste termijn heeft geen gevolg in de wereld.** Ze komt in de lijst met
 waarschuwingen en verder niets: geen gram, geen verval van een recht, geen

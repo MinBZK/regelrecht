@@ -204,9 +204,9 @@ pub struct Cell {
     ///
     /// Dezelfde kennis waarmee de definities van de cel getoetst zijn, bewaard
     /// zodat de wereld haar **acties** en **termijnen** er langs dezelfde weg
-    /// tegen kan toetsen (zie [`Self::check_stream_field`]). Zou de wereld een
-    /// eigen lijstje bijhouden, dan zou een veldnaam die de cel afwijst in een
-    /// actie stil goedgekeurd worden.
+    /// tegen kan toetsen (zie [`Self::check_stream`]). Zou de wereld een eigen
+    /// lijstje bijhouden, dan zou een stroom die de cel niet houdt in een actie
+    /// stil goedgekeurd worden.
     streams: config::StreamFields,
     /// De gepubliceerde lexostatussen, op naam.
     published: BTreeMap<String, LexostatusDefinition>,
@@ -392,49 +392,13 @@ impl Cell {
         self.besluiten.keys().map(String::as_str).collect()
     }
 
-    /// Kent deze cel deze stroom, en kent die stroom dit veld?
-    ///
-    /// `pub(crate)`, en alleen om iets te kunnen **afkeuren**: de wereld toetst er
-    /// de voorwaarde van een actie mee bij het optuigen. Het antwoord zegt niets
-    /// over wat er in de stroom staat — alleen dat een veldnaam met die naam
-    /// erin kan voorkomen — en het loopt langs precies dezelfde toets als de
-    /// definities van de cel.
-    pub(crate) fn check_stream_field(
-        &self,
-        subject: Subject,
-        name: &str,
-        stream: &str,
-        field: &str,
-    ) -> Result<()> {
-        config::check_stream_field(&self.streams, &self.id, subject, name, stream, field)
-    }
-
     /// Houdt deze cel deze stroom?
     ///
-    /// Dezelfde weigering als [`Self::check_stream_field`], zonder een veld: een
-    /// termijn wijst een stroom en een gram-naam aan, en een naam is geen veld.
+    /// Dezelfde weigering als bij een stroom in een definitie, zonder een veld:
+    /// een termijn wijst een stroom en een gram-naam aan, en een naam is geen
+    /// veld.
     pub(crate) fn check_stream(&self, subject: Subject, name: &str, stream: &str) -> Result<()> {
         config::fields_of_stream(&self.streams, &self.id, subject, name, stream).map(|_| ())
-    }
-
-    /// Ligt er op of vóór `op_moment` een feit in deze stroom met dit veld op
-    /// deze waarde?
-    ///
-    /// Ja of nee, nooit een waarde. Hiermee beantwoordt de wereld de vraag "is het
-    /// verhaal zover?" voor een actie die pas mag als er iets gebeurd is (zie
-    /// [`crate::world::Availability`]). Dat is geen reductie en geen synthese: er
-    /// komt geen feit naar buiten, en geen andere cel kan hier bij.
-    pub(crate) fn has_fact(
-        &self,
-        stream: &str,
-        field: &str,
-        value: &Value,
-        op_moment: NaiveDate,
-    ) -> bool {
-        !self
-            .chronicles
-            .recordings(stream, field, value, &BTreeMap::new(), op_moment)
-            .is_empty()
     }
 
     /// De laatste waarde die één veld in één kroniek van deze cel kreeg.
@@ -1320,9 +1284,8 @@ impl Cell {
         params: &BTreeMap<String, Value>,
         op_moment: NaiveDate,
     ) -> Result<DecretogramInput> {
-        // Onbereikbaar: `validate` eist dat de stroom bestaat en dat haar
-        // sleutelveld een gedocumenteerde parameter is; `check_params` eist dat
-        // die parameter meekomt.
+        // Onbereikbaar leeg: `validate` eist dat de stroom bestaat en dat haar
+        // sleutelveld een gedocumenteerde parameter is.
         let key = self.chronicles.key_of(chronicle).unwrap_or_default();
         let missing = |reason: String| SimulatorError::BesluitInputMissing {
             cell: self.id.clone(),
@@ -1330,9 +1293,18 @@ impl Cell {
             input: input.to_string(),
             reason,
         };
-        let key_value = params
-            .get(key)
-            .ok_or_else(|| missing(format!("parameter '{key}' ontbreekt in de vraag")))?;
+        // Langs [`Self::decide`] ligt die parameter er altijd — `check_params`
+        // eist hem — maar langs de droogloop van [`Self::missing_own_fact`] niet:
+        // daar staat het formulier met zijn voorinvulling, en een voorinvulling
+        // die nergens op uitkomt levert geen waarde. Dat is geen defect maar het
+        // antwoord zelf, dus de reden noemt de stroom waar het onderwerp uit zou
+        // moeten komen en niet de parameter als administratief gat.
+        let key_value = params.get(key).ok_or_else(|| {
+            missing(format!(
+                "de vraag noemt nog geen {key}, dus er is in kroniekstroom \
+                 '{chronicle}' geen vastlegging aan te wijzen"
+            ))
+        })?;
 
         let no_conditions = BTreeMap::new();
         let event = self
@@ -1445,6 +1417,87 @@ impl Cell {
                 moment: event.op_moment,
             },
         })
+    }
+
+    /// Welk **eigen** feit dit besluit op dit moment mist; `None` als ze er
+    /// allemaal liggen.
+    ///
+    /// Een droogloop van de inputresolutie hierboven, en daarmee het antwoord op
+    /// "kan dit besluit nu genomen worden?". Het is met opzet dezelfde resolutie
+    /// en geen nagebouwde voorwaarde ernaast: wat een besluit nodig heeft, staat
+    /// in zijn definitie, en een tweede opsomming zou ervan gaan afwijken zodra
+    /// er een input bij komt.
+    ///
+    /// **Alleen de eigen kronieken.** [`BesluitInput::FromChronicle`] en
+    /// [`BesluitInput::FromDecretogram`] leest de cel bij zichzelf, dus die zijn
+    /// hier zonder meer na te lopen. [`BesluitInput::AcceptFrom`] niet: die vergt
+    /// een vraag over een celgrens, en een beschikbaarheidscheck mag geen contact
+    /// zijn — anders zou het openslaan van een scherm verkeer opleveren dat
+    /// niemand vroeg (invariant I1). Of de ander iets vaststelde, blijft dus een
+    /// zaak van het besluit zelf. [`BesluitInput::Param`] evenmin: dat is wat de
+    /// invuller invult, en een leeg formulierveld is geen ontbrekend feit.
+    ///
+    /// Er komt **niets** naar buiten behalve de reden: geen waarde, geen gram.
+    /// Dit leest niet anders dan wat het beeld van de wereld toch al over deze
+    /// cel laat zien.
+    ///
+    /// De eerste die ontbreekt en niet alle, want dit is een reden voor een
+    /// lezer en geen foutenlijst: wie het eerste feit aanlevert, krijgt vanzelf
+    /// het volgende te zien.
+    pub(crate) fn missing_own_fact(
+        &self,
+        besluit: &str,
+        params: &BTreeMap<String, Value>,
+        op_moment: NaiveDate,
+    ) -> Option<String> {
+        // Onbekend besluit: het optuigen heeft elke `decides`-actie aan een
+        // bestaande definitie gebonden, dus hier is niets te melden.
+        let definition = self.definition(besluit).ok()?;
+        let zaakkenmerk = definition.zaakkenmerk(&self.id, params);
+        let gaps = definition.zaakkenmerk_gaps(params);
+        for (input, origin) in &definition.inputs {
+            let gathered = match origin {
+                BesluitInput::FromChronicle { chronicle, field } => {
+                    self.read_own_chronicle(&definition, input, chronicle, field, params, op_moment)
+                }
+                BesluitInput::FromDecretogram {
+                    besluit: earlier,
+                    field,
+                } => match &zaakkenmerk {
+                    // Zonder de parameters waarop de zaak gevonden wordt, is er
+                    // geen zaak — en dan is "geen eerder besluit voor zaak ''"
+                    // een melding waarin een lezer een kenmerk zoekt dat er niet
+                    // is. Zeg dan wat er nog ontbreekt.
+                    Ok(_) if !gaps.is_empty() => Err(SimulatorError::BesluitInputMissing {
+                        cell: self.id.clone(),
+                        besluit: definition.name.clone(),
+                        input: input.clone(),
+                        reason: format!(
+                            "de vraag noemt nog geen {}, dus er is geen zaak aan te \
+                             wijzen waarin een eerder besluit '{earlier}' zou liggen",
+                            gaps.join(" en ")
+                        ),
+                    }),
+                    Ok(zaakkenmerk) => self.read_earlier_decretogram(
+                        &definition,
+                        input,
+                        earlier,
+                        field,
+                        zaakkenmerk,
+                        op_moment,
+                    ),
+                    // Een kenmerk dat niet eenduidig in te vullen is, houdt het
+                    // besluit tegen zodra het genomen wordt; dan hoort het de
+                    // actie nu ook tegen te houden, met diezelfde melding.
+                    Err(error) => return Some(error.to_string()),
+                },
+                BesluitInput::Param { .. } | BesluitInput::AcceptFrom { .. } => continue,
+            };
+            if let Err(error) = gathered {
+                return Some(error.to_string());
+            }
+        }
+        None
     }
 
     /// Voer de regeling uit op het moment van het besluit en maak het decretogram.

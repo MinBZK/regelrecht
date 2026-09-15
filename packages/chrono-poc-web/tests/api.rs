@@ -273,6 +273,11 @@ async fn een_actie_legt_vast_in_twee_kronieken() {
 
 /// Een actie die nu niet kan is geen fout in het verzoek en geen defect: het
 /// verhaal is nog niet zover. 409, met de uitleg van de wereld in het lichaam.
+///
+/// Hier gaat het besluit over iemand van wie deze cel geen enkel eigen feit
+/// heeft: haar kroniek met inkomensleveringen kent dit nummer niet, en dat is
+/// precies een input die dit besluit nodig heeft. Dat de wereld dat wéét zonder
+/// het besluit te proberen, komt uit de definitie van dat besluit zelf.
 #[tokio::test]
 async fn een_actie_die_nu_niet_kan_is_een_conflict() {
     let mut browser = Browser::new().await;
@@ -280,7 +285,7 @@ async fn een_actie_die_nu_niet_kan_is_een_conflict() {
     let (status, body) = browser
         .post(
             "/api/actions/toeslagen.toekenning",
-            json!({ "bsn": "999993653" }),
+            json!({ "bsn": "111111111" }),
         )
         .await;
 

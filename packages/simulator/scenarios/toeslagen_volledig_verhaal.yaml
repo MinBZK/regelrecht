@@ -12,8 +12,9 @@ description: >-
      wat zij indiende; `toeslagen` legt in de zijne vast wat hem geleverd is.
      Niemand leest de kroniek van de ander, en beide kanten weten wat er gebeurde.
   2. **Een actie kan wachten tot het verhaal zover is.** Beslissen kan pas als er
-     een aanvraag ligt, en vaststellen pas als er een toekenning ligt. Die
-     voorwaarde is data (`available_when`), geen volgorde in Rust.
+     een aanvraag ligt. Dat staat nergens als voorwaarde opgeschreven: het volgt
+     uit de inputs van het besluit zelf, dat een eigen feit over de aanvrager
+     nodig heeft dat er vóór de aanvraag niet is.
   3. **Geen schaduwboekhouding.** De belastingdienst corrigeert het
      toetsingsinkomen ná de toekenning. Het tweede besluit gaat opnieuw naar de
      bron en komt daardoor op een ánder bedrag uit — had `toeslagen` het eerste
@@ -339,28 +340,28 @@ actions:
   - id: toeslagen.toekenning
     actor: toeslagen
     label: Beslis op de aanvraag
+    # Geen voorwaarde in dit bestand: of dit besluit nu genomen kan worden,
+    # volgt uit zijn eigen inputs. Het leest `is_verzekerde` uit de eigen
+    # kroniek `inkomensleveringen`, op de persoon uit de aanvraag die deze cel
+    # ontving — dus zolang die aanvraag er niet ligt, is er geen persoon en geen
+    # feit, en zegt het beeld dat met zoveel woorden.
     doc: Kan pas als er een aanvraag ligt.
     decides:
       cell: toeslagen
       besluit: zorgtoeslag_toekenning
-    available_when:
-      cell: toeslagen
-      chronicle: aanvragen
-      field: jaar
-      equals: 2024
 
   - id: toeslagen.vaststelling
     actor: toeslagen
     label: Stel de zorgtoeslag definitief vast
-    doc: Kan pas als er een toekenning ligt.
+    # Dit besluit leest dezelfde eigen feiten als de toekenning en leest het
+    # eerste besluit niet terug, dus het kan zodra de aanvraag er ligt. Dat het
+    # in dit verhaal ná de toekenning komt, is een keuze van de behandelaar en
+    # geen voorwaarde — en dat is precies wat er eerder met de hand bijgeschreven
+    # stond terwijl de definitie het niet zei.
+    doc: Kan zodra er een aanvraag ligt; in dit verhaal volgt zij op de toekenning.
     decides:
       cell: toeslagen
       besluit: zorgtoeslag_vaststelling
-    available_when:
-      cell: toeslagen
-      chronicle: beschikkingen
-      field: besluit
-      equals: zorgtoeslag_toekenning
 
 deadlines:
   - label: aanvraag ontvangen vóór 1 maart
