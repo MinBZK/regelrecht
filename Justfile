@@ -283,13 +283,41 @@ chrono-poc WORLD='packages/simulator/worlds/publieke_wereld.yaml' PORT='7160': b
         STATIC_DIR={{justfile_directory()}}/frontend-chrono-poc/dist \
         cargo run -p regelrecht-chrono-poc-web --bin chrono-poc-web
 
+# De browserbewijsronde door de publieke wereld: de server uit
+# packages/chrono-poc-web met de publieke wereld erin, een echte Chromium
+# ervoor, en veertig beweringen over wat er dan te zien en te halen valt.
+#
+# Eerst bouwen, dan pas Playwright: het recept levert de bundel (STATIC_DIR) en
+# de binary af, zodat de `webServer` uit de configuratie een start is en geen
+# build. De poort kiest die configuratie zelf, uit 7180-7300.
+#
+# Geen `ci_flags` op die build, anders dan bij de andere cargo-recepten: die
+# server wordt zo meteen door playwright met `cargo run` gestart, en cargo ziet
+# andere RUSTFLAGS als een andere build. De hele workspace zou er dan twee keer
+# doorheen gaan — eerst hier, dan nog eens bij het starten. Wat de omgeving aan
+# RUSTFLAGS meegeeft (CI zet `-Dwarnings`) geldt voor allebei.
+#
+# Een ander doel is een omgevingsvariabele en geen tweede suite:
+#   E2E_WORLD=<pad>   een ander wereldbestand
+#   E2E_BASE=<url>    een opstelling die al draait (dan wordt er niets gestart)
+#   E2E_COOKIE=<a=b>  de sessiecookie voor zo'n opstelling achter de login
+[doc("Draai de browserbewijsronde van de testopstelling (Playwright, publieke wereld)")]
+chrono-poc-e2e *ARGS: build-chrono-poc
+    cd packages && cargo build -p regelrecht-chrono-poc-web --bin chrono-poc-web
+    npx playwright test -c frontend-chrono-poc/playwright.config.js {{ARGS}}
+
 # Alles wat de frontend van de testopstelling is: tests, de import-guard van het
-# ontwerpsysteem, en de bundel. Eén opdracht om te draaien voor je hem pusht.
-[doc("Check de frontend van de testopstelling: tests, ontwerpsysteem-imports en bundel")]
+# ontwerpsysteem, de bundel en de bewijsronde in de browser. Eén opdracht om te
+# draaien voor je hem pusht.
+#
+# De bewijsronde staat achteraan en niet als afhankelijkheid: die duurt minuten
+# en start een server, en een tikfout in een component hoort binnen seconden
+# rood te zijn.
+[doc("Check de testopstelling: tests, ontwerpsysteem-imports, bundel en browserbewijsronde")]
 chrono-poc-check:
     cd frontend-chrono-poc && npx vitest run
     node script/check-nldd-imports.mjs frontend-chrono-poc/src frontend-chrono-poc/src/nldd-components.js
-    cd frontend-chrono-poc && npx vite build
+    just chrono-poc-e2e
 
 # Regenerate all BDD step bindings from bdd/grammar.yaml
 bdd-codegen:

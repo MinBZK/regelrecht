@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "nldd:imports": "node ../script/check-nldd-imports.mjs src src/nldd-components.js --write",
-    "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js"
+    "nldd:check": "node ../script/check-nldd-imports.mjs src src/nldd-components.js",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@nldd/design-system": "^0.8.83",
@@ -18,6 +19,7 @@
     "vue": "^3.5.42"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/test-utils": "^2.5.0",
     "happy-dom": "^20.14.0",
