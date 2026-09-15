@@ -153,12 +153,17 @@ articles:
               bwb_id: BWBR0018451
               article: '2'
               paragraph: '1'
+              # De url wijst op artikelniveau: wetten.overheid.nl heeft geen
+              # stabiel anker per lid. Het lid staat in `paragraph` en in de
+              # juriconnect, met `z`/`g` op de datum van deze versie, zodat de
+              # verwijzing de tekst van toen aanwijst en niet die van vandaag.
               url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
-              juriconnect: jci1.3:c:BWBR0018451&artikel=2&lid=1
+              juriconnect: jci1.3:c:BWBR0018451&artikel=2&lid=1&z=2025-01-01&g=2025-01-01
               explanation: >-
                 Het verschil tussen de standaardpremie en de normpremie. Lid 1
                 verdubbelt de standaardpremie bij een toeslagpartner; de
-                normpremie zelf volgt uit lid 2 en lid 3.
+                normpremie zelf volgt uit lid 2 en lid 3. Lid 4 (vijftig procent
+                bij een partner die geen verzekerde is) is nog niet gemodelleerd.
             # RFC-024: round the toeslag to whole eurocent (rekenkundig/half-up).
             # The engine no longer rounds eurocent outputs implicitly; the rounding
             # is stated explicitly here as a law-modeled instruction.
@@ -236,17 +241,23 @@ articles:
                                   - $percentage_toetsingsinkomen
                           default: 0
           - output: heeft_recht_op_zorgtoeslag
+            # Deze verwijzing blijft bewust op artikelniveau. De drie
+            # voorwaarden komen uit drie bepalingen: verzekerd zijn uit artikel
+            # 1 onderdeel a, de vermogenstoets uit artikel 3, en alleen het
+            # positieve verschil uit artikel 2 lid 1. Een verwijzing naar lid 1
+            # zou preciezer lijken dan ze is, en dat is erger dan grof: wie de
+            # diepe link volgt vindt daar twee van de drie voorwaarden niet.
             legal_basis:
               law: Wet op de zorgtoeslag
               bwb_id: BWBR0018451
               article: '2'
-              paragraph: '1'
               url: https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel2
-              juriconnect: jci1.3:c:BWBR0018451&artikel=2&lid=1
+              juriconnect: jci1.3:c:BWBR0018451&artikel=2&z=2025-01-01&g=2025-01-01
               explanation: >-
-                De aanspraak ontstaat pas als het verschil uit lid 1 positief is.
-                Verzekerd zijn volgt uit artikel 1 onderdeel a, de vermogenstoets
-                uit artikel 3; beide zijn hier voorwaarde.
+                De aanspraak ontstaat pas als het verschil uit artikel 2 lid 1
+                positief is. Daarnaast gelden twee voorwaarden van buiten dit
+                lid: verzekerd zijn (artikel 1 onderdeel a) en de vermogenstoets
+                (artikel 3), die als uitsluitingsgrond is geformuleerd.
             value:
               operation: AND
               conditions:

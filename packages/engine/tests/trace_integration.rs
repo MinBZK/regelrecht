@@ -366,9 +366,12 @@ fn an_action_carries_the_provision_the_corpus_cites() {
     assert_eq!(basis.article.as_deref(), Some("2"));
     assert_eq!(basis.paragraph.as_deref(), Some("1"));
     assert_eq!(basis.bwb_id.as_deref(), Some("BWBR0018451"));
+    // The juriconnect carries `z`/`g`, so it resolves to the text as it stood
+    // on this law version's date rather than to the text of today. It is the
+    // only part of a citation that carries time at all.
     assert_eq!(
         basis.juriconnect.as_deref(),
-        Some("jci1.3:c:BWBR0018451&artikel=2&lid=1")
+        Some("jci1.3:c:BWBR0018451&artikel=2&lid=1&z=2025-01-01&g=2025-01-01")
     );
     assert!(
         basis
@@ -391,6 +394,33 @@ fn an_action_carries_the_provision_the_corpus_cites() {
     assert_eq!(
         anchor.paragraph, None,
         "the engine does not guess a lid it was never told"
+    );
+
+    // Every action that states a basis gets one, not just the first: stamping
+    // only the first action would otherwise pass unnoticed.
+    let cited: Vec<&str> = nodes
+        .iter()
+        .filter(|n| n.legal_basis.is_some())
+        .map(|n| n.name.as_str())
+        .collect();
+    assert_eq!(
+        cited,
+        vec!["hoogte_zorgtoeslag", "heeft_recht_op_zorgtoeslag"],
+        "both actions of article 2 cite their basis"
+    );
+
+    // The entitlement test draws on three provisions, so it cites the article
+    // and no lid. A citation is allowed to be coarse; it is not allowed to
+    // claim a precision the rule does not have.
+    let recht = nodes
+        .iter()
+        .find(|n| n.name == "heeft_recht_op_zorgtoeslag")
+        .and_then(|n| n.legal_basis.as_ref())
+        .expect("the entitlement action cites its basis");
+    assert_eq!(recht.article.as_deref(), Some("2"));
+    assert_eq!(
+        recht.paragraph, None,
+        "a rule spanning three provisions cites no single lid"
     );
 }
 
