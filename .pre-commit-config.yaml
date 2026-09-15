@@ -53,6 +53,14 @@ repos:
         pass_filenames: false
         types: [rust]
 
+      - id: check-schema-examples
+        name: Schema-voorbeelden valideren tegen hun eigen subschema
+        entry: python3 script/check-schema-examples.py
+        language: system
+        pass_filenames: false
+        # Also on the script itself: editing the guard should re-run it.
+        files: ^(schema/v[0-9]+\.[0-9]+\.[0-9]+/schema\.json|script/check-schema-examples\.py)$
+
       - id: validate-law-yaml
         name: Validate law YAML schema
         entry: just validate
